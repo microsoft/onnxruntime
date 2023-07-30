@@ -284,32 +284,26 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
         for (size_t j = 0; j < num_vals; j++) {
           const float expected_val = cpu_f32_vals[j];  // "ground-truth"
-          const float qnn_val = qnn_qdq_vals[j];
-          const float cpu_val = cpu_qdq_vals[j];
-          const float cpu_err = std::fabs(expected_val - cpu_val);
-          const float qnn_err = std::fabs(expected_val - qnn_val);
-          const float qnn_cpu_qdq_err = std::fabs(cpu_val - qnn_val);
-          const float cpu_qdq_quant_dist = std::ceil(cpu_err / output_qparams[i].scale);
+          const float qnn_qdq_val = qnn_qdq_vals[j];
+          const float cpu_qdq_val = cpu_qdq_vals[j];
+          const float cpu_err = std::fabs(expected_val - cpu_qdq_val);
+          const float qnn_err = std::fabs(expected_val - qnn_qdq_val);
 
-          // The QDQ results from CPU EP and QNN EP are "some" quantized distance away from the ground-truth.
-          // Are those quantized distances at most the same?
-          const bool is_same_quant_dist_from_actual = qnn_err <= cpu_qdq_quant_dist * output_qparams[i].scale + fp32_abs_err;
+          // Case 1 (qnn_err <= cpu_err): QNN EP is *more* accurate, which makes (qnn_err - cpu_err) zero or
+          //                              a negative value.
+          // Case 2 (qnn_err > cpu_err):  QNN EP is less accurate, but the error difference is within 1
+          //                              quantization unit (i.e., scale). This can occur due to rounding differences.
+          const bool is_as_accurate_as_cpu_qdq = (qnn_err - cpu_err) <= (output_qparams[i].scale + fp32_abs_err);
 
-          // Is the result from QNN EP 1 quantized unit away from the QDQ model on CPU EP?
-          const bool is_1_quant_unit_from_cpu_qdq = qnn_cpu_qdq_err <= output_qparams[i].scale + fp32_abs_err;
-
-          // Is the raw result from QNN EP closer (or same dist) to the ground-truth?
-          const bool is_as_accurate_as_cpu_qdq = qnn_err <= cpu_err + fp32_abs_err;
-
-          EXPECT_TRUE(is_same_quant_dist_from_actual || is_1_quant_unit_from_cpu_qdq || is_as_accurate_as_cpu_qdq)
+          EXPECT_TRUE(is_as_accurate_as_cpu_qdq)
               << "Inaccuracy detected for output '"
               << output_names[i]
               << "', element " << j
               << ".\nOutput quant params: scale=" << output_qparams[i].scale
               << ", zero_point=" << static_cast<int32_t>(output_qparams[i].zero_point)
               << ".\nExpected val: " << expected_val << "\n"
-              << "QNN QDQ val: " << qnn_val << " (err " << qnn_err << ")\n"
-              << "CPU QDQ val: " << cpu_val << " (err " << cpu_err << ")";
+              << "QNN QDQ val: " << qnn_qdq_val << " (err " << qnn_err << ")\n"
+              << "CPU QDQ val: " << cpu_qdq_val << " (err " << cpu_err << ")";
         }
       } else {
         VerifyOutput(output_names[i], cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
