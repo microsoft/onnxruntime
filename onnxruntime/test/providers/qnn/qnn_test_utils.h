@@ -372,6 +372,13 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
   return input;
 }
 
+// ONNX spec does not allow quantizing float to int32. However, this function will create an int32 input (divide by scale)
+// and then return the output of DequantizeLinear. Note that bias_scale should be generally be equal
+// to input_scale * weights_scale. See quantization tool: onnx_quantizer.py::quantize_bias_static()
+//
+// i.e., initial bias => manual quantization (int32) => DQ => final float bias
+NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale);
+
 /**
  * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.

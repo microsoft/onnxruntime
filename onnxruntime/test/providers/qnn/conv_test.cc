@@ -168,37 +168,10 @@ static GetTestQDQModelFn<InputQType> BuildQDQConvTestCase(const std::string& con
 
     // bias ->
     if (!bias_def.GetShape().empty()) {
-      NodeArg* bias_int32 = nullptr;
-
       // Bias requirement taken from python quantization tool: onnx_quantizer.py::quantize_bias_static()
       const float bias_scale = input_qparams.scale * weights_qparams.scale;
 
-      // Bias must be int32 to be detected as a QDQ node unit.
-      // We must quantize the data.
-      if (bias_def.IsRandomData()) {
-        // Create random initializer def that is quantized to int32
-        const auto& rand_info = bias_def.GetRandomDataInfo();
-        TestInputDef<int32_t> bias_int32_def(bias_def.GetShape(), bias_def.IsInitializer(), static_cast<int32_t>(rand_info.min / bias_scale),
-                                             static_cast<int32_t>(rand_info.max / bias_scale));
-        bias_int32 = MakeTestInput(builder, bias_int32_def);
-      } else {
-        assert(bias_def.IsRawData());
-        // Create raw data initializer def that is quantized to int32
-        const auto& bias_f32_raw = bias_def.GetRawData();
-        const size_t num_elems = bias_f32_raw.size();
-
-        std::vector<int32_t> bias_int32_raw(num_elems);
-        for (size_t i = 0; i < num_elems; i++) {
-          bias_int32_raw[i] = static_cast<int32_t>(bias_f32_raw[i] / bias_scale);
-        }
-
-        TestInputDef<int32_t> bias_int32_def(bias_def.GetShape(), bias_def.IsInitializer(), bias_int32_raw);
-        bias_int32 = MakeTestInput(builder, bias_int32_def);
-      }
-
-      auto* bias = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<int32_t>(bias_int32, bias_scale, 0, bias);
-      conv_inputs.push_back(bias);
+      conv_inputs.push_back(MakeTestQDQBiasInput(builder, bias_def, bias_scale));
     }
 
     auto* conv_output = builder.MakeIntermediate();
