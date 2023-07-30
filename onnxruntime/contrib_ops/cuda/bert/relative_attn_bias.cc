@@ -106,7 +106,7 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
 
   bool is_padding_removed = (token_offset_tensor != nullptr);
   ORT_ENFORCE(query_dims.size() == (is_padding_removed ? 2 : 3));
-  int hidden_size = query_dims[static_cast<int64_t>(query_dims.size()) - 1LL];
+  int hidden_size = static_cast<int>(query_dims[query_dims.size() - 1]);
 
   ORT_ENFORCE(hidden_size > 0);
   ORT_ENFORCE(hidden_size % num_heads_ == 0);
