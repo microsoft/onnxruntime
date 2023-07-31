@@ -13,7 +13,6 @@
 
 #pragma once
 #include "onnxruntime_config.h"
-#include <intrin.h>
 // build/external/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h:162:71:
 // error: ignoring attributes on template argument "Eigen::PacketType<const float, Eigen::DefaultDevice>::type {aka
 // __vector(4) float}" [-Werror=ignored-attributes]
