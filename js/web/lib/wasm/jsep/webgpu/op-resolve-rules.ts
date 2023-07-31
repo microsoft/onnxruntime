@@ -11,6 +11,7 @@ import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
+import {parseResizeAttributes, resize} from './ops/resize';
 import {parseSliceAttributes, slice} from './ops/slice';
 import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
@@ -70,6 +71,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ReduceLogSumExp', [reduceLogSumExp, parseReduceAttributes]],
   ['ReduceSumSquare', [reduceSumSquare, parseReduceAttributes]],
   ['Relu', [unaryOps.relu]],
+  ['Resize', [resize, parseResizeAttributes]],
   ['Sigmoid', [unaryOps.sigmoid]],
   ['Sin', [unaryOps.sin]],
   ['Sinh', [unaryOps.sinh]],
