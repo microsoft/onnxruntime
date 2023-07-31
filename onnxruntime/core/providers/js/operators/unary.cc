@@ -90,7 +90,7 @@ JSEP_KERNEL_IMPL(Atanh, Atanh)
 JSEP_ELEMENTWISE_KERNEL(Atanh, 9, float, Atanh)
 
 JSEP_KERNEL_IMPL(Not, Not)
-JSEP_ELEMENTWISE_KERNEL(Not, 7, bool, Not)
+JSEP_ELEMENTWISE_KERNEL(Not, 1, bool, Not)
 
 // activation
 

@@ -19,11 +19,7 @@ const createElementwiseProgramShader =
 
       let expression = '';
       if (typeof funcCall === 'string') {
-        if (funcCall === 'not') {
-          expression = '!a';
-        } else {
-          expression = `${funcCall}(a)`;
-        }
+        expression = `${funcCall}(a)`;
       } else {
         expression = funcCall('a');
       }
@@ -90,7 +86,7 @@ export const atanh = (context: ComputeContext): void => {
 };
 
 export const not = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Not', 'not'));
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Not', '!'));
 };
 
 export interface ClipAttributes extends AttributeWithCacheKey {
