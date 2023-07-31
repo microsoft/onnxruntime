@@ -5,10 +5,14 @@ import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
+import {expand} from './ops/expand';
+import {gelu} from './ops/gelu';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
+import {parseResizeAttributes, resize} from './ops/resize';
+import {parseSliceAttributes, slice} from './ops/slice';
 import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
@@ -41,7 +45,9 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Elu', [unaryOps.elu, unaryOps.parseAlphaAttributes]],
   ['Erf', [unaryOps.erf]],
   ['Exp', [unaryOps.exp]],
+  ['Expand', [expand]],
   ['Floor', [unaryOps.floor]],
+  ['Gelu', [gelu]],
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],
   ['GlobalMaxPool', [pool.globalMaxPool, pool.parseGlobalMaxPoolAttributes]],
@@ -64,9 +70,11 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ReduceLogSumExp', [reduceLogSumExp, parseReduceAttributes]],
   ['ReduceSumSquare', [reduceSumSquare, parseReduceAttributes]],
   ['Relu', [unaryOps.relu]],
+  ['Resize', [resize, parseResizeAttributes]],
   ['Sigmoid', [unaryOps.sigmoid]],
   ['Sin', [unaryOps.sin]],
   ['Sinh', [unaryOps.sinh]],
+  ['Slice', [slice, parseSliceAttributes]],
   ['Split', [split, parseSplitAttributes]],
   ['Sqrt', [unaryOps.sqrt]],
   ['Sub', [binaryOps.sub]],

@@ -139,7 +139,7 @@ class GemmNodeGroupSelector : public NodeGroupSelector {
 
 // Input: DQ nodes for input, scale, and B
 // Output: Q node for output
-class InstanceNormalizationNodeGroupSelector : public NodeGroupSelector {
+class InstanceAndLayerNormalizationNodeGroupSelector : public NodeGroupSelector {
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
@@ -264,7 +264,7 @@ class GemmSelector : public BaseSelector {
 class InstanceNormalizationSelector : public BaseSelector {
  public:
   InstanceNormalizationSelector()
-      : BaseSelector(std::make_unique<InstanceNormalizationNodeGroupSelector>()) {}
+      : BaseSelector(std::make_unique<InstanceAndLayerNormalizationNodeGroupSelector>()) {}
 };
 
 // DQ nodes for X, W and optionally B, (mean, var not required) -> node -> Q

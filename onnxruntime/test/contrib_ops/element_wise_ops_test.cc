@@ -253,17 +253,17 @@ TEST(MathOpTest, ComplexMul_fp16) {
   if (DefaultCudaExecutionProvider() == nullptr) return;
 
   std::vector<MLFloat16> input_a_data = {
-      MLFloat16(math::floatToHalf(-0.5f)), MLFloat16(math::floatToHalf(0.6f))};
+      MLFloat16(-0.5f), MLFloat16(0.6f)};
 
   std::vector<MLFloat16> input_b_data = {
-      MLFloat16(math::floatToHalf(0.8f)), MLFloat16(math::floatToHalf(-0.5f)), MLFloat16(math::floatToHalf(0.0f)), MLFloat16(math::floatToHalf(1.f)),
-      MLFloat16(math::floatToHalf(0.5f)), MLFloat16(math::floatToHalf(0.2f)), MLFloat16(math::floatToHalf(0.3f)), MLFloat16(math::floatToHalf(-0.6f))};
+      MLFloat16(0.8f), MLFloat16(-0.5f), MLFloat16(0.0f), MLFloat16(1.f),
+      MLFloat16(0.5f), MLFloat16(0.2f), MLFloat16(0.3f), MLFloat16(-0.6f)};
 
   std::vector<MLFloat16> output_data = {
-      MLFloat16(math::floatToHalf(-0.10f)), MLFloat16(math::floatToHalf(0.73f)),
-      MLFloat16(math::floatToHalf(-0.60f)), MLFloat16(math::floatToHalf(-0.50f)),
-      MLFloat16(math::floatToHalf(-0.37f)), MLFloat16(math::floatToHalf(0.20f)),
-      MLFloat16(math::floatToHalf(0.21f)), MLFloat16(math::floatToHalf(0.48f))};
+      MLFloat16(-0.10f), MLFloat16(0.73f),
+      MLFloat16(-0.60f), MLFloat16(-0.50f),
+      MLFloat16(-0.37f), MLFloat16(0.20f),
+      MLFloat16(0.21f), MLFloat16(0.48f)};
 
   OpTester tester("ComplexMul", 1, onnxruntime::kMSDomain);
   tester.AddInput<MLFloat16>("A", {1, 2}, input_a_data);
@@ -279,17 +279,17 @@ TEST(MathOpTest, ComplexMulConj_fp16) {
   if (DefaultCudaExecutionProvider() == nullptr) return;
 
   std::vector<MLFloat16> input_a_data = {
-      MLFloat16(math::floatToHalf(-0.5f)), MLFloat16(math::floatToHalf(0.6f))};
+      MLFloat16(-0.5f), MLFloat16(0.6f)};
 
   std::vector<MLFloat16> input_b_data = {
-      MLFloat16(math::floatToHalf(0.8f)), MLFloat16(math::floatToHalf(-0.5f)), MLFloat16(math::floatToHalf(0.0f)), MLFloat16(math::floatToHalf(1.f)),
-      MLFloat16(math::floatToHalf(0.5f)), MLFloat16(math::floatToHalf(0.2f)), MLFloat16(math::floatToHalf(0.3f)), MLFloat16(math::floatToHalf(-0.6f))};
+      MLFloat16(0.8f), MLFloat16(-0.5f), MLFloat16(0.0f), MLFloat16(1.f),
+      MLFloat16(0.5f), MLFloat16(0.2f), MLFloat16(0.3f), MLFloat16(-0.6f)};
 
   std::vector<MLFloat16> output_data = {
-      MLFloat16(math::floatToHalf(-0.70f)), MLFloat16(math::floatToHalf(0.23f)),
-      MLFloat16(math::floatToHalf(0.60f)), MLFloat16(math::floatToHalf(0.50f)),
-      MLFloat16(math::floatToHalf(-0.13f)), MLFloat16(math::floatToHalf(0.40f)),
-      MLFloat16(math::floatToHalf(-0.51f)), MLFloat16(math::floatToHalf(-0.12f))};
+      MLFloat16(-0.70f), MLFloat16(0.23f),
+      MLFloat16(0.60f), MLFloat16(0.50f),
+      MLFloat16(-0.13f), MLFloat16(0.40f),
+      MLFloat16(-0.51f), MLFloat16(-0.12f)};
 
   OpTester tester("ComplexMulConj", 1, onnxruntime::kMSDomain);
   tester.AddInput<MLFloat16>("A", {1, 2}, input_a_data);

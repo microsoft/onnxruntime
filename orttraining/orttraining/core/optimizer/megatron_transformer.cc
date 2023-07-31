@@ -960,7 +960,7 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     return skip_status;
   }
   // map between reshape node and dim of reshape that must be modified
-  std::unordered_map<Node*, int64_t> reshape_node_ptrs;
+  std::unordered_map<Node*, size_t> reshape_node_ptrs;
   reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 16]] = 1;
   reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 12]] = 1;
   reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 10]] = 0;
@@ -1054,7 +1054,7 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
   bool is_reshape_valid = true;
   for (auto x : reshape_node_ptrs) {
     Node* node_ptr = x.first;
-    int64_t idx = x.second;
+    auto idx = x.second;
     auto shape_arg = node_ptr->MutableInputDefs()[1];
     const ONNX_NAMESPACE::TensorProto* tensor;
     if (!graph.GetInitializedTensor(shape_arg->Name(), tensor)) {

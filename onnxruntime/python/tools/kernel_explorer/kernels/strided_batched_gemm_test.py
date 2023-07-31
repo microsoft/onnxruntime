@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
 import sys
 from dataclasses import dataclass
 from itertools import product
@@ -10,7 +11,9 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
+from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, matmul, transab_to_suffix
+
+max_batch_size = int(os.environ.get("KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE", 64))
 
 
 def dtype_to_suffix(dtype):
@@ -31,7 +34,9 @@ def _test_strided_batched_gemm(
     np.random.seed(0)
     a = (np.random.rand(batch, *a_shape) + 0.5).astype(dtype).astype("float64")
     b = (np.random.rand(batch, *b_shape) + 0.5).astype(dtype).astype("float64")
-    intermediate_c = (a.swapaxes(1, 2) if transa else a) @ (b.swapaxes(1, 2) if transb else b)
+    tmp_a = a.swapaxes(1, 2) if transa else a
+    tmp_b = b.swapaxes(1, 2) if transb else b
+    intermediate_c = matmul(tmp_a, tmp_b)
     if alpha == 1.0 and beta == 0.0:  # fast path
         ref_c = intermediate_c
     else:
@@ -68,6 +73,9 @@ def _test_strided_batched_gemm(
         if not my_gemm.SelectOp(impl):
             continue
 
+        # Restore C Array
+        my_c.fill(1.0)
+        dev_c.UpdateDeviceArray()
         my_gemm.Run()
         dev_c.UpdateHostNumpyArray()
 
@@ -89,7 +97,7 @@ dtypes = ["float32", "float16"]
 all_transabs = list(product([True, False], repeat=2))
 
 
-@pytest.mark.parametrize("batch", [1, 64])
+@pytest.mark.parametrize("batch", [1, max_batch_size])
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
@@ -99,7 +107,7 @@ def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
 
 
 @pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
-@pytest.mark.parametrize("batch", [1, 64])
+@pytest.mark.parametrize("batch", [1, max_batch_size])
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
@@ -109,7 +117,7 @@ def test_ck_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
 
 
 # Tunable is basically wrapped around of rocblas and ck gemm, so no need for full tests
-@pytest.mark.parametrize("batch", [1, 64])
+@pytest.mark.parametrize("batch", [1, max_batch_size])
 @pytest.mark.parametrize("m, n, k", get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
@@ -207,10 +215,14 @@ def profile_with_args(dtype, transa, transb, m, n, k, batch, sort):
     fn_rocblas = getattr(ke, "RocBlasStridedBatchedGemm" + dtype_suffix)
     fn_ck = getattr(ke, "CKStridedBatchedGemm" + dtype_suffix + transab_suffix)
     fn_tunable = getattr(ke, "StridedBatchedGemmTunable" + dtype_suffix + transab_suffix)
+    if ke.is_hipblaslt_available():
+        fn_hipblaslt = getattr(ke, "StridedBatchedGemmHipBlasLt" + dtype_suffix + transab_suffix)
     with ke.benchmark(sort):
         profile_gemm_func(fn_rocblas, dtype, transa, transb, m, n, k, batch)
         profile_gemm_func(fn_ck, dtype, transa, transb, m, n, k, batch)
         profile_gemm_func(fn_tunable, dtype, transa, transb, m, n, k, batch)
+        if ke.is_hipblaslt_available():
+            profile_gemm_func(fn_hipblaslt, dtype, transa, transb, m, n, k, batch)
     print()
 
 

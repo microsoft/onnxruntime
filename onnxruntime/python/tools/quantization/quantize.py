@@ -145,6 +145,16 @@ class StaticQuantConfig(QuantConfig):
                         a DeQuantizeLinear node. If False, it remains floating-point bias and does not insert
                         any quantization nodes associated with biases.
                         This extra option is only effective when quant_format is QuantFormat.QDQ.
+                    SmoothQuant = True/False :
+                        Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
+                        fake input channel quantization.
+                    SmoothQuantAlpha = float :
+                        Default is 0.5. It only works if SmoothQuant is True. It controls the difficulty of weight
+                        and activation quantization. A larger alpha value could be used on models with more significant
+                        activation outliers to migrate more quantization difficulty to weights.
+                    SmoothQuantFolding = True/False :
+                        Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
+                        SmoothQuant will be folded into the previous op if the previous op is foldable.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -325,6 +335,16 @@ def quantize_static(
                     Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
+                SmoothQuant = True/False :
+                    Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
+                    fake input channel quantization.
+                SmoothQuantAlpha = float :
+                    Default is 0.5. It only works if SmoothQuant is True. It controls the difficulty of weight
+                    and activation quantization. A larger alpha value could be used on models with more significant
+                    activation outliers to migrate more quantization difficulty to weights.
+                SmoothQuantFolding = True/False :
+                    Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
+                    SmoothQuant will be folded into the previous op if the previous op is foldable.
     """
 
     extra_options = extra_options or {}
@@ -356,6 +376,38 @@ def quantize_static(
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
     }
+
+    if extra_options.get("SmoothQuant", False):
+        import importlib
+
+        try:
+            importlib.import_module("neural_compressor.adaptor.ox_utils.smooth_quant")
+        except Exception as e:
+            logging.error(f"{e}.")
+            raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.") from e
+
+        import copy
+
+        import onnx
+        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
+
+        def inc_dataloader():
+            data_reader = copy.deepcopy(calibration_data_reader)
+            for data in data_reader:
+                yield data, None
+
+        orig_nodes = [i.name for i in model.graph.node]
+        dataloader = inc_dataloader()
+        sq = ORTSmoothQuant(model_input, dataloader, reduce_range)
+        del dataloader
+        model = sq.transform(
+            extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True)
+        ).model
+        nodes_to_exclude.extend([i.name for i in model.graph.node if i.name not in orig_nodes])
+        sq_path = tempfile.TemporaryDirectory(prefix="ort.quant.")
+        model_input = Path(sq_path.name).joinpath("sq_model.onnx").as_posix()
+        onnx.save_model(model, model_input, save_as_external_data=True)
+        model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         calibrator = create_calibrator(
@@ -411,6 +463,9 @@ def quantize_static(
             "https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification"
             "/cpu/ReadMe.md "
         )
+
+    if extra_options.get("SmoothQuant", False):
+        sq_path.cleanup()
 
 
 def quantize_dynamic(

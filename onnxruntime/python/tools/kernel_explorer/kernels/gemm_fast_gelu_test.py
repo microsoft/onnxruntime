@@ -10,13 +10,15 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
-
-
-def fast_gelu(x, bias):
-    x = x + bias
-    y = 0.5 * x * (1 + np.tanh(0.797885 * x + 0.035677 * x * x * x))
-    return y
+from utils import (
+    dtype_to_suffix,
+    fast_gelu,
+    get_gemm_basic_sizes,
+    get_gemm_bert_sizes,
+    get_gemm_bound,
+    matmul,
+    transab_to_suffix,
+)
 
 
 # TODO The test method needs update.
@@ -30,7 +32,7 @@ def _test_gemmfastgelu(my_func, dtype: str, m: int, n: int, k: int, transa=False
     a = (np.random.rand(*a_shape)).astype(dtype).astype("float64")
     b = (np.random.rand(*b_shape)).astype(dtype).astype("float64")
     bias = (np.random.rand(n)).astype(dtype)
-    temp_c = (a.T if transa else a) @ (b.T if transb else b)
+    temp_c = matmul(a, b, transa, transb)
 
     bound = get_gemm_bound(dtype, a, b, temp_c, transa, transb, a_b_positive=True)
 
@@ -164,7 +166,10 @@ def profile_with_args(transa, transb, dtype, m, n, k, sort):
         profile_gemmfastgelu_func(
             getattr(ke, "GemmFastGeluTunable" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
         )
-        profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluHipBlasLt" + dtype_suffix), dtype, m, n, k, transa, transb)
+        if ke.is_hipblaslt_available():
+            profile_gemmfastgelu_func(
+                getattr(ke, "GemmFastGeluHipBlasLt" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
+            )
 
 
 def profile():

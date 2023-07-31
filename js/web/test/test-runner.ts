@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 import {expect} from 'chai';
-import {onnx} from 'onnx-proto';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
 import {inspect} from 'util';
@@ -12,6 +11,7 @@ import {InferenceHandler, resolveBackend, SessionHandler} from '../lib/onnxjs/ba
 import {createWebGLContext} from '../lib/onnxjs/backends/webgl/webgl-context-factory';
 import {Logger, Profiler} from '../lib/onnxjs/instrument';
 import {Operator} from '../lib/onnxjs/operators';
+import {onnx} from '../lib/onnxjs/ort-schema/protobuf/onnx';
 import {Tensor} from '../lib/onnxjs/tensor';
 import {ProtoUtil} from '../lib/onnxjs/util';
 import {tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';

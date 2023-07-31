@@ -27,7 +27,7 @@ class Split : public JsKernel, public SplitBase {
       }
     } else if (split_sizes_.size() == 0) {
       // Compute split_sizes from input shape and num_outputs
-      auto total_split_size = info.node().InputDefs()[0]->Shape()->dim(axis_).dim_value();
+      auto total_split_size = info.node().InputDefs()[0]->Shape()->dim(gsl::narrow_cast<int32_t>(axis_)).dim_value();
       int64_t split_size_sum = 0;
       if (num_outputs_ < 0) {
         num_outputs_ = info.node().OutputDefs().size();
@@ -37,7 +37,7 @@ class Split : public JsKernel, public SplitBase {
                     num_outputs_, ")");
       }
       for (auto output : info.node().OutputDefs()) {
-        auto split_size = output->Shape()->dim(axis_).dim_value();
+        auto split_size = output->Shape()->dim(gsl::narrow_cast<int32_t>(axis_)).dim_value();
         split_sizes.push_back(gsl::narrow_cast<int32_t>(split_size));
         split_size_sum += split_size;
       }
@@ -51,7 +51,7 @@ class Split : public JsKernel, public SplitBase {
                                static_cast<int32_t>(axis_),
                                static_cast<int32_t>(num_outputs_),
                                gsl::narrow_cast<int32_t>(split_sizes.size()),
-                               reinterpret_cast<int32_t>((!split_sizes.empty() > 0) ? split_sizes.data() : nullptr) >> 2);
+                               reinterpret_cast<int32_t>((split_sizes.size() > 0) ? split_sizes.data() : nullptr) >> 2);
   }
 };
 

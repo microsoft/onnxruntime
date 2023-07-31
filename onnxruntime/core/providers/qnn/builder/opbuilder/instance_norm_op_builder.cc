@@ -105,7 +105,7 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
   epsilon_param.floatValue = epsilon;
   QnnParamWrapper epsilon_param_wrapper(node_unit.Index(),
                                         node_unit.Name(),
-                                        qnn_def::epsilon,
+                                        QNN_OP_INSTANCE_NORM_PARAM_EPSILON,
                                         epsilon_param);
   param_tensor_names.push_back(epsilon_param_wrapper.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(epsilon_param_wrapper));
