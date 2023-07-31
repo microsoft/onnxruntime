@@ -228,11 +228,12 @@ class Session:
 
     def run_async(self, output_names, input_feed, callback, user_data, run_options=None):
         """
-        Compute the predictions asynchronously in a separate thread
+        Compute the predictions asynchronously in a separate cxx thread from ort intro-op threadpool.
 
         :param output_names: name of the outputs
         :param input_feed: dictionary ``{ input_name: input_value }``
-        :param callback: python function that accept array of results, and an status string on error
+        :param callback: python function that accept array of results, and a status string on error.
+            The callback will be invoked by a cxx thread from ort intra-op threadpool.
         :param run_options: See :class:`onnxruntime.RunOptions`.
 
         ::

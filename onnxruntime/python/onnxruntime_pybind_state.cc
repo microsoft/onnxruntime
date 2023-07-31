@@ -145,6 +145,9 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
   if (PyGILState_Check()) {
     invoke_callback();
   } else {
+    // acquire GIL to safely:
+    // 1) invoke python callback
+    // 2) create, manipulate, and destory python objects
     py::gil_scoped_acquire acquire;
     invoke_callback();
   }
