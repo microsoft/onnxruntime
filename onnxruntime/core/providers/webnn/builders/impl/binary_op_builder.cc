@@ -39,8 +39,6 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     output = model_builder.GetBuilder().call<emscripten::val>("div", input0, input1);
   } else if (op_type == "Pow") {
     output = model_builder.GetBuilder().call<emscripten::val>("pow", input0, input1);
-  } else if (op_type == "PRelu") {
-    output = model_builder.GetBuilder().call<emscripten::val>("prelu", input0, input1);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -61,7 +59,6 @@ void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
           "Mul",
           "Div",
           "Pow",
-          "PRelu",
       };
 
   op_registrations.builders.push_back(std::make_unique<BinaryOpBuilder>());
