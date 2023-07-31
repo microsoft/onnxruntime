@@ -11,6 +11,20 @@ import onnxruntime as ort
 
 
 class ORTBertPretrainTest(unittest.TestCase):
+    @staticmethod
+    def _create_model_with_opsets(
+        graph_def,
+    ):
+        opset_imports = [
+            helper.make_operatorsetid("", 18),
+            helper.make_operatorsetid(".com.microsoft", 1),
+        ]
+        return helper.make_model(
+            graph_def,
+            producer_name="ORTBertPretrainTest in onnxruntime_test_collective.py",
+            opset_imports=opset_imports,
+        )
+
     def _create_allreduce_ut_model(self, shape):
         X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)  # noqa: N806
         Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, shape)  # noqa: N806
@@ -21,7 +35,7 @@ class ORTBertPretrainTest(unittest.TestCase):
             [X],
             [Y],
         )
-        return helper.make_model(graph_def, producer_name="ort-distributed-inference-unittest")
+        return ORTBertPretrainTest._create_model_with_opsets(graph_def)
 
     def _get_rank_size(self):
         comm = MPI.COMM_WORLD
@@ -39,7 +53,7 @@ class ORTBertPretrainTest(unittest.TestCase):
             [X],
             [Y],
         )
-        return helper.make_model(graph_def, producer_name="ort-distributed-inference-unittest")
+        return ORTBertPretrainTest._create_model_with_opsets(graph_def)
 
     def _create_alltoall_ut_model(self, shape):
         X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)  # noqa: N806
@@ -52,7 +66,7 @@ class ORTBertPretrainTest(unittest.TestCase):
             [X],
             [Y],
         )
-        return helper.make_model(graph_def, producer_name="ort-distributed-inference-unittest")
+        return ORTBertPretrainTest._create_model_with_opsets(graph_def)
 
     def test_all_reduce(self):
         model = self._create_allreduce_ut_model((128, 128))
