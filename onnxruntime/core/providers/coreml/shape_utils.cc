@@ -5,6 +5,7 @@
 
 #include <sstream>
 
+#include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime::coreml {
@@ -56,6 +57,10 @@ bool IsStaticShape(gsl::span<const int64_t> shape) {
 
 bool DoesShapeSpecifyZeroElements(gsl::span<const int64_t> shape) {
   return std::find(shape.begin(), shape.end(), int64_t{0}) != shape.end();
+}
+
+int64_t ShapeSize(gsl::span<const int64_t> shape) {
+  return TensorShape(shape).Size();
 }
 
 std::string Shape2String(gsl::span<const int64_t> shape) {

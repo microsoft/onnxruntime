@@ -26,6 +26,9 @@ bool IsStaticShape(gsl::span<const int64_t> shape);
 // does not compute the size.
 bool DoesShapeSpecifyZeroElements(gsl::span<const int64_t> shape);
 
+// Gets the number of elements contained by the shape or -1 if the shape has any dynamic dimensions.
+int64_t ShapeSize(gsl::span<const int64_t> shape);
+
 // Gets a string representation of `shape`.
 std::string Shape2String(gsl::span<const int64_t> shape);
 

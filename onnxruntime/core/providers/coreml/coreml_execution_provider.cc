@@ -189,7 +189,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
                 int32_t requested_onnx_tensor_element_type,
                 gsl::span<const int64_t> static_shape) -> void* {
           const auto model_output_it = std::find(model_outputs.begin(), model_outputs.end(), name);
-          ORT_ENFORCE(model_output_it != model_outputs.end(), "Failed to find CoreML model output name:", name);
+          ORT_ENFORCE(model_output_it != model_outputs.end(), "Failed to find CoreML model output name: ", name);
           const auto output_idx = gsl::narrow_cast<size_t>(std::distance(model_outputs.begin(), model_output_it));
 
           auto output_tensor = ctx.GetOutput(output_idx, static_shape.data(), static_shape.size());
@@ -197,7 +197,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           const auto type_and_shape_info = output_tensor.GetTensorTypeAndShapeInfo();
           const auto actual_element_type = type_and_shape_info.GetElementType();
           ORT_ENFORCE(utils::CApiElementTypeFromProtoType(requested_onnx_tensor_element_type) == actual_element_type,
-                      "Output tensor element type mismatch. Requested: ",
+                      "Requested and actual output tensor element types do not match. Requested: ",
                       utils::CApiElementTypeFromProtoType(requested_onnx_tensor_element_type),
                       ", actual: ", actual_element_type);
 

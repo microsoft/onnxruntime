@@ -326,6 +326,13 @@ NS_ASSUME_NONNULL_BEGIN
                                                                   static_output_shape);
 
       if (const size_t num_elements = data.count; num_elements > 0) {
+        if (const auto shape_size = ShapeSize(static_output_shape);
+            shape_size < 0 || num_elements != static_cast<size_t>(shape_size)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "CoreML MLMultiArray count (", num_elements, ") and shape size (", shape_size,
+                                 ") do not match");
+        }
+
         const void* model_output_data = data.dataPointer;
 
         if (model_output_data == nullptr) {
