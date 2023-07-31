@@ -187,12 +187,12 @@ def change_io_shape(graph: GraphProto):
                 elem_type=TensorProto.INT32,
                 shape=["batch_size", "seq_len"],
             )
-            vi_pid = helper.make_tensor_value_info(
-                "position_ids",
-                elem_type=TensorProto.INT32,
-                shape=["batch_size", "seq_len"],
-            )
-            new_inputs.extend([vi_pid])
+            # vi_pid = helper.make_tensor_value_info(
+            #     "position_ids",
+            #     elem_type=TensorProto.INT32,
+            #     shape=["batch_size", "seq_len"],
+            # )
+            # new_inputs.extend([vi_pid])
         if vi.name == "input_ids":
             vi = helper.make_tensor_value_info(
                 vi.name,
