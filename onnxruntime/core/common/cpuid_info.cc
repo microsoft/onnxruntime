@@ -84,12 +84,12 @@ static inline int XGETBV() {
 }
 
 int filter(uint32_t code) {
-	if(code == STATUS_ILLEGAL_INSTRUCTION || code == STATUS_PRIVILEGED_INSTRUCTION) {
-		return EXCEPTION_EXECUTE_HANDLER;
-	}
-	else {
-		return EXCEPTION_CONTINUE_SEARCH;
-	}
+  if(code == STATUS_ILLEGAL_INSTRUCTION || code == STATUS_PRIVILEGED_INSTRUCTION) {
+    return EXCEPTION_EXECUTE_HANDLER;
+  }
+  else {
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
 }
 
 void CPUIDInfo::X86Init() {
@@ -122,17 +122,17 @@ void CPUIDInfo::X86Init() {
         has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
         is_hybrid_ = (data[3] & (1 << 15));
 		
-		// Check WAITPKG support
-		if((data[2] & (1 << 5))) {
-			// Some CPUs report TPAUSE support incorrectly, so a test is needed.
-			__try {
-				_tpause(0x0, __rdtsc() + 1000);
-				has_tpause_ = true;
-			}
-			__except(filter(GetExceptionCode())) {
-				has_tpause_ = false;
-			}
-		}
+        // Check WAITPKG support
+        if((data[2] & (1 << 5))) {
+		  // Some CPUs report TPAUSE support incorrectly, so a test is needed.
+          __try {
+            _tpause(0x0, __rdtsc() + 1000);
+            has_tpause_ = true;
+          }
+          __except(filter(GetExceptionCode())) {
+            has_tpause_ = false;
+          }
+        }
         if (max_SubLeaves >= 1) {
           GetCPUID(7, 1, data);
           has_avx512_bf16_ = has_avx512 && (data[0] & (1 << 5));

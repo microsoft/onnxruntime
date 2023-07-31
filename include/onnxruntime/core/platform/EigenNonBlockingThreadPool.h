@@ -1563,7 +1563,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           }
 		  
           if (tpause) {
-			onnxruntime::concurrency::SpinTPAUSE();  
+            onnxruntime::concurrency::SpinTPAUSE();  
           }
           else {
             onnxruntime::concurrency::SpinPause();
