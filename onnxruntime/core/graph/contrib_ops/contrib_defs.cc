@@ -1242,22 +1242,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MaxpoolWithMask, 1,
 
 ONNX_MS_OPERATOR_SET_SCHEMA(Rfft, 1,
                             OpSchema()
-                                .SetDoc(R"DOC()DOC")
-                                .Input(0, "X", "input tensor", "T")
-                                .Attr("signal_ndim", "", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Output(0, "Y", "output tensor", "T")
+                                .SetDoc(R"DOC(This function computes the n-point one dimensional Fourier transform for a real-valued input where n is an even number.)DOC")
+                                .Input(0, "X", "input tensor of size n in the signal dim", "T")
+                                .Attr("signal_ndim", "number of dimensions comprising the signal, collected in reverse order (e.g. 1 = last dimension is the signal)", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("normalized", "must be 0, normalization currently not supported", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("onesided", "must be 1, only one sided FFTs supported", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Output(0, "Y", "output tensor of size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts", "T")
                                 .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(Irfft, 1,
                             OpSchema()
-                                .SetDoc(R"DOC()DOC")
-                                .Input(0, "X", "input tensor", "T")
-                                .Attr("signal_ndim", "", AttributeProto::INT)
-                                .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Output(0, "Y", "output tensor", "T")
+                                .SetDoc(R"DOC(This function computes the inverse of the one-dimensional n-point RFFT computed in 'com.microsoft.rfft'.)DOC")
+                                .Input(0, "X", "input tensor with size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts", "T")
+                                .Attr("signal_ndim", "number of dimensions comprising the signal", AttributeProto::INT)
+                                .Attr("normalized", "must be 0, normalization currently not supported", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("onesided", "must be 1, only one sided FFTs supported", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Output(0, "Y", "output tensor with size n in the signal dim", "T")
                                 .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(ComplexMul, 1,
