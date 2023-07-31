@@ -43,7 +43,7 @@ Do not modify directly.*
 | MemcpyToHost | ai.onnx(1+) |  |
 | Mul | ai.onnx(7-12,13,14+) |  |
 | Neg | ai.onnx(6-12,13+) |  |
-| Not | ai.onnx(7+) |  |
+| Not | ai.onnx(1+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
 | ReduceL1 | ai.onnx(1-10,11-12,13-17,18+) |  |
