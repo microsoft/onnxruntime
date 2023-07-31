@@ -4,13 +4,13 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import argparse
+from pathlib import Path
 from typing import List, Tuple
 
-import argparse
 import numpy as np
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
-from pathlib import Path
 
 from .onnx_model import ONNXModel
 from .q4dq_wrapper import Q4dqWrapper
@@ -157,8 +157,9 @@ set of 4b integers with a scaling factor and an optional offset.
         required=True,
         help="""Currently quantization code is implemented in a seperate binary
 (onnxruntime_mlas_q4dq) that is compiled with Onnxruntime native code.
-Path to this binary needs to be provided here."""
+Path to this binary needs to be provided here.""",
     )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
@@ -171,6 +172,6 @@ if __name__ == "__main__":
     q4dq = Q4dqWrapper(q4dq_bin_path)
 
     model = load_model_with_shape_infer(Path(input_model_path))
-    quant = MatMulWeight4Quantizer(model, q4dq)
+    quant = MatMulWeight4Quantizer(model, q4dq, 0)
     quant.process()
     quant.model.save_model_to_file(output_model_path, False)
