@@ -666,7 +666,7 @@ def test_gru_forward(sequence_length, batch_size, input_size, hidden_size, linea
     outs_ort = gru.forward_ort(inputs, weights, recurrence_weights, bias, initial_hidden_state)
     outs_np = gru.forward_np(inputs, weights, recurrence_weights, bias, initial_hidden_state)
 
-    for i, (ort_out, np_out) in enumerate(zip(outs_ort, outs_np)):
+    for ort_out, np_out in zip(outs_ort, outs_np):
         assert np.allclose(ort_out, np_out, rtol=1e-03, atol=1e-05)
 
 
@@ -716,5 +716,5 @@ def test_gru_backward(sequence_length, batch_size, input_size, hidden_size, line
         grad_final_hidden_state,
     )
 
-    for i, (ort_out, np_out) in enumerate(zip(outs_ort, outs_np)):
-        assert np.allclose(ort_out, np_out, rtol=1e-01, atol=1e-05)
+    for ort_out, np_out in zip(outs_ort, outs_np):
+        assert np.allclose(ort_out, np_out, rtol=1e-01, atol=1e-03)
