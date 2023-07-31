@@ -96,20 +96,36 @@ struct TestInputDef {
   TestInputDef(std::vector<int64_t> shape, bool is_initializer, T rand_min, T rand_max)
       : shape_(std::move(shape)),
         data_info_(RandomData{rand_min, rand_max}),
-        is_initializer_(is_initializer) {}
+        is_initializer_(is_initializer),
+        has_range_override_(false),
+        range_override_() {}
 
   // Create an input definition with explicit data. Specify its shape, whether it's an initializer,
   // and the raw data.
   TestInputDef(std::vector<int64_t> shape, bool is_initializer, std::vector<T> data)
       : shape_(std::move(shape)),
         data_info_(RawData{std::move(data)}),
-        is_initializer_(is_initializer) {}
+        is_initializer_(is_initializer),
+        has_range_override_(false),
+        range_override_() {}
 
   TestInputDef(TestInputDef&& other) = default;
   TestInputDef(const TestInputDef& other) = default;
 
   TestInputDef& operator=(const TestInputDef& other) = default;
   TestInputDef& operator=(TestInputDef&& other) = default;
+
+  // Overrides the range of input values reported by TestInputDef::GetRange().
+  // This is useful when you want to quantize over a range that is larger or smaller
+  // than the actual range of the data.
+  //
+  // Returns a reference to this object to allow chaining.
+  TestInputDef& OverrideValueRange(T range_min, T range_max) {
+    range_override_.first = range_min;
+    range_override_.second = range_max;
+    has_range_override_ = true;
+    return *this;
+  }
 
   const std::vector<int64_t>& GetShape() const {
     return shape_;
@@ -135,7 +151,15 @@ struct TestInputDef {
     return std::get<RawData>(data_info_).data;
   }
 
+  // Get the range of values represented by this input, which is necessary for computing quantization parameters.
+  // For raw data, we return [min, max] of the elements.
+  // For random data, we return [rand_min, rand_max].
+  // Optionally, the user can override this range by using OverrideValueRange().
   std::pair<T, T> GetRange() const {
+    if (has_range_override_) {
+      return range_override_;
+    }
+
     auto which_type = data_info_.index();
     std::pair<T, T> range;
 
@@ -162,6 +186,8 @@ struct TestInputDef {
   std::vector<int64_t> shape_;
   std::variant<RawData, RandomData> data_info_;
   bool is_initializer_;
+  bool has_range_override_;
+  std::pair<T, T> range_override_;
 };
 
 template <typename QType = uint8_t>

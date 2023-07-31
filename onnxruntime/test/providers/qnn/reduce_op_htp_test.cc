@@ -394,13 +394,14 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13) {
 // Input quantization params [-10, 10]: scale=0.0784313753, zero_point=127
 //
 // Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0068997140042483807, zero_point=0.
-// Expected val: 1.7594270706176758
-// QNN QDQ val: 1.7318282127380371 (err 0.027598857879638672)
-// CPU QDQ val: 1.7594270706176758 (err 0)
+// Output quant params: scale=0.0068997270427644253, zero_point=0.
+// Expected val: 1.7594304084777832
+// QNN QDQ val: 1.731831431388855 (err 0.027598977088928223)
+// CPU QDQ val: 1.7594304084777832 (err 0)
 TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumU8Opset13_Inaccurate) {
+  const std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f};
   RunReduceOpQDQTest<uint8_t>("ReduceSum",
-                              TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                              TestInputDef<float>({2, 2}, false, input_data).OverrideValueRange(-10.0f, 10.0f),
                               {0, 1},  // axes
                               true,    // keepdims
                               13,      // opset
@@ -568,13 +569,14 @@ TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset18) {
 // Input quantization params [-10, 10]: scale=0.0784313753, zero_point=127
 //
 // Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0017249285010620952, zero_point=0.
-// Expected val: 0.43985676765441895
-// QNN QDQ val: 0.43295705318450928 (err 0.006899714469909668)
-// CPU QDQ val: 0.43985676765441895 (err 0)
+// Output quant params: scale=0.0017249317606911063, zero_point=0.
+// Expected val: 0.4398576021194458
+// QNN QDQ val: 0.43295785784721375 (err 0.0068997442722320557)
+// CPU QDQ val: 0.4398576021194458 (err 0)
 TEST_F(QnnHTPBackendTests, DISABLED_ReduceMeanU8Opset18_Inaccurate) {
+  const std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f};
   RunReduceOpQDQTest<uint8_t>("ReduceMean",
-                              TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                              TestInputDef<float>({2, 2}, false, input_data).OverrideValueRange(-10.0f, 10.0f),
                               {0, 1},  // axes
                               true,    // keepdims
                               18,      // opset
