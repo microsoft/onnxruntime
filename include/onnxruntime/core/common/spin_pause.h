@@ -23,6 +23,12 @@ inline void SpinPause() {
 #endif
 }
 
+inline void SpinTPAUSE() {
+#if defined(_M_AMD64) || defined(__x86_64__)
+  _tpause(0x0, __rdtsc() + 2000);
+#endif
+}
+
 }  // namespace concurrency
 
 }  // namespace onnxruntime
