@@ -9,9 +9,9 @@
 #include "op_builder_factory.h"
 
 #include "core/providers/common.h"
-#include "core/providers/coreml/model/model.h"
-#include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/shape_utils.h"
 
 namespace onnxruntime {
@@ -210,11 +210,12 @@ Status ModelBuilder::RegisterModelInputs() {
 }
 
 Status ModelBuilder::AddOperations() {
+  const auto builder_params = MakeOpBuilderParams(graph_viewer_, coreml_flags_);
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (const auto* op_builder = GetOpBuilder(*node)) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node, logger_));
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node, builder_params, logger_));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");

@@ -11,10 +11,12 @@ namespace coreml {
 class ModelBuilder;
 
 struct OpBuilderInputParams {
-  OpBuilderInputParams(const GraphViewer& graph_viewer)
-      : graph_viewer(graph_viewer) {}
+  OpBuilderInputParams(const GraphViewer& graph_viewer, bool only_allow_static_input_shapes)
+      : graph_viewer(graph_viewer),
+        only_allow_static_input_shapes(only_allow_static_input_shapes) {}
 
   const GraphViewer& graph_viewer;
+  const bool only_allow_static_input_shapes;
 };
 
 class IOpBuilder {
@@ -30,6 +32,7 @@ class IOpBuilder {
 
   // Add the operator to CoreML model
   virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
+                                   const OpBuilderInputParams& input_params,
                                    const logging::Logger& logger) const = 0;
 #endif
 

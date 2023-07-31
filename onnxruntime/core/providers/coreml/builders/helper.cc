@@ -14,24 +14,31 @@
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/coreml/builders/op_builder.h"
+#include "core/providers/coreml/coreml_provider_factory.h"  // for COREMLFlags
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/shape_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger) {
+OpBuilderInputParams MakeOpBuilderParams(const GraphViewer& graph_viewer, uint32_t coreml_flags) {
+  return OpBuilderInputParams{graph_viewer,
+                              (coreml_flags & COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES) != 0};
+}
+
+bool IsNodeSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
-    OpBuilderInputParams input_params(graph_viewer);
     return op_builder->IsOpSupported(node, input_params, logger);
   } else {
     return false;
   }
 }
 
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name, const logging::Logger& logger) {
+bool IsInputSupported(const NodeArg& input, const std::string& parent_name,
+                      const OpBuilderInputParams& input_params, const logging::Logger& logger) {
   if (!input.Exists()) {
     // optional input that is not provided
     return true;
@@ -43,6 +50,12 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
   if (!GetShape(input, shape, logger)) {
     LOGS(logger, VERBOSE) << "Input [" << input_name << "] of [" << parent_name
                           << "] has no shape";
+    return false;
+  }
+
+  if (input_params.only_allow_static_input_shapes && !IsStaticShape(shape)) {
+    LOGS(logger, VERBOSE) << "CoreML EP is set to only allow static input shapes. Input has a dynamic shape. Input: "
+                          << input_name << ", shape: " << Shape2String(shape);
     return false;
   }
 
@@ -61,6 +74,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
 }
 
 std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
+                                                  const OpBuilderInputParams& input_params,
                                                   const logging::Logger& logger) {
   std::unordered_set<const Node*> supported_nodes{};
 
@@ -72,7 +86,7 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
 #endif
 
   for (const auto& node : graph_viewer.Nodes()) {
-    const bool supported = IsNodeSupported(node, graph_viewer, logger);
+    const bool supported = IsNodeSupported(node, input_params, logger);
     LOGS(logger, VERBOSE) << "Operator type: [" << node.OpType()
                           << "] index: [" << node.Index()
                           << "] name: [" << node.Name()

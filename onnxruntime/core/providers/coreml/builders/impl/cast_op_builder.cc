@@ -64,7 +64,7 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
                           << "]";
     return false;
   }
-  if (!IsNodeSupported(prec_node, input_params.graph_viewer, logger)) {
+  if (!IsNodeSupported(prec_node, input_params, logger)) {
     LOGS(logger, VERBOSE) << "Cast's producing node ["
                           << prec_node.OpType()
                           << "] is not a supported op.";

@@ -49,7 +49,8 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     return result;
   }
 
-  const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, logger);
+  const auto builder_params = coreml::MakeOpBuilderParams(graph_viewer, coreml_flags_);
+  const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, builder_params, logger);
 
   const auto gen_metadef_name = [&]() {
     HashValue model_hash;

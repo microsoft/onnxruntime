@@ -41,8 +41,8 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 // Add operator related
 #ifdef __APPLE__
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
+                                        const OpBuilderInputParams& input_params,
                                         const logging::Logger& logger) const {
-  OpBuilderInputParams input_params(model_builder.GetGraphViewer());
   ORT_RETURN_IF_NOT(
       IsOpSupported(node, input_params, logger),
       "Unsupported operator ",
@@ -77,7 +77,7 @@ BaseOpBuilder::CreateNNLayer(const std::string& layer_name) {
 
 bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
                                   const logging::Logger& logger) const {
-  if (!HasSupportedInputs(node, logger))
+  if (!HasSupportedInputs(node, input_params, logger))
     return false;
 
   // We do not support external initializers for now
@@ -91,10 +91,11 @@ bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& 
   return IsOpSupportedImpl(node, input_params, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputs(const Node& node, const logging::Logger& logger) const {
+bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,
+                                       const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
-    if (!IsInputSupported(*input, node_name, logger)) {
+    if (!IsInputSupported(*input, node_name, input_params, logger)) {
       return false;
     }
   }

@@ -83,7 +83,7 @@ int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
   return count;
 }
 
-void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
+void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params) {
@@ -93,7 +93,7 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds, params);
 }
 
-void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id,
+void RunAndVerifyOutputsWithEP(const std::string& model_data, std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params) {
