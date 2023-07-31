@@ -298,32 +298,28 @@ TEST_F(QnnCPUBackendTests, ReduceMeanOpset13) {
 //                               |_______________________|
 //
 template <typename QuantType>
-GetTestModelFn BuildQDQReduceOpTestCase(const std::string& reduce_op_type, const std::vector<int64_t>& input_shape,
-                                        bool axes_as_input, const std::vector<int64_t>& axes, bool keepdims,
-                                        bool noop_with_empty_axes) {
-  return [reduce_op_type, input_shape, axes_as_input, axes, keepdims,
-          noop_with_empty_axes](ModelTestBuilder& builder) {
-    using QuantTypeLimits = std::numeric_limits<QuantType>;
-    QuantType input_quant_min_value = QuantTypeLimits::min();
-    QuantType input_quant_max_value = QuantTypeLimits::max();
-
-    auto* input_data = builder.MakeInput<float>(input_shape, -100.0f, 100.0f);
-    auto* final_output = builder.MakeOutput();
-
-    // input_data -> Q/DQ ->
-    auto* input_qdq_output = AddQDQNodePair<QuantType>(builder, input_data, .04f,
-                                                       (input_quant_min_value + input_quant_max_value) / 2 + 1);
+GetTestQDQModelFn<QuantType> BuildQDQReduceOpTestCase(const std::string& reduce_op_type,
+                                                      const TestInputDef<float>& input_def,
+                                                      bool axes_as_input, const std::vector<int64_t>& axes, bool keepdims,
+                                                      bool noop_with_empty_axes) {
+  return [reduce_op_type, input_def, axes_as_input, axes, keepdims,
+          noop_with_empty_axes](ModelTestBuilder& builder,
+                                std::vector<QuantParams<QuantType>>& output_qparams) {
+    // input -> Q -> DQ ->
+    NodeArg* input = MakeTestInput(builder, input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+    auto* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     // -> ReduceOp (e.g., ReduceSum) ->
     std::vector<NodeArg*> reduce_op_inputs;
-    reduce_op_inputs.push_back(input_qdq_output);
+    reduce_op_inputs.push_back(input_qdq);
 
     if (axes_as_input) {
       reduce_op_inputs.push_back(builder.MakeInitializer({static_cast<int64_t>(axes.size())}, axes));
     }
 
-    auto* reduce_sum_output = builder.MakeIntermediate();
-    Node& reduce_sum_node = builder.AddNode(reduce_op_type, reduce_op_inputs, {reduce_sum_output});
+    auto* op_output = builder.MakeIntermediate();
+    Node& reduce_sum_node = builder.AddNode(reduce_op_type, reduce_op_inputs, {op_output});
     reduce_sum_node.AddAttribute("keepdims", static_cast<int64_t>(keepdims));
 
     if (axes_as_input) {
@@ -332,15 +328,8 @@ GetTestModelFn BuildQDQReduceOpTestCase(const std::string& reduce_op_type, const
       reduce_sum_node.AddAttribute("axes", axes);
     }
 
-    // -> Q/DQ -> final_output
-    auto* q_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(reduce_sum_output, .039f,
-                                             (QuantTypeLimits::min() + QuantTypeLimits::max()) / 2 + 1,
-                                             q_output);
-
-    builder.AddDequantizeLinearNode<QuantType>(q_output, .039f,
-                                               (QuantTypeLimits::min() + QuantTypeLimits::max()) / 2 + 1,
-                                               final_output);
+    // -> Q -> DQ -> final output
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, op_output, output_qparams[0].scale, output_qparams[0].zero_point);
   };
 }
 
@@ -349,15 +338,19 @@ GetTestModelFn BuildQDQReduceOpTestCase(const std::string& reduce_op_type, const
  * outputs for QNN and CPU match.
  *
  * \param op_type The ReduceOp type (e.g., ReduceSum).
+ * \param input_def The input definition (shape, data, etc.).
+ * \param axes The axes input (or attribute).
+ * \param keepdims Common attribute for all reduce operations.
  * \param opset The opset version. Some opset versions have "axes" as an attribute or input.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
- * \param keepdims Common attribute for all reduce operations.
  */
 template <typename QuantType>
-static void RunReduceOpQDQTest(const std::string& op_type, int opset, const std::vector<int64_t>& input_shape,
+static void RunReduceOpQDQTest(const std::string& op_type,
+                               const TestInputDef<float>& input_def,
                                const std::vector<int64_t>& axes,
-                               ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
-                               bool keepdims = true) {
+                               bool keepdims,
+                               int opset,
+                               ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -365,18 +358,17 @@ static void RunReduceOpQDQTest(const std::string& op_type, int opset, const std:
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  // If QNN EP can support all ops, then we expect a single fused node in the graph.
-  // Otherwise, we'll get a graph with 5 individual nodes handled by CPU EP.
   constexpr bool noop_with_empty_axes = false;
-  RunQnnModelTest(BuildQDQReduceOpTestCase<QuantType>(op_type,
-                                                      input_shape,
-                                                      ReduceOpHasAxesInput(op_type, opset),  // New opset changed axes to input.
-                                                      axes,
-                                                      keepdims,
-                                                      noop_with_empty_axes),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
+  const bool axes_as_input = ReduceOpHasAxesInput(op_type, opset);  // Later opsets have "axes" as an input.
+
+  TestQDQModelAccuracy(BuildReduceOpTestCase<float>(op_type, input_def, axes_as_input, axes, keepdims,
+                                                    noop_with_empty_axes),
+                       BuildQDQReduceOpTestCase<QuantType>(op_type, input_def, axes_as_input, axes, keepdims,
+                                                           noop_with_empty_axes),
+                       provider_options,
+                       opset,
+                       expected_ep_assignment,
+                       1e-5f);
 }
 
 //
@@ -389,7 +381,12 @@ static void RunReduceOpQDQTest(const std::string& op_type, int opset, const std:
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13) {
-  RunReduceOpQDQTest<uint8_t>("ReduceSum", 13, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<uint8_t>("ReduceSum",
+                              TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                              {0, 1, 2, 3},  // axes
+                              true,          // keepdims
+                              13,            // opset
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a Q -> DQ -> ReduceSum -> Q -> DQ graph, and checks that all
@@ -398,7 +395,12 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 11, which has "axes" as an attribute.
 TEST_F(QnnHTPBackendTests, ReduceSumU8Opset11) {
-  RunReduceOpQDQTest<uint8_t>("ReduceSum", 11, {1, 3, 4, 4}, {0, 1, 2, 3});
+  RunReduceOpQDQTest<uint8_t>("ReduceSum",
+                              TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                              {0, 1, 2, 3},  // axes
+                              true,          // keepdims
+                              11,            // opset
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a Q -> DQ -> ReduceSum -> Q -> DQ graph, and checks that all
@@ -407,17 +409,32 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset11) {
 // - Uses int8 as the quantization type.
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13) {
-  RunReduceOpQDQTest<int8_t>("ReduceSum", 13, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<int8_t>("ReduceSum",
+                             TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                             {0, 1},  // axes
+                             true,    // keepdims
+                             13,      // opset
+                             ExpectedEPNodeAssignment::All);
 }
 
 // Tests that keepdims = false generates expected results.
 TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_NoKeepDims) {
-  RunReduceOpQDQTest<int8_t>("ReduceSum", 13, {2, 2}, {1}, ExpectedEPNodeAssignment::All, false);
+  RunReduceOpQDQTest<int8_t>("ReduceSum",
+                             TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                             {1},    // axes
+                             false,  // keepdims
+                             13,     // opset
+                             ExpectedEPNodeAssignment::All);
 }
 
 // Test that we don't support rank 5 Reduce ops.
 TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank5Unsupported) {
-  RunReduceOpQDQTest<int8_t>("ReduceSum", 13, {1, 3, 4, 4, 2}, {0, 1, 2, 3, 4}, ExpectedEPNodeAssignment::None);
+  RunReduceOpQDQTest<int8_t>("ReduceSum",
+                             TestInputDef<float>({1, 3, 4, 4, 2}, false, -10.0f, 10.0f),
+                             {0, 1, 2, 3, 4},  // axes
+                             true,             // keepdims
+                             13,               // opset
+                             ExpectedEPNodeAssignment::None);
 }
 
 //
@@ -430,7 +447,12 @@ TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank5Unsupported) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceMaxU8Opset18) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMax", 18, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<uint8_t>("ReduceMax",
+                              TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                              {0, 1},  // axes
+                              true,    // keepdims
+                              18,      // opset
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a Q -> DQ -> ReduceMax -> Q -> DQ graph, and checks that all
@@ -439,7 +461,12 @@ TEST_F(QnnHTPBackendTests, ReduceMaxU8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnHTPBackendTests, ReduceMaxU8Opset13) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMax", 13, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<uint8_t>("ReduceMax",
+                              TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                              {0, 1},  // axes
+                              true,    // keepdims
+                              13,      // opset
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a Q -> DQ -> ReduceMax -> Q -> DQ graph, and checks that all
@@ -448,7 +475,12 @@ TEST_F(QnnHTPBackendTests, ReduceMaxU8Opset13) {
 // - Uses int8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceMaxS8Opset18) {
-  RunReduceOpQDQTest<int8_t>("ReduceMax", 18, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<int8_t>("ReduceMax",
+                             TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                             {0, 1},  // axes
+                             true,    // keepdims
+                             18,      // opset
+                             ExpectedEPNodeAssignment::All);
 }
 
 //
@@ -461,7 +493,12 @@ TEST_F(QnnHTPBackendTests, ReduceMaxS8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceMinU8Opset18) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMin", 18, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<uint8_t>("ReduceMin",
+                              TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                              {0, 1},  // axes
+                              true,    // keepdims
+                              18,      // opset
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a Q -> DQ -> ReduceMin -> Q -> DQ graph, and checks that all
@@ -470,7 +507,12 @@ TEST_F(QnnHTPBackendTests, ReduceMinU8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnHTPBackendTests, ReduceMinU8Opset13) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMin", 13, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<uint8_t>("ReduceMin",
+                              TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                              {0, 1},  // axes
+                              true,    // keepdims
+                              13,      // opset
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a Q -> DQ -> ReduceMin -> Q -> DQ graph, and checks that all
@@ -478,7 +520,12 @@ TEST_F(QnnHTPBackendTests, ReduceMinU8Opset13) {
 //
 // Uses int8 as the quantization type.
 TEST_F(QnnHTPBackendTests, ReduceMinS8Opset18) {
-  RunReduceOpQDQTest<int8_t>("ReduceMin", 18, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<int8_t>("ReduceMin",
+                             TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                             {0, 1},  // axes
+                             true,    // keepdims
+                             18,      // opset
+                             ExpectedEPNodeAssignment::All);
 }
 
 //
@@ -491,7 +538,12 @@ TEST_F(QnnHTPBackendTests, ReduceMinS8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset18) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMean", 18, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<uint8_t>("ReduceMean",
+                              TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                              {0, 1, 2, 3},  // axes
+                              true,          // keepdims
+                              18,            // opset
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a Q -> DQ -> ReduceMean -> Q -> DQ graph, and checks that all
@@ -500,7 +552,12 @@ TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset13) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMean", 13, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<uint8_t>("ReduceMean",
+                              TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                              {0, 1, 2, 3},  // axes
+                              true,          // keepdims
+                              13,            // opset
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a Q -> DQ -> ReduceMean -> Q -> DQ graph, and checks that all
@@ -509,7 +566,12 @@ TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset13) {
 // - Uses int8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceMeanS8Opset18) {
-  RunReduceOpQDQTest<int8_t>("ReduceMean", 18, {2, 2}, {0, 1});
+  RunReduceOpQDQTest<int8_t>("ReduceMean",
+                             TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                             {0, 1, 2, 3},  // axes
+                             true,          // keepdims
+                             18,            // opset
+                             ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
