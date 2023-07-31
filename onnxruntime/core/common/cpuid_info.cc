@@ -124,7 +124,7 @@ void CPUIDInfo::X86Init() {
 		
         // Check WAITPKG support
         if((data[2] & (1 << 5))) {
-		  // Some CPUs report TPAUSE support incorrectly, so a test is needed.
+          // Some CPUs report TPAUSE support incorrectly, so a test is needed.
           __try {
             _tpause(0x0, __rdtsc() + 1000);
             has_tpause_ = true;
