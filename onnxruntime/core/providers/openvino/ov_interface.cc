@@ -75,8 +75,8 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& model, OVRemoteCont
 #endif
 
 std::vector<std::string> OVCore::GetAvailableDevices() {
-  auto obj = oe.get_available_devices();
-  return obj;
+  auto available_devices = oe.get_available_devices();
+  return available_devices;
 }
 
 void OVCore::SetStreams(const std::string& device_type, int num_streams) {

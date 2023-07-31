@@ -8,8 +8,8 @@
 #include <fstream>
 
 #include "ov_interface.h"
-#include <ngraph/pass/convert_fp32_to_fp16.hpp>
-#include <ngraph/pass/constant_folding.hpp>
+#include "openvino/pass/convert_fp32_to_fp16.hpp"
+#include "openvino/pass/constant_folding.hpp"
 #include "core/providers/shared_library/provider_api.h"
 #include "backend_utils.h"
 
@@ -50,7 +50,7 @@ struct static_cast_int64 {
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
               const SubGraphContext& subgraph_context,
-              std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
+              std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
   if (IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
@@ -88,7 +88,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       size_t index = results.size() - 1;
 
       for (auto it = results.rbegin(); it != results.rend(); ++it) {
-        if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
+        if (auto const_node = std::dynamic_pointer_cast<ov::op::v0::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
           const_outputs_map[(*it)->get_friendly_name()] = const_node;
           results.erase(results.begin() + index);
         }
@@ -140,7 +140,7 @@ Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names,
-                std::shared_ptr<ngraph::Node> node) {
+                std::shared_ptr<ov::Node> node) {
   // Find position of '/' in the output_name
   int pos = output_name.find("/");
   // Copy the substring from start to pos
@@ -184,25 +184,25 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
   return i;
 }
 
-void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor) {
+void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedValue& out_tensor) {
   switch (node->get_element_type()) {
-    case ngraph::element::Type_t::f32: {
+    case ov::element::Type_t::f32: {
       FillOutputHelper<float>(out_tensor, node);
       break;
     }
-    case ngraph::element::Type_t::boolean: {
+    case ov::element::Type_t::boolean: {
       FillOutputHelper<char>(out_tensor, node);
       break;
     }
-    case ngraph::element::Type_t::i32: {
+    case ov::element::Type_t::i32: {
       FillOutputHelper<int32_t>(out_tensor, node);
       break;
     }
-    case ngraph::element::Type_t::i64: {
+    case ov::element::Type_t::i64: {
       FillOutputHelper<int64_t>(out_tensor, node);
       break;
     }
-    case ngraph::element::Type_t::f16: {
+    case ov::element::Type_t::f16: {
       FillOutputHelper<float>(out_tensor, node);
       break;
     }
@@ -212,8 +212,8 @@ void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::Unowne
 }
 
 template <typename T>
-void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ngraph::Node> node) {
-  auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);
+void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ov::Node> node) {
+  auto const_node = std::dynamic_pointer_cast<ov::op::v0::Constant>(node);
   auto res = const_node->cast_vector<T>();
   T* tensor_data = out_tensor.GetTensorMutableData<T>();
   std::copy(res.begin(), res.end(), tensor_data);

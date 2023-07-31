@@ -9,7 +9,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "../backend_utils.h"
-#include <ngraph/pass/constant_folding.hpp>
+// #include <ngraph/pass/constant_folding.hpp>
 #include "basic_backend.h"
 #include "../backend_manager.h"
 
@@ -104,15 +104,15 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, nireq));
 }
 
-bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
-  if (const_outputs_map.size() == subgraph_context_.output_names.size())
-    subgraph_context_.is_constant = true;
-  if (subgraph_context_.is_constant) {
-    LOGS_DEFAULT(INFO) << log_tag << "The subgraph is a const. Directly moving to Infer stage.";
-    return true;
+  bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>> & const_outputs_map) {
+    if (const_outputs_map.size() == subgraph_context_.output_names.size())
+      subgraph_context_.is_constant = true;
+    if (subgraph_context_.is_constant) {
+      LOGS_DEFAULT(INFO) << log_tag << "The subgraph is a const. Directly moving to Infer stage.";
+      return true;
+    }
+    return false;
   }
-  return false;
-}
 
   void BasicBackend::PopulateConfigValue(ov::AnyMap & device_config) {
     device_config = {};

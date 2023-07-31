@@ -9,8 +9,14 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include <ngraph/ngraph.hpp>
+
+#define IN_OV_COMPONENT
+#define NGRAPH_LEGACY_HEADER_INCLUDED
 #include <ngraph/frontend/onnx_import/onnx.hpp>
+
+#undef NGRAPH_LEGACY_HEADER_INCLUDED
+#undef IN_OV_COMPONENT
+
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
 #elif __GNUC__
