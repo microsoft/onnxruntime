@@ -61,8 +61,8 @@ export interface OrtWasmModule extends EmscriptenModule {
   // #endregion
 
   // #region ORT Training APIs
-  _OrtTrainingLoadCheckpoint?(dataOffset: number, dataLength: number): number;
-  _OrtTrainingReleaseCheckpoint?(trainingHandle: number): void;
+  _OrtLoadCheckpointForTraining?(dataOffset: number, dataLength: number): number;
+  _OrtReleaseTrainingCheckpointState?(trainingHandle: number): void;
 
   _OrtTrainingCreateTrainingSession?(sessionOptionsHandle: number, trainingHandle: number, trainOffset: number,
     trainLength: number, evalOffset: number, evalLength: number, optimizerOffset: number, optimizerLength: number)

@@ -378,8 +378,8 @@ export const loadCheckpoint =
     console.log("inside wasm loadCheckpoint");
     const wasm = getInstance();
     const checkpointBuffer: SerializableModeldata = createSessionAllocate(checkpointData);
-    if (wasm._OrtTrainingLoadCheckpoint) {
-      return wasm._OrtTrainingLoadCheckpoint(checkpointBuffer[0], checkpointBuffer[1]);
+    if (wasm._OrtLoadCheckpointForTraining) {
+      return wasm._OrtLoadCheckpointForTraining(checkpointBuffer[0], checkpointBuffer[1]);
     }
     else {
       throw new Error("Training functions not detected; make sure to use the training package");
@@ -397,8 +397,8 @@ export const releaseCheckpoint =
     const wasm = getInstance();
     // TODO: determine if releasing the checkpoint id is enough -- reference the releaseSession
     // method in the same file
-    if (wasm._OrtTrainingReleaseCheckpoint) {
-      wasm._OrtTrainingReleaseCheckpoint(handlerId);
+    if (wasm._OrtReleaseTrainingCheckpointState) {
+      wasm._OrtReleaseTrainingCheckpointState(handlerId);
     }
     else {
       throw new Error("Training functions not detected; make sure to use the training package");
