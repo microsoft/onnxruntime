@@ -21,6 +21,8 @@ namespace test {
 
 using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
 
+// Class that stores quantization params (scale, zero point).
+// Has a static function that computes quantization parameters from a floating-point range.
 template <typename QType = uint8_t>
 struct QuantParams {
   float scale;
@@ -37,8 +39,9 @@ struct QuantParams {
   }
 };
 
+// Computes quantization parameters for an array of floating-point values.
 template <typename QType = uint8_t>
-inline QuantParams<QType> GetDataQuantParams(const std::vector<float>& data) {
+inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data) {
   // Get min/max of raw data.
   float min_val = std::numeric_limits<float>::max();
   float max_val = std::numeric_limits<float>::min();
@@ -226,15 +229,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       output_vals[i] = tensor.DataAsSpan<float>();
-      float min_val = std::numeric_limits<float>::max();
-      float max_val = std::numeric_limits<float>::min();
-
-      for (auto val : output_vals[i]) {
-        min_val = std::min(min_val, val);
-        max_val = std::max(max_val, val);
-      }
-
-      output_qparams[i] = QuantParams<QuantType>::Compute(min_val, max_val);
+      output_qparams[i] = GetDataQuantParams<QuantType>(output_vals[i]);
     }
 
     output_types[i] = elem_type;
