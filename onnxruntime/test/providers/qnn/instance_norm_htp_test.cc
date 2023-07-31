@@ -42,7 +42,7 @@ static GetTestQDQModelFn<QuantType> BuildQDQInstanceNormTestCase(const TestInput
                                                                  const TestInputDef<float>& bias_def,
                                                                  const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
   return [input_def, scale_def, bias_def, attrs](ModelTestBuilder& builder,
-                                                 const std::vector<QuantParams<QuantType>>& output_qparams) {
+                                                 std::vector<QuantParams<QuantType>>& output_qparams) {
     // input => Q => DQ =>
     NodeArg* input = MakeTestInput(builder, input_def);
     QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);

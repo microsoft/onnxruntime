@@ -48,7 +48,7 @@ GetTestQDQModelFn<InputQType> BuildQDQUnaryOpTestCase(const TestInputDef<float>&
                                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                                       const std::string& domain = kOnnxDomain) {
   return [input_def, op_type, attrs, domain](ModelTestBuilder& builder,
-                                             const std::vector<QuantParams<InputQType>>& output_qparams) {
+                                             std::vector<QuantParams<InputQType>>& output_qparams) {
     auto* input = MakeTestInput(builder, input_def);
     QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
     auto* input_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale, input_qparams.zero_point);
@@ -113,7 +113,7 @@ static GetTestQDQModelFn<InputQType> BuildQDQBinaryOpTestCase(const std::string&
                                                               const TestInputDef<float>& input0_def,
                                                               const TestInputDef<float>& input1_def) {
   return [op_type, input0_def, input1_def](ModelTestBuilder& builder,
-                                           const std::vector<QuantParams<InputQType>>& output_qparams) {
+                                           std::vector<QuantParams<InputQType>>& output_qparams) {
     NodeArg* input0 = MakeTestInput(builder, input0_def);
     NodeArg* input1 = MakeTestInput(builder, input1_def);
 

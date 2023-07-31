@@ -30,7 +30,7 @@ template <typename QuantType>
 static GetTestQDQModelFn<QuantType> BuildQDQLeakyReluOpTestCase(const TestInputDef<float>& input_def,
                                                                 float alpha) {
   return [input_def, alpha](ModelTestBuilder& builder,
-                            const std::vector<QuantParams<QuantType>>& output_qparams) {
+                            std::vector<QuantParams<QuantType>>& output_qparams) {
     // input => Q => DQ =>
     NodeArg* input = MakeTestInput(builder, input_def);
     QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);

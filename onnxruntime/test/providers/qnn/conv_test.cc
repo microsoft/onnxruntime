@@ -151,7 +151,7 @@ static GetTestQDQModelFn<InputQType> BuildQDQConvTestCase(const std::string& con
                                                           const std::string& auto_pad = "NOTSET") {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
           dilations, auto_pad](ModelTestBuilder& builder,
-                               const std::vector<QuantParams<InputQType>>& output_qparams) {
+                               std::vector<QuantParams<InputQType>>& output_qparams) {
     std::vector<NodeArg*> conv_inputs;
 
     // input -> Q/DQ ->

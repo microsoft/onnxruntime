@@ -36,7 +36,7 @@ template <typename InputQType = uint8_t>
 static GetTestQDQModelFn<InputQType> BuildQDQLRNTestCase(const TestInputDef<float>& input_def, int64_t size,
                                                          float alpha = 0.0001f, float beta = 0.75f, float bias = 1.0f) {
   return [input_def, size, alpha, beta, bias](ModelTestBuilder& builder,
-                                              const std::vector<QuantParams<InputQType>>& output_qparams) {
+                                              std::vector<QuantParams<InputQType>>& output_qparams) {
     // input -> Q -> DQ ->
     NodeArg* input = MakeTestInput(builder, input_def);
     QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);

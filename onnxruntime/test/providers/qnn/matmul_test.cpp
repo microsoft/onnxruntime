@@ -31,7 +31,7 @@ template <typename QuantType>
 static GetTestQDQModelFn<QuantType> BuildMatMulOpQDQTestCase(const TestInputDef<float>& input1_def,
                                                              const TestInputDef<float>& input2_def) {
   return [input1_def, input2_def](ModelTestBuilder& builder,
-                                  const std::vector<QuantParams<QuantType>>& output_qparams) {
+                                  std::vector<QuantParams<QuantType>>& output_qparams) {
     // input1 -> Q -> DQ ->
     NodeArg* input1 = MakeTestInput(builder, input1_def);
     QuantParams<QuantType> input1_qparams = GetTestInputQuantParams(input1_def);

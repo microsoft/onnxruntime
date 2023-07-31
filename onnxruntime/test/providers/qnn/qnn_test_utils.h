@@ -19,6 +19,7 @@
 namespace onnxruntime {
 namespace test {
 
+// Signature for function that builds a float32 model.
 using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
 
 // Class that stores quantization params (scale, zero point).
@@ -38,6 +39,14 @@ struct QuantParams {
     return QuantParams<QType>{scale, zero_point};
   }
 };
+
+// Signature for function that builds a QDQ model.
+// The parameter `output_qparams` contains quantization parameters that *can* be used for the QDQ model output.
+// These output quantization parameters are computed by first running the float32 model and determining the
+// range of output values. Note that the function is able to overwrite the output_qparams parameter if necessary
+// (Example: MaxPool must have identical input and output quantization params).
+template <typename QuantType>
+using GetTestQDQModelFn = std::function<void(ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams)>;
 
 // Computes quantization parameters for an array of floating-point values.
 template <typename QType = uint8_t>
@@ -148,9 +157,6 @@ inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& inp
   const std::pair<float, float> frange = input_def.GetRange();
   return QuantParams<QType>::Compute(frange.first, frange.second);
 }
-
-template <typename QuantType>
-using GetTestQDQModelFn = std::function<void(ModelTestBuilder& builder, const std::vector<QuantParams<QuantType>>& output_qparams)>;
 
 /**
  * Inferences a given serialized model. Returns output values via an out-param.

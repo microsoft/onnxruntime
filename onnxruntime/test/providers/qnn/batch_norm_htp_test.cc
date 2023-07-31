@@ -108,7 +108,7 @@ GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float
   ORT_ENFORCE(input_def.GetShape().size() > 2);  // Need at least rank 3 data for convenience.
 
   return [input_def, scale_def, bias_def](ModelTestBuilder& builder,
-                                          const std::vector<QuantParams<InputQType>>& output_qparams) {
+                                          std::vector<QuantParams<InputQType>>& output_qparams) {
     const auto& input_shape = input_def.GetShape();
     const auto& input_data = input_def.GetRawData();
     const int64_t num_channels = input_shape[1];

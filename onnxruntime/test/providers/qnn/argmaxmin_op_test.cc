@@ -41,7 +41,7 @@ template <typename QType = uint8_t>
 static GetTestQDQModelFn<QType> BuildQDQArgMxxTestCase(const std::string& op_type, TestInputDef<float> input_def,
                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
   return [op_type, input_def, attrs](ModelTestBuilder& builder,
-                                     const std::vector<QuantParams<QType>>& output_qparams) {
+                                     std::vector<QuantParams<QType>>& output_qparams) {
     ORT_UNUSED_PARAMETER(output_qparams);
     QuantParams<QType> input_qparams = GetTestInputQuantParams(input_def);
 

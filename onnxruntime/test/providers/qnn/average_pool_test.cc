@@ -58,7 +58,7 @@ GetTestQDQModelFn<QuantType> BuildAveragePoolQDQTestCase(const TestInputDef<floa
                                                          const std::string& auto_pad = "NOTSET") {
   return [input_def, kernel_shape, strides, pads,
           count_include_pad, auto_pad](ModelTestBuilder& builder,
-                                       const std::vector<QuantParams<QuantType>>& output_qparams) {
+                                       std::vector<QuantParams<QuantType>>& output_qparams) {
     auto* input_arg = MakeTestInput(builder, input_def);
 
     // add QDQ + AveragePool
