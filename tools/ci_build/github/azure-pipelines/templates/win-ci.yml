@@ -96,12 +96,11 @@ stages:
         inputs:
           versionSpec: '16.x'
 
-      - task: BatchScript@1
-        displayName: 'setup env'
-        inputs:
-          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
-          modifyEnvironment: true
-          workingFolder: '$(Build.BinariesDirectory)'
+      - template: jobs/set-winenv.yml
+        parameters:
+          EnvSetupScript: ${{ parameters.EnvSetupScript }}
+          ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+            DownloadCUDA: true
 
       - template: download-deps.yml
 
@@ -120,10 +119,6 @@ stages:
           arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - template: set-version-number-variables-step.yml
-
-      - ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-        - powershell: |
-           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
