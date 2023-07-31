@@ -542,7 +542,6 @@ def parse_arguments():
             "Ninja",
             "NMake Makefiles",
             "Unix Makefiles",
-            "Visual Studio 16 2019",
             "Visual Studio 17 2022",
             "Xcode",
         ],
