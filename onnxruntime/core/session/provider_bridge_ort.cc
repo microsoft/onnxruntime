@@ -1270,7 +1270,7 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
                                            * unload - On CentOS if we unload the TensorRT shared provider we crash.
                                            *
                                            * The reason is TensorRT EP holds a thread local data which won't be destroyed
-                                           * until thread exits which happens after TRT EP destruction. Upon thread extis,
+                                           * until thread exits which happens after TRT EP destruction. Upon thread exits,
                                            * the destructor of thread local data will be called but the address of destructor
                                            * is invalid since the destructor is defined in TRT EP which is already been
                                            * removed from the address space. Therefore, we will hit a segmentation fault.
@@ -1278,7 +1278,7 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
                                            * This way the OS/CRT/etc doesn't ever clean up until the process exits.
                                            *
                                            * Interestingly, TensorRT shared library won't crash on Ubuntu and Windows when being unloaded.
-                                           * The destrutor of thread local data can be successfully called upon thread extis.
+                                           * The destructor of thread local data can be successfully called upon thread exits.
                                            * One thing worth attention is, on Unix, the function to unload a library is allowed to do nothing.
                                            * Please see here: https://pubs.opengroup.org/onlinepubs/007904975/functions/dlclose.html
                                            *
