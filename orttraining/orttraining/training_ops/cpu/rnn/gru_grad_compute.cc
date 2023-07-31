@@ -311,13 +311,6 @@ void GRUGradImpl<T>::ComputeGradient([[maybe_unused]] const GRUGradInputs<T>& in
       }
 
       if (grad_recurrence_weights_required) {
-        const float* Htminus1 = t > 0 ? SafeRawPointer<const T>(
-                                            inputs.all_hidden_states.begin() + Htminus1_offset,
-                                            inputs.all_hidden_states.end(), hidden_size_)
-                                      : SafeRawPointer<const T>(
-                                            inputs.initial_hidden_state.begin() + hidden_sizexidx,
-                                            inputs.initial_hidden_state.end(), hidden_size_);
-
         // az = Xtz * Wz^T + Ht-1z * Rz^T + Wbz + Rbz
         // dL/dRz = dL/daz^T * Ht-1z ---------- (14)
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]

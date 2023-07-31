@@ -144,8 +144,8 @@ TEST(GRUTest, BackwardCompute) {
        -2.73875e-05f, 0.0f, 0.0f,
        0.0f, 0.0f, 0.0f,
        0.0f, 0.0f, 0.0f,
-       6.51075e-06, 1.92345e-05, 8.03933e-10,
-       2.4027e-09, 0.0f, 0.0f});
+       6.51075e-06f, 1.92345e-05f, 8.03933e-10f,
+       2.4027e-09f, 0.0f, 0.0f});
   test.AddOutput<float>(
       "dR", {directions, 3 * hidden_size, hidden_size},
       {-9.28927e-06f, -8.78505e-09f, 0.0f,

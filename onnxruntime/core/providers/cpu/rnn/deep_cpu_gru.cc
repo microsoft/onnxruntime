@@ -1070,13 +1070,7 @@ void UniDirectionalGru<T>::AllocateBuffers() {
   }
 }
 
-template void UniDirectionalGru<float>::Compute(
-    gsl::span<const float> inputs, gsl::span<const int> sequence_lengths, int num_directions,
-    const rnn::detail::GemmWeights<float>& input_weights,
-    const rnn::detail::GemmWeights<float>& recurrent_weights_ZR,
-    const rnn::detail::GemmWeights<float>& recurrent_weights_H,
-    gsl::span<float>& outputs, gsl::span<float>& final_hidden_state,
-    gsl::span<float>& zrh);
+template class UniDirectionalGru<float>;
 
 }  // namespace detail
 }  // namespace onnxruntime
