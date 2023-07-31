@@ -507,21 +507,7 @@ public:
         std::vector<uint32_t> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
         const uint32_t outputShapeDimCount = gsl::narrow_cast<uint32_t>(outputShape.size());
 
-        // Initialize so that x_zero_point will be created if it doesn't already exist, since it's an optional input
-        // x_zero_point shape must match x_scale
-        std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
-        std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
-        std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(1);
-        //std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
-        gsl::span<const uint32_t> inputShapes[3] = {inputShape0, inputShape1, inputShape1};
-        gsl::span<const uint32_t> outputShapes[1] = {outputShape};
-
-        //InitializeWithShapes(kernelInfo, kernelInputIndices, std::nullopt, inputShapes, outputShapes, 1);
-        Initialize(kernelInfo, kernelInputIndices);
-        m_inputTensorDescs[2] = TensorDesc(
-                    m_inputTensorDescs[1].GetDmlDataType(),
-                    inputShape1);
-        // Initialize(kernelInfo, std::nullopt, std::nullopt);
+        Initialize(kernelInfo, std::nullopt, std::nullopt);
 
         uint32_t axis = 0;
 
@@ -571,6 +557,23 @@ public:
                 NchwDimensionCount, // minDimensionCount
                 0 // guaranteedBaseOffsetAlignment
             );
+        }
+        // Missing ZeroPointTensor, since in ORT this input is optional
+        // Create a ZeroPointTensor and first run it through FillValueConstant
+        if (kernelInfo.GetInputCount() == 2)
+        {
+            std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(1); // Scale and ZeroPointTensor size
+            TensorDesc intermediateOutputTensorDesc = TensorDesc(
+                    MLOperatorTensorDataType::Float,
+                    gsl::make_span(inputShape1),
+                    gsl::make_span(inputShape1),
+                    TensorAxis::DoNotCoerce,
+                    TensorAxis::W,
+                    TensorAxis::RightAligned,
+                    NchwDimensionCount, // minDimensionCount
+                    0 // guaranteedBaseOffsetAlignment
+                );
+            DML_TENSOR_DESC namedIntermediateOutputTensorDesc = intermediateOutputTensorDesc.GetDmlDesc();
         }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
