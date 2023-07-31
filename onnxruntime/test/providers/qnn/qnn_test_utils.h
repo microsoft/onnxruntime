@@ -30,15 +30,18 @@ struct QuantParams {
   QType zero_point;
 
   static QuantParams<QType> Compute(float rmin, float rmax) {
-    if (rmin == rmax) {  // One data-point (x) to quantize.
-      rmin += 1e-5f;     // move away from zero.
+    if (rmin == 0.0f && rmax == 0.0f) {  // Quantizing a single zero.
+      return QuantParams<QType>{1.0f, 0};
+    }
 
-      if (rmin < 0) {  // new range is [-x , 0.0f]
+    if (rmin == rmax) {  // One data-point (x) to quantize.
+      if (rmin < 0) {    // new range is [-x , 0.0f]
         rmax = 0.0f;
       } else {  // new range is [0.0f, x]
         rmin = 0.0f;
       }
     }
+
     constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
     constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
 
