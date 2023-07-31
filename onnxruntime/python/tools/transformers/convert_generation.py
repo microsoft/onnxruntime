@@ -29,7 +29,7 @@ Example 5: convert T5 model with beam search. All in one step:
 
 Example 6: convert T5 model with beam search containing specific cuda optimizations. All in one step:
     python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx   \
-        --use_gpu --past_present_share_buffer --use_decoder_masked_attention
+--use_gpu --past_present_share_buffer --use_decoder_masked_attention
 
 Example 7: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
     python convert_generation.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
@@ -1507,6 +1507,36 @@ def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_exter
     return True
 
 
+def add_fake_position_ids(decoder_onnx_path: str, use_external_data_format: bool = True):
+    """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
+       The decoder model will be over-written.
+
+    Args:
+        decoder_onnx_path (str): Path of GPT-2 decoder onnx model
+        use_external_data_format(bool): output tensors to external data or not.
+    """
+
+    decoder_model_proto = onnx.load_model(decoder_onnx_path, load_external_data=True)
+    graph_proto = decoder_model_proto.graph
+
+    new_inputs = []
+    for i, vi in enumerate(graph_proto.input):
+        if vi.name == "attention_mask":
+            vi_pid = onnx.helper.make_tensor_value_info(
+                "position_ids",
+                elem_type=TensorProto.INT32,
+                shape=["batch_size", "seq_len"],
+            )
+            new_inputs.extend([vi_pid])
+        new_inputs.extend([vi])
+
+    graph_proto.ClearField("input")
+    graph_proto.input.extend(new_inputs)
+
+    OnnxModel.save(decoder_model_proto, decoder_onnx_path, save_as_external_data=use_external_data_format)
+    return True
+
+
 def generate_gpt2_init_decoder(
     decoder_onnx_path: str, init_decoder_onnx_path: str, use_external_data_format: bool = True
 ) -> bool:
@@ -1942,6 +1972,10 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         and is_gpt2
         and (is_beamsearch or is_greedysearch or is_sampling)
     ):
+        # bugbug: TNLGv4 model only
+        logger.info(f"add fake position ids to {args.decoder_onnx}")
+        add_fake_position_ids(args.decoder_onnx, args.use_external_data_format)
+
         logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
 
         gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
