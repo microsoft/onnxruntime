@@ -82,6 +82,7 @@
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
+#include "core/optimizer/double_qdq_pairs_remover.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
@@ -3742,6 +3743,41 @@ TEST_F(GraphTransformationTests, GeluApproximation_SessionOptionConfig) {
 
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "0"));
   VerifyGeluApproximation(false, session_options);
+}
+
+// Test DoubleQDQPairsRemover to remove unnecessary DQ->Q nodes in the middle
+TEST_F(GraphTransformationTests, DoublQDQRemover_RemoveDupQDQ) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "qdq_optimization/dup_qdq.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<DoubleQDQPairsRemover>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["QuantizeLinear"], 3);
+  EXPECT_EQ(op_to_count["DequantizeLinear"], 4);
+
+  std::string dq_scale_name_before_reshape_node;
+  std::string zp_name_before_reshape_node;
+  std::string dq_scale_name_after_reshape_node;
+  std::string zp_name_after_reshape_node;
+  for (auto& node : graph.Nodes()) {
+    if (node.Name() == "dq_2") {
+      dq_scale_name_before_reshape_node = node.InputDefs()[InputIndex::SCALE_ID]->Name();
+      zp_name_before_reshape_node = node.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+    }
+    if (node.Name() == "q_3") {
+      dq_scale_name_after_reshape_node = node.InputDefs()[InputIndex::SCALE_ID]->Name();
+      zp_name_after_reshape_node = node.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+    }
+  }
+  EXPECT_EQ(dq_scale_name_before_reshape_node.empty(), false);
+  EXPECT_EQ(zp_name_before_reshape_node.empty(), false);
+  EXPECT_EQ(dq_scale_name_before_reshape_node, dq_scale_name_after_reshape_node);
+  EXPECT_EQ(zp_name_before_reshape_node, zp_name_after_reshape_node);
 }
 
 // Test Gelu -> FastGelu
