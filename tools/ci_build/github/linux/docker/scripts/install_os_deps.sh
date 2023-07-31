@@ -3,11 +3,11 @@ set -e -x
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
-
+INSTALL_PREFIX='/usr'
 while getopts p:d:v:tmur parameter_Option
 do case "${parameter_Option}"
 in
-p) echo "Python version is no longer accepted as an input to this script. Ignoring the input argument -p.";;
+p) INSTALL_PREFIX=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
 v) echo "Cuda version is no longer accepted as an input to this script. Ignoring the input argument -v.";;
 t) echo "Installing python training dependencies argument is no longer accepted as an input to this script. Ignoring the input argument -t.";;
@@ -59,7 +59,7 @@ GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
 
 DISTRIBUTOR=$(lsb_release -i -s)
 
-if [[ "$DISTRIBUTOR" = "CentOS" && $SYS_LONG_BIT = "64" ]]; then
+if [[ ("$DISTRIBUTOR" = "CentOS" || "$DISTRIBUTOR" = "RedHatEnterprise") && $SYS_LONG_BIT = "64" ]]; then
   LIBDIR="lib64"
 else
   LIBDIR="lib"
@@ -91,7 +91,7 @@ fi
 cd /tmp/src
 
 if ! [ -x "$(command -v protoc)" ]; then
-  source ${0/%install_os_deps\.sh/install_protobuf\.sh}
+  $SCRIPT_DIR/install_protobuf.sh -p $INSTALL_PREFIX  
 fi
 
 if [ $DEVICE_TYPE = "gpu" ]; then

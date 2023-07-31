@@ -5,19 +5,7 @@ set -e -x
 yum -y install \
     graphviz
 
-os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
-
-SYS_LONG_BIT=$(getconf LONG_BIT)
 mkdir -p /tmp/src
-GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
-
-DISTRIBUTOR=$(lsb_release -i -s)
-
-if [[ "$DISTRIBUTOR" = "CentOS" && $SYS_LONG_BIT = "64" ]]; then
-  LIBDIR="lib64"
-else
-  LIBDIR="lib"
-fi
 
 cd /tmp/src
 source $(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)/install_shared_deps.sh
