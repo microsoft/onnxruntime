@@ -86,8 +86,8 @@ OrtValue CreateInputOrtValueOnCPU(gsl::span<const int64_t> dims, gsl::span<const
 
   OrtValue ort_value;
   ort_value.Init(p_tensor.release(),
-             DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                 DataTypeImpl::GetType<Tensor>(),
+                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   return ort_value;
 }
 
