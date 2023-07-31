@@ -1519,6 +1519,11 @@ def add_fake_position_ids(decoder_onnx_path: str, use_external_data_format: bool
     decoder_model_proto = onnx.load_model(decoder_onnx_path, load_external_data=True)
     graph_proto = decoder_model_proto.graph
 
+    # if has position_ids, do nothing
+    for i, vi in enumerate(graph_proto.input):
+        if vi.name == "position_ids":
+            return True
+
     new_inputs = []
     for i, vi in enumerate(graph_proto.input):
         if vi.name == "attention_mask":
