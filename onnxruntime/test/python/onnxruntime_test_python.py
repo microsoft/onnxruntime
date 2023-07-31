@@ -86,6 +86,7 @@ class TestInferenceSession(unittest.TestCase):
                 providers=["CPUExecutionProvider"],
             )
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            os.remove(so.optimized_model_filepath)
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -113,6 +114,8 @@ class TestInferenceSession(unittest.TestCase):
             )
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(external_initializers_file))
+            os.remove(so.optimized_model_filepath)
+            os.remove(external_initializers_file)
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -137,6 +140,36 @@ class TestInferenceSession(unittest.TestCase):
             onnxrt.InferenceSession(get_name("mnist.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
+            os.remove(so.optimized_model_filepath)
+            os.remove(os.path.join(directory, external_initializers_file))
+        except Fail as onnxruntime_error:
+            if (
+                str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
+                " compiled nodes. Please disable any execution providers which generate compiled nodes."
+            ):
+                pass
+            else:
+                raise onnxruntime_error
+
+    def test_model_serialization_with_original_external_initializers_to_directory(self):
+        try:
+            so = onnxrt.SessionOptions()
+            so.log_severity_level = 1
+            so.logid = "TestModelSerializationWithOriginalExternalInitializersToDirectory"
+            directory = "./testdata/"
+            so.optimized_model_filepath = os.path.join(directory, "model_opt_with_ext_data.onnx")
+            external_initializers_file = "model_opt_with_ext_data.bin"
+            so.add_session_config_entry(
+                "session.optimized_model_external_initializers_file_name", external_initializers_file
+            )
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            onnxrt.InferenceSession(
+                get_name("model_with_orig_ext_data.onnx"), sess_options=so, providers=["CPUExecutionProvider"]
+            )
+            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
+            os.remove(so.optimized_model_filepath)
+            os.remove(os.path.join(directory, external_initializers_file))
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -879,6 +912,8 @@ class TestInferenceSession(unittest.TestCase):
                     self.assertTrue(tag in lines[i])
             self.assertTrue("]" in lines[-1])
 
+        os.remove(profile_file)
+
     def test_profiler_get_start_time_ns(self):
         def get_single_session_profiling_start_time():
             so = onnxrt.SessionOptions()
@@ -888,7 +923,9 @@ class TestInferenceSession(unittest.TestCase):
                 sess_options=so,
                 providers=onnxrt.get_available_providers(),
             )
-            return sess.get_profiling_start_time_ns()
+            start_time = sess.get_profiling_start_time_ns()
+            os.remove(sess.end_profiling())
+            return start_time
 
         # Get 1st profiling's start time
         start_time_1 = get_single_session_profiling_start_time()
@@ -1027,6 +1064,8 @@ class TestInferenceSession(unittest.TestCase):
             )  # from the ORT config
 
             self.assertEqual(session_options.enable_profiling, True)  # from the ORT config
+
+            os.remove(sess.end_profiling())
 
         except Exception:
             raise

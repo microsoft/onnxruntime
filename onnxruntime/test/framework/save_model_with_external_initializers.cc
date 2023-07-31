@@ -18,14 +18,15 @@ namespace onnxruntime {
 namespace test {
 
 void LoadSaveAndCompareModel(const std::string& input_onnx,
+                             const std::string& input_external_init_file,
                              const std::string& output_onnx,
-                             const std::string& external_init_file,
+                             const std::string& output_external_init_file,
                              size_t initializer_size_threshold) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(ToPathString(input_onnx), model, nullptr, DefaultLoggingManager().DefaultLogger()));
   std::remove(output_onnx.c_str());
-  std::remove(external_init_file.c_str());
-  ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(*model, ToPathString(output_onnx), external_init_file, initializer_size_threshold));
+  std::remove(output_external_init_file.c_str());
+  ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(*model, ToPathString(output_onnx), output_external_init_file, initializer_size_threshold));
 
   std::shared_ptr<Model> model_from_external;
   ASSERT_STATUS_OK(Model::Load(ToPathString(output_onnx), model_from_external, nullptr, DefaultLoggingManager().DefaultLogger()));
@@ -42,6 +43,7 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
   ASSERT_EQ(initializers.size(), initializers_from_external.size());
 
   // Compare the initializers of the two versions.
+  Path model_path{};
   Path external_data_path{};
   for (auto i : initializers) {
     const std::string kInitName = i.first;
@@ -49,12 +51,14 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
     const ONNX_NAMESPACE::TensorProto* from_external_tensor_proto = initializers_from_external[kInitName];
 
     std::vector<uint8_t> tensor_proto_data;
-    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, Path(), tensor_proto_data));
+    model_path = Path::Parse(ToPathString(input_onnx));
+    external_data_path = (input_external_init_file.size()) ? model_path.ParentPath().Append(Path::Parse(ToPathString(input_external_init_file))) : Path();
+    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_path, tensor_proto_data));
     size_t tensor_proto_size = tensor_proto_data.size();
 
     std::vector<uint8_t> from_external_tensor_proto_data;
-    Path model_path = Path::Parse(ToPathString(output_onnx));
-    external_data_path = model_path.ParentPath().Append(Path::Parse(ToPathString(external_init_file)));
+    model_path = Path::Parse(ToPathString(output_onnx));
+    external_data_path = model_path.ParentPath().Append(Path::Parse(ToPathString(output_external_init_file)));
     ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data));
     size_t from_external_tensor_proto_size = from_external_tensor_proto_data.size();
 
@@ -74,8 +78,14 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
   ASSERT_EQ(std::remove(PathToUTF8String(external_data_path.ToPathString()).c_str()), 0);
 }
 
+// Original model does not have external initializers
 TEST(SaveWithExternalInitializers, Mnist) {
-  LoadSaveAndCompareModel("testdata/mnist.onnx", "testdata/mnist_with_external_initializers.onnx", "mnist_external_initializers.bin", 100);
+  LoadSaveAndCompareModel("testdata/mnist.onnx", "", "testdata/mnist_with_external_initializers.onnx", "mnist_external_initializers.bin", 100);
+}
+
+// Original model has external initializers
+TEST(SaveWithExternalInitializers, ModelWithOriginalExternalData) {
+  LoadSaveAndCompareModel("testdata/model_with_orig_ext_data.onnx", "model_with_orig_ext_data.onnx.data", "testdata/model_with_new_external_initializers.onnx", "model_with_new_external_initializers.bin", 0);
 }
 
 }  // namespace test

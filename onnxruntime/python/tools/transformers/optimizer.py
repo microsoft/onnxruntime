@@ -25,7 +25,7 @@ from typing import Dict, List, Optional
 
 import coloredlogs
 from fusion_options import FusionOptions
-from onnx import ModelProto, load_model
+from onnx import ModelProto, TensorProto, load_model
 from onnx_model import OnnxModel
 from onnx_model_bart import BartOnnxModel
 from onnx_model_bert import BertOnnxModel
@@ -220,7 +220,6 @@ def optimize_model(
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
     verbose: bool = False,
-    use_external_data_format: bool = False,
 ):
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
@@ -258,8 +257,6 @@ def optimize_model(
         use_gpu (bool, optional): use gpu or not for onnxruntime. Defaults to False.
         only_onnxruntime (bool, optional): only use onnxruntime to optimize model, and no python fusion.
             Defaults to False.
-        use_external_data_format (bool, optional): use external data format when saving optimized model.
-            Defaults to False.
 
      Returns:
         object of an optimizer class.
@@ -279,6 +276,15 @@ def optimize_model(
     temp_dir = tempfile.TemporaryDirectory()
     optimized_model_name = "model_o{}_{}.onnx".format(opt_level, "gpu" if use_gpu else "cpu")
     optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
+
+    # Auto detect if input model has external data
+    has_external_data_file = False
+    original_model = load_model(input, load_external_data=False)
+    for initializer in original_model.graph.initializer:
+        if initializer.HasField("data_location") and initializer.data_location == TensorProto.EXTERNAL:
+            has_external_data_file = True
+            break
+    del original_model
 
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
@@ -300,7 +306,7 @@ def optimize_model(
             opt_level=opt_level,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
-            save_as_external_data=use_external_data_format,
+            save_as_external_data=has_external_data_file,
         )
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
@@ -314,7 +320,7 @@ def optimize_model(
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
-            save_as_external_data=use_external_data_format,
+            save_as_external_data=has_external_data_file,
         )
 
     if only_onnxruntime and not temp_model_path:
@@ -496,7 +502,6 @@ def main():
         optimization_options=optimization_options,
         use_gpu=args.use_gpu,
         only_onnxruntime=args.only_onnxruntime,
-        use_external_data_format=args.use_external_data_format,
     )
 
     if args.float16:
