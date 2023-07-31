@@ -83,7 +83,7 @@ struct Float8E4M3FN {
               val &= 0xFE;
             }
           }
-          if ((m & 0x80000) && ((m & 0x100000) || (m & 0x7C000))) {
+          if ((m & 0x80000) && ((m & 0x100000) || (m & 0x7FFFF))) {
             if ((val & 0x7F) < 0x7E) {
               // rounding
               val += 1;
@@ -242,7 +242,7 @@ struct Float8E4M3FNUZ {
             val |= ex << 3;
             val |= m >> 20;
           }
-          if (m & 0x80000) {
+          if ((m & 0x80000) && ((m & 0x100000) || (m & 0x7FFFF))) {
             if ((val & 0x7F) < 0x7F) {
               // rounding
               val += 1;
@@ -546,7 +546,7 @@ struct Float8E5M2FNUZ {
           auto ex = e - 111;
           val |= ex << 2;
           val |= m >> 21;
-          if (m & 0x100000) {
+          if ((m & 0x100000) && ((m & 0xFFFFF) || (m & 0x200000))) {
             if ((val & 0x7F) < 0x7F) {
               // rounding
               val += 1;
