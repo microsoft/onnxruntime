@@ -285,7 +285,6 @@ namespace DmlGraphFusionHelper
     template <size_t ALLOCATER_SIZE>
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
-        const onnxruntime::IndexedSubGraph& indexedSubGraph,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         const uint32_t inputCount,
         const uint32_t outputCount,
@@ -343,7 +342,6 @@ namespace DmlGraphFusionHelper
             if (isConstantEdge)
             {
                 DML_INPUT_GRAPH_EDGE_DESC* edge = allocator.Allocate<DML_INPUT_GRAPH_EDGE_DESC>();
-                //edge->GraphInputIndex = static_cast<uint32_t>(dmlInputEdges.size());
                 edge->GraphInputIndex = constantEdgeIdxToSubgraphInputArgIdxMap.at(i);
                 edge->ToNodeIndex = oldNodeIdxToNewNodeIdxMap[graphDesc.IntermediateEdges[i].ToNodeIndex];
                 edge->ToNodeInputIndex = graphDesc.IntermediateEdges[i].ToNodeInputIndex;

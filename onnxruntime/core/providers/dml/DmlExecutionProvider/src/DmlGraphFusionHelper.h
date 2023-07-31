@@ -52,6 +52,7 @@ namespace DmlGraphFusionHelper
         const uint32_t inputCount,
         const uint32_t outputCount,
         IDMLDevice* device,
+        const std::unordered_map<uint32_t, uint32_t>& constantEdgeIdxToSubgraphInputArgIdxMap,
         StackAllocator<ALLOCATER_SIZE>& allocator,
         _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
@@ -60,6 +61,7 @@ namespace DmlGraphFusionHelper
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOperators);
 
     void CreateIDmlCompiledOperatorAndRegisterKernel(
+        const uint32_t partitionIndex,
         onnxruntime::Graph& graph,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const onnxruntime::Node& fusedNode,
