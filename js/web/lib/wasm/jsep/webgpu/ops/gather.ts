@@ -1,9 +1,9 @@
-import { ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata } from '../types';
-import { TensorView } from '../../tensor';
-import { DataType } from '../../../wasm-common';
-import { ShapeUtil } from '../../util';
-import { ShaderHelper } from './common';
-import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {TensorView} from '../../tensor';
+import {DataType} from '../../../wasm-common';
+import {ShapeUtil} from '../../util';
+import {ShaderHelper} from './common';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 
 export interface GatherAttributes extends AttributeWithCacheKey {
   axis: number;
