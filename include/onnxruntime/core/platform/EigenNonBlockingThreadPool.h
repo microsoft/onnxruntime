@@ -14,7 +14,6 @@
 #pragma once
 #include "onnxruntime_config.h"
 #include <intrin.h>
-#include <stdint.h>
 // build/external/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h:162:71:
 // error: ignoring attributes on template argument "Eigen::PacketType<const float, Eigen::DefaultDevice>::type {aka
 // __vector(4) float}" [-Werror=ignored-attributes]
@@ -1541,7 +1540,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     constexpr int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
     const int steal_count = spin_count / 100;
-	const bool tpause = CPUIDInfo::GetCPUIDInfo().HasTPAUSE();
+    const bool tpause = CPUIDInfo::GetCPUIDInfo().HasTPAUSE();
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
