@@ -145,20 +145,23 @@ export const elu = (context: ComputeContext, attributes: AlphaAttributes): void 
       attributes.cacheKey));
 };
 
-export const erf = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Erf', a => `erf_vf32(${a})`, `
-  const r0: f32 = 0.3275911;
-  const r1: f32 = 0.254829592;
-  const r2: f32 = -0.284496736;
-  const r3: f32 = 1.421413741;
-  const r4: f32 = -1.453152027;
-  const r5: f32 = 1.061405429;
+export const erfImpl = (dataType: string) => `
+const r0: f32 = 0.3275911;
+const r1: f32 = 0.254829592;
+const r2: f32 = -0.284496736;
+const r3: f32 = 1.421413741;
+const r4: f32 = -1.453152027;
+const r5: f32 = 1.061405429;
 
-  fn erf_vf32(v: vec4<f32>) -> vec4<f32> {
-    let absv = abs(v);
-    let x = 1.0 / (1.0 + r0 * absv);
-    return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
-  }`));
+fn erf_vf32(v: ${dataType}) -> ${dataType} {
+  let absv = abs(v);
+  let x = 1.0 / (1.0 + r0 * absv);
+  return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
+}`;
+
+export const erf = (context: ComputeContext): void => {
+  context.compute(
+      createElementwiseProgramInfoLoader(context.inputs[0], 'Erf', a => `erf_vf32(${a})`, erfImpl('vec4<f32>')));
 };
 
 export const exp = (context: ComputeContext): void => {

@@ -1347,6 +1347,7 @@
       "leaky-relu.jsonc",
       "reduce-min.jsonc",
       "relu.jsonc",
+      "gelu.jsonc",
       //"pad.jsonc",
       //"pad-big.jsonc",
       "pow.jsonc",

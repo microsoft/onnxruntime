@@ -19,7 +19,7 @@
 //
 // modified to fit the needs of the project
 
-export declare type Activation = 'linear' | 'relu' | 'prelu' | 'elu' | 'relu6' | 'leakyrelu' | 'sigmoid';
+export declare type Activation = 'linear' | 'relu' | 'prelu' | 'elu' | 'relu6' | 'leakyrelu' | 'sigmoid' | 'gelu';
 
 export const typeSnippet = (component: number) => {
   switch (component) {

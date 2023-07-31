@@ -33,7 +33,8 @@ const ALL_REGISTERED_OPERATORS: Map < string, {
 
 // parse js_execution_provider.cc
 const JS_EXECUTION_PROVIDER_CONTENTS =
-    fs.readFileSync(path.join(__dirname, '../../../onnxruntime/core/providers/js/js_execution_provider.cc'), 'utf8');
+    fs.readFileSync(path.join(__dirname, '../../../onnxruntime/core/providers/js/js_execution_provider.cc'), 'utf8') +
+    fs.readFileSync(path.join(__dirname, '../../../onnxruntime/contrib_ops/js/js_contrib_kernels.cc'), 'utf8');
 MATCHERS.forEach(m => {
   for (const match of JS_EXECUTION_PROVIDER_CONTENTS.matchAll(m)) {
     const groups = match.groups!;
@@ -49,6 +50,9 @@ MATCHERS.forEach(m => {
         break;
       case 'kMSInternalNHWCDomain':
         domain = 'com.ms.internal.nhwc';
+        break;
+      case 'kMSDomain':
+        domain = 'com.microsoft';
         break;
       default:
         throw new Error(`not supported domain: ${opsetDomain}`);
