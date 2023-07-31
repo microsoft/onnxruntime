@@ -47,9 +47,10 @@ size_t GetAttentionWorkspaceSize(
     size_t v_head_size,
     size_t sequence_length,
     void* fused_runner,
-    bool use_memory_efficient_attention) {
+    bool use_memory_efficient_attention,
+    bool no_qkv_workspace) {
   // Note that q, k and v might need alignment for fused attention kernels.
-  const size_t qkv_bytes = element_size * batch_size * num_heads * sequence_length * (qk_head_size + qk_head_size + v_head_size);
+  const size_t qkv_bytes = no_qkv_workspace ? 0 : (element_size * batch_size * num_heads * sequence_length * (qk_head_size + qk_head_size + v_head_size));
 
   if (fused_runner != nullptr) {
     return qkv_bytes;
@@ -70,18 +71,6 @@ size_t GetAttentionWorkspaceSize(
 
   return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length);
 }
-
-template <typename T, AttentionQkvFormat format>
-__global__ void AddBiasTransposeQKVPacked(const T* input,
-                                          const T* biases,
-                                          int32_t N,
-                                          int32_t H_QK,
-                                          int32_t H_V,
-                                          T* q,
-                                          T* k,
-                                          T* v,
-                                          const int32_t* token_offset,
-                                          int32_t token_count);
 
 // Grid: (S, B)
 // Block: 256
@@ -152,7 +141,7 @@ __global__ void AddBiasTransposeQKVPacked(
   }
 }
 
-// Grid: (S, B)
+// Grid: (T)
 // Block: 256
 // For memory efficient fMHA from CUTLASS. For future use, doesn't support fMHA from CUTLASS yet.
 //     Input: Tx3xNxH
@@ -191,7 +180,7 @@ __global__ void AddBiasTransposeQKVPackedCutlass(
   }
 }
 
-// Grid: (S, B)
+// Grid: (T)
 // Block: 256
 // For fMHA from TRT
 //     Input: Tx3xNxH
@@ -669,6 +658,17 @@ template Status QkvToContext<half>(
     PackedAttentionParameters& parameters,
     PackedAttentionData<half>& data);
 
+template Status LaunchTransposeRemovePadding<float>(
+    float* output, const float* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream);
+
+template Status LaunchTransposeRemovePadding<half>(
+    half* output, const half* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
