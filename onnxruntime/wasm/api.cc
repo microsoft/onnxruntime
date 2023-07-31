@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING_APIS
 #include "onnxruntime_training_cxx_api.h"
+#endif
+
 #include "core/session/onnxruntime_cxx_api.h"
 #include "api.h"
 
@@ -399,7 +402,7 @@ char* OrtEndProfiling(ort_session_handle_t session) {
 #define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
 
-OrtCheckpointState* OrtLoadCheckpointForTraining(void* checkpoint, size_t checkpoint_size) {
+OrtCheckpointState* EMSCRIPTEN_KEEPALIVE OrtLoadCheckpointForTraining(void* checkpoint, size_t checkpoint_size) {
   OrtCheckpointState* checkpoint_state = nullptr;
   return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint, checkpoint_size, &checkpoint_state) == ORT_OK)
              ? checkpoint_state
@@ -419,7 +422,7 @@ OrtTrainingSession* EMSCRIPTEN_KEEPALIVE OrtCreateTrainingSession(const ort_sess
                                                                   void* optimizer_model,
                                                                   size_t optimizer_size) {
   OrtTrainingSession* training_session = nullptr;
-  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromArray, OrtGlobals::g_env, options,
+  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromArray, g_env, options,
                                 training_checkpoint_state_handle, train_model, train_size,
                                 eval_model, eval_size, optimizer_model, optimizer_size,
                                 &training_session) == ORT_OK)
