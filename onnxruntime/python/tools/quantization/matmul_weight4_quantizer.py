@@ -6,13 +6,15 @@
 
 from typing import List, Tuple
 
+import argparse
 import numpy as np
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
+from pathlib import Path
 
 from .onnx_model import ONNXModel
 from .q4dq_wrapper import Q4dqWrapper
-from .quant_utils import attribute_to_kwarg
+from .quant_utils import attribute_to_kwarg, load_model_with_shape_infer
 
 
 class MatMulWeight4Quantizer:
@@ -136,3 +138,39 @@ class MatMulWeight4Quantizer:
             opset_import.extend([onnx.helper.make_opsetid("com.microsoft", 1)])
 
         self._process_subgraph(graph_stack)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="""Blockwise int4 quantization for MatMul 2D weight matrices.
+
+A weight matrix is partitioned into into blocks, where each block is a
+continguous subset inside each column. Each block is quantized into a
+set of 4b integers with a scaling factor and an optional offset.
+"""
+    )
+
+    parser.add_argument("--input_model", required=True, help="Path to the input model file")
+    parser.add_argument("--output_model", required=True, help="Path to the output model file")
+    parser.add_argument(
+        "--quant_bin_path",
+        required=True,
+        help="""Currently quantization code is implemented in a seperate binary
+(onnxruntime_mlas_q4dq) that is compiled with Onnxruntime native code.
+Path to this binary needs to be provided here."""
+    )
+
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    input_model_path = args.input_model
+    output_model_path = args.output_model
+    q4dq_bin_path = args.quant_bin_path
+
+    q4dq = Q4dqWrapper(q4dq_bin_path)
+
+    model = load_model_with_shape_infer(Path(input_model_path))
+    quant = MatMulWeight4Quantizer(model, q4dq)
+    quant.process()
+    quant.model.save_model_to_file(output_model_path, False)
