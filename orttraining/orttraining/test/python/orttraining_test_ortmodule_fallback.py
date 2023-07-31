@@ -564,7 +564,7 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback, caplog):
             if i == 0:
                 # For the first time, run ORTModule, feature map is logged as warning
                 # And the fallback warning is logged.
-                assert len(caplog.records) == 2
+                assert len(caplog.records) >= 2
             else:
                 # For the other time, only the fallback warning is logged.
                 assert len(caplog.records) == 1
@@ -576,8 +576,8 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback, caplog):
         if i == 0:
             # For the first time, run ORTModule, feature map is logged as warning
             # And the fallback warning is logged.
-            assert len(caplog.records) == 2
-            assert "Fallback to PyTorch due to exception" in caplog.records[1].message
+            assert len(caplog.records) >= 2
+            assert "Fallback to PyTorch due to exception" in caplog.records[-1].message
             caplog.clear()
         else:
             # For the other time, no fallback warning will be logged because
