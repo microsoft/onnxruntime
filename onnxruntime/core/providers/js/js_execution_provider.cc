@@ -8,6 +8,10 @@
 
 #include "js_execution_provider.h"
 
+#ifndef DISABLE_CONTRIB_OPS
+#include "contrib_ops/js/js_contrib_kernels.h"
+#endif
+
 #include "core/graph/function_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_transfer_manager.h"
@@ -508,6 +512,10 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
 
 std::shared_ptr<KernelRegistry> JsExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> registry = js::RegisterKernels();
+#ifndef DISABLE_CONTRIB_OPS
+  Status status = ::onnxruntime::contrib::js::RegisterJsContribKernels(*registry);
+  ORT_ENFORCE(status.IsOK(), "Failed to register JS contrib kernels: " + status.ErrorMessage());
+#endif
   return registry;
 }
 
