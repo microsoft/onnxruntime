@@ -5,6 +5,8 @@
 
 #include "core/providers/coreml/builders/op_builder.h"
 
+#include "core/providers/coreml/builders/coreml_spec.h"
+
 namespace onnxruntime {
 namespace coreml {
 

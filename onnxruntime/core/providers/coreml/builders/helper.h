@@ -5,7 +5,6 @@
 
 #include "core/graph/basic_types.h"
 
-#include "core/providers/coreml/shape_utils.h"  // TODO add this include as needed and remove from this file
 #include "core/providers/coreml/builders/op_builder.h"
 
 namespace onnxruntime {

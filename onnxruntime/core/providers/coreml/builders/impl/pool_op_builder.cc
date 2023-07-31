@@ -2,15 +2,16 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
-#ifdef __APPLE__
-#include "core/providers/coreml/builders/model_builder.h"
-#include "builder_utils.h"
-#endif
+#include "core/providers/coreml/shape_utils.h"
+#include "core/providers/shared/utils/utils.h"
 
-#include "base_op_builder.h"
+#ifdef __APPLE__
+#include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/builders/model_builder.h"
+#endif
 
 namespace onnxruntime {
 namespace coreml {

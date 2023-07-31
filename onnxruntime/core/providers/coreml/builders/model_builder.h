@@ -3,10 +3,8 @@
 
 #pragma once
 
-#include <core/graph/graph_viewer.h>
-#include "coreml/Model.pb.h"
-
-namespace COREML_SPEC = CoreML::Specification;
+#include "core/graph/graph_viewer.h"
+#include "core/providers/coreml/builders/coreml_spec.h"
 
 namespace onnxruntime {
 namespace coreml {
