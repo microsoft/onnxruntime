@@ -516,6 +516,8 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
     std::vector<IMLOperatorTensor*> GetOutputTensors(const EdgeShapes& outputShapes);
     const Dml::D3D12BufferRegion& AllocateDefaultBuffer(uint64_t size);
 
+    onnxruntime::OpKernelContext* GetOpKernelContext() { return m_impl; }
+
  protected:
     void ClearTempAllocations();
     void TransitionResourcesForOperatorIfRequired(bool isBeforeOp);

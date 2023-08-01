@@ -15,6 +15,7 @@ namespace Dml
     {
     public:
         DmlExternalGpuAllocator(ID3D12Device* device);
+        DmlExternalGpuAllocator(int device_id);
 
         void* Alloc(size_t size_in_bytes) final;
         void Free(void* ptr) final;

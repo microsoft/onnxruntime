@@ -10,8 +10,6 @@
 
 namespace Dml
 {
-    class BucketizedBufferAllocator;
-
     // Implements a Lotus allocator for D3D12 heap buffers, using a bucket allocation strategy. The allocator
     // maintains a set of fixed-size buckets, with each bucket containing one or more D3D12 buffers of that fixed size.
     // All requested allocation sizes are rounded up to the nearest bucket size, which ensures minimal fragmentation

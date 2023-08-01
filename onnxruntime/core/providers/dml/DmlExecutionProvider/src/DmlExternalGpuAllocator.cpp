@@ -8,6 +8,7 @@
 #include "DmlResourceWrapper.h"
 #include "DmlCommittedResourceWrapper.h"
 #include "DmlAllocationInfo.h"
+#include "core/providers/dml/dml_provider_factory_creator.h"
 
 namespace Dml
 {
@@ -21,6 +22,18 @@ namespace Dml
         )),
         m_device(device)
     {
+    }
+
+    DmlExternalGpuAllocator::DmlExternalGpuAllocator(int device_id)
+    : onnxruntime::IAllocator(
+        OrtMemoryInfo(
+            onnxruntime::DML,
+            OrtAllocatorType::OrtDeviceAllocator,
+            OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DML_EXTERNAL, gsl::narrow_cast<OrtDevice::DeviceId>(device_id)),
+            device_id
+        ))
+    {
+        m_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);
     }
 
     void* DmlExternalGpuAllocator::Alloc(size_t size_in_bytes)
