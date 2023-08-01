@@ -53,6 +53,7 @@ template <typename T>
 Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
                                                 const Tensor* key,
                                                 const Tensor* value,
+                                                const Tensor* bias,
                                                 const TensorShape& token_offset_shape,
                                                 const TensorShape& cu_seq_len_shape,
                                                 const Tensor* relative_position_bias,
@@ -127,6 +128,19 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
     v_hidden_size = value_dims[1];
   }
 
+  if (bias != nullptr) {
+    const auto& bias_dims = bias->Shape().GetDims();
+    if (bias_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
+                             bias_dims.size());
+    }
+
+    if (bias_dims[0] != hidden_size + hidden_size + v_hidden_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' size is expected to be ",
+                             hidden_size + hidden_size + v_hidden_size, ", got ", bias_dims[0]);
+    }
+  }
+
   const auto& cu_seq_len_dims = cu_seq_len_shape.GetDims();
   if (cu_seq_len_dims.size() != 1 || cu_seq_len_dims[0] != batch_size + 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -194,14 +208,16 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
-  const Tensor* token_offset = context->Input<Tensor>(3);
-  const Tensor* cumulative_sequence_length = context->Input<Tensor>(4);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* bias = context->Input<Tensor>(3);
+  const Tensor* token_offset = context->Input<Tensor>(4);
+  const Tensor* cumulative_sequence_length = context->Input<Tensor>(5);
+  const Tensor* relative_position_bias = context->Input<Tensor>(6);
 
   PackedAttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(query->Shape(),
                                   key,
                                   value,
+                                  bias,
                                   token_offset->Shape(),
                                   cumulative_sequence_length->Shape(),
                                   relative_position_bias,
@@ -232,7 +248,9 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
   constexpr size_t element_size = sizeof(T);
-  const bool no_qkv_workspace = (fused_runner != nullptr and key == nullptr) || (use_memory_efficient_attention && value != nullptr);
+  // When the source and target format is same (like TN3H => TN3H, or TNH => TNH) and no bias, need not transpose qkv.
+  const bool no_qkv_workspace = (fused_runner != nullptr && key == nullptr && bias == nullptr) ||
+                                (use_memory_efficient_attention && value != nullptr && bias == nullptr);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -249,6 +267,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = (key == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = (value == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.bias = (bias == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.token_offset = token_offset->Data<int32_t>();
