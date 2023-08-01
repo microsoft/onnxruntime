@@ -48,7 +48,7 @@ jobs:
           Remove-Item 'C:\Miniconda\Library\lib\cmake\gtest' -Recurse -Force
           Remove-Item 'C:\Miniconda\Library\lib\gmock.lib' -Force
           Remove-Item 'C:\Miniconda\Library\lib\gmock_main.lib' -Force
-          Remove-Item ''C:\Miniconda\Library\lib\gtest.lib' -Force
+          Remove-Item 'C:\Miniconda\Library\lib\gtest.lib' -Force
           Remove-Item 'C:\Miniconda\Library\lib\gtest_main.lib' -Force
       - name: 'Build and Test'
         run: |
