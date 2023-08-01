@@ -1886,11 +1886,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of attention heads</dd>
 </dl>
 
-#### Inputs
+#### Inputs (6 - 7)
 
 <dl>
 <dt><tt>query_layer</tt> : T</dt>
-<dd>tensor with shape (batch_size, seq_len, num_heads x head_size)</dd>
+<dd>tensor with shape (batch_size, seq_len, num_heads x head_size) or (token_count, num_heads x head_size)</dd>
 <dt><tt>query_bias</tt> : T</dt>
 <dd>1-d tensor with shape (num_heads x head_size)</dd>
 <dt><tt>rel_pos</tt> : T</dt>
@@ -1901,6 +1901,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>bias for the gated_ur_linear, shape (D)</dd>
 <dt><tt>eco_a</tt> : T</dt>
 <dd>tensor of shape (1, num_heads, 1, 1)</dd>
+<dt><tt>token_offset</tt> (optional) : M</dt>
+<dd>offset of each token with shape (batch_size, seq_len)</dd>
 </dl>
 
 #### Outputs
@@ -1915,6 +1917,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain token_offset to integer types</dd>
 </dl>
 
 
