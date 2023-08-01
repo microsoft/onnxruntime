@@ -4208,7 +4208,7 @@ def test_hf_save_pretrained():
             assert p1.data.ne(p2.data).sum() == 0
 
 
-def test_ortmodule_string_inputs_are_ignored(caplog):
+def test_ortmodule_string_inputs_are_ignored():
     pt_model = MyStrNet()
     ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
     x = torch.randn(1, 2)
