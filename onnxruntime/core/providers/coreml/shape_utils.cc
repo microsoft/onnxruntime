@@ -13,7 +13,7 @@ bool GetShapeImpl(const NodeArg& node_arg, std::vector<int64_t>& shape_out, cons
                   bool allow_dynamic_shape) {
   const auto* shape_proto = node_arg.Shape();
   if (!shape_proto) {
-    LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has no shape info";
+    LOGS(logger, VERBOSE) << "NodeArg [" << node_arg.Name() << "] has no shape info";
     return false;
   }
 
@@ -29,7 +29,7 @@ bool GetShapeImpl(const NodeArg& node_arg, std::vector<int64_t>& shape_out, cons
     } else {
       // dynamic dimension
       if (!allow_dynamic_shape) {
-        LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has shape with dynamic dimension";
+        LOGS(logger, VERBOSE) << "NodeArg [" << node_arg.Name() << "] has shape with dynamic dimension";
         return false;
       }
       shape.push_back(-1);
