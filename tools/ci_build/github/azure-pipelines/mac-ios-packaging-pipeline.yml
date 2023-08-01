@@ -1,235 +1,117 @@
 parameters:
-- name: BuildType
+- name: buildType
   displayName: |-
     Type of build.
     "release": A release build to be published for an official ONNX Runtime release.
-    "prerelease": A pre-release build to be published for validation prior to release.
-    "normal": A normal build not for publication.
+    "normal": A normal build. This can be published as a pre-release build for validation prior to release.
   type: string
   values:
   - release
-  - prerelease
   - normal
   default: normal
 
 name: "$(Date:yyyyMMdd)$(Rev:rrr)"  # build number format
 
-jobs:
-- job: IosPackaging
-  displayName: "iOS Packaging"
-
-  pool:
-    vmImage: "macOS-13"
-
+stages:
+- stage: IosPackaging_SetCommonVariables
+  dependsOn: []
+  
   variables:
-    xcodeVersion: "14.3"
+    skipComponentGovernanceDetection: true
 
-  timeoutInMinutes: 300
+  jobs:
+  - job: j
+    displayName: "Set common variables"
 
-  steps:
-  - task: InstallAppleCertificate@2
-    inputs:
-      certSecureFile: '$(ios_signing_certificate_name)'
-      certPwd: '$(ios_signing_certificate_password)'
-      keychain: 'temp'
-      deleteCert: true
-    displayName: 'Install ORT Mobile Test Signing Certificate'
+    pool:
+      vmImage: "macOS-13"
 
-  - task: InstallAppleProvisioningProfile@1
-    inputs:
-      provProfileSecureFile: '$(ios_provision_profile_name)'
-      removeProfile: true
-    displayName: 'Install ORT Mobile Test Provisioning Profile'
+    timeoutInMinutes: 5
 
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: "3.9"
-      addToPath: true
-      architecture: "x64"
+    steps:
+    - bash: |
+        set -e
 
-  - template: templates/use-xcode-version.yml
-    parameters:
-      xcodeVersion: ${{ variables.xcodeVersion }}
+        BUILD_TYPE="${{ parameters.buildType }}"
+        BASE_VERSION="$(cat ./VERSION_NUMBER)"
+        SHORT_COMMIT_HASH="$(git rev-parse --short HEAD)"
+        DEV_VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber).${SHORT_COMMIT_HASH}"
 
-  - template: templates/install-appcenter.yml
+        case "${BUILD_TYPE}" in
+          ("release")
+            VERSION="${BASE_VERSION}" ;;
+          ("normal")
+            VERSION="${DEV_VERSION}" ;;
+          (*)
+            echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
+        esac
 
-  - script: |
-      pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
-    displayName: "Install Python requirements"
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set +x
 
-  - bash: |
-      set -e
+        set_var() {
+          local VAR_NAME=${1:?}
+          local VAR_VALUE=${2:?}
+          echo "##vso[task.setvariable variable=${VAR_NAME};isoutput=true;isreadonly=true]${VAR_VALUE}"
+          echo "${VAR_NAME}: ${VAR_VALUE}"
+        }
 
-      BUILD_TYPE="${{ parameters.BuildType }}"
-      BASE_VERSION="$(cat ./VERSION_NUMBER)"
-      SHORT_COMMIT_HASH="$(git rev-parse --short HEAD)"
-      DEV_VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber).${SHORT_COMMIT_HASH}"
+        set_var "ORT_POD_VERSION" "${VERSION}"
+      displayName: "Set common variables"
+      name: SetCommonVariables
 
-      case "${BUILD_TYPE}" in
-        ("release")
-          VERSION="${BASE_VERSION}"; SHOULD_UPLOAD_ARCHIVES="true" ;;
-        ("prerelease")
-          VERSION="${DEV_VERSION}";  SHOULD_UPLOAD_ARCHIVES="true" ;;
-        ("normal")
-          VERSION="${DEV_VERSION}";  SHOULD_UPLOAD_ARCHIVES="false" ;;
-        (*)
-          echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
-      esac
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Mobile
 
-      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
-      set +x
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Full
 
-      set_var() {
-        local VAR_NAME=${1:?}
-        local VAR_VALUE=${2:?}
-        echo "##vso[task.setvariable variable=${VAR_NAME}]${VAR_VALUE}"
-        echo "${VAR_NAME}: ${VAR_VALUE}"
-      }
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Training
 
-      set_var "ORT_POD_VERSION" "${VERSION}"
-      set_var "ORT_SHOULD_UPLOAD_ARCHIVES" "${SHOULD_UPLOAD_ARCHIVES}"
-    displayName: "Set variables"
+- stage: IosPackaging_TestPackageSwift_Full
+  dependsOn:
+  - IosPackaging_SetCommonVariables
+  - IosPackaging_Build_Full
 
-  - script: |
-      $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/protobuf_install -d $(Build.SourcesDirectory)/cmake/deps.txt
-    displayName: "Build Host Protoc"
+  jobs:
+  - job: j
+    displayName: "Test Package.swift with full package"
 
-  # create and test mobile pods
-  - script: |
-      python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
-        --build-dir "$(Build.BinariesDirectory)/ios_framework_mobile" \
-        --staging-dir "$(Build.BinariesDirectory)/staging" \
-        --pod-version "${ORT_POD_VERSION}" \
-        --test \
-        --variant Mobile \
-        --build-settings-file tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json \
-        --include-ops-by-config tools/ci_build/github/android/mobile_package.required_operators.config \
-        -b="--path_to_protoc_exe" -b "$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
-    displayName: "[Mobile] Build iOS framework and assemble pod package files"
+    pool:
+      vmImage: "macOS-13"
 
-  - script: |
-      python tools/ci_build/github/apple/test_ios_packages.py \
-        --fail_if_cocoapods_missing \
-        --framework_info_file "$(Build.BinariesDirectory)/ios_framework_mobile/framework_info.json" \
-        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework_mobile/framework_out" \
-        --variant Mobile \
-        --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test_mobile" \
-        --prepare_test_project_only
-    displayName: "[Mobile] Assemble test project for App Center"
+    variables:
+      xcodeVersion: "14.3"
+      ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
+      skipComponentGovernanceDetection: true
 
-  - task: Xcode@5
-    inputs:
-      actions: 'build-for-testing'
-      configuration: 'Debug'
-      xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/ios_package_test.xcworkspace'
-      sdk: 'iphoneos'
-      scheme: 'ios_package_test'
-      xcodeVersion: 'specifyPath'
-      xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
-      signingOption: 'manual'
-      signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
-      provisioningProfileName: 'iOS Team Provisioning Profile'
-      args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/DerivedData'
-      workingDirectory: '$(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/'
-    displayName: '[Mobile] Build iphone arm64 tests'
+    timeoutInMinutes: 10
 
-  - script: |
-      set -e -x
-      appcenter test run xcuitest \
-        --app "AI-Frameworks/ORT-Mobile-iOS" \
-        --devices $(app_center_test_devices) \
-        --test-series "master" \
-        --locale "en_US" \
-        --build-dir $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
-        --token $(app_center_api_token)
-    displayName: "[Mobile] Run E2E tests on App Center"
+    steps:
+    - template: templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: ${{ variables.xcodeVersion }}
 
-  # create and test full pods
-  - script: |
-      python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
-        --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
-        --staging-dir "$(Build.BinariesDirectory)/staging" \
-        --pod-version "${ORT_POD_VERSION}" \
-        --test \
-        --variant Full \
-        --build-settings-file tools/ci_build/github/apple/default_full_ios_framework_build_settings.json \
-        -b="--path_to_protoc_exe" -b "$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
-    displayName: "[Full] Build iOS framework and assemble pod package files"
+    - download: current
+      artifact: ios_packaging_artifacts_full
+      displayName: "Download full build artifacts"
 
-  - script: |
-      python tools/ci_build/github/apple/test_ios_packages.py \
-        --fail_if_cocoapods_missing \
-        --framework_info_file "$(Build.BinariesDirectory)/ios_framework_full/framework_info.json" \
-        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework_full/framework_out" \
-        --variant Full \
-        --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test_full" \
-        --prepare_test_project_only
-    displayName: "[Full] Assemble test project for App Center"
+    - script: |
+        set -e -x
+        shasum -a 256 "$(Pipeline.Workspace)/ios_packaging_artifacts_full/pod-archive-onnxruntime-c-$(ortPodVersion).zip"
+      displayName: "Print ORT iOS Pod checksum"
 
-  - task: Xcode@5
-    inputs:
-      actions: 'build-for-testing'
-      configuration: 'Debug'
-      xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test_full/ios_package_test/ios_package_test.xcworkspace'
-      sdk: 'iphoneos'
-      scheme: 'ios_package_test'
-      signingOption: 'manual'
-      signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
-      provisioningProfileName: 'iOS Team Provisioning Profile'
-      args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test_full/ios_package_test/DerivedData'
-      workingDirectory: $(Build.BinariesDirectory)/app_center_test_full/ios_package_test/
-    displayName: '[Full] Build iphone arm64 tests'
-
-  - script: |
-      set -e -x
-      appcenter test run xcuitest \
-        --app "AI-Frameworks/ORT-Mobile-iOS" \
-        --devices $(app_center_test_devices) \
-        --test-series "master" \
-        --locale "en_US" \
-        --build-dir $(Build.BinariesDirectory)/app_center_test_full/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
-        --token $(app_center_api_token)
-    displayName: "[Full] Run E2E tests on App Center"
-
-  - task: AzureCLI@2
-    inputs:
-      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-      scriptType: 'bash'
-      scriptLocation: 'scriptPath'
-      scriptPath: 'tools/ci_build/github/apple/assemble_ios_packaging_artifacts.sh'
-      arguments: >-
-        "$(Build.BinariesDirectory)/staging"
-        "$(Build.ArtifactStagingDirectory)"
-        "$(ORT_POD_VERSION)"
-        "$(ORT_SHOULD_UPLOAD_ARCHIVES)"
-    displayName: "Assemble artifacts"
-
-  - script: |
-      set -e -x
-      ls -R "$(Build.ArtifactStagingDirectory)"
-    displayName: "List staged artifacts"
-
-  - script: |
-      set -e -x
-      shasum -a 256 "$(Build.ArtifactStagingDirectory)/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip"
-    displayName: "Print ORT iOS Pod checksum"
-
-
-  # copy the pod archive to a path relative to Package.swift and set the env var required by Package.swift to use that.
-  # xcodebuild will implicitly use Package.swift and build/run the .testTarget (tests in swift/onnxTests).
-  # once that's done cleanup the copy of the pod zip file
-  - script: |
-      set -e -x
-      cp "$(Build.ArtifactStagingDirectory)/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip" swift/
-      export ORT_IOS_POD_LOCAL_PATH="swift/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip"
-      xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator,name=iPhone 14'
-      rm swift/pod-archive-onnxruntime-c-*.zip
-    displayName: "Test Package.swift usage"
-
-  - publish: "$(Build.ArtifactStagingDirectory)"
-    artifact: ios_packaging_artifacts
-    displayName: "Publish artifacts"
-
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
+    # copy the pod archive to a path relative to Package.swift and set the env var required by Package.swift to use that.
+    # xcodebuild will implicitly use Package.swift and build/run the .testTarget (tests in swift/onnxTests).
+    # once that's done cleanup the copy of the pod zip file
+    - script: |
+        set -e -x
+        cp "$(Pipeline.Workspace)/ios_packaging_artifacts_full/pod-archive-onnxruntime-c-$(ortPodVersion).zip" swift/
+        export ORT_IOS_POD_LOCAL_PATH="swift/pod-archive-onnxruntime-c-$(ortPodVersion).zip"
+        xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator,name=iPhone 14'
+        rm swift/pod-archive-onnxruntime-c-$(ortPodVersion).zip
+      displayName: "Test Package.swift usage"

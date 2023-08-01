@@ -107,6 +107,15 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
   endif()
 endif()
 
+if (MSVC)
+    set(EIGEN_NATVIS_FILE ${eigen_SOURCE_DIR}/debug/msvc/eigen.natvis)
+    if (EXISTS ${EIGEN_NATVIS_FILE})
+      target_sources(
+          onnxruntime_common
+          INTERFACE $<BUILD_INTERFACE:${EIGEN_NATVIS_FILE}>)
+    endif()
+endif()
+
 onnxruntime_add_include_to_target(onnxruntime_common date_interface WIL::WIL)
 target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}

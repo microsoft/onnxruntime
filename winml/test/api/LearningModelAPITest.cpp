@@ -27,7 +27,8 @@ static void CreateModelFromFilePath() {
 
 static void CreateModelFromUnicodeFilePath() {
   LearningModel learningModel = nullptr;
-  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"UnicodePath\\\u3053\u3093\u306B\u3061\u306F maçã\\foo.onnx", learningModel));
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"UnicodePath\\\u3053\u3093\u306B\u3061\u306F maçã\\foo.onnx", learningModel)
+  );
 }
 
 static void CreateModelFileNotFound() {
@@ -36,9 +37,8 @@ static void CreateModelFileNotFound() {
   WINML_EXPECT_THROW_SPECIFIC(
     APITest::LoadModel(L"missing_model.onnx", learningModel),
     winrt::hresult_error,
-    [](const winrt::hresult_error& e) -> bool {
-          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
-    });
+    [](const winrt::hresult_error& e) -> bool { return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND); }
+  );
 }
 
 static void CreateCorruptModel() {
@@ -47,9 +47,8 @@ static void CreateCorruptModel() {
   WINML_EXPECT_THROW_SPECIFIC(
     APITest::LoadModel(L"corrupt-model.onnx", learningModel),
     winrt::hresult_error,
-    [](const winrt::hresult_error& e) -> bool {
-          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
-    });
+    [](const winrt::hresult_error& e) -> bool { return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT); }
+  );
 }
 
 static void CreateModelFromIStorage() {
@@ -243,17 +242,14 @@ static void CloseModelCheckMetadata() {
 }
 
 static void CheckLearningModelPixelRange() {
-  std::vector<std::wstring> modelPaths = {
-      // NominalRange_0_255 and image output
-      L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx",
+  std::vector<std::wstring> modelPaths = {      // NominalRange_0_255 and image output
+                                          L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx",
       // Normalized_0_1 and image output
-      L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
+                                          L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
       // Normalized_1_1 and image output
-      L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
+                                          L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
   std::vector<LearningModelPixelRange> pixelRanges = {
-      LearningModelPixelRange::ZeroTo255,
-      LearningModelPixelRange::ZeroToOne,
-      LearningModelPixelRange::MinusOneToOne};
+    LearningModelPixelRange::ZeroTo255, LearningModelPixelRange::ZeroToOne, LearningModelPixelRange::MinusOneToOne};
   for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
     LearningModel learningModel = nullptr;
     WINML_EXPECT_NO_THROW(APITest::LoadModel(modelPaths[model_i], learningModel));
@@ -298,11 +294,10 @@ static void CloseModelNoNewSessions() {
   WINML_EXPECT_NO_THROW(learningModel.Close());
   LearningModelSession session = nullptr;
   WINML_EXPECT_THROW_SPECIFIC(
-      session = LearningModelSession(learningModel),
-      winrt::hresult_error,
-      [](const winrt::hresult_error& e) -> bool {
-            return e.code() == E_INVALIDARG;
-      });
+    session = LearningModelSession(learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool { return e.code() == E_INVALIDARG; }
+  );
 }
 
 static void CheckMetadataCaseInsensitive() {
@@ -314,8 +309,7 @@ static void CheckMetadataCaseInsensitive() {
 }
 
 const LearningModelApiTestsApi& getapi() {
-  static LearningModelApiTestsApi api =
-  {
+  static LearningModelApiTestsApi api = {
     LearningModelAPITestsClassSetup,
     CreateModelFromFilePath,
     CreateModelFromUnicodeFilePath,
@@ -335,8 +329,7 @@ const LearningModelApiTestsApi& getapi() {
     CloseModelCheckEval,
     CloseModelNoNewSessions,
     CheckMetadataCaseInsensitive,
-    CreateCorruptModel
-  };
+    CreateCorruptModel};
 
   if (RuntimeParameterExists(L"noVideoFrameTests")) {
     api.CloseModelCheckEval = SkipTest;

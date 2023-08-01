@@ -309,6 +309,27 @@ NS_ASSUME_NONNULL_BEGIN
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
 }
 
+- (BOOL)registerCustomOpsUsingFunctionPointer:(ORTCAPIRegisterCustomOpsFnPtr)registerCustomOpsFn
+                                        error:(NSError**)error {
+  try {
+    if (!registerCustomOpsFn) {
+      ORT_CXX_API_THROW("registerCustomOpsFn must not be null", ORT_INVALID_ARGUMENT);
+    }
+    Ort::ThrowOnError((*registerCustomOpsFn)(static_cast<OrtSessionOptions*>(*_sessionOptions),
+                                             OrtGetApiBase()));
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
+}
+
+- (BOOL)enableOrtExtensionsCustomOpsWithError:(NSError**)error {
+  try {
+    _sessionOptions->EnableOrtCustomOps();
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
+}
+
 #pragma mark - Internal
 
 - (Ort::SessionOptions&)CXXAPIOrtSessionOptions {

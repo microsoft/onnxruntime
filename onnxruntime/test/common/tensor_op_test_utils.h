@@ -151,7 +151,7 @@ inline std::vector<MLFloat16> ToFloat16(const std::vector<float>& data) {
   std::vector<MLFloat16> result;
   result.reserve(data.size());
   for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(MLFloat16(math::floatToHalf(data[i])));
+    result.push_back(MLFloat16(data[i]));
   }
   return result;
 }
@@ -245,7 +245,7 @@ class ParallelRandomValueGenerator {
           RandomEngine generator{seed};
           std::uniform_real_distribution<float> distribution(min, max);
           for (std::ptrdiff_t di = begin; di != end; ++di) {
-            val[di] = TFloat16(math::floatToHalf(distribution(generator)));
+            val[di] = TFloat16(static_cast<float>(distribution(generator)));
             ;
           }
         });

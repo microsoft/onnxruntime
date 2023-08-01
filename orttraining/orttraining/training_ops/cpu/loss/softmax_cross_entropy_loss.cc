@@ -142,13 +142,13 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     log_prob = context->Output(1, logit_shape);
     log_prob_data = log_prob->template MutableData<T1>();
   } else {
-    log_prob_data_buffer.resize(logit_shape.Size());
+    log_prob_data_buffer.resize(narrow<size_t>(logit_shape.Size()));
     log_prob_data = log_prob_data_buffer.data();
   }
 
   const T2* label_data = label.template Data<T2>();
   T1* loss_data = loss->template MutableData<T1>();
-  std::vector<T1> shifted_logit(n_d_c);
+  std::vector<T1> shifted_logit(narrow<size_t>(n_d_c));
   ORT_ENFORCE(n_d_c <= static_cast<uint64_t>(std::numeric_limits<Eigen::Index>::max()));
   ComputeShareSoftmaxCrossEntropyCPU(n_d, c, static_cast<Eigen::Index>(n_d_c), logit_data, shifted_logit.data(),
                                      log_prob_data);
@@ -233,7 +233,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     transpose_output.GetMutable<Tensor>()->Reshape(log_prob->Shape());
     log_prob->Reshape(log_prob_shape);
     ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutations, *log_prob, *transpose_output.GetMutable<Tensor>()));
-    memcpy(log_prob_data, transposed_data, log_prob_shape.Size() * sizeof(T1));
+    memcpy(log_prob_data, transposed_data, narrow<size_t>(log_prob_shape.Size() * sizeof(T1)));
     log_prob->Reshape(new_shape);
   }
 
@@ -269,7 +269,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   const T2* label_data = label.template Data<T2>();
   Tensor* d_logit = context->Output(0, probability_shape);
   T1* d_logit_data = d_logit->template MutableData<T1>();
-  std::memset(d_logit_data, 0, sizeof(T1) * N_D);
+  std::memset(d_logit_data, 0, narrow<size_t>(sizeof(T1) * N_D));
   OrtValue transpose_output;
   TensorShapeVector new_shape;
   std::vector<size_t> permutations;
@@ -292,7 +292,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
 
     if (reduction_ == ReductionType::NONE) {
       concurrency::ThreadPool::TryParallelFor(
-          tp, N_D * C, cost,
+          tp, narrow<ptrdiff_t>(N_D * C), cost,
           [&label_data, &weight_data, &d_logit_data, &log_prob_data, ignore_index, C, &dY_data](
               std::ptrdiff_t begin, std::ptrdiff_t end) {
             for (std::ptrdiff_t index = begin; index != end; ++index) {
@@ -323,7 +323,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
       }
 
       concurrency::ThreadPool::TryParallelFor(
-          tp, N_D * C, cost,
+          tp, narrow<ptrdiff_t>(N_D * C), cost,
           [&label_data, &weight_data, dY_scaled, &d_logit_data, &log_prob_data, ignore_index, C](
               std::ptrdiff_t begin, std::ptrdiff_t end) {
             for (std::ptrdiff_t index = begin; index != end; ++index) {
@@ -342,7 +342,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   } else {
     if (reduction_ == ReductionType::NONE) {
       concurrency::ThreadPool::TryParallelFor(
-          tp, N_D * C, cost,
+          tp, narrow<ptrdiff_t>(N_D * C), cost,
           [&label_data, &d_logit_data, &log_prob_data, ignore_index, C, &dY_data](
               std::ptrdiff_t begin, std::ptrdiff_t end) {
             for (std::ptrdiff_t index = begin; index != end; ++index) {
@@ -371,7 +371,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
       }
 
       concurrency::ThreadPool::TryParallelFor(
-          tp, N_D * C, cost,
+          tp, narrow<ptrdiff_t>(N_D * C), cost,
           [&label_data, &d_logit_data, &log_prob_data, ignore_index, C, &dY_scaled](
               std::ptrdiff_t begin, std::ptrdiff_t end) {
             for (std::ptrdiff_t index = begin; index != end; ++index) {
@@ -398,7 +398,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     d_logit->Reshape(logit_shape);
     ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutations, *d_logit, *transpose_output.GetMutable<Tensor>()));
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<T1>();
-    memcpy(d_logit_data, transposed_data, probability_shape.Size() * sizeof(T1));
+    memcpy(d_logit_data, transposed_data, narrow<size_t>(probability_shape.Size() * sizeof(T1)));
     d_logit->Reshape(new_shape);
   }
 
@@ -408,7 +408,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     ORT_ENFORCE(probability_shape.Size() == p_bias->Shape().Size());
     const T1* bias_data = p_bias->Data<T1>();
     concurrency::ThreadPool::TryParallelFor(
-        tp, probability_shape.Size(), cost,
+        tp, narrow<ptrdiff_t>(probability_shape.Size()), cost,
         [&d_logit_data, &bias_data](
             std::ptrdiff_t begin, std::ptrdiff_t end) {
           for (std::ptrdiff_t index = begin; index != end; ++index) {

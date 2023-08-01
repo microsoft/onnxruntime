@@ -90,7 +90,7 @@ void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases,
 const std::vector<MLFloat16> ConvertFloatToMLFloat16(const std::vector<float>& float_data) {
   std::vector<MLFloat16> new_data;
   for (const auto& f : float_data) {
-    new_data.push_back(MLFloat16(math::floatToHalf(f)));
+    new_data.push_back(MLFloat16(f));
   }
   return new_data;
 }

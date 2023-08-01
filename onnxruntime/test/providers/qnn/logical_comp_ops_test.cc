@@ -64,7 +64,7 @@ static GetTestModelFn BuildQDQLogicalOpTestCase(const std::string& op_type, cons
 // Runs a model with a logical operator on the QNN CPU backend. Checks the graph node assignment, and that inference
 // outputs for QNN EP and CPU EP match.
 static void RunCPULogicalOpTest(const std::string& op_type, const std::vector<int64_t>& shape,
-                                ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                                ExpectedEPNodeAssignment expected_ep_assignment,
                                 int opset = 17) {
   ProviderOptions provider_options;
 
@@ -74,20 +74,17 @@ static void RunCPULogicalOpTest(const std::string& op_type, const std::vector<in
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildLogicalOpTestCase(op_type, shape),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+                  expected_ep_assignment);
 }
 
 // Runs a model with a logical operator on the QNN HTP backend. Checks the graph node assignment, and that inference
 // outputs for QNN EP and CPU EP match.
 template <typename QuantType>
 static void RunQDQLogicalOpTest(const std::string& op_type, const std::vector<int64_t>& shape,
-                                ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                                ExpectedEPNodeAssignment expected_ep_assignment,
                                 int opset = 17) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -96,13 +93,10 @@ static void RunQDQLogicalOpTest(const std::string& op_type, const std::vector<in
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildQDQLogicalOpTestCase<QuantType>(op_type, shape),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+                  expected_ep_assignment);
 }
 
 //
@@ -110,23 +104,23 @@ static void RunQDQLogicalOpTest(const std::string& op_type, const std::vector<in
 //
 
 TEST_F(QnnCPUBackendTests, LogicalOpEqual4D) {
-  RunCPULogicalOpTest("Equal", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpEqual4D");
+  RunCPULogicalOpTest("Equal", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnCPUBackendTests, LogicalOpGreater4D) {
-  RunCPULogicalOpTest("Greater", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpGreater4D");
+  RunCPULogicalOpTest("Greater", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnCPUBackendTests, LogicalOpGreaterOrEqual4D) {
-  RunCPULogicalOpTest("GreaterOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpGreaterOrEqual4D");
+  RunCPULogicalOpTest("GreaterOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnCPUBackendTests, LogicalOpLess4D) {
-  RunCPULogicalOpTest("Less", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpLess4D");
+  RunCPULogicalOpTest("Less", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnCPUBackendTests, LogicalOpLessOrEqual4D) {
-  RunCPULogicalOpTest("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpLessOrEqual4D");
+  RunCPULogicalOpTest("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -135,23 +129,23 @@ TEST_F(QnnCPUBackendTests, LogicalOpLessOrEqual4D) {
 //
 
 TEST_F(QnnHTPBackendTests, LogicalOpEqual4D) {
-  RunQDQLogicalOpTest<uint8_t>("Equal", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpEqual4D");
+  RunQDQLogicalOpTest<uint8_t>("Equal", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, LogicalOpGreater4D) {
-  RunQDQLogicalOpTest<uint8_t>("Greater", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpGreater4D");
+  RunQDQLogicalOpTest<uint8_t>("Greater", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, LogicalOpGreaterOrEqual4D) {
-  RunQDQLogicalOpTest<uint8_t>("GreaterOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpGreaterOrEqual4D");
+  RunQDQLogicalOpTest<uint8_t>("GreaterOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, LogicalOpLess4D) {
-  RunQDQLogicalOpTest<uint8_t>("Less", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpLess4D");
+  RunQDQLogicalOpTest<uint8_t>("Less", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, LogicalOpLessOrEqual4D) {
-  RunQDQLogicalOpTest<uint8_t>("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpLessOrEqual4D");
+  RunQDQLogicalOpTest<uint8_t>("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 // Test for bug 44777546.
@@ -193,8 +187,7 @@ TEST_F(QnnHTPBackendTests, EqualToCast4D) {
                   provider_options,
                   17,  // opset
                   ExpectedEPNodeAssignment::All,
-                  1,  // expected nodes in graph
-                  "EqualToCast4D");
+                  1);  // expected nodes in graph
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
