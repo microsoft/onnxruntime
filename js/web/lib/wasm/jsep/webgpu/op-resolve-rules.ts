@@ -16,6 +16,7 @@ import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
 import {parseSliceAttributes, slice} from './ops/slice';
+import { parseSkipLayerNormAttributes, skipLayerNorm } from './ops/skip-layer-norm';
 import {parseSoftmaxAttributes, softmax} from './ops/softmax';
 import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
@@ -85,6 +86,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Sin', [unaryOps.sin]],
   ['Sinh', [unaryOps.sinh]],
   ['Slice', [slice, parseSliceAttributes]],
+  ['SkipLayerNorm', [skipLayerNorm, parseSkipLayerNormAttributes]],
   ['Split', [split, parseSplitAttributes]],
   ['Sqrt', [unaryOps.sqrt]],
   ['Softmax', [softmax, parseSoftmaxAttributes]],
