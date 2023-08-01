@@ -10,6 +10,11 @@ struct DML_INPUT_GRAPH_EDGE_DESC;
 struct DML_OUTPUT_GRAPH_EDGE_DESC;
 struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
+namespace onnxruntime
+{
+    class TensorShape;
+}
+
 // Either nodesAsOpDesc or nodesAsIDMLOperator is present.
 //  1) Operator kernels which implement operators using only a single DML operator will pass a DML_OPERATOR_DESC.
 //     These kernels pass DML_OPERATOR_DESC, because while building Dml graph (inside FusedGraphKernel.cpp) we can change the
@@ -106,6 +111,13 @@ IMLOperatorKernelCreationContextNodeWrapperPrivate : public IMLOperatorKernelCre
     STDMETHOD(GetExecutionProvider)(
         _Outptr_result_maybenull_ IUnknown** executionProvider
         ) const noexcept PURE;
+
+    STDMETHOD(InputAliasesOutput)(
+        _In_ uint32_t inputIndex,
+        _In_ uint32_t outputIndex,
+        _In_ const onnxruntime::TensorShape& outputShape,
+        _Out_ bool* aliasing
+    ) noexcept PURE;
 };
 
 //! \interface IMLOperatorAttributes1

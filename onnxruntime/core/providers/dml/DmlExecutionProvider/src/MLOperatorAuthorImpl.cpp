@@ -557,7 +557,7 @@ namespace Windows::AI::MachineLearning::Adapter
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter,
-        const onnxruntime::OpKernelContext* kernelContext
+        onnxruntime::OpKernelContext* kernelContext
         )
     :   OpNodeInfoWrapper(kerneInfo, inputShapeOverrides, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, kernelContext),
         m_inferredOutputShapes(inferredOutputShapes),
@@ -1333,6 +1333,22 @@ namespace Windows::AI::MachineLearning::Adapter
     bool STDMETHODCALLTYPE OpKernelInfoWrapper::HasOutputShapeDescription() const noexcept
     {
         return m_allowOutputShapeQuery;
+    }
+
+    HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::InputAliasesOutput(
+        uint32_t inputIndex,
+        uint32_t outputIndex,
+        const onnxruntime::TensorShape& outputShape,
+        bool* aliasing) noexcept
+    {
+        ORT_TRY
+        {
+            auto inputData = m_kernelContext->Input<onnxruntime::Tensor>(inputIndex)->DataRaw();
+            auto outputData = m_kernelContext->Output(outputIndex, outputShape)->DataRaw();
+            *aliasing = inputData == outputData;
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
 
     DmlGraphOpKernelInfoWrapper::DmlGraphOpKernelInfoWrapper(

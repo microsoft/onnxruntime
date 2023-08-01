@@ -176,7 +176,7 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter,
-        const onnxruntime::OpKernelContext* kernelContext = nullptr
+        onnxruntime::OpKernelContext* kernelContext = nullptr
         )
     :   m_impl(impl),
         m_kernelContext(kernelContext),
@@ -245,7 +245,7 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
  protected:
     // Lifetime is managed by the caller and guaranteed to outlive this class
     const onnxruntime::OpNodeProtoHelper<NodeInfoImpl_t>* m_impl = nullptr;
-    const onnxruntime::OpKernelContext* m_kernelContext = nullptr;
+    mutable onnxruntime::OpKernelContext* m_kernelContext = nullptr;
 
  private:
     template <MLOperatorAttributeType T>
@@ -362,7 +362,7 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter,
-        const onnxruntime::OpKernelContext* kernelContext = nullptr
+        onnxruntime::OpKernelContext* kernelContext = nullptr
     );
 
     // HasTensorShapeDescription returns false if and only if the kernel is registered using
@@ -404,6 +404,12 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     {
         return m_winmlProvider.CopyTo(executionProvider);
     }
+
+    HRESULT STDMETHODCALLTYPE InputAliasesOutput(
+        uint32_t inputIndex,
+        uint32_t outputIndex,
+        const onnxruntime::TensorShape& outputShape,
+        bool* aliasing) noexcept override;
 
 private:
     // For shape info, in addition to the info
