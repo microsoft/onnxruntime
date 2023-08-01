@@ -100,8 +100,8 @@ def fake_input_mask_data(
         TensorProto.INT64,
     ]
 
+    data = np.zeros((batch_size, sequence_length), dtype=np.int32)
     if random_sequence_length:
-        data = np.zeros((batch_size, sequence_length), dtype=np.int32)
         for i in range(batch_size):
             # We use uniform distribution, so we find proper minimal and maximal so that the average is in the middle.
             if 2 * average_sequence_length > sequence_length:
