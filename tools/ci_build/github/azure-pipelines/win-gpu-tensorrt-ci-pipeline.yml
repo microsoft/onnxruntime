@@ -22,13 +22,6 @@ jobs:
       addToPath: true
       architecture: $(buildArch)
 
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
-
   - script: |
      python -m pip install -q setuptools wheel numpy
     workingDirectory: '$(Build.BinariesDirectory)'
@@ -43,16 +36,10 @@ jobs:
       arguments: --new_dir $(Build.BinariesDirectory)/deps
       workingDirectory: $(Build.BinariesDirectory)
 
-  - powershell: |
-      azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
-    displayName: 'Download CUDA SDK'
-
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
+  - template: templates/jobs/set-winenv.yml
+    parameters:
+      EnvSetupScript: $(EnvSetupScript)
+      DownloadCUDA: true
 
   - task: PowerShell@2
     displayName: 'Install ONNX'
