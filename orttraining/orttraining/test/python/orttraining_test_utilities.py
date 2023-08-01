@@ -6,7 +6,8 @@ from collections import abc
 import pytest
 import torch
 
-from onnxruntime.training.utils.io import _TensorStub, flatten_data_with_schema, unflatten_from_data_and_schema
+from onnxruntime.training.utils.torch_io_helper import _TensorStub
+from onnxruntime.training.utils import flatten_data_with_schema, unflatten_from_data_and_schema
 
 
 @pytest.mark.parametrize(
