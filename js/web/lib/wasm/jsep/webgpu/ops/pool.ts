@@ -7,7 +7,7 @@ import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 // TODO: support:
 // - ceil_mode                 "test_maxpool_2d_ceil"
@@ -66,8 +66,8 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
   const isChannelsLast = attributes.format === 'NHWC';
   const rank = inputDims.length;
   const outputSize = ShapeUtil.size(outputShape);
-  const outputIndicesHelper = createIndicesHelper('output', outputShape);
-  const xIndicesHelper = createIndicesHelper('x', inputDims);
+  const outputIndicesHelper = outputVariable('output', dataType, outputShape);
+  const xIndicesHelper = inputVariable('x', dataType, inputDims);
 
   if (attributes.kernelShape.length <= 2) {
     const kw = attributes.kernelShape[attributes.kernelShape.length - 1];
@@ -86,14 +86,14 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
                   pad++;
                   continue;
                 }
-                let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
+                let x_val = x[${xIndicesHelper.indicesToOffset('xIndices')}];
                 ${op1}
               }`;
     } else {
       codeW = `
               for (var i: u32 = 0u; i < ${kw}u; i++) {
                 xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
-                let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
+                let x_val = x[${xIndicesHelper.indicesToOffset('xIndices')}];
                 ${op1}
               }`;
     }
@@ -129,16 +129,16 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
             @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
             @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
-            ${outputIndicesHelper.o2iImpl}
-            ${xIndicesHelper.i2oImpl}
+            ${outputIndicesHelper.offsetToIndicesImplementation}
+            ${xIndicesHelper.indicesToOffsetImplementation}
 
             ${shaderHelper.mainStart()}
               ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
               ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-              ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
+              ${outputIndicesHelper.offsetToIndices('global_idx', 'indices')}
               ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
-              ${outputIndicesHelper.o2iCall('global_idx', 'xIndices')}
+              ${outputIndicesHelper.offsetToIndices('global_idx', 'xIndices')}
 
               var value: ${dataType} = ${dataType}(${start});
               var pad = 0;
@@ -169,13 +169,13 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
                 }
               }
               if (!isPad) {
-                let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
+                let x_val = x[${xIndicesHelper.indicesToOffset('xIndices')}];
                 ${op1}
               }`;
     } else {
       padCode = `
               }
-              let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
+              let x_val = x[${xIndicesHelper.indicesToOffset('xIndices')}];
               ${op1}
             `;
     }
@@ -183,8 +183,8 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
             @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
             @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
-            ${outputIndicesHelper.o2iImpl}
-            ${xIndicesHelper.i2oImpl}
+            ${outputIndicesHelper.offsetToIndicesImplementation}
+            ${xIndicesHelper.indicesToOffsetImplementation}
 
             const pads = array<u32, ${padsRank}>(${attributes.pads.map(i => `${i}u`).join(',')});
             const inputDims = array<u32, ${rank}>(${inputDims.map(i => `${i}u`).join(',')});
@@ -195,9 +195,9 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
               ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
               ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-              ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
+              ${outputIndicesHelper.offsetToIndices('global_idx', 'indices')}
               ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
-              ${outputIndicesHelper.o2iCall('global_idx', 'xIndices')}
+              ${outputIndicesHelper.offsetToIndices('global_idx', 'xIndices')}
 
               var offsets: array<u32, ${stridesRank}>;
 

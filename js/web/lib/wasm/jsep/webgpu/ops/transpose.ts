@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
@@ -55,26 +55,26 @@ export const createTransposeProgramInfo = (input: TensorView, permAttr: number[]
   // out Dims=[${unpackedOutputShape.toString()}]
   // based on perm=[${perm.toString()}]
 
-  const outputIndicesHelper = createIndicesHelper('output', outputShape);
-  const inputIndicesHelper = createIndicesHelper('a', inputShape);
+  const outputIndicesHelper = outputVariable('output', dataType, outputShape);
+  const inputIndicesHelper = inputVariable('a', dataType, inputShape);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   @group(0) @binding(0) var<storage, read> a : array<${dataType}>;
   @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
   ${permFunctionBody(perm, rank)}
-  ${outputIndicesHelper.o2iImpl}
-  ${inputIndicesHelper.i2oImpl}
+  ${outputIndicesHelper.offsetToIndicesImplementation}
+  ${inputIndicesHelper.indicesToOffsetImplementation}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
     ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-    ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
+    ${outputIndicesHelper.offsetToIndices('global_idx', 'indices')}
     ${inputIndicesHelper.indicesVariableDeclaration('aIndices')}
     perm(&aIndices, &indices);
 
-    output[global_idx] = a[${inputIndicesHelper.i2oExpression('aIndices')}];
+    output[global_idx] = a[${inputIndicesHelper.indicesToOffset('aIndices')}];
   }`;
   return {
     ...transposeProgramMetadata,

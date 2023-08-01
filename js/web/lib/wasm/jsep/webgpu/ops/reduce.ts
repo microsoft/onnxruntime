@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length === 0 || inputs.length > 2) {
@@ -32,60 +32,62 @@ export interface ReduceAttributes extends AttributeWithCacheKey {
 type ReduceOp = (inputs: readonly TensorView[], axes: number[]) => string[];
 const noOp: ReduceOp = (): string[] => ['', '', 'value = _A[inputIdx];', ''];
 const createReduceProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ReduceAttributes,
-     reduceOp: ReduceOp): ProgramInfo => {
-      const outputShape: number[] = [];
-      const inputShape = inputs[0].dims;
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ReduceAttributes, reduceOp: ReduceOp):
+        ProgramInfo => {
+          const outputShape: number[] = [];
+          const inputShape = inputs[0].dims;
 
-      const idxCopy: string[] = [];  // copy output indexes to input indexes
+          const dataType = 'f32';
 
-      const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
-      const outputDimsLength = inputs[0].dims.length - (attributes.keepDims ? 0 : axes.length);
-      const ops = reduceOp(inputs, axes);
-      const inputIndicesHelper = createIndicesHelper('input', inputShape);
-      const initInputIdx = (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`;
-      let reduceOps = `
-          let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};
+          const idxCopy: string[] = [];  // copy output indexes to input indexes
+
+          const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
+          const outputDimsLength = inputs[0].dims.length - (attributes.keepDims ? 0 : axes.length);
+          const ops = reduceOp(inputs, axes);
+          const inputIndicesHelper = inputVariable('input', dataType, inputShape);
+          const initInputIdx =
+              (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.indicesToOffset('inputIndices')};`;
+          let reduceOps = `
+          let inputIdx = ${inputIndicesHelper.indicesToOffset('inputIndices')};
           ${ops[2]};`;
-      const reduceOnAllAxes = !attributes.noopWithEmptyAxes && attributes.axes.length === 0;
-      for (let k = 0; k < inputs[0].dims.length; k++) {
-        // if this axis is reduced
-        if (reduceOnAllAxes || axes.indexOf(k) >= 0) {
-          if (attributes.keepDims) {
-            outputShape.push(1);
-          }  // else { remove the axis from outputShape; }
+          const reduceOnAllAxes = !attributes.noopWithEmptyAxes && attributes.axes.length === 0;
+          for (let k = 0; k < inputs[0].dims.length; k++) {
+            // if this axis is reduced
+            if (reduceOnAllAxes || axes.indexOf(k) >= 0) {
+              if (attributes.keepDims) {
+                outputShape.push(1);
+              }  // else { remove the axis from outputShape; }
 
-          // loop over the d-th axis
-          reduceOps = `for(var j${k}: u32 = 0; j${k} < ${inputs[0].dims[k]}; j${k}++) {
+              // loop over the d-th axis
+              reduceOps = `for(var j${k}: u32 = 0; j${k} < ${inputs[0].dims[k]}; j${k}++) {
                             inputIndices[${k}] = j${k};
                             ${reduceOps}
                           }`;
-        } else {
-          if (outputDimsLength > 1) {
-            idxCopy.push(`inputIndices[${k}] = outputIndices[${outputShape.length}];`);
-          } else {
-            idxCopy.push(`inputIndices[${k}] = outputIndices;`);
+            } else {
+              if (outputDimsLength > 1) {
+                idxCopy.push(`inputIndices[${k}] = outputIndices[${outputShape.length}];`);
+              } else {
+                idxCopy.push(`inputIndices[${k}] = outputIndices;`);
+              }
+              outputShape.push(inputs[0].dims[k]);
+            }
           }
-          outputShape.push(inputs[0].dims[k]);
-        }
-      }
 
-      const outputIndicesHelper = createIndicesHelper('output', outputShape);
-      const outputSize = ShapeUtil.size(outputShape);
-      const dataType = 'f32';
+          const outputIndicesHelper = outputVariable('output', dataType, outputShape);
+          const outputSize = ShapeUtil.size(outputShape);
 
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+          const getShaderSource = (shaderHelper: ShaderHelper) => `
           @group(0) @binding(0) var<storage, read> _A : array<${dataType}>;
           @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
-          ${outputIndicesHelper.o2iImpl}
-          ${inputIndicesHelper.i2oImpl}
+          ${outputIndicesHelper.offsetToIndicesImplementation}
+          ${inputIndicesHelper.indicesToOffsetImplementation}
 
           ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
           ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
           ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-          ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
+          ${outputIndicesHelper.offsetToIndices('global_idx', 'outputIndices')}
 
           var value = ${dataType}(0);
 
@@ -98,13 +100,13 @@ const createReduceProgramInfo =
           output[global_idx] = value;
         }`;
 
-      return {
-        ...metadata,
-        getShaderSource,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
-      };
-    };
+          return {
+            ...metadata,
+            getShaderSource,
+            outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+            dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+          };
+        };
 
 const createReduceAttributesFromInputs =
     (inputs: readonly TensorView[], attributes: ReduceAttributes): ReduceAttributes => {

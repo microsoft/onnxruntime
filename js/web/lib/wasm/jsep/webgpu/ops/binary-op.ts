@@ -5,7 +5,7 @@ import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {outputVariable, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type BinaryCustomExpression = (expressionA: string, expressionB: string) => string;
@@ -33,7 +33,7 @@ const createBinaryOpProgramShader =
       }
 
       let broadcastImpl = '';
-      const outputIndicesHelper = createIndicesHelper('output', dimsOutput);
+      const output = outputVariable('outputData', typeOutput, dimsOutput);
       if (doBroadcast) {
         const calcOffsetImpl = (dims: readonly number[]) => {
           const strides = ShapeUtil.computeStrides(dims);
@@ -48,13 +48,13 @@ const createBinaryOpProgramShader =
         };
 
         broadcastImpl = `
-  ${outputIndicesHelper.o2iImpl}
+  ${output.offsetToIndicesImplementation}
 
-  fn calcOffsetA(outputIndices: ptr<function, ${outputIndicesHelper.iType}>) -> u32 {
+  fn calcOffsetA(outputIndices: ptr<function, ${output.indicesType}>) -> u32 {
     return ${calcOffsetImpl(dimsA)};
   }
 
-  fn calcOffsetB(outputIndices: ptr<function, ${outputIndicesHelper.iType}>) -> u32 {
+  fn calcOffsetB(outputIndices: ptr<function, ${output.indicesType}>) -> u32 {
     return ${calcOffsetImpl(dimsB)};
   }
   `;
@@ -64,8 +64,8 @@ const createBinaryOpProgramShader =
       if (vectorize) {
         if (doBroadcast) {
           assignment = `
-      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-      ${outputIndicesHelper.o2iCall('global_idx * 4u', 'outputIndices')}
+      ${output.indicesVariableDeclaration('outputIndices')}
+      ${output.offsetToIndices('global_idx * 4u', 'outputIndices')}
       let offsetA = calcOffsetA(&outputIndices);
       let offsetB = calcOffsetB(&outputIndices);
       outputData[global_idx] = ${expressionVector('aData[offsetA / 4u]', 'bData[offsetB / 4u]')};`;
@@ -80,7 +80,7 @@ const createBinaryOpProgramShader =
           const expressionA = `aData[indexA${x}][componentA${x}]`;
           const expressionB = `bData[indexB${x}][componentB${x}]`;
           return `
-      ${outputIndicesHelper.o2iCall(`global_idx * 4u + ${x}u`, 'outputIndices')}
+      ${output.offsetToIndices(`global_idx * 4u + ${x}u`, 'outputIndices')}
       let offsetA${x} = calcOffsetA(&outputIndices);
       let offsetB${x} = calcOffsetB(&outputIndices);
       let indexA${x} = offsetA${x} / 4u;
@@ -91,7 +91,7 @@ const createBinaryOpProgramShader =
         };
 
         assignment = `
-      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
+      ${output.indicesVariableDeclaration('outputIndices')}
       ${singleAssignment(0)}
       ${singleAssignment(1)}
       ${singleAssignment(2)}

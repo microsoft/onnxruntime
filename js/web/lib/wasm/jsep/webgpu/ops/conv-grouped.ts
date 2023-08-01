@@ -5,7 +5,7 @@ import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {getActicationSnippet} from './fuse-utils';
 
@@ -39,9 +39,10 @@ const createGroupedConvProgramInfo =
       const outputShape = calculateOutputShape(
           xShape, wShape, attributes.dilations, attributes.pads, attributes.strides, isChannelLast);
       const outputSize = ShapeUtil.size(outputShape);
-      const outputIndicesHelper = createIndicesHelper('output', outputShape);
-      const xIndicesHelper = createIndicesHelper('x', xShape);
-      const wIndicesHelper = createIndicesHelper('w', wShape);
+
+      const output = outputVariable('output', dataType, outputShape);
+      const x = inputVariable('x', dataType, xShape);
+      const w = inputVariable('w', dataType, wShape);
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   const strides: vec2<u32> = vec2(${attributes.strides[0]}u, ${attributes.strides[1]}u);
@@ -51,15 +52,15 @@ const createGroupedConvProgramInfo =
   @group(0) @binding(${inputStorageBuffersDeclarations.length}) var<storage, read_write> output : array<${dataType}>;
 
   ${activationFunction}
-  ${outputIndicesHelper.o2iImpl}
-  ${xIndicesHelper.i2oImpl}
-  ${wIndicesHelper.i2oImpl}
+  ${output.offsetToIndicesImplementation}
+  ${x.indicesToOffsetImplementation}
+  ${w.indicesToOffsetImplementation}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-    ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-    ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
+    ${output.indicesVariableDeclaration('outputIndices')}
+    ${output.offsetToIndices('global_idx', 'outputIndices')}
     let batch: u32 = outputIndices[0];
     let output_channel: u32 = outputIndices[${isChannelLast ? 3 : 1}];
     let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
@@ -83,18 +84,18 @@ const createGroupedConvProgramInfo =
           }
 
           ${
-          xIndicesHelper.indicesVariableDeclaration(
+          x.indicesVariableDeclaration(
               'xIndices',
               isChannelLast ? ['batch', 'xHeight', 'xWidth', 'input_channel'] :
                               [
                                 'batch', 'input_channel', 'xHeight', 'xWidth'
                               ])}
-          let xVal = x[${xIndicesHelper.i2oExpression('xIndices')}];
+          let xVal = x[${x.indicesToOffset('xIndices')}];
           ${
-          wIndicesHelper.indicesVariableDeclaration('wIndices', [
+          w.indicesVariableDeclaration('wIndices', [
             'output_channel', 'wInChannel', 'wHeight', 'wWidth'
           ])}
-          let wVal = w[${wIndicesHelper.i2oExpression('wIndices')}];
+          let wVal = w[${w.indicesToOffset('wIndices')}];
           value += xVal*wVal;
         }
       }

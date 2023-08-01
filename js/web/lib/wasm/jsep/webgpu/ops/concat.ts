@@ -6,7 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, IndicesHelper, ShaderHelper} from './common';
+import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface ConcatAttributes extends AttributeWithCacheKey {
   readonly axis: number;
@@ -50,7 +50,7 @@ const readBufferDataImpl = (indicesHelper: readonly IndicesHelper[], tensorRank:
   const numberOfTensors = indicesHelper.length;
   const codeLines: string[] = [];
   for (let i = 0; i < numberOfTensors; ++i) {
-    const returnSnippet = `return input${i}[${indicesHelper[i].i2oExpression('indices', true)}];`;
+    const returnSnippet = `return input${i}[${indicesHelper[i].indicesToOffset('indices', true)}];`;
     if (numberOfTensors === 1) {
       codeLines.push(returnSnippet);
     } else if (i === 0) {
@@ -62,7 +62,7 @@ const readBufferDataImpl = (indicesHelper: readonly IndicesHelper[], tensorRank:
     }
   }
   return `
-    fn readBufferData(textureIndex: u32, indices: ptr<function, ${indicesHelper[0].iType}>) -> ${dataType} {
+    fn readBufferData(textureIndex: u32, indices: ptr<function, ${indicesHelper[0].indicesType}>) -> ${dataType} {
       ${codeLines.join('\n')}
     }`;
 };
@@ -96,20 +96,20 @@ const createConcatProgramInfo =
 
       const sizeInConcatAxis = new Array<number>(inputs.length);
       const inputStorageBuffersDeclarations = new Array<string>(inputs.length);
-      const inputIndicesHelpers = new Array<IndicesHelper>(inputs.length);
+      const inputVars = new Array<IndicesHelper>(inputs.length);
 
       let previousSum = 0;
       for (let i = 0; i < inputs.length; ++i) {
         previousSum += inputs[i].dims[adjustedAxis];
         sizeInConcatAxis[i] = previousSum;
 
-        inputStorageBuffersDeclarations[i] =
-            `@group(0) @binding(${i}) var<storage, read> input${i} : array<${dataType}>;`;
+        inputVars[i] = inputVariable(`input${i}`, dataType, inputs[i].dims);
 
-        inputIndicesHelpers[i] = createIndicesHelper(`input${i}`, inputs[i].dims);
+        inputStorageBuffersDeclarations[i] =
+            `@group(0) @binding(${i}) var<storage, read> ${inputVars[i].name} : array<${inputVars[i].dataType}>;`;
       }
 
-      const outputIndicesHelper = createIndicesHelper('output', outputShape);
+      const output = outputVariable('output', dataType, outputShape);
 
       const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
@@ -117,18 +117,18 @@ const createConcatProgramInfo =
   ${inputStorageBuffersDeclarations.join('\n')}
   @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
 
-  ${inputIndicesHelpers.map(i => i.i2oImpl).join('\n')}
-  ${outputIndicesHelper.o2iImpl}
+  ${inputVars.map(i => i.indicesToOffsetImplementation).join('\n')}
+  ${output.offsetToIndicesImplementation}
 
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
-  ${readBufferDataImpl(inputIndicesHelpers, rank, dataType)}
+  ${readBufferDataImpl(inputVars, rank, dataType)}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-    ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-    ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
+    ${output.indicesVariableDeclaration('indices')}
+    ${output.offsetToIndices('global_idx', 'indices')}
 
     let textureIndex = calculateInputIndex(${indicesAxis});
     if (textureIndex != 0u) {

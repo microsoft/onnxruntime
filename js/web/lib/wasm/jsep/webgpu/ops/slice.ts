@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata, TensorInfo} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface SliceAttributes extends AttributeWithCacheKey {
   readonly starts: number[];
@@ -76,12 +76,10 @@ const fixStartEndValues =
           }
         };
 
-const calculateInputIndicesImpl = (inputShape: readonly number[], outputShape: readonly number[]): string => {
-  const outputIndicesHelper = createIndicesHelper('output', outputShape);
-  const inputIndicesHelper = createIndicesHelper('input', inputShape);
-
-  return `fn calculateInputIndices(outputIndices: ${outputIndicesHelper.iType}) -> ${inputIndicesHelper.iType} {
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')};
+const calculateInputIndicesImpl =
+    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[]):
+        string => `fn calculateInputIndices(outputIndices: ${output.indicesType}) -> ${input.indicesType} {
+          ${input.indicesVariableDeclaration('inputIndices')};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
             var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
@@ -95,7 +93,6 @@ const calculateInputIndicesImpl = (inputShape: readonly number[], outputShape: r
           }
           return inputIndices;
       }`;
-};
 
 const createSliceProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfo => {
@@ -142,10 +139,11 @@ const createSliceProgramInfo =
         outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
       });
 
-      const output: TensorInfo = {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default};
+      const outputTensorInfo:
+          TensorInfo = {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default};
 
-      const outputIndicesHelper = createIndicesHelper('output', outputShape);
-      const inputIndicesHelper = createIndicesHelper('input', inputShape);
+      const output = outputVariable('output', dataType, outputShape);
+      const input = inputVariable('input', dataType, inputShape);
       const outputSize = ShapeUtil.size(outputShape);
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
@@ -157,21 +155,21 @@ const createSliceProgramInfo =
         const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});
         const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
 
-        ${outputIndicesHelper.o2iImpl}
-        ${inputIndicesHelper.i2oImpl}
-        ${calculateInputIndicesImpl(inputShape, outputShape)}
+        ${output.offsetToIndicesImplementation}
+        ${input.indicesToOffsetImplementation}
+        ${calculateInputIndicesImpl(input, output, inputShape, outputShape)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-          ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-          ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
+          ${output.indicesVariableDeclaration('outputIndices')}
+          ${output.offsetToIndices('global_idx', 'outputIndices')}
+          ${input.indicesVariableDeclaration('inputIndices')}
           inputIndices = calculateInputIndices(outputIndices);
-          output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+          output[global_idx] = input[${input.indicesToOffset('inputIndices')}];
       }`;
       return {
         ...metadata,
         getShaderSource,
-        outputs: [output],
+        outputs: [outputTensorInfo],
         dispatchGroup: () => ({x: Math.ceil(inputSize / 64 /* workgroup size */)})
       };
     };

@@ -21,7 +21,7 @@ import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
-import {createIndicesHelper, ShaderHelper} from '../common';
+import {inputVariable, outputVariable, ShaderHelper} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 
 const createConvTranspose2DOpProgramShaderSource =
@@ -55,9 +55,9 @@ const createConvTranspose2DOpProgramShaderSource =
       return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
     }`;
       }
-      const wIndicesHelper = createIndicesHelper('W', inputs[1].dims);
-      const dyIndicesHelper = createIndicesHelper('Dy', inputs[0].dims);
-      const outputIndicesHelper = createIndicesHelper('result', outputShape);
+      const wIndicesHelper = inputVariable('W', 'f32', inputs[1].dims);
+      const dyIndicesHelper = inputVariable('Dy', 'f32', inputs[0].dims);
+      const outputIndicesHelper = outputVariable('result', 'f32', outputShape);
       const codeSnippet4 = `{
         let batch: u32 = global_id.z / outShape[1];
         let r = global_id.z % outShape[1];
@@ -125,10 +125,10 @@ const createConvTranspose2DOpProgramShaderSource =
               [
                 'd2', 'd1+3', 'wRPerm', 'wCPerm'
               ])};
-                let wValue0 = W[${wIndicesHelper.i2oExpression('wIndices0')}];
-                let wValue1 = W[${wIndicesHelper.i2oExpression('wIndices1')}];
-                let wValue2 = W[${wIndicesHelper.i2oExpression('wIndices2')}];
-                let wValue3 = W[${wIndicesHelper.i2oExpression('wIndices3')}];
+                let wValue0 = W[${wIndicesHelper.indicesToOffset('wIndices0')}];
+                let wValue1 = W[${wIndicesHelper.indicesToOffset('wIndices1')}];
+                let wValue2 = W[${wIndicesHelper.indicesToOffset('wIndices2')}];
+                let wValue3 = W[${wIndicesHelper.indicesToOffset('wIndices3')}];
                 ${
           dyIndicesHelper.indicesVariableDeclaration(
               'dyIndices',
@@ -136,7 +136,7 @@ const createConvTranspose2DOpProgramShaderSource =
                                [
                                  'batch', 'd2', 'idyR', 'idyC'
                                ])};
-                var xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
+                var xValue =  Dy[${dyIndicesHelper.indicesToOffset('dyIndices')}];
                 let tmpval = vec4<f32>(xValue * wValue0,
                                       xValue * wValue1,
                                       xValue * wValue2,
@@ -150,7 +150,7 @@ const createConvTranspose2DOpProgramShaderSource =
                                [
                                  'batch', 'd2', 'idyR', 'idyC2'
                                ])};
-                xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
+                xValue =  Dy[${dyIndicesHelper.indicesToOffset('dyIndices')}];
 
                 dotProd[1] = dotProd[1] + vec4<f32>(xValue * wValue0,
                                                     xValue * wValue1,
@@ -184,10 +184,10 @@ const createConvTranspose2DOpProgramShaderSource =
               [
                 'd2', 'd1+3', 'wRPerm', 'wCPerm'
               ])};
-                let wValue0 = W[${wIndicesHelper.i2oExpression('wIndices0')}];
-                let wValue1 = W[${wIndicesHelper.i2oExpression('wIndices1')}];
-                let wValue2 = W[${wIndicesHelper.i2oExpression('wIndices2')}];
-                let wValue3 = W[${wIndicesHelper.i2oExpression('wIndices3')}];
+                let wValue0 = W[${wIndicesHelper.indicesToOffset('wIndices0')}];
+                let wValue1 = W[${wIndicesHelper.indicesToOffset('wIndices1')}];
+                let wValue2 = W[${wIndicesHelper.indicesToOffset('wIndices2')}];
+                let wValue3 = W[${wIndicesHelper.indicesToOffset('wIndices3')}];
                 ${
           dyIndicesHelper.indicesVariableDeclaration(
               'dyIndices',
@@ -195,7 +195,7 @@ const createConvTranspose2DOpProgramShaderSource =
                                [
                                  'batch', 'd2', 'idyR', 'idyC'
                                ])};
-                var xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
+                var xValue =  Dy[${dyIndicesHelper.indicesToOffset('dyIndices')}];
                 let tmpval = vec4<f32>(xValue * wValue0,
                                       xValue * wValue1,
                                       xValue * wValue2,
@@ -229,10 +229,10 @@ const createConvTranspose2DOpProgramShaderSource =
               [
                 'd2', 'd1+3', 'wRPerm', 'wCPerm'
               ])};
-                let wValue0 = W[${wIndicesHelper.i2oExpression('wIndices0')}];
-                let wValue1 = W[${wIndicesHelper.i2oExpression('wIndices1')}];
-                let wValue2 = W[${wIndicesHelper.i2oExpression('wIndices2')}];
-                let wValue3 = W[${wIndicesHelper.i2oExpression('wIndices3')}];
+                let wValue0 = W[${wIndicesHelper.indicesToOffset('wIndices0')}];
+                let wValue1 = W[${wIndicesHelper.indicesToOffset('wIndices1')}];
+                let wValue2 = W[${wIndicesHelper.indicesToOffset('wIndices2')}];
+                let wValue3 = W[${wIndicesHelper.indicesToOffset('wIndices3')}];
                 ${
           dyIndicesHelper.indicesVariableDeclaration(
               'dyIndices',
@@ -240,7 +240,7 @@ const createConvTranspose2DOpProgramShaderSource =
                                [
                                  'batch', 'd2', 'idyR', 'idyC'
                                ])};
-                var xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
+                var xValue =  Dy[${dyIndicesHelper.indicesToOffset('dyIndices')}];
                 let tmpval = vec4<f32>(xValue * wValue0,
                                       xValue * wValue1,
                                       xValue * wValue2,
@@ -256,11 +256,11 @@ const createConvTranspose2DOpProgramShaderSource =
           outputIndicesHelper.indicesVariableDeclaration('outputIndices', [
             'batch', 'r', 'c+i', 'd1'
           ])};
-          result[${outputIndicesHelper.i2oExpression('outputIndices')}] = dotProd[i];
+          result[${outputIndicesHelper.indicesToOffset('outputIndices')}] = dotProd[i];
         }
       }`;
       const codeSnippet = `
-          ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
+          ${outputIndicesHelper.offsetToIndices('global_idx', 'outputIndices')}
           let batch = outputIndices[0];
           let d1 = outputIndices[${channelDim}];
           let dyCorner = vec2<i32>(i32(outputIndices[${rowDim}]), i32(outputIndices[${colDim}])) - pads;
@@ -301,13 +301,13 @@ const createConvTranspose2DOpProgramShaderSource =
                                [
                                  'batch', 'd2', 'idyR', 'idyC'
                                ])};
-                let xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
+                let xValue =  Dy[${dyIndicesHelper.indicesToOffset('dyIndices')}];
                   ${
           wIndicesHelper.indicesVariableDeclaration('wIndices', [
             'd2', 'd1', 'wRPerm', 'wCPerm'
           ])};
 
-                let wValue = W[${wIndicesHelper.i2oExpression('wIndices')}];
+                let wValue = W[${wIndicesHelper.indicesToOffset('wIndices')}];
                 dotProd = dotProd + xValue * wValue;
               }
             }
@@ -316,9 +316,9 @@ const createConvTranspose2DOpProgramShaderSource =
         `;
 
       return `
-${wIndicesHelper.i2oImpl}
-  ${dyIndicesHelper.i2oImpl}
-  ${outputIndicesHelper.o2iImpl}
+${wIndicesHelper.indicesToOffsetImplementation}
+  ${dyIndicesHelper.indicesToOffsetImplementation}
+  ${outputIndicesHelper.offsetToIndicesImplementation}
   ${declareFunctions}
   ${declareInputs.join('\n')}
   @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
