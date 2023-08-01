@@ -141,6 +141,7 @@ parseArgs(int argc, char* argv[], Cli& cli)
     return true;
 }
 
+
 void
 readBinFile(const char* filename, size_t start, size_t expected_size, std::vector<uint8_t>& buf)
 {
@@ -164,6 +165,7 @@ readBinFile(const char* filename, size_t start, size_t expected_size, std::vecto
     file.read((char*)buf.data(), expected_size);
 }
 
+
 void
 writeUint8Txt(std::ostream& out, const uint8_t* data, size_t len)
 {
@@ -176,7 +178,8 @@ writeUint8Txt(std::ostream& out, const uint8_t* data, size_t len)
     out << std::endl;
 }
 
-void
+
+int
 quantize(const Cli& cli)
 {
     std::vector<uint8_t> srcbuf;
@@ -184,13 +187,13 @@ quantize(const Cli& cli)
     if (srcbuf.size() == 0) {
         std::cerr << "Failed to read expected amount of data from file " << cli.input_file
                   << std::endl;
-        return;
+        return -1;
     }
 
     size_t qsize = MlasQ4GemmPackBSize(cli.quant_type, cli.num_cols, cli.num_rows);
     if (qsize == 0) {
         std::cerr << "Int4 Quantization not yet supported on this platform!";
-        return;
+        return -1;
     }
     std::vector<uint8_t> dstbuf(qsize);
     MlasQ4GemmPackB(cli.quant_type, dstbuf.data(), (const float*)srcbuf.data(), cli.num_cols,
@@ -200,7 +203,7 @@ quantize(const Cli& cli)
         std::ofstream out(cli.output_file, std::ios::out | std::ios::binary);
         if (!out) {
             std::cerr << "Cannot open output file " << cli.output_file  << std::endl;
-            return;
+            return -1;
         }
         out.write((const char*)dstbuf.data(), dstbuf.size());
     } else {
@@ -209,7 +212,7 @@ quantize(const Cli& cli)
             std::ofstream out(cli.output_file, std::ios::out);
             if (!out) {
                 std::cerr << "Cannot open output file " << cli.output_file << std::endl;
-                return;
+                return -1;
             }
             buf = out.rdbuf();
         } else {
@@ -218,22 +221,24 @@ quantize(const Cli& cli)
         std::ostream stream(buf);
         writeUint8Txt(stream, dstbuf.data(), dstbuf.size());
     }
+    return 0;
 }
 
-void
+
+int
 dequantize(const Cli& cli)
 {
     size_t qsize = MlasQ4GemmPackBSize(cli.quant_type, cli.num_cols, cli.num_rows);
     if (qsize == 0) {
         std::cerr << "Int4 Quantization not yet supported on this platform!";
-        return;
+        return -1;
     }
     std::vector<uint8_t> srcbuf;
     readBinFile(cli.input_file, cli.input_offset, qsize, srcbuf);
     if (srcbuf.size() == 0) {
         std::cerr << "Failed to read expected amount of data from file " << cli.input_file
                   << std::endl;
-        return;
+        return -1;
     }
 
     std::vector<float> dstbuf(cli.num_rows * cli.num_cols);
@@ -244,7 +249,7 @@ dequantize(const Cli& cli)
         std::ofstream out(cli.output_file, std::ios::out | std::ios::binary);
         if (!out) {
             std::cerr << "Cannot open output file " << cli.output_file << std::endl;
-            return;
+            return -1;
         }
         out.write((const char*)dstbuf.data(), std::streamsize(dstbuf.size()) * sizeof(float));
     } else {
@@ -253,7 +258,7 @@ dequantize(const Cli& cli)
             std::ofstream out(cli.output_file, std::ios::out);
             if (!out) {
                 std::cerr << "Cannot open output file " << cli.output_file << std::endl;
-                return;
+                return -1;
             }
             buf = out.rdbuf();
         } else {
@@ -270,7 +275,9 @@ dequantize(const Cli& cli)
         }
         stream << std::endl;
     }
+    return 0;
 }
+
 
 int
 main(int argc, char* argv[])
@@ -281,10 +288,8 @@ main(int argc, char* argv[])
         return -1;
     }
     if (cli.dqmode) {
-        dequantize(cli);
+        return dequantize(cli);
     } else {
-        quantize(cli);
+        return quantize(cli);
     }
-
-    return 0;
 }

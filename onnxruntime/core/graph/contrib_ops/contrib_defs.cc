@@ -1720,7 +1720,7 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
 
   ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
 
-  const int64_t* shape_r_data = reinterpret_cast<const int64_t*>(b_shape_tensor->raw_data().data());
+  std::vector<int64_t> shape_r_data = ParseData<int64_t>(b_shape_tensor);
   for (int d = 0; d < 2; d++) {
     shapeR.add_dim()->set_dim_value(shape_r_data[d]);
   }
@@ -1738,8 +1738,8 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
 
   size_t expectedPackSize = MlasQ4GemmPackBSize(
       blk_quant_type,
-      size_t(shapeR.dim(shapeR.dim_size() - 1).dim_value()),
-      size_t(shapeR.dim(shapeR.dim_size() - 2).dim_value()));
+      static_cast<size_t>(shapeR.dim(shapeR.dim_size() - 1).dim_value()),
+      static_cast<size_t>(shapeR.dim(shapeR.dim_size() - 2).dim_value()));
   if (expectedPackSize == 0) {
     fail_shape_inference("4b quantization not yet supported on this hardware platform!");
   }
@@ -1786,8 +1786,15 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
 ONNX_MS_OPERATOR_SET_SCHEMA(MatMulFpQ4, 1,
                             OpSchema()
                                 .SetDoc(R"DOC(
-Matrix product with right hand matrix being pre-packed and quantized int4 data blob.)DOC")
-                                .Attr("blk_quant_type", "", AttributeProto::INT, static_cast<int64_t>(1))
+Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
+During quantization, the matrix is divided into blocks, where each block is a
+continguous subset inside each column. Each block is quantized into a
+sequence of 4b integers with a scaling factor and an optional offset.
+Currently 3 quantization types are supported:
+(0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
+no offset
+)DOC")
+                                .Attr("blk_quant_type", "Quantization type", AttributeProto::INT, static_cast<int64_t>(1))
                                 .Input(0, "A", "N-dimensional matrix A", "T1")
                                 .Input(1, "B", "1-dimensional data blob", "T2")
                                 .Input(2, "B_shape", "Shape information of B", "T3")

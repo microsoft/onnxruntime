@@ -155,7 +155,7 @@ set of 4b integers with a scaling factor and an optional offset.
     parser.add_argument(
         "--quant_bin_path",
         required=True,
-        help="""Currently quantization code is implemented in a seperate binary
+        help="""Currently quantization code is implemented in a separate binary
 (onnxruntime_mlas_q4dq) that is compiled with Onnxruntime native code.
 Path to this binary needs to be provided here.""",
     )

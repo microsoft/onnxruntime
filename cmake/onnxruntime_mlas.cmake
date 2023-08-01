@@ -546,15 +546,15 @@ else()
           )
           set_source_files_properties(${MLAS_SRC_DIR}/q4gemm_avx512.cpp PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
         endif()
-	    if(NOT APPLE)
-            set(mlas_platform_srcs
-                ${mlas_platform_srcs}
-	            ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
-                ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
-                ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
+        if(NOT APPLE)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+	        ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
+            ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+            ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
             )
-            set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-            set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+          set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
 	    endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
@@ -595,6 +595,12 @@ endif()
 
 
 if (NOT onnxruntime_ORT_MINIMAL_BUILD)
+
+  #
+  # Command line tool for quantization and de-quantization of 2-D fp32 tensors
+  # based on block-wise quantization of int4
+  #
+
   onnxruntime_add_executable(onnxruntime_mlas_q4dq
     ${MLAS_SRC_DIR}/q4_dq_cli.cpp
   )

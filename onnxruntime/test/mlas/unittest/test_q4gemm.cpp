@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    Tests for MLAS half precision GEMM.
+    Tests for MLAS GEMM for blockwise int4 quantization.
 
 --*/
 
