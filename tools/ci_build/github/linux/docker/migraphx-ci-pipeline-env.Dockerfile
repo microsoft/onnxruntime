@@ -6,7 +6,7 @@ ARG MIGRAPHX_VERSION=rocm-5.5.0
 ENV DEBIAN_FRONTEND noninteractive
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
 
-RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
+RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y libprotobuf\* protobuf-compiler\* && \
     apt-get install -y locales unzip && apt-get clean -y
 RUN locale-gen en_US.UTF-8
 RUN update-locale LANG=en_US.UTF-8
@@ -16,7 +16,7 @@ ENV LANG C.UTF-8
 WORKDIR /stage
 
 ADD scripts /tmp/scripts
-RUN /tmp/scripts/install_os_deps.sh
+RUN /tmp/scripts/install_os_deps.sh -p /usr/local && rm -rf /tmp/scripts
 
 # from rocm/pytorch's image, work around ucx's dlopen replacement conflicting with shared provider
 RUN cd /opt/mpi_install/ucx/build &&\

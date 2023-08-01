@@ -19,15 +19,20 @@ endforeach()
 
 message("Loading Dependencies ...")
 # ABSL should be included before protobuf because protobuf may use absl
-if(NOT onnxruntime_DISABLE_ABSEIL)
-  include(external/abseil-cpp.cmake)
-endif()
+include(external/abseil-cpp.cmake)
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+if(Patch_FOUND)
+  set(ONNXRUNTIME_RE2_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/re2/re2.patch)
+else()
+ set(ONNXRUNTIME_RE2_PATCH_COMMAND "")
+endif()
+
 FetchContent_Declare(
     re2
     URL ${DEP_URL_re2}
     URL_HASH SHA1=${DEP_SHA1_re2}
+    PATCH_COMMAND ${ONNXRUNTIME_RE2_PATCH_COMMAND}
     FIND_PACKAGE_ARGS NAMES re2
 )
 
@@ -38,10 +43,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     set(gtest_disable_pthreads ON)
   endif()
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-  if(NOT onnxruntime_DISABLE_ABSEIL)
-    # It uses both ABSL and re2
-    set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
-  endif()
+  set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
   # gtest and gmock
   FetchContent_Declare(
     googletest
@@ -161,14 +163,31 @@ if(Patch_FOUND)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
+
+FetchContent_Declare(
+    utf8_range
+    URL ${DEP_URL_utf8_range}
+    URL_HASH SHA1=${DEP_SHA1_utf8_range}
+    FIND_PACKAGE_ARGS NAMES utf8_range
+)
+
+set(utf8_range_ENABLE_TESTS OFF CACHE BOOL "Build test suite" FORCE)
+set(utf8_range_ENABLE_INSTALL OFF CACHE BOOL "Configure installation" FORCE)
+
+
+#Protobuf depends on absl and utf8_range
 FetchContent_Declare(
   Protobuf
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
-  FIND_PACKAGE_ARGS 3.21.12 NAMES Protobuf
+  FIND_PACKAGE_ARGS 22.3.0 NAMES protobuf
 )
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
+set(protobuf_INSTALL OFF CACHE BOOL "Install protobuf binaries and files" FORCE)
+set(protobuf_USE_EXTERNAL_GTEST ON CACHE BOOL "" FORCE)
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
   set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
@@ -316,8 +335,14 @@ FetchContent_Declare(
     URL_HASH SHA1=${DEP_SHA1_safeint}
 )
 
+# use fetch content rather than makeavailable because safeint only includes unconditional test targets
+FetchContent_Populate(safeint)
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
+onnxruntime_fetchcontent_makeavailable(utf8_range)
+# protobuf's cmake/utf8_range.cmake has the following line
+include_directories(${utf8_range_SOURCE_DIR})
+
+onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 GSL flatbuffers)
 if(NOT flatbuffers_FOUND)
   if(NOT TARGET flatbuffers::flatbuffers)
     add_library(flatbuffers::flatbuffers ALIAS flatbuffers)
@@ -415,12 +440,6 @@ FetchContent_Declare(
 
 if (CPUINFO_SUPPORTED)
   onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
-  if (pytorch_cpuinfo_SOURCE_DIR)
-    # shouldn't need to define these aliases after we use a version of cpuinfo with this commit:
-    # https://github.com/pytorch/cpuinfo/commit/082deffc80ce517f81dc2f3aebe6ba671fcd09c9
-    add_library(cpuinfo::cpuinfo ALIAS cpuinfo)
-    add_library(cpuinfo::clog ALIAS clog)
-  endif()
 endif()
 
 

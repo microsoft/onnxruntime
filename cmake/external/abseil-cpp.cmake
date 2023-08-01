@@ -6,7 +6,9 @@ include(FetchContent)
 # Pass to build
 set(ABSL_PROPAGATE_CXX_STD 1)
 set(BUILD_TESTING 0)
-
+set(ABSL_BUILD_TESTING OFF)
+set(ABSL_BUILD_TEST_HELPERS OFF)
+set(ABSL_USE_EXTERNAL_GOOGLETEST ON)
 if(Patch_FOUND AND WIN32)
   set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch)
 else()
@@ -14,7 +16,7 @@ else()
 endif()
 
 # NB! Advancing Abseil version changes its internal namespace,
-# currently absl::lts_20211102 which affects abseil-cpp.natvis debugger
+# currently absl::lts_20230125 which affects abseil-cpp.natvis debugger
 # visualization file, that must be adjusted accordingly, unless we eliminate
 # that namespace at build time.
 FetchContent_Declare(
@@ -22,6 +24,7 @@ FetchContent_Declare(
     URL ${DEP_URL_abseil_cpp}
     URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
+    FIND_PACKAGE_ARGS NAMES absl
 )
 
 onnxruntime_fetchcontent_makeavailable(abseil_cpp)
@@ -37,8 +40,6 @@ if (GDK_PLATFORM)
   target_compile_definitions(absl_symbolize PRIVATE WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP)
 endif()
 
-if(NOT onnxruntime_DISABLE_ABSEIL)
-  set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set
+set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set
     absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set
-    absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
-endif()
+    absl::hash absl::city absl::low_level_hash absl::raw_logging_internal absl::synchronization absl::time)
