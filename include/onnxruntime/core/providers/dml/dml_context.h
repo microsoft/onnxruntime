@@ -4,7 +4,7 @@
 #define ORT_DML_CTX
 
 #include "dml_resource.h"
-#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/context.h"
 #include <DirectML.h>
 #include <d3d12.h>
 
@@ -12,13 +12,13 @@ namespace Ort {
 
 namespace Custom {
 
-struct DmlContext {
+struct DmlContext: public Context {
   IDMLDevice* dml_device = {};
   ID3D12Device* d3d12_device = {};
   ID3D12GraphicsCommandList* cmd_list = {};
   IDMLCommandRecorder* cmd_recorder = {};
 
-  void Init(const OrtKernelContext& kernel_ctx) {
+  void Init(const OrtKernelContext& kernel_ctx) override {
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
     OrtStatus* status = nullptr;

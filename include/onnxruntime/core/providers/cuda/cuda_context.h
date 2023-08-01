@@ -3,7 +3,7 @@
 #pragma once
 
 #include "cuda_resource.h"
-#include <core/session/onnxruntime_cxx_api.h>
+#include "core/providers/context.h"
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <cudnn.h>
@@ -14,14 +14,14 @@ namespace Ort {
 
 namespace Custom {
 
-struct CudaContext {
+struct CudaContext: public Context {
   void* raw_stream = {};
 
   cudaStream_t cuda_stream = {};
   cudnnHandle_t cudnn_handle = {};
   cublasHandle_t cublas_handle = {};
 
-  void Init(const OrtKernelContext& kernel_ctx) {
+  void Init(const OrtKernelContext& kernel_ctx) override {
     void* stream = {};
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
