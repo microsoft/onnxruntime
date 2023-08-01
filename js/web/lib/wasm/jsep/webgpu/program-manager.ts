@@ -33,8 +33,8 @@ export class ProgramManager {
   run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number]): void {
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
-
-    if (this.backend.profilingEnabled) {
+    const profilingEnabled = this.backend.supportTimestampQuery && this.backend.env.webgpu.profilingMode === 'default';
+    if (profilingEnabled) {
       // profiling write start timestamp
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,7 +56,7 @@ export class ProgramManager {
 
     this.backend.pendingDispatchNumber++;
 
-    if (this.backend.profilingEnabled) {
+    if (profilingEnabled) {
       // profiling write end timestamp
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
