@@ -37,13 +37,13 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 
 const getPadConstant =
     (outputDims: readonly number[], inputDims: readonly number[], inputStrides: readonly number[], pads: number[],
-     dataType: string, constant_value: number): string => {
+     dataType: string, constantValue: number): string => {
       const inputRank = inputDims.length;
 
       let block = '';
       for (let i = inputRank - 1; i >= 0; --i) {
         block += `
-            k = i32(${outputDims.length < 2 ? `indices` : `indices[${i}]`}) - ${pads[i]};
+            k = i32(${outputDims.length < 2 ? 'indices' : `indices[${i}]`}) - ${pads[i]};
             if (k < 0) {
               break;
             }
@@ -55,7 +55,7 @@ const getPadConstant =
       }
 
       return `
-          value = ${dataType}(${constant_value});
+          value = ${dataType}(${constantValue});
           for (var i = 0; i < 1; i++) {
             var offset = 0;
             var k = 0;
@@ -73,7 +73,7 @@ const getPadReflect =
           let block = '';
           for (let i = inputRank - 1; i >= 0; --i) {
             block += `
-                k = i32(${outputDims.length < 2 ? `indices` : `indices[${i}]`}) - ${pads[i]};
+                k = i32(${outputDims.length < 2 ? 'indices' : `indices[${i}]`}) - ${pads[i]};
                 if (k < 0) {
                   k = -k;
                 }
@@ -89,12 +89,10 @@ const getPadReflect =
           }
 
           return `
-              for (var i = 0; i < 1; i++) {
-                var offset = 0;
-                var k = 0;
-                ${block}
-                value = x[offset];
-              }
+              var offset = 0;
+              var k = 0;
+              ${block}
+              value = x[offset];
           `;
         };
 
@@ -106,7 +104,7 @@ const getPadEdge =
           let block = '';
           for (let i = inputRank - 1; i >= 0; --i) {
             block += `
-                k = i32(${outputDims.length < 2 ? `indices` : `indices[${i}]`}) - ${pads[i]};
+                k = i32(${outputDims.length < 2 ? 'indices' : `indices[${i}]`}) - ${pads[i]};
                 if (k < 0) {
                   k = 0;
                 }
@@ -118,12 +116,10 @@ const getPadEdge =
           }
 
           return `
-              for (var i = 0; i < 1; i++) {
-                var offset = 0;
-                var k = 0;
-                ${block}
-                value = x[offset];
-              }
+              var offset = 0;
+              var k = 0;
+              ${block}
+              value = x[offset];
           `;
         };
 
@@ -135,7 +131,7 @@ const getPadWrap =
           let block = '';
           for (let i = inputRank - 1; i >= 0; --i) {
             block += `
-                k = i32(${outputDims.length < 2 ? `indices` : `indices[${i}]`}) - ${pads[i]};
+                k = i32(${outputDims.length < 2 ? 'indices' : `indices[${i}]`}) - ${pads[i]};
                 if (k < 0)  {
                   k += ${inputDims[i]};
                 }
@@ -147,12 +143,10 @@ const getPadWrap =
           }
 
           return `
-              for (var i = 0; i < 1; i++) {
-                var offset = 0;
-                var k = 0;
-                ${block}
-                value = x[offset];
-              }
+              var offset = 0;
+              var k = 0;
+              ${block}
+              value = x[offset];
           `;
         };
 
@@ -225,7 +219,7 @@ const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes
     const value = (inputs.length >= 3) ? inputs[2].getFloat32Array()[0] : 0.0;
 
     const inputRank = inputs[0].dims.length;
-    let updatePads = new Int32Array(2 * inputRank).fill(0);
+    const updatePads = new Int32Array(2 * inputRank).fill(0);
     if (inputs.length >= 4) {
       const axes = inputs[3].getBigInt64Array();
       for (let i = 0; i < axes.length; i++) {
@@ -262,4 +256,4 @@ export const parsePadAttributes = (attributes: Record<string, unknown>): PadAttr
   const value = attributes.value as number;
   const pads = attributes.pads as number[];
   return createAttributeWithCacheKey({mode, value, pads});
-}
+};

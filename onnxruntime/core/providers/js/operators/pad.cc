@@ -48,9 +48,12 @@ namespace js {
           .InputMemoryType(OrtMemTypeCPU, 3),                            \
       Pad<data_type>);
 
-PAD_KERNEL_VERSIONED_WITH_MODE_PADS_VALUE_ATTRIBUTES(kOnnxDomain, float, 1, 10)
-PAD_KERNEL_VERSIONED_WITH_MODE_ATTRIBUTE(kOnnxDomain, float, 11, 17)
-PAD_KERNEL_WITH_MODE_ATTRIBUTE(kOnnxDomain, float, 18)
+PAD_KERNEL_VERSIONED_WITH_MODE_PADS_VALUE_ATTRIBUTES(kOnnxDomain, float, 1, 1)
+PAD_KERNEL_VERSIONED_WITH_MODE_PADS_VALUE_ATTRIBUTES(kOnnxDomain, float, 2, 10)
+PAD_KERNEL_VERSIONED_WITH_MODE_ATTRIBUTE(kOnnxDomain, float, 11, 12)
+PAD_KERNEL_VERSIONED_WITH_MODE_ATTRIBUTE(kOnnxDomain, float, 13, 17)
+PAD_KERNEL_VERSIONED_WITH_MODE_ATTRIBUTE(kOnnxDomain, float, 18, 18)
+PAD_KERNEL_WITH_MODE_ATTRIBUTE(kOnnxDomain, float, 19)
 
 }  // namespace js
 }  // namespace onnxruntime
