@@ -36,7 +36,7 @@ typedef enum {
 } MLAS_BLK_QUANT_TYPE;
 
 /**
- * @brief Computs the number of bytes required to pack and int4-quantize
+ * @brief Computes the number of bytes required to pack and int4-quantize
  *        a weight matrix
  * @param QType  type of block quantization
  * @param N      the number of columns of matrix B. 
