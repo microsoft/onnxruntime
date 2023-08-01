@@ -2,6 +2,12 @@
 Run this script to recreate the original onnx model.
 Example usage:
 python mobilenet_v3_small_excerpt_gen.py out_model_path.onnx
+
+The excerpt model and this script were generated from a full model by first extracting the excerpt with
+onnx.utils.extract_model [1] and then generating the python script from the excerpt model with onnx2py [2].
+
+[1]: https://github.com/onnx/onnx/blob/v1.14.0/docs/PythonAPIOverview.md#extracting-sub-model-with-inputs-outputs-tensor-names
+[2]: https://github.com/microsoft/onnxconverter-common/blob/v1.13.0/onnxconverter_common/onnx2py.py
 """
 
 import os
