@@ -23,18 +23,18 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 static std::wstring CurrentModulePath() {
-    WCHAR path[MAX_PATH];
-    FAIL_FAST_IF(0 == GetModuleFileNameW((HINSTANCE)&__ImageBase, path, _countof(path)));
+  WCHAR path[MAX_PATH];
+  FAIL_FAST_IF(0 == GetModuleFileNameW((HINSTANCE)&__ImageBase, path, _countof(path)));
 
-    WCHAR absolute_path[MAX_PATH];
-    WCHAR* name;
-    FAIL_FAST_IF(0 == GetFullPathNameW(path, _countof(path), absolute_path, &name));
+  WCHAR absolute_path[MAX_PATH];
+  WCHAR* name;
+  FAIL_FAST_IF(0 == GetFullPathNameW(path, _countof(path), absolute_path, &name));
 
-    auto idx = std::distance(absolute_path, name);
-    auto out_path = std::wstring(absolute_path);
-    out_path.resize(idx);
+  auto idx = std::distance(absolute_path, name);
+  auto out_path = std::wstring(absolute_path);
+  out_path.resize(idx);
 
-    return out_path;
+  return out_path;
 }
 
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
@@ -43,8 +43,8 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
   wil::unique_hmodule dmlDll(LoadLibraryExW(directml_dll.c_str(), nullptr, 0));
   THROW_LAST_ERROR_IF(!dmlDll);
 
-  auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(
-      GetProcAddress(dmlDll.get(), "DMLCreateDevice1"));
+  auto dmlCreateDevice1Fn =
+    reinterpret_cast<decltype(&DMLCreateDevice1)>(GetProcAddress(dmlDll.get(), "DMLCreateDevice1"));
   THROW_LAST_ERROR_IF(!dmlCreateDevice1Fn);
 
   DML_CREATE_DEVICE_FLAGS dmlFlags = DML_CREATE_DEVICE_FLAG_NONE;
@@ -68,14 +68,21 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 }
 
 namespace onnxruntime {
-void DmlConfigureProviderFactoryDefaultRoundingMode(onnxruntime::IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode);
+void DmlConfigureProviderFactoryDefaultRoundingMode(
+  onnxruntime::IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode
+);
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled);
-}
+}// namespace onnxruntime
 
 #endif  // USE_DML
 
-ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
-                    _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* queue, bool metacommands_enabled) {
+ORT_API_STATUS_IMPL(
+  winmla::OrtSessionOptionsAppendExecutionProviderEx_DML,
+  _In_ OrtSessionOptions* options,
+  _In_ ID3D12Device* d3d_device,
+  _In_ ID3D12CommandQueue* queue,
+  bool metacommands_enabled
+) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   auto dml_device = CreateDmlDevice(d3d_device);
@@ -89,18 +96,22 @@ ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_
   // lifetime and can be large, so shouldn't be rounded.
   // So we create the provider with rounding disabled, and expect the caller to enable it after.
   onnxruntime::DmlConfigureProviderFactoryDefaultRoundingMode(factory, AllocatorRoundingMode::Disabled);
-  
+
   onnxruntime::DmlConfigureProviderFactoryMetacommandsEnabled(factory, metacommands_enabled);
 #endif  // USE_DML
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled) {
+ORT_API_STATUS_IMPL(
+  winmla::DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled
+) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
-  Dml::SetDefaultRoundingMode(dml_provider_internal, is_enabled ? AllocatorRoundingMode::Enabled : AllocatorRoundingMode::Disabled);
+  Dml::SetDefaultRoundingMode(
+    dml_provider_internal, is_enabled ? AllocatorRoundingMode::Enabled : AllocatorRoundingMode::Disabled
+  );
 #endif
   return nullptr;
   API_IMPL_END
@@ -126,11 +137,15 @@ ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderReleaseCompletedReferences, _In_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::DmlCopyTensor, _In_ OrtExecutionProvider* dml_provider, _In_ OrtValue* src, _In_ OrtValue* dst) {
+ORT_API_STATUS_IMPL(
+  winmla::DmlCopyTensor, _In_ OrtExecutionProvider* dml_provider, _In_ OrtValue* src, _In_ OrtValue* dst
+) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
-  auto status = Dml::CopyTensor(dml_provider_internal, *(src->GetMutable<onnxruntime::Tensor>()), *(dst->GetMutable<onnxruntime::Tensor>()));
+  auto status = Dml::CopyTensor(
+    dml_provider_internal, *(src->GetMutable<onnxruntime::Tensor>()), *(dst->GetMutable<onnxruntime::Tensor>())
+  );
   if (!status.IsOK()) {
     return onnxruntime::ToOrtStatus(status);
   }

@@ -146,7 +146,7 @@ def get_memory(memory, model_group):
     memory_columns = [model_title]
     for provider in provider_list:
         if cpu not in provider:
-            memory_columns.append(provider + memory_ending)  # noqa: PERF401
+            memory_columns.append(provider + memory_ending)
     memory_db_columns = [
         model_title,
         cuda,
@@ -273,7 +273,7 @@ def get_latency(latency, model_group):
 
     latency_columns = [model_title]
     for provider in provider_list:
-        latency_columns.append(provider + avg_ending)  # noqa: PERF401
+        latency_columns.append(provider + avg_ending)
     latency_db_columns = table_headers
     latency = adjust_columns(latency, latency_columns, latency_db_columns, model_group)
     return latency
