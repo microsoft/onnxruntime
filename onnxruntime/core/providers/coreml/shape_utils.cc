@@ -3,8 +3,6 @@
 
 #include "core/providers/coreml/shape_utils.h"
 
-#include <sstream>
-
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 
@@ -64,13 +62,7 @@ int64_t ShapeSize(gsl::span<const int64_t> shape) {
 }
 
 std::string Shape2String(gsl::span<const int64_t> shape) {
-  std::ostringstream os;
-  os << "[ ";
-  for (const auto dim : shape) {
-    os << dim << " ";
-  }
-  os << "]";
-  return os.str();
+  return TensorShape(shape).ToString();
 }
 
 }  // namespace onnxruntime::coreml

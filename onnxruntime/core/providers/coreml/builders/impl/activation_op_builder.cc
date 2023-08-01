@@ -67,7 +67,7 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
                       "slope initializer has unsupported data type: ", slope_tensor.data_type());
 
     std::vector<int64_t> x_shape;
-    ORT_RETURN_IF_NOT(GetStaticShape(*node.InputDefs()[0], x_shape, logger), "Failed to get shape of X.");
+    ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], x_shape, logger), "Failed to get shape of X.");
 
     // assume X has 3 or 4 dimensions, that was checked in IsPReluOpSupported()
     const auto num_channels = x_shape[x_shape.size() - 3];
@@ -127,13 +127,19 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
 
   // X input rank must be 3 or 4
   std::vector<int64_t> x_shape;
-  if (!GetStaticShape(*input_defs[0], x_shape, logger)) {
+  if (!GetShape(*input_defs[0], x_shape, logger)) {
     return false;
   }
 
   const auto x_rank = x_shape.size();
   if (x_rank != 3 && x_rank != 4) {
     LOGS(logger, VERBOSE) << "PRelu 'X' input must have 3 or 4 dimensions, it has " << x_rank << " dimensions";
+    return false;
+  }
+
+  // ensure that the third from last dimension is not dynamic
+  if (x_shape[x_rank - 3] == -1) {
+    LOGS(logger, VERBOSE) << "PRelu 'X' input must have a known third from last dimension.";
     return false;
   }
 

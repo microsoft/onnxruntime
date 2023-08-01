@@ -88,7 +88,7 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, EmptyInputFails) {
 
   tester
       .Config(ModelTester::ExpectResult::kExpectFailure,
-              "the runtime shape ([ 0 2 ]) has zero elements. This is not supported by the CoreML EP.")
+              "the runtime shape ({0,2}) has zero elements. This is not supported by the CoreML EP.")
       .ConfigEps(std::move(eps))
       .RunWithConfig();
 }
