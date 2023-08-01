@@ -27,7 +27,7 @@ limitations under the License.
 // Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/bert/layer_norm.cuh"
+#include "contrib_ops/cuda/bert/skip_layer_norm.cuh"
 #include "contrib_ops/cuda/bert/skip_layer_norm_impl.h"
 #include <cuda_fp16.h>
 
@@ -82,7 +82,7 @@ template <typename T, typename V, unsigned TPB, bool Simplified>
 __global__ void SkipLayerNormKernel(
     const int ld, const T* input, const T* skip,
     const V* beta, const V* gamma, const V* bias,
-    const T epsilon, T* output, T* skip_input_bias_add_output, const bool skip_broadcasted, int skip_size) {
+    const T epsilon, T* output, T* skip_input_bias_add_output) {
   const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -94,8 +94,7 @@ __global__ void SkipLayerNormKernel(
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
 
-    const T skip_data = skip_broadcasted ? skip[idx % skip_size] : skip[idx];
-    const T val = (bias == nullptr) ? input[idx] + skip_data : input[idx] + skip_data + bias[i];
+    const T val = (bias == nullptr) ? static_cast<T>(static_cast<float>(input[idx]) + static_cast<float>(skip[idx])) : static_cast<T>(static_cast<float>(input[idx]) + static_cast<float>(skip[idx]) + static_cast<float>(bias[i]));
 
     const T rldval = reverse_ld * val;
     thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
@@ -110,7 +109,7 @@ __global__ void SkipLayerNormKernel(
     SimplifiedLayerNorm<T, V, TPB>(thread_data.value, ld, offset, gamma, epsilon, output);
     return;
   }
-  LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
+  LayerNorm<T, V, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
 // Vectorized kernel
@@ -118,7 +117,7 @@ template <typename T, typename V, unsigned TPB, int ILP, bool Simplified>
 __global__ void SkipLayerNormKernelSmall(
     const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
     const V* bias, const T epsilon, T* output, T* skip_input_bias_add_output,
-    bool hasBias, bool hasSkipInputBiasAdditionOutput, const bool skip_broadcasted, const int skip_size) {
+    bool hasBias, bool hasSkipInputBiasAdditionOutput) {
   const T rld = T(1.f / ld);
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
@@ -130,11 +129,8 @@ __global__ void SkipLayerNormKernelSmall(
   *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
 
   VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
-  if (skip_broadcasted){
-  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx % skip_size]);
-  }else{
   *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
-  }
+
 
   if (hasBias) {
     VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
@@ -177,7 +173,7 @@ template <typename T, typename V, bool Simplified>
 Status LaunchSkipLayerNormKernel(
     cudaStream_t stream, T* output, T* skip_input_bias_add_output, const T* input, const T* skip, const V* gamma,
     const V* beta, const V* bias, float epsilon, const int ld, const int element_count,
-    size_t element_size,  const bool skip_broadcasted, const int skip_size) {
+    size_t element_size) {
   // this must be true because n is the total size of the tensor
 
   if (element_count == 0) {
@@ -199,10 +195,10 @@ Status LaunchSkipLayerNormKernel(
 #define LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(num_unroll)                                                          \
   SkipLayerNormKernelSmall<T, V, block_size, num_unroll, Simplified>                                                \
       <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, \
-                                             skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput, skip_broadcasted, skip_size)
+                                             skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput)
 #define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                       \
   SkipLayerNormKernel<T, V, kMaxBlockSize, Simplified><<<grid_size, kMaxBlockSize, 0, stream>>>( \
-      ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, skip_input_bias_add_output, skip_broadcasted, skip_size)
+      ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, skip_input_bias_add_output)
 #define CASE_NEXT_SIZE(next_size_value)               \
   case next_size_value: {                             \
     if (flag_vec4) {                                  \
@@ -234,19 +230,22 @@ Status LaunchSkipLayerNormKernel(
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define SKIPLAYERNORM_IMPL(T, V, Simplified)                                                                 \
+#define SKIPLAYERNORM_IMPL(T, V, Simplified)                                                       \
   template Status LaunchSkipLayerNormKernel<T, V, Simplified>(cudaStream_t stream, T* output,               \
                                                            T * skip_input_bias_add_output,                \
                                                            const T* input, const T* skip, const V* gamma, \
                                                            const V* beta, const V* bias, float epsilon,   \
                                                            const int ld, const int element_count,         \
-                                                           size_t element_size,  const bool skip_broadcasted, \
-                                                           const int skip_size);
+                                                           size_t element_size);
 
 SKIPLAYERNORM_IMPL(float, half, true);
+SKIPLAYERNORM_IMPL(float, half, false);
 SKIPLAYERNORM_IMPL(float, float, false);
+SKIPLAYERNORM_IMPL(float, float, true);
 SKIPLAYERNORM_IMPL(half, float, true);
+SKIPLAYERNORM_IMPL(half, float, false);
 SKIPLAYERNORM_IMPL(half, half, false);
+SKIPLAYERNORM_IMPL(half, half, true);
 
 }  // namespace cuda
 }  // namespace contrib

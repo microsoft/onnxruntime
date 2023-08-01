@@ -451,18 +451,22 @@ void HostApplyLayerNorm(
                                                         U* mean, U* inv_std_dev, const V* input, int n1, int n2,      \
                                                         double epsilon, const V* gamma, const V* beta, const T* skip, \
                                                         const V* bias, T* skip_input_bias_add_output);
+  template void HostApplyLayerNorm<float, float, half, true>(const cudaDeviceProp& prop, cudaStream_t stream, half* output,
+                                                        float* mean, float* inv_std_dev, const float* input, int n1, int n2,
+                                                        double epsilon, const half* gamma, const half* beta, const float* skip,
+                                                        const half* bias, float* skip_input_bias_add_output);
 
 LAYERNORM_LINEAR_IMPL(float, float, float, true)
 LAYERNORM_LINEAR_IMPL(half, float, half, true)
 LAYERNORM_LINEAR_IMPL(double, double, double, true)
-/*LAYERNORM_LINEAR_IMPL(float, float, half, true)
-LAYERNORM_LINEAR_IMPL(half, float, float, true)*/
+LAYERNORM_LINEAR_IMPL(float, float, half, true)
+LAYERNORM_LINEAR_IMPL(half, float, float, true)
 LAYERNORM_LINEAR_IMPL(float, float, float, false)
 LAYERNORM_LINEAR_IMPL(half, float, half, false)
 LAYERNORM_LINEAR_IMPL(double, double, double, false)
 LAYERNORM_LINEAR_IMPL(double, float, double, false)
-/*LAYERNORM_LINEAR_IMPL(float, float, half, false)
-LAYERNORM_LINEAR_IMPL(half, float, float, false)*/
+LAYERNORM_LINEAR_IMPL(float, float, half, false)
+LAYERNORM_LINEAR_IMPL(half, float, float, false)
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, true)
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, false)
 

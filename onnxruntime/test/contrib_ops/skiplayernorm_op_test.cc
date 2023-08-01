@@ -84,46 +84,41 @@ static void RunTest(
 
     test.Run();
 
-  } else if (!use_float16_input_skip){
-    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
-    test.AddInput<float>("input", input_dims, input_data);
-    test.AddInput<float>("skip", skip_dims, skip_data);
-
-    test.AddOutput<float>("output", output_dims, output_data);
-
-    if (skip_input_bias_add_output_data.size() != 0) {
-      // The second and third outputs are reserved for something else
-      test.AddOptionalOutputEdge<float>();
-      test.AddOptionalOutputEdge<float>();
-
-      test.AddOutput<float>("skip_input_bias_add_output",
-                            output_dims,
-                            skip_input_bias_add_output_data);
-    }
-
-    test.Run();
-
-  } else if (!use_float16_gamma_beta_bias) {
-    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
-    test.AddInput<float>("gamma", gamma_dims, gamma_data);
-    if (!simplified) {
-      if (!no_beta) {
-        test.AddInput<float>("beta", beta_dims, beta_data);
-      } else {
-        test.AddOptionalInputEdge<float>();
-      }
-    }
-    test.AddAttribute("epsilon", epsilon);
-    if (!bias_data.empty()) {
-      test.AddInput<float>("bias", bias_dims, bias_data);
-    }
-
-    test.Run();
-
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
              rocm_ep != nullptr) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
+    if (use_float16_input_skip) {
+      test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
+      test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
+
+      test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
+
+      if (skip_input_bias_add_output_data.size() != 0) {
+      // The second and third outputs are reserved for something else
+      test.AddOptionalOutputEdge<MLFloat16>();
+      test.AddOptionalOutputEdge<MLFloat16>();
+
+      test.AddOutput<MLFloat16>("skip_input_bias_add_output",
+                                output_dims,
+                                ToFloat16(skip_input_bias_add_output_data));
+      }
+    } else if (use_float16_gamma_beta_bias) {
+      test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
+      if (!simplified) {
+        if (!no_beta) {
+          test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
+        } else {
+          test.AddOptionalInputEdge<float>();
+        }
+    }
+    test.AddAttribute("epsilon", epsilon);
+    if (!bias_data.empty()) {
+      test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
+    }
+
+    test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
+    } else {
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
     test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
     test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
@@ -149,8 +144,11 @@ static void RunTest(
       test.AddOutput<MLFloat16>("skip_input_bias_add_output",
                                 output_dims,
                                 ToFloat16(skip_input_bias_add_output_data));
+      }
+     }
     }
 
+    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
@@ -174,7 +172,6 @@ static void RunTest(
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
-}
 
 TEST(SkipLayerNormTest, SkipLayerNormNullInput) {
   int batch_size = 1;
@@ -806,8 +803,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_DiffDataTypes) {
           false,
           false,
           false,
-          false,
-          true);
+          true,
+          false);
 }
 
 

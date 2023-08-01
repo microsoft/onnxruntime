@@ -972,7 +972,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "V")
         .Input(3, "beta", "1D skip tensor with shape (hidden_size", "V", OpSchema::Optional)
         .Input(4, "bias", "1D bias tensor with shape (hidden_size", "V", OpSchema::Optional)
-        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "V")
+        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
         .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
         .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
         .Output(3, "input_skip_bias_sum", "Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).", "T", OpSchema::Optional)
@@ -999,11 +999,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(2,
                "gamma",
                "1D input tensor with shape (hidden_size)",
-               "T")
+               "V")
         .Input(3,
                "bias",
                "1D bias tensor with shape (hidden_size",
-               "T",
+               "V",
                OpSchema::Optional)
         .Output(0,
                 "output",
@@ -1027,6 +1027,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeConstraint("V", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
         .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 

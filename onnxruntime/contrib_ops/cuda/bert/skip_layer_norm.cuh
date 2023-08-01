@@ -80,10 +80,10 @@ struct KeyValuePairSum {
   }
 };
 
-template <typename T, int TPB>
+template <typename T, typename V, int TPB>
 __device__ inline void LayerNorm(
-    const cub::KeyValuePair<T, T>& thread_data, const int ld, const int offset, const T* beta,
-    const T* gamma, const T epsilon, T* output) {
+    const cub::KeyValuePair<T, T>& thread_data, const int ld, const int offset, const V* beta,
+    const V* gamma, const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
 
   using BlockReduce = cub::BlockReduce<cub::KeyValuePair<T, T>, TPB>;
@@ -103,9 +103,9 @@ __device__ inline void LayerNorm(
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
     const T val = output[idx];
-    const T g(gamma[i]);
-    const T b = (nullptr == beta) ? (T)0 : beta[i];
-    output[idx] = g * (val - mu) * rsigma + b;
+    const V g(gamma[i]);
+    const V b = (nullptr == beta) ? (V)static_cast<V>(0.0f) : beta[i];
+    output[idx] = static_cast<T>(static_cast<float>(g) * (static_cast<float>(val) - static_cast<float>(mu)) * static_cast<float>(rsigma) + static_cast<float>(b));
   }
 }
 
@@ -129,13 +129,13 @@ __device__ inline void SimplifiedLayerNorm(
     const int idx = offset + i;
     const T val = output[idx];
     const V g(gamma[i]);
-    output[idx] = g * val * rsigma;
+    output[idx] = static_cast<T>(static_cast<float>(g) * static_cast<float>(val) * static_cast<float>(rsigma));
   }
 }
 
-template <typename T, int TPB, int ILP>
+template <typename T, typename V, int TPB, int ILP>
 __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<T, T>& thread_data,
-                                      const int ld, const int idx, const T* beta, const T* gamma,
+                                      const int ld, const int idx, const V* beta, const V* gamma,
                                       const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
@@ -176,9 +176,9 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
   }
 }
 
-template <typename T, int TPB, int ILP>
+template <typename T, typename V, int TPB, int ILP>
 __device__ inline void SimplifiedLayerNormSmall(const T* input_v, const T& thread_data, const int ld, const int idx,
-                                                const T* gamma, const T epsilon, T* output) {
+                                                const V* gamma, const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
   // value is available in a register
