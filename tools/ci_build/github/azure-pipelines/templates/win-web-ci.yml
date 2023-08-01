@@ -103,6 +103,10 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
     displayName: 'npm ci /js/common/'
   - script: |
+     npm test
+    workingDirectory: '$(Build.SourcesDirectory)\js\common'
+    displayName: 'run onnxruntime-common tests'
+  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
