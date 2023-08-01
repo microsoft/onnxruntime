@@ -40,6 +40,9 @@ function(AddTest)
   endif()
   if (MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "/wd6330")
+    #Abseil has a lot of C4127/C4324 warnings. 
+    target_compile_options(${_UT_TARGET} PRIVATE "/wd4127")
+    target_compile_options(${_UT_TARGET} PRIVATE "/wd4324")
   endif()
 
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
