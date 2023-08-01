@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 #include <vector>
 
 #include "core/framework/float8.h"
@@ -37,3 +39,5 @@ TEST(Float8_Tests, CastE4M3FN) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // DISABLE_FLOAT8_TYPES
