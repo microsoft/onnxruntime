@@ -5,12 +5,7 @@
     "ops": []
   },
   "webgl": {
-    "onnx": [
-      "resnet50",
-      "squeezenet",
-      "tiny_yolov2",
-      "emotion_ferplus"
-    ],
+    "onnx": ["resnet50", "squeezenet", "tiny_yolov2", "emotion_ferplus"],
     "node": [
       "test_abs",
       "test_acos_example",
@@ -1370,12 +1365,7 @@
     ]
   },
   "wasm": {
-    "onnx": [
-      "resnet50",
-      "squeezenet",
-      "tiny_yolov2",
-      "emotion_ferplus"
-    ],
+    "onnx": ["resnet50", "squeezenet", "tiny_yolov2", "emotion_ferplus"],
     "node": [
       // Check in node tests that have native Wasm implementations
       // (i.e.) not tests that rely on the fallback cpu implementations
@@ -1474,12 +1464,7 @@
     "ops": []
   },
   "webnn": {
-    "onnx": [
-      "resnet50",
-      "squeezenet",
-      "tiny_yolov2",
-      "emotion_ferplus"
-    ],
+    "onnx": ["resnet50", "squeezenet", "tiny_yolov2", "emotion_ferplus"],
     "node": [
       // Check in node tests that have native Wasm implementations.
       // (i.e.) not tests that rely on the fallback cpu implementations.
