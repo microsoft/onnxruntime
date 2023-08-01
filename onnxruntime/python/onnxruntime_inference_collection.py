@@ -230,7 +230,7 @@ class Session:
 
     def run_async(self, output_names, input_feed, callback, user_data, run_options=None):
         """
-        Compute the predictions asynchronously in a separate cxx thread from ort intro-op threadpool.
+        Compute the predictions asynchronously in a separate cxx thread from ort intra-op threadpool.
 
         :param output_names: name of the outputs
         :param input_feed: dictionary ``{ input_name: input_value }``
