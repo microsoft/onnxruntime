@@ -644,6 +644,17 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
 
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running on CUDA.")
+    def test_compare_cpu_cuda_e4m3fn(self):
+        folder = os.path.join(os.path.dirname(__file__), "..", "..", "testdata", "float8")
+        model = os.path.join("te.cast_fp8_1_fp32.onnx")
+
+        sess_cpu = InferenceSession(model, providers=["CPUExecutionProvider"])
+        sess_cuda = InferenceSession(model, providers=["CUDAExecutionProvider"])
+        
+        
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
