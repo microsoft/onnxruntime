@@ -57,20 +57,15 @@ public:
         }
     }
 
-    void Compute(const MLOperatorKernelContext& kernelContext)
+    void Compute(const MLOperatorKernelContext& kernelContext) final
     {
         MLOperatorTensor inputTensor = kernelContext.GetInputTensor(0);
-
-        // Reshape the output tensor.
         MLOperatorTensor outputTensor = kernelContext.GetOutputTensor(0);
 
         // Avoid self copying.
         if (inputTensor.GetByteData() != outputTensor.GetByteData())
         {
-            // Copy elements from input tensor to output tensor.
-            ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
-                outputTensor.GetInterface().Get(),
-                inputTensor.GetInterface().Get()));
+            DmlOperator::Compute(kernelContext);
         }
     }
 };
