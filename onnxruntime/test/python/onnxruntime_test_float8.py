@@ -7,13 +7,12 @@ import platform
 import sys
 import unittest
 
-import packaging.version as pv
-
 import numpy as np
+import packaging.version as pv
 import parameterized
 from numpy.testing import assert_allclose
-from onnx import __version__ as onnx_version
 from onnx import TensorProto
+from onnx import __version__ as onnx_version
 from onnx.checker import check_model
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor, make_tensor_value_info
 from onnx.reference import ReferenceEvaluator
