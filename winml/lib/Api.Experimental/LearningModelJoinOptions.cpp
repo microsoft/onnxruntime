@@ -3,8 +3,7 @@
 
 namespace WINML_EXPERIMENTALP {
 
-LearningModelJoinOptions::LearningModelJoinOptions()
-{
+LearningModelJoinOptions::LearningModelJoinOptions() {
   GUID guid;
   WINML_THROW_IF_FAILED(CoCreateGuid(&guid));
 
@@ -16,36 +15,29 @@ LearningModelJoinOptions::LearningModelJoinOptions()
   ::CoTaskMemFree(guidString);
 }
 
-bool LearningModelJoinOptions::PromoteUnlinkedOutputsToFusedOutputs()
-{
-    return promote_unlinked_outputs_;
+bool LearningModelJoinOptions::PromoteUnlinkedOutputsToFusedOutputs() {
+  return promote_unlinked_outputs_;
 }
-void LearningModelJoinOptions::PromoteUnlinkedOutputsToFusedOutputs(bool value)
-{
-    promote_unlinked_outputs_ = value;
+void LearningModelJoinOptions::PromoteUnlinkedOutputsToFusedOutputs(bool value) {
+  promote_unlinked_outputs_ = value;
 }
-winrt::hstring LearningModelJoinOptions::JoinedNodePrefix()
-{
+winrt::hstring LearningModelJoinOptions::JoinedNodePrefix() {
   return winrt::to_hstring(join_prefix_);
 }
-void LearningModelJoinOptions::JoinedNodePrefix(hstring const& join_prefix)
-{
+void LearningModelJoinOptions::JoinedNodePrefix(hstring const& join_prefix) {
   join_prefix_ = winrt::to_string(join_prefix);
 }
-bool LearningModelJoinOptions::CloseModelOnJoin()
-{
-    return close_model_on_link_;
+bool LearningModelJoinOptions::CloseModelOnJoin() {
+  return close_model_on_link_;
 }
-void LearningModelJoinOptions::CloseModelOnJoin(bool value)
-{
-    close_model_on_link_ = value;
+void LearningModelJoinOptions::CloseModelOnJoin(bool value) {
+  close_model_on_link_ = value;
 }
-void LearningModelJoinOptions::Link(hstring const& firstModelOutput, hstring const& secondModelInput)
-{
-    linkages_[winrt::to_string(firstModelOutput)] = winrt::to_string(secondModelInput);
+void LearningModelJoinOptions::Link(hstring const& firstModelOutput, hstring const& secondModelInput) {
+  linkages_[winrt::to_string(firstModelOutput)] = winrt::to_string(secondModelInput);
 }
 const std::unordered_map<std::string, std::string>& LearningModelJoinOptions::GetLinkages() {
-    return linkages_;
+  return linkages_;
 }
 
-}
+}// namespace WINML_EXPERIMENTALP

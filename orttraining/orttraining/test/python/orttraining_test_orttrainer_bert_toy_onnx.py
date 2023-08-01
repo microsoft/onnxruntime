@@ -134,7 +134,7 @@ def load_bert_onnx_model():
 
 
 class CustomLossScaler(amp.LossScaler):
-    def __init__(self, loss_scale=float(1 << 16)):  # noqa: B008
+    def __init__(self, loss_scale=float(1 << 16)):
         super().__init__(loss_scale)
         self._initial_loss_scale = loss_scale
         self.loss_scale = loss_scale
@@ -151,7 +151,7 @@ class CustomLossScaler(amp.LossScaler):
 
 
 class LegacyCustomLossScaler:
-    def __init__(self, loss_scale=float(1 << 16)):  # noqa: B008
+    def __init__(self, loss_scale=float(1 << 16)):
         self._initial_loss_scale = loss_scale
         self.loss_scale_ = loss_scale
 

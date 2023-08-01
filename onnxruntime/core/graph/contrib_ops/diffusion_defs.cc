@@ -44,9 +44,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("activation",
               "Activation after group normalization: 0 for None, 1 for Swish",
               AttributeProto::INT)
+        .Attr("channels_last",
+              "1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Input(0,
                "X",
-               "Input data tensor. Dimensions are (N x H x W x C), where N is the batch size, C is the number of channels, and H and W are the height and width of the data",
+               "Input data tensor. Dimensions are (N x H x W x C) when channels_last is 1 or (N x C x H x W) otherwise, where N is the batch size, C is the number of channels, and H and W are the height and width of the data",
                "T")
         .Input(1,
                "gamma",
@@ -61,7 +65,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "The output tensor of the same shape as X",
                 "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.")
-        .TypeConstraint("M", {"tensor(float)"}, "Constrain gamma and beta to float tensors.")
+        .TypeConstraint("M", {"tensor(float16)", "tensor(float)"}, "Constrain gamma and beta to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 constexpr const char* BiasSplitGelu_ver1_doc = R"DOC(

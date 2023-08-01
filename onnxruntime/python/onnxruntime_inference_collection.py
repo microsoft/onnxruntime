@@ -24,6 +24,8 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         return C.OrtDevice.cann()
     elif device_type == "cpu":
         return C.OrtDevice.cpu()
+    elif device_type == "dml":
+        return C.OrtDevice.dml()
     elif device_type == "ort":
         return C.get_ort_device(device_index).device_type()
     else:
@@ -188,7 +190,6 @@ class Session:
         self._enable_fallback = True
 
     def _validate_input(self, feed_input_names):
-        # import pdb; pdb.set_trace()
         missing_input_names = []
         for input in self._inputs_meta:
             if input.name not in feed_input_names and not input.type.startswith("optional"):
@@ -219,7 +220,7 @@ class Session:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"EP Error: {err!s} using {self._providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
@@ -260,7 +261,7 @@ class Session:
             return invoke(self._sess, output_names, input_dict_ort_values, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"EP Error: {err!s} using {self._providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.

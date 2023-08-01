@@ -6061,3 +6061,89 @@ def test_e2e_padding_elimination():
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
+
+
+@pytest.mark.skipif(
+    Version(torch.__version__) >= Version("1.13.0"),
+    reason="PyTorch since 1.13 don't output expected warning messages any more",
+)
+@pytest.mark.parametrize("log_level", [LogLevel.VERBOSE, LogLevel.INFO, LogLevel.WARNING])
+def test_ortmodule_log_level_control(log_level, caplog):
+    class NeuralNetCrossEntropyLoss(torch.nn.Module):
+        def __init__(self, num_embeddings, embedding_dim):
+            super().__init__()
+            self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=1)
+
+        def forward(self, input, positions):
+            output = torch.transpose(self.embedding(input), 0, 1)
+            ignored_index = output.size(1)
+            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=ignored_index)
+            return loss_fct(output, positions)
+
+    device = "cuda"
+    num_embeddings, embedding_dim = 32, 128
+    pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
+
+    ort_model = ORTModule(pt_model, DebugOptions(log_level=log_level))
+    use_fp16 = True
+
+    def run_step(model, input, positions):
+        with amp.autocast(use_fp16):
+            loss = model(input, positions)
+        loss.backward()
+        return loss
+
+    N = random.randint(16, 32)  # noqa: N806
+    input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
+    positions = torch.randint(high=N, size=(embedding_dim,), dtype=torch.int64, device=device)
+    _ = run_step(ort_model, input, positions)
+
+    found_missing_inference_log = False
+    for record in caplog.records:
+        msg = record.getMessage()
+        print(msg)
+        if "The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing" in msg:
+            found_missing_inference_log = True
+            break
+
+    if log_level == LogLevel.VERBOSE:
+        assert found_missing_inference_log
+    else:
+        assert not found_missing_inference_log
+
+
+def test_cache_exported_model():
+    class Net(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = torch.nn.Linear(10, 1)
+
+        def forward(self, x):
+            x = x.view(x.shape[0], -1)
+            x = torch.nn.functional.relu(self.fc(x))
+            return x
+
+    data = torch.randn(1, 10)
+
+    with tempfile.TemporaryDirectory() as temporary_dir:
+        os.environ["ORTMODULE_CACHE_DIR"] = temporary_dir
+
+        # first time seeing the model, architecture should be cached under ORTMODULE_CACHE_DIR
+        model_pre_cache = Net()
+        model_pre_cache = ORTModule(model_pre_cache, DebugOptions(log_level=LogLevel.INFO))
+
+        torch.onnx.export = unittest.mock.MagicMock(side_effect=torch.onnx.export)
+        _ = model_pre_cache(data)
+        torch.onnx.export.assert_called()
+        torch.onnx.export.reset_mock()
+
+        # second time seeing the model, architecture should be loaded from ORTMODULE_CACHE_DIR
+        model_post_cache = Net()
+        model_post_cache = ORTModule(model_post_cache, DebugOptions(log_level=LogLevel.INFO))
+
+        torch.onnx.export = unittest.mock.MagicMock(side_effect=torch.onnx.export)
+        _ = model_post_cache(data)
+        torch.onnx.export.assert_not_called()
+        torch.onnx.export.reset_mock()
+
+        del os.environ["ORTMODULE_CACHE_DIR"]
