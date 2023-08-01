@@ -7,6 +7,8 @@ import {conv, parseConvAttributes} from './ops/conv';
 import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
 import {expand} from './ops/expand';
 import {gemm, parseGemmAttributes} from './ops/gemm';
+import {instanceNorm, parseInstanceNormAttributes} from './ops/instance-norm';
+import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
@@ -15,8 +17,6 @@ import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
-import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
-import {instanceNorm, parseInstanceNormAttributes} from './ops/instance-norm';
 
 export type RunFunction = (context: ComputeContext, attribute?: unknown) => void;
 export type ParseAttributeFunction = (attributeRaw: unknown) => unknown;

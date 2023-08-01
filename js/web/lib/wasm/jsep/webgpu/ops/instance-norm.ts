@@ -1,16 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata } from '../types';
-import { TensorView } from '../../tensor';
-import { DataType, tensorTypeToWsglType } from '../../../wasm-common';
-import { ShapeUtil } from '../../util';
-import { ShaderHelper } from './common';
-import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
+import {TensorView} from '../../tensor';
+import {ShapeUtil} from '../../util';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
+import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+
+import {ShaderHelper} from './common';
 
 export interface InstanceNormAttributes extends AttributeWithCacheKey {
   epsilon: number;
-  format: 'NHWC' | 'NCHW';
+  format: 'NHWC'|'NCHW';
 }
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
@@ -24,30 +25,29 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const createInstanceNormProgramInfo =
-  (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes):
-    ProgramInfo => {
-    const xShape = inputs[0].dims;
-    const scale = inputs[1];
-    const bias = inputs[2];
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
+      const xShape = inputs[0].dims;
+      const scale = inputs[1];
+      const bias = inputs[2];
 
-    const outputShape = xShape;
-    const outputSize = ShapeUtil.size(outputShape);
-    const axis = 2;
-    const normCount = ShapeUtil.sizeToDimension(xShape, axis);
-    const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
-    const C = xShape[1];
+      const outputShape = xShape;
+      const outputSize = ShapeUtil.size(outputShape);
+      const axis = 2;
+      const normCount = ShapeUtil.sizeToDimension(xShape, axis);
+      const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
+      const C = xShape[1];
 
-    const scaleSize = ShapeUtil.size(scale.dims);
-    const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
-    if (scaleSize !== normSize || (bias && biasSize !== normSize)) {
-      throw new Error(`Size of X.shape()[axis:] == ${normSize}.
+      const scaleSize = ShapeUtil.size(scale.dims);
+      const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
+      if (scaleSize !== normSize || (bias && biasSize !== normSize)) {
+        throw new Error(`Size of X.shape()[axis:] == ${normSize}.
              Size of scale and bias (if provided) must match this. 
              Got scale size of ${scaleSize} and bias size of ${biasSize}`);
-    }
+      }
 
-    const dataType = tensorTypeToWsglType(inputs[0].dataType);
+      const dataType = tensorTypeToWsglType(inputs[0].dataType);
 
-    const getShaderSource = (shaderHelper: ShaderHelper) => `
+      const getShaderSource = (shaderHelper: ShaderHelper) => `
   const C: u32 = ${C};
   const normSize: u32 = ${normSize};
   const normSizeTyped: ${dataType} = ${normSize};
@@ -80,30 +80,29 @@ const createInstanceNormProgramInfo =
         output[j + offset] = x[j + offset] * channelScale + channelShift;
     }
   }`;
-    return {
-      ...metadata,
-      outputs: [
-        { dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default },
-      ],
-      getShaderSource,
-      dispatchGroup: () => ({ x: Math.ceil(normCount / 64 /* workgroup size */) })
+      return {
+        ...metadata,
+        outputs: [
+          {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+        ],
+        getShaderSource,
+        dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
+      };
     };
-  };
 
 const createInstanceNormNHWCProgramInfo =
-  (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes):
-    ProgramInfo => {
-    const xShape = inputs[0].dims;
-    const outputShape = xShape;
-    const outputSize = ShapeUtil.size(outputShape);
-    const N = xShape[0];
-    const C = xShape[xShape.length - 1];
-    const H = ShapeUtil.sizeFromDimension(xShape, 1) / C;
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
+      const xShape = inputs[0].dims;
+      const outputShape = xShape;
+      const outputSize = ShapeUtil.size(outputShape);
+      const N = xShape[0];
+      const C = xShape[xShape.length - 1];
+      const H = ShapeUtil.sizeFromDimension(xShape, 1) / C;
 
-    const dataType = tensorTypeToWsglType(inputs[0].dataType);
+      const dataType = tensorTypeToWsglType(inputs[0].dataType);
 
-    const normCount = C * N;
-    const getShaderSource = (shaderHelper: ShaderHelper) => `
+      const normCount = C * N;
+      const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
   const H: u32 = ${H};
   const C: u32 = ${C};
@@ -143,18 +142,18 @@ const createInstanceNormNHWCProgramInfo =
         output[currentOffset] = x[currentOffset] * channelScale + channelShift;
     }
   }`;
-    return {
-      ...metadata,
-      outputs: [
-        { dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default },
-      ],
-      getShaderSource,
-      dispatchGroup: () => ({ x: Math.ceil(normCount / 64 /* workgroup size */) })
+      return {
+        ...metadata,
+        outputs: [
+          {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+        ],
+        getShaderSource,
+        dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
+      };
     };
-  };
 
 export const parseInstanceNormAttributes = (attributes: InstanceNormAttributes): InstanceNormAttributes =>
-  createAttributeWithCacheKey({ epsilon: attributes.epsilon, format: attributes.format });
+    createAttributeWithCacheKey({epsilon: attributes.epsilon, format: attributes.format});
 
 export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAttributes): void => {
   validateInputs(context.inputs);
