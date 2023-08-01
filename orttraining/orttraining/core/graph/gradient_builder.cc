@@ -1998,7 +1998,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
   // y = 1 / x
   // dy/dx = -1 / x^2
   // dL/dx = dL/dy * dy/dx = dL/dy * (-1 / x^2)
-  return {NodeDef("Mul", {O(0), O(0)}, {IA("Square_O0")}),
+  NodeDef two_constant_node = ConstantScalarNode(2.0f, Name("TwoConstant"), OElemType(0));
+  return {two_constant_node,
+          NodeDef("Pow", {O(0), two_constant_node.output_args.front()}, {IA("Square_O0")}),
           NodeDef("Neg", {IA("Square_O0")}, {IA("Neg_Square_O0")}),
           NodeDef("Mul", {GO(0), IA("Neg_Square_O0")}, {GI(0)})};
 }
