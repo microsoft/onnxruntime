@@ -12,7 +12,7 @@ namespace Ort {
 
 namespace Custom {
 
-struct DmlContext: public Context {
+struct DmlContext : public Context {
   IDMLDevice* dml_device = {};
   ID3D12Device* d3d12_device = {};
   ID3D12GraphicsCommandList* cmd_list = {};
@@ -52,5 +52,5 @@ struct DmlContext: public Context {
   }
 };
 
-} // Custom
-} // Ort
+}  // namespace Custom
+}  // namespace Ort

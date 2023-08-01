@@ -14,15 +14,12 @@ namespace Ort {
 
 namespace Custom {
 
-struct CudaContext: public Context {
-  void* raw_stream = {};
-
+struct CudaContext : public Context {
   cudaStream_t cuda_stream = {};
   cudnnHandle_t cudnn_handle = {};
   cublasHandle_t cublas_handle = {};
 
   void Init(const OrtKernelContext& kernel_ctx) override {
-    void* stream = {};
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
     OrtStatus* status = nullptr;
@@ -36,7 +33,7 @@ struct CudaContext: public Context {
     resource = {};
     status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::cudnn_handle_t, &resource);
     if (status) {
-		ORT_CXX_API_THROW("failed to fetch cudnn handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("failed to fetch cudnn handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     cudnn_handle = reinterpret_cast<cudnnHandle_t>(resource);
 
