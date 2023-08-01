@@ -5,7 +5,9 @@
 
 #include "core/providers/coreml/builders/op_builder.h"
 
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/coreml_spec.h"
+#endif
 
 namespace onnxruntime {
 namespace coreml {
