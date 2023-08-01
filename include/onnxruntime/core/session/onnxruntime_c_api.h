@@ -4346,6 +4346,27 @@ struct OrtApi {
                   _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                   _Inout_updates_all_(output_names_len) OrtValue** output,
                   _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
+
+  /**
+   * Update TensorRT EP provider option 'user_compute_stream' since it's a pointer which can't be updated by string based API UpdateTensorRTProviderOptions
+   * Please note that it's caller's responsibility to properly manage the lifetime of compute stream instance 
+   *
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+   * \param user_compute_stream - pointer to compute stream
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(UpdateTensorRTProviderOptionUserComputeStream, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ void* user_compute_stream);
+
+  /**
+   * Get TensorRT EP provider option 'user_compute_stream'
+   *
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+   * \param ptr - pointer to compute stream
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(GetTensorRTProviderOptionUserComputeStream, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Outptr_ void** ptr);
 };
 
 /*

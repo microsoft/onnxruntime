@@ -1722,6 +1722,34 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionUserComputeStream,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ void* user_compute_stream) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  tensorrt_options->user_compute_stream = user_compute_stream;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(user_compute_stream);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(GetTensorRTProviderOptionUserComputeStream, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Outptr_ void** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  *ptr = tensorrt_options->user_compute_stream;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
