@@ -6,7 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, getMaxWorkgroupLimits, IndicesHelper, ShaderHelper} from './common';
+import {createIndicesHelper, IndicesHelper, ShaderHelper} from './common';
 
 export interface ConcatAttributes extends AttributeWithCacheKey {
   readonly axis: number;
@@ -92,7 +92,6 @@ const createConcatProgramInfo =
       }
 
       const outputSize = ShapeUtil.size(outputShape);
-      const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(outputSize);
       const rank = outputShape.length;
 
       const sizeInConcatAxis = new Array<number>(inputs.length);
@@ -125,7 +124,7 @@ const createConcatProgramInfo =
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
   ${readBufferDataImpl(inputIndicesHelpers, rank, dataType)}
 
-  ${shaderHelper.mainStart(workgroupLimits)}
+  ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
     ${outputIndicesHelper.indicesVariableDeclaration('indices')}
@@ -142,7 +141,7 @@ const createConcatProgramInfo =
         ...metadata,
         outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
         getShaderSource,
-        dispatchGroup: () => (dispatchGroup)
+        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };
 

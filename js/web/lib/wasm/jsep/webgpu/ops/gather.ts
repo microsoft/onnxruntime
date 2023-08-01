@@ -2,7 +2,7 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from "../type
 import {TensorView} from "../../tensor";
 import {DataType} from "../../../wasm-common";
 import {ShapeUtil} from "../../util";
-import {getMaxWorkgroupLimits, ShaderHelper} from "./common";
+import {ShaderHelper} from "./common";
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from "../attribute-with-cache-key";
 
 export interface GatherAttributes extends AttributeWithCacheKey {
@@ -60,7 +60,6 @@ const createGatherProgramInfo =
         // Input data will be treated as u32 or two u32 for 8-byte tensors
         console.log('gather', { blockSize, M, N, totalGathers, inputShape, outputShape, elementSize, outputSize, indicesShape })
 
-        const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(totalGathers);
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
   const indicesElementSize: u32 = ${indicesElementSize};
@@ -69,7 +68,7 @@ const createGatherProgramInfo =
   @group(0) @binding(1) var<storage, read> inputIndices : array<i32>;
   @group(0) @binding(2) var<storage, read_write> output: array<u32>;
 
-  ${shaderHelper.mainStart(workgroupLimits)}
+  ${shaderHelper.mainStart()}
     let batch: u32 = global_idx / N;
     let i: u32 = global_idx % N;
 
@@ -98,7 +97,7 @@ const createGatherProgramInfo =
                 {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
             ],
             getShaderSource,
-            dispatchGroup: () => (dispatchGroup)
+            dispatchGroup: () => ({ x: Math.ceil(totalGathers / 64) })
         };
     };
 
@@ -111,7 +110,10 @@ export const gather = (context: ComputeContext, attributes: GatherAttributes): v
     const metadata = {
         name: 'Gather',
         inputTypes: [GpuDataType.default, GpuDataType.default],
-        cacheHint: attributes.cacheKey,
+        cacheHint: attributes.cacheKey + context.inputs[0].dataType.toString(10)
+            + context.inputs[1].dataType.toString(10)
+            + context.inputs[0].dims.join('')
+            + context.inputs[1].dims.join('')
     };
 
     context.compute(createGatherProgramInfo(metadata, context.inputs, attributes));

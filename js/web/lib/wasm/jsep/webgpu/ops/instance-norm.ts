@@ -5,7 +5,7 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../type
 import {TensorView} from '../../tensor';
 import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
 import {ShapeUtil} from '../../util';
-import {getMaxWorkgroupLimits, ShaderHelper} from './common';
+import {ShaderHelper} from './common';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 
 export interface InstanceNormAttributes extends AttributeWithCacheKey {
@@ -104,7 +104,7 @@ const createInstanceNormNHWCProgramInfo =
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
 
         const normCount = C * N;
-        const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(normCount);
+
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
   const H: u32 = ${H};
@@ -118,7 +118,7 @@ const createInstanceNormNHWCProgramInfo =
   @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
   @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
 
-  ${shaderHelper.mainStart(workgroupLimits)}
+  ${shaderHelper.mainStart()}
     let currentImageNumber = global_idx / C;
     let currentChannelNumber = global_idx % C;
     
@@ -151,7 +151,7 @@ const createInstanceNormNHWCProgramInfo =
                 {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
             ],
             getShaderSource,
-            dispatchGroup: () => (dispatchGroup)
+            dispatchGroup: () => ({ x: Math.ceil(normCount / 64) })
         };
     };
 

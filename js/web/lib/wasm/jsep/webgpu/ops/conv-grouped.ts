@@ -5,7 +5,7 @@ import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, getMaxWorkgroupLimits, ShaderHelper} from './common';
+import {createIndicesHelper, ShaderHelper} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {getActicationSnippet} from './fuse-utils';
 
@@ -42,7 +42,7 @@ const createGroupedConvProgramInfo =
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
       const xIndicesHelper = createIndicesHelper('x', xShape);
       const wIndicesHelper = createIndicesHelper('w', wShape);
-      const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(outputSize);
+
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   const strides: vec2<u32> = vec2(${attributes.strides[0]}u, ${attributes.strides[1]}u);
   const pads: vec2<u32> = vec2(${attributes.pads[0]}u, ${attributes.pads[1]}u);
@@ -55,7 +55,7 @@ const createGroupedConvProgramInfo =
   ${xIndicesHelper.i2oImpl}
   ${wIndicesHelper.i2oImpl}
 
-  ${shaderHelper.mainStart(workgroupLimits)}
+  ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
     ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
@@ -111,7 +111,7 @@ const createGroupedConvProgramInfo =
           gpuDataType: GpuDataType.default
         }],
         getShaderSource,
-        dispatchGroup: () => (dispatchGroup)
+        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };
 

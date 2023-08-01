@@ -5,7 +5,7 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../type
 import {TensorView} from '../../tensor';
 import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
 import {ShapeUtil} from '../../util';
-import {getMaxWorkgroupLimits, ShaderHelper} from './common';
+import {ShaderHelper} from './common';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 
 export interface LayerNormAttributes extends AttributeWithCacheKey {
@@ -54,7 +54,6 @@ const createLayerNormProgramInfo =
         }
 
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
-        const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(normCount);
 
         const hasMeanDataOutput = outputCount > 1;
         const hasInvStdOutput = outputCount > 2;
@@ -70,7 +69,7 @@ const createLayerNormProgramInfo =
   ${hasMeanDataOutput ? `@group(0) @binding(4) var<storage, read_write> meanDataOutput : array<${dataType}>` : ''};
   ${hasInvStdOutput ? `@group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>` : ''};
 
-  ${shaderHelper.mainStart(workgroupLimits)}
+  ${shaderHelper.mainStart()}
     let offset = global_idx * normSize;
     if (offset >= ${outputSize}) { return; }
     var mean: ${dataType} = 0;
@@ -108,7 +107,7 @@ const createLayerNormProgramInfo =
             ...metadata,
             outputs,
             getShaderSource,
-            dispatchGroup: () => (dispatchGroup)
+            dispatchGroup: () => ({ x: Math.ceil(normCount / 64) })
         };
     };
 
