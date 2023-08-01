@@ -2904,7 +2904,7 @@ This version of the operator has been available since version 1 of the 'com.micr
    - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
    - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
   
-  The query, key and value tensors contains result of hidden embedding of real tokens after input projections.
+  The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
   Token_offset records the offset of token in the unpacked input.
   cumulative_sequence_length records cumulated length of each sequnces length.
   
@@ -2925,7 +2925,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs (5 - 6)
+#### Inputs (6 - 7)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2934,6 +2934,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Key with shape (token_count, hidden_size)</dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (token_count, v_hidden_size)</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>token_offset</tt> : M</dt>
 <dd>Offset of each token before packing, with shape (batch_size, sequence_length).</dd>
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
