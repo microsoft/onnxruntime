@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 import {TensorView} from '../../tensor';
 import {DataType} from '../../../wasm-common';
