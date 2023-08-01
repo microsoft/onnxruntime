@@ -6,21 +6,12 @@
   "configurations": [
     {
       "name": "[common] Launch Unit Tests",
-      "args": [
-        "-u",
-        "bdd",
-        "--timeout",
-        "999999",
-        "--colors",
-        "${workspaceFolder}/common/test/**/*.js"
-      ],
+      "args": ["-u", "bdd", "--timeout", "999999", "--colors", "${workspaceFolder}/common/test/**/*.js"],
       "internalConsoleOptions": "openOnSessionStart",
       "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
       "cwd": "${workspaceFolder}/common",
       "request": "launch",
-      "skipFiles": [
-        "<node_internals>/**"
-      ],
+      "skipFiles": ["<node_internals>/**"],
       "type": "node",
       "sourceMaps": true,
       "preLaunchTask": "tsc: build - common/test/tsconfig.json"
@@ -29,14 +20,10 @@
       "name": "[web] Launch Test Runner",
       "program": "${workspaceFolder}/web/script/test-runner-cli.js",
       "request": "launch",
-      "skipFiles": [
-        "<node_internals>/**"
-      ],
+      "skipFiles": ["<node_internals>/**"],
       "type": "node",
       "cwd": "${workspaceFolder}/web",
-      "args": [
-        "suite1"
-      ]
+      "args": ["suite1"]
     },
     {
       "name": "[web] Attach to Chrome",
