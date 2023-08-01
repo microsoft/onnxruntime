@@ -96,10 +96,6 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
   return true;
 }
 
-// ONNX Runtime only *guarantees* support for models stamped
-// with opset version 7 or above for opset domain 'ai.onnx'.
-// WebNN EP ignores node supporting for opset less than 7 by
-// default as which will be fallback earlier by ONNX Runtime.
 bool BaseOpBuilder::HasSupportedOpSet(const Node& node,
                                       const logging::Logger& logger) const {
   auto since_version = node.SinceVersion();
