@@ -194,7 +194,9 @@ def fake_test_data(
             inputs[segment_ids.name] = fake_segment_ids_data(segment_ids, batch_size, sequence_length)
 
         if input_mask:
-            inputs[input_mask.name] = fake_input_mask_data(input_mask, batch_size, sequence_length, average_sequence_length, random_sequence_length)
+            inputs[input_mask.name] = fake_input_mask_data(
+                input_mask, batch_size, sequence_length, average_sequence_length, random_sequence_length
+            )
 
         if verbose and len(all_inputs) == 0:
             print("Example inputs", inputs)

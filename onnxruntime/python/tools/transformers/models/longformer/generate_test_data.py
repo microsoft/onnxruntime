@@ -59,7 +59,6 @@ def parse_arguments():
     )
     parser.set_defaults(random_sequence_length=False)
 
-
     parser.add_argument(
         "--global_tokens",
         required=False,
@@ -225,7 +224,9 @@ def fake_test_data(
         inputs = {input_ids.name: input_1}
 
         if input_mask:
-            inputs[input_mask.name] = fake_input_mask_data(input_mask, batch_size, sequence_length, average_sequence_length, random_sequence_length)
+            inputs[input_mask.name] = fake_input_mask_data(
+                input_mask, batch_size, sequence_length, average_sequence_length, random_sequence_length
+            )
 
         if global_mask:
             inputs[global_mask.name] = fake_global_mask_data(
@@ -325,7 +326,7 @@ def main():
         print("Directory existed. test data files will be overwritten.")
 
     if args.average_sequence_length <= 0:
-       args.average_sequence_length = args.sequence_length
+        args.average_sequence_length = args.sequence_length
 
     create_longformer_test_data(
         args.model,
@@ -339,7 +340,7 @@ def main():
         args.input_mask_name,
         args.global_mask_name,
         args.global_tokens,
-        args.average_sequence_length
+        args.average_sequence_length,
     )
 
     print("Test data is saved to directory:", output_dir)
