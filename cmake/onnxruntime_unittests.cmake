@@ -1445,7 +1445,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_USE_CUDA)
     onnxruntime_add_shared_library(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
                                                      ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
-    target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDNN_HOME}/include)
     if (HAS_QSPECTRE)
       target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
     endif()

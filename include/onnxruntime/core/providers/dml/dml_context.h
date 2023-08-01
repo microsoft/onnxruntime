@@ -1,21 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ORT_DML_CTX
 #define ORT_DML_CTX
 
+#include "dml_resource.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <DirectML.h>
 #include <d3d12.h>
-
-#define ORT_DML_RESOUCE_VERSION 1
-
-enum DmlResource : int {
-  dml_device_t = 0,
-  d3d12_device_t,
-  cmd_list_t,
-  cmd_recorder_t
-};
 
 namespace Ort {
 
@@ -63,4 +54,3 @@ struct DmlContext {
 
 } // Custom
 } // Ort
-#endif

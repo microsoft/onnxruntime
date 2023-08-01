@@ -21,27 +21,26 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 #endif
 
 #ifdef USE_CUDA
-#define ENALBE_CUDA_CONTEXT
-#include "core/providers/cuda/cuda_execution_context.h"
+#include "core/providers/cuda/cuda_context.h"
 #endif
 
 #ifdef USE_DML
-#include "core/providers/dml/dml_execution_context.h"
+#include "core/providers/dml/dml_context.h"
 #endif
 
 #include "onnxruntime_lite_custom_op.h"
 
 static const char* c_OpDomain = "test.customop";
 
-#ifdef USE_DML
-#include <wrl/client.h>
-#include <core/providers/dml/dml_provider_factory.h>
-using Microsoft::WRL::ComPtr;
-
 #define CUSTOM_ENFORCE(cond, msg)  \
   if (!(cond)) {                   \
     throw std::runtime_error(msg); \
   }
+
+#ifdef USE_DML
+#include <wrl/client.h>
+#include <core/providers/dml/dml_provider_factory.h>
+using Microsoft::WRL::ComPtr;
 
 #define DML_CALL(call, nm)                                                                                        \
   {                                                                                                               \
@@ -68,110 +67,24 @@ struct IdentityDML {
     dml_op_desc.Desc = &dml_identity_op_desc;
   }
 
-  void Compute(OrtKernelContext* ctx, Ort::Custom::DmlContext* dml_ctx,
-               const Ort::Custom::Tensor<float>& input,
-               Ort::Custom::Tensor<float>& output) {
+  void Compute(OrtKernelContext& /*ctx*/,
+               const Ort::Custom::DmlContext& dml_ctx,
+               const Ort::Custom::Tensor<float>& /*input*/,
+               Ort::Custom::Tensor<float>& /*output*/) {
     // step 1: get resources from dml context
-    auto* dml_device = dml_ctx->dml_device;
+    auto* dml_device = dml_ctx.dml_device;
     CUSTOM_ENFORCE(dml_device, "failed to get dml device");
 
-    auto* d3d12_device = dml_ctx->d3d12_device;
+    auto* d3d12_device = dml_ctx.d3d12_device;
     CUSTOM_ENFORCE(d3d12_device, "failed to get d3d12 device");
 
-    auto* cmd_list = dml_ctx->cmd_list;
+    auto* cmd_list = dml_ctx.cmd_list;
     CUSTOM_ENFORCE(cmd_list, "failed to get cmd list");
 
-    auto* cmd_recorder = dml_ctx->cmd_recorder;
+    auto* cmd_recorder = dml_ctx.cmd_recorder;
     CUSTOM_ENFORCE(cmd_recorder, "failed to get cmd recorder");
 
-    const auto& shape = input.Shape();
-    CUSTOM_ENFORCE(shape.size() <= 8U, "input shape dimension must not exceed 8");
-    auto size_in_bytes = static_cast<UINT64>(input.NumberOfElement() * sizeof(float));
-
-    // step 2: set up tensor desc
-    dml_buffer_tensor_desc.DimensionCount = static_cast<UINT>(shape.size());
-    dml_buffer_tensor_desc.TotalTensorSizeInBytes = size_in_bytes;
-    for (size_t i = 0; i < shape.size(); ++i) {
-      tensor_shape[i] = static_cast<UINT>(shape[i]);
-    }
-
-    // step 3: create op
-    DML_CALL(dml_device->CreateOperator(
-                 &dml_op_desc,
-                 IID_PPV_ARGS(dml_op.GetAddressOf())),
-             "dml_device->CreateOperator");
-
-    DML_CALL(dml_device->CompileOperator(
-                 dml_op.Get(),
-                 DML_EXECUTION_FLAG_NONE,
-                 IID_PPV_ARGS(dml_compiled_op.GetAddressOf())),
-             "dml_device->CompileOperato");
-
-    IDMLCompiledOperator* dml_compiled_ops[] = {dml_compiled_op.Get()};
-
-    DML_CALL(dml_device->CreateOperatorInitializer(
-                 1U,
-                 dml_compiled_ops,
-                 IID_PPV_ARGS(dml_op_initializer.GetAddressOf())),
-             "dml_device->CreateOperatorInitialize");
-
-    // step 4, setup input and output bindings
-    desc_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    desc_heap_desc.NumDescriptors = 1;
-    desc_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-
-    DML_CALL(d3d12_device->CreateDescriptorHeap(
-                 &desc_heap_desc,
-                 IID_PPV_ARGS(d3d12_desc_heap.GetAddressOf())),
-             "d3d12_device->CreateDescriptorHeap");
-
-    dml_binding_table_desc.Dispatchable = dml_op_initializer.Get();
-    dml_binding_table_desc.CPUDescriptorHandle = d3d12_desc_heap->GetCPUDescriptorHandleForHeapStart();
-    dml_binding_table_desc.GPUDescriptorHandle = d3d12_desc_heap->GetGPUDescriptorHandleForHeapStart();
-    dml_binding_table_desc.SizeInDescriptors = 1;
-
-    DML_CALL(dml_device->CreateBindingTable(
-                 &dml_binding_table_desc,
-                 IID_PPV_ARGS(dml_binding_table.GetAddressOf())),
-             "dml_device->CreateBindingTable");
-
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
-    OrtAllocator* allocator = {};
-    auto status = api->KernelContext_GetAllocator(ctx, &mem_info, &allocator);
-    CUSTOM_ENFORCE(allocator, "failed to  get allocator from context");
-
-    const OrtDmlApi* dml_api;
-    status = api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&dml_api));
-    CUSTOM_ENFORCE(allocator, "failed to  get dml api");
-
-    ID3D12Resource* input_resource = {};
-    auto* input_addr = const_cast<float*>(input.Data());
-    status = dml_api->GetD3D12ResourceFromAllocation(allocator, input_addr, &input_resource);
-    CUSTOM_ENFORCE(input_resource, "failed to fetch dml resource for input");
-
-    DML_BUFFER_BINDING inputBufferBinding{input_resource, 0, size_in_bytes};
-    DML_BINDING_DESC inputBindingDesc{DML_BINDING_TYPE_BUFFER, &inputBufferBinding};
-    dml_binding_table->BindInputs(1, &inputBindingDesc);
-
-    ID3D12Resource* output_resource = {};
-    auto* output_addr = const_cast<float*>(output.Allocate(input.Shape()));
-    CUSTOM_ENFORCE(output_addr, "failed to allocate output");
-    status = dml_api->GetD3D12ResourceFromAllocation(allocator, output_addr, &output_resource);
-    CUSTOM_ENFORCE(output_resource, "failed to fetch dml resource for output");
-
-    DML_BUFFER_BINDING outputBufferBinding{output_resource, 0, size_in_bytes};
-    DML_BINDING_DESC outputBindingDesc{DML_BINDING_TYPE_BUFFER, &outputBufferBinding};
-    dml_binding_table->BindOutputs(1, &outputBindingDesc);
-
-    // DML_CALL(dml_device->CreateCommandRecorder(
-    //              IID_PPV_ARGS(dml_cmd_recorder.GetAddressOf())),
-    //          "dml_device->CreateCommandRecorder");
-
-    // finally, submit op to cmd list
-    cmd_recorder->RecordDispatch(
-        cmd_list,
-        dml_op_initializer.Get(),
-        dml_binding_table.Get());
+    // todo - more logic here to finish the compute ...
   }
 
   UINT tensor_shape[8U] = {};
@@ -192,16 +105,18 @@ struct IdentityDML {
 #endif
 
 #ifdef USE_CUDA
-#include <iostream>
-void KernelOne(Ort::Custom::CudaContext* cuda_ctx,
+void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
                const Ort::Custom::Tensor<float>& X,
                const Ort::Custom::Tensor<float>& Y,
                Ort::Custom::Tensor<float>& Z) {
   auto input_shape = X.Shape();
-  std::cout << "Fetch cuda stream from context" << std::endl;
-  cudaStream_t cuda_stream = cuda_ctx->cuda_stream;
+
+  CUSTOM_ENFORCE(cuda_ctx.cuda_stream, "failed to fetch cuda stream");
+  CUSTOM_ENFORCE(cuda_ctx.cudnn_handle, "failed to fetch cudnn handle");
+  CUSTOM_ENFORCE(cuda_ctx.cublas_handle, "failed to fetch cublas handle");
+
   auto z_raw = Z.Allocate(input_shape);
-  cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_stream);
+  cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream);
 }
 #else
 struct KernelOne {
@@ -446,6 +361,7 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     domain.Add(&c_CustomOpOneFloat8);
 #endif
     domain.Add(c_CustomOpTwo.get());
+
 #ifdef USE_DML
     domain.Add(identity_dml_op_ptr.get());
 #endif
