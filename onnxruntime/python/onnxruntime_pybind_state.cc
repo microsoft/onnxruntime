@@ -464,6 +464,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             nullptr,
             nullptr,
             nullptr,
+            nullptr,
             0};
         for (auto option : it->second) {
           if (option.first == "device_id") {
@@ -1246,6 +1247,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
+      .def_static("dml", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");

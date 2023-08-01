@@ -205,7 +205,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         domain = _ort_constant_for_domain(self.domain)
         for i in sorted(self._input_types.keys()):
             if self._input_types[i]:
-                entries.append(  # noqa: PERF401
+                entries.append(
                     "ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, {}, Input, {}, {});".format(
                         domain, self.optype, i, ", ".join(sorted(self._input_types[i]))
                     )
@@ -213,7 +213,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
 
         for o in sorted(self._output_types.keys()):
             if self._output_types[o]:
-                entries.append(  # noqa: PERF401
+                entries.append(
                     "ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, {}, Output, {}, {});".format(
                         domain, self.optype, o, ", ".join(sorted(self._output_types[o]))
                     )

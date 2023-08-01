@@ -96,7 +96,7 @@ class ParseIOInfoAction(argparse.Action):
 
             try:
                 comp_strs = io_str.split(";")
-            except ValueError:  # noqa: PERF203
+            except ValueError:
                 parser.error(f"{opt_str}: {io_meta_name} info must be separated by ';'")
 
             if len(comp_strs) != 3:
