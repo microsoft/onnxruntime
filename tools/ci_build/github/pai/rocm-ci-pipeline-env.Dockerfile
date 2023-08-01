@@ -1,6 +1,12 @@
 FROM rocm/cupy:rocm5.5.0_ubuntu20.04_py3.8_pytorch2.0.0_cupy13.0.0
 
-RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && apt-get clean -y
+
+RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y libprotobuf\* protobuf-compiler\* && \
+    rm -f /usr/local/bin/protoc && apt-get install -y locales unzip && apt-get clean -y
+RUN locale-gen en_US.UTF-8
+RUN update-locale LANG=en_US.UTF-8
+ENV LC_ALL C.UTF-8
+ENV LANG C.UTF-8
 
 WORKDIR /stage
 
