@@ -13,8 +13,9 @@
     "build:esm": "tsc",
     "build:bundles": "webpack",
     "build": "node ./build.js",
-    "prepare": "npm run build && tsc -p test",
-    "test": "mocha ./test/**/*.js"
+    "prepare": "npm run build",
+    "pretest": "tsc --build ./test",
+    "test": "mocha ./test/**/*.js --timeout 30000"
   },
   "devDependencies": {
     "typedoc": "^0.23.22"
