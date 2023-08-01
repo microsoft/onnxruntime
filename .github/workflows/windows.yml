@@ -36,12 +36,6 @@ jobs:
       - name: 'Setup TVM EP Python requirements'
         run: |
           python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/github/linux/tvm/requirements.txt
-      - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v1.13
-        with:
-          cmake-version: '3.26.4'
-      - name: Use cmake
-        run: cmake --version
       - name: 'rm gtest in conda'
         shell: pwsh
         run: |
