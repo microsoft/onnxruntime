@@ -108,14 +108,14 @@ class OnnxModel:
         input_names = []
         for graph in self.graphs():
             for input in graph.input:
-                input_names.append(input.name)  # noqa: PERF401
+                input_names.append(input.name)
         return input_names
 
     def get_graphs_output_names(self):
         output_names = []
         for graph in self.graphs():
             for output in graph.output:
-                output_names.append(output.name)  # noqa: PERF401
+                output_names.append(output.name)
         return output_names
 
     def get_graph_by_node(self, node):
@@ -217,7 +217,7 @@ class OnnxModel:
         nodes = []
         for node in self.nodes():
             if node.op_type == op_type:
-                nodes.append(node)  # noqa: PERF401
+                nodes.append(node)
         return nodes
 
     def get_children(self, node, input_name_to_nodes=None):
@@ -238,7 +238,7 @@ class OnnxModel:
         parents = []
         for input in node.input:
             if input in output_name_to_node:
-                parents.append(output_name_to_node[input])  # noqa: PERF401
+                parents.append(output_name_to_node[input])
         return parents
 
     def get_parent(self, node, i, output_name_to_node=None):
@@ -627,6 +627,8 @@ class OnnxModel:
                                            Default to false.
             min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
             max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+            force_fp16_inputs(Dict[str, List[int]]): Force the conversion of the inputs of some operators to float16, even if
+                                                     this script's preference it to keep them in float32.
         """
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True
@@ -677,6 +679,7 @@ class OnnxModel:
                     "op_block_list",
                     "node_block_list",
                     "force_fp16_initializers",
+                    "force_fp16_inputs",
                 ]
                 if key in kwargs
             }
@@ -792,7 +795,7 @@ class OnnxModel:
         nodes = self.nodes()
         for node in nodes:
             if node.op_type == "Constant" and node.output[0] not in input_name_to_nodes:
-                unused_nodes.append(node)  # noqa: PERF401
+                unused_nodes.append(node)
 
         self.remove_nodes(unused_nodes)
 
@@ -837,7 +840,7 @@ class OnnxModel:
         output_to_remove = []
         for output in self.model.graph.output:
             if output.name not in outputs:
-                output_to_remove.append(output)  # noqa: PERF401
+                output_to_remove.append(output)
         for output in output_to_remove:
             self.model.graph.output.remove(output)
 
@@ -882,7 +885,7 @@ class OnnxModel:
         if allow_remove_graph_inputs:
             for input in graph.input:
                 if input.name not in remaining_input_names:
-                    inputs_to_remove.append(input)  # noqa: PERF401
+                    inputs_to_remove.append(input)
             for input in inputs_to_remove:
                 graph.input.remove(input)
 
@@ -1058,7 +1061,7 @@ class OnnxModel:
         graph_inputs = []
         for input in self.model.graph.input:
             if self.get_initializer(input.name) is None:
-                graph_inputs.append(input)  # noqa: PERF401
+                graph_inputs.append(input)
         return graph_inputs
 
     def get_opset_version(self):

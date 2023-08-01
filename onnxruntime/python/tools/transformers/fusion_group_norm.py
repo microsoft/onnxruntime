@@ -14,8 +14,9 @@ logger = getLogger(__name__)
 
 
 class FusionGroupNorm(Fusion):
-    def __init__(self, model: OnnxModel):
+    def __init__(self, model: OnnxModel, channels_last=True):
         super().__init__(model, "GroupNorm", "Add")
+        self.channels_last = channels_last
 
     def fuse(self, add_node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
@@ -145,40 +146,47 @@ class FusionGroupNorm(Fusion):
         input_name = root
         output_name = last_node.output[0]
 
+        group_norm_input_name = input_name + "_NHWC" if self.channels_last else input_name
+        group_norm_output_name = output_name + "_NHWC" if self.channels_last else output_name
+
         # NCHW to NHWC
-        transpose_input = helper.make_node(
-            "Transpose",
-            [input_name],
-            [input_name + "_NHWC"],
-            name=self.model.create_node_name("Transpose", name_prefix="Transpose_NCHW_to_NHWC"),
-            perm=[0, 2, 3, 1],
-        )
+        if self.channels_last:
+            transpose_input = helper.make_node(
+                "Transpose",
+                [input_name],
+                [group_norm_input_name],
+                name=self.model.create_node_name("Transpose", name_prefix="Transpose_NCHW_to_NHWC"),
+                perm=[0, 2, 3, 1],
+            )
+            self.nodes_to_add.append(transpose_input)
+            self.node_name_to_graph_name[transpose_input.name] = self.this_graph_name
 
         new_node = helper.make_node(
             "GroupNorm",
-            inputs=[input_name + "_NHWC", group_norm_name + "_gamma", group_norm_name + "_beta"],
-            outputs=[output_name + "_NHWC"],
+            inputs=[group_norm_input_name, group_norm_name + "_gamma", group_norm_name + "_beta"],
+            outputs=[group_norm_output_name],
             name=group_norm_name,
         )
 
         new_node.attribute.extend(instance_norm.attribute)
         new_node.attribute.extend([helper.make_attribute("groups", 32)])
         new_node.attribute.extend([helper.make_attribute("activation", 1 if has_swish_activation else 0)])
+
+        if not self.channels_last:
+            new_node.attribute.extend([helper.make_attribute("channels_last", 0)])
+
         new_node.domain = "com.microsoft"
+        self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
         # NHWC to NCHW
-        transpose_output = helper.make_node(
-            "Transpose",
-            [output_name + "_NHWC"],
-            [output_name],
-            name=self.model.create_node_name("Transpose", name_prefix="Transpose_NHWC_to_NCHW"),
-            perm=[0, 3, 1, 2],
-        )
-
-        self.nodes_to_add.append(new_node)
-        self.nodes_to_add.append(transpose_input)
-        self.nodes_to_add.append(transpose_output)
-
-        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
-        self.node_name_to_graph_name[transpose_input.name] = self.this_graph_name
-        self.node_name_to_graph_name[transpose_output.name] = self.this_graph_name
+        if self.channels_last:
+            transpose_output = helper.make_node(
+                "Transpose",
+                [group_norm_output_name],
+                [output_name],
+                name=self.model.create_node_name("Transpose", name_prefix="Transpose_NHWC_to_NCHW"),
+                perm=[0, 3, 1, 2],
+            )
+            self.nodes_to_add.append(transpose_output)
+            self.node_name_to_graph_name[transpose_output.name] = self.this_graph_name

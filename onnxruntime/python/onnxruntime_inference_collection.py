@@ -24,6 +24,8 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         return C.OrtDevice.cann()
     elif device_type == "cpu":
         return C.OrtDevice.cpu()
+    elif device_type == "dml":
+        return C.OrtDevice.dml()
     elif device_type == "ort":
         return C.get_ort_device(device_index).device_type()
     else:
@@ -191,7 +193,7 @@ class Session:
         missing_input_names = []
         for input in self._inputs_meta:
             if input.name not in feed_input_names and not input.type.startswith("optional"):
-                missing_input_names.append(input.name)  # noqa: PERF401
+                missing_input_names.append(input.name)
         if missing_input_names:
             raise ValueError(
                 f"Required inputs ({missing_input_names}) are missing from input feed ({feed_input_names})."

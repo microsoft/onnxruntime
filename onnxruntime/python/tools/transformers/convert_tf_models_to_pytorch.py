@@ -197,7 +197,7 @@ def tf2pt_pipeline_test():
         input = torch.randint(low=0, high=config.vocab_size - 1, size=(4, 128), dtype=torch.long)
         try:
             model(input)
-        except RuntimeError as e:  # noqa: PERF203
+        except RuntimeError as e:
             logger.exception(e)
 
 

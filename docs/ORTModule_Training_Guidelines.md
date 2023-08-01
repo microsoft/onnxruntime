@@ -183,6 +183,16 @@ data sparsity based performance optimizations.
 	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
 	```
 
+#### ORTMODULE_CACHE_DIR
+
+- **Feature Area**: *ORTMODULE/RuntimeOptions*
+- **Description**: By default, this is disabled. This env vars can be used to cache the exported model for future runs. This optimization is intended to reduce experimentation time by re-using the PyTorch->ONNX exported model architecture when available.
+
+	```bash
+	export ORTMODULE_CACHE_DIR="/path/to/cache_dir" # Enable
+	unset ORTMODULE_CACHE_DIR # Disable
+	```
+
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*
