@@ -39,9 +39,7 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
                                       const logging::Logger& logger) const;
 
-  // ONNX Runtime only *guarantees* support for models stamped
-  // with opset version 7 or above for opset domain 'ai.onnx'.
-  virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 7; }
+  virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
   virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 19; }
 
  private:
