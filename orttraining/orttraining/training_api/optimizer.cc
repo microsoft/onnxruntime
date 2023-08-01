@@ -225,10 +225,12 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 
 void Optimizer::Initialize(const std::string& optim_path_or_bytes,
                            const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-                           gsl::span<OrtCustomOpDomain* const> op_domains) {
+                           [[maybe_unused]] gsl::span<OrtCustomOpDomain* const> op_domains) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   if (!op_domains.empty()) {
     ORT_THROW_IF_ERROR(optim_sess_->AddCustomOpDomains(op_domains));
   }
+#endif
 
   for (const auto& execution_provider : providers) {
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));

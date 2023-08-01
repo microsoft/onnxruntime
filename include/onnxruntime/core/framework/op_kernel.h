@@ -11,16 +11,17 @@
 
 #ifndef SHARED_PROVIDER
 #include <functional>
+
 #include "core/common/exceptions.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
-#include "core/framework/ort_value.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_node_proto_helper.h"
-#include "core/framework/tensor.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #if !defined(ORT_MINIMAL_BUILD)
@@ -28,9 +29,9 @@
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
 #include "core/common/gsl.h"
+#include "onnx/onnx-operators_pb.h"
+#include "onnx/onnx_pb.h"
 namespace onnxruntime {
 class OpKernelContext;
 }
@@ -185,6 +186,13 @@ namespace cuda {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace cuda
+}  // namespace contrib
+
+namespace contrib {
+namespace js {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace js
 }  // namespace contrib
 
 namespace contrib {

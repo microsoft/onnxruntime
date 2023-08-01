@@ -17,10 +17,6 @@ class ActivationOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
- private:
-  int GetMinSupportedOpSet(const Node& node) const override;
 };
 
 // Add operator related.
@@ -70,15 +66,8 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-// Operator support related.
-
-int ActivationOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // Any operators < opset 6 used the deprecated "consumed_inputs attribute" which is unsupported.
-  return 6;
-}
-
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =

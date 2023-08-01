@@ -179,9 +179,9 @@ struct Float16_t : onnxruntime_float16::Float16Impl<Float16_t> {
   Float16_t() = default;
 
   /// <summary>
-  /// Explicit conversion to uint16_t representation of bfloat16.
+  /// Explicit conversion to uint16_t representation of float16.
   /// </summary>
-  /// <param name="v">uint16_t bit representation of bfloat16</param>
+  /// <param name="v">uint16_t bit representation of float16</param>
   /// <returns>new instance of Float16_t</returns>
   constexpr static Float16_t FromBits(uint16_t v) noexcept { return Float16_t(v); }
 
@@ -192,9 +192,9 @@ struct Float16_t : onnxruntime_float16::Float16Impl<Float16_t> {
   explicit Float16_t(float v) noexcept { val = Base::ToUint16Impl(v); }
 
   /// <summary>
-  /// Converts bfloat16 to float
+  /// Converts float16 to float
   /// </summary>
-  /// <returns>float representation of bfloat16 value</returns>
+  /// <returns>float representation of float16 value</returns>
   float ToFloat() const noexcept { return Base::ToFloatImpl(); }
 
   /// <summary>
@@ -2181,7 +2181,11 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicInputHomogeneity()); };
     OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputMinArity(); };
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicOutputHomogeneity()); };
+#ifdef __cpp_if_constexpr
     if constexpr (WithStatus) {
+#else
+    if (WithStatus) {
+#endif
       OrtCustomOp::CreateKernelV2 = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info, void** op_kernel) -> OrtStatusPtr {
         return static_cast<const TOp*>(this_)->CreateKernelV2(*api, info, op_kernel);
       };
