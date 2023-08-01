@@ -15,10 +15,10 @@ from onnxruntime.training.utils.torch_io_helper import _TensorStub
     # list
     [
         [
-            [True, False, 1, 2.0, "abc", None],  # input
-            [],  # flatten tensor list
-            [True, False, 1, 2.0, "abc", None],  # extracted schema
-            # flatten tensor lis when constant_as_tensor=True
+            [True, False, 1, 2.0, "abc", None],  # test input
+            [],  # expected output: flatten tensor list
+            [True, False, 1, 2.0, "abc", None],  # expected output: extracted schema
+            # expected output: flatten tensor list when constant_as_tensor=True
             [torch.tensor(True), torch.tensor(False), torch.tensor(1), torch.tensor(2.0)],
         ],
         [

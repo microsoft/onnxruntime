@@ -4217,12 +4217,8 @@ def test_ortmodule_string_inputs_are_ignored():
 
     target_str = "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
     found_target_str = False
-    with warnings.catch_warnings(record=True) as w:
-        for i in range(len(w)):
-            msg = str(w[i].message)
-            if target_str in msg:
-                found_target_str = True
-                break
+    with warnings.catch_warnings(record=True) as ws:
+        found_target_str = any(target_str in str(w.message) for w in ws)
 
     assert found_target_str
     _test_helpers.assert_values_are_close(out, x + 1)
