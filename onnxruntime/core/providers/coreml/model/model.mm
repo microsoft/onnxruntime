@@ -41,6 +41,12 @@ InlinedVector<int64_t> GetStaticOutputShape(gsl::span<const int64_t> inferred_sh
   ORT_ENFORCE(IsStaticShape(coreml_static_shape),
               "CoreML output shape (", Shape2String(coreml_static_shape), ") is not static.");
 
+  // return early if the shapes match
+  if (std::equal(inferred_shape.begin(), inferred_shape.end(),
+                 coreml_static_shape.begin(), coreml_static_shape.end())) {
+    return InlinedVector<int64_t>(coreml_static_shape.begin(), coreml_static_shape.end());
+  }
+
   // Special CoreML behavior notes:
   // - Sometimes the CoreML output shape has extra leading ones.
 
@@ -75,10 +81,9 @@ InlinedVector<int64_t> GetStaticOutputShape(gsl::span<const int64_t> inferred_sh
                    return inferred_dim != -1 ? inferred_dim : coreml_static_dim;
                  });
 
-  // TODO change to VERBOSE log level
   // Ideally, the CoreML static shape would match the inferred shape exactly, apart from the former providing values
   // for -1's in the latter. For now, this is not the case so it is probably worth logging them.
-  LOGS(logger, WARNING) << "CoreML static output shape: " << Shape2String(coreml_static_shape)
+  LOGS(logger, VERBOSE) << "CoreML static output shape: " << Shape2String(coreml_static_shape)
                         << ", inferred shape: " << Shape2String(inferred_shape)
                         << ", resulting static output shape: " << Shape2String(static_shape);
   return static_shape;
