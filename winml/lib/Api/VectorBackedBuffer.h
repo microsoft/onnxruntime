@@ -8,10 +8,8 @@
 
 namespace _winml {
 
-class vector_backed_buffer : public winrt::implements<
-                         vector_backed_buffer,
-                         wss::IBuffer,
-                         Windows::Storage::Streams::IBufferByteAccess> {
+class vector_backed_buffer
+  : public winrt::implements<vector_backed_buffer, wss::IBuffer, Windows::Storage::Streams::IBufferByteAccess> {
  public:
   vector_backed_buffer(size_t size);
 
