@@ -34,7 +34,7 @@ def find_input_node(model, arg):
     for node in model.graph.node:
         for output in node.output:
             if output == arg:
-                result.append(node)  # noqa: PERF401
+                result.append(node)
     return result[0] if len(result) == 1 else None
 
 

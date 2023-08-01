@@ -138,6 +138,15 @@ struct TensorrtFuncState {
   bool cuda_graph_enable = 0;
 };
 
+// Holds important information for building valid ORT graph.
+struct SubGraphContext {
+  std::unordered_set<std::string> output_args;
+  std::unordered_map<std::string, const NodeArg*> inputs_and_initializers;
+  std::unordered_map<std::string, const NodeArg*> manually_added_graph_inputs;
+};
+
+using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>;
+
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
  public:
@@ -224,6 +233,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
+  mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
@@ -272,6 +282,42 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
+
+  /**
+   * Set inputs, initializers and outputs for all subgraphs during TensorrtExecutionProvider::GetSupportedList()
+   * and save those information in subgraph context data structure. It's useful for building a valid graph and
+   * make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
+   */
+  void BuildSubGraphContext(const Graph& build_graph) const;
+
+  /**
+   * Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
+   */
+  void SetGraphOuterScopeValuesAndInputs(Graph& build_graph, const Graph& graph) const;
+
+  /**
+   * If ORT TRT manually sets graph input in TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(),
+   * we have to manully set all the graph inputs in order to pass Graph::Resolve().
+   */
+  void SetAllGraphInputs(Graph& graph) const;
+
+  /**
+   * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
+   * Graph::ResolveContext::IsInputInitializerOrOutput(). We have to implement this fuction again.
+   */
+  bool IsInputInitializerOrOutput(const Graph& graph, const std::string& name, bool check_ancestors) const;
+
+  /**
+   * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
+   * Graph::ResolveContext::IsOuterScopeValue(). We have to implement this fuction again.
+   */
+  bool IsOuterScopeValue(const Graph& graph, const std::string& name) const;
+
+  /**
+   * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
+   * Graph::ResolveContext::IsLocalValue(). We have to implement this fuction again.
+   */
+  bool IsLocalValue(const Graph& graph, const std::string& name) const;
 
   bool IsGraphCaptureAllowed() const;
   void CaptureBegin();

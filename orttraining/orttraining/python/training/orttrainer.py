@@ -933,7 +933,7 @@ class ORTTrainer:
             # so output will be on the same device as input.
             try:
                 torch.device(target_device)
-            except Exception:  # noqa: PERF203
+            except Exception:
                 # in this case, input/output must on CPU
                 assert input.device.type == "cpu"
                 target_device = "cpu"

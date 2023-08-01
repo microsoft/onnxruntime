@@ -182,7 +182,7 @@ def _test_gemm_softmax_gemm_permute(
                 is_zero_tol, atol, rtol = 1e-3, 2e-2, 1e-2
                 not_close_to_zeros = np.abs(ref) > is_zero_tol
                 np.testing.assert_allclose(out[not_close_to_zeros], ref[not_close_to_zeros], atol=atol, rtol=rtol)
-        except Exception as err:  # noqa: PERF203
+        except Exception as err:
             header = "*" * 30 + impl + "*" * 30
             print(header)
             print(err)

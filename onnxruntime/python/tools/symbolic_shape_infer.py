@@ -1008,13 +1008,13 @@ class SymbolicShapeInference:
             right_ellipsis_index = right_equation.find(b"...")
             if right_ellipsis_index != -1:
                 for i in range(num_ellipsis_indices):
-                    new_sympy_shape.append(shape[i])  # noqa: PERF401
+                    new_sympy_shape.append(shape[i])
             for c in right_equation:
                 if c != 46:  # c != b'.'
-                    new_sympy_shape.append(letter_to_dim[c])  # noqa: PERF401
+                    new_sympy_shape.append(letter_to_dim[c])
         else:
             for i in range(num_ellipsis_indices):
-                new_sympy_shape.append(shape[i])  # noqa: PERF401
+                new_sympy_shape.append(shape[i])
             for c in left_equation:
                 if c != 44 and c != 46:  # c != b',' and c != b'.':
                     if c in num_letter_occurrences:
