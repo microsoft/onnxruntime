@@ -511,6 +511,8 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
     std::vector<IMLOperatorTensor*> GetInputTensors();
     std::vector<IMLOperatorTensor*> GetOutputTensors(const EdgeShapes& outputShapes);
 
+    onnxruntime::OpKernelContext* GetOpKernelContext() { return m_impl; }
+
  protected:
     void ClearTempAllocations();
     void TransitionResourcesForOperatorIfRequired(bool isBeforeOp);
