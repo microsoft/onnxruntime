@@ -158,6 +158,8 @@ void addOrtValueMethods(pybind11::module& m) {
             throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
           }
           allocator = GetCudaAllocator(device.Id());
+#elif USE_DML
+          allocator = GetDmlAllocator(device.Id());
 #else
       throw std::runtime_error(
           "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
