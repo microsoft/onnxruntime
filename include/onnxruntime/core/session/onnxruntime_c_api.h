@@ -4348,25 +4348,30 @@ struct OrtApi {
                   _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
 
   /**
-   * Update TensorRT EP provider option 'user_compute_stream' since it's a pointer which can't be updated by string based API UpdateTensorRTProviderOptions
-   * Please note that it's caller's responsibility to properly manage the lifetime of compute stream instance
+   * Update TensorRT EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * If the data type of the provider option can be represented by string please use UpdateTensorRTProviderOptions.
+   *
+   * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
    *
    * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
-   * \param user_compute_stream - pointer to compute stream
+   * \param key - Name of the provider option
+   * \param value - A pointer to the instance that will be assigned to this provider option
    *
    * \since Version 1.16.
    */
-  ORT_API2_STATUS(UpdateTensorRTProviderOptionUserComputeStream, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ void* user_compute_stream);
+  ORT_API2_STATUS(UpdateTensorRTProviderOptionsWithValue, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _In_ void* value);
 
   /**
-   * Get TensorRT EP provider option 'user_compute_stream'
+   * Get TensorRT EP provider option where its data type is pointer.
+   * If the data type of the provider option can be represented by string please use GetTensorRTProviderOptionsAsString.
    *
    * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
-   * \param ptr - pointer to compute stream
+   * \param key - Name of the provider option
+   * \param ptr - A pointer to the instance that is kept by the provider option
    *
    * \since Version 1.16.
    */
-  ORT_API2_STATUS(GetTensorRTProviderOptionUserComputeStream, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Outptr_ void** ptr);
+  ORT_API2_STATUS(GetTensorRTProviderOptionsByName, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _Outptr_ void** ptr);
 };
 
 /*

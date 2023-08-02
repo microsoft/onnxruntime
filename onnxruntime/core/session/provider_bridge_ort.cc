@@ -1722,34 +1722,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionUserComputeStream,
-                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
-                    _In_ void* user_compute_stream) {
-  API_IMPL_BEGIN
-#ifdef USE_TENSORRT
-  tensorrt_options->user_compute_stream = user_compute_stream;
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  ORT_UNUSED_PARAMETER(user_compute_stream);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-#endif
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionUserComputeStream, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Outptr_ void** ptr) {
-  API_IMPL_BEGIN
-#ifdef USE_TENSORRT
-  *ptr = tensorrt_options->user_compute_stream;
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  ORT_UNUSED_PARAMETER(ptr);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-#endif
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
@@ -1848,6 +1820,48 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtT
 #else
   ORT_UNUSED_PARAMETER(tensorrt_options);
   ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  // current provider options that has pointer data type (excluding const char*) is 'user_compute_stream'
+  if (strcmp(key, "user_compute_stream") == 0) {
+    tensorrt_options->user_compute_stream = value;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
+                    _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  // current provider options that has pointer data type (excluding const char*) is 'user_compute_stream'
+  if (strcmp(key, "user_compute_stream") == 0) {
+    *ptr = tensorrt_options->user_compute_stream;
+  } else {
+    *ptr = nullptr;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
   ORT_UNUSED_PARAMETER(ptr);
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
 #endif
