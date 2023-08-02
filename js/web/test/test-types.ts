@@ -72,7 +72,7 @@ export declare namespace Test {
     name: string;
     operator: string;
     inputShapeDefinitions?: 'none'|'rankOnly'|'static'|ReadonlyArray<InputShapeDefinition|undefined>;
-    opset?: OperatorTestOpsetImport;
+    opsets?: OperatorTestOpsetImport[];
     backend?: string;  // value should be populated at build time
     platformCondition?: PlatformCondition;
     attributes?: readonly AttributeValue[];

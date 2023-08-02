@@ -387,7 +387,7 @@ async function main() {
       // field 'verbose' and 'backend' is not set
       for (const test of tests) {
         test.backend = backend;
-        test.opset = test.opset || {domain: '', version: MAX_OPSET_VERSION};
+        test.opsets = test.opsets || [{domain: '', version: MAX_OPSET_VERSION}];
       }
       npmlog.verbose('TestRunnerCli.Init.Op', 'Finished preparing test data.');
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');

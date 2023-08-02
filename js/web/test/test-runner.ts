@@ -552,7 +552,7 @@ export class OpTestContext {
   createOperator(): Operator {
     return initializeOperator(
         this.sessionHandler, this.opTest.operator, this.opTest.attributes || [],
-        [this.opTest.opset ?? {domain: '', version: 7}]);
+        this.opTest.opsets ?? [{domain: '', version: 7}]);
   }
 
   async dispose(): Promise<void> {
@@ -575,7 +575,7 @@ export class ProtoOpTestContext {
   session: ort.InferenceSession;
   readonly backendHint: string;
   constructor(test: Test.OperatorTest) {
-    const opsetImport = onnx.OperatorSetIdProto.create(test.opset);
+    const opsetImport = onnx.OperatorSetIdProto.create(test.opsets![0]);
     const operator = test.operator;
     const attribute = (test.attributes || []).map(attr => {
       const protoAttr = onnx.AttributeProto.create({name: attr.name});
@@ -630,7 +630,7 @@ export class ProtoOpTestContext {
       input: test.cases[0].inputs!.map((_, i) => `input_${i}`),
       output: test.cases[0].outputs!.map((_, i) => `output_${i}`),
       opType: operator,
-      domain: test.opset?.domain,
+      domain: test.opsets![0].domain,
       name: operator,
       attribute
     })];
