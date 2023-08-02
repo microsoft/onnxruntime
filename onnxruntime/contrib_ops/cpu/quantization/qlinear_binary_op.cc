@@ -13,14 +13,13 @@ namespace onnxruntime {
 namespace contrib {
 
 namespace {
-template <typename T>
 struct QLinearBroadcastHelper : public BroadcastHelper {
   QLinearBroadcastHelper(InputBroadcaster& input_broadcaster,
                          OutputBroadcaster& output_broadcaster,
                          ThreadPool* threadpool,
                          double unit_cost,
                          float A_scale_in, float B_scale_in, float C_scale_in,
-                         T A_zero_point_in, T B_zero_point_in, T C_zero_point_in)
+                         uint8_t A_zero_point_in, uint8_t B_zero_point_in, uint8_t C_zero_point_in)
       : BroadcastHelper{input_broadcaster, output_broadcaster, nullptr, threadpool, unit_cost},
         A_scale{A_scale_in},
         B_scale{B_scale_in},
@@ -30,7 +29,7 @@ struct QLinearBroadcastHelper : public BroadcastHelper {
         C_zero_point{C_zero_point_in} {
   }
 
-  QLinearBroadcastHelper(const QLinearBroadcastHelper<T>& rhs, size_t offset, size_t num_elements)
+  QLinearBroadcastHelper(const QLinearBroadcastHelper& rhs, size_t offset, size_t num_elements)
       : BroadcastHelper(rhs, offset, num_elements),
         A_scale{rhs.A_scale},
         B_scale{rhs.B_scale},
@@ -43,11 +42,11 @@ struct QLinearBroadcastHelper : public BroadcastHelper {
   float A_scale;
   float B_scale;
   float C_scale;
-  // storage for these is T but original value may be uint16_t, uint8_t or int8_t.
+  // storage for these is uint8_t but original value may be uint8_t or int8_t.
   // typed code that uses values needs to cast to correct representation
-  T A_zero_point;
-  T B_zero_point;
-  T C_zero_point;
+  uint8_t A_zero_point;
+  uint8_t B_zero_point;
+  uint8_t C_zero_point;
 };
 
 template <typename T>
@@ -83,12 +82,12 @@ void QLinearImpl(OpKernelContext& context, double unit_cost, const ProcessBroadc
   OutputBroadcaster output_broadcaster{input_broadcaster.GetSpanSize(),
                                        *context.Output(0, input_broadcaster.GetOutputShape())};
 
-  QLinearBroadcastHelper<T> broadcast_helper(input_broadcaster, output_broadcaster,
+  QLinearBroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster,
                                           context.GetOperatorThreadPool(), unit_cost,
                                           A_scale, B_scale, C_scale,
-                                          static_cast<T>(A_zero_point),
-                                          static_cast<T>(B_zero_point),
-                                          static_cast<T>(C_zero_point));
+                                          static_cast<uint8_t>(A_zero_point),
+                                          static_cast<uint8_t>(B_zero_point),
+                                          static_cast<uint8_t>(C_zero_point));
 
   BroadcastLooper(broadcast_helper, functors);
 }
@@ -98,7 +97,7 @@ template <typename T>
 Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
   const ProcessBroadcastSpanFuncs functors = {
       [](BroadcastHelper& per_iter_bh) {
-        QLinearBroadcastHelper<T>& qlbh = static_cast<QLinearBroadcastHelper<T>&>(per_iter_bh);
+        QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
         const T input0 = per_iter_bh.ScalarInput0<T>();
         auto input1 = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -111,7 +110,7 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
                        output.data(), output.size(), true);
       },
       [](BroadcastHelper& per_iter_bh) {
-        QLinearBroadcastHelper<T>& qlbh = static_cast<QLinearBroadcastHelper<T>&>(per_iter_bh);
+        QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
         auto input0 = per_iter_bh.SpanInput0<T>();
         const T input1 = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -123,7 +122,7 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
                        output.data(), output.size(), true);
       },
       [](BroadcastHelper& per_iter_bh) {
-        QLinearBroadcastHelper<T>& qlbh = static_cast<QLinearBroadcastHelper<T>&>(per_iter_bh);
+        QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
         auto input0 = per_iter_bh.SpanInput0<T>();
         auto input1 = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -145,7 +144,7 @@ template <typename T>
 Status QLinearMul<T>::Compute(OpKernelContext* context) const {
   const ProcessBroadcastSpanFuncs functors = {
       [](BroadcastHelper& per_iter_bh) {
-        QLinearBroadcastHelper<T>& qlbh = static_cast<QLinearBroadcastHelper<T>&>(per_iter_bh);
+        QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
         const T input0 = per_iter_bh.ScalarInput0<T>();
         auto input1 = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -158,7 +157,7 @@ Status QLinearMul<T>::Compute(OpKernelContext* context) const {
                        output.data(), output.size(), true);
       },
       [](BroadcastHelper& per_iter_bh) {
-        QLinearBroadcastHelper<T>& qlbh = static_cast<QLinearBroadcastHelper<T>&>(per_iter_bh);
+        QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
         auto input0 = per_iter_bh.SpanInput0<T>();
         const T input1 = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -170,7 +169,7 @@ Status QLinearMul<T>::Compute(OpKernelContext* context) const {
                        output.data(), output.size(), true);
       },
       [](BroadcastHelper& per_iter_bh) {
-        QLinearBroadcastHelper<T>& qlbh = static_cast<QLinearBroadcastHelper<T>&>(per_iter_bh);
+        QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
         auto input0 = per_iter_bh.SpanInput0<T>();
         auto input1 = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -197,7 +196,6 @@ Status QLinearMul<T>::Compute(OpKernelContext* context) const {
 
 REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearAdd, 1, int8_t, QLinearAdd);
 REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearAdd, 1, uint8_t, QLinearAdd);
-REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearAdd, 1, uint16_t, QLinearAdd);
 REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearMul, 1, int8_t, QLinearMul);
 REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearMul, 1, uint8_t, QLinearMul);
 

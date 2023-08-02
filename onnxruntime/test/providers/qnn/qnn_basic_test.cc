@@ -265,7 +265,7 @@ TEST_F(QnnHTPBackendTests, TestNHWCResizeShapeInference_qdq_sizes_opset18) {
 TEST(QnnDEBUGTests, QNN_QDQ16bit_Add) {
   Ort::SessionOptions so;
 
-  //so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+  // so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
   so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
   so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
 
@@ -282,8 +282,8 @@ TEST(QnnDEBUGTests, QNN_QDQ16bit_Add) {
   try {
     Ort::Session session(*ort_env, ort_model_path, so);
 
-    std::array<float, 1 * 1 * 2 * 2> input0_data = { 1.0f, 2.0f, 3.0f, 4.0f };
-    std::array<float, 1 * 1 * 2 * 2> input1_data = { 1.0f, 2.0f, 3.0f, 4.0f };
+    std::array<float, 1 * 1 * 2 * 2> input0_data = {1.0f, 2.0f, 3.0f, 4.0f};
+    std::array<float, 1 * 1 * 2 * 2> input1_data = {1.0f, 2.0f, 3.0f, 4.0f};
 
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
     std::vector<Ort::Value> ort_inputs;
@@ -329,15 +329,14 @@ TEST(QnnDEBUGTests, QNN_QDQ16bit_Add) {
 TEST(QnnDEBUGTests, CPU_EP_QDQ16bit_Add) {
   Ort::SessionOptions so;
 
-  //so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);  // Uses QLinearAdd (supported in this branch!)
-  so.SetGraphOptimizationLevel(ORT_DISABLE_ALL);  // Uses actual Quant, Dequant, Add ops.
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);  // Fusion into QLinearAdd is disabled for 16bit in this branch.
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "add.quant16.onnx";
   try {
     Ort::Session session(*ort_env, ort_model_path, so);
 
-    std::array<float, 1 * 1 * 2 * 2> input0_data = { 1.0f, 2.0f, 3.0f, 4.0f };
-    std::array<float, 1 * 1 * 2 * 2> input1_data = { 1.0f, 2.0f, 3.0f, 4.0f };
+    std::array<float, 1 * 1 * 2 * 2> input0_data = {1.0f, 2.0f, 3.0f, 4.0f};
+    std::array<float, 1 * 1 * 2 * 2> input1_data = {1.0f, 2.0f, 3.0f, 4.0f};
 
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
     std::vector<Ort::Value> ort_inputs;
@@ -390,8 +389,8 @@ TEST(QnnDEBUGTests, CPU_EP_Mixed_16bit_8bit_Add) {
   try {
     Ort::Session session(*ort_env, ort_model_path, so);
 
-    std::array<float, 1 * 1 * 2 * 2> input0_data = { 1.0f, 2.0f, 3.0f, 4.0f };
-    std::array<float, 1 * 1 * 2 * 2> input1_data = { 1.0f, 2.0f, 3.0f, 4.0f };
+    std::array<float, 1 * 1 * 2 * 2> input0_data = {1.0f, 2.0f, 3.0f, 4.0f};
+    std::array<float, 1 * 1 * 2 * 2> input1_data = {1.0f, 2.0f, 3.0f, 4.0f};
 
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
     std::vector<Ort::Value> ort_inputs;

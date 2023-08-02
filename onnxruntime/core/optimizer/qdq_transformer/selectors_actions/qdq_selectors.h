@@ -85,9 +85,15 @@ class UnaryNodeGroupSelector : public NodeGroupSelector {
 
 // 2 DQ nodes providing input -> node -> Q
 class BinaryNodeGroupSelector : public NodeGroupSelector {
+ public:
+  BinaryNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+
+ private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool int16_uint16_allowed_;
 };
 
 // Variadic DQ nodes -> node -> Q
@@ -224,7 +230,7 @@ class UnarySelector : public BaseSelector {
 
 class BinarySelector : public BaseSelector {
  public:
-  BinarySelector() : BaseSelector(std::make_unique<BinaryNodeGroupSelector>()) {}
+  BinarySelector(bool int16_uint16_allowed = true) : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(int16_uint16_allowed)) {}
 };
 
 // Variadic DQ nodes -> node -> Q

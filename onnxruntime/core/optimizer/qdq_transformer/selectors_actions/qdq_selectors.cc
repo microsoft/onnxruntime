@@ -185,8 +185,14 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return dt_input_1 == dt_input_2 &&
-         dt_input_1 == dt_output;
+
+  // All input and output types must match.
+  if (dt_input_1 != dt_input_2 || dt_input_1 != dt_output) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || (dt_input_1 != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 &&
+                                   dt_input_1 != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
 }
 
 bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
