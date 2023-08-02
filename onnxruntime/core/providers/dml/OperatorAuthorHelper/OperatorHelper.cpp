@@ -1862,7 +1862,7 @@ namespace OperatorHelper
         return { std::move(outputShape) };
     }
 
-    void ConcatHelper::Initialize(
+    void ConcatHelperBase::Initialize(
         const MLOperatorAttributes& operatorAttributes,
         gsl::span<const DimensionType> inputDimensions
         )
@@ -1872,13 +1872,13 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(m_axis < static_cast<int>(inputDimensions.size()));
     }
 
-    std::vector<EdgeShapes> ConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    std::vector<EdgeShapes> ConcatHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo, uint32_t firstInputIndex, uint32_t step) const
     {
-        auto outputShape = shapeInfo.GetInputTensorShape(0);
+        auto outputShape = shapeInfo.GetInputTensorShape(firstInputIndex);
 
         uint32_t inputCount = shapeInfo.GetInputCount();
 
-        for (uint32_t i = 1; i < inputCount; ++i)
+        for (uint32_t i = firstInputIndex + step; i < inputCount; i += step)
         {
             auto inputShape = shapeInfo.GetInputTensorShape(i);
             for (size_t j = 0; j < outputShape.size(); ++j)
@@ -1891,6 +1891,16 @@ namespace OperatorHelper
         }
 
         return { EdgeShapes(outputShape) };
+    }
+
+    std::vector<EdgeShapes> ConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        return ConcatHelperBase::GetOutputShapes(shapeInfo, 0, 1);
+    }
+
+    std::vector<EdgeShapes> QLinearConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        return ConcatHelperBase::GetOutputShapes(shapeInfo, 2, 3);
     }
 
     void CropHelper::Initialize(
