@@ -127,12 +127,15 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
 
 class WhereNodeGroupSelector : public NodeGroupSelector {
  public:
-  WhereNodeGroupSelector() = default;
+  WhereNodeGroupSelector(bool int16_uint16_allowed = true)
+      : int16_uint16_allowed_(int16_uint16_allowed) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool int16_uint16_allowed_;
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
@@ -275,7 +278,8 @@ class ConvSelector : public BaseSelector {
 
 class WhereSelector : public BaseSelector {
  public:
-  WhereSelector() : BaseSelector(std::make_unique<WhereNodeGroupSelector>()) {}
+  WhereSelector(bool int16_uint16_allowed = true)
+      : BaseSelector(std::make_unique<WhereNodeGroupSelector>(int16_uint16_allowed)) {}
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not

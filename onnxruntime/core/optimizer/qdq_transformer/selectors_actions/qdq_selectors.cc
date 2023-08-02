@@ -369,8 +369,13 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   const int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return dt_input_1 == dt_input_2 &&
-         dt_input_1 == dt_output;
+
+  // All input and output types must match.
+  if (dt_input_1 != dt_input_2 || dt_input_1 != dt_output) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || !Is16BitIntType(dt_input_1);
 }
 
 bool InstanceNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
