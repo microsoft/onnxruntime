@@ -338,6 +338,10 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
+  if (!int16_uint16_allowed_ && (Is16BitIntType(dt_A) || Is16BitIntType(dt_B))) {
+    return false;  // 16-bit int types must be explicitly allowed.
+  }
+
   if (dq_nodes.size() < 3) {  // no bias
     return true;
   }

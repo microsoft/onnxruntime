@@ -159,10 +159,15 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
 // Input: DQ nodes for A, B and optional C
 // Output: optional Q node for Y
 class GemmNodeGroupSelector : public NodeGroupSelector {
+ public:
+  GemmNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool int16_uint16_allowed_;
 };
 
 // Input: DQ nodes for input, scale, and B
@@ -285,8 +290,8 @@ class MatMulSelector : public BaseSelector {
 // Output: optional Q node for Y
 class GemmSelector : public BaseSelector {
  public:
-  GemmSelector()
-      : BaseSelector(std::make_unique<GemmNodeGroupSelector>()) {}
+  GemmSelector(bool int16_uint16_allowed = true)
+      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(int16_uint16_allowed)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };

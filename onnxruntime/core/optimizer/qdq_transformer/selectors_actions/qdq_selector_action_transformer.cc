@@ -213,7 +213,8 @@ void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::GemmReplaceWithQuant>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::GemmSelector>();
+  // QGemm does not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::GemmSelector>(false /* int16_uint16_allowed */);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Gemm", {}}},
                                                          std::move(selector),
