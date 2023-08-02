@@ -360,9 +360,6 @@ class TrainingManager(GraphExecutionManager):
 
         super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
-        self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
-            self._graph_builder.get_forward_model()
-        )
 
         # Apply registered graph transformers to the optimized model
         device_type = self._device.type
