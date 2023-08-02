@@ -1886,11 +1886,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of attention heads</dd>
 </dl>
 
-#### Inputs
+#### Inputs (6 - 7)
 
 <dl>
 <dt><tt>query_layer</tt> : T</dt>
-<dd>tensor with shape (batch_size, seq_len, num_heads x head_size)</dd>
+<dd>tensor with shape (batch_size, seq_len, num_heads x head_size) or (token_count, num_heads x head_size)</dd>
 <dt><tt>query_bias</tt> : T</dt>
 <dd>1-d tensor with shape (num_heads x head_size)</dd>
 <dt><tt>rel_pos</tt> : T</dt>
@@ -1901,6 +1901,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>bias for the gated_ur_linear, shape (D)</dd>
 <dt><tt>eco_a</tt> : T</dt>
 <dd>tensor of shape (1, num_heads, 1, 1)</dd>
+<dt><tt>token_offset</tt> (optional) : M</dt>
+<dd>offset of each token with shape (batch_size, seq_len)</dd>
 </dl>
 
 #### Outputs
@@ -1915,6 +1917,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain token_offset to integer types</dd>
 </dl>
 
 
@@ -2904,7 +2908,7 @@ This version of the operator has been available since version 1 of the 'com.micr
    - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
    - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
   
-  The query, key and value tensors contains result of hidden embedding of real tokens after input projections.
+  The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
   Token_offset records the offset of token in the unpacked input.
   cumulative_sequence_length records cumulated length of each sequnces length.
   
@@ -2925,7 +2929,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs (5 - 6)
+#### Inputs (6 - 7)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2934,6 +2938,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Key with shape (token_count, hidden_size)</dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (token_count, v_hidden_size)</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>token_offset</tt> : M</dt>
 <dd>Offset of each token before packing, with shape (batch_size, sequence_length).</dd>
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
