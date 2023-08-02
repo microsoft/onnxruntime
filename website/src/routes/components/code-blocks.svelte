@@ -5,8 +5,6 @@
 	import javascript from 'svelte-highlight/languages/javascript';
 	import java from 'svelte-highlight/languages/java';
 	import cpp from 'svelte-highlight/languages/cpp';
-	import typescript from 'svelte-highlight/languages/typescript';
-	import oneLight from 'svelte-highlight/styles/one-light';
 	import { blur, fade } from 'svelte/transition';
 
 	let pythonCode =
@@ -22,8 +20,21 @@
 	// a svelte function to conditionally render different "Highlight" components based on what tab was clicked
 	let activeTab = 'Python'; // set the initial active tab to Python
 
-	// @ts-ignore
-	let handleClick = (event) => {
+	// TODO: ensure work, change timeout
+	let tabs = ['Python', 'C#', 'JavaScript', 'Java', 'C++']
+	let interacted = false;
+	let currentTab = 0;
+	let cycleCode = () => {
+		currentTab++;
+		activeTab = tabs[currentTab];
+		activeTab = activeTab;
+	}
+	while (!interacted){
+		setTimeout(cycleCode,200) 
+	}
+
+	let handleClick = (/** @type {{ target: { textContent: string; }; }} */ event) => {
+		interacted = true;
 		// get the text content of the clicked tab
 		const tabText = event.target.textContent.trim();
 		// if tabtext === 'c++' {
@@ -39,9 +50,6 @@
 	// get data theme from html tag
 </script>
 
-<svelte:head>
-	{@html oneLight}
-</svelte:head>
 <div class="container mx-auto">
 	<div class="grid-cols-3 gap-10 hidden md:grid">
 		<div class="col-span-1 mx-auto">
@@ -86,7 +94,7 @@
 					>More..</button
 				>
 			</div>
-
+			<!-- TODO" Copy button. -->
 			{#if activeTab === 'Python'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={python} code={pythonCode} />

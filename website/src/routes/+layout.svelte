@@ -5,6 +5,8 @@
 	import { onMount } from 'svelte';
 	import IoIosClose from 'svelte-icons/io/IoIosClose.svelte';
 	import anime from 'animejs';
+	// TODO: Tiktok icon is only black. 
+	import oneLight from 'svelte-highlight/styles/one-light';
 
 	let removetoast = (e) => {
 		e.target.parentNode.parentNode.remove();
@@ -29,7 +31,10 @@
         })
 	});
 </script>
-
+<svelte:head>
+	{@html oneLight}
+</svelte:head>
+<!-- TODO: Make toast an alert w/ icon -->
 <div class="toast z-[2]">
 	<div class="alert alert-primary">
 		<span

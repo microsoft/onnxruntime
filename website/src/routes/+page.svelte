@@ -7,11 +7,13 @@
     import GenerativeAi from "./components/generative-ai.svelte";
     import Testimonials from "./components/testimonials.svelte";
     import Table from "./components/table.svelte"
+    import Stats from "./components/stats.svelte";
 </script>
 <Hero/> 
 <Customers/>
 <CodeBlocks/>
-<Table/>
+<Stats/>
+<!-- <Table/> -->
 <!-- <Performance/>
 <CrossPlatform/>
 <GenerativeAi/>
