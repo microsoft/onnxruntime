@@ -165,7 +165,9 @@ void ConvQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool is_
   std::unique_ptr<Action> action = std::make_unique<QDQ::ConvReplaceWithQLinear>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed);
+  // QLinearConv does not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed,
+                                                                               false /* int16_uint16_allowed */);
 
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Conv", {}}},

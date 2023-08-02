@@ -14,6 +14,12 @@
 namespace onnxruntime {
 namespace QDQ {
 namespace {
+
+static inline bool Is16BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
+}
+
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
@@ -117,8 +123,7 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  if (!int16_uint16_allowed_ && (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 ||
-                                 dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16)) {
+  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input)) {
     return false;
   }
 
@@ -170,8 +175,7 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     return false;
   }
 
-  return int16_uint16_allowed_ || (dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 &&
-                                   dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
+  return int16_uint16_allowed_ || !Is16BitIntType(dt_input);
 }
 
 bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
@@ -191,8 +195,7 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  return int16_uint16_allowed_ || (dt_input_1 != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 &&
-                                   dt_input_1 != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
+  return int16_uint16_allowed_ || !Is16BitIntType(dt_input_1);
 }
 
 bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
@@ -222,8 +225,7 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  return int16_uint16_allowed_ || (dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 &&
-                                   dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
+  return int16_uint16_allowed_ || !Is16BitIntType(dt_input);
 }
 
 void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
@@ -261,7 +263,11 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
+  if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || (!Is16BitIntType(dt_input) && !Is16BitIntType(dt_weight));
 }
 
 void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {

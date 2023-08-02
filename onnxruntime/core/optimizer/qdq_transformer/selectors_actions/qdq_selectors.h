@@ -113,7 +113,8 @@ class VariadicNodeGroupSelector : public NodeGroupSelector {
 class ConvNodeGroupSelector : public NodeGroupSelector {
  public:
   // default to 'true'
-  ConvNodeGroupSelector(bool int8_allowed = true) : int8_allowed_(int8_allowed) {}
+  ConvNodeGroupSelector(bool int8_allowed = true, bool int16_uint16_allowed = true)
+      : int8_allowed_(int8_allowed), int16_uint16_allowed_(int16_uint16_allowed) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
@@ -121,6 +122,7 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 
   bool int8_allowed_;
+  bool int16_uint16_allowed_;
 };
 
 class WhereNodeGroupSelector : public NodeGroupSelector {
@@ -257,7 +259,8 @@ class OutputVariadicSelector : public BaseSelector {
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvSelector : public BaseSelector {
  public:
-  ConvSelector(bool int8_allowed = false) : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed)) {}
+  ConvSelector(bool int8_allowed = false, bool int16_uint16_allowed = true)
+      : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, int16_uint16_allowed)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
