@@ -250,11 +250,11 @@ def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_polic
             else:
                 with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
                     ort_model(x, y, z)
-                assert "ORTModule does not support the following model output type" in str(runtime_error.value)
+                assert "ORTModule fails to unflatten user output" in str(runtime_error.value)
         else:
             with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
                 ort_model(x, y, z)
-            assert "ORTModule does not support the following model output type" in str(runtime_error.value)
+            assert "ORTModule fails to unflatten user output" in str(runtime_error.value)
 
 
 @pytest.mark.parametrize(

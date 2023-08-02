@@ -11,14 +11,13 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
-from onnxruntime.training.utils import unflatten_from_data_and_schema
 
 from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
-from ._io import _FlattenedModule, _InputInfo
+from ._io import _FlattenedModule, _InputInfo, unflatten_user_output
 from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
@@ -323,9 +322,9 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_inspector,
             )
 
-            outputs = unflatten_from_data_and_schema(
-                self._forward_class.apply(*prepared_input_list),
+            outputs = unflatten_user_output(
                 self._module_output_schema,
+                self._forward_class.apply(*prepared_input_list),
             )
 
             if (

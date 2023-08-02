@@ -10,12 +10,12 @@ import onnx
 import torch
 
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.training.utils import unflatten_from_data_and_schema
 
 from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
+from ._io import unflatten_user_output
 from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
 from ._utils import save_tuning_results, set_tuning_results
 from .options import DebugOptions, _SkipCheck
@@ -186,7 +186,7 @@ class InferenceManager(GraphExecutionManager):
                     self._execution_agent._inference_session, False, self._runtime_options.tuning_results_path
                 )
 
-            return unflatten_from_data_and_schema(user_outputs, self._module_output_schema)
+            return unflatten_user_output(self._module_output_schema, user_outputs)
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e, log_level=self._debug_options.logging.log_level)

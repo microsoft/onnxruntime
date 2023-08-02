@@ -18,7 +18,7 @@ from torch.utils.cpp_extension import ROCM_HOME
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from onnxruntime.training.utils import ORTModelInputOutputSchemaType, get_schema_for_flatten_data
+from onnxruntime.training.utils import ORTModelInputOutputSchemaType
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
 from ._custom_autograd_function_exporter import _post_process_after_export
@@ -271,9 +271,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
         random_states = _utils.get_random_states()
 
-        schema = get_schema_for_flatten_data(
-            {"args": copy.copy(inputs), "kwargs": copy.copy(kwargs)}, constant_as_tensor=True
-        )
+        schema = _io._extract_schema({"args": copy.copy(inputs), "kwargs": copy.copy(kwargs)})
         if (
             self._onnx_models.exported_model
             and schema == self._input_info.schema
