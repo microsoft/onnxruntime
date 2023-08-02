@@ -189,7 +189,14 @@ const createSliceProgramInfoLoader =
 
 export const slice = (context: ComputeContext, attributes: SliceAttributes): void => {
   validateInputs(context.inputs, attributes);
-  context.compute(createSliceProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
+  const programInfoLoader = createSliceProgramInfoLoader(context.inputs, attributes);
+  const program = programInfoLoader.get();
+  if (ShapeUtil.size(program.outputs[0].dims) > 0) {
+    context.compute(programInfoLoader, {inputs: [0]});
+  } else {
+    // TODO: support empty output
+    throw new Error('slice: output size is 0');
+  }
 };
 
 export const parseSliceAttributes = (attributes: Record<string, unknown>): SliceAttributes => {
