@@ -122,11 +122,8 @@ public:
 
         if (!m_emptyInput && nonzeroElementCount > 0)
         {
-            std::vector<DimensionType> outputCoordinatesStrides = {nonzeroElementCount * 2, 2};
-            TensorDesc stridedOutputTensorDesc(DML_TENSOR_DATA_TYPE_UINT32, outputSizes, outputCoordinatesStrides);
-
             // TODO: Remove this hack when DML supports native int64 for NonZero
-            m_zeroOperator = InitializeZeroInt64Tensor(stridedOutputTensorDesc.GetBufferSizeInBytes());
+            m_zeroOperator = InitializeZeroInt64Tensor(m_rank * nonzeroElementCount * sizeof(int64_t));
             ExecuteZeroInt64Tensor(m_zeroOperator.Get(), outputTensor.GetInterface().Get());
 
             ComPtr<IDMLCompiledOperator> sliceOperator = InitializeSlice(m_intermediateTensorDescs[1], nonzeroElementCount);
