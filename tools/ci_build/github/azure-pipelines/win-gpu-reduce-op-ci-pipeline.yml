@@ -16,6 +16,7 @@ jobs:
     EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
     setVcvars: true
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -26,6 +27,9 @@ jobs:
       DownloadCUDA: true
       BuildArch: $(buildArch)
       BuildConfig: $(BuildConfig)
+      MachinePool: 'onnxruntime-Win2022-GPU-T4'
+      WithCache: true
+      Today: $(Today)
 
   - task: PythonScript@0
     displayName: 'Build and test'

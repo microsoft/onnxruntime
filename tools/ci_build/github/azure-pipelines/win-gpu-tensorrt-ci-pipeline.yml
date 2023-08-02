@@ -12,6 +12,7 @@ jobs:
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     skipComponentGovernanceDetection: true
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150
   workspace:
     clean: all
@@ -22,6 +23,9 @@ jobs:
       DownloadCUDA: true
       BuildArch: $(buildArch)
       BuildConfig: $(BuildConfig)
+      MachinePool: 'onnxruntime-Win2022-GPU-T4'
+      WithCache: true
+      Today: $(Today)
 
   - task: PythonScript@0
     displayName: 'Generate cmake config'
