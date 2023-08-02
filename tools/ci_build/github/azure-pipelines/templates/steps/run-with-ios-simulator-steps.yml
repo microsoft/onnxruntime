@@ -1,0 +1,53 @@
+parameters:
+- name: steps
+  type: stepList
+- name: collectLogs
+  type: boolean
+  default: false
+- name: logArtifactNamePrefix
+  type: string
+  default: ""
+
+steps:
+- bash: |
+    set -e -x
+
+    DEVICE_TYPE_ID="$("$(Build.SourcesDirectory)/tools/ci_build/github/apple/get_simulator_device_info.sh" identifier)"
+    ORT_BUILD_SIMULATOR_ID="$(xcrun simctl create iPhoneSimulatorForPipeline "${DEVICE_TYPE_ID}")"
+
+    # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+    set +x
+    echo "##vso[task.setvariable variable=ORT_BUILD_SIMULATOR_ID]${ORT_BUILD_SIMULATOR_ID}"
+  displayName: "Create iPhone simulator"
+
+- bash: |
+    set -e -x
+    xcrun simctl bootstatus "${ORT_BUILD_SIMULATOR_ID}" -b
+  displayName: "Wait for iPhone simulator to boot"
+
+- ${{ parameters.steps }}
+
+- ${{ if parameters.collectLogs }}:
+  - bash: |
+      set -e -x
+      if [[ -n "${ORT_BUILD_SIMULATOR_ID-}" ]]; then
+        xcrun simctl spawn "${ORT_BUILD_SIMULATOR_ID}" log collect
+        LOG_DIR="$(xcrun simctl getenv "${ORT_BUILD_SIMULATOR_ID}" SIMULATOR_LOG_ROOT)"
+        mkdir "$(Build.ArtifactStagingDirectory)/${{ parameters.logArtifactNamePrefix }}Logs"
+        cp -r "${LOG_DIR}/system_logs.logarchive" \
+          "$(Build.ArtifactStagingDirectory)/${{ parameters.logArtifactNamePrefix }}Logs"
+      fi
+    displayName: "Collect simulator logs"
+    condition: succeededOrFailed()
+
+  - publish: "$(Build.ArtifactStagingDirectory)/${{ parameters.logArtifactNamePrefix }}Logs"
+    artifact: "${{ parameters.logArtifactNamePrefix }}IosSimulatorLogs"
+    condition: succeededOrFailed()
+
+- bash: |
+    set -e -x
+    if [[ -n "${ORT_BUILD_SIMULATOR_ID-}" ]]; then
+      xcrun simctl delete "${ORT_BUILD_SIMULATOR_ID}"
+    fi
+  displayName: "Delete iPhone simulator"
+  condition: always()

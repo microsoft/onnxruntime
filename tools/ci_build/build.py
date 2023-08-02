@@ -1654,7 +1654,11 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 def run_ios_tests(args, source_dir, config, cwd):
     simulator_device_name = subprocess.check_output(
-        ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
+        [
+            "bash",
+            os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh"),
+            "name",
+        ],
         text=True,
     ).strip()
 
