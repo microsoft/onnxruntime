@@ -4349,7 +4349,7 @@ struct OrtApi {
 
   /**
    * Update TensorRT EP provider option 'user_compute_stream' since it's a pointer which can't be updated by string based API UpdateTensorRTProviderOptions
-   * Please note that it's caller's responsibility to properly manage the lifetime of compute stream instance 
+   * Please note that it's caller's responsibility to properly manage the lifetime of compute stream instance
    *
    * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
    * \param user_compute_stream - pointer to compute stream
