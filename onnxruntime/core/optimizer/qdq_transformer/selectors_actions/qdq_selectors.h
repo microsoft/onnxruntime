@@ -140,9 +140,11 @@ class WhereNodeGroupSelector : public NodeGroupSelector {
 class MatMulNodeGroupSelector : public NodeGroupSelector {
  public:
   MatMulNodeGroupSelector(bool int8_allowed = true,
-                          bool matmulintegertofloat_allowed = false)
+                          bool matmulintegertofloat_allowed = false,
+                          bool int16_uint16_allowed = true)
       : int8_allowed_(int8_allowed),
-        matmulintegertofloat_allowed_(matmulintegertofloat_allowed) {
+        matmulintegertofloat_allowed_(matmulintegertofloat_allowed),
+        int16_uint16_allowed_(int16_uint16_allowed) {
   }
 
  private:
@@ -151,6 +153,7 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
   bool int8_allowed_;
   bool matmulintegertofloat_allowed_;
+  bool int16_uint16_allowed_;
 };
 
 // Input: DQ nodes for A, B and optional C
@@ -264,15 +267,18 @@ class ConvSelector : public BaseSelector {
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
+
 class WhereSelector : public BaseSelector {
  public:
   WhereSelector() : BaseSelector(std::make_unique<WhereNodeGroupSelector>()) {}
 };
+
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
  public:
-  MatMulSelector(bool int8_allowed)
-      : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true)) {}
+  MatMulSelector(bool int8_allowed, bool int16_uint16_allowed = true)
+      : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true,
+                                                               int16_uint16_allowed)) {}
 };
 
 // Input: DQ nodes for A, B and optional C

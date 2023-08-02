@@ -291,6 +291,10 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
+  if (!int16_uint16_allowed_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
+    return false;
+  }
+
   // potential match for QLinearMatMul or MatMulIntegerToFloat
   bool qlinear = !q_nodes.empty();
 
