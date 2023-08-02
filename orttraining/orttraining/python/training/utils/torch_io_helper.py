@@ -238,6 +238,9 @@ def unflatten_from_data_and_schema(data: List[torch.Tensor], schema: ORTModelInp
         elif PrimitiveType.is_primitive_type(data_schema):
             return data_schema
         elif isinstance(data_schema, _TensorStub):
+            assert isinstance(
+                data[data_schema.tensor_idx], torch.Tensor
+            ), f"Expecting torch.Tensor, got {type(data[data_schema.tensor_idx])}"
             return data[data_schema.tensor_idx]
         elif isinstance(data_schema, abc.Sequence):
             sequence_type = type(data_schema)

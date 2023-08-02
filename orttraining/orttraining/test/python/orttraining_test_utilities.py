@@ -12,8 +12,58 @@ from onnxruntime.training.utils.torch_io_helper import _TensorStub
 
 @pytest.mark.parametrize(
     "input_output_map",
-    # list
     [
+        # single element
+        [
+            True,  # test input
+            [],  # expected output: flatten tensor list
+            True,  # expected output: extracted schema
+            # expected output: flatten tensor list when constant_as_tensor=True
+            torch.tensor(True),
+        ],
+        [
+            False,  # test input
+            [],  # expected output: flatten tensor list
+            False,  # expected output: extracted schema
+            # expected output: flatten tensor list when constant_as_tensor=True
+            torch.tensor(False),
+        ],
+        [
+            1,  # test input
+            [],  # expected output: flatten tensor list
+            1,  # expected output: extracted schema
+            # expected output: flatten tensor list when constant_as_tensor=True
+            torch.tensor(1),
+        ],
+        [
+            2.0,  # test input
+            [],  # expected output: flatten tensor list
+            2.0,  # expected output: extracted schema
+            # expected output: flatten tensor list when constant_as_tensor=True
+            torch.tensor(2.0),
+        ],
+        [
+            "abc",  # test input
+            [],  # expected output: flatten tensor list
+            "abc",  # expected output: extracted schema
+            # expected output: flatten tensor list when constant_as_tensor=True
+            "abc",
+        ],
+        [
+            None,  # test input
+            [],  # expected output: flatten tensor list
+            None,  # expected output: extracted schema
+            # expected output: flatten tensor list when constant_as_tensor=True
+            None,
+        ],
+        [
+            torch.tensor([1, 2, 3]),  # test input
+            [torch.tensor([1, 2, 3])],  # expected output: flatten tensor list
+            _TensorStub(tensor_idx=0, name="", dtype=torch.int64, shape_dims=1),  # expected output: extracted schema
+            # expected output: flatten tensor list when constant_as_tensor=True
+            [torch.tensor([1, 2, 3])],
+        ],
+        # list
         [
             [True, False, 1, 2.0, "abc", None],  # test input
             [],  # expected output: flatten tensor list
@@ -207,17 +257,31 @@ def test_data_flatten_and_unflatten(input_output_map, flag: int):
     if flag == 0:
         schema, out = flatten_data_with_schema(raw_data)
         assert all([torch.allclose(o, d) if isinstance(o, torch.Tensor) else o == d for o, d in zip(out, flatten_data)])
-        assert type(schema) == type(raw_data)
+        if not isinstance(raw_data, torch.Tensor):
+            assert type(schema) == type(raw_data)
+
         assert str(schema) == str(flatten_schema)
 
         flatten_data_constant_as_tensor = input_output_map[3]
         schema, out = flatten_data_with_schema(raw_data, constant_as_tensor=True, device=torch.device("cpu"))
-        assert all(
-            [
-                torch.allclose(o, d) if isinstance(o, torch.Tensor) else o == d
-                for o, d in zip(out, flatten_data_constant_as_tensor)
-            ]
-        )
+        if isinstance(raw_data, (torch.Tensor, bool, int, float)):
+            d = torch.tensor(raw_data, device=out[0].device) if not isinstance(raw_data, torch.Tensor) else raw_data
+            assert torch.allclose(d, out[0])
+        elif isinstance(
+            raw_data,
+            (
+                type(None),
+                str,
+            ),
+        ):
+            assert raw_data == schema
+        else:
+            assert all(
+                [
+                    torch.allclose(o, d) if isinstance(o, torch.Tensor) else o == d
+                    for o, d in zip(out, flatten_data_constant_as_tensor)
+                ]
+            )
 
     elif flag == 1:
         restored_data = unflatten_from_data_and_schema(flatten_data, flatten_schema)
