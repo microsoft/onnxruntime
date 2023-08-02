@@ -516,5 +516,5 @@ stages:
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          #${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
+          #  device: '-d AZURE'
