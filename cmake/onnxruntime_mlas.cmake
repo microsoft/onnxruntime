@@ -3,28 +3,6 @@
 
 set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 
-
-set(MLAS_AMX_SUPPORTED FALSE)
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-  # match assembler version, AMX instructions are supported from 2.38
-  if (CMAKE_ASM_COMPILER_ID STREQUAL "GNU")
-    execute_process(
-        COMMAND as --version
-        OUTPUT_VARIABLE _as_version
-    )
-    # 2.38 or later
-    if (_as_version MATCHES "GNU.[Aa]ssembler.*(2\\.38|2\\.39|2\\.[4-9][0-9]|[3-9]\\.[0-9][0-9])")
-        set(MLAS_AMX_SUPPORTED TRUE)
-    endif()
-  endif()
-endif()
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-  set(MLAS_AMX_SUPPORTED TRUE)
-endif()
-
-
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -56,12 +34,6 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qlgavgpool.cpp
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
 )
-
-if(MLAS_AMX_SUPPORTED)
-  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_AMX_SUPPORTED)
-else()
-  message(WARNING "AMX instructions NOT supported due to lack of compiler tool chain!")
-endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
@@ -153,6 +125,10 @@ function(setup_mlas_source_for_windows)
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/arm/sgemmc.cpp
     )
+    # it should be removed after Visual Stuio is upgraded to 17.7
+    if (MSVC)
+      add_compile_options("-d2SSAOptimizer-")
+    endif()
   elseif(onnxruntime_target_platform STREQUAL "x64")
 
     file(GLOB_RECURSE mlas_platform_srcs_avx CONFIGURE_DEPENDS
@@ -550,15 +526,16 @@ else()
           ${mlas_platform_srcs_avx512core}
         )
 
-        if(MLAS_AMX_SUPPORTED)
+	if(NOT APPLE)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
+	    ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
             ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
             ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
-          )
-          set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mamx-tile -mamx-int8 -mavx2 -mavx512bw -mavx512dq -mavx512vl")
-          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mamx-tile -mamx-int8 -mavx2 -mavx512bw -mavx512dq -mavx512vl")
-        endif()
+            )
+          set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+	endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
           onnxruntime_add_static_library(onnxruntime_mlas_x86_64 ${mlas_platform_srcs})

@@ -3,9 +3,9 @@
 
 import {Guid} from 'guid-typescript';
 import Long from 'long';
-import {onnx} from 'onnx-proto';
 
-import {onnxruntime} from './ort-schema/ort-generated';
+import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
+import {onnx} from './ort-schema/protobuf/onnx';
 import {decodeUtf8String, ProtoUtil, ShapeUtil} from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;

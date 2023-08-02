@@ -204,9 +204,10 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
                      CheckpointState* state,
                      const onnxruntime::SessionOptions& session_options,
                      const Environment& env,
-                     const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
+                     const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+                     gsl::span<OrtCustomOpDomain* const> op_domains)
     : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), state_(state) {
-  Initialize(optim_path_or_bytes, providers);
+  Initialize(optim_path_or_bytes, providers, op_domains);
 
   ORT_ENFORCE(state != nullptr, "Checkpoint state cannot be null.");
   auto g_it = state_->optimizer_checkpoint_state.group_named_optimizer_states.find(GROUP_ZERO_NAME);
@@ -223,7 +224,14 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 }
 
 void Optimizer::Initialize(const std::string& optim_path_or_bytes,
-                           const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
+                           const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+                           [[maybe_unused]] gsl::span<OrtCustomOpDomain* const> op_domains) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  if (!op_domains.empty()) {
+    ORT_THROW_IF_ERROR(optim_sess_->AddCustomOpDomains(op_domains));
+  }
+#endif
+
   for (const auto& execution_provider : providers) {
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }

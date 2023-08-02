@@ -24,9 +24,8 @@ struct KernelRegistryAndStatus {
 }  // namespace
 
 namespace onnxruntime {
-CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info, bool delay_allocator_registration)
+CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCpuExecutionProvider}, info_{info} {
-  ORT_UNUSED_PARAMETER(delay_allocator_registration);
 }
 
 std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {

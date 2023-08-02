@@ -3,6 +3,7 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "onnxruntime_session_options_config_keys.h"
+#include "core/common/narrow.h"
 #include "test/util/include/asserts.h"
 #include <fstream>
 #include "test_fixture.h"
@@ -24,7 +25,7 @@ TEST(CApiTest, model_from_array) {
     std::ifstream file(model_path, std::ios::binary | std::ios::ate);
     if (!file)
       ORT_THROW("Error reading model");
-    buffer.resize(file.tellg());
+    buffer.resize(narrow<size_t>(file.tellg()));
     file.seekg(0, std::ios::beg);
     if (!file.read(buffer.data(), buffer.size()))
       ORT_THROW("Error reading model");

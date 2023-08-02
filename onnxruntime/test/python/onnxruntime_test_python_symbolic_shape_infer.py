@@ -49,7 +49,7 @@ class TestSymbolicShapeInference(unittest.TestCase):
 
             # https://github.com/onnx/models/issues/562
             if any(model_name in str(filename) for model_name in skipped_models):
-                print(f"Skip symbolic shape inference on : {str(filename)}")
+                print(f"Skip symbolic shape inference on : {filename!s}")
                 continue
 
             print("Running symbolic shape inference on : " + str(filename))

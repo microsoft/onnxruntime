@@ -142,7 +142,7 @@ def gen_to_channel_first_perm(rank):
     perm.append(0)
     perm.append(rank - 1)
     for i in range(1, rank - 1):
-        perm.append(i)
+        perm.append(i)  # noqa: PERF402
 
     return perm
 
@@ -152,7 +152,7 @@ def gen_to_channel_last_perm(rank):
     perm = []
     perm.append(0)
     for i in range(2, rank):
-        perm.append(i)
+        perm.append(i)  # noqa: PERF402
     perm.append(1)
 
     return perm
