@@ -37,14 +37,12 @@ const createReduceProgramInfo =
           const outputShape: number[] = [];
           const inputShape = inputs[0].dims;
 
-          const dataType = 'f32';
-
           const idxCopy: string[] = [];  // copy output indexes to input indexes
 
           const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
           const outputDimsLength = inputs[0].dims.length - (attributes.keepDims ? 0 : axes.length);
           const ops = reduceOp(inputs, axes);
-          const inputIndicesHelper = inputVariable('input', dataType, inputShape);
+          const inputIndicesHelper = inputVariable('_A', inputs[0].dataType, inputShape);
           const initInputIdx =
               (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.indicesToOffset('inputIndices')};`;
           let reduceOps = `
@@ -73,12 +71,11 @@ const createReduceProgramInfo =
             }
           }
 
-          const outputIndicesHelper = outputVariable('output', dataType, outputShape);
+          const outputIndicesHelper = outputVariable('output', inputs[0].dataType, outputShape);
           const outputSize = ShapeUtil.size(outputShape);
 
           const getShaderSource = (shaderHelper: ShaderHelper) => `
-          @group(0) @binding(0) var<storage, read> _A : array<${dataType}>;
-          @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+          ${shaderHelper.declareVariables(inputIndicesHelper, outputIndicesHelper)}
 
           ${outputIndicesHelper.offsetToIndicesImplementation}
           ${inputIndicesHelper.indicesToOffsetImplementation}
@@ -89,7 +86,7 @@ const createReduceProgramInfo =
           ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
           ${outputIndicesHelper.offsetToIndices('global_idx', 'outputIndices')}
 
-          var value = ${dataType}(0);
+          var value = ${outputIndicesHelper.dataType}(0);
 
           ${idxCopy.join('\n')}
           ${ops[0]}       // init ops for reduce max/min

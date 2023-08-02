@@ -58,7 +58,7 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
   const outputShape: number[] = calculateOutputShape(inputShape, shape);
   const outputSize = ShapeUtil.size(outputShape);
 
-  const dataType = 'f32';
+  const dataType = inputs[0].dataType;
   const input = inputVariable('input', dataType, inputShape);
   const output = outputVariable('output', dataType, outputShape);
 
@@ -78,8 +78,7 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
   ${calculateInputIndexImpl()};
-  @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
-  @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+  ${shaderHelper.declareVariables(input, output)}
   ${output.offsetToIndicesImplementation}
   ${input.indicesToOffsetImplementation}
   ${shaderHelper.mainStart()}

@@ -5,7 +5,7 @@ import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {outputVariable, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type BinaryCustomExpression = (expressionA: string, expressionB: string) => string;
@@ -16,8 +16,8 @@ type BinaryFunctionCall = BuiltinFunctionName|BinaryCustomExpression|{
 
 const createBinaryOpProgramShader =
     (shaderHelper: ShaderHelper, dimsA: readonly number[], dimsB: readonly number[], dimsOutput: readonly number[],
-     vectorize: boolean, doBroadcast: boolean, funcCall: BinaryFunctionCall, additionalImplementation?: string,
-     typeA = 'f32', typeB = 'f32', typeOutput = 'f32') => {
+     vectorize: boolean, doBroadcast: boolean, funcCall: BinaryFunctionCall, typeA: number, typeB: number,
+     typeOutput: number, additionalImplementation?: string) => {
       const outputSize = ShapeUtil.size(dimsOutput);
       const vecSize = Math.ceil(outputSize / 4);
 
@@ -33,7 +33,9 @@ const createBinaryOpProgramShader =
       }
 
       let broadcastImpl = '';
-      const output = outputVariable('outputData', typeOutput, dimsOutput);
+      const output = outputVariable('outputData', typeOutput, dimsOutput, true);
+      const a = inputVariable('aData', typeA, dimsA, true);
+      const b = inputVariable('bData', typeB, dimsB, true);
       if (doBroadcast) {
         const calcOffsetImpl = (dims: readonly number[]) => {
           const strides = ShapeUtil.computeStrides(dims);
@@ -99,9 +101,7 @@ const createBinaryOpProgramShader =
       }
 
       return `
-  @group(0) @binding(0) var<storage, read> aData : array<vec4<${typeA}>>;
-  @group(0) @binding(1) var<storage, read> bData : array<vec4<${typeB}>>;
-  @group(0) @binding(2) var<storage, read_write> outputData : array<vec4<${typeOutput}>>;
+  ${shaderHelper.declareVariables(a, b, output)}
 
   ${additionalImplementation ?? ''}
   ${broadcastImpl}
@@ -155,7 +155,8 @@ const createBinaryOpProgramInfo =
       return {
         ...metadata,
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
-            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, additionalImplementation),
+            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,
+            outputDataType, additionalImplementation),
         outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
         dispatchGroup: () =>
             ({x: Math.ceil(outputSize / 64 /* workgroup size */ / (vectorize ? 4 : 1) /* vec size */)})

@@ -25,31 +25,26 @@ const createGroupedConvProgramInfo =
       const wShape = inputs[1].dims;
       const outputChannelsPerGroup = wShape[0] / attributes.group;
 
-      const dataType = 'f32';  // TODO: support other data type
       const {activationFunction, applyActivation} = getActicationSnippet(attributes);
-      const inputStorageBuffersDeclarations = [
-        `@group(0) @binding(0) var<storage, read> x : array<${dataType}>;`,
-        `@group(0) @binding(1) var<storage, read> w : array<${dataType}>;`
-      ];
-      if (hasBias) {
-        inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> b : array<${dataType}>;`);
-      }
 
       const isChannelLast = attributes.format === 'NHWC';
       const outputShape = calculateOutputShape(
           xShape, wShape, attributes.dilations, attributes.pads, attributes.strides, isChannelLast);
       const outputSize = ShapeUtil.size(outputShape);
 
-      const output = outputVariable('output', dataType, outputShape);
-      const x = inputVariable('x', dataType, xShape);
-      const w = inputVariable('w', dataType, wShape);
+      const output = outputVariable('output', inputs[0].dataType, outputShape);
+      const x = inputVariable('x', inputs[0].dataType, xShape);
+      const w = inputVariable('w', inputs[1].dataType, wShape);
+      const inputVars = [x, w];
+      if (hasBias) {
+        inputVars.push(inputVariable('b', inputs[2].dataType, inputs[2].dims));
+      }
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   const strides: vec2<u32> = vec2(${attributes.strides[0]}u, ${attributes.strides[1]}u);
   const pads: vec2<u32> = vec2(${attributes.pads[0]}u, ${attributes.pads[1]}u);
 
-  ${inputStorageBuffersDeclarations.join('\n')}
-  @group(0) @binding(${inputStorageBuffersDeclarations.length}) var<storage, read_write> output : array<${dataType}>;
+  ${shaderHelper.declareVariables(...inputVars, output)}
 
   ${activationFunction}
   ${output.offsetToIndicesImplementation}
@@ -67,7 +62,7 @@ const createGroupedConvProgramInfo =
           isChannelLast ? 2 : 3}]) * strides - pads;
     let group_id: u32 = output_channel / ${outputChannelsPerGroup}u;
 
-    var value: ${dataType} = ${dataType}(0);
+    var value: ${output.dataType} = ${output.dataType}(0);
     for (var wInChannel: u32 = 0u; wInChannel < ${wShape[1]}u; wInChannel++) {
       let input_channel = group_id * ${wShape[1]}u + wInChannel;
       for (var wHeight: u32 = 0u; wHeight < ${wShape[2]}u; wHeight++) {

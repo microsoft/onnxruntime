@@ -6,7 +6,6 @@ import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
 import {expand} from './ops/expand';
-import {gelu} from './ops/gelu';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
@@ -47,7 +46,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Exp', [unaryOps.exp]],
   ['Expand', [expand]],
   ['Floor', [unaryOps.floor]],
-  ['Gelu', [gelu]],
+  ['Gelu', [unaryOps.gelu]],
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],
   ['GlobalMaxPool', [pool.globalMaxPool, pool.parseGlobalMaxPoolAttributes]],

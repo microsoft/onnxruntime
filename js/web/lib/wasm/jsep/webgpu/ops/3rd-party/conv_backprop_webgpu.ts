@@ -55,9 +55,9 @@ const createConvTranspose2DOpProgramShaderSource =
       return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
     }`;
       }
-      const wIndicesHelper = inputVariable('W', 'f32', inputs[1].dims);
-      const dyIndicesHelper = inputVariable('Dy', 'f32', inputs[0].dims);
-      const outputIndicesHelper = outputVariable('result', 'f32', outputShape);
+      const wIndicesHelper = inputVariable('W', inputs[1].dataType, inputs[1].dims);
+      const dyIndicesHelper = inputVariable('Dy', inputs[0].dataType, inputs[0].dims);
+      const outputIndicesHelper = outputVariable('result', inputs[0].dataType, outputShape);
       const codeSnippet4 = `{
         let batch: u32 = global_id.z / outShape[1];
         let r = global_id.z % outShape[1];

@@ -100,7 +100,6 @@ const createSliceProgramInfo =
       const inputSize = ShapeUtil.size(inputShape);
       const axes = (attributes.axes.length > 0) ? ShapeUtil.normalizeAxes(attributes.axes, inputShape.length) :
                                                   [...Array(inputShape.length).keys()];
-      const dataType = 'f32';  // TODO: support other data type
       let steps = readInput(inputs, 4);
       steps.forEach((step) => step !== 0 || (() => {
                                 throw new Error('step cannot be 0');
@@ -142,13 +141,12 @@ const createSliceProgramInfo =
       const outputTensorInfo:
           TensorInfo = {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default};
 
-      const output = outputVariable('output', dataType, outputShape);
-      const input = inputVariable('input', dataType, inputShape);
+      const output = outputVariable('output', inputs[0].dataType, outputShape);
+      const input = inputVariable('input', inputs[0].dataType, inputShape);
       const outputSize = ShapeUtil.size(outputShape);
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-        @group(0) @binding(0) var<storage, read> input: array<${dataType}>;
-        @group(0) @binding(1) var<storage, read_write> output: array<${dataType}>;
+      ${shaderHelper.declareVariables(input, output)}
         const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});
         const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});
         const ends = array<u32, ${ends.length}>(${ends.map(i => `${i}u`).join(',')});

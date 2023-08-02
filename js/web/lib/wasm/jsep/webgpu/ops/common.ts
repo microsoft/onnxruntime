@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {ShapeUtil} from '../../util';
 
 /**
@@ -169,7 +170,31 @@ export interface IndicesHelper {
    * whether the helper is for an input or an output.
    */
   readonly usage: 'input'|'output';
+
+  /**
+   * the shape of the input or output.
+   */
+  readonly shape: readonly number[];
 }
+
+const getDataType = (type: number, isVec4: boolean): string => {
+  switch (type) {
+    case DataType.float:
+      return isVec4 ? 'vec4<f32>' : 'f32';
+    case DataType.int32:
+      return isVec4 ? 'vec4<i32>' : 'i32';
+    case DataType.uint32:
+      return isVec4 ? 'vec4<u32>' : 'u32';
+    case DataType.bool:
+      if (!isVec4) {
+        throw new Error('bool must be vec4');
+      }
+      return 'u32';
+
+    default:
+      throw new Error(`Unknown data type: ${type}`);
+  }
+};
 
 /**
  * A helper function to get a IndicesHelper for a given input or output.
@@ -194,10 +219,10 @@ export interface IndicesHelper {
  * @param isVec4 - whether the helper is for a vec4 input or output.
  */
 const createIndicesHelper =
-    (name: string, dataType: string, shape: readonly number[], isInput: boolean, isVec4: boolean): IndicesHelper => {
+    (name: string, type: number|string, shape: readonly number[], isInput: boolean, isVec4: boolean): IndicesHelper => {
       const rank = shape.length;
       const indicesType = rank < 2 ? 'u32' : `array<u32, ${rank}>`;
-      const mappedDataType = isVec4 ? `vec4<${dataType}>` : dataType;
+      const dataType = typeof type === 'number' ? getDataType(type, isVec4) : type;
 
       const normalizeDim = (dim: number|string): string => typeof dim === 'string' ? dim : `${dim}u`;
 
@@ -266,16 +291,16 @@ const createIndicesHelper =
 
 
       const getImplementation = rank < 2 ? '' : (() => {
-        const parameters = new Array(rank).map((_, i) => `d${i}: u32`).join(', ');
-        const parametersAssignment = new Array(rank).map((_, i) => indicesSet('idx', i, `d${i}`)).join('\n');
+        const parameters = new Array(rank).fill(0).map((_, i) => `d${i}: u32`).join(', ');
+        const parametersAssignment = new Array(rank).fill(0).map((_, i) => indicesSet('idx', i, `d${i}`)).join('\n');
         return `
-  fn get_${name}(${parameters}) -> ${mappedDataType} {
+  fn get_${name}(${parameters}) -> ${dataType} {
     ${indicesVariableDeclaration('idx')}
     ${parametersAssignment}
     return get_${name}ByIndices(&idx);
   }
-  fn get_${name}ByIndices(indices: ptr<function, ${indicesType}>) -> ${mappedDataType} {
-    return ${name}[ih_i2o_${name}(&indices)];
+  fn get_${name}ByIndices(indices: ptr<function, ${indicesType}>) -> ${dataType} {
+    return ${name}[ih_i2o_${name}(indices)];
   }`;
       })();
 
@@ -303,12 +328,12 @@ const createIndicesHelper =
         const parameters = new Array(rank + 1).map((_, i) => `d${i}: u32`).join(', ');
         const parametersAssignment = new Array(rank).map((_, i) => indicesSet('idx', i, `d${i}`)).join('\n');
         return `
-  fn set_${name}(${parameters}, value: ${mappedDataType}) {
+  fn set_${name}(${parameters}, value: ${dataType}) {
     ${indicesVariableDeclaration('idx')}
     ${parametersAssignment}
     set_${name}ByIndices(&idx, value);
   }
-  fn set_${name}ByIndices(indices: ptr<function, ${indicesType}>, value: ${mappedDataType}) {
+  fn set_${name}ByIndices(indices: ptr<function, ${indicesType}>, value: ${dataType}) {
     ${setByOffset(`ih_i2o_${name}(&indices)`, 'value')}
   }`;
       })();
@@ -351,7 +376,8 @@ const createIndicesHelper =
         setByOffset,
         get,
         getImplementation,
-        getByOffset
+        getByOffset,
+        shape
       };
     };
 
@@ -363,8 +389,9 @@ const createIndicesHelper =
  * @param shape - the tensor shape of the input.
  * @returns an IndicesHelper for the input.
  */
-export const inputVariable = (name: string, type: string, shape: readonly number[], isVec4 = false): IndicesHelper =>
-    createIndicesHelper(name, type, shape, true, isVec4);
+export const inputVariable =
+    (name: string, type: number|string, shape: readonly number[], isVec4 = false): IndicesHelper =>
+        createIndicesHelper(name, type, shape, true, isVec4);
 
 /**
  * Create a IndicesHelper for an output.
@@ -374,8 +401,9 @@ export const inputVariable = (name: string, type: string, shape: readonly number
  * @param shape - the tensor shape of the output.
  * @returns an IndicesHelper for the output.
  */
-export const outputVariable = (name: string, type: string, shape: readonly number[], isVec4 = false): IndicesHelper =>
-    createIndicesHelper(name, type, shape, false, isVec4);
+export const outputVariable =
+    (name: string, type: number|string, shape: readonly number[], isVec4 = false): IndicesHelper =>
+        createIndicesHelper(name, type, shape, false, isVec4);
 
 /**
  * A ShaderHelper is a helper class for generating WGSL code.
@@ -424,6 +452,13 @@ export interface ShaderHelper {
    * @param bindingIndex - the index of the variable binding.
    */
   declareVariable(variable: IndicesHelper, bindingIndex: number): string;
+
+  /**
+   * A helper function to generate the code snippet for declaring multiple inputs or outputs.
+   *
+   * @param variables - an array of IndicesHelper for the variables.
+   */
+  declareVariables(...variables: IndicesHelper[]): string;
 }
 
 class ShaderHelperImpl implements ShaderHelper {
@@ -457,9 +492,13 @@ class ShaderHelperImpl implements ShaderHelper {
   }
 
   declareVariable(variable: IndicesHelper, bindingIndex: number): string {
-    const type = variable.isVec4 ? `vec4<${variable.dataType}>` : variable.dataType;
     const access = variable.usage === 'input' ? 'read' : 'read_write';
-    return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${type}>;`;
+    return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${variable.dataType}>;`;
+  }
+
+  declareVariables(...variables: IndicesHelper[]): string {
+    let i = 0;
+    return variables.filter(v => ShapeUtil.size(v.shape) > 0).map(v => this.declareVariable(v, i++)).join('\n');
   }
 }
 

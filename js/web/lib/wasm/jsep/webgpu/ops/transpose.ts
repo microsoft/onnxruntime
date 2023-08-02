@@ -45,7 +45,7 @@ const permFunctionBody = (perm: number[], rank: number): string => {
 };
 
 export const createTransposeProgramInfo = (input: TensorView, permAttr: number[]): ProgramInfo => {
-  const dataType = 'f32';  // TODO: support other data type
+  const dataType = input.dataType;
   const inputShape = input.dims;
   const perm = getAdjustedPerm(inputShape, permAttr);
   const outputShape = getOutputShape(inputShape, perm);
@@ -59,8 +59,7 @@ export const createTransposeProgramInfo = (input: TensorView, permAttr: number[]
   const inputIndicesHelper = inputVariable('a', dataType, inputShape);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
-  @group(0) @binding(0) var<storage, read> a : array<${dataType}>;
-  @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+  ${shaderHelper.declareVariables(inputIndicesHelper, outputIndicesHelper)}
 
   ${permFunctionBody(perm, rank)}
   ${outputIndicesHelper.offsetToIndicesImplementation}

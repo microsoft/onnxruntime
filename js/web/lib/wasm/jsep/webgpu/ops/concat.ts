@@ -46,29 +46,30 @@ const calculateInputIndexImpl = (numberOfTensors: number): string => `
     return ${numberOfTensors}u;
   }`;
 
-const readBufferDataImpl = (indicesHelper: readonly IndicesHelper[], tensorRank: number, dataType: string) => {
-  const numberOfTensors = indicesHelper.length;
+const readBufferDataImpl = (inputs: readonly IndicesHelper[], _tensorRank: number) => {
+  const numberOfTensors = inputs.length;
   const codeLines: string[] = [];
   for (let i = 0; i < numberOfTensors; ++i) {
-    const returnSnippet = `return input${i}[${indicesHelper[i].indicesToOffset('indices', true)}];`;
+    // const returnSnippet = `return input${i}[${inputs[i].indicesToOffset('indices', true)}];`;
+    const returnSnippet = `return ${inputs[i].get('indices')};`;
     if (numberOfTensors === 1) {
       codeLines.push(returnSnippet);
     } else if (i === 0) {
-      codeLines.push(`if (textureIndex == ${i}u) { ${returnSnippet} }`);
+      codeLines.push(`if (inputIndex == ${i}u) { ${returnSnippet} }`);
     } else if (i === numberOfTensors - 1) {
       codeLines.push(`else { ${returnSnippet} }`);
     } else {
-      codeLines.push(`else if (textureIndex == ${i}) { ${returnSnippet} }`);
+      codeLines.push(`else if (inputIndex == ${i}) { ${returnSnippet} }`);
     }
   }
   return `
-    fn readBufferData(textureIndex: u32, indices: ptr<function, ${indicesHelper[0].indicesType}>) -> ${dataType} {
+    fn readBufferData(inputIndex: u32, indices: ptr<function, ${inputs[0].indicesType}>) -> ${inputs[0].dataType} {
       ${codeLines.join('\n')}
     }`;
 };
 
 const createConcatProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], axis: number, dataType = 'f32'): ProgramInfo => {
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], axis: number): ProgramInfo => {
       const inputShape = inputs[0].dims.slice();
       if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
         throw new Error('axis specified for concat doesn\'t match input dimensionality');
@@ -95,8 +96,8 @@ const createConcatProgramInfo =
       const rank = outputShape.length;
 
       const sizeInConcatAxis = new Array<number>(inputs.length);
-      const inputStorageBuffersDeclarations = new Array<string>(inputs.length);
       const inputVars = new Array<IndicesHelper>(inputs.length);
+      const dataType = inputs[0].dataType;
 
       let previousSum = 0;
       for (let i = 0; i < inputs.length; ++i) {
@@ -104,25 +105,21 @@ const createConcatProgramInfo =
         sizeInConcatAxis[i] = previousSum;
 
         inputVars[i] = inputVariable(`input${i}`, dataType, inputs[i].dims);
-
-        inputStorageBuffersDeclarations[i] =
-            `@group(0) @binding(${i}) var<storage, read> ${inputVars[i].name} : array<${inputVars[i].dataType}>;`;
       }
 
       const output = outputVariable('output', dataType, outputShape);
 
       const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-
-  ${inputStorageBuffersDeclarations.join('\n')}
-  @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
+  ${shaderHelper.declareVariables(...inputVars, output)}
 
   ${inputVars.map(i => i.indicesToOffsetImplementation).join('\n')}
+  ${inputVars.map(i => i.getImplementation).join('\n')}
   ${output.offsetToIndicesImplementation}
 
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
-  ${readBufferDataImpl(inputVars, rank, dataType)}
+  ${readBufferDataImpl(inputVars, rank)}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
@@ -130,12 +127,12 @@ const createConcatProgramInfo =
     ${output.indicesVariableDeclaration('indices')}
     ${output.offsetToIndices('global_idx', 'indices')}
 
-    let textureIndex = calculateInputIndex(${indicesAxis});
-    if (textureIndex != 0u) {
-      ${indicesAxis} -= sizeInConcatAxis[textureIndex - 1u];
+    let inputIndex = calculateInputIndex(${indicesAxis});
+    if (inputIndex != 0u) {
+      ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1u];
     }
 
-    output[global_idx] = readBufferData(textureIndex, &indices);
+    output[global_idx] = readBufferData(inputIndex, &indices);
   }`;
       return {
         ...metadata,

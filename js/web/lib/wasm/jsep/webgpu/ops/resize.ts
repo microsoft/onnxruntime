@@ -449,9 +449,8 @@ const createResizeProgramInfo =
           outputShape = adjustOutputShape(inputShape, outputShape, scales, attributes);
         }
       }
-      const dataType = 'f32';
-      const output = outputVariable('output', dataType, outputShape);
-      const input = inputVariable('input', dataType, inputShape);
+      const output = outputVariable('output', inputTensor.dataType, outputShape);
+      const input = inputVariable('input', inputTensor.dataType, inputShape);
       const outputSize = ShapeUtil.size(outputShape);
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
@@ -485,8 +484,7 @@ const createResizeProgramInfo =
             throw Error('Invalid resize mode');
         }
       })()};
-      @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
-      @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+      ${shaderHelper.declareVariables(input, output)}
       ${output.offsetToIndicesImplementation}
       ${input.indicesToOffsetImplementation}
       ${shaderHelper.mainStart()}

@@ -60,35 +60,31 @@ const writeBufferDataImpl = (indicesHelper: readonly IndicesHelper[]) => {
 };
 
 const createSplitProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SplitAttributes, dataType = 'f32'):
-        ProgramInfo => {
-          const inputShape = inputs[0].dims;
-          const inputSize = ShapeUtil.size(inputShape);
-          const rank = inputShape.length;
-          const axis = attributes.axis;
-          const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
-          const outputStorageBuffersDeclarations = new Array<string>(attributes.numOutputs);
-          const outputIndicesHelpers = new Array<IndicesHelper>(attributes.numOutputs);
-          const inputIndicesHelper = inputVariable('input', dataType, inputShape);
-          const sizeInConcatAxis = new Array<number>(attributes.numOutputs);
-          const outputs: TensorInfo[] = [];
-          const outputShapes: number[][] = [];
-          let previousSum = 0;
-          for (let i = 0; i < attributes.numOutputs; i++) {
-            previousSum += attributes.splitSizes[i];
-            sizeInConcatAxis[i] = previousSum;
-            outputStorageBuffersDeclarations[i] =
-                `@group(0) @binding(${i + 1}) var<storage, read_write> output${i} : array<${dataType}>;`;
-            const outputShape = inputShape.slice();
-            outputShape[attributes.axis] = attributes.splitSizes[i];
-            outputShapes.push(outputShape);
-            outputIndicesHelpers[i] = outputVariable(`output${i}`, dataType, outputShapes[i]);
-            outputs.push({dims: outputShapes[i], dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
-          }
-          const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
-          const getShaderSource = (shaderHelper: ShaderHelper) => `
-  @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
-  ${outputStorageBuffersDeclarations.join('\n')}
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SplitAttributes): ProgramInfo => {
+      const inputShape = inputs[0].dims;
+      const inputSize = ShapeUtil.size(inputShape);
+      const dataType = inputs[0].dataType;
+      const rank = inputShape.length;
+      const axis = attributes.axis;
+      const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
+      const outputIndicesHelpers = new Array<IndicesHelper>(attributes.numOutputs);
+      const inputIndicesHelper = inputVariable('input', dataType, inputShape);
+      const sizeInConcatAxis = new Array<number>(attributes.numOutputs);
+      const outputs: TensorInfo[] = [];
+      const outputShapes: number[][] = [];
+      let previousSum = 0;
+      for (let i = 0; i < attributes.numOutputs; i++) {
+        previousSum += attributes.splitSizes[i];
+        sizeInConcatAxis[i] = previousSum;
+        const outputShape = inputShape.slice();
+        outputShape[attributes.axis] = attributes.splitSizes[i];
+        outputShapes.push(outputShape);
+        outputIndicesHelpers[i] = outputVariable(`output${i}`, dataType, outputShapes[i]);
+        outputs.push({dims: outputShapes[i], dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+      }
+      const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
+      const getShaderSource = (shaderHelper: ShaderHelper) => `
+  ${shaderHelper.declareVariables(inputIndicesHelper, ...outputIndicesHelpers)}
   ${inputIndicesHelper.offsetToIndicesImplementation}
   ${outputIndicesHelpers.map(o => o.indicesToOffsetImplementation).join('\n')}
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
@@ -106,13 +102,13 @@ const createSplitProgramInfo =
     }
     writeBufferData(outputNumber, &indices, global_idx);
   }`;
-          return {
-            ...metadata,
-            getShaderSource,
-            outputs,
-            dispatchGroup: () => ({x: Math.ceil(inputSize / 64 /* workgroup size */)})
-          };
-        };
+      return {
+        ...metadata,
+        getShaderSource,
+        outputs,
+        dispatchGroup: () => ({x: Math.ceil(inputSize / 64 /* workgroup size */)})
+      };
+    };
 
 const createSplitProgramInfoLoader =
     (inputs: readonly TensorView[], attributes: SplitAttributes): ProgramInfoLoader => {
