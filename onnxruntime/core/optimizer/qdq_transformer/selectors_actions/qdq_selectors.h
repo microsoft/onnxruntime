@@ -98,10 +98,15 @@ class BinaryNodeGroupSelector : public NodeGroupSelector {
 
 // Variadic DQ nodes -> node -> Q
 class VariadicNodeGroupSelector : public NodeGroupSelector {
+ public:
+  VariadicNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool int16_uint16_allowed_;
 };
 
 // DQ nodes for X, W and optionally B -> node -> Q
@@ -236,7 +241,7 @@ class BinarySelector : public BaseSelector {
 // Variadic DQ nodes -> node -> Q
 class InputVariadicSelector : public BaseSelector {
  public:
-  InputVariadicSelector() : BaseSelector(std::make_unique<VariadicNodeGroupSelector>()) {}
+  InputVariadicSelector(bool int16_uint16_allowed = true) : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(int16_uint16_allowed)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };

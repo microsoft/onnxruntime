@@ -143,7 +143,8 @@ void VariadicOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::VariadicReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::InputVariadicSelector>();
+  // QLinearConcat does not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::InputVariadicSelector>(false /* int16_uint16_allowed */);
 
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Concat", {}}},

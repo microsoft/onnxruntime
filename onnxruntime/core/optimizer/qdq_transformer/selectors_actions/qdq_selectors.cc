@@ -217,7 +217,13 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
       return false;
     }
   }
-  return dt_input == dt_output;
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || (dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 &&
+                                   dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
 }
 
 void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
