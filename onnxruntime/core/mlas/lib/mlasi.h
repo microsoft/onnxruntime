@@ -626,6 +626,26 @@ void
     int8_t ZeroPoint
     );
 
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_U16_KERNEL)(
+    const float* Input,
+    uint16_t* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint
+    );
+
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_S16_KERNEL)(
+    const float* Input,
+    int16_t* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint
+    );
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -973,6 +993,8 @@ struct MLAS_PLATFORM {
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
+    MLAS_QUANTIZE_LINEAR_S16_KERNEL* QuantizeLinearS16Kernel;
+    MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
