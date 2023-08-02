@@ -3443,83 +3443,81 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, transB);
       });
 
+  void nBitQuantOpsShapeInference(InferenceContext & ctx) {
+    auto* final_output_shape =
+        ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
 
+    int64_t in_features = getAttribute(ctx, "in_features", -1);
+    int64_t out_features = getAttribute(ctx, "out_features", -1);
+    if (in_features > 0 && out_features > 0) {
+      final_output_shape->add_dim()->set_dim_value(in_features);
+      final_output_shape->add_dim()->set_dim_value(out_features);
+      return;
+    }
 
-  void nBitQuantOpsShapeInference(InferenceContext& ctx) {
-  auto *final_output_shape =
-      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+    int64_t bits = getAttribute(ctx, "bits", -1);
+    int64_t groupsize = getAttribute(ctx, "groupsize", -1);
+    if (bits <= 0 || groupsize <= 0) {
+      fail_shape_inference("bits and groupsize must be positive");
+    }
 
-  int64_t in_features = getAttribute(ctx, "in_features", -1);
-  int64_t out_features = getAttribute(ctx, "out_features", -1);
-  if (in_features > 0 && out_features > 0) {
-    final_output_shape->add_dim()->set_dim_value(in_features);
-    final_output_shape->add_dim()->set_dim_value(out_features);
-    return;
+    auto qweight_input_shape = ctx.getInputType(0)->tensor_type().shape();
+    if (qweight_input_shape.dim_size() != 2) {
+      return;  // Input tensor should have at least two dimensions.
+    }
+    if (in_features > 0) {
+      final_output_shape->add_dim()->set_dim_value(in_features);
+    } else if (bits == 4 || bits == 2 || bits == 8) {
+      int64_t compress_ratio = 32 / bits;
+      final_output_shape->add_dim()->set_dim_value(compress_ratio * qweight_input_shape.dim(0).dim_value());
+    } else {
+      fail_shape_inference("either bits should be 2, 4 or 8 or in_features be exist");
+    }
+    final_output_shape->add_dim()->set_dim_value(qweight_input_shape.dim(1).dim_value());
   }
 
-  int64_t bits = getAttribute(ctx, "bits", -1);
-  int64_t groupsize = getAttribute(ctx, "groupsize", -1);
-  if (bits <= 0 || groupsize <= 0) {
-    fail_shape_inference("bits and groupsize must be positive");
-  }
-
-  auto qweight_input_shape = ctx.getInputType(0)->tensor_type().shape();
-  if (qweight_input_shape.dim_size() != 2) {
-    return;  // Input tensor should have at least two dimensions.
-  }
-  if (in_features > 0) {
-    final_output_shape->add_dim()->set_dim_value(in_features);
-  } else if (bits == 4 || bits == 2 || bits == 8) {
-    int64_t compress_ratio = 32 / bits;
-    final_output_shape->add_dim()->set_dim_value(compress_ratio * qweight_input_shape.dim(0).dim_value());
-  } else {
-    fail_shape_inference("either bits should be 2, 4 or 8 or in_features be exist");
-  }
-  final_output_shape->add_dim()->set_dim_value(qweight_input_shape.dim(1).dim_value());
-}
-
-ONNX_CONTRIB_OPERATOR_SCHEMA(QuantNbitsGemm)
-    .SetDomain(kMSDomain)
-    .SinceVersion(1)
-    .SetDoc(R"DOC(Nbits quantization matmul, the weight is quantized by GPTQ)DOC")
-    .Attr("out_features", "size of each output sample", AttributeProto::INT, OPTIONAL_VALUE)
-    .Attr("in_features", "size of each input sample, It should be provides if bits is not [2,4,8]", AttributeProto::INT, OPTIONAL_VALUE)
-    .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT, static_cast<int64_t>(4))
-    .Attr("groupsize", "number of groupsize used for weight quantization,(default 128)", AttributeProto::INT, static_cast<int64_t>(128))
-    .Input(0, "X1", "The input tensor, not quantized", "T")
-    .Input(1, "qweight", "quantized weight", "T1", OpSchema::Optional)
-    .Input(2, "scales", "scale in quantization", "T", OpSchema::Optional)
-    .Input(3, "zero_points", "zero_points.", "T1", OpSchema::Optional)
-    .Input(4, "bias", "bias, a*b+c", "T", OpSchema::Optional)
-    .Input(5, "group_idx", "group_idx if ordered weights for higher accuracy", "T1", OpSchema::Optional)
-    .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T")
-    .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
-    .TypeConstraint("T1", {"tensor(int32)", "tensor(int64)", "tensor(int8)"}, "Constrain input and output types to float tensors.")
-    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-      // Type inference
-      propagateElemTypeFromInputToOutput(ctx, 0, 0);
-      // Shape inference
-      nBitQuantOpsShapeInference(ctx);
-    });
-ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeAndUnpackWeight)
-    .SetDomain(kMSDomain)
-    .SinceVersion(1)
-    .SetDoc("dequantize and unpack weight")
-    .Attr("bits", "quantization bit number", AttributeProto::INT, static_cast<int64_t>(4))
-    .Attr("groupsize", "line nums in a group", AttributeProto::INT, static_cast<int64_t>(128))
-    .Attr("in_features", "line nums in a group", AttributeProto::INT, OPTIONAL_VALUE)
-    .Input(0, "qweight", "quantized weight", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
-    .Input(1, "scales", "scale in quantization", "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
-    .Input(2, "qzeros", "zero_points", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
-    .Output(0, "Y", "Output tensor", "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
-    .TypeConstraint("T", {"tensor(uint32)", "tensor(int32)"}, "Constrain input and output types to integer tensors.")
-    .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to integer tensors.")
-    .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-      // Type inference
-      propagateElemTypeFromInputToOutput(ctx, 1, 0);
-      // Shape inference
-      nBitQuantOpsShapeInference(ctx);
-    });
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QuantNbitsGemm)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(Nbits quantization matmul, the weight is quantized by GPTQ)DOC")
+      .Attr("out_features", "size of each output sample", AttributeProto::INT, OPTIONAL_VALUE)
+      .Attr("in_features", "size of each input sample, It should be provides if bits is not [2,4,8]", AttributeProto::INT, OPTIONAL_VALUE)
+      .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("groupsize", "number of groupsize used for weight quantization,(default 128)", AttributeProto::INT, static_cast<int64_t>(128))
+      .Input(0, "X1", "The input tensor, not quantized", "T")
+      .Input(1, "qweight", "quantized weight", "T1", OpSchema::Optional)
+      .Input(2, "scales", "scale in quantization", "T", OpSchema::Optional)
+      .Input(3, "zero_points", "zero_points.", "T1", OpSchema::Optional)
+      .Input(4, "bias", "bias, a*b+c", "T", OpSchema::Optional)
+      .Input(5, "group_idx", "group_idx if ordered weights for higher accuracy", "T1", OpSchema::Optional)
+      .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(int32)", "tensor(int64)", "tensor(int8)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        nBitQuantOpsShapeInference(ctx);
+      });
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeAndUnpackWeight)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("dequantize and unpack weight")
+      .Attr("bits", "quantization bit number", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("groupsize", "line nums in a group", AttributeProto::INT, static_cast<int64_t>(128))
+      .Attr("in_features", "line nums in a group", AttributeProto::INT, OPTIONAL_VALUE)
+      .Input(0, "qweight", "quantized weight", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Input(1, "scales", "scale in quantization", "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Input(2, "qzeros", "zero_points", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Output(0, "Y", "Output tensor", "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint("T", {"tensor(uint32)", "tensor(int32)"}, "Constrain input and output types to integer tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to integer tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        // Shape inference
+        nBitQuantOpsShapeInference(ctx);
+      });
 
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
