@@ -20,6 +20,8 @@ jobs:
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: true
+      BuildArch: $(buildArch)
+      BuildConfig: $(BuildConfig)
 
   - task: PythonScript@0
     displayName: 'Generate cmake config'
