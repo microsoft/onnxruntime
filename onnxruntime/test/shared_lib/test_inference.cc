@@ -129,10 +129,6 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #else
     return;
 #endif
-  } else if (provider_type == 3) {
-#ifdef USE_DML
-   
-#endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
   }
@@ -205,7 +201,9 @@ static constexpr PATH_TYPE VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TST
     "testdata/custom_op_variadic_undef_io.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL = TSTR("testdata/custom_op_single_schema_multi_kernel.onnx");
+#ifdef USE_DML
 static constexpr PATH_TYPE CUSTOM_OP_IDENTITY_DML = TSTR("testdata/identity_dml.onnx");
+#endif
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
 #ifndef DISABLE_CONTRIB_OPS

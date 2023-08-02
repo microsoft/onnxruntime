@@ -134,7 +134,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
   API_IMPL_BEGIN
   const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
   auto* stream = reinterpret_cast<onnxruntime::Stream*>(ctx->GetComputeStream());
-  //report error via c api?
   *resource = stream->GetResource(resource_version, resource_id);
   return nullptr;
   API_IMPL_END
