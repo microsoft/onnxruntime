@@ -59,7 +59,7 @@ private:
 
 CustomEp2::CustomEp2(const CustomEp2Info& info) : info_{info} {
     type_ = "customEp2";
-    std::unique_ptr<Ort::Custom::ExternalKernelDef> p(Ort::Custom::CreateExternalKernelDef("Relu", type_.c_str(), MyRelu, "test", 14));
+    std::unique_ptr<Ort::Custom::ExternalKernelDef> p(Ort::Custom::CreateExternalKernelDef("Relu", type_.c_str(), MyRelu, "ai.onnx", 14));
     kernel_definitions_.push_back(std::move(p));
 
     allocators_.push_back(std::make_unique<CustomCPUAllocator>().release());  // TODO: release resource
@@ -70,9 +70,9 @@ bool CustomEp2::CanCopy(const OrtDevice& src, const OrtDevice& dest) {
   return true;
 }
 
-void CustomEp2::MemoryCpy(void* dst, const void* src, size_t bytes_count) {
+void CustomEp2::MemoryCpy(OrtValue& dst, const OrtValue& src) {
   std::cout<<"Custom2's MemoryCpy()\n";
-  memcpy(dst, src, bytes_count);
+  //memcpy(dst, src, bytes_count);
 }
 
 CustomEp2Info ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::string>& provider_option) {

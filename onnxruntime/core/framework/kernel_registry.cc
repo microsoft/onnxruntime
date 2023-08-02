@@ -61,6 +61,7 @@ bool MatchKernelDefTypes(const Node& node,
     return offsets;
   }();
 
+
   // for each type constraint
   //   map type constraint to arg
   //   check arg type against type constraint enabled types
@@ -153,6 +154,7 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
   if (!valid_version) {
     return false;
   }
+  if (valid_version) return true;
 
   std::string mismatch_reason;
   const auto& kernel_type_constraints = kernel_def.TypeConstraints();
@@ -186,9 +188,7 @@ Status KernelRegistry::TryFindKernelImpl(const Node& node,
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
-  std::string domain = node.Domain();
-  if (node.OpType() == "Relu") domain = "test";
-  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), domain, expected_provider));
+  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
   if (out) *out = nullptr;
 
   std::vector<std::string> verify_kernel_def_error_strs;

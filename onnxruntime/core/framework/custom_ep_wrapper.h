@@ -6,6 +6,7 @@
 #include "core/session/onnxruntime_lite_custom_op.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/custom_ops.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include <memory>
 
 namespace onnxruntime {
@@ -17,10 +18,11 @@ namespace onnxruntime {
         }
 
         common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-            size_t bytes = src.SizeInBytes();
-            const void* src_data = src.DataRaw();
-            void* dst_data = dst.MutableDataRaw();
-            external_ep_impl_->MemoryCpy(dst_data, src_data, bytes);
+            OrtValue src_value, dst_value;
+            const void* src_raw = src.DataRaw();
+            Tensor::InitOrtValue(src.DataType(), src.Shape(), const_cast<void*>(src_raw), src.Location(), src_value, src.ByteOffset());
+            Tensor::InitOrtValue(dst.DataType(), dst.Shape(), dst.MutableDataRaw(), dst.Location(), dst_value, dst.ByteOffset());
+            external_ep_impl_->MemoryCpy(dst_value, src_value);
             return Status::OK();
         }
 

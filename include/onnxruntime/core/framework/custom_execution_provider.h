@@ -8,6 +8,32 @@
 #include "core/session/onnxruntime_lite_custom_op.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
+#include <climits>
+
+namespace Ort {
+namespace Custom {
+struct ExternalKernelDef {
+  std::unique_ptr<OrtLiteCustomOp> custom_op_;
+  std::string domain_;
+  int op_since_version_start_ = 1;
+  int op_since_version_end_ = INT_MAX;
+  ExternalKernelDef(OrtLiteCustomOp* op, std::string domain, int op_version_start, int op_version_end) {
+    custom_op_ = std::unique_ptr<OrtLiteCustomOp>(op);
+    domain_ = domain;
+    op_since_version_start_ = op_version_start;
+    op_since_version_end_ = op_version_end;
+  }
+};
+
+template <typename... Args>
+ExternalKernelDef* CreateExternalKernelDef(const char* op_name, const char* execution_provider, void (*custom_compute_fn)(Args...),
+                                          const char* domain, int op_since_version_start, int op_since_version_end = INT_MAX) {
+  OrtLiteCustomOp* op = CreateLiteCustomOp(op_name, execution_provider, custom_compute_fn);
+  return std::make_unique<ExternalKernelDef>(op, domain, op_since_version_start, op_since_version_end).release();
+}
+
+}
+}
 
 namespace onnxruntime{
     class CustomExecutionProvider{
@@ -25,7 +51,7 @@ namespace onnxruntime{
         std::string& GetType() { return type_; }
 
         virtual bool CanCopy(const OrtDevice&, const OrtDevice&) { return false; }
-        virtual void MemoryCpy(void*, const void*, size_t) {}
+        virtual void MemoryCpy(OrtValue&, const OrtValue&) {}
 
         protected:
         std::vector<OrtAllocator*> allocators_;
