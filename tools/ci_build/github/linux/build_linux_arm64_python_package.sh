@@ -32,8 +32,14 @@ if [ "$ARCH" == "x86_64" ] && [ "$GCC_VERSION" -ge 9 ]; then
     CXXFLAGS="$CXXFLAGS -fcf-protection"
 fi
 
+# reprequisite to build azure
+if [ -f /etc/lsb-release ]; then
+    apt-get install -y libipc-system-simple-perl python3 libssl-dev
+else
+    export PATH=/opt/python/cp38-cp38/bin:$PATH
+fi
 
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--enable_lto" "--build_wheel")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--enable_lto" "--build_wheel" "--use_azure")
 
 if [ "$ARCH" == "x86_64" ]; then
     #ARM build machines do not have the test data yet.
@@ -44,14 +50,14 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     #Enable CUDA and TRT EPs.
     ONNXRUNTIME_CUDA_VERSION="11.8"
     BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$ONNXRUNTIME_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
-elif [ "$BUILD_DEVICE" == "AZURE" ]; then
-    BUILD_ARGS+=("--use_azure")
-    if [ -f /etc/lsb-release ]; then
-        # for ubuntu
-        apt-get install -y libipc-system-simple-perl python3 libssl-dev
-    else
-        export PATH=/opt/python/cp38-cp38/bin:$PATH
-    fi
+#elif [ "$BUILD_DEVICE" == "AZURE" ]; then
+#    BUILD_ARGS+=("--use_azure")
+#    if [ -f /etc/lsb-release ]; then
+#        # for ubuntu
+#        apt-get install -y libipc-system-simple-perl python3 libssl-dev
+#    else
+#        export PATH=/opt/python/cp38-cp38/bin:$PATH
+#    fi
 fi
 
 export CFLAGS
