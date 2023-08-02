@@ -90,7 +90,7 @@ def fake_input_mask_data(
     sequence_length: int,
     average_sequence_length: int,
     random_sequence_length: bool,
-    mask_type: int,
+    mask_type: int = 2,
 ) -> np.ndarray:
     """Create input tensor based on the graph input of segment_ids.
 

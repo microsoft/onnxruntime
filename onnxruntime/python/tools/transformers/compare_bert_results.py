@@ -96,6 +96,7 @@ def run_test(
     )
 
     # Use random mask length for accuracy test. It might introduce slight inflation in latency reported in this script.
+    average_sequence_length = int(sequence_length / 2) if sequence_length >= 2 else sequence_length
     all_inputs = generate_test_data(
         batch_size,
         sequence_length,
@@ -105,7 +106,9 @@ def run_test(
         input_ids,
         segment_ids,
         input_mask,
-        random_mask_length=True,
+        average_sequence_length,
+        True,  # random sequence length
+        2,  # 2D attention mask
     )
 
     baseline_results, baseline_latency, output_names = run_model(
