@@ -45,7 +45,6 @@ jobs:
     submodules: none
 
   - task: UsePythonVersion@0
-    # Use python 3.8 to avoid build some of the required packages
     displayName: Use Python 3.11
     inputs:
       versionSpec: 3.11
