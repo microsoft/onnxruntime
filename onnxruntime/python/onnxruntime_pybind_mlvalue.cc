@@ -25,6 +25,10 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/provider_options_utils.h"
 
+#ifdef USE_DML
+#include "core/providers/dml/DmlExecutionProvider/src/DmlExternalBufferAllocator.h"
+#endif
+
 namespace onnxruntime {
 namespace python {
 
@@ -177,6 +181,26 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
   return GetProviderInfo_CUDA().CreateGPUDataTransfer();
+}
+
+#endif
+
+#ifdef USE_DML
+AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded DML allocation work, including maintaining a per-thread DML allocator.
+
+  // We are leaking this map so we do not accidentally destroy the DML Allocator instance
+  // after we unloaded DML provider library. Appeasing static analysis warning and using make_unique.
+  static auto* id_to_allocator_map = std::make_unique<std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>>().release();
+
+  auto hit = id_to_allocator_map->find(id);
+  if (hit == id_to_allocator_map->end()) {
+    auto dml_allocator = std::make_shared<Dml::DmlExternalBufferAllocator>(id);
+    hit = id_to_allocator_map->emplace(id, std::move(dml_allocator)).first;
+  }
+
+  return hit->second;
 }
 
 #endif
