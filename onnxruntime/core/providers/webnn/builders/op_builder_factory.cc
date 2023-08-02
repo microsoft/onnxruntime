@@ -23,6 +23,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Exp", op_registrations);
     CreateUnaryOpBuilder("Floor", op_registrations);
     CreateUnaryOpBuilder("Identity", op_registrations);
+    CreateUnaryOpBuilder("Log", op_registrations);
     CreateUnaryOpBuilder("Neg", op_registrations);
     CreateUnaryOpBuilder("Not", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
@@ -117,9 +118,11 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Pool
+    CreatePoolOpBuilder("AveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalAveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
-    CreatePoolOpBuilder("AveragePool", op_registrations);
+    CreatePoolOpBuilder("GlobalLpPool", op_registrations);
+    CreatePoolOpBuilder("LpPool", op_registrations);
     CreatePoolOpBuilder("MaxPool", op_registrations);
   }
 
