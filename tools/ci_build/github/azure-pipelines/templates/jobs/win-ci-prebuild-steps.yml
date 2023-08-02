@@ -12,7 +12,7 @@ parameters:
   type: boolean
   default: false
 
-- name: WITH_CACHE
+- name: WITHCACHE
   type: boolean
   default: false
 
@@ -48,7 +48,7 @@ steps:
     EnvSetupScript: ${{parameters.EnvSetupScript}}
     DownloadCUDA: ${{parameters.DownloadCUDA}}
 
-- ${{ if eq(parameters.WITH_CACHE, true) }}:
+- ${{ if eq(parameters.WITHCACHE, true) }}:
   - powershell: |
       if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))
       {
@@ -62,7 +62,7 @@ steps:
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
 - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
-    - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - ${{ if eq(parameters.WITHCACHE, true) }}:
       - task: Cache@2
         # machinepool is used to ensure the compiler is same
         inputs:
@@ -78,12 +78,12 @@ steps:
         filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
         workingDirectory: '$(Build.BinariesDirectory)'
         arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} ${{ variables['PS_CACHE_ARG'] }}
-      ${{ if eq(parameters.WITH_CACHE, true) }}:
+      ${{ if eq(parameters.WITHCACHE, true) }}:
         env:
           CCACHE_DIR: $(Agent.TempDirectory)/deps_ccache
           CCACHE_COMPILERCHECK: content
 
-    - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - ${{ if eq(parameters.WITHCACHE, true) }}:
       - powershell: |
           ccache -sv
           ccache -z
