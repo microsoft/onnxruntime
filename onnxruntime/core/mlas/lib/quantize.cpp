@@ -402,7 +402,7 @@ MlasQuantizeLinear<int16_t>(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
-    GetMlasPlatform().QuantizeLinearU16Kernel(
+    GetMlasPlatform().QuantizeLinearS16Kernel(
 #else
     MlasQuantizeLinearS16Kernel(
 #endif
