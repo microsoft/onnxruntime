@@ -5,7 +5,6 @@
     import Performance from "./components/performance.svelte";
     import CrossPlatform from "./components/cross-platform.svelte";
     import GenerativeAi from "./components/generative-ai.svelte";
-    import Testimonials from "./components/testimonials.svelte";
     import Table from "./components/table.svelte"
     import Stats from "./components/stats.svelte";
 </script>
@@ -13,8 +12,7 @@
 <Customers/>
 <CodeBlocks/>
 <!-- <Stats/> -->
-<!-- <Table/> -->
-<!-- <Performance/>
+<Table/>
+<Performance/>
 <CrossPlatform/>
 <GenerativeAi/>
-<Testimonials/> -->

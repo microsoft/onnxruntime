@@ -5,7 +5,7 @@
 	import javascript from 'svelte-highlight/languages/javascript';
 	import java from 'svelte-highlight/languages/java';
 	import cpp from 'svelte-highlight/languages/cpp';
-	import FaRegClipboard from 'svelte-icons/fa/FaRegClipboard.svelte';
+	import FaLink from 'svelte-icons/fa/FaLink.svelte';
 	import { blur, fade } from 'svelte/transition';
 
 	let pythonCode =
@@ -15,7 +15,7 @@
 	let javascriptCode =
 		'import * as ort from "onnxruntime-web";\n// Load the model and create InferenceSession\nconst modelPath = "path/to/your/onnx/model";\nconst session = await ort.InferenceSession.create(modelPath);\n// Load and preprocess the input image to inputTensor\n...\n// Run inference\nconst outputs = await session.run({ input: inputTensor });\nconsole.log(outputs);';
 	let javaCode =
-		'import ai.onnxruntime.*;\n// Load the model and create InferenceSession\nString modelPath = "path/to/your/onnx/model";\nOrtEnvironment env = OrtEnvironment.getEnvironment();\nOrtSession session = env.createSession(modelPath);\n// Load and preprocess the input image inputTensor\n...\n// Run inference\nOrtSession.Result outputs = session.run(inputTensor);\nSystem.out.println(outputs.get(0).getTensor().getFloatBuffer().get(0));';
+		'import ai.onnxruntime.*;\n// Load the model and create InferenceSession\nString modelPath = "path/to/your/onnx/model";\nOrtEnvironment env = OrtEnvironment.getEnvironment();\nOrtSession session = env.createSession(modelPath);\n// Load and preprocess the input image inputTensor\n...\n// Run inference\nOrtSession.Result outputs = session.run(inputTensor);\nSystem.out.println(outputs.get(0).getTensor().getFloatBuffer().get(0));\n\n';
 	let cppCode =
 		'#include "onnxruntime_cxx_api.h"\n// Load the model and create InferenceSession\nOrt::Env env;\nstd::string model_path = "path/to/your/onnx/model";\nOrt::Session session(env, model_path, Ort::SessionOptions{ nullptr });\n// Load and preprocess the input image to \n// inputTensor, inputNames, and outputNames\n...\n// Run inference\nstd::vector outputTensors =\nsession.Run(Ort::RunOptions{nullptr}, \ninputNames.data(), \n&inputTensor, \ninputNames.size(), \noutputNames.data(), \noutputNames.size());\nconst float* outputDataPtr = outputTensors[0].GetTensorMutableData();\nstd::cout << outputDataPtr[0] << std::endl;';
 	// a svelte function to conditionally render different "Highlight" components based on what tab was clicked
@@ -25,7 +25,6 @@
 	let tabs = ['Python', 'C#', 'JavaScript', 'Java', 'C++'];
 	let interacted = false;
 	let currentTab = 0;
-	let copied = '';
 	let cycleCode = () => {
 		currentTab = (currentTab + 1) % 5;
 		activeTab = tabs[currentTab];
@@ -48,33 +47,8 @@
 		activeTab = activeTab;
 	};
 	let copy = async () => {
-		let copy;
-		switch (activeTab) {
-			case 'Python':
-				copy = pythonCode;
-				break;
-			case 'C#':
-				copy = csharpCode;
-				break;
-			case 'JavaScript':
-				copy = javascriptCode;
-				break;
-			case 'Java':
-				copy = javaCode;
-				break;
-			case 'C++':
-				copy = cppCode;
-				break;
-			default:
-				copy = ''; // Set a default value if needed
-				break;
-		}
 		try {
 			await navigator.clipboard.writeText(copy);
-			copied = activeTab;
-			setTimeout(() => {
-				copied = '';
-			}, 3000);
 		} catch (err) {
 			console.error('Failed to copy:', err);
 		}
@@ -82,19 +56,12 @@
 	// TODO: get data theme from html tag
 </script>
 
-{#if copied != ''}
-	<div class="toast toast-top">
-		<div class="alert alert-info">
-			<span>{copied} code successfully copied!</span>
-		</div>
-	</div>
-{/if}
 <div class="container mx-auto">
 	<div class="grid-cols-3 gap-10 grid">
-		<div class="col-span-1 mx-auto ">
+		<div class="col-span-1 mx-auto">
 			<h1 class="text-xl">Use ONNX Runtime with your favorite language</h1>
 		</div>
-		<div class="hidden md:block col-span-2 mx-auto tab-container">
+		<div class="hidden lg:block col-span-2 mx-auto tab-container">
 			<div class="tabs">
 				<p
 					on:mouseenter={handleClick}
@@ -133,39 +100,39 @@
 				>
 			</div>
 			{#if activeTab === 'Python'}
+				<Highlight language={python} code={pythonCode} />
 				<div class="div" in:fade={{ duration: 500 }}>
-					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
-						><span class="icon"><FaRegClipboard /></span></button
+					<a href="docs/get-started/with-python" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+						>Learn more<span class="w-5 h-5"><FaLink /></span></a
 					>
-					<Highlight language={python} code={pythonCode} />
 				</div>
 			{:else if activeTab === 'C#'}
 				<div class="div" in:fade={{ duration: 500 }}>
-					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
-						><span class="icon"><FaRegClipboard /></span></button
-					>
 					<Highlight language={csharp} code={csharpCode} />
+					<a href="docs/get-started/with-csharp" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+						>Learn more<span class="w-5 h-5"><FaLink /></span></a
+					>
 				</div>
 			{:else if activeTab === 'JavaScript'}
 				<div class="div" in:fade={{ duration: 500 }}>
-					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
-						><span class="icon"><FaRegClipboard /></span></button
-					>
 					<Highlight language={javascript} code={javascriptCode} />
+					<a href="docs/get-started/with-javascript" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+						>Learn more<span class="w-5 h-5"><FaLink /></span></a
+					>
 				</div>
 			{:else if activeTab === 'Java'}
 				<div class="div" in:fade={{ duration: 500 }}>
-					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
-						><span class="icon"><FaRegClipboard /></span></button
-					>
 					<Highlight language={java} code={javaCode} />
+					<a href="docs/get-started/with-java" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+						>Learn more<span class="w-5 h-5"><FaLink /></span></a
+					>
 				</div>
 			{:else if activeTab === 'C++'}
 				<div class="div" in:fade={{ duration: 500 }}>
-					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
-						><span class="icon"><FaRegClipboard /></span></button
-					>
 					<Highlight language={cpp} code={cppCode} />
+					<a href="docs/get-started/with-cpp" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+						>Learn more<span class="w-5 h-5"><FaLink /></span></a
+					>
 				</div>
 			{:else if activeTab === 'More..'}
 				Link to docs
@@ -180,9 +147,5 @@
 	.tab-container {
 		min-width: 675px;
 		min-height: 525px;
-	}
-	.icon {
-		width: 24px;
-		height: 24px;
 	}
 </style>

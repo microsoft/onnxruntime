@@ -1,14 +1,15 @@
 <script>
 	import { onMount } from 'svelte';
 	import { themeChange } from 'theme-change';
+	import onnximage from '../../images/ONNX-Icon.svg';
 	import FaGithub from 'svelte-icons/fa/FaGithub.svelte';
 	import FaYoutube from 'svelte-icons/fa/FaYoutube.svelte';
 	import FaLinkedinIn from 'svelte-icons/fa/FaLinkedinIn.svelte';
-
 	onMount(() => {
 		themeChange(false);
 	});
 </script>
+
 <div class="navbar bg-base-100">
 	<div class="navbar-start">
 		<div class="dropdown">
@@ -39,17 +40,17 @@
 					<p>Community</p>
 					<ul class="p-2">
 						<li><a href="/about">About ORT</a></li>
-						<li><a>Testimonials</a></li>
+						<li><a href="/testimonials">Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime" target="_blank"
-								><div class="icon"><FaYoutube /></div>
-								 Youtube</a
+								><div class="w-4 h-4"><FaYoutube /></div>
+								Youtube</a
 							>
 						</li>
 						<li>
 							<a href="https://www.linkedin.com/company/onnxruntime/" target="_blank"
-								><div class="icon"><FaLinkedinIn /></div>
-								 LinkedIn</a
+								><div class="w-4 h-4"><FaLinkedinIn /></div>
+								LinkedIn</a
 							>
 						</li>
 						<li>
@@ -65,35 +66,37 @@
 				</li>
 				<li>
 					<a href="https://github.com/microsoft/onnxruntime" target="_blank"
-						><div class="icon"><FaGithub /></div>
-						 GitHub</a
+						><div class="w-4 h-4"><FaGithub /></div>
+						GitHub</a
 					>
 				</li>
 			</ul>
 		</div>
-		<a href="/" class="btn btn-ghost normal-case text-xl">ONNXRuntime</a>
+		<a href="/" class="btn btn-ghost normal-case text-xl">
+			<img src={onnximage} class="w-8 h-8 hidden lg:block" alt="ONNX Runtime logo" />ONNXRuntime<img src={onnximage} class="w-8 h-8 lg:hidden" alt="ONNX Runtime logo" /></a
+		>
 	</div>
 	<div class="navbar-center hidden lg:flex">
 		<ul class="menu menu-horizontal px-1">
 			<li><a href="/blogs">Blogs</a></li>
-			<li><a href="/" >Docs</a></li>
+			<li><a href="/">Docs</a></li>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<li tabindex="1">
-				<details class="z-[1] ">
+				<details class="z-[1]">
 					<summary>Community</summary>
 					<ul class="p-2">
-						<li><a href="/about" >About ORT</a></li>
-						<li><a>Testimonials</a></li>
+						<li><a href="/about">About ORT</a></li>
+						<li><a href="/testimonials">Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime" target="_blank"
-								><div class="icon"><FaYoutube /></div>
-								 Youtube</a
+								><div class="w-4 h-4"><FaYoutube /></div>
+								Youtube</a
 							>
 						</li>
 						<li>
 							<a href="https://www.linkedin.com/company/onnxruntime/" target="_blank"
-								><div class="icon"><FaLinkedinIn /></div>
-								 LinkedIn</a
+								><div class="w-4 h-4"><FaLinkedinIn /></div>
+								LinkedIn</a
 							>
 						</li>
 						<li>
@@ -110,7 +113,7 @@
 			</li>
 			<li>
 				<a href="https://github.com/microsoft/onnxruntime" target="_blank"
-					><div class="icon"><FaGithub /></div>
+					><div class="w-4 h-4"><FaGithub /></div>
 					GitHub</a
 				>
 			</li>
@@ -127,8 +130,4 @@
 </div>
 
 <style>
-	.icon {
-		width: 16px;
-		height: 16px;
-	}
 </style>

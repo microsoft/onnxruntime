@@ -10,10 +10,10 @@
 		<span class="footer-title">Follow us at:</span>
 		<div class="grid grid-flow-col gap-4">
 			<a href="https://www.youtube.com/onnxruntime" target="_blank"
-				><div class="icon pt-0.5"><FaYoutube /></div></a
+				><div class="w-8 h-8 pt-0.5"><FaYoutube /></div></a
 			>
 			<a href="https://www.linkedin.com/company/onnxruntime" target="_blank"
-				><div class="icon"><FaLinkedinIn /></div></a
+				><div class="w-8 h-8"><FaLinkedinIn /></div></a
 			>
 			<a href="https://www.tiktok.com/@onnxruntimeai" target="_blank"
 				><svg xmlns="http://www.w3.org/2000/svg" height="2em" viewBox="0 0 448 512"
@@ -23,7 +23,7 @@
 				>
 			</a>
 			<a href="https://github.com/microsoft/onnxruntime" target="_blank"
-				><div class="icon"><FaGithub /></div></a
+				><div class="w-8 h-8"><FaGithub /></div></a
 			>
 		</div>
 	</div>
@@ -42,8 +42,4 @@
 </footer>
 
 <style>
-	.icon {
-		width: 32px;
-		height: 32px;
-	}
 </style>

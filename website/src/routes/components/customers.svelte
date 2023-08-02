@@ -66,9 +66,3 @@
 		</button>
 	</div>
 </div>
-
-<style>
-	.partner {
-		width: 7vw;
-	}
-</style>

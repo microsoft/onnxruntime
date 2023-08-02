@@ -33,27 +33,16 @@
 	{@html oneLight}
 </svelte:head>
 <!-- TODO: Make toast an alert w/ icon -->
-<div class="toast z-[2]">
+<div class="toast z-[2] opacity-0 hidden">
 	<div class="alert alert-primary">
 		<span
 			>Please help us improve ONNX Runtime <br class="md:hidden"/>by participating in our <a
 				class="underline"
 				href="https://ncv.microsoft.com/UySXuzobM9">customer survey</a
 			>.</span
-		> <button on:click={removetoast} class="icon pt-1"><IoIosClose /></button>
+		> <button on:click={removetoast} class="w-8 h-8 pt-1"><IoIosClose /></button>
 	</div>
 </div>
 <Header />
 <slot />
 <Footer />
-
-<style>
-	.icon {
-		width: 32px;
-		height: 32px;
-	}
-	.toast {
-		display: none;
-		opacity: 0;
-	}
-</style>
