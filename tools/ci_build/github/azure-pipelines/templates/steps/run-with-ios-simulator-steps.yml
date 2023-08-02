@@ -42,6 +42,7 @@ steps:
 
   - publish: "$(Build.ArtifactStagingDirectory)/${{ parameters.logArtifactNamePrefix }}Logs"
     artifact: "${{ parameters.logArtifactNamePrefix }}IosSimulatorLogs"
+    displayName: "Publish simulator logs artifact"
     condition: succeededOrFailed()
 
 - bash: |
