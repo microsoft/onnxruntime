@@ -51,10 +51,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             _inputShape = Array.ConvertAll<int, long>(inputMeta[_inputName].Dimensions, Convert.ToInt64);
             _outputShape = Array.ConvertAll<int, long>(outputMeta[_outputName].Dimensions, Convert.ToInt64);
 
-            var inputShapeSize = ArrayUtilities.GetSizeForShape(_inputShape);
+            var inputShapeSize = ShapeUtils.GetSizeForShape(_inputShape);
             Assert.Equal(inputShapeSize, _inputData.Length);
 
-            var outputShapeSize = ArrayUtilities.GetSizeForShape(_outputShape);
+            var outputShapeSize = ShapeUtils.GetSizeForShape(_outputShape);
             Assert.Equal(outputShapeSize, _outputData.Length);
 
             _inputSizeInBytes = inputShapeSize * sizeof(float);
@@ -297,7 +297,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             long[] inputOutputShape = { 3, 2 };
             float[] input = { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
-            var inputOutputShapeSize = ArrayUtilities.GetSizeForShape(inputOutputShape);
+            var inputOutputShapeSize = ShapeUtils.GetSizeForShape(inputOutputShape);
             Assert.Equal(inputOutputShapeSize, input.LongLength);
 
             var memInput = new Memory<float>(input);
