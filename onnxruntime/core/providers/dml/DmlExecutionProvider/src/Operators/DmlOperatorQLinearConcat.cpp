@@ -9,6 +9,13 @@ namespace Dml
 // This kernel is the first usage of graph based implementation
 class DmlOperatorQLinearConcat : public DmlOperator, public QLinearConcatHelper
 {
+    // This order matches the ONNX schema.
+    enum OnnxInputIndex
+    {
+        yScale,
+        yZeroPoint,
+        Count,
+    };
 
 public:
     DmlOperatorQLinearConcat(const MLOperatorKernelCreationContext& kernelCreationContext)
@@ -25,14 +32,14 @@ public:
         ML_CHECK_VALID_ARGUMENT(input_def_count >= 5 && (input_def_count - 2) % 3 == 0,
               "Each input must be (tensor, scale, zero_point) tuple!");
         uint32_t input_count = (input_def_count - 2) / 3;
-        auto yScaleDataType = kernelCreationContext.GetInputEdgeDescription(0).tensorDataType;
-        auto yZeroPointDataType = kernelCreationContext.GetInputEdgeDescription(1).tensorDataType;
+        auto yScaleDataType = kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::yScale).tensorDataType;
+        auto yZeroPointDataType = kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::yZeroPoint).tensorDataType;
 
         // broadcast y_scale and y_zero_point to output shape
-        m_inputTensorDescs[0] = TensorDesc(
-            kernelCreationContext.GetInputEdgeDescription(0).tensorDataType,
+        m_inputTensorDescs[OnnxInputIndex::yScale] = TensorDesc(
+            kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::yScale).tensorDataType,
             outputShape,
-            kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0),
+            kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::yScale),
             TensorAxis::DoNotCoerce,
             TensorAxis::W,
             TensorAxis::RightAligned,
@@ -40,10 +47,10 @@ public:
             0 // guaranteedBaseOffsetAlignment
         );
 
-        m_inputTensorDescs[1] = TensorDesc(
-            kernelCreationContext.GetInputEdgeDescription(1).tensorDataType,
+        m_inputTensorDescs[OnnxInputIndex::yZeroPoint] = TensorDesc(
+            kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::yZeroPoint).tensorDataType,
             outputShape,
-            kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(1),
+            kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::yZeroPoint),
             TensorAxis::DoNotCoerce,
             TensorAxis::W,
             TensorAxis::RightAligned,
@@ -54,11 +61,14 @@ public:
         // Validate input tensors
         for (uint32_t input_index = 0; input_index < input_count; ++input_index)
         {
+            // Inputs(input tensor, scale, zero_point) are in tuple and starting from index 2
             auto tuple_start = 2 + input_index * 3;
-            // broadcast x_scale and x_zero_point to shape of corresponding x
             auto xScaleDataType = kernelCreationContext.GetInputEdgeDescription(tuple_start + 1).tensorDataType;
             auto xZeroPointDataType = kernelCreationContext.GetInputEdgeDescription(tuple_start + 2).tensorDataType;
-            ML_CHECK_VALID_ARGUMENT(xScaleDataType == yScaleDataType, "Input scale is not float");
+            ML_CHECK_VALID_ARGUMENT(xScaleDataType == yScaleDataType, "Wrong input type encountered for scale");
+            ML_CHECK_VALID_ARGUMENT(xZeroPointDataType == yZeroPointDataType, "Wrong input type encountered for zero point");
+
+            // broadcast x_scale and x_zero_point to shape of corresponding x
             m_inputTensorDescs[tuple_start + 1] = TensorDesc(
                 kernelCreationContext.GetInputEdgeDescription(tuple_start + 1).tensorDataType,
                 kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(tuple_start),
@@ -70,7 +80,6 @@ public:
                 0 // guaranteedBaseOffsetAlignment
             );
 
-            ML_CHECK_VALID_ARGUMENT(xZeroPointDataType == yZeroPointDataType, "Wrong input type encountered for zero point");
             m_inputTensorDescs[tuple_start + 2] = TensorDesc(
                 kernelCreationContext.GetInputEdgeDescription(tuple_start + 2).tensorDataType,
                 kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(tuple_start),
@@ -142,8 +151,8 @@ public:
 
         DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC quantizeOperatorDesc = {};
         quantizeOperatorDesc.InputTensor = joinDesc.OutputTensor;
-        quantizeOperatorDesc.ScaleTensor = &inputDescs[0];
-        quantizeOperatorDesc.ZeroPointTensor = &inputDescs[1];
+        quantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::yScale];
+        quantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::yZeroPoint];
         quantizeOperatorDesc.OutputTensor = &outputDescs[0];
         const DML_OPERATOR_DESC opQuantizeDesc{DML_OPERATOR_ELEMENT_WISE_QUANTIZE_LINEAR, &quantizeOperatorDesc};
         opDescs.push_back(&opQuantizeDesc);
@@ -152,30 +161,35 @@ public:
         operatorGraphDesc.nodeCount = static_cast<uint32_t>(opDescs.size());
         operatorGraphDesc.nodesAsOpDesc = opDescs.data();
 
+        uint32_t joinNodeIndex = operatorGraphDesc.nodeCount - 2;
+        uint32_t quantizeNodeIndex = operatorGraphDesc.nodeCount - 1;
 
         std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+        // Input edges to Dequantize nodes
         for (uint32_t input_index = 0; input_index < input_count; ++input_index)
         {
             auto tuple_start = 2 + input_index * 3;
             for (auto edge_index = 0; edge_index < 3; ++edge_index)
             {
                 DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
-                inputEdge.GraphInputIndex = tuple_start + edge_index; // OnnxInputIndex and DmlInputIndex are identity for QLinearSigmoid
+                inputEdge.GraphInputIndex = tuple_start + edge_index;
                 inputEdge.ToNodeIndex = input_index;
                 inputEdge.ToNodeInputIndex = edge_index;
                 inputEdges.push_back(inputEdge);
             }
         }
 
+        // Input edge from y_scale to quantize node
         DML_INPUT_GRAPH_EDGE_DESC yScaleInputEdge = {};
         yScaleInputEdge.GraphInputIndex = 0; // Y_scale
-        yScaleInputEdge.ToNodeIndex = operatorGraphDesc.nodeCount - 1; // To the last node Quantize
+        yScaleInputEdge.ToNodeIndex = quantizeNodeIndex;
         yScaleInputEdge.ToNodeInputIndex = 1;
         inputEdges.push_back(yScaleInputEdge);
 
+        // Input edge from y_zero_point to quantize node
         DML_INPUT_GRAPH_EDGE_DESC yZeroPointInputEdge = {};
-        yZeroPointInputEdge.GraphInputIndex = 1; // Y_scale
-        yZeroPointInputEdge.ToNodeIndex = operatorGraphDesc.nodeCount - 1; // To the last node Quantize
+        yZeroPointInputEdge.GraphInputIndex = 1; // Y_zero_point
+        yZeroPointInputEdge.ToNodeIndex = quantizeNodeIndex;
         yZeroPointInputEdge.ToNodeInputIndex = 2;
         inputEdges.push_back(yZeroPointInputEdge);
 
@@ -189,15 +203,15 @@ public:
             DML_INTERMEDIATE_GRAPH_EDGE_DESC dequantizeToJoinEdge = {};
             dequantizeToJoinEdge.FromNodeIndex = input_index;
             dequantizeToJoinEdge.FromNodeOutputIndex = 0;
-            dequantizeToJoinEdge.ToNodeIndex = operatorGraphDesc.nodeCount - 2; // The second last node Join
+            dequantizeToJoinEdge.ToNodeIndex = joinNodeIndex; // The second last node Join
             dequantizeToJoinEdge.ToNodeInputIndex = input_index;
             intermediateEdges.push_back(dequantizeToJoinEdge);
         }
 
         DML_INTERMEDIATE_GRAPH_EDGE_DESC joinToQuantizeEdge = {};
-        joinToQuantizeEdge.FromNodeIndex = operatorGraphDesc.nodeCount - 2;
+        joinToQuantizeEdge.FromNodeIndex = joinNodeIndex;
         joinToQuantizeEdge.FromNodeOutputIndex = 0;
-        joinToQuantizeEdge.ToNodeIndex = operatorGraphDesc.nodeCount - 1; // The second last node Join
+        joinToQuantizeEdge.ToNodeIndex = quantizeNodeIndex; // The second last node Join
         joinToQuantizeEdge.ToNodeInputIndex = 0;
         intermediateEdges.push_back(joinToQuantizeEdge);
 
@@ -207,7 +221,7 @@ public:
         // set the output edges
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
         DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
-        outputEdge.FromNodeIndex = operatorGraphDesc.nodeCount - 1;
+        outputEdge.FromNodeIndex = quantizeNodeIndex;
         outputEdge.FromNodeOutputIndex = 0;
         outputEdge.GraphOutputIndex = 0;
         outputEdges.push_back(outputEdge);
