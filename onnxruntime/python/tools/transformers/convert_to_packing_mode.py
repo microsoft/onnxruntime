@@ -214,6 +214,8 @@ class PackingAttention(PackingAttentionBase):
             self.nodes_to_remove.append(attention)
             self.node_name_to_graph_name[packed_attention.name] = self.this_graph_name
 
+        logger.info("Converted %d Attention nodes to PackedAttention.", len(self.attention_nodes))
+
 
 class PackingMultiHeadAttention(PackingAttentionBase):
     def __init__(self, model: OnnxModel):
@@ -257,6 +259,7 @@ class PackingMultiHeadAttention(PackingAttentionBase):
         return True
 
     def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
+        gated_relative_pos_bias_count = 0
         for mha in self.attention_nodes:
             relative_pos_bias = (
                 mha.input[MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS]
@@ -298,6 +301,10 @@ class PackingMultiHeadAttention(PackingAttentionBase):
                     and len(rel_pos_bias_node.input) == 6
                 ):
                     rel_pos_bias_node.input.append(token_offset)
+                    gated_relative_pos_bias_count += 1
+
+        logger.info("Converted %d MultiHeadAttention nodes to PackedMultiHeadAttention.", len(self.attention_nodes))
+        logger.info("Converted %d GatedRelativePositionBias nodes to packing mode.", gated_relative_pos_bias_count)
 
     def _get_input_to_remove_padding(self, first_attention_node) -> Union[str, None]:
         # When there are query, key and value inputs, we need to find the first input of the parent MatMul node.
@@ -365,7 +372,7 @@ def main():
 
     _setup_logger(args.verbose)
 
-    logger.debug("arguments:{args}")
+    logger.debug(f"arguments:{args}")
 
     if os.path.realpath(args.input) == os.path.realpath(args.output):
         logger.warning("Specified the same input and output path. Note that this may overwrite the original model")
