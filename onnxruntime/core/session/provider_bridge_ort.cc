@@ -1737,7 +1737,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionUserComputeStream,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(GetTensorRTProviderOptionUserComputeStream, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Outptr_ void** ptr) {
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionUserComputeStream, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Outptr_ void** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
   *ptr = tensorrt_options->user_compute_stream;
