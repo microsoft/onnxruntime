@@ -44,6 +44,8 @@ class TestSetting:
     seed: int
     verbose: bool
     log_severity: int
+    average_sequence_length: int
+    random_sequence_length: bool
 
 
 @dataclass
@@ -365,7 +367,8 @@ def run_performance(model_setting, test_setting, perf_results):
         input_ids,
         segment_ids,
         input_mask,
-        random_mask_length=False,
+        test_setting.average_sequence_length,
+        test_setting.random_sequence_length,
     )
 
     run_perf_tests(model_setting, test_setting, perf_results, all_inputs)
@@ -473,6 +476,7 @@ def parse_arguments():
         default=None,
         help="input name for input ids",
     )
+
     parser.add_argument(
         "--segment_ids_name",
         required=False,
@@ -480,6 +484,7 @@ def parse_arguments():
         default=None,
         help="input name for segment ids",
     )
+
     parser.add_argument(
         "--input_mask_name",
         required=False,
@@ -494,12 +499,30 @@ def parse_arguments():
         type=str,
         help="tuning results (json) to be loaded before benchmark",
     )
+
     parser.add_argument(
         "--output_tuning_results",
         default=None,
         type=str,
         help="tuning results (json) to be saved after benchmark",
     )
+
+    parser.add_argument(
+        "-a",
+        "--average_sequence_length",
+        default=-1,
+        type=int,
+        help="average sequence length excluding padding",
+    )
+
+    parser.add_argument(
+        "-r",
+        "--random_sequence_length",
+        required=False,
+        action="store_true",
+        help="use uniform random instead of fixed sequence length",
+    )
+    parser.set_defaults(random_sequence_length=False)
 
     args = parser.parse_args()
     return args
@@ -510,6 +533,9 @@ def main():
 
     if args.test_times == 0:
         args.test_times = max(1, int(1000 / args.samples))
+
+    if args.average_sequence_length <= 0:
+        args.average_sequence_length = args.sequence_length
 
     manager = multiprocessing.Manager()
     perf_results = manager.dict()
@@ -541,6 +567,8 @@ def main():
             args.seed,
             args.verbose,
             args.log_severity,
+            args.average_sequence_length,
+            args.random_sequence_length,
         )
 
         print("test setting", test_setting)
