@@ -473,6 +473,11 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
     }
   }
 
+#ifndef DISABLE_CONTRIB_OPS
+  Status status = ::onnxruntime::contrib::js::RegisterJsContribKernels(*kernel_registry);
+  ORT_ENFORCE(status.IsOK(), "Failed to register JS contrib kernels: " + status.ErrorMessage());
+#endif
+
   return kernel_registry;
 }
 
@@ -500,10 +505,7 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
 
 std::shared_ptr<KernelRegistry> JsExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> registry = js::RegisterKernels();
-#ifndef DISABLE_CONTRIB_OPS
-  Status status = ::onnxruntime::contrib::js::RegisterJsContribKernels(*registry);
-  ORT_ENFORCE(status.IsOK(), "Failed to register JS contrib kernels: " + status.ErrorMessage());
-#endif
+
   return registry;
 }
 
