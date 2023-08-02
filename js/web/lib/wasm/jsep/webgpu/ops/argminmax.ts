@@ -97,7 +97,7 @@ const createReduceProgramInfo =
       return {
         ...metadata,
         getShaderSource,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        outputs: [{dims: outputShape, dataType: DataType.int64, gpuDataType: GpuDataType.default}],
         dispatchGroup: () => ({x: Math.ceil(outputSize / 64)})
       };
     };
