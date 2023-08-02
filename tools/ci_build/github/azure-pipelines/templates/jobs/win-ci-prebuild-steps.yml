@@ -78,11 +78,12 @@ steps:
       workingDirectory: '$(Build.BinariesDirectory)'
       ${{ if eq(parameters.WITHCACHE, true) }}:
         arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} -use_cache
-        env:
-          CCACHE_DIR: $(Agent.TempDirectory)/deps_ccache
-          CCACHE_COMPILERCHECK: content
       ${{ else }}:
         arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }}
+    ${{ if eq(parameters.WITHCACHE, true) }}:
+      env:
+        CCACHE_DIR: $(Agent.TempDirectory)/deps_ccache
+        CCACHE_COMPILERCHECK: content
 
   - ${{ if eq(parameters.WITHCACHE, true) }}:
     - powershell: |
