@@ -1543,9 +1543,13 @@ public class OrtSession implements AutoCloseable {
   /**
    * An {@link AutoCloseable} wrapper around a {@link Map} containing {@link OnnxValue}s.
    *
-   * <p>When this is closed it closes all the {@link OnnxValue}s inside it. If you maintain a
-   * reference to a value after this object has been closed it will throw an {@link
+   * <p>When this is closed it closes all the {@link OnnxValue}s owned by the result object. If you
+   * maintain a reference to a value after this object has been closed it will throw an {@link
    * IllegalStateException} upon access.
+   *
+   * <p>{@link OnnxValue}s which are supplied as pinned outputs to a {@code run} call are not closed
+   * by the {@link Result#close()} method. Ownership of each output can be checked with {@link
+   * Result#isResultOwner(int)}.
    */
   public static class Result implements AutoCloseable, Iterable<Map.Entry<String, OnnxValue>> {
 
