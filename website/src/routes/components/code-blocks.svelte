@@ -5,6 +5,7 @@
 	import javascript from 'svelte-highlight/languages/javascript';
 	import java from 'svelte-highlight/languages/java';
 	import cpp from 'svelte-highlight/languages/cpp';
+	import FaRegClipboard from 'svelte-icons/fa/FaRegClipboard.svelte';
 	import { blur, fade } from 'svelte/transition';
 
 	let pythonCode =
@@ -21,42 +22,79 @@
 	let activeTab = 'Python'; // set the initial active tab to Python
 
 	// TODO: ensure work, change timeout
-	let tabs = ['Python', 'C#', 'JavaScript', 'Java', 'C++']
+	let tabs = ['Python', 'C#', 'JavaScript', 'Java', 'C++'];
 	let interacted = false;
 	let currentTab = 0;
+	let copied = '';
 	let cycleCode = () => {
-		currentTab++;
+		currentTab = (currentTab + 1) % 5;
 		activeTab = tabs[currentTab];
 		activeTab = activeTab;
-	}
-	while (!interacted){
-		setTimeout(cycleCode,200) 
+		if (!interacted) {
+			setTimeout(cycleCode, 3000);
+		}
+	};
+	if (!interacted) {
+		setTimeout(cycleCode, 10000);
 	}
 
-	let handleClick = (/** @type {{ target: { textContent: string; }; }} */ event) => {
+	let handleClick = (event) => {
 		interacted = true;
-		// get the text content of the clicked tab
 		const tabText = event.target.textContent.trim();
-		// if tabtext === 'c++' {
-		//     tabtext = 'cpp';
-		// }
-		// update the active tab state
 		if (tabText === 'More..') {
 			window.location.href = '/docs/get-started';
 		}
 		activeTab = tabText;
 		activeTab = activeTab;
 	};
-	// get data theme from html tag
+	let copy = async () => {
+		let copy;
+		switch (activeTab) {
+			case 'Python':
+				copy = pythonCode;
+				break;
+			case 'C#':
+				copy = csharpCode;
+				break;
+			case 'JavaScript':
+				copy = javascriptCode;
+				break;
+			case 'Java':
+				copy = javaCode;
+				break;
+			case 'C++':
+				copy = cppCode;
+				break;
+			default:
+				copy = ''; // Set a default value if needed
+				break;
+		}
+		try {
+			await navigator.clipboard.writeText(copy);
+			copied = activeTab;
+			setTimeout(() => {
+				copied = '';
+			}, 3000);
+		} catch (err) {
+			console.error('Failed to copy:', err);
+		}
+	};
+	// TODO: get data theme from html tag
 </script>
 
-<div class="container mx-auto">
-	<div class="grid-cols-3 gap-10 hidden md:grid">
-		<div class="col-span-1 mx-auto">
-			<h1 class="text-xl">Use ONNX Runtime with your favorite language</h1>
-			
+{#if copied != ''}
+	<div class="toast toast-top">
+		<div class="alert alert-info">
+			<span>{copied} code successfully copied!</span>
 		</div>
-		<div class="col-span-2 mx-auto tab-container ">
+	</div>
+{/if}
+<div class="container mx-auto">
+	<div class="grid-cols-3 gap-10 grid">
+		<div class="col-span-1 mx-auto ">
+			<h1 class="text-xl">Use ONNX Runtime with your favorite language</h1>
+		</div>
+		<div class="hidden md:block col-span-2 mx-auto tab-container">
 			<div class="tabs">
 				<p
 					on:mouseenter={handleClick}
@@ -94,29 +132,45 @@
 					>More..</button
 				>
 			</div>
-			<!-- TODO" Copy button. -->
 			{#if activeTab === 'Python'}
 				<div class="div" in:fade={{ duration: 500 }}>
+					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
+						><span class="icon"><FaRegClipboard /></span></button
+					>
 					<Highlight language={python} code={pythonCode} />
 				</div>
 			{:else if activeTab === 'C#'}
 				<div class="div" in:fade={{ duration: 500 }}>
+					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
+						><span class="icon"><FaRegClipboard /></span></button
+					>
 					<Highlight language={csharp} code={csharpCode} />
 				</div>
 			{:else if activeTab === 'JavaScript'}
 				<div class="div" in:fade={{ duration: 500 }}>
+					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
+						><span class="icon"><FaRegClipboard /></span></button
+					>
 					<Highlight language={javascript} code={javascriptCode} />
 				</div>
 			{:else if activeTab === 'Java'}
 				<div class="div" in:fade={{ duration: 500 }}>
+					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
+						><span class="icon"><FaRegClipboard /></span></button
+					>
 					<Highlight language={java} code={javaCode} />
 				</div>
 			{:else if activeTab === 'C++'}
 				<div class="div" in:fade={{ duration: 500 }}>
+					<button on:click={copy} class="btn btn-sm float-right -ml-20 z-10 rounded-none"
+						><span class="icon"><FaRegClipboard /></span></button
+					>
 					<Highlight language={cpp} code={cppCode} />
 				</div>
 			{:else if activeTab === 'More..'}
 				Link to docs
+			{:else}
+				Copy code
 			{/if}
 		</div>
 	</div>
@@ -124,7 +178,11 @@
 
 <style>
 	.tab-container {
-		min-width: 675px;
+		/* min-width: 675px; */
 		min-height: 525px;
+	}
+	.icon {
+		width: 24px;
+		height: 24px;
 	}
 </style>

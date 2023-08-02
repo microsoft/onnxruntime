@@ -1,7 +1,23 @@
 <script>
 	import Blog from '../components/blog-post.svelte';
 	import FeaturedBlog from '../components/blog-post-featured.svelte';
+	import anime from 'animejs';
+	import { onMount } from 'svelte';
 	// TODO: Add props for blog
+	onMount(() => {
+		anime({
+			targets: '.card',
+			translateY: -20,
+			direction: 'alternate',
+			loop: false,
+			delay: function (el, i, l) {
+				return 500 + i * 50;
+			},
+			endDelay: function (el, i, l) {
+				return (l - i) * 50;
+			}
+		});
+	});
 </script>
 
 <div class="container px-20 mx-auto">

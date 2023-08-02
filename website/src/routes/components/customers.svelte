@@ -2,14 +2,6 @@
 	import anime from 'animejs';
 
 	import { onMount } from 'svelte';
-	// anime ({
-	//   targets: '.partner',
-	//   translateY: 10,
-	//   direction: 'alternate',
-	//   delay: function(el, i , l) {
-	//     return i * 100
-	//   },
-	// })
 	onMount(() => {
 		anime({
 			targets: '.partner',

@@ -18,10 +18,8 @@
 			duration: 1000,
             delay: 3000,
 			easing: 'easeInOutQuad',
-			begin: function () {
-				// @ts-ignore
-				document.querySelector('.toast').style.display = 'block';
-			},
+			// @ts-ignore
+			begin: function () { document.querySelector('.toast').style.display = 'block';},
 		});
         anime({
             targets: '.toast',

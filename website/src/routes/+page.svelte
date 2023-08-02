@@ -12,7 +12,7 @@
 <Hero/> 
 <Customers/>
 <CodeBlocks/>
-<Stats/>
+<!-- <Stats/> -->
 <!-- <Table/> -->
 <!-- <Performance/>
 <CrossPlatform/>
