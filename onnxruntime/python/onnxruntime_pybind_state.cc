@@ -36,6 +36,8 @@
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
+#include <pybind11/functional.h>
+
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
 // GCC 4.x.
@@ -73,6 +75,83 @@ static Env& platform_env = Env::Default();
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #endif
+
+using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
+
+struct AsyncResource {
+  std::vector<OrtValue> feeds;
+  std::vector<const OrtValue*> feeds_raw;
+
+  std::vector<std::string> feed_names;
+  std::vector<const char*> feed_names_raw;
+
+  std::vector<OrtValue*> fetches_raw;
+
+  std::vector<std::string> fetch_names;
+  std::vector<const char*> fetch_names_raw;
+
+  RunOptions default_run_option;
+  PyCallback callback;
+  py::object user_data;
+
+  void ReserveFeeds(size_t sz) {
+    feeds.reserve(sz);
+    feeds_raw.reserve(sz);
+    feed_names.reserve(sz);
+    feed_names_raw.reserve(sz);
+  }
+
+  void ReserveFetches(size_t sz) {
+    fetches_raw.reserve(sz);
+    fetch_names.reserve(sz);
+    fetch_names_raw.reserve(sz);
+  }
+};
+
+void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr ort_status) {
+  ORT_ENFORCE(user_data, "user data must not be NULL for callback in python");
+
+  auto invoke_callback = [&]() {
+    std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
+    Ort::Status status(ort_status);
+
+    // return on error
+    if (!status.IsOK()) {
+      async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
+      return;
+    }
+
+    std::vector<py::object> rfetch;
+    rfetch.reserve(num_outputs);
+    size_t pos = 0;
+    for (size_t ith = 0; ith < num_outputs; ++ith) {
+      const auto& fet = *outputs[ith];
+      if (fet.IsAllocated()) {
+        if (fet.IsTensor()) {
+          rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+        } else if (fet.IsSparseTensor()) {
+          rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+        } else {
+          rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+        }
+      } else {
+        rfetch.push_back(py::none());
+      }
+      ++pos;
+    }
+    async_resource->callback(rfetch, async_resource->user_data, "");
+  };
+
+  if (PyGILState_Check()) {
+    invoke_callback();
+  } else {
+    // acquire GIL to safely:
+    // 1) invoke python callback
+    // 2) create, manipulate, and destory python objects
+    py::gil_scoped_acquire acquire;
+    invoke_callback();
+  }
+}
 
 template <typename T>
 static py::object AddNonTensor(const OrtValue& val,
@@ -1679,6 +1758,53 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                ++pos;
              }
              return rfetch;
+           })
+      .def("run_async",
+           [](PyInferenceSession* sess,
+              std::vector<std::string> output_names,
+              std::map<std::string, py::object> pyfeeds,
+              PyCallback callback, py::object user_data = {},
+              RunOptions* run_options = nullptr)
+               -> void {
+             std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
+             async_resource->callback = callback;
+             async_resource->user_data = user_data;
+             // prepare feeds
+             async_resource->ReserveFeeds(pyfeeds.size());
+             for (auto feed : pyfeeds) {
+               if (!feed.second.is(py::none())) {
+                 OrtValue ml_value;
+                 auto px = sess->GetSessionHandle()->GetModelInputs();
+                 if (!px.first.IsOK() || !px.second) {
+                   throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+                 }
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
+                 ThrowIfPyErrOccured();
+                 async_resource->feeds.push_back(ml_value);
+                 async_resource->feeds_raw.push_back(&async_resource->feeds.back());
+                 async_resource->feed_names.push_back(feed.first);
+                 async_resource->feed_names_raw.push_back(async_resource->feed_names.back().c_str());
+               }
+             }
+             // prepare fetches
+             async_resource->ReserveFetches(output_names.size());
+             for (auto& output_name : output_names) {
+               async_resource->fetch_names.push_back(output_name);
+               async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
+               async_resource->fetches_raw.push_back({});
+             }
+             const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+             common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
+                                                                        gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
+                                                                        gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
+                                                                        gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
+                                                                        gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
+                                                                        AsyncCallback,
+                                                                        async_resource.get());
+             if (status.IsOK()) {
+               async_resource.release();
+             }
+             OrtPybindThrowIfError(status);
            })
       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
       /// and returns a list of python objects representing OrtValues. Each name may represent either
