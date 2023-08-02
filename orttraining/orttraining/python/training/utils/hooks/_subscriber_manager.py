@@ -5,112 +5,13 @@
 
 
 from collections import abc
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Set, Union
 
 import torch
 
-from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.utils.io import flatten_data_with_schema, unflatten_from_data_and_schema
 
-from ._subscriber_base import SubscriberBase
-
-
-class _RuntimeStates:
-    """
-    A data struct holding states for runtime context. Tho kinds of states are included:
-    > Global states that are one-time collected during model hook registration. A global execution step is
-      also initialized to reflect how many steps have been executed, it will get updated after each step
-      completes its forward path.
-    > Intra-execution step states, initialized and cleaned up intended only for current execution step.
-      Usually, it carries intermediate information during the model execution.
-    """
-
-    class _GlobalStates:
-        def __init__(self):
-            # Used to track current execution step, e.g. how many forward/backward path is called.
-            self.execution_step = 0
-            # Used to store the depth of each module, which indicate the indentation level of the module.
-            self.module_index_to_depth = {}
-            # Used to store the unique id of each sequential activation.
-            self.module_to_module_index = {}
-
-            self.subscribers = set()
-
-    class _ExecutionStepStates:
-        def __init__(self):
-            # Used to store the activation tensor names, if already handled, then skipped.
-            # Need to clear after each step.
-            self.observed_activation_names = {}
-
-    def __init__(self):
-        self.global_states = _RuntimeStates._GlobalStates()
-        self.reset_step_states()
-
-    def reset_step_states(self):
-        self.execution_step_states = _RuntimeStates._ExecutionStepStates()
-
-
-class _InspectActivation(torch.autograd.Function):
-    """
-    This class is used to run the subscriber's forward and backward functions.
-    The function will be called by two kinds of callers:
-        1. SubscriberManager calls it for each registered nn.Module.
-        2. Users who want to inspect the activation tensor at any place of model definition code.
-    """
-
-    @staticmethod
-    def forward(
-        ctx, activation_name: str, module_idx: Optional[int], run_ctx: _RuntimeStates, input_tensor: torch.Tensor
-    ):
-        """
-        Args:
-            ctx: context object to store intermediate information.
-            activation_name: the name of the activation tensor.
-            module_idx:
-                For call case 1 - the unique id of the module that the activation belongs to, it is detected by the
-                    SubscriberManager automatically.
-                For call case 2 - e.g, _InspectActivation is called by users (NOT by SubscriberManager), module_idx can
-                    be None.
-            run_ctx: runtime context.
-                For call case 2 - need retrieve the runtime state from GlobalSubscriberManager.
-            input_tensor: the activation tensor.
-
-        Make sure there is a same number of `tensor` type inputs and outputs.
-        This is enforced by ORT's PythonOp's schema check.
-        """
-        depth = -1
-        if module_idx is not None:
-            depth = run_ctx.global_states.module_index_to_depth[module_idx]
-
-        input_tensor_copied = None
-        if input_tensor is None or not isinstance(input_tensor, torch.Tensor):
-            input_tensor_copied = input_tensor
-        else:
-            input_tensor_copied = input_tensor.detach().clone()
-
-        ctx.current_step = run_ctx.global_states.execution_step
-        ctx.name = activation_name
-        ctx.id = module_idx
-        ctx.depth = depth
-        ctx.subscribers = run_ctx.global_states.subscribers
-
-        # Run subscribers sequentially.
-        for subscriber in run_ctx.global_states.subscribers:
-            subscriber.module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step)
-
-        return input_tensor.detach() if input_tensor is not None else None
-
-    @staticmethod
-    def backward(ctx, grad_output: torch.Tensor):
-        val = None
-        if grad_output is None or not isinstance(grad_output, torch.Tensor):
-            val = grad_output
-        else:
-            val = grad_output.detach().clone()
-
-        for subscriber in ctx.subscribers:
-            subscriber.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step)
-
-        return None, None, None, grad_output.detach() if grad_output is not None else None
+from ._subscriber_base import SubscriberBase, _RuntimeStates
 
 
 class _IncrementStep(torch.autograd.Function):
@@ -181,8 +82,9 @@ class SubscriberManager:
 
     def __init__(self):
         self._run_ctx: _RuntimeStates = _RuntimeStates()
+        self._subscribers: Set[SubscriberBase] = set()
 
-    def subscribe(self, module: Union[torch.nn.Module, ORTModule], subscribers: List[SubscriberBase]):
+    def subscribe(self, module: torch.nn.Module, subscribers: List[SubscriberBase]):
         """
         The API is called externally to register hooks that are implicitly defined by subscribers.
         Each time all global states will be cleaned up once called.
@@ -191,14 +93,20 @@ class SubscriberManager:
             raise ValueError("module must be a torch.nn.Module instance")
 
         self._reset_all_states()
+        self._subscribers.clear()
 
-        if isinstance(module, ORTModule):
-            module = module.module
+        try:
+            from onnxruntime.training.ortmodule import ORTModule
+
+            if isinstance(module, ORTModule):
+                module = module.module
+        except ImportError:
+            pass
 
         for subscriber in subscribers:
             if not isinstance(subscriber, SubscriberBase):
                 raise ValueError("subscriber must be a SubscriberBase instance")
-            self._run_ctx.global_states.subscribers.add(subscriber)
+            self._subscribers.add(subscriber)
 
         self._initialize(module)
 
@@ -209,16 +117,33 @@ class SubscriberManager:
         self._run_ctx = _RuntimeStates()
 
     def _initialize(self, module: torch.nn.Module):
-        """
-        Register hooks for the specified module.
-        """
-        if len(self._run_ctx.global_states.subscribers) == 0:
+        """Register hooks for the specified module."""
+        if len(self._subscribers) == 0:
             raise RuntimeError("No subscribers are registered.")
 
-        next_module_index = [0]
+        def _pre_forward_outmost_module_hook(module, module_inputs):
+            # This check is to support the case where module is first registered in the subscriber manager,
+            # then the module and hook are copied, when new module instance runs to the hook, the global states
+            # are not reset, so the logic depends on the global states will fail. So in the outer-most pre-forward hook
+            # we reset the global states.
+
+            # Be noted, the first run anyway will run in PyTorch.
+            if module not in self._run_ctx.global_states.module_to_module_index:
+                import warnings
+
+                warnings.warn(
+                    "reset global states due to module is not found in self._run_ctx.global_states.module_to_module_index"
+                )
+                self._reset_global_states(module)
+            return module_inputs
+
+        module.register_forward_pre_hook(_pre_forward_outmost_module_hook)
+
         # Register post forward hook for every module, inside the hook, we loop every tensor output of the module,
-        # and wrap it with an autograd Function called _InspectActivation (which takes in a tensor and returns the same
-        # tensor). In this way, we keep ORT and PyTorch run have the same boundary to check activation equality.
+        # and wrap it with an torch.autograd.Function called _InspectActivation (which takes in a tensor and returns
+        # the same tensor). In this way, we keep ORT and PyTorch run have the same boundary to check activation
+        # equality.
+        next_module_index = [0]
         self._register_hooks_recursively(module, 1, next_module_index)
 
         # Register post forward hook for the outside-most module, then we increase the dump step.
@@ -227,12 +152,46 @@ class SubscriberManager:
         # firstly export graph (run the forward only), after the gradient graph is built, another forward+backward is
         # triggered, override the previous dump files.
         def _post_forward_outmost_module_hook(module, _, module_outputs):
-            def _apply_to_tensors_func(_, outputs):
-                return _IncrementStep.apply(self._run_ctx, outputs)
+            # def _apply_to_tensors_func(_, outputs):
+            #     return _IncrementStep.apply(self._run_ctx, outputs)
 
-            return self._apply_function_to_tensors(module, module_outputs, _apply_to_tensors_func)
+            # return self._apply_function_to_tensors(module, module_outputs, _apply_to_tensors_func)
+
+            output_schema, flatten_output_tensor_list = flatten_data_with_schema(module_outputs)
+            for i, output_tensor in enumerate(flatten_output_tensor_list):
+                output_tensor = _IncrementStep.apply(self._run_ctx, output_tensor)
+                flatten_output_tensor_list[i] = output_tensor
+
+            return unflatten_from_data_and_schema(flatten_output_tensor_list, output_schema)
 
         module.register_forward_hook(_post_forward_outmost_module_hook)
+
+    def _reset_global_states(self, module: torch.nn.Module):
+        def _reset_recursively(module: torch.nn.Module, depth: int, next_module_index: List[int]):
+            """
+            Called to register hooks for every `torch.nn.Module`. Due to `Module` can contain child `Module`s,
+            this function is called recursively by passing in `next_module_index` - a list of int to maintain a
+            global incremental unique module id.
+
+            Args:
+                module: torch.nn.Module to register hook.
+                depth: the indent of the module compared with the outside-most Module.
+                next_module_index: list of int, carrying a global unique module index that can be used next.
+            """
+            module_index = next_module_index[0]
+            self._run_ctx.global_states.module_index_to_depth[module_index] = depth
+            self._run_ctx.global_states.module_to_module_index[module] = module_index
+
+            for child in module.children():
+                if (
+                    isinstance(child, torch.nn.Module)
+                    and child not in self._run_ctx.global_states.module_to_module_index
+                ):
+                    next_module_index[0] += 1
+                    _reset_recursively(child, depth + 1, next_module_index)
+
+        next_module_index = [0]
+        _reset_recursively(module, 1, next_module_index)
 
     def _register_hooks_recursively(self, module: torch.nn.Module, depth: int, next_module_index: List[int]):
         """
@@ -254,69 +213,42 @@ class SubscriberManager:
                 next_module_index[0] += 1
                 self._register_hooks_recursively(child, depth + 1, next_module_index)
 
-        def _post_forward_module_hook(module, _, module_outputs):
-            if module in self._run_ctx.global_states.module_to_module_index and isinstance(module, torch.nn.Module):
-                module_index = self._run_ctx.global_states.module_to_module_index[module]
+        def _pre_forward_module_hook(module, module_inputs):
+            input_schema, flatten_input_tensor_list = flatten_data_with_schema(module_inputs)
 
-                def _apply_to_tensors_func(index, activation_tensor):
-                    name = f"{module.__class__.__name__}_{module_index}_{index}th_output"
-                    if name not in self._run_ctx.execution_step_states.observed_activation_names:
-                        self._run_ctx.execution_step_states.observed_activation_names[name] = True
-                        return _InspectActivation.apply(name, module_index, self._run_ctx, activation_tensor)
+            # Module level hook
+            for sub in self._subscribers:
+                flatten_input_tensor_list = sub.pre_forward_module_apply(
+                    module, self._run_ctx, flatten_input_tensor_list
+                )
 
-                    return activation_tensor
+            # Tensor level hook
+            for sub in self._subscribers:
+                tensor_list = []
+                for tensor_index, tensor in enumerate(flatten_input_tensor_list):
+                    tensor_list.append(sub.pre_forward_tensor_apply(module, self._run_ctx, tensor_index, tensor))
+                flatten_input_tensor_list = tensor_list
 
-                return self._apply_function_to_tensors(module, module_outputs, _apply_to_tensors_func)
-            return module_outputs
+            return unflatten_from_data_and_schema(flatten_input_tensor_list, input_schema)
 
+        def _post_forward_module_hook(module, module_inputs, module_outputs):
+            _, flatten_input_tensor_list = flatten_data_with_schema(module_inputs)
+            output_schema, flatten_output_tensor_list = flatten_data_with_schema(module_outputs)
+
+            # Module level hook
+            for sub in self._subscribers:
+                _, flatten_output_tensor_list = sub.post_forward_module_apply(
+                    module, self._run_ctx, flatten_input_tensor_list, flatten_output_tensor_list
+                )
+
+            # Tensor level hook
+            for sub in self._subscribers:
+                tensor_list = []
+                for tensor_index, tensor in enumerate(flatten_output_tensor_list):
+                    tensor_list.append(sub.post_forward_tensor_apply(module, self._run_ctx, tensor_index, tensor))
+                flatten_output_tensor_list = tensor_list
+
+            return unflatten_from_data_and_schema(flatten_output_tensor_list, output_schema)
+
+        module.register_forward_pre_hook(_pre_forward_module_hook)
         module.register_forward_hook(_post_forward_module_hook)
-
-    def _is_builtin_type(self, obj):
-        # https://stackoverflow.com/a/17795199
-        return obj.__class__.__module__ in ["__builtin__", "builtins"]
-
-    def _apply_function_to_tensors(self, module: torch.nn.Module, data, func: Callable):
-        """
-        Apply func to all tensors in the given object.
-
-        Args:
-            module: the module that generates the tensors.
-            data: the object that contains activation tensors.
-            func: the function to apply to the tensors.
-        """
-        tensor_output_idx: List[int] = [0]
-
-        def _apply_to_tensors_by_flatten(
-            module: torch.nn.Module,
-            index_for_tensor_output: List[int],
-            outputs,
-            func: Callable,
-        ):
-            if isinstance(outputs, abc.Sequence):
-                touched_outputs = []
-                for output in outputs:
-                    touched_output = _apply_to_tensors_by_flatten(module, index_for_tensor_output, output, func)
-                    touched_outputs.append(touched_output)
-                return outputs.__class__(touched_outputs)
-
-            if isinstance(outputs, abc.Mapping):
-                # apply inplace to avoid recreating dict inherited objects
-                for key in outputs:
-                    outputs[key] = _apply_to_tensors_by_flatten(
-                        module,
-                        index_for_tensor_output,
-                        outputs[key],
-                        func,
-                    )
-                return outputs
-
-            if isinstance(outputs, torch.Tensor):
-                cur_id = index_for_tensor_output[0]
-                index_for_tensor_output[0] += 1
-                return func(cur_id, outputs)
-
-            if not self._is_builtin_type(outputs):
-                raise RuntimeError(f"Unknown type {type(outputs)}")
-            return outputs
-
-        return _apply_to_tensors_by_flatten(module, tensor_output_idx, data, func)

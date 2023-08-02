@@ -9,8 +9,8 @@ __all__ = [
     "_InspectActivation",
 ]
 
-from ._statistics_subscriber import StatisticsSubscriber
-from ._subscriber_manager import SubscriberManager, _InspectActivation
+from ._statistics_subscriber import StatisticsSubscriber, _InspectActivation
+from ._subscriber_manager import SubscriberManager
 
 # Define a global uninitialized subscriber manager for usage where it is needed by different Python files.
 GlobalSubscriberManager = SubscriberManager()

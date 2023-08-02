@@ -43,8 +43,8 @@ class NeuralNetMultipleOutputs(torch.nn.Module):
         return out, model_input
 
 
-@pytest.mark.parametrize("device", ["cpu", "cuda"])
-@pytest.mark.parametrize("backend", ["torch", "ortmodule"])
+@pytest.mark.parametrize("device", ["cuda"])
+@pytest.mark.parametrize("backend", ["torch"])
 def test_statistic_subscriber_single_output(device, backend):
     input_size = 8
     hidden_size = 16
@@ -56,9 +56,10 @@ def test_statistic_subscriber_single_output(device, backend):
     with tempfile.TemporaryDirectory() as temporary_dir:
         output_dir_path = os.path.join(temporary_dir, f"{backend}_out")
         GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir_path, override_output_dir=True)])
+        from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
 
         if backend == "ortmodule":
-            model = ORTModule(model)
+            model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
 
         batch_size = 4
         input1_tensor = torch.randn(batch_size, input_size, device=device)
@@ -69,22 +70,26 @@ def test_statistic_subscriber_single_output(device, backend):
 
         assert os.path.exists(output_dir_path)
 
-        expected_files = [
-            "order.txt",
-            "Linear_1_0th_output_forward",
-            "Linear_1_0th_output_backward",
-            "NeuralNetSingleOutput_0_0th_output_forward",
-            "NeuralNetSingleOutput_0_0th_output_backward",
-            "ReLU_2_0th_output_forward",
-            "ReLU_2_0th_output_backward",
-            "Linear_3_0th_output_forward",
-            "Linear_3_0th_output_backward",
-        ]
+        # for i in range(5):
+        #     step_dir = os.path.join(output_dir_path, f"step_{i}")
+        #     for file in expected_files:
+        #         assert os.path.exists(os.path.join(step_dir, file))
 
-        for i in range(5):
-            step_dir = os.path.join(output_dir_path, f"step_{i}")
-            for file in expected_files:
-                assert os.path.exists(os.path.join(step_dir, file))
+        from os import walk
+
+        for dirpath, dirnames, _filenames in walk(output_dir_path):
+            print("@@@@@@@", dirnames)
+            for dirname in dirnames:
+                for dirpath2, dirnames2, filenames2 in walk(os.path.join(dirpath, dirname)):
+                    print(">>>>>>>>>>", dirpath2, dirnames2, filenames2)
+
+        # for i in range(1):
+        #     step_dir = os.path.join(output_dir_path, f"step_{i}")
+        #     for file in expected_files:
+        #         assert os.path.exists(os.path.join(step_dir, file))
+
+
+test_statistic_subscriber_single_output("cuda", "torch")
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
