@@ -55,6 +55,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.NhwcFusedConv">com.microsoft.NhwcFusedConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
+  * <a href="#com.microsoft.PackedMultiHeadAttention">com.microsoft.PackedMultiHeadAttention</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
@@ -1885,11 +1886,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of attention heads</dd>
 </dl>
 
-#### Inputs
+#### Inputs (6 - 7)
 
 <dl>
 <dt><tt>query_layer</tt> : T</dt>
-<dd>tensor with shape (batch_size, seq_len, num_heads x head_size)</dd>
+<dd>tensor with shape (batch_size, seq_len, num_heads x head_size) or (token_count, num_heads x head_size)</dd>
 <dt><tt>query_bias</tt> : T</dt>
 <dd>1-d tensor with shape (num_heads x head_size)</dd>
 <dt><tt>rel_pos</tt> : T</dt>
@@ -1900,6 +1901,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>bias for the gated_ur_linear, shape (D)</dd>
 <dt><tt>eco_a</tt> : T</dt>
 <dd>tensor of shape (1, num_heads, 1, 1)</dd>
+<dt><tt>token_offset</tt> (optional) : M</dt>
+<dd>offset of each token with shape (batch_size, seq_len)</dd>
 </dl>
 
 #### Outputs
@@ -1914,6 +1917,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain token_offset to integer types</dd>
 </dl>
 
 
@@ -2242,6 +2247,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.Irfft"></a><a name="com.microsoft.irfft">**com.microsoft.Irfft**</a>
 
+  This function computes the inverse of the one-dimensional n-point RFFT computed in 'com.microsoft.rfft'.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -2250,25 +2257,25 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>normalized</tt> : int</dt>
-<dd></dd>
+<dd>must be 0, normalization currently not supported</dd>
 <dt><tt>onesided</tt> : int</dt>
-<dd></dd>
+<dd>must be 1, only one sided FFTs supported</dd>
 <dt><tt>signal_ndim</tt> : int (required)</dt>
-<dd></dd>
+<dd>number of dimensions comprising the signal</dd>
 </dl>
 
 #### Inputs
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>input tensor</dd>
+<dd>input tensor with size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>output tensor</dd>
+<dd>output tensor with size n in the signal dim</dd>
 </dl>
 
 #### Type Constraints
@@ -2880,6 +2887,81 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask index to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.PackedMultiHeadAttention"></a><a name="com.microsoft.packedmultiheadattention">**com.microsoft.PackedMultiHeadAttention**</a>
+
+  This is the packed version of MultiHeadAttention.
+  
+  Sequences in one batch usually don't have same length and they are padded to have same length,
+  e.g., below is a batch with 3 sequences and * is padding token.
+    Sequence_0:   0,  1*, 2*,  3*
+    Sequence_1:   4,  5,  6*,  7*
+    Sequence_2:   8,  9,  10,  11
+  
+  PackedMultiHeadAttention is designed to takes in packed input, i.e., only the real tokens without padding.
+  An input as above will be packed into 3 tensors like below:
+   - query ([q0, q4, q5, q8, q9, q10, q11])
+   - key ([k0, k4, k5, k8, k9, k10, k11])
+   - value ([v0, v4, v5, v8, v9, v10, v11])
+   - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
+   - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
+  
+  The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
+  Token_offset records the offset of token in the unpacked input.
+  cumulative_sequence_length records cumulated length of each sequnces length.
+  
+  The operator only supports BERT like model with padding on right now.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+</dl>
+
+#### Inputs (6 - 7)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (token_count, hidden_size) or packed qkv with shape (token_count, num_heads, 3, head_size)</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Key with shape (token_count, hidden_size)</dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Value with shape (token_count, v_hidden_size)</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
+<dt><tt>token_offset</tt> : M</dt>
+<dd>Offset of each token before packing, with shape (batch_size, sequence_length).</dd>
+<dt><tt>cumulative_sequence_length</tt> : M</dt>
+<dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.</dd>
+<dt><tt>relative_position_bias</tt> (optional) : T</dt>
+<dd>It specifies the additional bias to QxK'. The shape is (batch_size, num_heads, sequence_length, sequence_length) or (1, num_heads, sequence_length, sequence_length)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>output tensor with shape (token_count, v_hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask, offset and sequence length to integer types</dd>
 </dl>
 
 
@@ -4394,6 +4476,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.Rfft"></a><a name="com.microsoft.rfft">**com.microsoft.Rfft**</a>
 
+  This function computes the n-point one dimensional Fourier transform for a real-valued input where n is an even number.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -4402,25 +4486,25 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>normalized</tt> : int</dt>
-<dd></dd>
+<dd>must be 0, normalization currently not supported</dd>
 <dt><tt>onesided</tt> : int</dt>
-<dd></dd>
+<dd>must be 1, only one sided FFTs supported</dd>
 <dt><tt>signal_ndim</tt> : int</dt>
-<dd></dd>
+<dd>number of dimensions comprising the signal, collected in reverse order (e.g. 1 = last dimension is the signal)</dd>
 </dl>
 
 #### Inputs
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>input tensor</dd>
+<dd>input tensor of size n in the signal dim</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>output tensor</dd>
+<dd>output tensor of size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts</dd>
 </dl>
 
 #### Type Constraints
