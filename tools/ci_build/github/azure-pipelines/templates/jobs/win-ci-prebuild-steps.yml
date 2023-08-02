@@ -5,7 +5,7 @@ parameters:
 - name: BuildConfig
   type: string
 
-- name: buildArch
+- name: BuildArch
   type: string
 
 - name: DownloadCUDA
@@ -17,7 +17,7 @@ steps:
   inputs:
     versionSpec: '3.8'
     addToPath: true
-    architecture: ${{parameters.buildArch}}
+    architecture: ${{parameters.BuildArch}}
 
 - script: |
     python -m pip install -q setuptools wheel numpy
