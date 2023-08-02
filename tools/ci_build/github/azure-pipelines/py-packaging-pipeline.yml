@@ -42,7 +42,7 @@ parameters:
 - name: build_py_parameters
   displayName: 'Specify extra build parameters'
   type: string
-  default: 'NONE'
+  default: '--use_azure'
 
 trigger: none
 

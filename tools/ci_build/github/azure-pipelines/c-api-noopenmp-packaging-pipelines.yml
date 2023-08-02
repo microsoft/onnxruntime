@@ -58,7 +58,7 @@ parameters:
 - name: AdditionalBuildFlag
   displayName: Build flags to append to build command
   type: string
-  default: 'NONE'
+  default: '--use_azure'
 
 resources:
   repositories:
