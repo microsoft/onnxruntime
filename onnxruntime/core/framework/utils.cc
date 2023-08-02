@@ -161,6 +161,14 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     return Status::OK();
   }
 
+#ifdef USE_DML
+  // The DML EP supports binding external allocations directly, even if the memory types don't match, as long as they are on the same D3D12 device
+  if (copy_info.source_device.Type() == OrtDevice::GPU && copy_info.target_device.Type() == OrtDevice::GPU && copy_info.source_device.Id() == copy_info.target_device.Id()) {
+    target_mlvalue = source_mlvalue;
+    return Status::OK();
+  }
+#endif
+
   auto allocator = session_state.GetAllocator(copy_info.target_device);
   if (!target_mlvalue.IsAllocated()) {
     ORT_ENFORCE(allocator != nullptr, "Failed to find allocator for device ", copy_info.target_device.ToString());
