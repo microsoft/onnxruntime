@@ -249,7 +249,6 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     ORT_RETURN_IF_ERROR(ProcessAlphaAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
-
   // TODO: Refactor processing of Sigmoid/Tanh to a separate function.
   if (!is_quantized_model || (op_type != "Sigmoid" && op_type != "Tanh")) {
     return ProcessOutputs(qnn_model_wrapper, node_unit,
@@ -292,7 +291,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                         std::move(output_info.shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                    qnn_def::package_name,
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(op_type),
                                                     std::move(input_names),
                                                     {output_name},
