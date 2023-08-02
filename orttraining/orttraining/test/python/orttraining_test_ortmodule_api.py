@@ -6165,11 +6165,12 @@ def test_reciprocal_gradient():
 
     device = "cuda"
     pt_model = ReciprocalModel().to(device)
-    ort_model = ORTModule(
-        copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.WARNING, save_onnx=True, onnx_prefix="reciprocal")
-    )
+    ort_model = ORTModule(copy.deepcopy(pt_model))
 
-    pt_x = torch.randn(3, 224, 224, requires_grad=True, device=device)
+    pt_x = torch.zeros(3, 224, 224, requires_grad=True, device=device)
+    with torch.no_grad():
+        pt_x[pt_x <= 0] -= 0.2
+        pt_x[pt_x > 0] += 0.2
     ort_x = copy.deepcopy(pt_x)
 
     pt_prediction, pt_loss = run_step(pt_model, pt_x)
