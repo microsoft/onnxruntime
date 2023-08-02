@@ -699,17 +699,18 @@ export class ProtoOpTestContext {
     this.backendHint = test.backend!;
     this.loadedData = onnx.ModelProto.encode(model).finish();
 
-    // To allow dump generated model for debugging purpose, uncomment the following lines.
-    //
-    const modelFile =
-        new File([this.loadedData], `op_test_generated_model_${test.name}.onnx`, {type: 'application/octet-stream'});
-    const modelTempUrl = URL.createObjectURL(modelFile);
-    const a = document.createElement('a');
-    a.href = modelTempUrl;
-    a.download = modelFile.name;
-    a.target = '_blank';
-    a.click();
-    URL.revokeObjectURL(modelTempUrl);
+    // in debug mode, open a new tab in browser for the generated onnx model.
+    if (ort.env.debug) {
+      const modelFile =
+          new File([this.loadedData], `op_test_generated_model_${test.name}.onnx`, {type: 'application/octet-stream'});
+      const modelTempUrl = URL.createObjectURL(modelFile);
+      const a = document.createElement('a');
+      a.href = modelTempUrl;
+      a.download = modelFile.name;
+      a.target = '_blank';
+      a.click();
+      URL.revokeObjectURL(modelTempUrl);
+    }
   }
   async init(): Promise<void> {
     this.session = await ort.InferenceSession.create(this.loadedData, {executionProviders: [this.backendHint]});
