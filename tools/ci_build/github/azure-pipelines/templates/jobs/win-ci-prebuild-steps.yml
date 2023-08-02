@@ -24,7 +24,7 @@ steps:
   workingDirectory: '$(Build.BinariesDirectory)'
   displayName: 'Install python modules'
 
-- template: ../templates/download-deps.yml
+- template: ../download-deps.yml
 
 - task: PythonScript@0
   displayName: 'Update deps.txt'
