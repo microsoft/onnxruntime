@@ -431,6 +431,15 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.propagate_cast_ops_config.allow = self._runtime_options.propagate_cast_ops_allow
         graph_transformer_config.propagate_cast_ops_config.strategy = self._runtime_options.propagate_cast_ops_strategy
         graph_transformer_config.enable_compute_optimizer = self._runtime_options.enable_compute_optimizer
+
+        if self._debug_options.save_onnx_models.save:
+            graph_transformer_config.optimized_pre_grad_filepath = os.path.join(
+                self._debug_options.save_onnx_models.path,
+                _onnx_models._get_onnx_file_name(
+                    self._debug_options.save_onnx_models.name_prefix, "optimized_pre_grad", self._export_mode
+                ),
+            )
+
         return graph_transformer_config
 
     @_logger.TrackTime(_logger.ORTModuleInitPhase.GRAPH_BUILDER_INIT)
