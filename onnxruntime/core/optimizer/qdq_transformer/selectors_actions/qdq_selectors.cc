@@ -110,6 +110,18 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  if (!int16_uint16_allowed_ && (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 ||
+                                 dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16)) {
+    return false;
+  }
+
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
@@ -154,7 +166,12 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  return dt_input == dt_output;
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || (dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 &&
+                                   dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
 }
 
 bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,

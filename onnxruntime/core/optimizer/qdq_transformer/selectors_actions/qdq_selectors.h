@@ -52,9 +52,15 @@ class NodeGroupSelector {
 // Single DQ -> node that does not change data -> Q.
 // Zero point and scale are constant scalars and must match
 class DropQDQNodeGroupSelector : public NodeGroupSelector {
+ public:
+  DropQDQNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+
+ private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool int16_uint16_allowed_;
 };
 
 // Single DQ -> node.
@@ -66,9 +72,15 @@ class DropDQNodeGroupSelector : public NodeGroupSelector {
 
 // single input. default is to only support uint8.
 class UnaryNodeGroupSelector : public NodeGroupSelector {
+ public:
+  UnaryNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+
+ private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool int16_uint16_allowed_;
 };
 
 // 2 DQ nodes providing input -> node -> Q
@@ -197,7 +209,7 @@ class BaseSelector : public NodeSelector {
 
 class DropQDQNodesSelector : public BaseSelector {
  public:
-  DropQDQNodesSelector() : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>()) {}
+  DropQDQNodesSelector(bool int16_uint16_allowed = true) : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>(int16_uint16_allowed)) {}
 };
 
 class DropDQNodesSelector : public BaseSelector {
@@ -207,7 +219,7 @@ class DropDQNodesSelector : public BaseSelector {
 
 class UnarySelector : public BaseSelector {
  public:
-  UnarySelector() : BaseSelector(std::make_unique<UnaryNodeGroupSelector>()) {}
+  UnarySelector(bool int16_uint16_allowed = true) : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(int16_uint16_allowed)) {}
 };
 
 class BinarySelector : public BaseSelector {

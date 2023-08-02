@@ -42,21 +42,31 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
       MoveToSlot(dq, ArgType::kInput, 0, ArgType::kInput, 0),
       MoveToSlot(q, ArgType::kOutput, 0, ArgType::kOutput, 0)};
 
-  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
-
 #if !defined(ORT_MINIMAL_BUILD)
+  // ONNX spec does not yet allow 16bit integer types for MaxPool's input and output, so register a
+  // selector that does not allow 16bit Q/DQ in node groups.
+  std::unique_ptr<NodeSelector> selector_disallow_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
+  std::unique_ptr<Action> action_disallow_16bit = std::make_unique<MergeIntoTarget>(
+      std::vector<NodeAndMoveInfo>(moves)  // Copy before std::move(moves)
+  );
+  qdq_selector_action_registry.RegisterSelectorAndAction("drop_maxpool",
+                                                         {{"MaxPool", {12}}},
+                                                         std::move(selector_disallow_16bit),
+                                                         std::move(action_disallow_16bit));
+
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropQDQNodesSelector>();
+  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Gather", {}},
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
-                                                          {"MaxPool", {12}},
                                                           {"Resize", {}},
                                                           {"Squeeze", {}},
                                                           {"Unsqueeze", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
+  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
 #endif
 }
@@ -91,7 +101,8 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>();
+  // QLinear ops do not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(false /* int16_uint16_allowed */);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
                                                           {"LeakyRelu", {}},
