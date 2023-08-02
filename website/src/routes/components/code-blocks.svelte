@@ -178,7 +178,7 @@
 
 <style>
 	.tab-container {
-		/* min-width: 675px; */
+		min-width: 675px;
 		min-height: 525px;
 	}
 	.icon {
