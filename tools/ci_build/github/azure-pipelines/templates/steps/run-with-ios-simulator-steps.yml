@@ -13,7 +13,7 @@ steps:
     set -e -x
 
     DEVICE_TYPE_ID="$("$(Build.SourcesDirectory)/tools/ci_build/github/apple/get_simulator_device_info.sh" identifier)"
-    ORT_BUILD_SIMULATOR_ID="$(xcrun simctl create iPhoneSimulatorForPipeline "${DEVICE_TYPE_ID}")"
+    ORT_BUILD_SIMULATOR_ID="$(xcrun simctl create iPhoneSimulatorForPipeline "${DEVICE_TYPE_ID}" com.apple.CoreSimulator.SimRuntime.iOS-16-4)"
 
     # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
     set +x

@@ -133,7 +133,7 @@ def _test_ios_packages(args):
                     "-scheme",
                     "ios_package_test",
                     "-destination",
-                    f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
+                    f"platform=iOS Simulator,OS=16.4,name={simulator_device_name}",
                     "-verbose",
                 ],
                 shell=False,
