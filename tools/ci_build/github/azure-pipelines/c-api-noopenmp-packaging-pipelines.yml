@@ -486,7 +486,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    pool: 'onnxruntime-Win2022-GPU-T4'
 
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
