@@ -57,6 +57,7 @@ class ModelSetting:
     opt_level: int
     input_tuning_results: Optional[str]
     output_tuning_results: Optional[str]
+    mask_type: int
 
 
 def create_session(
@@ -369,6 +370,7 @@ def run_performance(model_setting, test_setting, perf_results):
         input_mask,
         test_setting.average_sequence_length,
         test_setting.random_sequence_length,
+        mask_type=model_setting.mask_type,
     )
 
     run_perf_tests(model_setting, test_setting, perf_results, all_inputs)
@@ -524,6 +526,14 @@ def parse_arguments():
     )
     parser.set_defaults(random_sequence_length=False)
 
+    parser.add_argument(
+        "--mask_type",
+        required=False,
+        type=int,
+        default=2,
+        help="mask type: (1: mask index or sequence length, 2: raw 2D mask, 3: key len, cumulated lengths of query and key)",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -541,7 +551,7 @@ def main():
     perf_results = manager.dict()
 
     batch_size_set = set(args.batch_size)
-    if not min(batch_size_set) >= 1 and max(batch_size_set) <= 128:
+    if not (min(batch_size_set) >= 1 and max(batch_size_set) <= 128):
         raise Exception("batch_size not in range [1, 128]")
 
     model_setting = ModelSetting(
@@ -552,6 +562,7 @@ def main():
         args.opt_level,
         args.input_tuning_results,
         args.output_tuning_results,
+        args.mask_type,
     )
 
     for batch_size in batch_size_set:
