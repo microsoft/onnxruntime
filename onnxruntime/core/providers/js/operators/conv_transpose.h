@@ -34,7 +34,7 @@ class ConvTranspose : public JsKernel {
                                    "strides" : [$7],
                                    "wIsConst" : () JS_ARROW(!!HEAP8[$9]),
                                    "outputPadding" : $10 ? Array.from(HEAP32.subarray($11, $11 + $10)) : [],
-                                   "outputShape" : $12 ? Array.from(HEAP32.subarray($12, $13 + $12)) : []
+                                   "outputShape" : $12 ? Array.from(HEAP32.subarray($13, $13 + $12)) : []
                                  }),
                                  static_cast<int32_t>(conv_transpose_attrs_.auto_pad),
                                  static_cast<int32_t>(conv_transpose_attrs_.dilations.size() > 0 ? conv_transpose_attrs_.dilations[0] : 0),
