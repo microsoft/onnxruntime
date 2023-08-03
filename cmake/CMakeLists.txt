@@ -241,7 +241,7 @@ option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 # https://zeux.io/2010/11/22/z7-everything-old-is-new-again/
 cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
 
-option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
+option(onnxruntime_USE_AZURE "Build with azure inferencing support" ON)
 option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
 
 # ENABLE_TRAINING includes all training functionality
