@@ -129,7 +129,8 @@ def _test_ios_packages(args):
                     "-scheme",
                     "ios_package_test",
                     "-destination",
-                    f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
+                    # hardcode iOS 16.4 for now. latest macOS-13 image defaults to iOS 17 (beta) which doesn't work.
+                    f"platform=iOS Simulator,OS=16.4,name={simulator_device_name}",
                 ],
                 shell=False,
                 check=True,
