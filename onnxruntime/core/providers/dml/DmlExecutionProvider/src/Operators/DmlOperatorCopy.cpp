@@ -33,18 +33,16 @@ public:
         // (e.g. squeeze/unsqueeze/reshape). An exception to this rule is when the operator is part of the graph,
         // in which case we always need to compile and execute the operator (although this is something that we
         // could optimize in the future).
-
-        bool aliasing = false;
-
         if (!contextPrivate->IsDmlGraphNode())
         {
             std::vector<uint32_t> outputSizes = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
             std::vector<int64_t> outputSizesInt64(outputSizes.begin(), outputSizes.end());
             onnxruntime::TensorShape outputShape(outputSizesInt64);
-            ORT_THROW_IF_FAILED(kernelInfo.GetNodeWrapperInterface()->InputAliasesOutput(0, 0, outputShape, &aliasing));
+            ORT_THROW_IF_FAILED(kernelInfo.GetNodeWrapperInterface()->InputAliasesOutput(0, 0, outputShape, &m_aliasing));
+            ORT_THROW_IF_FAILED(kernelInfo.GetNodeWrapperInterface()->InputSharesOutputBuffer(0, 0, outputShape, &m_inputSharesOutputBuffer));
         }
 
-        if (!aliasing)
+        if (contextPrivate->IsDmlGraphNode() || (!m_aliasing && m_inputSharesOutputBuffer))
         {
             std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
             std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -59,15 +57,34 @@ public:
 
     void Compute(const MLOperatorKernelContext& kernelContext) final
     {
+        // If the input is aliasing the output, we don't need to do anything here
+        if (m_aliasing)
+        {
+            return;
+        }
+
+        // If the input and the output share the same buffer, we need to do an identity operation
+        if (m_inputSharesOutputBuffer)
+        {
+            DmlOperator::Compute(kernelContext);
+            return;
+        }
+
+        // If the input and the output don't share the same buffer, we can do a standard copy operation instead
         MLOperatorTensor inputTensor = kernelContext.GetInputTensor(0);
         MLOperatorTensor outputTensor = kernelContext.GetOutputTensor(0);
 
-        // Avoid self copying.
-        if (inputTensor.GetByteData() != outputTensor.GetByteData())
-        {
-            DmlOperator::Compute(kernelContext);
-        }
+        ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
+            outputTensor.GetInterface().Get(),
+            inputTensor.GetInterface().Get()));
     }
+
+private:
+    // Aliasing means that both the input and the output start at the same exact offset in the same buffer
+    bool m_aliasing = false;
+
+    // The choice of using Identity or a copy depends on whether the input and the input are located in the same buffer
+    bool m_inputSharesOutputBuffer = false;
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Copy, DmlOperatorCopy);

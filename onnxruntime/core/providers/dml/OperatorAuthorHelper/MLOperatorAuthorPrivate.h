@@ -118,6 +118,13 @@ IMLOperatorKernelCreationContextNodeWrapperPrivate : public IMLOperatorKernelCre
         _In_ const onnxruntime::TensorShape& outputShape,
         _Out_ bool* aliasing
     ) noexcept PURE;
+
+    STDMETHOD(InputSharesOutputBuffer)(
+        _In_ uint32_t inputIndex,
+        _In_ uint32_t outputIndex,
+        _In_ const onnxruntime::TensorShape& outputShape,
+        _Out_ bool* sharesBuffer
+    ) noexcept PURE;
 };
 
 //! \interface IMLOperatorAttributes1
