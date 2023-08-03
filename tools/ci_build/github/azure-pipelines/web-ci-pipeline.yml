@@ -34,5 +34,5 @@ stages:
     WASMTemplate: linux-wasm-ci.yml
     WebTemplate: win-web-ci.yml
     UseWebPoolName: true
-    WebPoolName: 'onnxruntime-Win2019-GPU-dml-A10'
+    WebPoolName: 'onnxruntime-Win2022-webgpu-A10'
     WithCache: true
