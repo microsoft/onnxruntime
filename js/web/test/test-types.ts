@@ -33,7 +33,7 @@ export declare namespace Test {
    * Represent a string to describe the current environment.
    * Used in ModelTest and OperatorTest to determine whether to run the test or not.
    */
-  export type Condition = string;
+  export type PlatformCondition = string;
 
   export interface ModelTestCase {
     name: string;
@@ -46,7 +46,7 @@ export declare namespace Test {
     name: string;
     modelUrl: string;
     backend?: string;  // value should be populated at build time
-    condition?: Condition;
+    platformCondition?: PlatformCondition;
     cases: readonly ModelTestCase[];
   }
 
@@ -66,13 +66,16 @@ export declare namespace Test {
     version: number;
   }
 
+  export type InputShapeDefinition = ReadonlyArray<number|string>;
+
   export interface OperatorTest {
     name: string;
     operator: string;
-    opsets?: readonly OperatorTestOpsetImport[];
+    inputShapeDefinitions?: 'none'|'rankOnly'|'static'|ReadonlyArray<InputShapeDefinition|undefined>;
+    opset?: OperatorTestOpsetImport;
     backend?: string;  // value should be populated at build time
-    condition?: Condition;
-    attributes: readonly AttributeValue[];
+    platformCondition?: PlatformCondition;
+    attributes?: readonly AttributeValue[];
     cases: readonly OperatorTestCase[];
   }
 
@@ -86,7 +89,7 @@ export declare namespace Test {
     export type TestName = string;
     export interface TestDescription {
       name: string;
-      condition: Condition;
+      platformCondition: PlatformCondition;
     }
     export type Test = TestName|TestDescription;
   }

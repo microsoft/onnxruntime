@@ -86,14 +86,14 @@ function shouldSkipTest(test: Test.ModelTest|Test.OperatorTest) {
   if (!test.cases || test.cases.length === 0) {
     return true;
   }
-  if (!test.condition) {
+  if (!test.platformCondition) {
     return false;
   }
 
   if (!platform.description) {
     throw new Error('failed to check current platform');
   }
-  const regex = new RegExp(test.condition);
+  const regex = new RegExp(test.platformCondition);
   return !regex.test(platform.description);
 }
 
@@ -149,14 +149,16 @@ for (const group of ORT_WEB_TEST_CONFIG.op) {
         });
 
         after('Dispose Context', async () => {
-          if (ORT_WEB_TEST_CONFIG.profile) {
-            if (context instanceof ProtoOpTestContext) {
-              context.session.endProfiling();
-            } else {
-              OpTestContext.profiler.stop();
+          if (context) {
+            if (ORT_WEB_TEST_CONFIG.profile) {
+              if (context instanceof ProtoOpTestContext) {
+                context.session.endProfiling();
+              } else {
+                OpTestContext.profiler.stop();
+              }
             }
+            await context.dispose();
           }
-          await context.dispose();
         });
 
         for (const testCase of test.cases) {

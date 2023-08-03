@@ -152,7 +152,7 @@
       "test_softmax_example",
       {
         "name": "test_softmax_large_number",
-        "condition": "^((?!iOS).)*$" // does NOT contains 'iOS': large number cannot be handled in a half_float environment
+        "platformCondition": "^((?!iOS).)*$" // does NOT contains 'iOS': large number cannot be handled in a half_float environment
       },
       "test_sub_bcast",
       "test_sub_example",
@@ -183,7 +183,7 @@
       "opset{7,8,9,10,11,12,13,14,15,16,17}/test_reduce_min_keepdims_random",
       {
         "name": "opset{7,8,9,10,11,12,13,14,15,16,17}/test_reduce_prod_default_axes_keepdims_example",
-        "condition": "^((?!iOS).)*$" // does NOT contains 'iOS': large number cannot be handled in a half_float environment
+        "platformCondition": "^((?!iOS).)*$" // does NOT contains 'iOS': large number cannot be handled in a half_float environment
       },
       "opset{7,8,9,10,11,12,13,14,15,16,17}/test_reduce_prod_default_axes_keepdims_random",
       "opset{7,8,9,10,11,12,13,14,15,16,17}/test_reduce_prod_do_not_keepdims_example",

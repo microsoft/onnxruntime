@@ -46,5 +46,11 @@
   },
   "typescript.tsdk": "node_modules/typescript/lib",
   "git.detectSubmodules": false,
-  "cmake.configureOnOpen": false
+  "cmake.configureOnOpen": false,
+  "json.schemas": [
+    {
+      "fileMatch": ["web/test/data/ops/*.jsonc"],
+      "url": "./web/test/op-test-schema.json"
+    }
+  ]
 }

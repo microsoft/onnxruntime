@@ -2,12 +2,7 @@
   {
     "name": "ResizeBilinearPacked with mode half_pixel",
     "operator": "Resize",
-    "opsets": [
-      {
-        "domain": "",
-        "version": "11"
-      }
-    ],
+    "opset": { "domain": "", "version": 11 },
     "attributes": [
       // { "name": "scales", "data": [1.0, 1.0, 2.0, 3.0], "type": "floats" },
       {
@@ -54,12 +49,7 @@
   {
     "name": "ResizeBilinearPacked with mode align_corners",
     "operator": "Resize",
-    "opsets": [
-      {
-        "domain": "",
-        "version": "11"
-      }
-    ],
+    "opset": { "domain": "", "version": 11 },
     "attributes": [
       {
         "name": "coordinate_transformation_mode",
@@ -105,12 +95,7 @@
   {
     "name": "ResizeBilinearPacked with asymmetric",
     "operator": "Resize",
-    "opsets": [
-      {
-        "domain": "",
-        "version": "11"
-      }
-    ],
+    "opset": { "domain": "", "version": 11 },
     "attributes": [
       {
         "name": "coordinate_transformation_mode",
