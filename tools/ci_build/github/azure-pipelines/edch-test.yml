@@ -1,40 +1,12 @@
 jobs:
-- job: android_emulator_test
-  workspace:
-    clean: all
+- job: j
   pool:
     vmImage: 'macOS-13'
-  strategy:
-    parallel: 10
-  timeoutInMinutes: 10
-
+  
   steps:
   - checkout: none
-
   - bash: |
-      set -e -x
-      ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install 'system-images;android-31;default;x86_64'
-      echo "no" | ${ANDROID_HOME}/cmdline-tools/latest/bin/avdmanager create avd --name android_emulator_avd --package 'system-images;android-31;default;x86_64' --force
-      
-      # working version
-      #${ANDROID_HOME}/tools/emulator -gpu guest -avd android_emulator_avd -perf-stat -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none -cores 1 -qemu -m 2048 &
-      # original
-      #${ANDROID_HOME}/tools/emulator -avd android_emulator_avd -memory 4096 -timezone America/Los_Angeles -no-snapshot -no-audio -no-boot-anim -no-window &
-      # remove -no-snapshot
-      #${ANDROID_HOME}/tools/emulator -avd android_emulator_avd -memory 4096 -timezone America/Los_Angeles -no-audio -no-boot-anim -no-window &
-      # memory 2048
-      #${ANDROID_HOME}/tools/emulator -avd android_emulator_avd -memory 2048 -timezone America/Los_Angeles -no-snapshot -no-audio -no-boot-anim -no-window &
-      # start from working version, remove -perf-stat
-      #${ANDROID_HOME}/tools/emulator -gpu guest -avd android_emulator_avd -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none -cores 1 -qemu -m 2048 &
-      # continue, remove -gpu guest
-      #${ANDROID_HOME}/tools/emulator -avd android_emulator_avd -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none -cores 1 -qemu -m 2048 &
-      # it failed!
-      # start from original, add -gpu guest
-      #${ANDROID_HOME}/tools/emulator -avd android_emulator_avd -gpu guest -memory 4096 -timezone America/Los_Angeles -no-snapshot -no-audio -no-boot-anim -no-window &
-      # 9/10 passed
-      # memory 2048, partition size 4096
-      ${ANDROID_HOME}/tools/emulator -avd android_emulator_avd -gpu guest -memory 2048 -partition-size 4096 -timezone America/Los_Angeles -no-snapshot -no-audio -no-boot-anim -no-window &
-      
-      ${ANDROID_HOME}/platform-tools/adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed | tr -d '\r') ]]; do sleep 1; done; input keyevent 82'
-    displayName: Start Android emulator
-    timeoutInMinutes: 10
+      XCODE_DEVELOPER_DIR="/Applications/Xcode_14.3.app/Contents/Developer"
+      sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+
+      xcrun simctl list --json runtimes
