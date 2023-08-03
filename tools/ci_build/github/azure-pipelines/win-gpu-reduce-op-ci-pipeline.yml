@@ -30,6 +30,7 @@ jobs:
       MachinePool: 'onnxruntime-Win2022-GPU-T4'
       WithCache: true
       Today: $(Today)
+      PyPackages: "flatbuffers"
 
   - task: PythonScript@0
     displayName: 'Build and test'
