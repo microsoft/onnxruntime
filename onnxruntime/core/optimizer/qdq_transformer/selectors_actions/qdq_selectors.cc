@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace QDQ {
 namespace {
 
-static inline bool Is16BitIntType(int32_t data_type) {
+constexpr bool Is16BitIntType(int32_t data_type) {
   return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16) ||
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
 }
