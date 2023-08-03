@@ -17,7 +17,7 @@ from onnxruntime.training.utils import (
     ORTModelInputOutputSchemaType,
     ORTModelInputOutputType,
     PrimitiveType,
-    get_schema_for_flatten_data,
+    flatten_data_with_schema,
     unflatten_from_data_and_schema,
 )
 
@@ -282,20 +282,21 @@ def deepcopy_model_input(
     return sample_args_copy, sample_kwargs_copy
 
 
-def unflatten_user_output(output_schema: Optional[ORTModelInputOutputSchemaType], outputs):
+def unflatten_user_output(output_schema: Optional[ORTModelInputOutputSchemaType], outputs: List[torch.Tensor]):
     try:
         return unflatten_from_data_and_schema(outputs, output_schema)
-    except RuntimeError as e:
+    except TypeError as e:
         raise wrap_exception(
             ORTModuleIOError,
             TypeError(f"ORTModule fails to unflatten user output: {e}"),
         ) from None
 
 
-def _extract_schema(data: ORTModelInputOutputType) -> ORTModelInputOutputSchemaType:
+def _extract_schema(data: ORTModelInputOutputType, device) -> ORTModelInputOutputSchemaType:
     try:
-        return get_schema_for_flatten_data(data, constant_as_tensor=True)
-    except RuntimeError as e:
+        schema, _ = flatten_data_with_schema(data, constant_as_tensor=True, device=device)
+        return schema
+    except TypeError as e:
         raise wrap_exception(ORTModuleIOError, TypeError(f"ORTModule fails to extract schema from data: {e}")) from None
 
 
@@ -528,7 +529,11 @@ def parse_inputs_for_onnx_export(
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(
-    module, args: Sequence[ORTModelInputOutputType], kwargs: Mapping[str, ORTModelInputOutputType], logger: Logger
+    module,
+    args: Sequence[ORTModelInputOutputType],
+    kwargs: Mapping[str, ORTModelInputOutputType],
+    logger: Logger,
+    device: Optional[torch.device],
 ):
     # Perform a forward call to grab outputs
     output_names = None
@@ -554,7 +559,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(
         # Parse the output and extract the output_names and output_dynamic_axes to be used for onnx export
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
 
-    output_schema = _extract_schema(sample_outputs)
+    output_schema = _extract_schema(sample_outputs, device)
     if is_deepcopy:
         del model_copy
         gc.collect()

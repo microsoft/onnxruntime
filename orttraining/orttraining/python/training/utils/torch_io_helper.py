@@ -12,14 +12,18 @@ import torch
 
 
 class PrimitiveType:
+    """Helper class for Python primitive types."""
+
     _primitive_types = {int, bool, float}  # noqa: RUF012
 
     @staticmethod
     def is_primitive_type(value):
+        """Check if `value` is a Python primitive type."""
         return type(value) in PrimitiveType._primitive_types
 
     @staticmethod
     def get_tensor(value, device) -> torch.Tensor:
+        """Convert `value` to a torch.Tensor."""
         return torch.tensor(value, device=device)
 
     @staticmethod
@@ -30,6 +34,7 @@ class PrimitiveType:
         return f"{type(value)!s}_{value}" if isinstance(value, bool) else str(type(value))
 
 
+# Data types supported as model inputs and outputs.
 ORTModelInputOutputType = Union[
     None,
     str,
@@ -40,13 +45,6 @@ ORTModelInputOutputType = Union[
     Sequence["ORTModelInputOutputType"],
     Mapping[str, "ORTModelInputOutputType"],
 ]
-
-
-def _warn_of_constant_inputs(data):
-    warnings.warn(
-        f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
-        " Please consider moving constant arguments to the model constructor."
-    )
 
 
 class _TensorStub:
@@ -107,6 +105,7 @@ class _TensorStub:
         return True
 
 
+# Data schema used to represent model's input or output.
 ORTModelInputOutputSchemaType = Union[
     None,
     str,
@@ -116,20 +115,24 @@ ORTModelInputOutputSchemaType = Union[
 ]
 
 
-def get_schema_for_flatten_data(data, constant_as_tensor=False) -> ORTModelInputOutputSchemaType:
-    schema, _ = flatten_data_with_schema(data, constant_as_tensor=constant_as_tensor, device=torch.device("cpu"))
-    return schema
+def _warn_of_constant_inputs(data):
+    warnings.warn(
+        f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
+        " Please consider moving constant arguments to the model constructor."
+    )
 
 
 def flatten_data_with_schema(
-    data, constant_as_tensor=False, device: Optional[torch.device] = None
+    data: ORTModelInputOutputType, constant_as_tensor=False, device: Optional[torch.device] = None
 ) -> Tuple[ORTModelInputOutputSchemaType, List[torch.Tensor]]:
     """Extract the data schema by replacing every torch.Tensor value with _TensorStub.
 
     Depth first traversal to iterate over the data:
     > Replace every tensor with a stub
     > Replace None/str typed data with itself
-    > Recreate tensor from data for other primitive types, and replace them with a stub.
+    > For other primitive types:
+        If constant_as_tensor is True, create tensor from data , and replace them with a stub in returned schema;
+        Otherwise, replace them with themselves in returned schema.
 
     Examples:
         Example 1, list:
@@ -159,17 +162,21 @@ def flatten_data_with_schema(
     Args:
         data: The data to extract the schema from, which can be in any kind of nested structure,
             including Sequence and Mapping.
+        constant_as_tensor: Whether to treat constant inputs as tensor. Default is False.
+        device: The device to create tensor for the constant.
 
 
     Returns:
-        The schema of the data, which has the same structure as the data.
+        Tuple:
+            The first value: schema of the data, which has the same structure as the data.
+            The second value: a list of tensors extracted from the data.
 
     """
 
     flatten_tensor_data = []
     tensor_idx = [-1]
 
-    def _flatten_from_data(data, prefix_name=""):
+    def _flatten_from_data(data: ORTModelInputOutputType, prefix_name: str = ""):
         if data is None:
             return data
         elif isinstance(data, str):
@@ -194,11 +201,7 @@ def flatten_data_with_schema(
                 shape_dims=len(data.size()),
                 name=prefix_name,
             )
-
-        # Instead of replacing the tensor with a stub in the original user input, build the stubbed_schema
-        # from scratch from the user input.
-        stubbed_schema: Optional[ORTModelInputOutputSchemaType] = None
-        if isinstance(data, abc.Sequence):
+        elif isinstance(data, abc.Sequence):
             sequence_type = type(data)
             stubbed_schema = []
             for i, val in enumerate(data):
@@ -210,22 +213,66 @@ def flatten_data_with_schema(
             except AttributeError:
                 # If attribute error is encountered, create the sequence directly
                 stubbed_schema = sequence_type(stubbed_schema)
+            return stubbed_schema
         elif isinstance(data, abc.Mapping):
             dict_type = type(data)
             stubbed_schema = {}
             for key, val in sorted(data.items()):
                 stubbed_schema[key] = _flatten_from_data(val, f"{prefix_name}_{key}" if prefix_name else f"{key}")
             stubbed_schema = dict_type(**stubbed_schema)
+            return stubbed_schema
         else:
-            raise RuntimeError(f"Unsupported data type: {type(data)}")
-        return stubbed_schema
+            raise TypeError(f"Unsupported flatten data type: {type(data)}")
 
     schemas = _flatten_from_data(data)
     return schemas, flatten_tensor_data
 
 
-def unflatten_from_data_and_schema(data: List[torch.Tensor], schema: ORTModelInputOutputSchemaType):
-    """Follows the schema to generate an output that is expected by the user"""
+def unflatten_from_data_and_schema(
+    data: List[torch.Tensor], schema: ORTModelInputOutputSchemaType
+) -> ORTModelInputOutputType:
+    """Follows the schema to generate an output that is expected by the user.
+
+    Depth first traversal to iterate over the schema:
+    > Replace every _TensorStub with a tensor from data. For each _TensorStub, the tensor is selected from `data`
+      by its tensor_idx.
+
+    Examples:
+        Example 1, schema is a list:
+            data = [torch.tensor(1), torch.tensor(2)]
+            schema = [_TensorStub(shape=()), True, _TensorStub(shape=()), 1, 2.0, "abc"]
+            output = [torch.tensor(1), True, torch.tensor(2), 1, 2.0, "abc"]
+
+        Example 2, schema is a dict:
+            data = [torch.tensor(1), torch.tensor(2)]
+            schema = {"a": _TensorStub(shape=()), "b": _TensorStub(shape=()), "c": True, "d": 1, "e": 2.0, "f": "abc"}
+            output = {"a": torch.tensor(1), "b": torch.tensor(2), "c": True, "d": 1, "e": 2.0, "f": "abc"}
+
+        Example 3, schema is a dict of list:
+            data = [torch.tensor(1), torch.tensor(2), torch.tensor(3), torch.tensor(4)]
+            schema = {"a": [_TensorStub(shape=()), _TensorStub(shape=())], "b": [_TensorStub(shape=()), _TensorStub(shape=())]}
+            output = {"a": [torch.tensor(1), torch.tensor(2)], "b": [torch.tensor(3), torch.tensor(4)]}
+
+        Example 4, schema is a nested dict:
+            data = [torch.tensor(1), torch.tensor(2), torch.tensor(3), torch.tensor(4)]
+            schema = {"a": {"b": _TensorStub(shape=()), "c": _TensorStub(shape=())},
+                        "d": {"e": _TensorStub(shape=()), "f": _TensorStub(shape=())}}
+            output = {"a": {"b": torch.tensor(1), "c": torch.tensor(2)}, "d": {"e": torch.tensor(3), "f": torch.tensor(4)}}
+
+        Example 5, dict of mixed list and dict:
+            data = [torch.tensor(1), torch.tensor(2), torch.tensor(3), torch.tensor(4)]
+            schema = {"a": [_TensorStub(shape=()), _TensorStub(shape=())], "b": {"c": _TensorStub(shape=()), "d": _TensorStub(shape=())}}
+            output = {"a": [torch.tensor(1), torch.tensor(2)], "b": {"c": torch.tensor(3), "d": torch.tensor(4)}}
+
+
+    Args:
+        data (List[torch.Tensor]): List of tensors to be used to replace the _TensorStub in schema
+        schema (ORTModelInputOutputSchemaType): Schema to follow to generate the output
+
+    Returns:
+        output (ORTModelInputOutputType): Output that is expected by the user
+
+    """
 
     def _replace_stub_with_tensor_value(data_schema: ORTModelInputOutputSchemaType, data: List[torch.Tensor]):
         # Recursively traverse across user_output and replace all _TensorStub
@@ -258,7 +305,7 @@ def unflatten_from_data_and_schema(data: List[torch.Tensor], schema: ORTModelInp
 
             return data_schema
 
-        raise RuntimeError(f"ORT does not support the following model output type {type(data_schema)}.")
+        raise TypeError(f"Unsupported unflatten data type: {type(data_schema)}.")
 
     user_output = _replace_stub_with_tensor_value(schema, data)
     return user_output

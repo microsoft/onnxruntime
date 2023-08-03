@@ -7,7 +7,6 @@ from onnxruntime.training.utils.torch_io_helper import (
     ORTModelInputOutputType,
     PrimitiveType,
     flatten_data_with_schema,
-    get_schema_for_flatten_data,
     unflatten_from_data_and_schema,
 )
 
@@ -15,7 +14,6 @@ __all__ = [
     "PrimitiveType",
     "ORTModelInputOutputType",
     "ORTModelInputOutputSchemaType",
-    "get_schema_for_flatten_data",
     "flatten_data_with_schema",
     "unflatten_from_data_and_schema",
 ]

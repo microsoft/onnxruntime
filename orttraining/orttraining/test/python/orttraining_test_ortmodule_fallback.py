@@ -78,11 +78,11 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
             else:
                 with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
                     ort_model(inputs)
-                assert "ORTModule does not support the following model data type" in str(type_error.value)
+                assert "ORTModule fails to extract schema from data" in str(type_error.value)
         else:
             with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
                 ort_model(inputs)
-            assert "ORTModule does not support the following model data type" in str(type_error.value)
+            assert "ORTModule fails to extract schema from data" in str(type_error.value)
 
 
 @pytest.mark.parametrize(
@@ -250,11 +250,11 @@ def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_polic
             else:
                 with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
                     ort_model(x, y, z)
-                assert "ORTModule fails to unflatten user output" in str(runtime_error.value)
+                assert "ORTModule does not support the following model output type" in str(runtime_error.value)
         else:
             with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
                 ort_model(x, y, z)
-            assert "ORTModule fails to unflatten user output" in str(runtime_error.value)
+            assert "ORTModule does not support the following model output type" in str(runtime_error.value)
 
 
 @pytest.mark.parametrize(
@@ -302,16 +302,18 @@ def test_ortmodule_fallback_input(is_training, fallback_enabled, matching_policy
                 with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
                     _ = ort_model(torch.randn(1, 2), CustomClass(1))
                 assert (
-                    "ORTModule does not support the following model data"
-                    " type <class 'orttraining_test_ortmodule_fallback."
+                    "ORTModule fails to extract schema from data: "
+                    "Unsupported flatten data type: "
+                    "<class 'orttraining_test_ortmodule_fallback."
                     "test_ortmodule_fallback_input.<locals>.CustomClass'>" in str(ex_info.value)
                 )
         else:
             with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
                 _ = ort_model(torch.randn(1, 2), CustomClass(1))
             assert (
-                "ORTModule does not support the following model data"
-                " type <class 'orttraining_test_ortmodule_fallback."
+                "ORTModule fails to extract schema from data: "
+                "Unsupported flatten data type: "
+                "<class 'orttraining_test_ortmodule_fallback."
                 "test_ortmodule_fallback_input.<locals>.CustomClass'>" in str(ex_info.value)
             )
 
