@@ -211,7 +211,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_MaxPool_Large_Input2_Ceil_HTP_u8) {
 
 // TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 TEST_F(QnnHTPBackendTests, DISABLED_MaxPool_LargeInput_1Pads) {
-  RunQDQMaxPoolOpTest<uint8_t>(TestInputDef<float>({1, 64, 284, 576}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
+  RunQDQMaxPoolOpTest<uint8_t>(TestInputDef<float>({1, 64, 384, 576}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                                {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
                                 utils::MakeAttribute("strides", std::vector<int64_t>{2, 2}),
                                 utils::MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
