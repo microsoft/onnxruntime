@@ -124,7 +124,8 @@ public:
         {
             // TODO: Remove this hack when DML supports native int64 for NonZero
             // We use the int64/uint32 stride hack here, so zero out the data before writing to it
-            ComPtr<IDMLCompiledOperator> zeroOperator = InitializeZeroInt64Tensor(m_rank * nonzeroElementCount * sizeof(int64_t));
+            uint64_t tensorSizeInBytes = uint64_t(m_rank) * uint64_t(nonzeroElementCount) * sizeof(int64_t);
+            ComPtr<IDMLCompiledOperator> zeroOperator = InitializeZeroInt64Tensor(tensorSizeInBytes);
 
             // TODO: Remove this hack when DML supports native int64 for NonZero
             ExecuteZeroInt64Tensor(zeroOperator.Get(), outputTensor.GetInterface().Get());
