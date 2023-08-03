@@ -455,6 +455,34 @@ MlasQuantizeLinear<uint8_t>(
     GetMlasPlatform().QuantizeLinearU8Kernel(Input, Output, N, Scale, ZeroPoint);
 }
 
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<int16_t>(
+    const float* Input,
+    int16_t* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint
+    )
+{
+    GetMlasPlatform().QuantizeLinearS16Kernel(Input, Output, N, Scale, ZeroPoint);
+}
+
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<uint16_t>(
+    const float* Input,
+    uint16_t* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint
+    )
+{
+    GetMlasPlatform().QuantizeLinearU16Kernel(Input, Output, N, Scale, ZeroPoint);
+}
+
 #endif
 
 //
@@ -530,6 +558,29 @@ MlasQuantizeLinear<uint8_t>(
     float Scale,
     uint8_t ZeroPoint
     );
+
+template
+void
+MLASCALL
+MlasQuantizeLinear<int16_t>(
+    const float* Input,
+    int16_t* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint
+    );
+
+template
+void
+MLASCALL
+MlasQuantizeLinear<uint16_t>(
+    const float* Input,
+    uint16_t* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint
+    );
+
 #endif
 
 #endif
