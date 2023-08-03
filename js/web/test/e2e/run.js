@@ -121,7 +121,7 @@ async function testAllBrowserCases({hostInKarma}) {
   await runKarma({hostInKarma, main: './browser-test-wasm-image-tensor-image.js'});
 }
 
-async function runKarma({ hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js' }) {
+async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js'}) {
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   await runInShell(`npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
       ortMain} --test-main=${main} --user-data=${getNextUserDataDir()}`);
