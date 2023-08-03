@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
 import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
@@ -13,6 +14,7 @@ import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
 import {parseSliceAttributes, slice} from './ops/slice';
+import {parseSoftmaxAttributes, softmax} from './ops/softmax';
 import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
@@ -28,6 +30,8 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Acos', [unaryOps.acos]],
   ['Acosh', [unaryOps.acosh]],
   ['Add', [binaryOps.add]],
+  ['ArgMax', [argMax, parseArgMinMaxAttributes]],
+  ['ArgMin', [argMin, parseArgMinMaxAttributes]],
   ['Asin', [unaryOps.asin]],
   ['Asinh', [unaryOps.asinh]],
   ['Atan', [unaryOps.atan]],
@@ -78,6 +82,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Slice', [slice, parseSliceAttributes]],
   ['Split', [split, parseSplitAttributes]],
   ['Sqrt', [unaryOps.sqrt]],
+  ['Softmax', [softmax, parseSoftmaxAttributes]],
   ['Sub', [binaryOps.sub]],
   ['Tan', [unaryOps.tan]],
   ['Tanh', [unaryOps.tanh]],
