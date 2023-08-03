@@ -1832,8 +1832,9 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
                     _In_ void* value) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
-  // current provider options that has pointer data type (excluding const char*) is 'user_compute_stream'
+  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
   if (strcmp(key, "user_compute_stream") == 0) {
+    tensorrt_options->has_user_compute_stream = 1;
     tensorrt_options->user_compute_stream = value;
   }
   return nullptr;
@@ -1852,7 +1853,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
                     _Outptr_ void** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
-  // current provider options that has pointer data type (excluding const char*) is 'user_compute_stream'
+  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
   if (strcmp(key, "user_compute_stream") == 0) {
     *ptr = tensorrt_options->user_compute_stream;
   } else {

@@ -2754,12 +2754,21 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
   std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
 
+  // Only test updating provider option with user provided compute stream
+  cudaStream_t compute_stream = nullptr;
+  void* user_compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptionsWithValue(rel_trt_options.get(), "user_compute_stream", compute_stream) == nullptr);
+  ASSERT_TRUE(api.GetTensorRTProviderOptionsByName(rel_trt_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
+  ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
+  cudaStreamDestroy(compute_stream);
+
   const char* engine_cache_path = "./trt_engine_folder";
 
-  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
+  std::vector<const char*> keys{"device_id", "has_user_compute_stream", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
                                 "trt_engine_cache_path", option_name.c_str()};
 
-  std::vector<const char*> values{"0", "1", "0", "1",
+  std::vector<const char*> values{"0", "0", "1", "0", "1",
                                   engine_cache_path, option_value.c_str()};
 
   ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
@@ -2770,16 +2779,6 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
   ASSERT_TRUE(s.find(engine_cache_path) != std::string::npos);
   ASSERT_TRUE(s.find(param.c_str()) != std::string::npos);
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)trt_options_str) == nullptr);
-
-  // Only test updating provider option with user provided compute stream
-  // The inference run won't use this stream since we didn't set has_user_compute_stream
-  cudaStream_t compute_stream = nullptr;
-  void* user_compute_stream = nullptr;
-  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
-  ASSERT_TRUE(api.UpdateTensorRTProviderOptionsWithValue(rel_trt_options.get(), "user_compute_stream", compute_stream) == nullptr);
-  ASSERT_TRUE(api.GetTensorRTProviderOptionsByName(rel_trt_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
-  ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
-  cudaStreamDestroy(compute_stream);
 
   Ort::SessionOptions session_options;
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(static_cast<OrtSessionOptions*>(session_options), rel_trt_options.get()) == nullptr);
