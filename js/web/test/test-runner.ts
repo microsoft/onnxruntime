@@ -388,6 +388,7 @@ export class TensorResultValidator {
       case 'int16':
       case 'int32':
       case 'uint32':
+      case 'int64':
       case 'bool':
         return this.integerEqual(
             actual.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
