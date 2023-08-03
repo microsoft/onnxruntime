@@ -55,6 +55,7 @@ struct AttentionParameters {
   int v_head_size;            // hidden size per head of V
   int num_heads;
   bool is_unidirectional;
+  bool use_flash_attention;
   bool past_present_share_buffer;
   bool do_rotary;
   bool broadcast_res_pos_bias;
@@ -84,6 +85,12 @@ struct PackedAttentionParameters {
 namespace attention {
 // Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION";
+
+// Environment variable to enable flash attention. Default is false.
+constexpr const char* kEnableFlashAttention = "ORT_ENABLE_FLASH_ATTENTION";
+
+// Environment variable of minimum sequence length to enable flash attention. Default is 512.
+constexpr const char* kFlashAttentionMinLength = "ORT_FLASH_ATTENTION_MIN_LENGTH";
 
 // Environment variable to enable or disable fused cross attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedCrossAttention = "ORT_DISABLE_FUSED_CROSS_ATTENTION";

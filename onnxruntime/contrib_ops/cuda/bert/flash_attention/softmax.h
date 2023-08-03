@@ -14,9 +14,6 @@
 #include "philox.cuh"
 #include "utils.h"
 
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
 namespace flash {
 
 using namespace cute;
@@ -275,6 +272,3 @@ inline __device__ void apply_dropout(Tensor<Engine, Layout>& tensor, uint8_t p_d
 }
 
 }  // namespace flash
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
