@@ -4,7 +4,6 @@ const config = {
     launchOptions: {
         args: [
             '--enable-unsafe-webgpu',
-            '--ignore-gpu-blocklist',
 			"--gpu-vendor-id=0x10de"
         ],
         headless: false
