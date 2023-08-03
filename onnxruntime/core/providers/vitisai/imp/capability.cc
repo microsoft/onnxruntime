@@ -27,19 +27,13 @@ std::vector<const Node*> node_arg_names_to_nodes(const GraphViewer& graph,
 
 static std::vector<NodeIndex> node_names_to_nodes(const GraphViewer& graph,
                                                   const std::vector<std::string>& node_names) {
-  auto find_node = [&](const std::string& node_name) -> NodeIndex {
-    for (auto& n : graph.Nodes()) {
-      if (n.Name() == node_name) {
-        return n.Index();
-      }
-    }
-    vai_assert(false, std::string("cannot find node: " + node_name));
-    return onnxruntime::NodeIndex(-1);
-  };
   auto ret = std::vector<NodeIndex>();
   ret.reserve(node_names.size());
   for (auto& onnx_node_name : node_names) {
-    ret.push_back(find_node(onnx_node_name));
+    // onnnx_node_name is actually node arg name.
+    auto node = graph.GetProducerNode(onnx_node_name);
+    vai_assert(node != nullptr, std::string("cannot find producer. onnx_node_arg_name=" + onnx_node_name));
+    ret.push_back(node->Index());
   }
   return ret;
 }
