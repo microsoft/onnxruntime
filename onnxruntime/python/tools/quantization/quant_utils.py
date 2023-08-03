@@ -115,7 +115,9 @@ ONNX_TYPE_TO_NP_TYPE = {
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert qType in ONNX_TYPE_TO_NP_TYPE, f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    assert qType in ONNX_TYPE_TO_NP_TYPE, (
+        f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    )
     dtype = ONNX_TYPE_TO_NP_TYPE[qType]
     (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
 
@@ -240,8 +242,9 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
         else:
             (qmin, qmax) = (-16384, 16384) if reduce_range else (-32768, 32767)
     else:
-        raise ValueError(f"Unexpected data type {qType} requested. "
-                         "Only INT8, UINT8, INT16, and UINT16 are supported.")
+        raise ValueError(
+            f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+        )
     return qmin, qmax
 
 

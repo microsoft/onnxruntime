@@ -2254,8 +2254,8 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
 
       // Verify that the actual parameter's type is one of permitted types of the formal parameter
       DataType input_type = input_def->Type();
-      // NOTE(adrian): Temporarily comment out type checking to test QDQ 16bit graphs
-      #if 0
+// NOTE(adrian): Temporarily comment out type checking to test QDQ 16bit graphs
+#if 0
       auto& permitted_types = op_formal_parameter.GetTypes();
       if (0 == permitted_types.count(input_type)) {
         std::string null_pointer("(null)");
@@ -2269,7 +2269,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
                           ") of operator (" + op.Name() + ") in node (" + node_name + ") is invalid.");
         return status;
       }
-      #endif
+#endif
 
       // When multiple parameters have the same type-variable, they are all required
       // to have the same type. E.g., when adding tensors A and B, it is an error if

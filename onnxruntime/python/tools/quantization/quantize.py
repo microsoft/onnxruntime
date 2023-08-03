@@ -232,9 +232,7 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
     q16_types = [QuantType.QInt16, QuantType.QUInt16]
 
     if (activation_type in q16_types or weight_type in q16_types) and quant_format != QuantFormat.QDQ:
-        raise ValueError(
-            "Only QuantFormat.QDQ supports 16-bit quantization types."
-        )
+        raise ValueError("Only QuantFormat.QDQ supports 16-bit quantization types.")
 
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QInt8 and quant_format != QuantFormat.QDQ:
         logging.warning(
