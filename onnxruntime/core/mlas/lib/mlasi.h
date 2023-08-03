@@ -966,6 +966,8 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
+    MLAS_QUANTIZE_LINEAR_S16_KERNEL* QuantizeLinearS16Kernel;
+    MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
