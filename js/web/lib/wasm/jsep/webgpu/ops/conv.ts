@@ -167,8 +167,8 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
       isChannelsLast && weightHeight === inputHeight && weightWidth === inputWidth && attributes.autoPad === 'VALID';
   if (sameSize ||
       (weightHeight === 1 && weightWidth === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1 &&
-       attributes.strides[0] === 1 && attributes.strides[1] === 1 &&
-       attributes.pads[0] === 0 && attributes.pads[1] === 0)) {
+       attributes.strides[0] === 1 && attributes.strides[1] === 1 && attributes.pads[0] === 0 &&
+       attributes.pads[1] === 0)) {
     if (isChannelsLast && attributes.group === 1) {
       // conv2dByMatMul
       const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??

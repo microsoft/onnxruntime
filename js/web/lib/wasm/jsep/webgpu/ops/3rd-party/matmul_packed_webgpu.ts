@@ -333,9 +333,9 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
 `;
     };
 
-// TODO: support activation
-const matMulReadWriteFnSource = (component: number, hasBias: boolean, transposeB = false): string => {
-  const source = `
+const matMulReadWriteFnSource =
+    (component: number, hasBias: boolean, transposeB = false, applyActivation: string): string => {
+      const source = `
     fn getIndexFromCoords3D(coords : vec3<i32>, shape : vec3<i32>) -> i32 {
       return dot(coords, vec3<i32>(shape.y * shape.z, shape.z, 1));
     }
@@ -370,13 +370,14 @@ const matMulReadWriteFnSource = (component: number, hasBias: boolean, transposeB
         var value = valueIn;
         let coords = vec3<i32>(batch, row, col);
         ${biasActivationSnippet(hasBias)}
+        ${applyActivation}
         let outIndex = getIndexFromCoords3D(coords, outShape) / ${component};
         output[outIndex] = value;
       }
     }
     `;
-  return source;
-};
+      return source;
+    };
 
 export const createMatmulProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
@@ -399,7 +400,7 @@ export const createMatmulProgramInfo =
       const isVec4 = dimInner % 4 === 0 && dimBOuter % 4 === 0;
       const dataType = isVec4 ? 'vec4<f32>' : 'f32';  // TODO: support other data type
       const component = isVec4 ? 4 : 1;
-      const {activationFunction} = getActicationSnippet(activationAttributes);
+      const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
       // TODO: fine tune size
       const elementsPerThread = [4, 4, 1];
@@ -415,7 +416,7 @@ export const createMatmulProgramInfo =
         `@group(0) @binding(1) var<storage, read> b: array<${dataType}>;`
       ];
       const hasBias = inputs.length > 2;
-      let declareFunctions = matMulReadWriteFnSource(component, hasBias, transposeB);
+      let declareFunctions = matMulReadWriteFnSource(component, hasBias, transposeB, applyActivation);
       if (hasBias) {
         declareInputs.push(`@group(0) @binding(2) var<storage, read> bias: array<${dataType}>;`);
         declareFunctions += `
