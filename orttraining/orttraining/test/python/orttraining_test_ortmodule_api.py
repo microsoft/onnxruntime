@@ -2610,7 +2610,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
         # ORT backend
         with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
             ort_model(x, y, z)
-        assert "ORTModule fails to unflatten user output" in str(runtime_error.value)
+        assert "ORTModule does not support the following model output type" in str(runtime_error.value)
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
