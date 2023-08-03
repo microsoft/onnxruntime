@@ -506,10 +506,9 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
 ]
-
-if not enable_training:
-    classifiers.extend(["Operating System :: Microsoft :: Windows", "Operating System :: MacOS"])
 
 if enable_training or enable_training_apis:
     packages.append("onnxruntime.training")
@@ -534,6 +533,10 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.ort_triton.kernel",
                 "onnxruntime.training.utils.data",
                 "onnxruntime.training.utils.hooks",
+                "onnxruntime.training.api",
+                "onnxruntime.training.onnxblock",
+                "onnxruntime.training.onnxblock.loss",
+                "onnxruntime.training.onnxblock.optim",
             ]
         )
 
@@ -546,15 +549,6 @@ if enable_training or enable_training_apis:
             "*.cuh",
             "*.h",
         ]
-
-    packages.extend(
-        [
-            "onnxruntime.training.api",
-            "onnxruntime.training.onnxblock",
-            "onnxruntime.training.onnxblock.loss",
-            "onnxruntime.training.onnxblock.optim",
-        ]
-    )
 
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:

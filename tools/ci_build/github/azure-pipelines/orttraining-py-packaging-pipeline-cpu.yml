@@ -18,7 +18,7 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- stage: Python_Packaging
+- stage: Python_Packaging_Linux_Trainin_CPU
 
   jobs:
     - job: Linux_Training_CPU_Wheels
@@ -116,3 +116,15 @@ stages:
           condition: 'succeeded'
 
       - template: templates/clean-agent-build-directory-step.yml
+
+- template: templates/py-packaging-stage.yml
+  parameters:
+    build_py_parameters: --enable_training
+    enable_linux_gpu: false
+    enable_ubuntu_cpu: false
+    enable_linux_cpu: false
+    enable_windows_cpu: true
+    enable_windows_gpu: false
+    enable_mac_cpu: true
+    enable_mac_silicon: true
+    enable_linux_arm: false
