@@ -102,7 +102,8 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
 
 export const expand = (context: ComputeContext): void => {
   validateInputs(context.inputs);
+  const cacheHint = context.inputs.map(x => x.dims.toString()).join('_');
   context.compute(
-      {...expandProgramMetadata, get: () => createExpandProgramInfo(expandProgramMetadata, context.inputs)},
+      {...expandProgramMetadata, cacheHint, get: () => createExpandProgramInfo(expandProgramMetadata, context.inputs)},
       {inputs: [0]});
 };
