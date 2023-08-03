@@ -38,7 +38,7 @@ const readInput = (inputs: readonly TensorView[], idx: number): number[] => {
   if (inputs.length > idx) {
     if (inputs[idx].dataType === DataType.int64) {
       inputs[idx].getBigInt64Array().forEach(v => input.push(Number(v)));
-    } else if (inputs[1].dataType === DataType.int32) {
+    } else if (inputs[idx].dataType === DataType.int32) {
       inputs[idx].getInt32Array().forEach(v => input.push(Number(v)));
     } else {
       throw new Error(`Input ${idx} must be an array of int32 or int64`);
