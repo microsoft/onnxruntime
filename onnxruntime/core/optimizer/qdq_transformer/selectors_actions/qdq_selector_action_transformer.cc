@@ -43,14 +43,13 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
       MoveToSlot(q, ArgType::kOutput, 0, ArgType::kOutput, 0)};
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // ONNX spec does not yet allow 16bit integer types for MaxPool's input and output, so register a
-  // selector that does not allow 16bit Q/DQ in node groups.
   std::unique_ptr<NodeSelector> selector_disallow_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
   std::unique_ptr<Action> action_disallow_16bit = std::make_unique<MergeIntoTarget>(
       std::vector<NodeAndMoveInfo>(moves)  // Copy before std::move(moves)
   );
-  qdq_selector_action_registry.RegisterSelectorAndAction("drop_maxpool",
-                                                         {{"MaxPool", {12}}},
+  qdq_selector_action_registry.RegisterSelectorAndAction("drop_no_int16_support",
+                                                         {{"MaxPool", {12}},  // int16 not supported by ONNX specification.
+                                                          {"Resize", {}}},    // int16 not supported by ORT implementation.
                                                          std::move(selector_disallow_16bit),
                                                          std::move(action_disallow_16bit));
 
@@ -60,7 +59,6 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          {{"Gather", {}},
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
-                                                          {"Resize", {}},
                                                           {"Squeeze", {}},
                                                           {"Unsqueeze", {}}},
                                                          std::move(selector),
