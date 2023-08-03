@@ -18,7 +18,8 @@
         },
         {
           "name": "onnxruntime_WINML_NAMESPACE_OVERRIDE",
-          "value": "Microsoft"
+          "value": "Microsoft",
+          "type": "STRING"
         },
         {
           "name": "onnxruntime_USE_DML",
@@ -51,7 +52,8 @@
         },
         {
           "name": "onnxruntime_WINML_NAMESPACE_OVERRIDE",
-          "value": "Microsoft"
+          "value": "Microsoft",
+          "type": "STRING"
         },
         {
           "name": "onnxruntime_USE_DML",
@@ -65,6 +67,20 @@
         }
       ],
       "cmakeToolchain": "${projectDir}\\wcos_toolchain.cmake"
+    },
+    {
+      "name": "WSL-GCC-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeExecutable": "cmake",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "inheritEnvironments": [ "linux_x64" ],
+      "wslPath": "${defaultWSLPath}",
+      "variables": []
     }
   ]
 }

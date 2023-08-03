@@ -7,17 +7,13 @@
 #include <cuda.h>
 #include <vector>
 
-#ifdef OLD_GENERATOR_PATH
-#include <ATen/CUDAGeneratorImpl.h>
-#else
-#include <ATen/cuda/CUDAGeneratorImpl.h>
-#endif
-
-#include <ATen/cuda/CUDAGraphsUtils.cuh>
-
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
+//#ifdef OLD_GENERATOR_PATH
+//#include <ATen/CUDAGeneratorImpl.h>
+//#else
+//#include <ATen/cuda/CUDAGeneratorImpl.h>
+//#endif
+//
+//#include <ATen/cuda/CUDAGraphsUtils.cuh>
 
 constexpr int TOTAL_DIM = 0;
 constexpr int H_DIM = 1;
@@ -80,28 +76,10 @@ struct Flash_fwd_params : public Qkv_params {
 
   int* __restrict__ blockmask;
 
-  // The dropout probability (probability of keeping an activation).
-  float p_dropout;
-  // uint32_t p_dropout_in_uint;
-  // uint16_t p_dropout_in_uint16_t;
-  uint8_t p_dropout_in_uint8_t;
-
-  // Scale factor of 1 / (1 - p_dropout).
-  float rp_dropout;
-  float scale_softmax_rp_dropout;
-
-  // Random state.
-  at::PhiloxCudaState philox_args;
-
-  bool is_bf16;
+  //bool is_bf16 = false;
   bool is_causal;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename T, int Headdim>
-void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);
-
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
+template <typename T, int Headdim> void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);

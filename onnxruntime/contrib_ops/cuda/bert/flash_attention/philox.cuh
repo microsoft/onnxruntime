@@ -2,9 +2,6 @@
 #pragma once
 // Philox CUDA.
 
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
 namespace flash {
 
 struct ull2 {
@@ -162,6 +159,3 @@ class Philox {
 };
 
 }  // namespace
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime

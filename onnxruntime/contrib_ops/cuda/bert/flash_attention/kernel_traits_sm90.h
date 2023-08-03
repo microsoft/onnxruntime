@@ -12,10 +12,6 @@
 
 using namespace cute;
 
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
-
 template <int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_, typename elem_type = cutlass::half_t>
 struct Flash_kernel_traits_sm90 {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
@@ -149,8 +145,3 @@ struct Flash_fwd_kernel_traits : public Base {
                                                   GmemLayoutAtomP{},
                                                   Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per store
 };
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime

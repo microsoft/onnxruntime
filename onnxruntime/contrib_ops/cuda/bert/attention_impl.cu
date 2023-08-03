@@ -42,6 +42,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
@@ -854,43 +855,63 @@ Status QkvToContext(
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
-    const void* query = q;
-    const void* key = k;
-    const void* value = v;
-    // For packed KV, we can use query input directly.
-    if (data.gemm_buffer == nullptr && data.key != nullptr && data.value == nullptr) {
-      assert(data.bias == nullptr);
-      query = data.query;
-    }
+    //const void* query = q;
+    //const void* key = k;
+    //const void* value = v;
+    //// For packed KV, we can use query input directly.
+    //if (data.gemm_buffer == nullptr && data.key != nullptr && data.value == nullptr) {
+    //  assert(data.bias == nullptr);
+    //  query = data.query;
+    //}
 
     DUMP_TENSOR_D("attention q(BSNH)", q, batch_size * sequence_length, num_heads * qk_head_size);
     DUMP_TENSOR_D("attention k(BSNH)", k, batch_size * sequence_length, num_heads * qk_head_size);
     DUMP_TENSOR_D("attention v(BSNH)", v, batch_size * sequence_length, num_heads * v_head_size);
 
-    MemoryEfficientAttentionParams p;
-    p.sm = device_prop.major * 10 + device_prop.minor;
-    p.is_half = sizeof(T) == 2;
-    p.batch_size = parameters.batch_size;
-    p.num_heads = parameters.num_heads;
-    p.sequence_length = parameters.sequence_length;
-    p.kv_sequence_length = parameters.total_sequence_length;
-    p.qk_head_size = parameters.head_size;
-    p.v_head_size = parameters.v_head_size;
-    p.causal = parameters.is_unidirectional;
-    p.scale = scale;
-    p.seqlen_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
-    p.seqstart_q_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
-    p.seqstart_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + 2 * batch_size + 1));
-    p.query = query;
-    p.key = key;
-    p.value = value;
-    p.attn_bias = nullptr == data.relative_position_bias ? nullptr : data.relative_position_bias;
-    p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
-    p.output = data.output;
-    p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
-    p.stream = stream;
-    run_memory_efficient_attention(p);
-    DUMP_TENSOR("attention cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    //MemoryEfficientAttentionParams p;
+    //p.sm = device_prop.major * 10 + device_prop.minor;
+    //p.is_half = sizeof(T) == 2;
+    //p.batch_size = parameters.batch_size;
+    //p.num_heads = parameters.num_heads;
+    //p.sequence_length = parameters.sequence_length;
+    //p.kv_sequence_length = parameters.total_sequence_length;
+    //p.qk_head_size = parameters.head_size;
+    //p.v_head_size = parameters.v_head_size;
+    //p.causal = parameters.is_unidirectional;
+    //p.scale = scale;
+    //p.seqlen_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
+    //p.seqstart_q_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
+    //p.seqstart_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + 2 * batch_size + 1));
+    //p.query = query;
+    //p.key = key;
+    //p.value = value;
+    //p.attn_bias = nullptr == data.relative_position_bias ? nullptr : data.relative_position_bias;
+    //p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
+    //p.output = data.output;
+    //p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
+    //p.stream = stream;
+    //run_memory_efficient_attention(p);
+    
+    ORT_RETURN_IF_ERROR(mha_fwd(
+      device_prop,
+      stream,
+      q, 
+      k, 
+      v,
+      reinterpret_cast<void*>(data.output),
+      batch_size,
+      num_heads,
+      num_heads,
+      qk_head_size,
+      v_head_size,
+      total_sequence_length, //TODO: ISCORRECT?
+      sequence_length, // IS THIS MAX_SEQLEN_Q?
+      kv_sequence_length, // IS THIS MAX_SEQLEN_V
+      scale, // scale refer to softmax scale?
+      false // is causal
+      ));
+
+    DUMP_TENSOR("flash attention output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 #endif
