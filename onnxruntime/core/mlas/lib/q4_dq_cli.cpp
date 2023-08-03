@@ -115,7 +115,7 @@ parseArgs(int argc, char* argv[], Cli& cli)
 
     cli.input_file = getCmdOption(argv + 4, argv + argc, "--input_file");
     char* offset_str = getCmdOption(argv + 4, argv + argc, "--input_offset");
-    if (offset_str) {
+    if (offset_str != nullptr) {
         errno = 0;
         cli.input_offset = (size_t)strtoul(offset_str, nullptr, 0);
         if (errno != 0) {
@@ -125,7 +125,7 @@ parseArgs(int argc, char* argv[], Cli& cli)
 
     cli.output_file = getCmdOption(argv + 4, argv + argc, "--output_file");
     char* output_format_str = getCmdOption(argv + 4, argv + argc, "--output_format");
-    if (output_format_str) {
+    if (output_format_str != nullptr) {
         if (strncmp(output_format_str, "csv", 4) == 0) {
             cli.output_bin = false;
         } else if (strncmp(output_format_str, "bin", 4) == 0) {
