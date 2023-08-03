@@ -66,6 +66,7 @@ def check_and_normalize_provider_args(
         if (
             os.environ.get("ORT_FALLBACK_CUDA_EP_TO_ROCM_EP", "0") == "1"
             and "CUDAExecutionProvider" not in available_provider_names
+            and "ROCMExecutionProvider" in available_provider_names
         ):
             if name == "CUDAExecutionProvider":
                 name = "ROCMExecutionProvider"
