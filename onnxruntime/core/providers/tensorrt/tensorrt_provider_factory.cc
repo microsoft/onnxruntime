@@ -108,6 +108,7 @@ struct Tensorrt_Provider : Provider {
     auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
     auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptionsV2*>(provider_options);
     trt_options.device_id = internal_options.device_id;
+    trt_options.has_user_compute_stream = internal_options.has_user_compute_stream;
     trt_options.trt_max_partition_iterations = internal_options.max_partition_iterations;
     trt_options.trt_min_subgraph_size = internal_options.min_subgraph_size;
     trt_options.trt_max_workspace_size = internal_options.max_workspace_size;
