@@ -747,7 +747,7 @@ class SymbolicShapeInference:
         else:
             lhs_reduce_dim = -1
             rhs_reduce_dim = -2
-            new_shape = [*self._broadcast_shapes(lhs_shape[:-2], rhs_shape[:-2]), lhs_shape[-2]] + [rhs_shape[-1]]
+            new_shape = [*self._broadcast_shapes(lhs_shape[:-2], rhs_shape[:-2]), lhs_shape[-2], rhs_shape[-1]]
         # merge reduce dim
         self._check_merged_dims(
             [lhs_shape[lhs_reduce_dim], rhs_shape[rhs_reduce_dim]],
@@ -2273,6 +2273,23 @@ class SymbolicShapeInference:
 
     def _infer_LayerNormalization(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
+        if len(node.output) > 1:
+            axis = get_attribute(node, "axis")
+            if axis is None:
+                axis = -1
+            x_shape = self._get_shape(node, 0)
+            if x_shape is not None:
+                rank = len(x_shape)
+                axis = handle_negative_axis(axis, rank)
+                mean_shape = x_shape[:axis] + [1 for _ in range(rank - axis)]
+                mean_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+                if mean_dtype == onnx.TensorProto.FLOAT16 or mean_dtype == onnx.TensorProto.BFLOAT16:
+                    mean_dtype = onnx.TensorProto.FLOAT
+                vi = self.known_vi_[node.output[1]]
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[1], mean_dtype, mean_shape))
+                if len(node.output) > 2:
+                    vi = self.known_vi_[node.output[2]]
+                    vi.CopyFrom(helper.make_tensor_value_info(node.output[2], mean_dtype, mean_shape))
 
     def _infer_LongformerAttention(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)

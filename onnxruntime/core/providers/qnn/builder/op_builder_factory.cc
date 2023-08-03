@@ -15,12 +15,14 @@ namespace qnn {
 OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateSimpleOpBuilder("Add", *this);
+    CreateSimpleOpBuilder("Asin", *this);
     CreateSimpleOpBuilder("Atan", *this);
     CreateSimpleOpBuilder("Mul", *this);
     CreateSimpleOpBuilder("Abs", *this);
     CreateSimpleOpBuilder("And", *this);
     CreateSimpleOpBuilder("Ceil", *this);
     CreateSimpleOpBuilder("Cos", *this);
+    CreateSimpleOpBuilder("Sign", *this);
     CreateSimpleOpBuilder("Div", *this);
     CreateSimpleOpBuilder("Equal", *this);
     CreateSimpleOpBuilder("Exp", *this);
@@ -75,6 +77,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateConvOpBuilder("Conv", *this);
+    CreateConvOpBuilder("ConvTranspose", *this);
   }
 
   {
@@ -112,10 +115,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
-    CreateConvOpBuilder("ConvTranspose", *this);
-  }
-
-  {
     CreateSplitOpBuilder("Split", *this);
   }
 
@@ -137,6 +136,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateBatchNormOpBuilder("BatchNormalization", *this);
+  }
+
+  {
+    CreateLayerNormOpBuilder("LayerNormalization", *this);
   }
 
   {

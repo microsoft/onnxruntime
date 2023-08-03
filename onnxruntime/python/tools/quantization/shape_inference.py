@@ -9,6 +9,7 @@ import logging
 import tempfile
 import traceback
 from pathlib import Path
+from typing import Optional
 
 import onnx
 
@@ -32,7 +33,7 @@ def quant_pre_process(
     verbose: int = 0,
     save_as_external_data: bool = False,
     all_tensors_to_one_file: bool = False,
-    external_data_location: str = None,
+    external_data_location: Optional[str] = None,
     external_data_size_threshold: int = 1024,
 ) -> None:
     """Shape inference and model optimization, in preparation for quantization.

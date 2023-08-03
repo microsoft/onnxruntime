@@ -100,7 +100,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.Memory" Version="4.5.3" IncludeAssets="None" />
+    <PackageReference Include="System.Memory" Version="4.5.5" IncludeAssets="None" />
     <AndroidNativeLibrary Condition=" Exists('..\..\..\..\build\Android\arm64-v8a\Release\libonnxruntime.so') " Include="..\..\..\..\build\Android\arm64-v8a\Release\libonnxruntime.so">
       <Link>libs\arm64-v8a\libonnxruntime.so</Link>
     </AndroidNativeLibrary>
