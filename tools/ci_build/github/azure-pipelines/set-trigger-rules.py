@@ -3,7 +3,7 @@ import multiprocessing
 
 def add_trigger_filter(file_name, trigger_lines):
     # Open the file and read its lines
-    with open(file_name, "r") as f:
+    with open(file_name) as f:
         lines = f.readlines()
 
     start_marker = "##### trigger Don't modified it manully ####"
@@ -27,7 +27,7 @@ def main():
     workflow_files = ["linux-gpu-ci-pipeline.yml", "win-gpu-ci-pipeline.yml"]
 
     trigger_file = "trigger-template.yml"
-    with open(trigger_file, "r") as f1:
+    with open(trigger_file) as f1:
         trigger_lines = f1.readlines()
 
     pool = multiprocessing.Pool()
