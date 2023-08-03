@@ -42,11 +42,10 @@ const createReduceProgramInfo =
           const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
           const outputDimsLength = inputs[0].dims.length - (attributes.keepDims ? 0 : axes.length);
           const ops = reduceOp(inputs, axes);
-          const inputIndicesHelper = inputVariable('_A', inputs[0].dataType, inputShape);
-          const initInputIdx =
-              (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.indicesToOffset('inputIndices')};`;
+          const input = inputVariable('_A', inputs[0].dataType, inputShape);
+          const initInputIdx = (ops[1] === '') ? '' : `let inputIdx = ${input.indicesToOffset('inputIndices')};`;
           let reduceOps = `
-          let inputIdx = ${inputIndicesHelper.indicesToOffset('inputIndices')};
+          let inputIdx = ${input.indicesToOffset('inputIndices')};
           ${ops[2]};`;
           const reduceOnAllAxes = !attributes.noopWithEmptyAxes && attributes.axes.length === 0;
           for (let k = 0; k < inputs[0].dims.length; k++) {
@@ -71,22 +70,21 @@ const createReduceProgramInfo =
             }
           }
 
-          const outputIndicesHelper = outputVariable('output', inputs[0].dataType, outputShape);
+          const output = outputVariable('output', inputs[0].dataType, outputShape);
           const outputSize = ShapeUtil.size(outputShape);
 
           const getShaderSource = (shaderHelper: ShaderHelper) => `
-          ${shaderHelper.declareVariables(inputIndicesHelper, outputIndicesHelper)}
+          ${shaderHelper.declareVariables(input, output)}
 
-          ${outputIndicesHelper.offsetToIndicesImplementation}
-          ${inputIndicesHelper.indicesToOffsetImplementation}
+          ${output.impl('offsetToIndices')}
+          ${input.impl('indicesToOffset')}
 
           ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
-          ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-          ${outputIndicesHelper.offsetToIndices('global_idx', 'outputIndices')}
+          let outputIndices = ${output.offsetToIndices('global_idx')};
+          var inputIndices: ${input.type.indices};
 
-          var value = ${outputIndicesHelper.dataType}(0);
+          var value = ${output.type.value}(0);
 
           ${idxCopy.join('\n')}
           ${ops[0]}       // init ops for reduce max/min

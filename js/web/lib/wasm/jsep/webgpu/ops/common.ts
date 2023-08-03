@@ -16,6 +16,53 @@ import {ShapeUtil} from '../../util';
  **/
 export const WORKGROUP_SIZE = 64;
 
+interface IndicesHelperImplementations {
+  /**
+   * implementation of `offsetToIndices` function.
+   */
+  readonly offsetToIndices: string;
+
+  /**
+   * implementation of `indicesToOffset` function.
+   */
+  readonly indicesToOffset: string;
+
+  /**
+   * implementation of `set`, `setByIndices` and `setByOffset` function.
+   */
+  readonly set: string;
+
+  /**
+   * implementation of `get`, `getByIndices` and `getByOffset` function.
+   */
+  readonly get: string;
+}
+
+interface IndicesHelperTypes {
+  /**
+   * WGSL type of indices expression
+   */
+  readonly indices: string;
+
+  /**
+   * WGSL type of a value
+   */
+  readonly value: string;
+
+  /**
+   * WGSL type of storage type representing a value
+   *
+   * This is usually the same to `value`, but for some type (eg. bool), we need to use `u32` as storage type for
+   * value type `vec4<bool>`
+   */
+  readonly storage: string;
+
+  /**
+   * tensor type as represented in TensorView
+   */
+  readonly tensor: number;
+}
+
 /**
  * A helper class for generating WGSL code for manipulating indices and data for a shader's input or output.
  *
@@ -24,10 +71,8 @@ export const WORKGROUP_SIZE = 64;
  *
  * The following is a list of terminologies used in this class:
  * - `offset`: a uint32 value representing the offset of an element in the data buffer.
- * - `indices`: an abstraction of a multi-dimensional array's indices representing the data's shape.
- * - `indicesType`: a type representing the indices.
+ * - `indices`: an abstraction of a multi-dimensional array's indices representing the data's index on each dimension.
  * - `value`: a value of a data element.
- * - `valueType`: a type representing the data.
  *
  * Users are expected to create an instance of this class for each shader's input or output, and use the instance to
  * generate WGSL code for manipulating indices and data. The following 2 exported functions are for users to call to
@@ -37,55 +82,56 @@ export const WORKGROUP_SIZE = 64;
  *
  * An indices helper instance contains helper functions for the following operations:
  * - access readonly basic information, including: `name`(the name of the input or output), `usage`(whether it's an
- * input or an output), `isVec4`(whether the data is a vec4), `dataType` and `indicesType`.
+ * input or an output) and `shape`(the passed in shape).
+ * - `type`: access readonly type information, including: `indices`(the type of indices), `value`(the type of value at
+ * runtime), `storage`(the type of value at storage) and `tensor`(the tensor type as represented in TensorView).
  * - generate WGSL code for getting indices from offset. Use `offsetToIndices()` for WGSL code snippet to calculate
  * incides from offset, and use `indicesToOffset()` for WGSL code snippet to calculate offset from indices.
  * - to manipulate an instance of indices, use `setIndices()` and `getIndices()` to set and get the indices on an
  * indices variable.
- * - to manipulate data, use `set()` and `get()` to set and get data at the given indices, or use `setByOffset()` and
- * `getByOffset()` to set and get data at the given offset.
+ * - to manipulate data, use `set()`/`get()` to access data at the given indices from parameter list, use
+ * `setByIndices()`/`getByIndices()` to access data at the given indices from an indices variable, and use
+ * `setByOffset()`/`getByOffset()` to access data at the given offset.
+ * - `impl`: get WGSL code of function implementation for the util functions mentioned above.
  */
 export interface IndicesHelper {
   /**
-   * WGSL code of function implementation for offset-to-indices.
+   * get WGSL code of function implementation for the util functions
    *
-   * This string should be put in global scope of a shader, if `offsetToIndices()` is used.
+   * @param functions - a list of function names to get implementation for. If not specified, all functions will be
+   * returned.
    */
-  readonly offsetToIndicesImplementation: string;
+  readonly impl: (...functions: ReadonlyArray<keyof IndicesHelperImplementations>) => string;
 
   /**
-   * WGSL code of a statement for getting indices from offset.
-   *
-   * This string should be used as a statement in a shader.
+   * get type info
+   */
+  readonly type: IndicesHelperTypes;
+
+  /**
+   * WGSL code of a expression for getting indices from offset.
    *
    * @param varOffset - a u32 expression representing the offset.
-   * @param varIndices - a variable name for the indices. The variable should be declared as `indicesType` before this
-   *     statement.
-   */
-  readonly offsetToIndices: (varOffset: string, varIndices: string) => string;
-
-  /**
-   * WGSL code of function implementation for indices-to-offset
    *
-   * This string should be put in global scope of a shader, if `indicesToOffset()` is used.
+   * @returns an `type.indices` expression
    */
-  readonly indicesToOffsetImplementation: string;
+  readonly offsetToIndices: (varOffset: string) => string;
 
   /**
    * WGSL code of an `u32` expression for getting offset from indices.
    *
-   * @param varIndices - a `indicesType` expression representing the indices.
-   * @param isPtr - whether the variable is a pointer. default is false.
+   * @param varIndices - a `type.indices` expression representing the indices.
+   *
+   * @returns an `u32` expression
    */
-  readonly indicesToOffset: (varIndices: string, isPtr?: boolean) => string;
+  readonly indicesToOffset: (varIndices: string) => string;
 
   /**
-   * WGSL code of indices variable declaration
+   * WGSL code of generating an indices literal
    *
-   * @param v - variable name.
    * @param init - initial value.
    */
-  readonly indicesVariableDeclaration: (v: string, init?: string[]) => string;
+  readonly indices: (...init: string[]) => string;
 
   /**
    * WGSL code of a statement for setting indices.
@@ -93,6 +139,8 @@ export interface IndicesHelper {
    * @param varIndices - a variable name for the indices.
    * @param idx - the index of the indices to set. can be a number or a string (WGSL `u32` expression).
    * @param value - the value to set. can be a number or a string (WGSL `u32` expression).
+   *
+   * @returns a WGSL statement
    */
   readonly indicesSet: (varIndices: string, idx: number|string, value: number|string) => void;
 
@@ -101,22 +149,26 @@ export interface IndicesHelper {
    *
    * @param varIndices - a variable name for the indices.
    * @param idx - the index of the indices to get. can be a number or a string (WGSL `u32` expression).
+   *
+   * @returns an `u32` expression
    */
   readonly indicesGet: (varIndices: string, idx: number|string) => string;
 
   /**
-   * WGSL code of function implementation for set and set by offset.
-   */
-  readonly setImplementation: string;
-
-  /**
    * WGSL code for a statement for setting data at the given indices.
    *
-   * @param indices - an array of numbers or strings (WGSL `u32` expression) representing the indices, or a string of a
-   *     indices variable name.
+   * @param indicesAndValue - an array of numbers or strings (WGSL `u32` expression) representing the indices, followed
+   *     by the value to set. This array should have exactly `shape.length + 1` elements.
+   */
+  readonly set: (...indicesAndValue: ReadonlyArray<number|string>) => string;
+
+  /**
+   * WGSL code for a statement for setting data at the given indices variable.
+   *
+   * @param varIndices - a variable name for the indices.
    * @param value - the value to set. should be a WGSL expression.
    */
-  readonly set: (indices: ReadonlyArray<number|string>|string, value: string) => string;
+  readonly setByIndices: (varIndices: string, value: string) => string;
 
   /**
    * WGSL code for a statement for setting data at the given offset.
@@ -127,17 +179,18 @@ export interface IndicesHelper {
   readonly setByOffset: (offset: number|string, value: string) => string;
 
   /**
-   * WGSL code of function implementation for get and get by offset.
-   */
-  readonly getImplementation: string;
-
-  /**
    * WGSL code for an expression for getting data at the given indices.
    *
-   * @param indices - an array of numbers or strings (WGSL `u32` expression) representing the indices, or a string of a
-   *    indices variable name.
+   * @param indices - an array of numbers or strings (WGSL `u32` expression) representing the indices.
    */
-  readonly get: (indices: ReadonlyArray<number|string>|string) => string;
+  readonly get: (...indices: ReadonlyArray<number|string>) => string;
+
+  /**
+   * WGSL code for an expression for getting data at the given indices variable.
+   *
+   * @param varIndices - a variable name for the indices.
+   */
+  readonly getByIndices: (varIndices: string) => string;
 
   /**
    * WGSL code for an expression for getting data at the given offset.
@@ -147,24 +200,9 @@ export interface IndicesHelper {
   readonly getByOffset: (offset: number|string) => string;
 
   /**
-   * data type of indices
-   */
-  readonly indicesType: string;
-
-  /**
-   * data type of data
-   */
-  readonly dataType: string;
-
-  /**
    * name of the data variable
    */
   readonly name: string;
-
-  /**
-   * whether the input or output is a vec4
-   */
-  readonly isVec4: boolean;
 
   /**
    * whether the helper is for an input or an output.
@@ -177,19 +215,30 @@ export interface IndicesHelper {
   readonly shape: readonly number[];
 }
 
-const getDataType = (type: number, isVec4: boolean): string => {
+const getWgslValueType = (type: number, isVec4: boolean): [string, string] => {
+  // return type is [ storage type, runtime type ]
   switch (type) {
     case DataType.float:
-      return isVec4 ? 'vec4<f32>' : 'f32';
+      return isVec4 ? ['vec4<f32>', 'vec4<f32>'] : ['f32', 'f32'];
     case DataType.int32:
-      return isVec4 ? 'vec4<i32>' : 'i32';
+      return isVec4 ? ['vec4<i32>', 'vec4<i32>'] : ['i32', 'i32'];
     case DataType.uint32:
-      return isVec4 ? 'vec4<u32>' : 'u32';
+      return isVec4 ? ['vec4<u32>', 'vec4<u32>'] : ['u32', 'u32'];
+    case DataType.int64:
+      if (isVec4) {
+        throw new Error('currently not supported vec4 of uint64 yet');
+      }
+      return ['vec2<u32>', 'i32'];
+    case DataType.uint64:
+      if (isVec4) {
+        throw new Error('currently not supported vec4 of uint64 yet');
+      }
+      return ['vec2<u32>', 'u32'];
     case DataType.bool:
       if (!isVec4) {
         throw new Error('bool must be vec4');
       }
-      return 'u32';
+      return ['u32', 'vec4<bool>'];
 
     default:
       throw new Error(`Unknown data type: ${type}`);
@@ -199,30 +248,18 @@ const getDataType = (type: number, isVec4: boolean): string => {
 /**
  * A helper function to get a IndicesHelper for a given input or output.
  *
- * @example
- * const getShaderSource = (shaderHelper: ShaderHelper) => {
- *   const X = shaderHelper.createIndicesHelper('X', XShape);
- *   const Y = shaderHelper.createIndicesHelper('Y', YShape);
- *
- *   return `
- *   ...
- *
- *   ${shaderHelper.mainStart()}
- *     ...
- *   }
- *   `;
- *
  * @param name - the name of the input or output.
- * @param dataType - the tensor type of the input or output.
+ * @param tensorType - the tensor type of the input or output.
  * @param shape - the tensor shape of the input or output.
  * @param isInput - whether the helper is for an input or an output.
  * @param isVec4 - whether the helper is for a vec4 input or output.
  */
 const createIndicesHelper =
-    (name: string, type: number|string, shape: readonly number[], isInput: boolean, isVec4: boolean): IndicesHelper => {
+    (name: string, tensorType: number, shape: readonly number[], isInput: boolean, isVec4: boolean): IndicesHelper => {
       const rank = shape.length;
-      const indicesType = rank < 2 ? 'u32' : `array<u32, ${rank}>`;
-      const dataType = typeof type === 'number' ? getDataType(type, isVec4) : type;
+      const indicesType = rank < 2 ? 'u32' : rank <= 4 ? `vec${rank}<u32>` : `array<u32, ${rank}>`;
+      const [valueType, storageType] = getWgslValueType(tensorType, isVec4);
+      const type = {indices: indicesType, value: valueType, storage: storageType, tensor: tensorType};
 
       const normalizeDim = (dim: number|string): string => typeof dim === 'string' ? dim : `${dim}u`;
 
@@ -232,42 +269,37 @@ const createIndicesHelper =
         o2iSnippet += `
     let dim${i} = current / ${strides[i]}u;
     let rest${i} = current % ${strides[i]}u;
-    (*indices)[${i}] = dim${i};
+    indices[${i}] = dim${i};
     current = rest${i};
     `;
       }
-      o2iSnippet += `(*indices)[${rank - 1}] = current;`;
+      o2iSnippet += `indices[${rank - 1}] = current;`;
 
       const offsetToIndicesImplementation = rank < 2 ? '' : `
-  fn ih_o2i_${name}(offset: u32, indices: ptr<function, ${indicesType}>) {
+  fn o2i_${name}(offset: u32) -> ${type.indices} {
+    var indices: ${type.indices};
     var current = offset;
     ${o2iSnippet}
+    return indices;
   }`;
 
-      const offsetToIndices = (varOffset: string, varIndices: string) =>
-          rank < 2 ? `${varIndices}=${varOffset};` : `ih_o2i_${name}(${varOffset}, &${varIndices});`;
+      const offsetToIndices = (varOffset: string) => rank < 2 ? varOffset : `o2i_${name}(${varOffset})`;
 
       const offsets: string[] = [];
-      if (rank === 0) {
-        offsets.push('0u');
-      } else if (rank < 2) {
-        offsets.push('(*indices)');
-      } else {
+      if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
-          offsets.push(`${strides[i]}u * ((*indices)[${i}])`);
+          offsets.push(`${strides[i]}u * (indices[${i}])`);
         }
       }
 
       const indicesToOffsetImplementation = rank < 2 ? '' : `
-  fn ih_i2o_${name}(indices: ptr<function, ${indicesType}>) -> u32 {
+  fn i2o_${name}(indices: ${type.indices}) -> u32 {
     return ${offsets.join('+')};
   }`;
 
-      const indicesToOffset = (varIndices: string, isPtr?: boolean) =>
-          rank < 2 ? `(${isPtr ? '*' : ''}${varIndices})` : `ih_i2o_${name}(${isPtr ? '' : '&'}${varIndices})`;
+      const indicesToOffset = (varIndices: string) => rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
 
-      const indicesVariableDeclaration = (v: string, init?: string[]) =>
-          `var ${v}:${indicesType}${init ? `=${indicesType}(${init.join(',')})` : ''};`;
+      const indices = (...init: string[]) => rank === 0 ? '0u' : `${type.indices}(${init.join(',')})`;
 
       const indicesGet = (varIndices: string, idx: number|string) => {
         if (rank < 2) {
@@ -285,35 +317,31 @@ const createIndicesHelper =
         }
       };
 
+      // TODO support storage type
       const setByOffset = (offset: number|string, value: string) => `${name}[${offset}]=${value};`;
 
       const getByOffset = (offset: number|string) => `${name}[${offset}]`;
 
-
       const getImplementation = rank < 2 ? '' : (() => {
-        const parameters = new Array(rank).fill(0).map((_, i) => `d${i}: u32`).join(', ');
-        const parametersAssignment = new Array(rank).fill(0).map((_, i) => indicesSet('idx', i, `d${i}`)).join('\n');
+        const params = shape.map((_, i) => `d${i}: u32`).join(', ');
+        const dims = shape.map((_, i) => `d${i}`).join(', ');
         return `
-  fn get_${name}(${parameters}) -> ${dataType} {
-    ${indicesVariableDeclaration('idx')}
-    ${parametersAssignment}
-    return get_${name}ByIndices(&idx);
+  fn get_${name}ByIndices(indices: ${type.indices}) -> ${valueType} {
+    return ${name}[i2o_${name}(indices)];
   }
-  fn get_${name}ByIndices(indices: ptr<function, ${indicesType}>) -> ${dataType} {
-    return ${name}[ih_i2o_${name}(indices)];
-  }`;
+  fn get_${name}(${params}) -> ${valueType} {
+    return get_${name}ByIndices(${indices(dims)});
+  }
+  `;
       })();
 
-      const get = (indices: ReadonlyArray<number|string>|string) => {
-        let normalizedIndices: string;
-        let funcName: string;
-        if (typeof indices === 'string') {
-          normalizedIndices = indices;
-          funcName = `get_${name}ByIndices`;
-        } else {
-          normalizedIndices = indices.map(normalizeDim).join(',');
-          funcName = `get_${name}`;
+      const get = (...indices: ReadonlyArray<number|string>) => {
+        if (indices.length !== rank) {
+          throw new Error(`indices length must be ${rank}`);
         }
+
+        const normalizedIndices = indices.map(normalizeDim).join(',');
+        const funcName = `get_${name}`;
 
         if (rank === 0) {
           return getByOffset('0u');
@@ -324,59 +352,95 @@ const createIndicesHelper =
         }
       };
 
+      const getByIndices = (varIndices: string) => {
+        if (rank < 2) {
+          return getByOffset(varIndices);
+        } else {
+          return `get_${name}ByIndices(${varIndices})`;
+        }
+      };
+
       const setImplementation = rank < 2 ? '' : (() => {
-        const parameters = new Array(rank + 1).map((_, i) => `d${i}: u32`).join(', ');
-        const parametersAssignment = new Array(rank).map((_, i) => indicesSet('idx', i, `d${i}`)).join('\n');
+        const params = shape.map((_, i) => `d${i}: u32`).join(', ');
+        const dims = shape.map((_, i) => `d${i}`).join(', ');
         return `
-  fn set_${name}(${parameters}, value: ${dataType}) {
-    ${indicesVariableDeclaration('idx')}
-    ${parametersAssignment}
-    set_${name}ByIndices(&idx, value);
+  fn set_${name}ByIndices(indices: ${type.indices}, value: ${valueType}) {
+    ${setByOffset(`i2o_${name}(indices)`, 'value')}
   }
-  fn set_${name}ByIndices(indices: ptr<function, ${indicesType}>, value: ${dataType}) {
-    ${setByOffset(`ih_i2o_${name}(&indices)`, 'value')}
-  }`;
+  fn set_${name}(${params}, value: ${valueType}) {
+    set_${name}ByIndices(${indices(dims)}, value);
+  }
+  `;
       })();
 
-      const set = (indices: ReadonlyArray<number|string>|string, value: string) => {
-        let normalizedIndices: string;
-        let funcName: string;
-        if (typeof indices === 'string') {
-          normalizedIndices = indices;
-          funcName = `set_${name}ByIndices`;
-        } else {
-          normalizedIndices = indices.map(normalizeDim).join(',');
-          funcName = `set_${name}`;
+      const set = (...indicesAndValue: ReadonlyArray<number|string>) => {
+        if (indicesAndValue.length !== rank + 1) {
+          throw new Error(`indices length must be ${rank}`);
         }
+        const value = indicesAndValue[rank];
+        if (typeof value !== 'string') {
+          throw new Error('value must be string');
+        }
+
+        const normalizedIndices = indicesAndValue.slice(0, rank).map(normalizeDim).join(',');
 
         if (rank === 0) {
           return setByOffset('0u', value);
         } else if (rank === 1) {
           return setByOffset(normalizedIndices[0], value);
         } else {
-          return `${funcName}(${normalizedIndices}, ${value})`;
+          return `set_${name}(${normalizedIndices}, ${value})`;
         }
       };
 
+      const setByIndices = (varIndices: string, value: string) => {
+        if (rank < 2) {
+          return setByOffset(varIndices, value);
+        } else {
+          return `set_${name}ByIndices(${varIndices}, ${value});`;
+        }
+      };
+
+      const funcImpls = {
+        offsetToIndices: offsetToIndicesImplementation,
+        indicesToOffset: indicesToOffsetImplementation,
+        set: setImplementation,
+        get: getImplementation,
+      };
+      const impl = (...functions: Array<keyof IndicesHelperImplementations>) => {
+        const impls = [];
+        if (functions.length === 0) {
+          functions.push('offsetToIndices', 'indicesToOffset', 'set', 'get');
+        }
+        for (const func of functions) {
+          const impl = funcImpls[func];
+          if (impl === undefined) {
+            throw new Error(`unknown function ${func}`);
+          } else {
+            impls.push(impl);
+          }
+        }
+        return impls.join('\n');
+      };
+      impl.toString = () => impl();
+
       return {
-        offsetToIndicesImplementation,
+        impl,
+        type,
         offsetToIndices,
-        indicesToOffsetImplementation,
         indicesToOffset,
-        indicesVariableDeclaration,
-        indicesType,
-        dataType,
-        isVec4,
-        usage: isInput ? 'input' : 'output',
-        name,
+        indices,
         indicesGet,
         indicesSet,
         set,
-        setImplementation,
         setByOffset,
+        setByIndices,
         get,
-        getImplementation,
         getByOffset,
+        getByIndices,
+        // isVec4,
+        usage: isInput ? 'input' : 'output',
+        name,
         shape
       };
     };
@@ -389,9 +453,8 @@ const createIndicesHelper =
  * @param shape - the tensor shape of the input.
  * @returns an IndicesHelper for the input.
  */
-export const inputVariable =
-    (name: string, type: number|string, shape: readonly number[], isVec4 = false): IndicesHelper =>
-        createIndicesHelper(name, type, shape, true, isVec4);
+export const inputVariable = (name: string, type: number, shape: readonly number[], isVec4 = false): IndicesHelper =>
+    createIndicesHelper(name, type, shape, true, isVec4);
 
 /**
  * Create a IndicesHelper for an output.
@@ -401,9 +464,8 @@ export const inputVariable =
  * @param shape - the tensor shape of the output.
  * @returns an IndicesHelper for the output.
  */
-export const outputVariable =
-    (name: string, type: number|string, shape: readonly number[], isVec4 = false): IndicesHelper =>
-        createIndicesHelper(name, type, shape, false, isVec4);
+export const outputVariable = (name: string, type: number, shape: readonly number[], isVec4 = false): IndicesHelper =>
+    createIndicesHelper(name, type, shape, false, isVec4);
 
 /**
  * A ShaderHelper is a helper class for generating WGSL code.
@@ -446,14 +508,6 @@ export interface ShaderHelper {
   guardAgainstOutOfBoundsWorkgroupSizes(size: unknown): string;
 
   /**
-   * A helper function to generate the code snippet for declaring an input or output.
-   *
-   * @param variable - the IndicesHelper for the variable.
-   * @param bindingIndex - the index of the variable binding.
-   */
-  declareVariable(variable: IndicesHelper, bindingIndex: number): string;
-
-  /**
    * A helper function to generate the code snippet for declaring multiple inputs or outputs.
    *
    * @param variables - an array of IndicesHelper for the variables.
@@ -493,7 +547,8 @@ class ShaderHelperImpl implements ShaderHelper {
 
   declareVariable(variable: IndicesHelper, bindingIndex: number): string {
     const access = variable.usage === 'input' ? 'read' : 'read_write';
-    return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${variable.dataType}>;`;
+    const storageType = variable.type.storage;
+    return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${storageType}>;`;
   }
 
   declareVariables(...variables: IndicesHelper[]): string {

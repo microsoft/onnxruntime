@@ -38,11 +38,11 @@ fn calculateOutputIndex(index: u32) -> u32 {
     }
     return ${numberOfTensors}u;
 }`;
-const writeBufferDataImpl = (indicesHelper: readonly IndicesHelper[]) => {
-  const numberOfTensors = indicesHelper.length;
+const writeBufferDataImpl = (outputs: readonly IndicesHelper[]) => {
+  const numberOfTensors = outputs.length;
   const codeLines: string[] = [];
   for (let i = 0; i < numberOfTensors; ++i) {
-    const returnSnippet = `output${i}[${indicesHelper[i].indicesToOffset('indices', true)}] = input[global_idx];`;
+    const returnSnippet = outputs[i].setByIndices('indices', 'input[global_idx]');
     if (numberOfTensors === 1) {
       codeLines.push(returnSnippet);
     } else if (i === 0) {
@@ -54,7 +54,7 @@ const writeBufferDataImpl = (indicesHelper: readonly IndicesHelper[]) => {
     }
   }
   return `
-      fn writeBufferData(outputNumber: u32, indices: ptr<function, ${indicesHelper[0].indicesType}>, global_idx: u32) {
+      fn writeBufferData(outputNumber: u32, indices: ${outputs[0].type.indices}, global_idx: u32) {
         ${codeLines.join('\n')}
       }`;
 };
@@ -67,10 +67,10 @@ const createSplitProgramInfo =
       const rank = inputShape.length;
       const axis = attributes.axis;
       const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
-      const outputIndicesHelpers = new Array<IndicesHelper>(attributes.numOutputs);
-      const inputIndicesHelper = inputVariable('input', dataType, inputShape);
+      const outputs = new Array<IndicesHelper>(attributes.numOutputs);
+      const input = inputVariable('input', dataType, inputShape);
       const sizeInConcatAxis = new Array<number>(attributes.numOutputs);
-      const outputs: TensorInfo[] = [];
+      const outputsTensorInfo: TensorInfo[] = [];
       const outputShapes: number[][] = [];
       let previousSum = 0;
       for (let i = 0; i < attributes.numOutputs; i++) {
@@ -79,33 +79,32 @@ const createSplitProgramInfo =
         const outputShape = inputShape.slice();
         outputShape[attributes.axis] = attributes.splitSizes[i];
         outputShapes.push(outputShape);
-        outputIndicesHelpers[i] = outputVariable(`output${i}`, dataType, outputShapes[i]);
-        outputs.push({dims: outputShapes[i], dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+        outputs[i] = outputVariable(`output${i}`, dataType, outputShapes[i]);
+        outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
       }
       const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-  ${shaderHelper.declareVariables(inputIndicesHelper, ...outputIndicesHelpers)}
-  ${inputIndicesHelper.offsetToIndicesImplementation}
-  ${outputIndicesHelpers.map(o => o.indicesToOffsetImplementation).join('\n')}
+  ${shaderHelper.declareVariables(input, ...outputs)}
+  ${input.impl('indicesToOffset', 'offsetToIndices', 'get')}
+  ${outputs.map(o => o.impl('indicesToOffset', 'set')).join('\n')}
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateOutputIndexImpl(sizeInConcatAxis.length)}
-  ${writeBufferDataImpl(outputIndicesHelpers)}
+  ${writeBufferDataImpl(outputs)}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(inputSize)}
 
-    ${inputIndicesHelper.indicesVariableDeclaration('indices')}
-    ${inputIndicesHelper.offsetToIndices('global_idx', 'indices')}
+    var indices = ${input.offsetToIndices('global_idx')};
     let outputNumber = calculateOutputIndex(${indicesAxis});
     if (outputNumber != 0) {
         ${indicesAxis} -= sizeInConcatAxis[outputNumber - 1u];
     }
-    writeBufferData(outputNumber, &indices, global_idx);
+    writeBufferData(outputNumber, indices, global_idx);
   }`;
       return {
         ...metadata,
         getShaderSource,
-        outputs,
+        outputs: outputsTensorInfo,
         dispatchGroup: () => ({x: Math.ceil(inputSize / 64 /* workgroup size */)})
       };
     };

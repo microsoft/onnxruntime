@@ -47,22 +47,21 @@ const createGroupedConvProgramInfo =
   ${shaderHelper.declareVariables(...inputVars, output)}
 
   ${activationFunction}
-  ${output.offsetToIndicesImplementation}
-  ${x.indicesToOffsetImplementation}
-  ${w.indicesToOffsetImplementation}
+  ${output.impl('offsetToIndices')}
+  ${x.impl('indicesToOffset', 'get')}
+  ${w.impl('indicesToOffset', 'get')}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-    ${output.indicesVariableDeclaration('outputIndices')}
-    ${output.offsetToIndices('global_idx', 'outputIndices')}
+    let outputIndices = ${output.offsetToIndices('global_idx')};
     let batch: u32 = outputIndices[0];
     let output_channel: u32 = outputIndices[${isChannelLast ? 3 : 1}];
     let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
           isChannelLast ? 2 : 3}]) * strides - pads;
     let group_id: u32 = output_channel / ${outputChannelsPerGroup}u;
 
-    var value: ${output.dataType} = ${output.dataType}(0);
+    var value: ${output.type.value} = ${output.type.value}(0);
     for (var wInChannel: u32 = 0u; wInChannel < ${wShape[1]}u; wInChannel++) {
       let input_channel = group_id * ${wShape[1]}u + wInChannel;
       for (var wHeight: u32 = 0u; wHeight < ${wShape[2]}u; wHeight++) {
@@ -78,26 +77,17 @@ const createGroupedConvProgramInfo =
             continue;
           }
 
-          ${
-          x.indicesVariableDeclaration(
-              'xIndices',
-              isChannelLast ? ['batch', 'xHeight', 'xWidth', 'input_channel'] :
-                              [
-                                'batch', 'input_channel', 'xHeight', 'xWidth'
-                              ])}
-          let xVal = x[${x.indicesToOffset('xIndices')}];
-          ${
-          w.indicesVariableDeclaration('wIndices', [
-            'output_channel', 'wInChannel', 'wHeight', 'wWidth'
-          ])}
-          let wVal = w[${w.indicesToOffset('wIndices')}];
+          let xVal = ${
+          isChannelLast ? x.get('batch', 'xHeight', 'xWidth', 'input_channel') :
+                          x.get('batch', 'input_channel', 'xHeight', 'xWidth')};
+          let wVal = ${w.get('output_channel', 'wInChannel', 'wHeight', 'wWidth')};
           value += xVal*wVal;
         }
       }
     }
     ${processBias}
     ${applyActivation}
-    output[global_idx] = value;
+    ${output.setByOffset('global_idx', 'value')}
   }`;
       return {
         ...metadata,

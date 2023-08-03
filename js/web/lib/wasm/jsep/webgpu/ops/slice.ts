@@ -78,8 +78,8 @@ const fixStartEndValues =
 
 const calculateInputIndicesImpl =
     (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[]):
-        string => `fn calculateInputIndices(outputIndices: ${output.indicesType}) -> ${input.indicesType} {
-          ${input.indicesVariableDeclaration('inputIndices')};
+        string => `fn calculateInputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
+          var inputIndices: ${input.type.indices};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
             var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
@@ -153,16 +153,14 @@ const createSliceProgramInfo =
         const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});
         const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
 
-        ${output.offsetToIndicesImplementation}
-        ${input.indicesToOffsetImplementation}
+        ${output.impl('offsetToIndices')}
+        ${input.impl('indicesToOffset', 'get')}
         ${calculateInputIndicesImpl(input, output, inputShape, outputShape)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-          ${output.indicesVariableDeclaration('outputIndices')}
-          ${output.offsetToIndices('global_idx', 'outputIndices')}
-          ${input.indicesVariableDeclaration('inputIndices')}
-          inputIndices = calculateInputIndices(outputIndices);
-          output[global_idx] = input[${input.indicesToOffset('inputIndices')}];
+          let outputIndices = ${output.offsetToIndices('global_idx')};
+          let inputIndices = calculateInputIndices(outputIndices);
+          ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
       }`;
       return {
         ...metadata,

@@ -64,10 +64,10 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     op1: string, op2: string, start: string): string => {
   const isChannelsLast = attributes.format === 'NHWC';
   const inputDims = x.shape;
-  const dataType = x.dataType;
+  const dataType = x.type.value;
   const rank = inputDims.length;
   const outputSize = ShapeUtil.size(outputShape);
-  const output = outputVariable('output', dataType, outputShape);
+  const output = outputVariable('output', x.type.tensor, outputShape);
 
   if (attributes.kernelShape.length <= 2) {
     const kw = attributes.kernelShape[attributes.kernelShape.length - 1];
@@ -128,16 +128,14 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     const poolingCode = `
             ${shaderHelper.declareVariables(x, output)}
 
-            ${output.offsetToIndicesImplementation}
-            ${x.indicesToOffsetImplementation}
+            ${output.impl('offsetToIndices')}
+            ${x.impl('indicesToOffset')}
 
             ${shaderHelper.mainStart()}
               ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-              ${output.indicesVariableDeclaration('indices')}
-              ${output.offsetToIndices('global_idx', 'indices')}
-              ${output.indicesVariableDeclaration('xIndices')}
-              ${output.offsetToIndices('global_idx', 'xIndices')}
+              let indices = ${output.offsetToIndices('global_idx')};
+              var xIndices = ${output.offsetToIndices('global_idx')};
 
               var value: ${dataType} = ${dataType}(${start});
               var pad = 0;
@@ -181,8 +179,8 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     const poolingCode = `
             ${shaderHelper.declareVariables(x, output)}
 
-            ${output.offsetToIndicesImplementation}
-            ${x.indicesToOffsetImplementation}
+            ${output.impl('offsetToIndices')}
+            ${x.impl('indicesToOffset')}
 
             const pads = array<u32, ${padsRank}>(${attributes.pads.map(i => `${i}u`).join(',')});
             const inputDims = array<u32, ${rank}>(${inputDims.map(i => `${i}u`).join(',')});
@@ -192,14 +190,12 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
             ${shaderHelper.mainStart()}
               ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-              ${output.indicesVariableDeclaration('indices')}
-              ${output.offsetToIndices('global_idx', 'indices')}
-              ${output.indicesVariableDeclaration('xIndices')}
-              ${output.offsetToIndices('global_idx', 'xIndices')}
+              let indices = ${output.offsetToIndices('global_idx')};
+              let xIndices = ${output.offsetToIndices('global_idx')};
 
               var offsets: array<u32, ${stridesRank}>;
 
-              var value = ${output.dataType}(${start});
+              var value = ${output.type.value}(${start});
               var pad = 0;
               var isPad = false;
 

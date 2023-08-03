@@ -63,8 +63,8 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
   const output = outputVariable('output', dataType, outputShape);
 
   const calculateInputIndexImpl = (): string => `
-  fn calculateInputIndex(outputIndices: array<u32, ${outputShape.length}>) -> array<u32,${inputShape.length}> {
-    ${input.indicesVariableDeclaration('inputIndices')}
+  fn calculateInputIndex(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
+    var inputIndices: ${input.type.indices};
     for (var i = 0; i < ${inputShape.length}; i++) {
         if (inputShape[i] == 1) {
             inputIndices[i] = 0;
@@ -79,15 +79,12 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
   const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
   ${calculateInputIndexImpl()};
   ${shaderHelper.declareVariables(input, output)}
-  ${output.offsetToIndicesImplementation}
-  ${input.indicesToOffsetImplementation}
+  ${output.impl('offsetToIndices')}
+  ${input.impl('indicesToOffset', 'get')}
   ${shaderHelper.mainStart()}
   ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-  ${input.indicesVariableDeclaration('inputIndices')}
-  ${output.indicesVariableDeclaration('outputIndices')}
-  ${output.offsetToIndices('global_idx', 'outputIndices')}
-  inputIndices = calculateInputIndex(outputIndices);
-  output[global_idx] = input[${input.indicesToOffset('inputIndices')}];
+  let inputIndices = calculateInputIndex(${output.offsetToIndices('global_idx')});
+  ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
 }`;
   return {
     ...metadata,

@@ -248,7 +248,7 @@ const adjustOutputShape =
 const calculateOriginalIndicesFromOutputIndices =
     (output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[],
      roi: readonly number[]): string => `
-    fn calculateOriginalIndicesFromOutputIndices(outputIndices: ${output.indicesType}) -> array<f32, ${
+    fn calculateOriginalIndicesFromOutputIndices(outputIndices: ${output.type.indices}) -> array<f32, ${
         outputShape.length}> {
       const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
       const outputShape = array<u32, ${outputShape.length}>(${outputShape.map(i => `${i}u`).join(',')});
@@ -270,13 +270,13 @@ const calculateOriginalIndicesFromOutputIndices =
 const calculateInputIndicesFromOutputIndices =
     (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[],
      scales: readonly number[], roi: readonly number[], useExtrapolation: boolean): string => `
-    fn calculateInputIndicesFromOutputIndices(outputIndices: ${output.indicesType}) -> array<u32, ${
+    fn calculateInputIndicesFromOutputIndices(outputIndices: ${output.type.indices}) -> array<u32, ${
         inputShape.length}> {
         const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
         const outputShape = array<u32, ${outputShape.length}>(${outputShape.map(i => `${i}u`).join(',')});
         const scales = array<f32, ${scales.length}>(${scales.map(i => `${i}f`).join(',')});
         const roi = array<f32, ${roi.length}>(${roi.map(i => `${i}f`).join(',')});
-        var inputIndices: ${input.indicesType};
+        var inputIndices: ${input.type.indices};
         for (var i:u32 = 0; i < ${outputShape.length}; i++) {
           var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
           var inputIndex: u32;
@@ -303,7 +303,7 @@ const calculateInputIndicesFromOutputIndices =
     }`;
 
 const checkInputIndices = (input: IndicesHelper, inputShape: readonly number[]): string => `
-    fn checkInputIndices(inputIndices: ${input.indicesType}) -> bool {
+    fn checkInputIndices(inputIndices: ${input.type.indices}) -> bool {
       const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
       for (var i:u32 = 0; i < ${inputShape.length}; i++) {
         var inputIndex = ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'};
@@ -321,7 +321,7 @@ const bilinearInterpolation =
           inputShape.length === 2 ? [-1, 0, 1, -1] : (scales[1] === 1.0 ? [0, 2, 3, 1] : [0, 1, 2, 3]);
       return `
     fn getInputValue(batch: u32, channel: u32, row: u32, col: u32) -> f32 {
-      var inputIndices: ${input.indicesType};
+      var inputIndices: ${input.type.indices};
       inputIndices[${heightIdx}] = max(0, min(row, ${inputShape[heightIdx]} - 1));
       inputIndices[${widthIdx}] = max(0, min(col, ${inputShape[widthIdx]} - 1));
       if (${inputShape.length} > 2) {
@@ -331,7 +331,7 @@ const bilinearInterpolation =
       return input[${input.indicesToOffset('inputIndices')}];
     }
 
-    fn bilinearInterpolation(outputIndices: ${output.indicesType}) -> f32 {
+    fn bilinearInterpolation(outputIndices: ${output.type.indices}) -> f32 {
       var originalIndices = calculateOriginalIndicesFromOutputIndices(outputIndices);
       var row:f32 = originalIndices[${heightIdx}];
       var col:f32 = originalIndices[${widthIdx}];
@@ -372,8 +372,8 @@ const bicubicInterpolation =
       const createCubicInterpolationFunction = (idx: number): string => {
         const direction = idx === heightIdx ? 'row' : 'col';
         return `
-      fn ${direction}CubicInterpolation(inputIndices: ${input.indicesType}, outputIndices: ${
-            output.indicesType}) -> f32 {
+      fn ${direction}CubicInterpolation(inputIndices: ${input.type.indices}, outputIndices: ${
+            output.type.indices}) -> f32 {
         var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : `outputIndices[${idx}]`};
         var originalIdx: f32 = getOriginalCoordinateFromResizedCoordinate(f32(outputIndex), ${scales[idx]},
         f32(${outputShape[idx]}), f32(${inputShape[idx]}), ${roi[idx]}, ${roi[idx]} + ${inputShape.length});
@@ -396,7 +396,7 @@ const bicubicInterpolation =
               ${direction} = max(0, min(${direction}, ${inputShape[idx]} - 1));
             }
           }
-          var inputIndicesCopy: ${input.indicesType} = inputIndices;
+          var inputIndicesCopy: ${input.type.indices} = inputIndices;
           inputIndicesCopy[${idx}] = u32(${direction});
           data[i + 1] = ${idx === heightIdx ? `input[${input.indicesToOffset('inputIndicesCopy')}];` : `
                                                rowCubicInterpolation(inputIndicesCopy, outputIndices);`}
@@ -428,8 +428,8 @@ const bicubicInterpolation =
     return (x[0] * coefs[0] + x[1] * coefs[1]+ x[2] * coefs[2]+ x[3] * coefs[3]) / coefsSum;
   }
 
-  fn bicubicInterpolation(outputIndices: ${output.indicesType}) -> f32 {
-    var inputIndices: ${input.indicesType} = outputIndices;
+  fn bicubicInterpolation(outputIndices: ${output.type.indices}) -> f32 {
+    var inputIndices: ${input.type.indices} = outputIndices;
     return colCubicInterpolation(inputIndices, outputIndices);
   }
     `;
@@ -485,16 +485,15 @@ const createResizeProgramInfo =
         }
       })()};
       ${shaderHelper.declareVariables(input, output)}
-      ${output.offsetToIndicesImplementation}
-      ${input.indicesToOffsetImplementation}
+      ${output.impl('offsetToIndices')}
+      ${input.impl('indicesToOffset')}
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
         if (${noScale}) {
           output[global_idx] = input[global_idx];
         } else {
-          ${output.indicesVariableDeclaration('outputIndices')}
-          ${output.offsetToIndices('global_idx', 'outputIndices')}
-          ${input.indicesVariableDeclaration('inputIndices')}
+          let outputIndices = ${output.offsetToIndices('global_idx')};
+          var inputIndices: ${input.type.indices};
           ${(() => {
         switch (attributes.mode) {
           case 'nearest':

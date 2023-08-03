@@ -51,7 +51,7 @@ const readBufferDataImpl = (inputs: readonly IndicesHelper[], _tensorRank: numbe
   const codeLines: string[] = [];
   for (let i = 0; i < numberOfTensors; ++i) {
     // const returnSnippet = `return input${i}[${inputs[i].indicesToOffset('indices', true)}];`;
-    const returnSnippet = `return ${inputs[i].get('indices')};`;
+    const returnSnippet = `return ${inputs[i].getByIndices('indices')};`;
     if (numberOfTensors === 1) {
       codeLines.push(returnSnippet);
     } else if (i === 0) {
@@ -63,7 +63,7 @@ const readBufferDataImpl = (inputs: readonly IndicesHelper[], _tensorRank: numbe
     }
   }
   return `
-    fn readBufferData(inputIndex: u32, indices: ptr<function, ${inputs[0].indicesType}>) -> ${inputs[0].dataType} {
+    fn readBufferData(inputIndex: u32, indices: ${inputs[0].type.indices}) -> ${inputs[0].type.value} {
       ${codeLines.join('\n')}
     }`;
 };
@@ -113,9 +113,8 @@ const createConcatProgramInfo =
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.declareVariables(...inputVars, output)}
 
-  ${inputVars.map(i => i.indicesToOffsetImplementation).join('\n')}
-  ${inputVars.map(i => i.getImplementation).join('\n')}
-  ${output.offsetToIndicesImplementation}
+  ${inputVars.map(i => i.impl('indicesToOffset', 'get')).join('\n')}
+  ${output.impl('offsetToIndices')}
 
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
@@ -124,15 +123,14 @@ const createConcatProgramInfo =
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-    ${output.indicesVariableDeclaration('indices')}
-    ${output.offsetToIndices('global_idx', 'indices')}
+    let indices = ${output.offsetToIndices('global_idx')};
 
     let inputIndex = calculateInputIndex(${indicesAxis});
     if (inputIndex != 0u) {
       ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1u];
     }
 
-    output[global_idx] = readBufferData(inputIndex, &indices);
+    output[global_idx] = readBufferData(inputIndex, indices);
   }`;
       return {
         ...metadata,
