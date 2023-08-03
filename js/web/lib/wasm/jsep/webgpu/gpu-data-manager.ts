@@ -157,6 +157,7 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     let gpuBuffer;
     // Currently, only storage buffers are reused.
+    // eslint-disable-next-line no-bitwise
     if ((usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
       let buffers = this.freeBuffers.get(bufferSize);
       if (!buffers) {
@@ -248,6 +249,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     }
     this.buffersForUploadingPending = [];
     for (const buffer of this.buffersPending) {
+      // eslint-disable-next-line no-bitwise
       if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
         // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
         this.freeBuffers.get(buffer.size)!.push(buffer);

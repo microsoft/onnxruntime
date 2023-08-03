@@ -62,8 +62,8 @@ export class ProgramManager {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (computePassEncoder as any).writeTimestamp(this.backend.profilingQuerySet, 1);
       if (this.backend.profilingQueryData == null) {
-        // eslint-disable-next-line no-bitwise
         this.backend.profilingQueryData =
+            // eslint-disable-next-line no-bitwise
             this.backend.gpuDataManager.create(16, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
       }
       // eslint-disable-next-line no-bitwise
