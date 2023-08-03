@@ -172,14 +172,26 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
         attributes.autoPad === 'NOTSET'))) {
     if (isChannelsLast && attributes.group === 1) {
       // conv2dByMatMul
+      const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
+          context.compute(
+              {
+                ...transposeProgramMetadata,
+                cacheHint: weightTransposeAttribute.cacheKey,
+                get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
+              },
+              {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
+      if (attributes.wIsConst && !context.kernelCustomData.wT) {
+        context.kernelCustomData.wT = transposedWeight;
+      }
+
       const matmulInputs = [];
       matmulInputs.push(inputs[0].reshape([batch, inputHeight * inputWidth, inputChannels]));
-      matmulInputs.push(inputs[1].reshape([1, outChannels, inputChannels]));
+      matmulInputs.push(transposedWeight.reshape([1, inputChannels, outChannels]));
       if (hasBias) {
         matmulInputs.push(inputs[2]);
       }
       context.compute(
-          createMatmulProgramInfoLoader(matmulInputs, adjustedAttributes, outputShape, true), {inputs: matmulInputs});
+          createMatmulProgramInfoLoader(matmulInputs, adjustedAttributes, outputShape, false), {inputs: matmulInputs});
     } else {
       context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
     }
