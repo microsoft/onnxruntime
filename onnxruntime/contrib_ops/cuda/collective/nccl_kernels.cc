@@ -14,6 +14,9 @@ namespace cuda {
 static ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   if (type == DataTypeImpl::GetType<uint8_t>()) {
     return ncclUint8;
+  } else if (type == DataTypeImpl::GetType<bool>()) {
+    // CUDA bool is 8-bit large.
+    return ncclUint8;
   } else if (type == DataTypeImpl::GetType<int8_t>()) {
     return ncclInt8;
   } else if (type == DataTypeImpl::GetType<int32_t>()) {
@@ -226,7 +229,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .AllocateInputsContiguously()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     AllGather);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -237,7 +240,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     AllToAll);
 
 }  // namespace cuda
