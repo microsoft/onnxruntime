@@ -7,7 +7,7 @@ const config = {
             '--ignore-gpu-blocklist',
 			"--gpu-vendor-id=0x10de"
         ],
-        headless: true
+        headless: false
     }
   }
 }
