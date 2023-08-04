@@ -345,13 +345,6 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
     ortmodule.forward = pytorch_module.forward
 
 
-def warn_of_constant_inputs(data, logger: logging.Logger):
-    logger.info(
-        f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
-        " Please consider moving constant arguments to the model constructor."
-    )
-
-
 def patch_torch_module_ort_forward_method(torch_module_ort):
     def _forward(self, *inputs, **kwargs):
         """Forward pass starts here and continues at `_ORTModuleFunction.forward`
