@@ -19,7 +19,7 @@ parameters:
 
 - name: device
   type: string
-  default: '-d CPU'
+  default: 'CPU'
 
 - name: with_cache
   type: boolean
@@ -73,7 +73,7 @@ jobs:
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuilpython${{ parameters.arch }} -d "-d ${{ parameters.device }}" -x "-x ${{ parameters.extra_build_arg }}"
+              arguments: -i onnxruntimecpubuilpython${{ parameters.arch }} -d "${{ parameters.device }}" -x "${{ parameters.extra_build_arg }}"
             ${{ if eq(parameters.with_cache, 'true') }}:
               env:
                 ADDITIONAL_DOCKER_PARAMETER: "--volume $(ORT_CACHE_DIR):/cache -e CCACHE_DIR=/cache -e ORT_BUILD_WITH_CACHE=1"
