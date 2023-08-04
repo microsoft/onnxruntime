@@ -4,10 +4,11 @@
 # --------------------------------------------------------------------------
 
 # This script is used to add trigger rules to the workflow files.
-# The working directory should be in tools/ci_build/github/azure-pipelines
 
 
 import multiprocessing
+import os
+from os.path import abspath, dirname
 
 
 def add_trigger_filter(file_name, trigger_lines):
@@ -30,9 +31,13 @@ def add_trigger_filter(file_name, trigger_lines):
 
     with open(file_name, "w") as f:
         f.writelines(lines)
+        print("Added trigger rules to file: " + file_name)
 
 
 def main():
+    working_dir = os.path.join(dirname(abspath(__file__)), "github/azure-pipelines")
+    os.chdir(working_dir)
+
     workflow_files = ["linux-gpu-ci-pipeline.yml", "win-gpu-ci-pipeline.yml"]
 
     trigger_file = "trigger-template.yml"
