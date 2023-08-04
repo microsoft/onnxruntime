@@ -6,6 +6,7 @@
 # This script is used to add trigger rules to the workflow files.
 # The working directory should be in tools/ci_build/github/azure-pipelines
 
+
 import multiprocessing
 
 
@@ -27,9 +28,9 @@ def add_trigger_filter(file_name, trigger_lines):
         trigger_lines.extend(end_marker + "\n")
         lines[0:0] = trigger_lines
 
-
     with open(file_name, "w") as f:
         f.writelines(lines)
+
 
 def main():
     workflow_files = ["linux-gpu-ci-pipeline.yml", "win-gpu-ci-pipeline.yml"]
@@ -42,6 +43,7 @@ def main():
     pool.starmap(add_trigger_filter, [(file, trigger_lines) for file in workflow_files])
     pool.close()
     pool.join()
+
 
 if __name__ == "__main__":
     main()
