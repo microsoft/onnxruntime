@@ -1994,5 +1994,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
   return {NodeDef(OpDef{"LSTMGrad", kMSDomain, 1}, input_args, output_args, SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
+  // y = 1 / x
+  // dy/dx = -1 / x^2
+  // dL/dx = dL/dy * dy/dx = dL/dy * (-1 / x^2)
+  return {NodeDef("Mul", {O(0), O(0)}, {IA("Square_O0")}),
+          NodeDef("Neg", {IA("Square_O0")}, {IA("Neg_Square_O0")}),
+          NodeDef("Mul", {GO(0), IA("Neg_Square_O0")}, {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime
