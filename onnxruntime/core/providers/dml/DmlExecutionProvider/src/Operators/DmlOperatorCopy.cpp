@@ -29,54 +29,43 @@ public:
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
         ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
 
-        // We don't need to compile any operator if the input aliases the output as it is essentially a no-op
-        // (e.g. squeeze/unsqueeze/reshape). An exception to this rule is when the operator is part of the graph,
-        // in which case we always need to compile and execute the operator (although this is something that we
-        // could optimize in the future).
-        if (!contextPrivate->IsDmlGraphNode())
-        {
-            std::vector<uint32_t> outputSizes = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
-            std::vector<int64_t> outputSizesInt64(outputSizes.begin(), outputSizes.end());
-            onnxruntime::TensorShape outputShape(outputSizesInt64);
-            ORT_THROW_IF_FAILED(kernelInfo.GetNodeWrapperInterface()->InputAliasesOutput(0, 0, outputShape, &m_aliasing));
-            ORT_THROW_IF_FAILED(kernelInfo.GetNodeWrapperInterface()->InputSharesOutputBuffer(0, 0, outputShape, &m_inputSharesOutputBuffer));
-        }
+        // Although we always compile the operator because we don't know where the memory will be allocated in the future,
+        // we may not always end up executing it.
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        if (contextPrivate->IsDmlGraphNode() || (!m_aliasing && m_inputSharesOutputBuffer))
-        {
-            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
+        opDesc.InputTensor = inputDescs.data();
+        opDesc.OutputTensor = outputDescs.data();
 
-            DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
-            opDesc.InputTensor = inputDescs.data();
-            opDesc.OutputTensor = outputDescs.data();
-
-            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IDENTITY, &opDesc }, kernelInfo);
-        }
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IDENTITY, &opDesc }, kernelInfo);
     }
 
     void Compute(const MLOperatorKernelContext& kernelContext) final
     {
-        // If the input is aliasing the output, we don't need to do anything here
-        if (m_aliasing)
-        {
-            return;
-        }
-
-        // If the input and the output share the same buffer, we need to do an identity operation
-        if (m_inputSharesOutputBuffer)
-        {
-            DmlOperator::Compute(kernelContext);
-            return;
-        }
-
-        // If the input and the output don't share the same buffer, we can do a standard copy operation instead
         MLOperatorTensor inputTensor = kernelContext.GetInputTensor(0);
         MLOperatorTensor outputTensor = kernelContext.GetOutputTensor(0);
 
-        ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
-            outputTensor.GetInterface().Get(),
-            inputTensor.GetInterface().Get()));
+        // If the input is aliasing the output (i.e. they share the same resource at the same offset),
+        // we don't need to do anything. This is essentially a no-op.
+        if (inputTensor.GetByteData() == outputTensor.GetByteData())
+        {
+            return;
+        }
+
+        // If the input is not aliasing the output but shares the same resource, we have to use an Identity operation
+        // because the resource cannot simultaneously be in both the COPY_SOURCE and COPY_DEST states.
+        if (inputTensor.GetDataInterface().Get() == outputTensor.GetDataInterface().Get())
+        {
+            DmlOperator::Compute(kernelContext);
+        }
+        else
+        {
+            // The input and the output don't share the same resource, so we can do a simple copy.
+            ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
+                outputTensor.GetInterface().Get(),
+                inputTensor.GetInterface().Get()));
+        }
     }
 
 private:

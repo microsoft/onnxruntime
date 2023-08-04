@@ -1335,67 +1335,6 @@ namespace Windows::AI::MachineLearning::Adapter
         return m_allowOutputShapeQuery;
     }
 
-    HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::InputAliasesOutput(
-        uint32_t inputIndex,
-        uint32_t outputIndex,
-        const onnxruntime::TensorShape& outputShape,
-        bool* aliasing) noexcept
-    {
-        ORT_TRY
-        {
-            if (!m_kernelContext)
-            {
-                *aliasing = false;
-                return S_OK;
-            }
-
-            auto inputData = m_kernelContext->Input<onnxruntime::Tensor>(inputIndex)->DataRaw();
-            auto outputData = m_kernelContext->Output(outputIndex, outputShape)->DataRaw();
-            *aliasing = inputData == outputData;
-            return S_OK;
-        }
-        ORT_CATCH_RETURN
-    }
-
-    HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::InputSharesOutputBuffer(
-        uint32_t inputIndex,
-        uint32_t outputIndex,
-        const onnxruntime::TensorShape& outputShape,
-        bool* sharesOutputBuffer) noexcept
-    {
-        ORT_TRY
-        {
-            if (!m_kernelContext)
-            {
-                *sharesOutputBuffer = false;
-                return S_OK;
-            }
-
-            auto inputTensor = const_cast<onnxruntime::Tensor*>(m_kernelContext->Input<onnxruntime::Tensor>(inputIndex));
-            auto outputTensor = m_kernelContext->Output(outputIndex, outputShape);
-
-            // Null input or output data means that the tensors are empty (i.e. one of the dimensions is 0)
-            if (inputTensor->DataRaw() == nullptr || outputTensor->DataRaw() == nullptr)
-            {
-                *sharesOutputBuffer = false;
-                return S_OK;
-            }
-
-            auto inputWrapper = wil::MakeOrThrow<TensorWrapper>(inputTensor, true, m_winmlProvider.Get(), true);
-            auto outputWrapper = wil::MakeOrThrow<TensorWrapper>(outputTensor, true, m_winmlProvider.Get(), true);
-
-            ComPtr<IUnknown> inputResource;
-            inputWrapper->GetDataInterface(inputResource.GetAddressOf());
-
-            ComPtr<IUnknown> outputResource;
-            outputWrapper->GetDataInterface(outputResource.GetAddressOf());
-
-            *sharesOutputBuffer = inputResource.Get() == outputResource.Get();
-            return S_OK;
-        }
-        ORT_CATCH_RETURN
-    }
-
     DmlGraphOpKernelInfoWrapper::DmlGraphOpKernelInfoWrapper(
         const onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* protoHelper,
         const void* executionHandle,

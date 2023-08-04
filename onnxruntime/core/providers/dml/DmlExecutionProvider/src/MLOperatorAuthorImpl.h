@@ -405,18 +405,6 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         return m_winmlProvider.CopyTo(executionProvider);
     }
 
-    HRESULT STDMETHODCALLTYPE InputAliasesOutput(
-        uint32_t inputIndex,
-        uint32_t outputIndex,
-        const onnxruntime::TensorShape& outputShape,
-        bool* aliasing) noexcept override;
-
-    HRESULT STDMETHODCALLTYPE InputSharesOutputBuffer(
-        uint32_t inputIndex,
-        uint32_t outputIndex,
-        const onnxruntime::TensorShape& outputShape,
-        bool* sharesOutputBuffer) noexcept override;
-
 private:
     // For shape info, in addition to the info
     const EdgeShapes* m_inferredOutputShapes = nullptr;
