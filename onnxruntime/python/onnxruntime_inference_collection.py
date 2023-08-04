@@ -228,6 +228,36 @@ class Session:
                 return self._sess.run(output_names, input_feed, run_options)
             raise
 
+    def run_async(self, output_names, input_feed, callback, user_data, run_options=None):
+        """
+        Compute the predictions asynchronously in a separate cxx thread from ort intra-op threadpool.
+
+        :param output_names: name of the outputs
+        :param input_feed: dictionary ``{ input_name: input_value }``
+        :param callback: python function that accept array of results, and a status string on error.
+            The callback will be invoked by a cxx thread from ort intra-op threadpool.
+        :param run_options: See :class:`onnxruntime.RunOptions`.
+
+        ::
+            class MyData:
+                def __init__(self):
+                    # ...
+                def save_results(self, results):
+                    # ...
+
+            def callback(results: np.ndarray, user_data: MyData, err: str) -> None:
+              if err:
+                 print (err)
+              else:
+                # save results to user_data
+
+            sess.run_async([output_name], {input_name: x}, callback)
+        """
+        self._validate_input(list(input_feed.keys()))
+        if not output_names:
+            output_names = [output.name for output in self._outputs_meta]
+        return self._sess.run_async(output_names, input_feed, callback, user_data, run_options)
+
     def run_with_ort_values(self, output_names, input_dict_ort_values, run_options=None):
         """
         Compute the predictions.

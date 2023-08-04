@@ -210,7 +210,7 @@ export class BroadcastUtil {
 
       // both inputs are scalars
       if (outputShape.length === 0) {
-        c.set([], op(a.get([]), b.get([])));
+        c.set([], op(a.get([]) as number, b.get([]) as number));
       }
 
       // atleast one input is a non-scalar
@@ -223,11 +223,11 @@ export class BroadcastUtil {
         let isAScalar = false;
         let isBScalar = false;
         if (a.dims.length === 0) {
-          valA = a.get([]);
+          valA = a.get([]) as number;
           isAScalar = true;
         }
         if (b.dims.length === 0) {
-          valB = b.get([]);
+          valB = b.get([]) as number;
           isBScalar = true;
         }
         let rest: number;
@@ -242,11 +242,11 @@ export class BroadcastUtil {
           if (!isAScalar) {
             // map outputIndices (which is actually broadcasted) to the originalIndices
             BroadcastUtil.fillIndex(outputIndices, a.dims, originalIndicesA);
-            valA = a.get(originalIndicesA);
+            valA = a.get(originalIndicesA) as number;
           }
           if (!isBScalar) {
             BroadcastUtil.fillIndex(outputIndices, b.dims, originalIndicesB);
-            valB = b.get(originalIndicesB);
+            valB = b.get(originalIndicesB) as number;
           }
 
           c.set(outputIndices, op(valA, valB));

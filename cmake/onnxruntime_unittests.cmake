@@ -842,6 +842,8 @@ if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 if (UNIX AND onnxruntime_USE_TENSORRT)
+    # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+    # simply ignore them for TensorRT EP build
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
 endif()
 
@@ -1276,6 +1278,12 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         $<TARGET_FILE_DIR:onnxruntime_shared_lib_test>/testdata)
     endif()
 
+    if (UNIX AND onnxruntime_USE_TENSORRT)
+        # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+        # simply ignore them for TensorRT EP build
+        set_property(TARGET onnxruntime_shared_lib_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+    endif()
+
     # test inference using global threadpools
     if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS" AND NOT onnxruntime_MINIMAL_BUILD)
       AddTest(DYN
@@ -1531,6 +1539,13 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         ${TEST_DATA_SRC}
         $<TARGET_FILE_DIR:onnxruntime_customopregistration_test>/testdata)
     endif()
+
+    if (UNIX AND onnxruntime_USE_TENSORRT)
+        # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+        # simply ignore them for TensorRT EP build
+        set_property(TARGET onnxruntime_customopregistration_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+    endif()
+
   endif()
 endif()
 
