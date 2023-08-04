@@ -9,6 +9,7 @@
 #include "core/framework/tuning_context_impl.h"
 #undef TUNING_CONTEXT_IMPL
 #include <core/providers/cuda/cuda_execution_provider.h>
+#include <core/providers/cuda/cuda_stream_handle.h>
 
 namespace onnxruntime {
 namespace cuda {
@@ -106,6 +107,22 @@ const TuningResultsManager& CudaTuningContext::GetTuningResultsManager() const {
 
 const TuningResultsValidator& CudaTuningContext::GetTuningResultsValidator() const {
   return validator_;
+}
+
+IAllocatorUniquePtr<void> CudaTuningContext::GetScratchBuffer(
+    size_t num_bytes, cudaStream_t stream, OrtMemType mem_type) const {
+  if (num_bytes == 0) {
+    return nullptr;
+  }
+
+  OrtDevice dev = ep_->GetOrtDeviceByMemType(mem_type);
+  auto it = allocators_->find(dev);
+  if (it == allocators_->end()) {
+    return nullptr;
+  }
+
+  Stream ort_stream{stream, dev};
+  return IAllocator::MakeUniquePtr<void>(it->second, num_bytes, false, &ort_stream, WaitCudaNotificationOnDevice);
 }
 
 }  // namespace tunable

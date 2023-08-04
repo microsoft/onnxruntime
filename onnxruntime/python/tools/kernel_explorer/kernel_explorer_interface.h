@@ -66,6 +66,14 @@ class IKernelExplorer {
     std::call_once(ep_create_once_, [this]() {
       ExecutionProviderInfo info{};
       this->ep_ = std::make_unique<ExecutionProvider>(info);
+      auto allocators = this->ep_->CreatePreferredAllocators();
+      for (auto& alloc : allocators) {
+        this->allocators_.insert({alloc->Info().device, alloc});
+      }
+      auto tuning_ctx = this->ep_->GetTuningContext();
+      if (nullptr != tuning_ctx) {
+        tuning_ctx->RegisterAllocatorsView(&this->allocators_);
+      }
     });
     return ep_.get();
   }
@@ -79,6 +87,7 @@ class IKernelExplorer {
  private:
   std::once_flag ep_create_once_;
   std::unique_ptr<ExecutionProvider> ep_{};
+  std::map<OrtDevice, AllocatorPtr> allocators_;
   StreamT stream_{0};
   int repeats_{100};
 };

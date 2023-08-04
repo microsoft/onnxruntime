@@ -9,6 +9,7 @@
 #include "core/framework/tuning_context_impl.h"
 #undef TUNING_CONTEXT_IMPL
 #include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_stream_handle.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -132,6 +133,22 @@ const TuningResultsManager& RocmTuningContext::GetTuningResultsManager() const {
 
 const TuningResultsValidator& RocmTuningContext::GetTuningResultsValidator() const {
   return validator_;
+}
+
+IAllocatorUniquePtr<void> RocmTuningContext::GetScratchBuffer(
+    size_t num_bytes, hipStream_t stream, OrtMemType mem_type) const {
+  if (num_bytes == 0) {
+    return nullptr;
+  }
+
+  OrtDevice dev = ep_->GetOrtDeviceByMemType(mem_type);
+  auto it = allocators_->find(dev);
+  if (it == allocators_->end()) {
+    return nullptr;
+  }
+
+  Stream ort_stream{stream, dev};
+  return IAllocator::MakeUniquePtr<void>(it->second, num_bytes, false, &ort_stream, WaitRocmNotificationOnDevice);
 }
 
 }  // namespace tunable
