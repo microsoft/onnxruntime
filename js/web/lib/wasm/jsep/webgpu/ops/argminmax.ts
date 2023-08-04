@@ -10,7 +10,7 @@ import {TensorView} from '../../tensor';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {ReduceOp, createReduceProgramInfo} from './reduce';
+import {createReduceProgramInfo, ReduceOp} from './reduce';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length === 0 || inputs.length > 2) {
@@ -44,10 +44,7 @@ const createReduceProgramInfoLoader =
           return {
             ...metadata,
             get: () => createReduceProgramInfo(
-                metadata, [inputs[0]],
-                reduceOp,
-                [updatedAttributes.axis],
-                DataType.int64,
+                metadata, [inputs[0]], reduceOp, [updatedAttributes.axis], DataType.int64,
                 false,  // noOpWithEmptyAxes
                 updatedAttributes.keepDims)
           };
@@ -67,9 +64,7 @@ export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       `${idxZero.join('\n')}`, 'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
       `if (_A[inputIdx] ${
           attributes.selectLastIndex > 0 ? '<=' : '<'} value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);} `,
-      '',
-      'output[global_idx*2] = bestIndex;',
-      'output[global_idx*2+1] = 0;'
+      '', 'output[global_idx*2] = bestIndex;', 'output[global_idx*2+1] = 0;'
     ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ArgMin', attributes, argMinMaxOp), {inputs: [0]});
@@ -88,9 +83,7 @@ export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       `${idxZero.join('\n')}`, 'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
       `if (_A[inputIdx] ${
           attributes.selectLastIndex > 0 ? '>=' : '>'} value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);}`,
-      '',
-      'output[global_idx*2] = bestIndex;',
-      'output[global_idx*2+1] = 0;'
+      '', 'output[global_idx*2] = bestIndex;', 'output[global_idx*2+1] = 0;'
     ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'argMax', attributes, argMinMaxOp), {inputs: [0]});
