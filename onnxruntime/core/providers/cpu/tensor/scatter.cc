@@ -339,7 +339,7 @@ Status ScatterData(
   //    output[i][indices[i][j][k]][k] = updates[i][j][k]
   // and so on
   std::vector<int64_t> dim_block_size(num_dims);
-#if __GNUC__ >= 12
+#if defined(__GNUC__) and __GNUC__ >= 12
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds" // This warning occur when upgrading to gcc 12
   dim_block_size.back() = 1;
