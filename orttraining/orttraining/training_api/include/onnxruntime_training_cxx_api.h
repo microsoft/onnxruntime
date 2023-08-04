@@ -183,17 +183,13 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
    * \param[in] session_options SessionOptions that the user can customize for this training session.
    * \param[in] checkpoint_state Training states that the training session uses as a starting point for training.
    * \param[in] train_model_data Buffer containing training model data.
-   * \param[in] train_model_data_length Length of the train_model_data buffer.
    * \param[in] eval_model_data Buffer containing evaluation model data.
-   * \param[in] eval_model_data_length Length of the eval_model_data buffer.
    * \param[in] optim_model_data Buffer containing optimizer model (used for performing weight/parameter update).
-   * \param[in] optim_model_data_length Length of the optim_model_data buffer.
    *
    */
   TrainingSession(const Env& env, const SessionOptions& session_options, CheckpointState& checkpoint_state,
-                  const void* train_model_data, size_t train_model_data_length,
-                  const void* eval_model_data = nullptr, size_t eval_model_data_length = 0,
-                  const void* optim_model_data = nullptr, size_t optim_model_data_length = 0);
+                  const std::vector<uint8_t>& train_model_data, const std::vector<uint8_t>& eval_model_data = {},
+                  const std::vector<uint8_t>& optim_model_data = {});
   /// @}
 
   /// \name Implementing The Training Loop

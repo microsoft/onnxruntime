@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/session/inference_session.h"
-#include "utils.h"
+#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -74,6 +74,7 @@ struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
+  // The model and checkpoint state can be provided as a file path or a byte array
   Module(const ModelIdentifiers& model_identifiers,
          CheckpointState* state,
          const onnxruntime::SessionOptions& session_options,

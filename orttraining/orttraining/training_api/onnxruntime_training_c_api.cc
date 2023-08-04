@@ -55,6 +55,9 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
   *out = nullptr;
 
   ORT_TRY {
+    ORT_ENFORCE(train_model_path != nullptr,
+                "Train model path is required to create TrainingSession, it cannot be empty.");
+
     auto model_identifiers = onnxruntime::training::api::ModelIdentifiers(
         onnxruntime::ToUTF8String(train_model_path),
         eval_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_path))
@@ -75,7 +78,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSessionFromArray, _In_ const OrtEnv* env,
+ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSessionFromBuffer, _In_ const OrtEnv* env,
                     _In_ const OrtSessionOptions* options, _Inout_ OrtCheckpointState* checkpoint_state,
                     _In_ const void* train_model_data, size_t train_data_length,
                     _In_ const void* eval_model_data, size_t eval_data_length,
@@ -87,9 +90,19 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSessionFromArray, _In_ const 
   *out = nullptr;
 
   ORT_TRY {
-    auto model_identifiers = ModelIdentifiers(train_model_data, static_cast<int>(train_data_length),
-                                              optim_model_data, static_cast<int>(optim_data_length),
-                                              eval_model_data, static_cast<int>(eval_data_length));
+    ORT_ENFORCE(train_model_data != nullptr && train_data_length != 0,
+                "Training Session Creation failed. Train model data cannot be NULL.");
+
+    auto model_identifiers = ModelIdentifiers(gsl::make_span(reinterpret_cast<const uint8_t*>(train_model_data),
+                                                             train_data_length),
+                                              eval_data_length == 0 || eval_model_data == nullptr
+                                                  ? gsl::span<const uint8_t>()
+                                                  : gsl::make_span(reinterpret_cast<const uint8_t*>(eval_model_data),
+                                                                   eval_data_length),
+                                              optim_data_length == 0 || optim_model_data == nullptr
+                                                  ? gsl::span<const uint8_t>()
+                                                  : gsl::make_span(reinterpret_cast<const uint8_t*>(optim_model_data),
+                                                                   optim_data_length));
 
     ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(env, options, checkpoint_state, model_identifiers, train_sess));
 
@@ -560,7 +573,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::LoadCheckpoint,
     &OrtTrainingApis::SaveCheckpoint,
     &OrtTrainingApis::CreateTrainingSession,
-    &OrtTrainingApis::CreateTrainingSessionFromArray,
+    &OrtTrainingApis::CreateTrainingSessionFromBuffer,
     &OrtTrainingApis::TrainingSessionGetTrainingModelOutputCount,
     &OrtTrainingApis::TrainingSessionGetEvalModelOutputCount,
     &OrtTrainingApis::TrainingSessionGetTrainingModelOutputName,

@@ -167,12 +167,13 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   }
 
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
-  ORT_ENFORCE(model_identifiers.train_model != "" || model_identifiers.train_model_data != nullptr,
+  ORT_ENFORCE(model_identifiers.train_model_path.has_value() || model_identifiers.train_model_data.size() != 0,
               "Training Session Creation failed. Either the train model path or train model data should be specified.");
 
-  ORT_THROW_IF_ERROR(model_identifiers.train_model_data == nullptr
-                         ? train_sess_->Load(model_identifiers.train_model)
-                         : train_sess_->Load(model_identifiers.train_model_data, model_identifiers.train_model_len));
+  ORT_THROW_IF_ERROR(model_identifiers.train_model_path.has_value()
+                         ? train_sess_->Load(model_identifiers.train_model_path.value())
+                         : train_sess_->Load(model_identifiers.train_model_data.data(),
+                                             static_cast<int>(model_identifiers.train_model_data.size())));
 
   for (const auto& provider : providers) {
     ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(provider));
@@ -278,9 +279,10 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   if (model_identifiers.eval_model.has_value()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
     ORT_THROW_IF_ERROR(eval_sess_->Load(model_identifiers.eval_model.value()));
-  } else if (model_identifiers.eval_model_data != nullptr) {
+  } else if (model_identifiers.eval_model_data.size() != 0) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
-    ORT_THROW_IF_ERROR(eval_sess_->Load(model_identifiers.eval_model_data, model_identifiers.eval_model_len));
+    ORT_THROW_IF_ERROR(eval_sess_->Load(model_identifiers.eval_model_data.data(),
+                                        static_cast<int>(model_identifiers.eval_model_data.size())));
   } else {
     return;
   }

@@ -206,7 +206,7 @@ struct OrtTrainingApi {
    * \param[in] optim_data_length Length of the buffer containing optim_model_data
    *
    */
-  ORT_API2_STATUS(CreateTrainingSessionFromArray, _In_ const OrtEnv* env,
+  ORT_API2_STATUS(CreateTrainingSessionFromBuffer, _In_ const OrtEnv* env,
                   _In_ const OrtSessionOptions* options, _Inout_ OrtCheckpointState* checkpoint_state,
                   _In_ const void* train_model_data, size_t train_data_length,
                   _In_ const void* eval_model_data, size_t eval_data_length,

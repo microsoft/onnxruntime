@@ -12,24 +12,27 @@ namespace training {
 namespace api {
 
 struct ModelIdentifiers {
-  const std::string train_model;
-  const std::optional<std::string> eval_model, optim_model = std::nullopt;
-  const void* train_model_data = nullptr;
-  int train_model_len = 0;
-  const void* optim_model_data = nullptr;
-  int optim_model_len = 0;
-  const void* eval_model_data = nullptr;
-  int eval_model_len = 0;
+  // ModelIdentifiers struct enables an easy way to store and identify the models used for training, evaluation
+  // and optimization.
+  // The model can be specified by a path to the model file or by a span of bytes containing the model data. However,
+  // only one of these two options can be used at a time.
+  // Training Session creation api enforces this by allowing the user to specify only one of the two options.
+  const std::optional<std::string> train_model_path, eval_model, optim_model = std::nullopt;
+  gsl::span<const uint8_t> train_model_data;
+  gsl::span<const uint8_t> eval_model_data;
+  gsl::span<const uint8_t> optim_model_data;
 
   ModelIdentifiers(const std::string& train_model_uri,
                    const std::optional<std::string>& eval_model_uri,
                    const std::optional<std::string>& optim_model_uri)
-      : train_model(train_model_uri), eval_model(eval_model_uri), optim_model(optim_model_uri) {}
+      : train_model_path(std::optional<std::string>(train_model_uri)),
+        eval_model(eval_model_uri),
+        optim_model(optim_model_uri) {}
 
-  ModelIdentifiers(const void* train_data, int train_data_len,
-                   const void* optim_data = nullptr, int optim_data_len = 0,
-                   const void* eval_data = nullptr, int eval_data_len = 0)
-      : train_model(""), train_model_data(train_data), train_model_len(train_data_len), optim_model_data(optim_data), optim_model_len(optim_data_len), eval_model_data(eval_data), eval_model_len(eval_data_len) {}
+  ModelIdentifiers(gsl::span<const uint8_t> train_data,
+                   gsl::span<const uint8_t> eval_data,
+                   gsl::span<const uint8_t> optim_data)
+      : train_model_data(train_data), eval_model_data(eval_data), optim_model_data(optim_data) {}
 };
 
 namespace utils {

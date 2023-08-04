@@ -26,14 +26,14 @@ inline TrainingSession::TrainingSession(const Env& env, const SessionOptions& se
 
 inline TrainingSession::TrainingSession(const Env& env, const SessionOptions& session_options,
                                         CheckpointState& checkpoint_state,
-                                        const void* train_model_data, size_t train_model_data_length,
-                                        const void* eval_model_data, size_t eval_model_data_length,
-                                        const void* optim_model_data, size_t optim_model_data_length) {
-  ThrowOnError(GetTrainingApi().CreateTrainingSessionFromArray(
+                                        const std::vector<uint8_t>& train_model_data,
+                                        const std::vector<uint8_t>& eval_model_data,
+                                        const std::vector<uint8_t>& optim_model_data) {
+  ThrowOnError(GetTrainingApi().CreateTrainingSessionFromBuffer(
       env, session_options, checkpoint_state,
-      train_model_data, train_model_data_length,
-      eval_model_data, eval_model_data_length,
-      optim_model_data, optim_model_data_length,
+      train_model_data.data(), train_model_data.size(),
+      eval_model_data.data(), eval_model_data.size(),
+      optim_model_data.data(), optim_model_data.size(),
       &p_));
 
   ThrowOnError(GetTrainingApi().TrainingSessionGetTrainingModelOutputCount(p_, &training_model_output_count_));

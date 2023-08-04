@@ -10,6 +10,7 @@
 
 #include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/utils.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -60,48 +61,84 @@ Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
 }  // namespace
 
 std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
-    const std::string& optim_path_or_bytes, int32_t& group_count) {
+    std::shared_ptr<Model> model, int32_t& group_count) {
   std::map<std::pair<std::string, std::string>, int32_t> opt_type_to_freq_map;
 #if !defined(ORT_MINIMAL_BUILD)
-  std::shared_ptr<Model> model;
-  ORT_ENFORCE(Model::Load(ToWideString(optim_path_or_bytes), model, nullptr,
-                          logging::LoggingManager::DefaultLogger())
-                  .IsOK());
-  Graph& graph = model->MainGraph();
-  for (auto& node : graph.Nodes()) {
-    if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
-      auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
-      if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
-        opt_type_to_freq_map[domain_type_pair] = 0;
+  if (model != nullptr) {
+    Graph& graph = model->MainGraph();
+    for (auto& node : graph.Nodes()) {
+      if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
+        auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
+        if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
+          opt_type_to_freq_map[domain_type_pair] = 0;
+        }
+
+        opt_type_to_freq_map[domain_type_pair] += 1;
       }
-
-      opt_type_to_freq_map[domain_type_pair] += 1;
     }
-  }
+  } else {
 #else
-  // TODO (baijumeswani): Figure out the best way to extract the optimizer type
-  // from the model (either onnx model or ort format model) or from the checkpoint.
-  // For now, assume that the optimizer type is AdamWOptimizer in a minimal build.
-  ORT_UNUSED_PARAMETER(optim_path_or_bytes);
-
-  opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
+  ORT_UNUSED_PARAMETER(model);
+#endif
+    // TODO (baijumeswani): Figure out the best way to extract the optimizer type
+    // from the model (either onnx model or ort format model) or from the checkpoint.
+    // For now, assume that the optimizer type is AdamWOptimizer when using ort format models.
+    opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
+#if !defined(ORT_MINIMAL_BUILD)
+  }
 #endif
 
   ORT_ENFORCE(opt_type_to_freq_map.size() == 1U, "Only support one type of optimizer algorithm, but got: " +
                                                      std::to_string(opt_type_to_freq_map.size()));
   auto opt_it = opt_type_to_freq_map.begin();
   group_count = opt_it->second;
-  auto& domain = opt_it->first.first;
-  auto& type = opt_it->first.second;
+  auto& op_type = opt_it->first.second;
 
   // TODO: to support multiple groups, need to create a mapping between each group to its parameter list.
-  if (domain == kMSDomain && type == "AdamWOptimizer") {
+  if (op_type == "AdamWOptimizer") {
     return std::make_unique<AdamWOptimizerAlgorithm>();
-  } else if (domain == kMSDomain && type == "SGDOptimizerV2") {
+  } else if (op_type == "SGDOptimizerV2") {
     return std::make_unique<SGDOptimizerV2Algorithm>();
   } else {
     ORT_NOT_IMPLEMENTED("Not implemented for optimizer algo: " + opt_it->first.second);
   }
+}
+
+std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
+    const PathString& optim_path, int32_t& group_count) {
+  std::shared_ptr<Model> model = nullptr;
+#if !defined(ORT_MINIMAL_BUILD)
+  // const auto optim_model_path = ToWideString(optim_path);
+  if (!fbs::utils::IsOrtFormatModel(optim_path)) {
+    ORT_ENFORCE(Model::Load(optim_path, model, nullptr,
+                            logging::LoggingManager::DefaultLogger())
+                    .IsOK());
+  }
+#else
+  ORT_UNUSED_PARAMETER(optim_path);
+#endif
+  return CreateInstance(model, group_count);
+}
+
+std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
+    const uint8_t* optim_model_data, size_t optim_model_data_len, int32_t& group_count) {
+  std::shared_ptr<Model> model = nullptr;
+#if !defined(ORT_MINIMAL_BUILD)
+  if (!fbs::utils::IsOrtFormatModelBytes(optim_model_data, static_cast<int>(optim_model_data_len))) {
+    ONNX_NAMESPACE::ModelProto model_proto;
+    ORT_ENFORCE(model_proto.ParseFromArray(optim_model_data, static_cast<int>(optim_model_data_len)) == true,
+                "Failed to load model because protobuf parsing failed.");
+
+    ORT_ENFORCE(Model::Load(std::move(model_proto), model, nullptr,
+                            logging::LoggingManager::DefaultLogger(), ModelOptions(true, true))
+                    .IsOK());
+  }
+#else
+  ORT_UNUSED_PARAMETER(optim_model_data);
+  ORT_UNUSED_PARAMETER(optim_model_data_len);
+#endif
+
+  return CreateInstance(model, group_count);
 }
 
 Status Optimizer::GenerateMomentumNamedStates(OptimizerCheckpointState& optimizer_checkpoint_states) {
@@ -224,7 +261,10 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }
 
-  ORT_THROW_IF_ERROR(model_identifiers.optim_model.has_value() ? optim_sess_->Load(model_identifiers.optim_model.value()) : optim_sess_->Load(model_identifiers.optim_model_data, model_identifiers.optim_model_len));
+  ORT_THROW_IF_ERROR(model_identifiers.optim_model.has_value()
+                         ? optim_sess_->Load(model_identifiers.optim_model.value())
+                         : optim_sess_->Load(model_identifiers.optim_model_data.data(),
+                                             static_cast<int>(model_identifiers.optim_model_data.size())));
 
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
 
@@ -233,8 +273,13 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
 
-  // TODO[Ashwini]: Fix this before merging this PR - Needs hardcoding to ADAMW optimizer or updating CreateInstance to take in a pointer to model data buffer.
-  optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(model_identifiers.optim_model.value(), group_count_);
+  if (model_identifiers.optim_model.has_value()) {
+    optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(ToWideString(model_identifiers.optim_model.value()), group_count_);
+  } else {
+    optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(model_identifiers.optim_model_data.data(),
+                                                                   model_identifiers.optim_model_data.size(),
+                                                                   group_count_);
+  }
   ORT_ENFORCE(group_count_ == 1, "Group count can only be 1, but got: " + std::to_string(group_count_));
   ORT_ENFORCE(optimizer_algo_ptr_, "optimizer_algo_ptr_ should not be nullptr.");
 
