@@ -51,7 +51,7 @@ Abstract:
 #endif
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
-#ifdef __GNUC__ >=12
+#if __GNUC__ >= 12
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #include <immintrin.h>
