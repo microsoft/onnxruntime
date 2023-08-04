@@ -281,7 +281,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             # All required models have already been exported previously
             return False
         self._set_device_from_module(inputs, kwargs)
-        self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
+
+        from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
+
+        with no_increase_global_step():
+            self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(
                 self._debug_options.save_onnx_models.path,

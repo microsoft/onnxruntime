@@ -199,10 +199,16 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     output = g.op(
         "org.pytorch.aten::ATen", weight, indices, padding_idx, scale_grad_by_freq, sparse, operator_s="embedding"
     )
-    indices_shape = _get_tensor_sizes(indices)
-    if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
-        output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
-        output.setType(output_type)
+
+    try:
+        # Tolerant to the case when sizes of indices are not available or not usable (for example
+        # when DeepSpeed stage3 enabled, all weights size is (0), this will fail.)
+        indices_shape = _get_tensor_sizes(indices)
+        if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
+            output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
+            output.setType(output_type)
+    except IndexError:
+        output.setType(weight.type())
     return output
 
 
