@@ -22,10 +22,6 @@ parameters:
 - name: Today
   type: string
 
-- name: PyPackages
-  type: string
-  default: ""
-
 steps:
 - task: UsePythonVersion@0
   inputs:
@@ -34,7 +30,7 @@ steps:
     architecture: ${{parameters.BuildArch}}
 
 - script: |
-    python -m pip install -q setuptools wheel numpy ${{parameters.PyPackages}}
+    python -m pip install -q setuptools wheel numpy flatbuffers
   workingDirectory: '$(Build.BinariesDirectory)'
   displayName: 'Install python modules'
 
