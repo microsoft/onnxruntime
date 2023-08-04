@@ -110,7 +110,7 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
             overload="Tensor",
         )
 
-        # Create executor of ONNX model.
+        # In order to use custom exporting function inside PyTorch-to-ONNX exporter used in DORT, create executor of ONNX model with custom `onnx_registry`.
         ort_backend = OrtBackend(
             ep="CPUExecutionProvider",
             session_options=TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options(),
