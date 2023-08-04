@@ -16,7 +16,7 @@ def add_trigger_filter(file_name, trigger_lines):
     with open(file_name) as f:
         lines = f.readlines()
 
-    start_marker = "##### trigger Don't modified it manully ####"
+    start_marker = "##### trigger Don't edit it manually ####"
     end_marker = "#### end trigger ####\n"
 
     if lines[0].startswith(start_marker):
