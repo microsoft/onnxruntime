@@ -479,7 +479,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     TensorElementType.Float, expectedShape))
                 {
                     // Run inference
-                    var inputValues = new List<OrtValue>{ inputOrtValue }.AsReadOnly();
+                    var inputValues = new List<OrtValue> { inputOrtValue }.AsReadOnly();
                     var outputValues = new List<OrtValue> { outputOrtValue }.AsReadOnly();
                     session.Run(runOptions, inputNames, inputValues,
                         expectedOutputNames, outputValues);
@@ -1345,7 +1345,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "TestModelInputBFLOAT16")]
         private void TestModelInputBFLOAT16()
         {
-            BFloat16[] modelInput = { new BFloat16(16256), new BFloat16(16384), 
+            BFloat16[] modelInput = { new BFloat16(16256), new BFloat16(16384),
                 new BFloat16(16448), new BFloat16(16512), new BFloat16(16544) };
             int[] inputShape = { 1, 5 };
             // model takes 1x5 input of fixed type, echoes back
@@ -2040,85 +2040,36 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             evt.Set();
         }
 
-        [Fact(DisplayName = "TestModelRunAsync")]
-        private void TestModelRunAsync()
+        [Fact(DisplayName = "TestModelRunAsyncTaskII")]
+        private async void TestModelRunAsyncTaskII()
         {
-            Float16[] modelInput = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
-            int[] inputShape = { 1, 5 };
+            Float16[] inputData = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
+            long[] shape = { 1, 5 };
 
-            var inputs = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<Float16>(modelInput, inputShape);
-            inputs.Add(NamedOnnxValue.CreateFromTensor("input", tensorIn));
+            var inputNames = new List<string> { "input" };
+            var inputValues = new List<OrtValue> { OrtValue.CreateTensorValueFromMemory(inputData, shape) };
 
-            var outputs = new List<NamedOnnxValue>();
-            var tensorOut = new DenseTensor<Float16>(inputShape.AsSpan());
-            outputs.Add(NamedOnnxValue.CreateFromTensor("output", tensorOut));
+            var outputNames = new List<string> { "output" };
+            var outputValues = new List<OrtValue> { OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance,
+                    TensorElementType.Float16, shape) };
 
             var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_FLOAT16.onnx");
             using (SessionOptions opt = new SessionOptions())
             {
                 opt.IntraOpNumThreads = 2;
-
                 using (var session = new InferenceSession(model, opt))
                 {
-                    ManualResetEvent evt = new ManualResetEvent(false);
-                    var evtHdl = GCHandle.Alloc(evt, GCHandleType.Normal);
-
                     try
                     {
-                        session.RunAsync(inputs, outputs, null, AsyncCallback, GCHandle.ToIntPtr(evtHdl));
-                        Assert.True(evt.WaitOne());
+                        var task = session.RunAsync(null, inputNames, inputValues, outputNames, outputValues);
+                        var outputs = await task;
+                        var valueOut = outputs.ElementAt<OrtValue>(0);
+                        var float16s = valueOut.GetTensorDataAsSpan<Float16>().ToArray();
+                        Assert.Equal(new Float16(16896), float16s[2]);
                     }
                     catch
                     {
                         Assert.True(false);
-                    }
-                    finally
-                    {
-                        evtHdl.Free();
-                    }
-                }
-            }
-        }
- 
-        [Fact(DisplayName = "TestModelRunAsyncFail")]
-        private void TestModelRunAsyncFail()
-        {
-            Float16[] modelInput = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
-            int[] inputShape = { 1, 5 };
-
-            var inputs = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<Float16>(modelInput, inputShape);
-            inputs.Add(NamedOnnxValue.CreateFromTensor("input", tensorIn));
-
-            var outputs = new List<NamedOnnxValue>();
-            var tensorOut = new DenseTensor<Float16>(inputShape.AsSpan());
-            outputs.Add(NamedOnnxValue.CreateFromTensor("output", tensorOut));
-
-            var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_FLOAT16.onnx");
-            string err = string.Empty;
-
-            using (SessionOptions opt = new SessionOptions())
-            {
-                opt.IntraOpNumThreads = 1;  // this will make RunAsync throw
-
-                using (var session = new InferenceSession(model, opt))
-                {
-                    ManualResetEvent evt = new ManualResetEvent(false);
-                    var evtHdl = GCHandle.Alloc(evt);
-
-                    try
-                    {
-                        session.RunAsync(inputs, outputs, null, AsyncCallback, (IntPtr)evtHdl);
-                    }
-                    catch (OnnxRuntimeException ex)
-                    {
-                        err = ex.Message;
-                    }
-                    finally
-                    {
-                        evtHdl.Free();
-                        Assert.Contains("intra op thread pool must have at least one thread for RunAsync", err);
                     }
                 }
             }

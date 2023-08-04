@@ -6,7 +6,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -1044,122 +1046,127 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        private static void CallbackWrapper(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
+        private static void OrtCallback(IntPtr userData, IntPtr[] ouputs, uint numOutputs, IntPtr status)
         {
-            var resourceHdl = GCHandle.FromIntPtr(userData);
-            CallbackResource resource = (CallbackResource)resourceHdl.Target;
-
+            var hostHdl = GCHandle.FromIntPtr(userData);
+            CallbackHost host = (CallbackHost)hostHdl.Target;
             try
             {
-                // throw on error
-                NativeApiStatus.VerifySuccess(status);
-
-                if (numOutputs != resource.namedOutputValues.Count()) {
-                    throw new OnnxRuntimeException(ErrorCode.Fail, "number of output mismatch");
-                }
-
-                for (uint ith = 0; ith < numOutputs; ith++)
-                {
-                    if (null == outputs[ith]) { 
-                        throw new OnnxRuntimeException(ErrorCode.Fail, $"output '{ith}' is null");
-                    }
-                }
-
-                resource.userCallback(resource.userData, resource.namedOutputValues);
+                host.callback(host.outputValues, status);
             }
             finally
             {
-                resourceHdl.Free();
+                hostHdl.Free();
             }
         }
 
-        private delegate void CallbackWrapperDelegate(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status);
+        private delegate void OrtCallbackDelegate(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status);
 
-        private static CallbackWrapperDelegate callbackWrapper = new CallbackWrapperDelegate(CallbackWrapper);
+        private static OrtCallbackDelegate ortCallback = new OrtCallbackDelegate(OrtCallback);
 
-        /// <summary>
-        /// Function delegate for the callback
-        /// </summary>
-        /// <param name="userData">any arbitrary data that passed to RunAsync</param>
-        /// <param name="outputs">output tensors</param>
-        //public delegate void CallbackDelegate(IntPtr userData, IDisposableReadOnlyCollection<OrtValue> outputs);
-        public delegate void CallbackDelegate(IntPtr userData, IReadOnlyCollection<NamedOnnxValue> outputs);
+        public delegate void UserCallbackDelegate(IReadOnlyCollection<OrtValue> outputs, IntPtr status);
 
-        private class CallbackResource
+        private class CallbackHost
         {
-            public InferenceSession calling_session;
-            public IntPtr[] inputNames { get; }
-            public IntPtr[] inputValues { get; }
+            public IReadOnlyCollection<string> inputNames { get; }
+            public IReadOnlyCollection<OrtValue> inputValues { get; }
+            public IReadOnlyCollection<string> outputNames { get; }
+            public IReadOnlyCollection<OrtValue> outputValues { get; }
+            public UserCallbackDelegate callback { get; }
 
-            public IReadOnlyCollection<NamedOnnxValue> namedInputValues { get; }
-            public IntPtr[] outputNames { get; }
-            public IntPtr[] outputValues { get; }
-            public IReadOnlyCollection<NamedOnnxValue> namedOutputValues { get; }
+            public IntPtr[] rawInputNames { get; }
+            public IntPtr[] rawInputValues { get; }
+            public IntPtr[] rawOutputNames { get; }
+            public IntPtr[] rawOutputValues { get; }
 
-            public CallbackDelegate userCallback { get; }
-            public IntPtr userData { get; }
-
-            internal CallbackResource(InferenceSession session,
-                                      IReadOnlyCollection<NamedOnnxValue> namedInput,
-                                      IReadOnlyCollection<NamedOnnxValue> namedOutput,
-                                      CallbackDelegate callback,
-                                      IntPtr data)
+            public CallbackHost(InferenceSession session,
+                                IReadOnlyCollection<string> cbInputNames,
+                                IReadOnlyCollection<OrtValue> cbinputValues,
+                                IReadOnlyCollection<string> cbOutputNames,
+                                IReadOnlyCollection<OrtValue> cbOutputValues,
+                                UserCallbackDelegate userCallback)
             {
-                calling_session = session;
 
-                namedInputValues = namedInput;
-                inputNames = LookupUtf8Names(namedInput, i => i.Name, calling_session.LookupInputMetadata);
-                inputValues = GetOrtValuesHandles(namedInput, calling_session.LookupInputMetadata, ExtractOrtValueHandleForInput,
-                    out DisposableArray<IDisposable> inputDisposer);
+                inputNames = cbInputNames;
+                inputValues = cbinputValues;
+                outputNames = cbOutputNames;
+                outputValues = cbOutputValues;
+                callback = userCallback;
 
-                namedOutputValues = namedOutput;
-                outputNames = LookupUtf8Names(namedOutput, o => o.Name, calling_session.LookupOutputMetadata);
-                outputValues = GetOrtValuesHandles(namedOutput, calling_session.LookupOutputMetadata, ExtractOrtValueHandleForOutput,
-                    out DisposableArray<IDisposable> outputDisposer);
+                rawInputNames = LookupUtf8Names(inputNames, n => n, session.LookupInputMetadata);
+                rawInputValues = inputValues.Select(v => v.Handle).ToArray();
 
-                userCallback = callback;
-                userData = data;
+                rawOutputNames = LookupUtf8Names(outputNames, n => n, session.LookupOutputMetadata);
+                rawOutputValues = outputValues.Select(v => v.Handle).ToArray();
             }
-        };
+        }
 
-        /// <summary>
-        /// Run inference asynchronous in a thread of intra-op thread pool
-        /// </summary>
-        /// <param name="inputs">input tensors</param>
-        /// <param name="outputs">output tensors</param>
-        /// <param name="options">run option, can be null</param>
-        /// <param name="callback">callback function of delegate type CallbackDelegate</param>
-        /// <param name="userData">arbitrary user data to be passed back to the callback</param>
-        public void RunAsync(
-            IReadOnlyCollection<NamedOnnxValue> inputs,
-            IReadOnlyCollection<NamedOnnxValue> outputs,
-            RunOptions options,
-            CallbackDelegate callback,
-            IntPtr userData)
+        private void RunAsyncInternal(RunOptions options,
+                                      IReadOnlyCollection<string> inputNames,
+                                      IReadOnlyCollection<OrtValue> inputValues,
+                                      IReadOnlyCollection<string> outputNames,
+                                      IReadOnlyCollection<OrtValue> outputValues,
+                                      UserCallbackDelegate callback)
         {
-            CallbackResource resource = new CallbackResource(this, inputs, outputs, callback, userData);
-            var resource_hdl = GCHandle.Alloc(resource, GCHandleType.Normal);
+            CallbackHost host = new CallbackHost(this, inputNames, inputValues, outputNames, outputValues, callback);
+            var host_hdl = GCHandle.Alloc(host, GCHandleType.Normal);
 
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRunAsync(
                                                     _nativeHandle,
-                                                    options == null? (IntPtr)null : options.Handle,
-                                                    resource.inputNames,
-                                                    resource.inputValues,
-                                                    (UIntPtr)resource.inputNames.Length,
-                                                    resource.outputNames,
-                                                    (UIntPtr)resource.outputNames.Length,
-                                                    resource.outputValues,
-                                                    Marshal.GetFunctionPointerForDelegate(callbackWrapper),
-                                                    GCHandle.ToIntPtr(resource_hdl)
+                                                    options == null ? (IntPtr)null : options.Handle,
+                                                    host.rawInputNames,
+                                                    host.rawInputValues,
+                                                    (UIntPtr)host.rawInputNames.Length,
+                                                    host.rawOutputNames,
+                                                    (UIntPtr)host.rawOutputNames.Length,
+                                                    host.rawOutputValues,
+                                                    Marshal.GetFunctionPointerForDelegate(ortCallback),
+                                                    GCHandle.ToIntPtr(host_hdl)
                                                     ));
             }
             catch (OnnxRuntimeException)
             {
-                resource_hdl.Free();
+                host_hdl.Free();
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Run inference asynchronous in a thread of intra-op thread pool
+        /// </summary>
+        /// <param name="options">run option, can be null</param>
+        /// <param name="inputNames">name of inputs</param>
+        /// <param name="inputValues">input ort values</param>
+        /// <param name="outputNames">name of outputs</param>
+        /// <param name="outputValues">output of ort values</param>
+        /// <param name="callback">callback function</param>
+        public async Task<IReadOnlyCollection<OrtValue>> RunAsync(RunOptions options,
+                                                                  IReadOnlyCollection<string> inputNames,
+                                                                  IReadOnlyCollection<OrtValue> inputValues,
+                                                                  IReadOnlyCollection<string> outputNames,
+                                                                  IReadOnlyCollection<OrtValue> outputValues)
+        {
+            var promise = new TaskCompletionSource<IReadOnlyCollection<OrtValue>>();
+            RunAsyncInternal(options,
+                     inputNames,
+                     inputValues,
+                     outputNames,
+                     outputValues,
+                     (IReadOnlyCollection<OrtValue> outputs, IntPtr status) =>
+                     {
+                         try
+                         {
+                             NativeApiStatus.VerifySuccess(status);
+                             promise.SetResult(outputs);
+                         }
+                         catch (Exception ex)
+                         {
+                             promise.SetException(ex);
+                         }
+                     });
+            return await promise.Task;
         }
 
         #endregion
