@@ -68,10 +68,10 @@ FakeRCTBlobManager *fakeBlobManager = nil;
     inputTensorMap[@"type"] = JsTensorTypeFloat;
 
     // data
-    std::array<float_t, 5> outValues{std::numeric_limits<float_t>::min(), 1.0f, -2.0f, 3.0f,
-                                     std::numeric_limits<float_t>::max()};
+    std::array<float, 5> outValues{std::numeric_limits<float>::min(), 1.0f, -2.0f, 3.0f,
+                                   std::numeric_limits<float>::max()};
 
-    const NSInteger byteBufferSize = outValues.size() * sizeof(float_t);
+    const NSInteger byteBufferSize = outValues.size() * sizeof(float);
     unsigned char *byteBuffer = static_cast<unsigned char *>(malloc(byteBufferSize));
     NSData *byteBufferRef = [NSData dataWithBytesNoCopy:byteBuffer length:byteBufferSize];
     float *floatPtr = (float *)[byteBufferRef bytes];
@@ -113,6 +113,38 @@ FakeRCTBlobManager *fakeBlobManager = nil;
     [onnxruntimeModule dispose:sessionKey];
     [onnxruntimeModule dispose:sessionKey2];
   }
+}
+
+- (void)testOnnxruntimeModule_AppendCoreml {
+  NSBundle *bundle = [NSBundle bundleForClass:[OnnxruntimeModuleTest class]];
+  NSString *dataPath = [bundle pathForResource:@"test_types_float" ofType:@"ort"];
+  NSString *sessionKey = @"";
+
+  OnnxruntimeModule *onnxruntimeModule = [OnnxruntimeModule new];
+  [onnxruntimeModule setBlobManager:fakeBlobManager];
+
+  {
+    // test loadModel() with coreml options
+    NSMutableDictionary *options = [NSMutableDictionary dictionary];
+
+    // register coreml ep options
+    NSMutableArray *epList = [NSMutableArray array];
+    [epList addObject:@"coreml"];
+    NSArray *immutableEpList = [NSArray arrayWithArray:epList];
+    [options setObject:immutableEpList forKey:@"executionProviders"];
+
+    NSDictionary *resultMap = [onnxruntimeModule loadModel:dataPath options:options];
+
+    sessionKey = resultMap[@"key"];
+    NSArray *inputNames = resultMap[@"inputNames"];
+    XCTAssertEqual([inputNames count], 1);
+    XCTAssertEqualObjects(inputNames[0], @"input");
+    NSArray *outputNames = resultMap[@"outputNames"];
+    XCTAssertEqual([outputNames count], 1);
+    XCTAssertEqualObjects(outputNames[0], @"output");
+  }
+
+  { [onnxruntimeModule dispose:sessionKey]; }
 }
 
 @end

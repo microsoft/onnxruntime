@@ -37,13 +37,13 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val output_array;
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
-  const auto rank = input_shape.size();
+  const size_t rank = input_shape.size();
   emscripten::val options = emscripten::val::object();
 
   NodeAttrHelper helper(node);
-  int64_t axis = helper.Get("axis", 0);
-  axis = HandleNegativeAxis(axis, rank);
-  options.set("axis", static_cast<int32_t>(axis));
+  int32_t axis = helper.Get("axis", 0);
+  axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
+  options.set("axis", axis);
 
   if (input_defs.size() == 2) {
     // Inputs contains optional 'split' input
@@ -59,13 +59,13 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                       "The size of outputs must be equal to the size of 'split' input.");
   } else {
     if (helper.HasAttr("num_outputs")) {
-      const int64_t num_outputs = helper.Get("num_outputs", 1);
+      const int32_t num_outputs = helper.Get("num_outputs", 1);
       ORT_RETURN_IF_NOT(num_outputs > 0, "The 'num_outputs' must be a positive integer.");
       if (input_shape[axis] % num_outputs == 0) {
         // The 'num_outputs' evenly divide the dim value at 'axis' specified.
         output_array = model_builder.GetBuilder().call<emscripten::val>("split",
                                                                         input,
-                                                                        static_cast<int32_t>(num_outputs),
+                                                                        num_outputs,
                                                                         options);
       } else {
         std::vector<int64_t> mapping_split;
@@ -80,22 +80,22 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                                         emscripten::val::array(converted_splits),
                                                                         options);
       }
-      ORT_RETURN_IF_NOT(output_array["length"].as<int32_t>() == static_cast<int32_t>(num_outputs),
+      ORT_RETURN_IF_NOT(output_array["length"].as<int32_t>() == num_outputs,
                         "The size of outputs must be equal to 'num_outputs'.");
     } else {
       // w/o 'split' input for opset 13
       // Refer to https://github.com/microsoft/onnxruntime/blob/a7ad859e3ab60bddfcf2fefa96bfcb550f0fc04c/onnxruntime/core/providers/dml/OperatorAuthorHelper/OperatorHelper.cpp#L984-L989
       // split input stream equally across output streams.
       const auto& output_defs = node.OutputDefs();
-      auto output_count = output_defs.size();
+      const size_t output_count = output_defs.size();
       output_array = model_builder.GetBuilder().call<emscripten::val>("split",
                                                                       input, static_cast<int32_t>(output_count),
                                                                       options);
-      ORT_RETURN_IF_NOT(output_array["length"].as<int32_t>() == static_cast<int32_t>(output_count),
+      ORT_RETURN_IF_NOT(output_array["length"].as<size_t>() == output_count,
                         "The size of outputs must be equal to the count of output nodes.");
     }
   }
-  for (int64_t i = 0, count = output_array["length"].as<int32_t>(); i < count; i++) {
+  for (size_t i = 0, count = output_array["length"].as<size_t>(); i < count; i++) {
     model_builder.AddOperand(node.OutputDefs()[i]->Name(), std::move(output_array[i]));
   }
   return Status::OK();
@@ -118,11 +118,11 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     LOGS(logger, VERBOSE) << "Cannot get input's shape.";
     return false;
   }
-  const auto rank = input_shape.size();
+  const size_t rank = input_shape.size();
 
   NodeAttrHelper helper(node);
-  int64_t axis = helper.Get("axis", 0);
-  axis = HandleNegativeAxis(axis, rank);
+  int32_t axis = helper.Get("axis", 0);
+  axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
 
   if (input_defs.size() == 2) {
     // Inputs contains optional 'split' input
@@ -143,7 +143,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       return false;
     }
     int64_t sum = 0;
-    for (int64_t i = 0; i < split.size(); i++) {
+    for (size_t i = 0; i < split.size(); i++) {
       if (split[i] < 0) {
         LOGS(logger, VERBOSE) << "Value of split should be greater than or equal to 0.";
         return false;

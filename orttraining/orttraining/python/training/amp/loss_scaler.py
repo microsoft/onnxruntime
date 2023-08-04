@@ -88,10 +88,10 @@ class DynamicLossScaler(LossScaler):
     def __init__(
         self,
         automatic_update=True,
-        loss_scale=float(1 << 16),  # noqa: B008
+        loss_scale=float(1 << 16),
         up_scale_window=2000,
         min_loss_scale=1.0,
-        max_loss_scale=float(1 << 24),  # noqa: B008
+        max_loss_scale=float(1 << 24),
     ):
         super().__init__(loss_scale)
         self.automatic_update = automatic_update

@@ -904,6 +904,12 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
     CASE_FOR_TYPE(uint32_t);
     CASE_FOR_TYPE(uint64_t);
     CASE_FOR_TYPE(bool);
+#if !defined(DISABLE_FLOAT8_TYPES)
+    CASE_FOR_TYPE(Ort::Float8E4M3FN_t);
+    CASE_FOR_TYPE(Ort::Float8E4M3FNUZ_t);
+    CASE_FOR_TYPE(Ort::Float8E5M2_t);
+    CASE_FOR_TYPE(Ort::Float8E5M2FNUZ_t);
+#endif
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
       // string tensors are already initialized to contain empty strings
       // see onnxruntime::Tensor::Init()

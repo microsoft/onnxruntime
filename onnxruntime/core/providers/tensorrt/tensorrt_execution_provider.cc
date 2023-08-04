@@ -14,6 +14,7 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
 #include "core/common/gsl.h"
 #include <unordered_map>
@@ -991,6 +992,12 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
+
+  if (alloc_ != nullptr) {
+    // This code is same as OrtApis::ReleaseAllocator defined in allocator_adapters.cc.
+    // We can't get api inside destructor so that's why we duplicate the code here.
+    delete static_cast<OrtAllocatorImpl*>(alloc_);
+  }
 }
 
 bool TensorrtExecutionProvider::IsGraphCaptureEnabled() const {
@@ -1036,7 +1043,8 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+        ORT_UNUSED_PARAMETER(device_id);
+        return CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED);
       },
       0);
 
@@ -1275,6 +1283,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       } else {
         auto model_build = graph.CreateModel(*GetLogger());
         auto& graph_build = model_build->MainGraph();
+        bool has_control_flow_op = false;
 
         // Add node and node args
         // If node output is also parent graph output, the  output will be added to the
@@ -1313,6 +1322,10 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             }
           }
 
+          if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
+            has_control_flow_op = true;
+          }
+
           // If the node has subgraph, it's possible that the ORT graph of that subgraph and the GraphProto in the node attributes are not in sync because of graph optimization.
           // Therefore, we need to force GraphProto attributes to be updated in order to get the valid GraphProto.
           if (node->GetAttributes().size() > 0) {
@@ -1335,6 +1348,13 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             // The GraphProto attributes are the original ones.
             graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
           }
+        }
+
+        if (has_control_flow_op) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
+          BuildSubGraphContext(graph_build);
+          SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
+          SetAllGraphInputs(graph_build);
         }
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
@@ -1649,6 +1669,20 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
           SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
           bool subgraph_early_termination = false;
+
+          // Another subgraph of "If" control flow has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
+          if (AllNodesAssignedToSpecificEP(*sub_graph_veiwer, kTensorrtExecutionProvider)) {
+            all_subgraphs_are_supported = true;
+            break;
+          }
+          // Another subgraph of "If" control flow has been parsed by GetCapability and not all subgraph's nodes assigned to TRT EP.
+          // (Note: GetExecutionProviderType() returns "" meaning node has not yet been assigned to any EPs)
+          else if (!AllNodesAssignedToSpecificEP(*sub_graph_veiwer, "")) {
+            all_subgraphs_are_supported = false;
+            break;
+          }
+
+          // Another subgraph of "If" control flow has not yet been parsed by GetCapability.
           subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
           all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
           break;
@@ -1669,6 +1703,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
         }
       }
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
+
+      // The context map is only used during EP compile time, release it to save memory space.
+      subgraph_context_map_.clear();
       return result;
     }
   }
@@ -1692,6 +1729,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
   }
 
+  // The context map is only used during EP compile time, release it to save memory space.
+  subgraph_context_map_.clear();
   return result;
 }
 
@@ -2213,14 +2252,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       auto trt_context = trt_state->context->get();
       auto trt_profiles = trt_state->profiles;
       auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
-      OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
-      OrtAllocator* alloc;
-      Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc));
       int num_inputs = static_cast<int>(input_indexes.size());
       int num_outputs = static_cast<int>(output_indexes.size());
       bool engine_update = false;
       std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
+
+      OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+      if (alloc_ == nullptr) {
+        Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
+      }
+      OrtAllocator* alloc = alloc_;
 
       void* cuda_stream;
       Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));

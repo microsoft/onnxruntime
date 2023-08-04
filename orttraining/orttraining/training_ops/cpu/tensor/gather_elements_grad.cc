@@ -34,7 +34,7 @@ ONNX_OPERATOR_KERNEL_EX(
 Status GatherElementsGrad::Compute(OpKernelContext* context) const {
   const auto* dY = context->Input<Tensor>(0);
   const Tensor* shape = context->Input<Tensor>(1);
-  const TensorShape data_shape(shape->template Data<int64_t>(), shape->Shape().Size());
+  const TensorShape data_shape(shape->template DataAsSpan<int64_t>());
 
   const int axis = static_cast<int>(HandleNegativeAxis(axis_, data_shape.NumDimensions()));
 

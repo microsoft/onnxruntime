@@ -4,7 +4,6 @@
 #include "gtest/gtest.h"
 
 #include "core/framework/tensor.h"
-#include "core/framework/allocatormgr.h"
 #include "core/quantization/quantization.h"
 #include "test/framework/test_utils.h"
 

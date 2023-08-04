@@ -202,4 +202,22 @@ TEST(MathTest, GemvTrans) {
   }
 }
 
+TEST(MathTest, HalfFloatConversion) {
+  constexpr float original_values[] = {-4.0f, -2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f, 4.0f};
+  for (const auto original_value : original_values) {
+    const auto half_value = math::floatToHalf(original_value);
+    const auto round_trip_value = math::halfToFloat(half_value);
+    EXPECT_EQ(round_trip_value, original_value);
+  }
+}
+
+TEST(MathTest, HalfDoubleConversion) {
+  constexpr double original_values[] = {-4.0f, -2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f, 4.0f};
+  for (const auto original_value : original_values) {
+    const auto half_value = math::doubleToHalf(original_value);
+    const auto round_trip_value = static_cast<double>(math::halfToFloat(half_value));
+    EXPECT_EQ(round_trip_value, original_value);
+  }
+}
+
 }  // namespace onnxruntime

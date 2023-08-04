@@ -30,6 +30,10 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
     ASSERT_TRUE(SpanEq(ltensor.Shape().GetDims(), rtensor.Shape().GetDims()));
     auto element_type = ltensor.GetElementType();
     switch (element_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<uint32_t>(), rtensor.DataAsSpan<uint32_t>()))
+            << " mismatch for " << output_names[i];
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
         EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int32_t>(), rtensor.DataAsSpan<int32_t>()))
             << " mismatch for " << output_names[i];
@@ -79,7 +83,7 @@ int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
   return count;
 }
 
-void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
+void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params) {
@@ -89,7 +93,7 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds, params);
 }
 
-void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id,
+void RunAndVerifyOutputsWithEP(const std::string& model_data, std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params) {

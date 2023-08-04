@@ -147,7 +147,7 @@ class TestWhereModel(unittest.TestCase):
         self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={"ForceQuantizeNoInputCheck": True})
         print(__name__)
 
-    def test_quantize_where_u8u8_no_ForceQuantizeNoInputCheck(self):  # noqa: N802
+    def test_quantize_where_u8u8_no_force_quantize_no_input_check(self):
         self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={"ForceQuantizeNoInputCheck": False})
         print(__name__)
 

@@ -10,10 +10,11 @@ TrainingSession::TrainingSession(const Environment& session_env,
                                  const SessionOptions& session_options,
                                  const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                                  CheckpointState* state,
-                                 const ModelIdentifiers& model_identifiers)
+                                 const ModelIdentifiers& model_identifiers,
+                                 gsl::span<OrtCustomOpDomain* const> custom_op_domains)
     : state_{state},
       module_{std::make_unique<Module>(model_identifiers, state_,
-                                       session_options, session_env, providers)},
+                                       session_options, session_env, providers, custom_op_domains)},
       optimizer_{model_identifiers.optim_model.has_value() || model_identifiers.optim_model_data.size() > 0
                      ? std::make_unique<Optimizer>(
                            model_identifiers, state_,

@@ -11,6 +11,7 @@
 #include "winrt/windows.foundation.collections.h"
 #include "winrt/windows.storage.streams.h"
 
+// clang-format off
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
 #define CPPWINRT_HEADER(root_ns) comp_generated/winrt/##root_ns##.AI.MachineLearning.h
@@ -19,6 +20,7 @@
 #define CREATE_CPPWINRT_COMPONENT_HEADER() XSTRINGIFY(CPPWINRT_HEADER(WINML_ROOT_NS))
 #define CREATE_NATIVE_HEADER() XSTRINGIFY(NATIVE_HEADER(WINML_ROOT_NS))
 #define CREATE_NATIVE_INTERNAL_HEADER() XSTRINGIFY(NATIVE_INTERNAL_HEADER(WINML_ROOT_NS))
+// clang-format on
 
 #include CREATE_CPPWINRT_COMPONENT_HEADER()
 
