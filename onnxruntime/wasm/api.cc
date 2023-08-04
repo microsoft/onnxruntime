@@ -413,7 +413,7 @@ void EMSCRIPTEN_KEEPALIVE OrtReleaseTrainingCheckpointCheckpointState(ort_traini
   Ort::GetTrainingApi().ReleaseCheckpointState(training_checkpoint_state_handle);
 }
 
-OrtTrainingSession* EMSCRIPTEN_KEEPALIVE OrtCreateTrainingSession(const ort_session_options_handle_t options,
+OrtTrainingSession* EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(const ort_session_options_handle_t options,
                                                                   const ort_training_checkpoint_handle_t training_checkpoint_state_handle,
                                                                   void* train_model,
                                                                   size_t train_size,
@@ -434,7 +434,7 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t 
   return CHECK_TRAINING_STATUS(LazyResetGrad, training_handle);
 }
 
-OrtValue* EMSCRIPTEN_KEEPALIVE OrtRunTrainStep(ort_training_session_handle_t training_handle,
+OrtValue* EMSCRIPTEN_KEEPALIVE OrtTrainingRunTrainStep(ort_training_session_handle_t training_handle,
                                                const ort_run_options_handle_t options,
                                                const size_t inputs_len,
                                                const ort_tensor_handle_t* inputs,
