@@ -6,7 +6,6 @@
 namespace Dml
 {
 // QLinearConcat = Dequantize + Join + Quantize
-// This kernel is the first usage of graph based implementation
 class DmlOperatorQLinearConcat : public DmlOperator, public QLinearConcatHelper
 {
     // This order matches the ONNX schema.
@@ -37,7 +36,7 @@ public:
 
         // broadcast y_scale and y_zero_point to output shape
         m_inputTensorDescs[OnnxInputIndex::yScale] = TensorDesc(
-            kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::yScale).tensorDataType,
+            yScaleDataType,
             outputShape,
             kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::yScale),
             TensorAxis::DoNotCoerce,
@@ -48,7 +47,7 @@ public:
         );
 
         m_inputTensorDescs[OnnxInputIndex::yZeroPoint] = TensorDesc(
-            kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::yZeroPoint).tensorDataType,
+            yZeroPointDataType,
             outputShape,
             kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::yZeroPoint),
             TensorAxis::DoNotCoerce,
@@ -70,7 +69,7 @@ public:
 
             // broadcast x_scale and x_zero_point to shape of corresponding x
             m_inputTensorDescs[tuple_start + 1] = TensorDesc(
-                kernelCreationContext.GetInputEdgeDescription(tuple_start + 1).tensorDataType,
+                xScaleDataType,
                 kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(tuple_start),
                 kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(tuple_start + 1),
                 TensorAxis::DoNotCoerce,
@@ -81,7 +80,7 @@ public:
             );
 
             m_inputTensorDescs[tuple_start + 2] = TensorDesc(
-                kernelCreationContext.GetInputEdgeDescription(tuple_start + 2).tensorDataType,
+                xZeroPointDataType,
                 kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(tuple_start),
                 kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(tuple_start + 2),
                 TensorAxis::DoNotCoerce,
@@ -103,7 +102,7 @@ public:
         std::vector<DML_TENSOR_DESC> namedDequantizeOperatorDescs(input_count);
         std::vector<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC> dequantizeOperatorDescs(input_count);
         std::vector<DML_OPERATOR_DESC> dmlOpDesc(input_count);
-        std::vector<const DML_OPERATOR_DESC*> opDescs = {};
+        std::vector<const DML_OPERATOR_DESC*> opDescs;
         for (uint32_t input_index = 0; input_index < input_count; ++input_index)
         {
             auto tuple_start = 2 + input_index * 3;

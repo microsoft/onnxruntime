@@ -427,11 +427,6 @@ namespace Dml
         return GetDmlAdjustedAxis(onnxAxis, onnxDimCount, dmlDimCount);
     }
 
-    uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t dmlDimCount)
-    {
-        return GetDmlAdjustedAxis(onnxAxis, kernelCreationContext, dmlDimCount, 0);
-    }
-
     // Adjust the axis value to compensate for padding any upper dimensions (unsqueezing).
     uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, uint32_t onnxDimCount, uint32_t dmlDimCount)
     {
