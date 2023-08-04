@@ -119,7 +119,7 @@ def _test_ios_packages(args):
             simulator_device_info = subprocess.check_output(
                 [
                     sys.executable,
-                    str(REPO_DIR / "tools" / "ci_build" / "github" / "apple" / "get_simulator_info.py"),
+                    str(REPO_DIR / "tools" / "ci_build" / "github" / "apple" / "get_simulator_device_info.py"),
                 ],
                 text=True,
             ).strip()
