@@ -3027,6 +3027,12 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
 }
 #endif
 
+TEST(GradientCheckerTest, ReciprocalGrad) {
+  // Avoid division by 0 by using the transformer.
+  std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
+  UnaryOpGradientTest("Reciprocal", kOnnxDomain, 12, nullptr, &transformer);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
