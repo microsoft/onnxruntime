@@ -44,8 +44,7 @@ const createReduceProgramInfoLoader =
           return {
             ...metadata,
             get: () => createReduceProgramInfo(
-                metadata, [inputs[0]], reduceOp, [updatedAttributes.axis], DataType.int64,
-                updatedAttributes.keepDims)
+                metadata, [inputs[0]], reduceOp, [updatedAttributes.axis], DataType.int64, updatedAttributes.keepDims)
           };
         };
 
