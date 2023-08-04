@@ -92,6 +92,7 @@ export class WebGpuBackend {
 
   supportTimestampQuery = false;
   profilingQuerySet: GPUQuerySet;
+  profilingQueryData: GpuData;
   profilingTimeBase?: bigint;
 
   env: Env;
