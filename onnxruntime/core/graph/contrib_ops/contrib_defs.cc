@@ -539,6 +539,39 @@ void GreedySearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
 }
 
+void nBitQuantOpsShapeInference(InferenceContext& ctx, size_t weight_idx=0) {
+  auto* final_output_shape =
+      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  int64_t in_features = getAttribute(ctx, "in_features", -1);
+  int64_t out_features = getAttribute(ctx, "out_features", -1);
+  if (in_features > 0 && out_features > 0) {
+    final_output_shape->add_dim()->set_dim_value(in_features);
+    final_output_shape->add_dim()->set_dim_value(out_features);
+    return;
+  }
+
+  int64_t bits = getAttribute(ctx, "bits", -1);
+  int64_t groupsize = getAttribute(ctx, "groupsize", -1);
+  if (bits <= 0 || groupsize <= 0) {
+    fail_shape_inference("bits and groupsize must be positive");
+  }
+
+  auto qweight_input_shape = ctx.getInputType(weight_idx)->tensor_type().shape();
+  if (qweight_input_shape.dim_size() != 2) {
+    return;  // Input tensor should have at least two dimensions.
+  }
+  if (in_features > 0) {
+    final_output_shape->add_dim()->set_dim_value(in_features);
+  } else if (bits == 4 || bits == 2 || bits == 8) {
+    int64_t compress_ratio = 32 / bits;
+    final_output_shape->add_dim()->set_dim_value(compress_ratio * qweight_input_shape.dim(0).dim_value());
+  } else {
+    fail_shape_inference("either bits should be 2, 4 or 8 or in_features be exist");
+  }
+  final_output_shape->add_dim()->set_dim_value(qweight_input_shape.dim(1).dim_value());
+}
+
 constexpr const char* Gelu_ver1_doc =
     R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
@@ -3446,38 +3479,6 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, transB);
       });
 
-  void nBitQuantOpsShapeInference(InferenceContext & ctx) {
-    auto* final_output_shape =
-        ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-
-    int64_t in_features = getAttribute(ctx, "in_features", -1);
-    int64_t out_features = getAttribute(ctx, "out_features", -1);
-    if (in_features > 0 && out_features > 0) {
-      final_output_shape->add_dim()->set_dim_value(in_features);
-      final_output_shape->add_dim()->set_dim_value(out_features);
-      return;
-    }
-
-    int64_t bits = getAttribute(ctx, "bits", -1);
-    int64_t groupsize = getAttribute(ctx, "groupsize", -1);
-    if (bits <= 0 || groupsize <= 0) {
-      fail_shape_inference("bits and groupsize must be positive");
-    }
-
-    auto qweight_input_shape = ctx.getInputType(0)->tensor_type().shape();
-    if (qweight_input_shape.dim_size() != 2) {
-      return;  // Input tensor should have at least two dimensions.
-    }
-    if (in_features > 0) {
-      final_output_shape->add_dim()->set_dim_value(in_features);
-    } else if (bits == 4 || bits == 2 || bits == 8) {
-      int64_t compress_ratio = 32 / bits;
-      final_output_shape->add_dim()->set_dim_value(compress_ratio * qweight_input_shape.dim(0).dim_value());
-    } else {
-      fail_shape_inference("either bits should be 2, 4 or 8 or in_features be exist");
-    }
-    final_output_shape->add_dim()->set_dim_value(qweight_input_shape.dim(1).dim_value());
-  }
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantNbitsGemm)
       .SetDomain(kMSDomain)
@@ -3485,8 +3486,8 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
       .SetDoc(R"DOC(Nbits quantization matmul, the weight is quantized by GPTQ)DOC")
       .Attr("out_features", "size of each output sample", AttributeProto::INT, OPTIONAL_VALUE)
       .Attr("in_features", "size of each input sample, It should be provides if bits is not [2,4,8]", AttributeProto::INT, OPTIONAL_VALUE)
-      .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT, static_cast<int64_t>(4))
-      .Attr("groupsize", "number of groupsize used for weight quantization,(default 128)", AttributeProto::INT, static_cast<int64_t>(128))
+      .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
+      .Attr("groupsize", "number of groupsize used for weight quantization,(default 128)", AttributeProto::INT)
       .Input(0, "X1", "The input tensor, not quantized", "T")
       .Input(1, "qweight", "quantized weight", "T1", OpSchema::Optional)
       .Input(2, "scales", "scale in quantization", "T", OpSchema::Optional)
@@ -3500,14 +3501,14 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         // Shape inference
-        nBitQuantOpsShapeInference(ctx);
+        nBitQuantOpsShapeInference(ctx, 1);
       });
   ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeAndUnpackWeight)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("dequantize and unpack weight")
-      .Attr("bits", "quantization bit number", AttributeProto::INT, static_cast<int64_t>(4))
-      .Attr("groupsize", "line nums in a group", AttributeProto::INT, static_cast<int64_t>(128))
+      .SetDoc("dequantize and unpack weight, the weight is quantized by GPTQ, 2-8 bits are supported")
+      .Attr("bits", "quantization bit number", AttributeProto::INT)
+      .Attr("groupsize", "line nums in a group", AttributeProto::INT)
       .Attr("in_features", "line nums in a group", AttributeProto::INT, OPTIONAL_VALUE)
       .Input(0, "qweight", "quantized weight", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
       .Input(1, "scales", "scale in quantization", "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
