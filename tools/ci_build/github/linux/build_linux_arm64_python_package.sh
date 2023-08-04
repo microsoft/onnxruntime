@@ -33,7 +33,7 @@ if [ "$ARCH" == "x86_64" ] && [ "$GCC_VERSION" -ge 9 ]; then
     CXXFLAGS="$CXXFLAGS -fcf-protection"
 fi
 
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--enable_lto" "--build_wheel" "$BUILD_DEVICE")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--enable_lto" "--build_wheel" "$EXTRA_ARG")
 
 if [ "$ARCH" == "x86_64" ]; then
     #ARM build machines do not have the test data yet.
