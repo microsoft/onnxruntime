@@ -11,4 +11,4 @@ jobs:
       XCODE_DEVELOPER_DIR="/Applications/Xcode_14.3.app/Contents/Developer"
       sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
 
-      xcrun simctl list --json runtimes
+      xcrun simctl list --json -e
