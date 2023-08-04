@@ -248,7 +248,7 @@ TEST(TrainingCApiTest, LoadONNXModelsFromBuffer) {
   std::vector<uint8_t> train_model_data(model_data_len);
   std::ifstream bytes_stream(model_path, std::ifstream::in | std::ifstream::binary);
   bytes_stream.read(reinterpret_cast<char*>(train_model_data.data()), model_data_len);
-  ASSERT_TRUE(train_model_data.size() == model_data_len);  //, "Model load failed. File size mismatch.");
+  ASSERT_TRUE(train_model_data.size() == model_data_len);
 
   Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
