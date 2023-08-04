@@ -6,7 +6,9 @@
 //#include <ATen/cuda/CUDAContext.h>
 //#include <c10/cuda/CUDAGuard.h>
 
+//#include "core/common/common.h"
 #include <cutlass/numeric_types.h>
+#include "core/providers/cuda/cuda_common.h"
 
 #include "flash.h"
 #include "static_switch.h"
@@ -28,20 +30,20 @@ void set_params_fprop(Flash_fwd_params& params,
                       const size_t num_heads_k,
                       const size_t head_size,
                       const size_t v_head_size,
+                      const size_t head_size_rounded,
                       // device pointers
-                      const Tensor* q,
-                      const Tensor* k,
-                      const Tensor* v,
-                      Tensor* out,
+                      void* q,
+                      void* k,
+                      void* v,
+                      void* out,
                       void* cu_seqlens_q_d,
                       void* cu_seqlens_k_d,
                       void* p_d,
                       void* softmax_lse_d,
-                      float p_dropout,
                       float softmax_scale,
                       bool is_causal) {
   // Reset the parameters
-  memset(&params, 0, sizeof(params));
+  //memset(&params, 0, sizeof(params));
 
   // Set the pointers and strides.
   params.q_ptr = q;
@@ -51,20 +53,28 @@ void set_params_fprop(Flash_fwd_params& params,
   params.p_ptr = p_d;
   // All stride are in elements, not bytes.
   params.q_row_stride = num_heads * head_size;
-  params.k_row_stride = num_heads * head_size;
+  params.k_row_stride = num_heads_k * head_size;
   params.v_row_stride = num_heads * v_head_size;
   params.q_head_stride = head_size;
   params.k_head_stride = head_size;
   params.v_head_stride = v_head_size;
   params.o_row_stride = num_heads * v_head_size;
   params.o_head_stride = v_head_size;
+  params.is_bf16 = false; // TODO: how can i determine this value?
 
-  //if (cu_seqlens_q_d == nullptr) {
-  //  params.q_batch_stride = q.Strides()[0];
-  //  params.k_batch_stride = k.Strides()[0];
-  //  params.v_batch_stride = v.Strides()[0];
-  //  params.o_batch_stride = out.Strides()[0];
-  //}
+  if (cu_seqlens_q_d == nullptr) {
+    // TODO: confirm batch stride
+    params.q_batch_stride = batch_size * num_heads * head_size; // stride(0)
+    params.k_batch_stride = batch_size * num_heads_k * head_size;  // stride(0)
+    params.v_batch_stride = batch_size * num_heads * v_head_size;  // stride(0)
+    params.o_batch_stride = batch_size * num_heads * v_head_size;  // stride(0)
+  }
+  else {
+    params.q_batch_stride = 0;
+    params.k_batch_stride = 0;
+    params.v_batch_stride = 0;
+    params.o_batch_stride = 0;
+  }
 
   params.cu_seqlens_q = static_cast<int*>(cu_seqlens_q_d);
   params.cu_seqlens_k = static_cast<int*>(cu_seqlens_k_d);
@@ -85,10 +95,14 @@ void set_params_fprop(Flash_fwd_params& params,
   params.seqlen_q_rounded = seqlen_q_rounded;
   params.seqlen_k_rounded = seqlen_k_rounded;
   params.d = head_size;
+  params.d_rounded = head_size_rounded;
 
   // Set the different scale values.
   params.scale_softmax = softmax_scale;
   params.scale_softmax_log2 = softmax_scale * M_LOG2E;
+
+  // TODO: idk what blockmask is but everything gets zeroed by memset so...
+  params.blockmask = 0;
 
   // Set this to probability of keeping an element to simplify things.
   //params.p_dropout = 1.f - p_dropout;
@@ -160,11 +174,11 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const int max_seqlen_k_,
                const float softmax_scale,
                const bool is_causal) {
-
+  
   ORT_UNUSED_PARAMETER(total_q);
   // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
-  bool is_sm8x = dprops->major == 8 && dprops->minor >= 0;
-  bool is_sm90 = dprops->major == 9 && dprops->minor == 0;
+  bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
+  bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
   ORT_ENFORCE(is_sm8x || is_sm90);
 
   //TORCH_CHECK(is_sm90 || is_sm8x, "FlashAttention only supports Ampere GPUs or newer.");
@@ -187,8 +201,6 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   //TORCH_CHECK(q.stride(-1) == 1, "Input tensor must have contiguous last dimension");
   //TORCH_CHECK(k.stride(-1) == 1, "Input tensor must have contiguous last dimension");
   //TORCH_CHECK(v.stride(-1) == 1, "Input tensor must have contiguous last dimension");
-
-  constexpr bool return_softmax = false;
 
   //TORCH_CHECK(batch_size > 0, "batch size must be postive");
   //TORCH_CHECK(head_size_og <= 256, "FlashAttention forward only supports head dimension at most 256");
@@ -220,8 +232,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    batch_size,
                    max_seqlen_q, max_seqlen_k,
                    seqlen_q_rounded, seqlen_k_rounded,
-                   num_heads, num_heads,
-                   head_size, v_head_size,
+                   num_heads, num_heads_k,
+                   head_size, v_head_size, head_size_rounded,
                    q, k, v, out,
                    /*cu_seqlens_q*/nullptr,
                    /*cu_seqlens_k*/nullptr,
@@ -230,7 +242,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    softmax_scale,
                    is_causal);
 
-  return run_mha_fwd(params, stream);
+  run_mha_fwd(params, stream);
+  return Status::OK(); // TODO: return from inside run_mha_fwd to make sure status is actually ok
 
   //Tensor out_padded = out;
   //if (head_size_og % 8 != 0) {
@@ -243,8 +256,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   //return {out, q_padded, k_padded, v_padded, out_padded, softmax_lse, p};
 }
 
-std::vector<Tensor>
-mha_varlen_fwd(const cudaDeviceProp& dprops,
+Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
                void* q,                // half (total_q, num_heads, head_size)
                void* k,                // half (total_k, num_heads, head_size)
@@ -263,14 +275,14 @@ mha_varlen_fwd(const cudaDeviceProp& dprops,
                const int max_seqlen_q_,
                const int max_seqlen_k_,
                const float softmax_scale,
-               const bool is_causal,
+               const bool is_causal/*,
                const int num_splits,
-               const bool zero_tensors) {
+               const bool zero_tensors*/) {
   ORT_UNUSED_PARAMETER(total_q);
   // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
-  bool is_sm8x = dprops->major == 8 && dprops->minor >= 0;
-  bool is_sm90 = dprops->major == 9 && dprops->minor == 0;
-  ORT_ENFORCE(is_sm8x || is_sm90)
+  bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
+  bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
+  ORT_ENFORCE(is_sm8x || is_sm90);
   //TORCH_CHECK(is_sm90 || is_sm8x, "FlashAttention only supports Ampere GPUs or newer.");
   // We will support Turing in the near future
   // TORCH_CHECK(is_sm90 || is_sm8x || is_sm75, "FlashAttention only supports Turing GPUs or newer.");
@@ -328,7 +340,7 @@ mha_varlen_fwd(const cudaDeviceProp& dprops,
                    max_seqlen_q, max_seqlen_k,
                    seqlen_q_rounded, seqlen_k_rounded,
                    num_heads, num_heads_k,
-                   head_size, v_head_size,
+                   head_size, v_head_size, head_size_rounded,
                    q, k, v, out,
                    cu_seqlens_q,
                    cu_seqlens_k,
@@ -337,6 +349,7 @@ mha_varlen_fwd(const cudaDeviceProp& dprops,
                    softmax_scale,
                    is_causal);
   run_mha_fwd(params, stream);
+  return Status::OK();  // TODO: return from inside run_mha_fwd to make sure status is actually ok
 
   //Tensor out_padded = out;
   //if (head_size_og % 8 != 0) {
