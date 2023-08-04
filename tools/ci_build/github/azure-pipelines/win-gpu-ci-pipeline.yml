@@ -1,3 +1,4 @@
+##### trigger Don't modified it manully ####
 trigger:
   branches:
     include:
@@ -20,6 +21,7 @@ pr:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
+#### end trigger ####
 
 parameters:
 - name: RunOnnxRuntimeTests
