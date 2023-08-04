@@ -89,6 +89,7 @@ def run_test(
     input_ids_name,
     segment_ids_name,
     input_mask_name,
+    mask_type,
 ):
     # Try deduce input names from optimized model.
     input_ids, segment_ids, input_mask = get_bert_inputs(
@@ -96,6 +97,7 @@ def run_test(
     )
 
     # Use random mask length for accuracy test. It might introduce slight inflation in latency reported in this script.
+    average_sequence_length = int(sequence_length / 2) if sequence_length >= 2 else sequence_length
     all_inputs = generate_test_data(
         batch_size,
         sequence_length,
@@ -105,7 +107,9 @@ def run_test(
         input_ids,
         segment_ids,
         input_mask,
-        random_mask_length=True,
+        average_sequence_length,
+        True,  # random sequence length
+        mask_type,
     )
 
     baseline_results, baseline_latency, output_names = run_model(
@@ -208,6 +212,14 @@ def parse_arguments():
         help="input name for attention mask",
     )
 
+    parser.add_argument(
+        "--mask_type",
+        required=False,
+        type=int,
+        default=2,
+        help="mask type: (1: mask index or sequence length, 2: raw 2D mask, 3: key len, cumulated lengths of query and key)",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -235,6 +247,7 @@ def main():
         args.input_ids,
         args.segment_ids,
         args.input_mask,
+        args.mask_type,
     )
 
 
