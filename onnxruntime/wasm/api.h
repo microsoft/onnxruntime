@@ -231,6 +231,8 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
  */
 char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
 
+// Training API Section
+
 #ifdef ENABLE_TRAINING_APIS
 /**
  * @brief Load the checkpoint for training.
@@ -239,14 +241,14 @@ char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
  * @param checkpoint_size
  * @return ort_training_checkpoint_handle_t
  */
-ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtLoadCheckpointForTraining(void* checkpoint, size_t checkpoint_size);
+ort_training_checkpoint_handle_t* EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoint_size);
 
 /**
  * @brief Release the specified ORT training checkpoint state.
  *
  * @param training_checkpoint_state_handle
  */
-void EMSCRIPTEN_KEEPALIVE OrtReleaseTrainingCheckpointState(ort_training_checkpoint_handle_t training_checkpoint_state_handle);
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle);
 
 /**
  * Creates an instance of a training session that can be used to begin or resume training from a given checkpoint state
@@ -262,7 +264,7 @@ void EMSCRIPTEN_KEEPALIVE OrtReleaseTrainingCheckpointState(ort_training_checkpo
  * @return a handle of the ORT training session
  *
  */
-ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTrainingSession(const ort_session_options_handle_t session_options,
+ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(const ort_session_options_handle_t session_options,
                                                                             const ort_training_checkpoint_handle_t training_checkpoint_state_handle,
                                                                             void* train_model,
                                                                             size_t train_size,
@@ -289,11 +291,11 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t 
  * @param run_options
  * @return int ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
-int EMSCRIPTEN_KEEPALIVE OrtRunTrainStep(ort_training_session_handle_t training_session_handle,
-                                         const ort_tensor_handle_t* inputs, const size_t inputs_count,
-                                         ort_tensor_handle_t* outputs,
-                                         const size_t outputs_count,
-                                         OrtRunOptions* run_options = nullptr);
+int EMSCRIPTEN_KEEPALIVE OrtTrainingRunTrainStep(ort_training_session_handle_t training_session_handle,
+                                                 const ort_tensor_handle_t inputs, const size_t inputs_count,
+                                                 ort_tensor_handle_t outputs,
+                                                 const size_t outputs_count,
+                                                 OrtRunOptions* run_options = nullptr);
 
 /**
  * Performs weight updates for the trainable parameters in the given training session using the optimizer model.
@@ -344,7 +346,7 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_t
  *                          GetParametersSize api call
  * @param trainable_only whether to skip non-trainable parameters
  */
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyBufferToParameters(ort_training_session_handle_t training_handle,
+ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_session_handle_t training_handle,
                                                                            ort_tensor_handle_t parameters_buffer,
                                                                            bool trainable_only);
 
@@ -353,7 +355,7 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyBufferToParameters(ort_t
  *
  * @param training_session_handle
  */
-void EMSCRIPTEN_KEEPALIVE OrtReleaseTrainingSession(ort_training_session_handle_t training_session_handle);
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_session_handle);
 
 #endif
 };
