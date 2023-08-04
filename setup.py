@@ -532,6 +532,7 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
                 "onnxruntime.training.ort_triton",
                 "onnxruntime.training.ort_triton.kernel",
+                "onnxruntime.training.utils",
                 "onnxruntime.training.utils.data",
                 "onnxruntime.training.utils.hooks",
             ]
