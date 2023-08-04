@@ -5,44 +5,29 @@
 from __future__ import annotations
 
 import argparse
-import enum
 import json
 import subprocess
 
 from packaging.version import Version
 
 
-class SimulatorInfoKey(str, enum.Enum):
-    """
-    The type of simulator information that can be retrieved by get_simulator_info().
-    """
-
-    DeviceTypeIdentifier = "device_type_identifier"
-    DeviceTypeName = "device_type_name"
-    RuntimeIdentifier = "runtime_identifier"
-    RuntimePlatform = "runtime_platform"
-    RuntimeVersion = "runtime_version"
-
-    def __str__(self):
-        return self.value
-
-
-def get_simulator_info(
-    requested_runtime_platform: str | None = "iOS",
-    requested_device_type_product_family: str | None = "iPhone",
-    max_runtime_version: str | None = None,
+def get_simulator_device_info(
+    requested_runtime_platform: str = "iOS",
+    requested_device_type_product_family: str = "iPhone",
+    max_runtime_version_str: str | None = None,
 ) -> dict[str, str]:
     """
-    Retrieves simulator information for a runtime and device type from Xcode.
-    This specifies a simulator configuration appropriate for running tests on this machine.
+    Retrieves simulator device information from Xcode.
+    This simulator device should be appropriate for running tests on this machine.
 
     :param requested_runtime_platform: The runtime platform to select.
     :param requested_device_type_product_family: The device type product family to select.
-    :param max_runtime_version: The maximum runtime version to allow.
+    :param max_runtime_version_str: The maximum runtime version to allow.
 
-    :return: A dictionary containing the simulator information for the selected runtime and device type.
-             The keys are specified by the SimulatorInfoKey enum.
+    :return: A dictionary containing information about the selected simulator device.
     """
+    max_runtime_version = Version(max_runtime_version_str) if max_runtime_version_str is not None else None
+
     simctl_proc = subprocess.run(
         ["xcrun", "simctl", "list", "--json", "--no-escape-slashes"],
         text=True,
@@ -52,77 +37,94 @@ def get_simulator_info(
 
     simctl_json = json.loads(simctl_proc.stdout)
 
-    # choose runtime - pick the one with the largest version not greater than max_runtime_version
+    # device type id -> device type structure
+    device_type_map = {device_type["identifier"]: device_type for device_type in simctl_json["devicetypes"]}
+
+    # runtime id -> runtime structure
+    runtime_map = {runtime["identifier"]: runtime for runtime in simctl_json["runtimes"]}
+
     def runtime_filter(runtime) -> bool:
-        if max_runtime_version is not None and Version(runtime["version"]) > Version(max_runtime_version):
+        if not runtime["isAvailable"]:
             return False
 
-        if requested_runtime_platform is not None and runtime["platform"] != requested_runtime_platform:
+        if runtime["platform"] != requested_runtime_platform:
+            return False
+
+        if max_runtime_version is not None and Version(runtime["version"]) > max_runtime_version:
             return False
 
         return True
 
-    selected_runtime = max(
-        filter(runtime_filter, simctl_json["runtimes"]),
-        key=lambda runtime: Version(runtime["version"]),
-    )
-
-    # choose device type - pick the one with the largest minimum runtime version that is supported by selected_runtime
-    selected_runtime_supported_device_type_ids = set(
-        device_type["identifier"] for device_type in selected_runtime["supportedDeviceTypes"]
-    )
+    def runtime_id_filter(runtime_id: str) -> bool:
+        runtime = runtime_map.get(runtime_id)
+        if runtime is None:
+            return False
+        return runtime_filter(runtime)
 
     def device_type_filter(device_type) -> bool:
-        if (
-            requested_device_type_product_family is not None
-            and device_type["productFamily"] != requested_device_type_product_family
-        ):
-            return False
-
-        if device_type["identifier"] not in selected_runtime_supported_device_type_ids:
+        if device_type["productFamily"] != requested_device_type_product_family:
             return False
 
         return True
 
-    selected_device_type = max(
-        filter(device_type_filter, simctl_json["devicetypes"]),
-        key=lambda device_type: device_type["minRuntimeVersion"],
-    )
+    def device_filter(device) -> bool:
+        if not device["isAvailable"]:
+            return False
+
+        if not device_type_filter(device_type_map[device["deviceTypeIdentifier"]]):
+            return False
+
+        return True
+
+    # simctl_json["devices"] is a map of runtime id -> list of device structures
+    # expand this into a list of (runtime id, device structure) and filter out invalid entries
+    runtime_id_and_device_pairs = []
+    for runtime_id, device_list in filter(
+        lambda runtime_id_and_device_list: runtime_id_filter(runtime_id_and_device_list[0]),
+        simctl_json["devices"].items(),
+    ):
+        runtime_id_and_device_pairs.extend((runtime_id, device) for device in filter(device_filter, device_list))
+
+    # sort key - tuple of (runtime version, device type min runtime version)
+    # the secondary device type min runtime version value is to treat more recent device types as greater
+    def runtime_id_and_device_pair_key(runtime_id_and_device_pair):
+        runtime_id, device = runtime_id_and_device_pair
+
+        runtime = runtime_map[runtime_id]
+        device_type = device_type_map[device["deviceTypeIdentifier"]]
+
+        return (Version(runtime["version"]), device_type["minRuntimeVersion"])
+
+    selected_runtime_id, selected_device = max(runtime_id_and_device_pairs, key=runtime_id_and_device_pair_key)
+    selected_runtime = runtime_map[selected_runtime_id]
+    selected_device_type = device_type_map[selected_device["deviceTypeIdentifier"]]
 
     result = {
-        str(SimulatorInfoKey.DeviceTypeIdentifier): selected_device_type["identifier"],
-        str(SimulatorInfoKey.DeviceTypeName): selected_device_type["name"],
-        str(SimulatorInfoKey.RuntimeIdentifier): selected_runtime["identifier"],
-        str(SimulatorInfoKey.RuntimePlatform): selected_runtime["platform"],
-        str(SimulatorInfoKey.RuntimeVersion): selected_runtime["version"],
+        "device_name": selected_device["name"],
+        "device_udid": selected_device["udid"],
+        "device_type_identifier": selected_device_type["identifier"],
+        "device_type_name": selected_device_type["name"],
+        "device_type_product_family": selected_device_type["productFamily"],
+        "runtime_identifier": selected_runtime["identifier"],
+        "runtime_platform": selected_runtime["platform"],
+        "runtime_version": selected_runtime["version"],
     }
 
     return result
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Gets simulator info from Xcode.")
-    parser.add_argument(
-        "output_format",
-        nargs="?",
-        help="Specifies the output format. If unspecified, all info is printed in JSON format. This should be a "
-        "format string compatible with Python `str.format_map()`. "
-        f"Possible replacement field names are: {[str(key) for key in SimulatorInfoKey]}. "
-        f'Example: "OS={{{SimulatorInfoKey.RuntimeVersion}}}".',
-    )
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Gets simulator info from Xcode and prints it in JSON format.")
+    _ = parser.parse_args()  # no args yet
 
-    info = get_simulator_info(
+    info = get_simulator_device_info(
         # The macOS-13 hosted agent image has iOS 17 which is currently in beta. Limit it to 16.4 for now.
         # See https://github.com/actions/runner-images/issues/8023
         # TODO Remove max_runtime_version limit.
-        max_runtime_version="16.4",
+        max_runtime_version_str="16.4",
     )
 
-    if args.output_format is not None:
-        print(args.output_format.format_map(info))
-    else:
-        print(json.dumps(info, indent=2))
+    print(json.dumps(info, indent=2))
 
 
 if __name__ == "__main__":

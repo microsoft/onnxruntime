@@ -4,6 +4,7 @@
 
 import argparse
 import contextlib
+import json
 import os
 import pathlib
 import shutil
@@ -115,14 +116,16 @@ def _test_ios_packages(args):
 
         # run the tests
         if not args.prepare_test_project_only:
-            ios_simulator_destination_specifier = subprocess.check_output(
+            simulator_device_info = subprocess.check_output(
                 [
                     sys.executable,
                     str(REPO_DIR / "tools" / "ci_build" / "github" / "apple" / "get_simulator_info.py"),
-                    "platform=iOS Simulator,OS={runtime_version},name={device_type_name}",
                 ],
                 text=True,
             ).strip()
+            print(f"Simulator device info:\n{simulator_device_info}")
+
+            simulator_device_info = json.loads(simulator_device_info)
 
             subprocess.run(
                 [
@@ -134,7 +137,7 @@ def _test_ios_packages(args):
                     "-scheme",
                     "ios_package_test",
                     "-destination",
-                    ios_simulator_destination_specifier,
+                    f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
                 ],
                 shell=False,
                 check=True,
