@@ -46,6 +46,39 @@ void matmulShapeInference(
     int input1Idx,
     int input2Idx);
 
+void nBitQuantOpsShapeInference(InferenceContext& ctx) {
+  auto *final_output_shape =
+      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  int64_t in_features = getAttribute(ctx, "in_features", -1);
+  int64_t out_features = getAttribute(ctx, "out_features", -1);
+  if (in_features > 0 && out_features > 0) {
+    final_output_shape->add_dim()->set_dim_value(in_features);
+    final_output_shape->add_dim()->set_dim_value(out_features);
+    return;
+  }
+
+  int64_t bits = getAttribute(ctx, "bits", -1);
+  int64_t groupsize = getAttribute(ctx, "groupsize", -1);
+  if (bits <= 0 || groupsize <= 0) {
+    fail_shape_inference("bits and groupsize must be positive");
+  }
+
+  auto qweight_input_shape = ctx.getInputType(0)->tensor_type().shape();
+  if (qweight_input_shape.dim_size() != 2) {
+    return;  // Input tensor should have at least two dimensions.
+  }
+  if (in_features > 0) {
+    final_output_shape->add_dim()->set_dim_value(in_features);
+  } else if (bits == 4 || bits == 2 || bits == 8) {
+    int64_t compress_ratio = 32 / bits;
+    final_output_shape->add_dim()->set_dim_value(compress_ratio * qweight_input_shape.dim(0).dim_value());
+  } else {
+    fail_shape_inference("either bits should be 2, 4 or 8 or in_features be exist");
+  }
+  final_output_shape->add_dim()->set_dim_value(qweight_input_shape.dim(1).dim_value());
+}
+
 void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
@@ -2807,11 +2840,13 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
       .TypeConstraint("T", {"tensor(uint32)", "tensor(int32)"}, "Constrain input and output types to integer tensors.")
       .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to integer tensors.")
       .Attr("bits", "quantization bit number", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("in_features", "in_features", AttributeProto::INT, OPTIONAL_VALUE)
       .Attr("groupsize", "line nums in a group", AttributeProto::INT, static_cast<int64_t>(128))
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 1, 0);
         // Shape inference
+        nBitQuantOpsShapeInference(ctx);
       });
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)

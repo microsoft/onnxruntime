@@ -278,7 +278,8 @@ void IterateSubgraphFromNode(Graph& graph,
       subgraph.insert(cur->MutableOutputDefs()[0]);
       subgraph.insert(cur->MutableOutputDefs()[1]);
       PushAllOutputNode(graph, to_visit, cur, visited);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Cast", {9, 13})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Cast", {9, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Gelu", {1}, kMSDomain)) {
       ORT_ENFORCE(subgraph.find(cur->MutableInputDefs()[0]) != subgraph.end());
       subgraph.insert(cur->MutableOutputDefs()[0]);
       PushAllOutputNode(graph, to_visit, cur, visited);
@@ -326,6 +327,35 @@ void IterateSubgraphFromNode(Graph& graph,
                new_shape_const_values[0] == 0 && new_shape_const_values[1] == 0) {
       subgraph.insert(cur->MutableOutputDefs()[0]);
       PushAllOutputNode(graph, to_visit, cur, visited);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "ReduceMean", {1, 11, 13, 18})) {
+      auto axes = cur->GetAttributes().at("axes").ints();
+      bool check = true;
+      // temp
+      subgraph.insert(cur->MutableOutputDefs()[0]);
+      PushAllOutputNode(graph, to_visit, cur, visited);
+      continue;
+
+      if (cur->InputDefs()[0]->Shape()) {
+        for (int64_t axis : axes) {
+            axis = axis < 0 ? axis + cur->InputDefs()[0]->Shape()->dim_size() : axis;
+            if (axis < 2) {
+              LOG_DEBUG_INFO(logger, "PaddingElimination::axis of ReduceMean: " + cur->Name() + " is " +
+                                        std::to_string(axis) + ", which blocks merging leading two dims.");
+              candidate_outputs.insert(cur);
+              check = false;
+              break;
+            }
+        }
+      } else {
+        LOG_DEBUG_INFO(logger, "PaddingElimination::shape of input of ReduceMean: " + cur->Name() + " is unknown.");
+        candidate_outputs.insert(cur);
+        check = false;
+      }
+      if (check) {
+        LOG_DEBUG_INFO(logger, "PaddingElimination::ReduceMean: " + cur->Name() + " is added to subgraph.");
+        subgraph.insert(cur->MutableOutputDefs()[0]);
+        PushAllOutputNode(graph, to_visit, cur, visited);
+      }
     } else {
       LOG_DEBUG_INFO(logger, "PaddingElimination does not support op " + cur->OpType() + ", add it as output boundary.");
       if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Reshape", {1, 5, 13, 14, 19})) {
@@ -426,7 +456,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
       const_tensor.set_name(graph.GenerateNodeArgName("0"));
       const_tensor.set_data_type(elem_type);
       static const InlinedVector<int64_t> dims = {};
-      InlinedVector<int64_t> values{0};  // hard code padding index to be 0
+      InlinedVector<int64_t> values{1};  // hard code padding index to be 0
       const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
       invalid_value_node_arg = &graph_utils::AddInitializer(graph, const_tensor);
       break;

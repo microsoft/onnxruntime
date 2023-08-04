@@ -314,8 +314,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
-      std::vector<std::string> sparse_embedding_input_names{"input_ids"};  // input_ids is the embedding input name as graph input.
-      transformers.emplace_back(std::make_unique<PaddingElimination>(cuda_rocm_eps, sparse_embedding_input_names));
+      const auto flag = std::getenv("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER");
+      if (flag != nullptr && std::string(flag) == "1") {
+        std::vector<std::string> sparse_embedding_input_names{"input_ids"};  // input_ids is the embedding input name as graph input.
+        transformers.emplace_back(std::make_unique<PaddingElimination>(cuda_rocm_eps, sparse_embedding_input_names));
+      }
 #endif
 
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_cuda_dml_rocm_eps));
