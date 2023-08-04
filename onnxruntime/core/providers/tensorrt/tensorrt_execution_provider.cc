@@ -1902,13 +1902,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (has_dynamic_shape) {
         std::ostringstream msg;
         msg << "User needs to provide all the dynamic shape inputs with associated profiles if they want to explicitly set profiles through provider options.\n";
-        msg << "Please note that main graph could be partitioned into TRT/CUDA/CPU subgraphs, in this case, user also needs to provide shape profiles for the TRT subgraph's input if it's dynamic shape input.\n"
+        msg << "Please note that main graph could be partitioned into TRT/CUDA/CPU subgraphs, in this case, user also needs to provide shape profiles for the TRT subgraph's input if it's dynamic shape input.\n";
         msg << "Following input(s) has no associated shape profiles provided:\n";
         auto begin = input_implicit_shape_ranges.begin(); 
         auto end = input_implicit_shape_ranges.end();
         auto it = begin;
         if (it != end) {
-          msg << it->fisrt;
+          msg << it->first;
           ++it;
         }
         for (; it != end; ++it) {
