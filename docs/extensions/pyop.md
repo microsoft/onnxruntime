@@ -4,6 +4,7 @@ description: Instructions to create a custom operator using Python functions and
 parent: Extensions
 nav_order: 4
 ---
+
 # Creating custom operators using Python functions
 
 Custom operators are a powerful feature in ONNX Runtime that allows users to extend the functionality of the runtime by implementing their own operators to perform specific operations not available in the standard ONNX operator set.

@@ -4,6 +4,7 @@ description: Instructions for building and developing ORT Extensions.
 parent: Extensions
 nav_order: 2
 ---
+
 # Build and Development
 
 This project supports Python and can be built from source easily, or a simple cmake build without Python dependency.
@@ -21,7 +22,9 @@ Test:
 For a complete list of verified build configurations see [here](./development.md#dependencies)
 
 ## Java package
-`bash ./build.sh -DOCOS_BUILD_JAVA=ON` to build jar package in out/<OS>/Release folder
+For instructions on building ONNX Runtime with onnxruntime-extensions for Java package, see [here](./custom-build.md)
+
+Run `bash ./build.sh -DOCOS_BUILD_JAVA=ON` to build jar package in out/<OS>/Release folder
 
 ## Android package
 - pre-requisites: [Android Studio](https://developer.android.com/studio)
@@ -32,7 +35,7 @@ Use `./tools/android/build_aar.py` to build an Android AAR package.
 Use `./tools/ios/build_xcframework.py` to build an iOS xcframework package.
 
 ## Web-Assembly
-ONNXRuntime-Extensions will be built as a static library and linked with ONNXRuntime due to the lack of a good dynamic linking mechanism in WASM. Here are two additional arguments [â€“-use_extensions and --extensions_overridden_path](https://github.com/microsoft/onnxruntime/blob/860ba8820b72d13a61f0d08b915cd433b738ffdc/tools/ci_build/build.py#L416) on building onnxruntime to include ONNXRuntime-Extensions footprint in the ONNXRuntime package.
+ONNXRuntime-Extensions will be built as a static library and linked with ONNXRuntime due to the lack of a good dynamic linking mechanism in WASM. Here are two additional arguments [–-use_extensions and --extensions_overridden_path](https://github.com/microsoft/onnxruntime/blob/860ba8820b72d13a61f0d08b915cd433b738ffdc/tools/ci_build/build.py#L416) on building onnxruntime to include ONNXRuntime-Extensions footprint in the ONNXRuntime package.
 
 ## The C++ shared library
 for any other cases, please run `build.bat` or `bash ./build.sh` to build the library. By default, the DLL or the library will be generated in the directory `out/<OS>/<FLAVOR>`. There is a unit test to help verify the build.
@@ -45,8 +48,7 @@ If you want to build the binary with VC Runtime static linkage, please add a par
 check this link https://docs.opensource.microsoft.com/releasing/general-guidance/copyright-headers/ for source file copyright header.
 
 ## Dependencies
-
-The matrix below lists the versions of individual dependencies of onnxruntime-extensions. These are the configurations that are routinely and extensively verified by our CI.
+The matrix below lists the versions of individual dependencies of onxxruntime-extensions. These are the configurations that are routinely and extensively verified by our CI.
 
 Python | 3.8 | 3.9 | 3.10 | 3.11 |
 ---|---|---|---|---
