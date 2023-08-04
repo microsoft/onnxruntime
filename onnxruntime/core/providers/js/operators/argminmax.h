@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/js/js_kernel.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
 namespace js {
@@ -18,14 +18,16 @@ namespace js {
     ArgMinMaxKernel(const OpKernelInfo& info) : JsKernel(info), ReduceKernelBase<allow_multi_axes>(info) { \
       std::vector<int32_t> axes(axes_.size());                                                             \
       if (axes_.size() > 0) {                                                                              \
-        axes.push_back(-1);                                                                                \
+        axes.push_back(axes_[0]);                                                                          \
+      } else {                                                                                             \
+        axes.push_back(0);                                                                                 \
       }                                                                                                    \
       std::transform(axes_.begin(), axes_.end(), axes.begin(),                                             \
                      [](int64_t axis) { return gsl::narrow_cast<int32_t>(axis); });                        \
       JSEP_INIT_KERNEL_ATTRIBUTE(ArgMinMaxKernel, ({                                                       \
                                    "keepDims" : !!$1,                                                      \
                                    "selectLastIndex" : !!$2,                                               \
-                                   "axes" : $3,                                                            \
+                                   "axis" : $3,                                                            \
                                  }),                                                                       \
                                  static_cast<int32_t>(keepdims_),                                          \
                                  static_cast<int32_t>(select_last_index_),                                 \
