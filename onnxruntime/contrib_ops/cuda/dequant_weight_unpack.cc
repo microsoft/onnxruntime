@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -12,7 +13,18 @@ class DequantizeAndUnpackWeight final : public ::onnxruntime::cuda::CudaKernel {
   explicit DequantizeAndUnpackWeight(const OpKernelInfo& info) : CudaKernel{info} {
     ORT_ENFORCE(info.GetAttr<int64_t>("bits", &bits_).IsOK());
     ORT_ENFORCE(info.GetAttr<int64_t>("groupsize", &group_size_).IsOK());
-    ORT_ENFORCE(bits_ == 8 || bits_ == 4, "bits must be 8 or 4");
+    in_features_ = info.GetAttrOrDefault<int64_t>("in_features", -1);
+
+    ORT_ENFORCE(bits_ > 1 && bits_ < 9, "bits must be in range [2, 8]");
+    if (bits_ != 2 && bits_ != 4 && bits_ != 8 && in_features_ == -1) {
+      ORT_THROW("in_features must be specified for bits other than 2, 4, 8");
+    }
+    if (in_features_ == -1) {
+      const auto& node{Node()};
+      const auto& input_defs = node.InputDefs();
+      const NodeArg& X = *input_defs[0];
+      in_features_ = X.Shape()->dim(0).dim_value() * (32 / bits_);
+    }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -21,6 +33,7 @@ class DequantizeAndUnpackWeight final : public ::onnxruntime::cuda::CudaKernel {
   using Base = CudaKernel;
   int64_t bits_;
   int64_t group_size_;
+  int64_t in_features_;
 };
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -41,6 +54,7 @@ void DequantWeightNbit(
     void* weight_out,
     uint32_t MATRIX_K,
     uint32_t MATRIX_N,
+    uint32_t bits,
     uint32_t groupsize);
 
 Status DequantizeAndUnpackWeight::ComputeInternal(OpKernelContext* ctx) const {
@@ -48,15 +62,15 @@ Status DequantizeAndUnpackWeight::ComputeInternal(OpKernelContext* ctx) const {
   const auto* input_scale = ctx->Input<Tensor>(1);
   const auto* input_zeros = ctx->Input<Tensor>(2);
 
-  auto qweight_shape = qweight->Shape();
-  qweight_shape[0] *= 32 / bits_;
+  auto output_shape = qweight->Shape();
+  output_shape[0] = in_features_;
 
-  auto* output = ctx->Output(0, qweight_shape);
+  auto* output = ctx->Output(0, output_shape);
   DequantWeightNbit(Stream(ctx), qweight->Data<int32_t>(),
                     input_scale->Data<MLFloat16>(),
                     input_zeros->Data<int32_t>(),
                     output->MutableData<MLFloat16>(),
-                    qweight->Shape()[0], qweight_shape[1], group_size_);
+                    in_features_, output_shape[1], bits_, group_size_);
   return Status::OK();
 }
 

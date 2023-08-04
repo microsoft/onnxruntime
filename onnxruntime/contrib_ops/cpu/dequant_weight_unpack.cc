@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
+#include "core/framework/tensorprotoutils.h"
 
 
 namespace onnxruntime {
@@ -14,9 +15,21 @@ namespace contrib {
 class DequantizeAndUnpackWeight final : public OpKernel {
  public:
   explicit DequantizeAndUnpackWeight(const OpKernelInfo& info) : OpKernel{info} {
-    bits_ = info.GetAttrOrDefault<int64_t>("bits", 4);
-    groupsize_ = info.GetAttrOrDefault<int64_t>("groupsize", 128);
-    ORT_ENFORCE(bits_ == 4 || bits_ == 8, "bits must be 4 or 8");
+    ORT_ENFORCE(info.GetAttr<int64_t>("bits", &bits_).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("groupsize", &groupsize_).IsOK());
+    in_features_ = info.GetAttrOrDefault<int64_t>("in_features", -1);
+
+    ORT_ENFORCE(bits_ > 1 && bits_ < 9, "bits must be in range [2, 8]");
+    if (bits_ != 2 && bits_ != 4 && bits_ != 8 && in_features_ == -1) {
+      ORT_THROW("in_features must be specified for bits other than 2, 4, 8");
+    }
+    if (in_features_ == -1) {
+      const auto& node{Node()};
+      const auto& input_defs = node.InputDefs();
+      const NodeArg& X = *input_defs[0];
+      auto X_shape = utils::GetTensorShapeFromTensorShapeProto(*X.Shape());
+      in_features_ = X_shape[0] * (32 / bits_);
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -27,6 +40,7 @@ class DequantizeAndUnpackWeight final : public OpKernel {
 
   int64_t bits_;
   int64_t groupsize_;
+  int64_t in_features_;
 };
 
 ONNX_OPERATOR_KERNEL_EX(
