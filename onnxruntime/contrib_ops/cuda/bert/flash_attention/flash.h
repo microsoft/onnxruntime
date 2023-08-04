@@ -76,7 +76,7 @@ struct Flash_fwd_params : public Qkv_params {
 
   int* __restrict__ blockmask;
 
-  //bool is_bf16 = false;
+  bool is_bf16 = false;
   bool is_causal;
 };
 
