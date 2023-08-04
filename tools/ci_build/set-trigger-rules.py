@@ -1,3 +1,11 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
+# This script is used to add trigger rules to the workflow files.
+# The working directory should be in tools/ci_build/github/azure-pipelines
+
 import multiprocessing
 
 
