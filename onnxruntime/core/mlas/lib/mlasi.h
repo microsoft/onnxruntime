@@ -56,6 +56,8 @@ Abstract:
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized" // GCC 12 warns about uninitialized variables in immintrin.h.
 #include <immintrin.h>
 #pragma GCC diagnostic pop
+#else
+#include <immintrin.h>
 #endif
 #endif
 #if defined(__VSX__)
