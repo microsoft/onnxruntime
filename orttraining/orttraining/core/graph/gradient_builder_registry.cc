@@ -117,6 +117,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Trilu", GetTriluGradient);
   REGISTER_GRADIENT_BUILDER("FakeQuant", GetFakeQuantGradient);
   REGISTER_GRADIENT_BUILDER("LSTMTraining", GetLSTMGradient);
+  REGISTER_GRADIENT_BUILDER("Reciprocal", GetReciprocalGradient);
 
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };
