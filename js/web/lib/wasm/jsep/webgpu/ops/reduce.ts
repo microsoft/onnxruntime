@@ -33,7 +33,7 @@ export type ReduceOp = (inputs: readonly TensorView[], axes: number[]) => string
 const noOp: ReduceOp = (): string[] => ['', '', 'var value = _A[inputIdx];', ''];
 export const createReduceProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], reduceOp: ReduceOp, axesInput: number[],
-     outputDataType: DataType, noopWithEmptyAxes = false, keepDims = false): ProgramInfo => {
+     outputDataType: DataType, keepDims = false, noopWithEmptyAxes = false): ProgramInfo => {
       const outputShape: number[] = [];
       const inputShape = inputs[0].dims;
 
@@ -137,7 +137,7 @@ const createReduceProgramInfoLoader =
         get: () => createReduceProgramInfo(
             metadata, [inputs[0]],
             updatedAttributes.noopWithEmptyAxes && updatedAttributes.axes.length === 0 ? noOp : reduceOp,
-            updatedAttributes.axes, inputs[0].dataType, updatedAttributes.noopWithEmptyAxes, updatedAttributes.keepDims)
+            updatedAttributes.axes, inputs[0].dataType, updatedAttributes.keepDims, updatedAttributes.noopWithEmptyAxes)
       };
     };
 
