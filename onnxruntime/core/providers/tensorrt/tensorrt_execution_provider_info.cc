@@ -13,6 +13,7 @@ namespace onnxruntime {
 namespace tensorrt {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
+constexpr const char* kHasUserComputeStream = "has_user_compute_stream";
 constexpr const char* kMaxPartitionIterations = "trt_max_partition_iterations";
 constexpr const char* kMinSubgraphSize = "trt_min_subgraph_size";
 constexpr const char* kMaxWorkspaceSize = "trt_max_workspace_size";
@@ -64,6 +65,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
                 return Status::OK();
               })
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxPartitionIterations, info.max_partition_iterations)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kHasUserComputeStream, info.has_user_compute_stream)
           .AddAssignmentToReference(tensorrt::provider_option_names::kMinSubgraphSize, info.min_subgraph_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kFp16Enable, info.fp16_enable)
@@ -102,6 +104,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.max_partition_iterations)},
+      {tensorrt::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
       {tensorrt::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.fp16_enable)},
@@ -149,6 +152,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
 
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {tensorrt::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.trt_max_partition_iterations)},
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.trt_min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.trt_max_workspace_size)},
