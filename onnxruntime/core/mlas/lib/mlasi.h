@@ -53,7 +53,7 @@ Abstract:
 #include <cpuid.h>
 #if __GNUC__ >= 12
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized" // GCC 12 warns about uninitialized variables in immintrin.h.
 #include <immintrin.h>
 #pragma GCC diagnostic pop
 #endif
