@@ -12,14 +12,18 @@ from . import _io, _utils
 from ._fallback import ORTModuleTorchModelException, _FallbackManager, wrap_exception
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
-from .debug_options import DebugOptions
+from .options import DebugOptions
 
 T = TypeVar("T", bound="torch.nn.Module")
 
 
 class TorchModuleORT(TorchModuleInterface):
     def __init__(
-        self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger
+        self,
+        module: torch.nn.Module,
+        debug_options: DebugOptions,
+        fallback_manager: _FallbackManager,
+        logger: Logger,
     ):
         super().__init__(module)
         self._flattened_module = _io._FlattenedModule(module)

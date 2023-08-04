@@ -1,31 +1,33 @@
 trigger: none
 
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
+
+variables:
+  - name: video
+    value: 44
+  - name: render
+    value: 109
+  - name: RocmVersion
+    value: 5.5
+  - name: BuildConfig
+    value: Release
+
 jobs:
-- job: AMD_CI
+- job: Linux_Build
+  variables:
+    skipComponentGovernanceDetection: true
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   workspace:
     clean: all
-  pool: 'AMD-GPU'
-  timeoutInMinutes: 150
-
-  # gid of video and render group on gcramdrr1-mi100-085 and -86
-  variables:
-    - name: video
-      value: 44
-    - name: render
-      value: 109
-    - name: onnxruntimeBuildSucceeded
-      value: false
-    - name: RocmVersion
-      value: 5.5
-    - name: BuildConfig
-      value: Release
-    - name: CCACHE_DIR
-      value: $(Pipeline.Workspace)/ccache
-    - name: TODAY
-      value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+  pool: onnxruntime-Ubuntu2004-AMD-CPU
+  timeoutInMinutes: 120
 
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: recursive
@@ -34,21 +36,12 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)
+      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-build
 
   #- script: |-
   #    sed -i 's|session_options.use_deterministic_compute = False|session_options.use_deterministic_compute = True|g' \
   #       orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py
   #  displayName: 'Toggle ON deterministic compute mode for ORTModule'
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        echo "Select agent: $(Agent.Name), GPU: $HIP_VISIBLE_DEVICES, render: $DRIVER_RENDER"
-        bash $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_get_thread.sh $(Agent.Name)
-      workingDirectory: $(Build.SourcesDirectory)
-    displayName: 'Check ROCm Environment'
 
   - task: Cache@2
     inputs:
@@ -71,19 +64,16 @@ jobs:
         docker run --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
-          --device=/dev/kfd \
-          --device=/dev/dri/renderD$DRIVER_RENDER \
-          --group-add $(video) \
-          --group-add $(render) \
-          --user onnxruntimedev \
+          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $(CCACHE_DIR):/cache \
           -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
-          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
-            /bin/bash -c "
-            ccache -s && ccache -z; \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-build \
+          /bin/bash -c "
+            set -ex; \
+            ccache -s; \
             python tools/ci_build/build.py \
               --config $(BuildConfig) \
               --enable_training \
@@ -99,7 +89,7 @@ jobs:
               --update \
               --build_dir /build \
               --build \
-              --parallel 32 \
+              --parallel \
               --build_wheel \
               --skip_submodule_sync \
               --skip_tests; \
@@ -107,12 +97,48 @@ jobs:
             ccache -z"
     displayName: 'Build onnxruntime'
 
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/Release'
 
-  - bash: |-
-      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
-      set +x
-      echo "##vso[task.setvariable variable=onnxruntimeBuildSucceeded]true"
-    displayName: 'Set Onnxruntime Build Succeeded'
+  - template: templates/explicitly-defined-final-tasks.yml
+
+
+- job: Linux_Test
+  workspace:
+    clean: all
+  pool: AMD-GPU
+  dependsOn:
+  - Linux_Build
+  timeoutInMinutes: 120
+
+  steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/Release'
+
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test
+
+  - task: Bash@3
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh
+      arguments: -n $(Agent.Name) -d $HIP_VISIBLE_DEVICES -r $DRIVER_RENDER
+    displayName: 'Check ROCm Environment'
 
   - task: CmdLine@2
     inputs:
@@ -128,11 +154,14 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /build/$(BuildConfig) \
-          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
-            /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
+          /bin/bash -c "
+            set -ex; \
+            chmod a+x /build/Release/onnxruntime_test_all; \
+            /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+    condition: succeeded()
 
   - task: CmdLine@2
     inputs:
@@ -147,13 +176,16 @@ jobs:
           --user onnxruntimedev \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
             /bin/bash -c "
+              set -ex; \
               export KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig); \
-              pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 16 --reruns 1"
+              export KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8; \
+              export KERNEL_EXPLORER_TEST_USE_CUPY=1; \
+              pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 8 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+    condition: succeededOrFailed()
 
   - task: CmdLine@2
     inputs:
@@ -169,44 +201,16 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /build/$(BuildConfig) \
-          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
             /bin/bash -c "
+              set -ex; \
               export PYTHONPATH=/build/$(BuildConfig); \
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
-              python \
-                /home/onnxruntimedev/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
-                --model_name_or_path bert-large-uncased \
-                --dataset_name wikitext \
-                --dataset_config_name wikitext-2-raw-v1 \
-                --do_train \
-                --max_steps 260 \
-                --logging_steps 20 \
-                --output_dir ./test-mlm-bbu \
-                --overwrite_output_dir \
-                --per_device_train_batch_size 8 \
-                --fp16 \
-                --dataloader_num_workers 1 \
-                --ort \
-                --skip_memory_metrics; \
-              python /onnxruntime_src/orttraining/tools/ci_test/compare_huggingface.py \
-                ci-pipeline-actual.json \
-                /onnxruntime_src/orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm$(RocmVersion).json"
+              bash /onnxruntime_src/tools/ci_build/github/pai/pai_huggingface_bert_large_test.sh -v $(RocmVersion)"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run Python Hugging-Face BERT-L test'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+    condition: succeededOrFailed()
 
-
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "$(Build.SourcesDirectory)/mnist"
-    displayName: 'Mount MNIST'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
-
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "$(Build.SourcesDirectory)/bert_data"
-    displayName: 'Mount bert-data'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
-
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "$(Build.SourcesDirectory)/hf_models_cache"
-    displayName: 'Mount hf-models-cache'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
   # Entry point for all ORTModule tests
   # The onnxruntime folder is deleted in the build directory
@@ -228,35 +232,31 @@ jobs:
           --group-add $(render) \
           --user onnxruntimedev \
           --volume $(Build.BinariesDirectory):/build \
-          --volume $(Build.SourcesDirectory)/mnist:/mnist \
-          --volume $(Build.SourcesDirectory)/bert_data:/bert_data \
-          --volume $(Build.SourcesDirectory)/hf_models_cache:/hf_models_cache \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --workdir /build/$(BuildConfig) \
-          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
             /bin/bash -c "
+              set -ex; \
               unset PYTHONPATH; \
               pip install /build/$(BuildConfig)/dist/$whlfilename; \
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
+              mkdir /home/onnxruntimedev/mnist /home/onnxruntimedev/bert_data; \
+              export ORTMODULE_DISABLE_CPU_TRAINING_TEST=1; \
+              export ORTMODULE_ROCM_TEST=1; \
               python orttraining_ortmodule_tests.py \
-                --mnist /mnist \
-                --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
-                --transformers_cache /hf_models_cache/huggingface/transformers"
+                --mnist /home/onnxruntimedev/mnist \
+                --bert_data /home/onnxruntimedev/bert_data/hf_data/glue_data/CoLA/original/raw"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run orttraining_ortmodule_tests.py'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        if [ -d $(Build.SourcesDirectory)/mnist ]; then
-          sudo umount $(Build.SourcesDirectory)/mnist
-        fi
-        if [ -d $(Build.SourcesDirectory)/bert_data ]; then
-          sudo umount $(Build.SourcesDirectory)/bert_data
-        fi
-        if [ -d $(Build.SourcesDirectory)/hf_models_cache ]; then
-          sudo umount $(Build.SourcesDirectory)/hf_models_cache
-        fi
-      workingDirectory: $(Build.SourcesDirectory)
-    displayName: 'Umount dataset'
     condition: succeededOrFailed()
+
+
+  - task: Bash@3
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh
+      arguments: -n $(Agent.Name) -d $HIP_VISIBLE_DEVICES -r $DRIVER_RENDER
+    displayName: 'Clean ROCm Environment'
+    condition: always()
+
+  - template: templates/clean-agent-build-directory-step.yml

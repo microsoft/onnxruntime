@@ -4,11 +4,11 @@
 import unittest
 
 from numpy.testing import assert_allclose, assert_array_equal
-from onnxruntime_test_ort_trainer import runBertTrainingTest
+from onnxruntime_test_ort_trainer import run_bert_training_test
 
 
 class TestOrtTrainer(unittest.TestCase):
-    def testBertTrainingMixedPrecision(self):  # noqa: N802
+    def test_bert_training_mixed_precision(self):
         expected_losses = [
             11.034248352050781,
             11.125300407409668,
@@ -21,7 +21,7 @@ class TestOrtTrainer(unittest.TestCase):
         ]
         expected_all_finites = [True, True, True, True, True, True, True, True]
         expected_eval_loss = [10.959012985229492]
-        actual_losses, actual_all_finites, actual_eval_loss = runBertTrainingTest(
+        actual_losses, actual_all_finites, actual_eval_loss = run_bert_training_test(
             gradient_accumulation_steps=1,
             use_mixed_precision=True,
             allreduce_post_accumulation=False,
@@ -38,7 +38,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="evaluation loss mismatch",
         )
 
-    def testBertTrainingMixedPrecisionInternalLossScale(self):  # noqa: N802
+    def test_bert_training_mixed_precision_internal_loss_scale(self):
         expected_losses = [
             11.034248352050781,
             11.125300407409668,
@@ -50,7 +50,7 @@ class TestOrtTrainer(unittest.TestCase):
             10.971782684326172,
         ]
         expected_eval_loss = [10.959012985229492]
-        actual_losses, actual_eval_loss = runBertTrainingTest(
+        actual_losses, actual_eval_loss = run_bert_training_test(
             gradient_accumulation_steps=1,
             use_mixed_precision=True,
             allreduce_post_accumulation=False,
@@ -67,7 +67,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="evaluation loss mismatch",
         )
 
-    def testBertTrainingGradientAccumulationMixedPrecision(self):  # noqa: N802
+    def test_bert_training_gradient_accumulation_mixed_precision(self):
         expected_losses = [
             11.034248352050781,
             11.125300407409668,
@@ -80,7 +80,7 @@ class TestOrtTrainer(unittest.TestCase):
         ]
         expected_all_finites = [True, True]
         expected_eval_loss = [10.95903205871582]
-        actual_losses, actual_all_finites, actual_eval_loss = runBertTrainingTest(
+        actual_losses, actual_all_finites, actual_eval_loss = run_bert_training_test(
             gradient_accumulation_steps=4,
             use_mixed_precision=True,
             allreduce_post_accumulation=False,

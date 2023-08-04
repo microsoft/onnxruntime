@@ -684,6 +684,12 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
+        std::vector<const char*> keys{"device_id"};
+
+        std::vector<const char*> values;
+        std::string device_id = Env::Default().GetEnvironmentVar("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
+        values.push_back(device_id.empty() ? "0" : device_id.c_str());
+        ASSERT_ORT_STATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 1));
         ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "rocm") {
         OrtROCMProviderOptions ep_options;
@@ -704,7 +710,7 @@ TEST_P(ModelTest, Run) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
                                               0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0, 0, 0, 0, 0,
-                                              3, -1, nullptr, nullptr, nullptr, nullptr, nullptr};
+                                              3, -1, nullptr, nullptr, nullptr, nullptr, nullptr, 0};
 
           ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
@@ -1125,7 +1131,10 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("SSD")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
-
+    // fp16 models have different outputs with different kinds of hardware. We need to disable all fp16 models
+    all_disabled_tests.insert(ORT_TSTR("fp16_shufflenet"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_inception_v1"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_tiny_yolov2"));
     std::vector<std::basic_string<ORTCHAR_T>> paths;
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32

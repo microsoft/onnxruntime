@@ -15,6 +15,7 @@ from c.assemble_c_pod_package import get_pod_config_file as get_c_pod_config_fil
 from package_assembly_utils import (  # noqa: E402
     PackageVariant,
     copy_repo_relative_to_dir,
+    filter_files,
     gen_file_from_template,
     load_json_config,
 )
@@ -29,31 +30,71 @@ include_dirs = [
     "objectivec",
 ]
 
-# pod source files
-source_files = [
-    "objectivec/include/*.h",
-    "objectivec/*.h",
-    "objectivec/*.m",
-    "objectivec/*.mm",
-]
+all_objc_files = {
+    "source_files": [
+        "objectivec/include/*.h",
+        "objectivec/*.h",
+        "objectivec/*.m",
+        "objectivec/*.mm",
+    ],
+    "public_header_files": [
+        "objectivec/include/*.h",
+    ],
+    "test_source_files": [
+        "objectivec/test/*.h",
+        "objectivec/test/*.m",
+        "objectivec/test/*.mm",
+    ],
+    "test_resource_files": [
+        "objectivec/test/testdata/*.ort",
+        "onnxruntime/test/testdata/training_api/*.onnx",
+        "onnxruntime/test/testdata/training_api/*.ckpt",
+        "onnxruntime/test/testdata/training_api/*.in",
+        "onnxruntime/test/testdata/training_api/*.out",
+    ],
+}
 
-# pod public header files
-# note: these are a subset of source_files
-public_header_files = [
-    "objectivec/include/*.h",
-]
+training_only_objc_files = {
+    "source_files": [
+        "objectivec/include/onnxruntime_training.h",
+        "objectivec/include/ort_checkpoint.h",
+        "objectivec/include/ort_training_session.h",
+        "objectivec/ort_checkpoint.mm",
+        "objectivec/ort_checkpoint_internal.h",
+        "objectivec/ort_training_session_internal.h",
+        "objectivec/ort_training_session.mm",
+    ],
+    "public_header_files": [
+        "objectivec/include/ort_checkpoint.h",
+        "objectivec/include/ort_training_session.h",
+        "objectivec/include/onnxruntime_training.h",
+    ],
+    "test_source_files": [
+        "objectivec/test/ort_training_session_test.mm",
+        "objectivec/test/ort_checkpoint_test.mm",
+        "objectivec/test/ort_training_utils_test.mm",
+    ],
+    "test_resource_files": [
+        "onnxruntime/test/testdata/training_api/*.onnx",
+        "onnxruntime/test/testdata/training_api/*.ckpt",
+        "onnxruntime/test/testdata/training_api/*.in",
+        "onnxruntime/test/testdata/training_api/*.out",
+    ],
+}
 
-# pod test source files
-test_source_files = [
-    "objectivec/test/*.h",
-    "objectivec/test/*.m",
-    "objectivec/test/*.mm",
-]
 
-# pod test resource files
-test_resource_files = [
-    "objectivec/test/testdata/*.ort",
-]
+def get_pod_files(package_variant: PackageVariant):
+    """
+    Gets the source and header files for the given package variant.
+    """
+    if package_variant == PackageVariant.Training:
+        return all_objc_files
+    else:
+        # return files that are in pod_files but not in training_only_objc_files
+        filtered_pod_files = {}
+        for key in all_objc_files:
+            filtered_pod_files[key] = filter_files(all_objc_files[key], training_only_objc_files[key])
+        return filtered_pod_files
 
 
 def get_pod_config_file(package_variant: PackageVariant):
@@ -64,6 +105,8 @@ def get_pod_config_file(package_variant: PackageVariant):
         return _script_dir / "onnxruntime-objc.config.json"
     elif package_variant == PackageVariant.Mobile:
         return _script_dir / "onnxruntime-mobile-objc.config.json"
+    elif package_variant == PackageVariant.Training:
+        return _script_dir / "onnxruntime-training-objc.config.json"
     else:
         raise ValueError(f"Unhandled package variant: {package_variant}")
 
@@ -93,8 +136,13 @@ def assemble_objc_pod_package(
     if staging_dir.exists():
         print("Warning: staging directory already exists", file=sys.stderr)
 
+    pod_files = get_pod_files(package_variant)
+
     # copy the necessary files to the staging directory
-    copy_repo_relative_to_dir([license_file, *source_files, *test_source_files, *test_resource_files], staging_dir)
+    copy_repo_relative_to_dir(
+        [license_file, *pod_files["source_files"], *pod_files["test_source_files"], *pod_files["test_resource_files"]],
+        staging_dir,
+    )
 
     # generate the podspec file from the template
 
@@ -108,11 +156,11 @@ def assemble_objc_pod_package(
         "IOS_DEPLOYMENT_TARGET": framework_info["IOS_DEPLOYMENT_TARGET"],
         "LICENSE_FILE": license_file,
         "NAME": pod_name,
-        "PUBLIC_HEADER_FILE_LIST": path_patterns_as_variable_value(public_header_files),
-        "SOURCE_FILE_LIST": path_patterns_as_variable_value(source_files),
+        "PUBLIC_HEADER_FILE_LIST": path_patterns_as_variable_value(pod_files["public_header_files"]),
+        "SOURCE_FILE_LIST": path_patterns_as_variable_value(pod_files["source_files"]),
         "SUMMARY": pod_config["summary"],
-        "TEST_RESOURCE_FILE_LIST": path_patterns_as_variable_value(test_resource_files),
-        "TEST_SOURCE_FILE_LIST": path_patterns_as_variable_value(test_source_files),
+        "TEST_RESOURCE_FILE_LIST": path_patterns_as_variable_value(pod_files["test_resource_files"]),
+        "TEST_SOURCE_FILE_LIST": path_patterns_as_variable_value(pod_files["test_source_files"]),
         "VERSION": pod_version,
     }
 

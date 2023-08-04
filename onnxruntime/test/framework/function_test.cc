@@ -52,7 +52,7 @@ static void Check(const char* source,
 
   std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   OrtValue ort_value;
-  CreateMLValue<float>(provider->GetAllocator(OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
+  CreateMLValue<float>(provider->CreatePreferredAllocators()[0], {int64_t(input_values.size())}, input_values, &ort_value);
 
   feeds.insert(std::make_pair(std::string(input_name), ort_value));
 
@@ -504,6 +504,30 @@ TEST(FunctionTest, UnusedFunctionInputs) {
   )";
 
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 4.0, 9.0});
+}
+
+// Test constant-folding inside a sub-graph is handled correctly
+// for functions that are inlined.
+TEST(FunctionTest, ConstantFoldingInSubGraph) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: [ "" : 17 ]>
+    agraph (float[N] X) => (float[M] Y)  {
+        seq1 = SequenceConstruct(X, X, X)
+        seq2 = SequenceMap (seq1) <body =
+            add1 (float[K] Z) => (float[K] W) {
+                C1 = Constant <value = float {1.0}> ()
+                C2 = Constant <value = float {1.0}> ()
+                # C is a constant, which will be constant-folded into an initializer out of the sub-graph.
+                C = Add (C1, C2)
+                # After optimization, only following Add will be left in this sub-graph.
+                W = Add (Z, C)
+            }
+        >
+        Y = ConcatFromSequence <axis=0> (seq2)
+    }
+  )";
+
+  Check(code, "X", {1.0, 2.0, 3.0}, "Y", {3.0, 4.0, 5.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0});
 }
 
 }  // namespace test

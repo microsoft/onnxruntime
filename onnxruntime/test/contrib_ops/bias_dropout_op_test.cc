@@ -109,8 +109,8 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     ratio = 0.5f;
   } else {
     if (use_float16_ratio) {
-      t.AddInput("ratio", {}, {MLFloat16(math::floatToHalf(ratio))});
-      t_bitmask.AddInput("ratio", {}, {MLFloat16(math::floatToHalf(ratio))});
+      t.AddInput("ratio", {}, {MLFloat16(ratio)});
+      t_bitmask.AddInput("ratio", {}, {MLFloat16(ratio)});
     } else {
       t.AddInput("ratio", {}, {ratio});
       t_bitmask.AddInput("ratio", {}, {ratio});
@@ -139,7 +139,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     ASSERT_GE(fetches.size(), 1u);
-    const auto& output_tensor = FetchTensor(fetches[0]);
+    const auto& output_tensor = fetches[0].Get<Tensor>();
     auto output_span = output_tensor.DataAsSpan<float>();
 
     const auto num_dropped_values = std::count(output_span.begin(), output_span.end(), residual_value);
@@ -162,7 +162,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
 
     if (use_mask) {
       ASSERT_GE(fetches.size(), 2u);
-      const auto& mask_tensor = FetchTensor(fetches[1]);
+      const auto& mask_tensor = fetches[1].Get<Tensor>();
       auto mask_span = mask_tensor.DataAsSpan<bool>();
       ASSERT_EQ(mask_span.size(), output_span.size()) << "provider: " << provider_type;
 
@@ -189,11 +189,11 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
 
   std::vector<OrtValue> dropout_outputs = t.GetFetches();
   ASSERT_GE(dropout_outputs.size(), 1u);
-  const float* output_values = FetchTensor(dropout_outputs[0]).Data<float>();
+  const float* output_values = dropout_outputs[0].Get<Tensor>().Data<float>();
   t_bitmask.AddOutput<float>("output", input_shape, output_values, input_size);
   if (use_mask) {
     ASSERT_GE(dropout_outputs.size(), 2u);
-    const bool* mask_values = FetchTensor(dropout_outputs[1]).Data<bool>();
+    const bool* mask_values = dropout_outputs[1].Get<Tensor>().Data<bool>();
     std::vector<BitmaskElementType> bitmask_values = MasksToBitmasks(input_size, mask_values);
     t_bitmask.AddOutput<BitmaskElementType>("mask", {static_cast<int64_t>(bitmask_values.size())}, bitmask_values);
   } else {

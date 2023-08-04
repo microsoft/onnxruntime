@@ -6,7 +6,6 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/cann_allocator.h"
-#include "core/framework/allocatormgr.h"
 #include "core/providers/cann/npu_data_transfer.h"
 
 namespace onnxruntime {

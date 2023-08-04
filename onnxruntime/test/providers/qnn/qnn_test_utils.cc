@@ -15,15 +15,10 @@ namespace onnxruntime {
 namespace test {
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
-                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
-                     const char* test_description, float fp32_abs_err, logging::Severity log_severity) {
-  std::function<void(const Graph&)> graph_verify = [num_nodes_in_ep, test_description](const Graph& graph) -> void {
-    ASSERT_EQ(graph.NumberOfNodes(), num_nodes_in_ep) << test_description;
-  };
-
+                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
+                     float fp32_abs_err, logging::Severity log_severity) {
   EPVerificationParams verification_params;
   verification_params.ep_node_assignment = expected_ep_assignment;
-  verification_params.graph_verifier = &graph_verify;
   verification_params.fp32_abs_err = fp32_abs_err;
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
@@ -31,7 +26,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   auto& logging_manager = DefaultLoggingManager();
   logging_manager.SetDefaultLoggerSeverity(log_severity);
 
-  onnxruntime::Model model(test_description, false, ModelMetaData(), PathString(),
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
                            logging_manager.DefaultLogger());
   Graph& graph = model.MainGraph();
@@ -43,7 +38,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
-  RunAndVerifyOutputsWithEP(model_data, "QnnEP.TestQDQModel",
+  RunAndVerifyOutputsWithEP(model_data, "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, verification_params);
 }
@@ -68,7 +63,34 @@ static BackendSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) 
   ModelTestBuilder helper(graph);
 
   // Build simple QDQ graph: DQ -> InstanceNormalization -> Q
-  GetQDQTestCaseFn build_test_case = BuildQDQInstanceNormTestCase<uint8_t, uint8_t, int32_t>({1, 2, 3, 3}, 1e-05f);
+  GetQDQTestCaseFn build_test_case = [](ModelTestBuilder& builder) {
+    const uint8_t quant_zero_point = 0;
+    const float quant_scale = 1.0f;
+
+    auto* dq_scale_output = builder.MakeIntermediate();
+    auto* scale = builder.MakeInitializer<uint8_t>({2}, std::vector<uint8_t>{1, 2});
+    builder.AddDequantizeLinearNode<uint8_t>(scale, quant_scale, quant_zero_point, dq_scale_output);
+
+    // Add bias (initializer) -> DQ ->
+    auto* dq_bias_output = builder.MakeIntermediate();
+    auto* bias = builder.MakeInitializer<int32_t>({2}, std::vector<int32_t>{1, 1});
+    builder.AddDequantizeLinearNode<int32_t>(bias, 1.0f, 0, dq_bias_output);
+
+    // Add input_u8 -> DQ ->
+    auto* input_u8 = builder.MakeInput<uint8_t>({1, 2, 3}, std::vector<uint8_t>{1, 2, 3, 4, 5, 6});
+    auto* dq_input_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(input_u8, quant_scale, quant_zero_point, dq_input_output);
+
+    // Add dq_input_output -> InstanceNormalization ->
+    auto* instance_norm_output = builder.MakeIntermediate();
+    builder.AddNode("InstanceNormalization", {dq_input_output, dq_scale_output, dq_bias_output},
+                    {instance_norm_output});
+
+    // Add instance_norm_output -> Q -> output_u8
+    auto* output_u8 = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<uint8_t>(instance_norm_output, quant_scale, quant_zero_point, output_u8);
+  };
+
   build_test_case(helper);
   helper.SetGraphOutputs();
   auto status = model.MainGraph().Resolve();

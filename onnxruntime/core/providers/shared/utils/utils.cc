@@ -90,6 +90,13 @@ int32_t NodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
   return SafeInt<int32_t>(node_attributes_.at(key).i());
 }
 
+uint32_t NodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
+  if (!HasAttr(key))
+    return def_val;
+
+  return SafeInt<uint32_t>(node_attributes_.at(key).i());
+}
+
 int64_t NodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
   if (!HasAttr(key))
     return def_val;
@@ -113,6 +120,18 @@ std::vector<int32_t> NodeAttrHelper::Get(const std::string& key, const std::vect
   v.reserve(static_cast<size_t>(attr.ints_size()));
   std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v),
                  [](int64_t val) -> int32_t { return SafeInt<int32_t>(val); });
+  return v;
+}
+
+std::vector<uint32_t> NodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
+  if (!HasAttr(key))
+    return def_val;
+
+  const auto& attr(node_attributes_.at(key));
+  std::vector<uint32_t> v;
+  v.reserve(static_cast<size_t>(attr.ints_size()));
+  std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v),
+                 [](int64_t val) -> uint32_t { return SafeInt<uint32_t>(val); });
   return v;
 }
 

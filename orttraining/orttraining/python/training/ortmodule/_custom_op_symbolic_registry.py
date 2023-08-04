@@ -12,8 +12,6 @@ from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
-from onnxruntime.training import ortmodule
-
 from ._utils import get_runtime_pytorch_version
 
 # Mapping from pytorch scalar type to onnx scalar type.
@@ -90,20 +88,20 @@ def wrap_custom_export_function(original_func: Callable) -> Callable:
 
 
 class CustomOpSymbolicRegistry:
-    _SYMBOLICS = {}
+    _SYMBOLICS = {}  # noqa: RUF012
 
     @classmethod
     def register(cls, name, domain, fn):
         cls._SYMBOLICS[domain + "::" + name] = fn
 
     @classmethod
-    def register_all(cls):
+    def register_all(cls, onnx_opset_version):
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
             register_custom_op_symbolic(
                 name,
                 fn,
-                ortmodule._defined_from_envvar("ORTMODULE_ONNX_OPSET_VERSION", ortmodule.ONNX_OPSET_VERSION),
+                onnx_opset_version,
             )
 
 

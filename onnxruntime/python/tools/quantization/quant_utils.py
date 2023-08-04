@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy
 import onnx
-from onnx import external_data_helper
+from onnx import ModelProto, TensorProto, external_data_helper
 from onnx import onnx_pb as onnx_proto
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
@@ -511,7 +511,7 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"], **kwargs)
 
 
-def add_pre_process_metadata(model):
+def add_pre_process_metadata(model: ModelProto):
     """Tag the model that it went through quantization pre-processing"""
     metadata_props = {"onnx.quant.pre_process": "onnxruntime.quant"}
     if model.metadata_props:
@@ -520,7 +520,7 @@ def add_pre_process_metadata(model):
     onnx.helper.set_model_props(model, metadata_props)
 
 
-def model_has_pre_process_metadata(model):
+def model_has_pre_process_metadata(model: ModelProto) -> bool:
     """Check the model whether it went through quantization pre-processing"""
     if model.metadata_props:
         for prop in model.metadata_props:
@@ -529,7 +529,7 @@ def model_has_pre_process_metadata(model):
     return False
 
 
-def add_infer_metadata(model):
+def add_infer_metadata(model: ModelProto):
     metadata_props = {"onnx.infer": "onnxruntime.quant"}
     if model.metadata_props:
         for p in model.metadata_props:
@@ -537,7 +537,7 @@ def add_infer_metadata(model):
     onnx.helper.set_model_props(model, metadata_props)
 
 
-def model_has_infer_metadata(model):
+def model_has_infer_metadata(model: ModelProto) -> bool:
     if model.metadata_props:
         for p in model.metadata_props:
             if p.key == "onnx.infer" and p.value == "onnxruntime.quant":
@@ -545,44 +545,23 @@ def model_has_infer_metadata(model):
     return False
 
 
-def load_model_with_shape_infer(model_path: Path):
+def load_model_with_shape_infer(model_path: Path) -> ModelProto:
     inferred_model_path = generate_identified_filename(model_path, "-inferred")
     onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
     model = onnx.load(inferred_model_path.as_posix())
+    add_infer_metadata(model)
     inferred_model_path.unlink()
     return model
 
 
-def load_model(model_path: Path, need_optimize: bool):
-    with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
-        if need_optimize and not model_has_external_data(model_path):
-            opt_model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-            optimize_model(model_path, opt_model_path)
-            model_path = opt_model_path
-
-        model = load_model_with_shape_infer(model_path)
-        add_infer_metadata(model)
-        return model
-
-
-def save_and_reload_model(model):
+def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-        onnx.external_data_helper.convert_model_to_external_data(model, all_tensors_to_one_file=True)
-        onnx.save_model(model, model_path.as_posix())
-        return load_model(model_path, False)
+        onnx.save_model(model, model_path.as_posix(), save_as_external_data=True)
+        return load_model_with_shape_infer(model_path)
 
 
-def clone_model_with_shape_infer(model):
-    if model_has_infer_metadata(model):
-        cloned_model = onnx_proto.ModelProto()
-        cloned_model.CopyFrom(model)
-    else:
-        cloned_model = save_and_reload_model(model)
-    return cloned_model
-
-
-def tensor_proto_to_array(initializer):
+def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:
     if initializer.data_type == onnx_proto.TensorProto.FLOAT:
         return onnx.numpy_helper.to_array(initializer)
 
@@ -591,25 +570,25 @@ def tensor_proto_to_array(initializer):
     )
 
 
-def add_quant_suffix(tensor_name):
+def add_quant_suffix(tensor_name: str) -> str:
     return tensor_name + "_QuantizeLinear"
 
 
-def add_quant_input_suffix(tensor_name):
+def add_quant_input_suffix(tensor_name: str) -> str:
     return tensor_name + QUANT_INPUT_SUFFIX
 
 
-def add_quant_output_suffix(tensor_name):
+def add_quant_output_suffix(tensor_name) -> str:
     return tensor_name + "_QuantizeLinear_Output"
 
 
-def add_dequant_suffix(tensor_name):
+def add_dequant_suffix(tensor_name) -> str:
     return tensor_name + "_DequantizeLinear"
 
 
-def add_dequant_input_suffix(tensor_name):
+def add_dequant_input_suffix(tensor_name) -> str:
     return tensor_name + "_DequantizeLinear_Input"
 
 
-def add_dequant_output_suffix(tensor_name):
+def add_dequant_output_suffix(tensor_name) -> str:
     return tensor_name + DEQUANT_OUTPUT_SUFFIX

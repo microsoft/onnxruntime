@@ -1,12 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/inference_session.h"
-#include "core/optimizer/insert_cast_transformer.h"
-#include "test/util/include/default_providers.h"
 #include "test/providers/compare_provider_test_utils.h"
-#include "test/test_environment.h"
-#include "test/compare_ortvalue.h"
+
+#include "core/optimizer/insert_cast_transformer.h"
+#include "core/session/inference_session.h"
+
+#include "test/util/include/asserts.h"
+#include "test/util/include/compare_ortvalue.h"
+#include "test/util/include/default_providers.h"
+#include "test/util/include/test_environment.h"
 
 using namespace std;
 
@@ -45,17 +48,14 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
                                      double relative_per_sample_tolerance,
                                      const bool need_cpu_cast,
                                      const std::unordered_map<std::string, int>& extra_domain_to_version) {
-#ifndef NDEBUG
-  run_called_ = true;
-#endif
+  SetTestFunctionCalled();
 
   std::unique_ptr<IExecutionProvider> target_execution_provider = GetExecutionProvider(target_provider_type);
-  ASSERT_TRUE(target_execution_provider != nullptr) << "provider_type " << target_provider_type << " is not supported.";
+  ASSERT_TRUE(target_execution_provider != nullptr) << "provider_type " << target_provider_type
+                                                    << " is not supported.";
 
-  auto p_model = BuildGraph(extra_domain_to_version);
-  auto& graph = p_model->MainGraph();
-
-  Status status;
+  auto& model = BuildModel(extra_domain_to_version);
+  auto& graph = model.MainGraph();
 
   // In InferenceSession::Initialize(), the call to graph partitioner, which is responsible
   // for Inlining function bodies for ops whose kernel is missing happens before the
@@ -65,15 +65,10 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   if (need_cpu_cast) {
     InsertCastTransformer transformer("Test", GetExecutionProvider(kCpuExecutionProvider)->GetKernelRegistry().get());
     bool modified = false;
-    status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
-    ASSERT_TRUE(status.IsOK());
+    ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
   }
 
-  status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    return;
-  }
+  ASSERT_STATUS_OK(graph.Resolve());
 
   // Hookup the inputs and outputs
   std::unordered_map<std::string, OrtValue> feeds;
@@ -82,76 +77,41 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
 
   // Run the model
   SessionOptions so;
-  so.session_logid = op_;
-  so.session_log_verbosity_level = 1;
+  so.session_logid = Op();
 
   InferenceSession cpu_session_object{so, GetEnvironment()};
 
   // first run with cpu
   std::string s1;
-  p_model->ToProto().SerializeToString(&s1);
+  model.ToProto().SerializeToString(&s1);
   std::istringstream model_proto_str(s1);
 
-  status = cpu_session_object.Load(model_proto_str);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
-    return;
-  }
+  ASSERT_STATUS_OK(cpu_session_object.Load(model_proto_str));
 
-  status = cpu_session_object.Initialize();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Initialize failed with status: " << status.ErrorMessage();
-    return;
-  }
-
-  RunOptions run_options;
-  run_options.run_tag = op_;
-  run_options.run_log_verbosity_level = 1;
+  ASSERT_STATUS_OK(cpu_session_object.Initialize());
 
   std::vector<OrtValue> cpu_fetches;
-  status = cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
-    return;
-  }
+  ASSERT_STATUS_OK(cpu_session_object.Run({}, feeds, output_names, &cpu_fetches));
 
   // run with target provider
   // build the graph again as the cpu graph may be with casts
-  auto p_tp_model = BuildGraph(extra_domain_to_version);
-  auto& tp_graph = p_tp_model->MainGraph();
+  auto& tp_model = BuildModel(extra_domain_to_version);
+  auto& tp_graph = tp_model.MainGraph();
 
-  status = tp_graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    return;
-  }
+  ASSERT_STATUS_OK(tp_graph.Resolve());
 
   InferenceSession target_session_object{so, GetEnvironment()};
-  EXPECT_TRUE(target_session_object.RegisterExecutionProvider(std::move(target_execution_provider)).IsOK());
+  ASSERT_STATUS_OK(target_session_object.RegisterExecutionProvider(std::move(target_execution_provider)));
 
   std::string s2;
-  p_tp_model->ToProto().SerializeToString(&s2);
+  tp_model.ToProto().SerializeToString(&s2);
   std::istringstream model_proto_str1(s2);
-  status = target_session_object.Load(model_proto_str1);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
-    return;
-  }
+  ASSERT_STATUS_OK(target_session_object.Load(model_proto_str1));
 
-  status = target_session_object.Initialize();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Initialize failed with status: " << status.ErrorMessage();
-    return;
-  }
+  ASSERT_STATUS_OK(target_session_object.Initialize());
 
   std::vector<OrtValue> target_fetches;
-  status = target_session_object.Run(run_options, feeds, output_names, &target_fetches);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(target_session_object.Run({}, feeds, output_names, &target_fetches));
 
   // compare
   ASSERT_TRUE(cpu_fetches.size() == target_fetches.size());

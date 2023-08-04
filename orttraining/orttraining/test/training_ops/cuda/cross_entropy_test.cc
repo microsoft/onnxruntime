@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <iostream>
 #include <memory>
 #include "test/compare_ortvalue.h"
 #include "test/util/include/default_providers.h"
@@ -283,14 +284,18 @@ TEST(CrossEntropyTest, SparseSoftmaxCrossEntropyGrad_LargeSizeTensor) {
   TestSparseSoftmaxCrossEntropyGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "sum");
 }
 
-static void PrepareSCELossTestData(const std::vector<int64_t>* X_dims,
-                                   const std::vector<int64_t>* index_dims, const std::vector<int64_t>* weight_dims,
-                                   const std::int64_t ignore_index,
-                                   std::vector<float>& X_data, std::vector<int64_t>& index_data,
-                                   std::vector<float>& weight_data) {
+template <typename FloatT>
+void PrepareSCELossTestData(const std::vector<int64_t>* X_dims,
+                            const std::vector<int64_t>* index_dims, const std::vector<int64_t>* weight_dims,
+                            const std::int64_t ignore_index,
+                            std::vector<FloatT>& X_data,
+                            std::vector<int64_t>& index_data,
+                            std::vector<FloatT>& weight_data) {
   // create rand inputs
+  ParallelRandomValueGenerator prandom{2333};
+  X_data = prandom.Uniform<FloatT>(*X_dims, -200.0f, 200.0f);
+
   RandomValueGenerator random{2333};
-  X_data = random.Uniform<float>(*X_dims, -200.0f, 200.0f);
   index_data = random.Uniform<int64_t>(*index_dims, 0, (*X_dims)[1]);
   // Add one data point that has ignore_index.
   if (index_data.size() > 0) {
@@ -298,7 +303,7 @@ static void PrepareSCELossTestData(const std::vector<int64_t>* X_dims,
   }
 
   if (weight_dims) {
-    weight_data = random.Uniform<float>(*weight_dims, 0.0f, 1.0f);
+    weight_data = prandom.Uniform<FloatT>(*weight_dims, 0.0f, 1.0f);
   }
 }
 
@@ -316,9 +321,9 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
                                               const std::vector<int64_t>* weight_dims,
                                               const std::vector<int64_t>* Y_dims,
                                               const std::vector<int64_t>* log_prob_dims,
-                                              std::vector<float>& X_data,
+                                              std::vector<T>& X_data,
                                               std::vector<int64_t>& index_data,
-                                              std::vector<float>& weight_data) {
+                                              std::vector<T>& weight_data) {
   /**
    * OpTester's atol/rtol check is too strict for our testing cases. Imagine expected value is 4.7683704451628728e-07,
    * real value is 0, even we set rtol=1e-1, atol = 1e-4. The check still fail.
@@ -330,11 +335,11 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
    * So here we disable OpTester's check by default, and do the check externally.
    */
   bool need_verify_outputs = false;
-  std::vector<std::vector<float>> expected_values;
+  std::vector<std::vector<TOut>> expected_values;
   // Still need feed the output data even we don't want to verify it.
-  expected_values.push_back(FillZeros<float>(*Y_dims));
+  expected_values.push_back(FillZeros<TOut>(*Y_dims));
   if (log_prob_dims) {
-    expected_values.push_back(FillZeros<float>(*log_prob_dims));
+    expected_values.push_back(FillZeros<TOut>(*log_prob_dims));
   }
 
   OpTester test(op, opset_version, domain, need_verify_outputs /*verify_output*/);
@@ -349,46 +354,21 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
     test.AddAttribute("ignore_index", ignore_index);
   }
 
-  if (std::is_same<T, MLFloat16>::value) {
-    std::vector<MLFloat16> X_data_half(X_data.size());
-    ConvertFloatToMLFloat16(X_data.data(), X_data_half.data(), static_cast<int>(X_data.size()));
-    test.AddInput<MLFloat16>("X", *X_dims, X_data_half);
-  } else {
-    test.AddInput<float>("X", *X_dims, X_data);
-  }
+  test.AddInput<T>("X", *X_dims, X_data);
 
   test.AddInput<int64_t>("index", *index_dims, index_data);
 
   if (weight_dims) {
-    if (std::is_same<T, MLFloat16>::value) {
-      std::vector<MLFloat16> weight_data_half(weight_data.size());
-      ConvertFloatToMLFloat16(weight_data.data(), weight_data_half.data(), static_cast<int>(weight_data.size()));
-      test.AddInput<MLFloat16>("weight", *weight_dims, weight_data_half);
-    } else {
-      test.AddInput<float>("weight", *weight_dims, weight_data);
-    }
+    test.AddInput<T>("weight", *weight_dims, weight_data);
   }
 
   if (is_internal_op && ignore_index != -1) {
     test.AddInput<int64_t>("ignore_index", {}, &ignore_index, 1);
   }
 
-  if (std::is_same<TOut, MLFloat16>::value) {
-    std::vector<MLFloat16> output_half(expected_values[0].size());
-    ConvertFloatToMLFloat16(expected_values[0].data(), output_half.data(), static_cast<int>(expected_values[0].size()));
-    test.AddOutput<MLFloat16>("output", *Y_dims, output_half);
-
-    if (log_prob_dims) {
-      std::vector<MLFloat16> log_prob_half(expected_values[1].size());
-      ConvertFloatToMLFloat16(expected_values[1].data(), log_prob_half.data(), static_cast<int>(expected_values[1].size()));
-      test.AddOutput<MLFloat16>("log_prob", *log_prob_dims, log_prob_half);
-    }
-
-  } else {
-    test.AddOutput<float>("output", *Y_dims, expected_values[0]);
-    if (log_prob_dims) {
-      test.AddOutput<float>("log_prob", *log_prob_dims, expected_values[1]);
-    }
+  test.AddOutput<TOut>("output", *Y_dims, expected_values[0]);
+  if (log_prob_dims) {
+    test.AddOutput<TOut>("log_prob", *log_prob_dims, expected_values[1]);
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
@@ -407,23 +387,38 @@ static void TestSCELoss(const char* op, int opset_version,
   ASSERT_TRUE((std::is_same<T, MLFloat16>::value || std::is_same<T, float>::value));
   ASSERT_TRUE((std::is_same<TOut, MLFloat16>::value || std::is_same<TOut, float>::value));
 
-  std::vector<float> X_data, weight_data;
+  std::vector<T> X_data, weight_data;
   std::vector<int64_t> index_data;
-  PrepareSCELossTestData(X_dims, index_dims, weight_dims, ignore_index, X_data, index_data, weight_data);
+  PrepareSCELossTestData<T>(X_dims, index_dims, weight_dims, ignore_index, X_data, index_data, weight_data);
 
   // Run on CPU using float input and output
   // (because the CPU implementation doesn't support variant input output types.)
   // Be noted, no result comparison is done here.
-  std::vector<OrtValue> cpu_fetches = RunSCELossWithEP<float, float>(
-      op, opset_version, domain,
-      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
-      reduction, ignore_index, error_tolerance,
-      X_dims, index_dims, weight_dims,
-      Y_dims, log_prob_dims,
-      X_data, index_data, weight_data);
+  std::vector<OrtValue> cpu_fetches;
+  if (std::is_same<T, MLFloat16>::value) {
+    std::vector<float> X_data_temp(X_data.size());
+    std::vector<float> weight_data_temp(weight_data.size());
+    ConvertMLFloat16ToFloat(reinterpret_cast<MLFloat16*>(X_data.data()), X_data_temp.data(), X_data.size());
+    ConvertMLFloat16ToFloat(reinterpret_cast<MLFloat16*>(weight_data.data()), weight_data_temp.data(), weight_data.size());
+    cpu_fetches = RunSCELossWithEP<float, float>(
+        op, opset_version, domain,
+        []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
+        reduction, ignore_index, error_tolerance,
+        X_dims, index_dims, weight_dims,
+        Y_dims, log_prob_dims,
+        X_data_temp, index_data, weight_data_temp);
+  } else {
+    cpu_fetches = RunSCELossWithEP<T, float>(
+        op, opset_version, domain,
+        []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
+        reduction, ignore_index, error_tolerance,
+        X_dims, index_dims, weight_dims,
+        Y_dims, log_prob_dims,
+        X_data, index_data, weight_data);
+  }
 
   // Run on CUDA.
-  // Be noted, no result comparison is done here because OpTester's check is too strick for our test cases.
+  // Be noted, no result comparison is done here because OpTester's check is too strict for our test cases.
   // Check more details in comment of RunSCELossWithEP.
   std::vector<OrtValue> target_fetches = RunSCELossWithEP<T, TOut>(
       op, opset_version, domain,
@@ -442,22 +437,10 @@ static void TestSCELoss(const char* op, int opset_version,
   // Compare
   ASSERT_EQ(cpu_fetches.size(), target_fetches.size());
   for (size_t i = 0; i < cpu_fetches.size(); i++) {
-    if (std::is_same<TOut, MLFloat16>::value) {
-      auto y_data_size = cpu_fetches[i].Get<Tensor>().Shape().Size();
-      std::vector<float> cpu_temp_buffer;
-      cpu_temp_buffer.resize(y_data_size);
-      const float* y_buffer = cpu_fetches[i].Get<Tensor>().Data<float>();
-      std::copy(y_buffer, y_buffer + y_data_size, cpu_temp_buffer.begin());
-
-      std::vector<MLFloat16> ret_half(cpu_temp_buffer.size());
-      ConvertFloatToMLFloat16(cpu_temp_buffer.data(), ret_half.data(), static_cast<int>(cpu_temp_buffer.size()));
-
-      OrtValue target;
-      test::CreateInputOrtValueOnCPU<MLFloat16>(cpu_fetches[i].Get<Tensor>().Shape().GetDims(), ret_half, &target);
-      auto ret = CompareOrtValue(target_fetches[i], target, error_tolerance /*per_sample_tolerance*/,
-                                 error_tolerance /*relative_per_sample_tolerance*/, false);
+    if (!std::is_same<TOut, float>::value) {  // baseline output is float.
+      auto ret = CompareOrtValueNumerals(target_fetches[i], cpu_fetches[i], error_tolerance /*per_sample_tolerance*/,
+                                         error_tolerance /*relative_per_sample_tolerance*/);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
-
     } else {
       auto ret = CompareOrtValue(target_fetches[i], cpu_fetches[i], error_tolerance /*per_sample_tolerance*/,
                                  error_tolerance /*relative_per_sample_tolerance*/, false);
@@ -655,6 +638,29 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
   TestSoftmaxCrossEntropyLoss<float, float>(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none");
 }
 
+#ifndef _WIN32
+// Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
+// This test requires lots of memory, currently, it can run with 16GB V100 GPU.
+TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossInternal_LargeSizeTensorUInt64Index) {
+  // The element count is bigger than the upper limit of int32_t.
+  constexpr int64_t bsz = 419431;
+  constexpr int64_t vocab_size = 5120;
+  std::vector<int64_t> X_dims{bsz, vocab_size};
+  std::vector<int64_t> index_dims{bsz};
+  std::vector<int64_t> weight_dims{vocab_size};
+  std::vector<int64_t> Y_dims{};
+  std::vector<int64_t> Y_dims_none{bsz};
+  std::vector<int64_t> log_prob_dims{bsz, vocab_size};
+
+  constexpr std::int64_t ignore_index = -1;
+  constexpr double error_tolerance = 1e-3;
+  // Only test reduce mean because it's too costly to run more tests.
+  TestSCELoss<MLFloat16, MLFloat16>("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain,
+                                    &X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean",
+                                    ignore_index, error_tolerance);
+}
+#endif
+
 static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
                                             const std::vector<int64_t>& log_prob_dims,
                                             const std::vector<int64_t>& index_dims,
@@ -678,11 +684,11 @@ static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
   }
   if (test_fp16) {
     std::vector<MLFloat16> dY_data_half(dY_data.size());
-    ConvertFloatToMLFloat16(dY_data.data(), dY_data_half.data(), static_cast<int>(dY_data.size()));
+    ConvertFloatToMLFloat16(dY_data.data(), dY_data_half.data(), dY_data.size());
     test.AddInput<MLFloat16>("dY", dY_dims, dY_data_half);
 
     std::vector<MLFloat16> log_prob_data_half(log_prob_data.size());
-    ConvertFloatToMLFloat16(log_prob_data.data(), log_prob_data_half.data(), static_cast<int>(log_prob_data.size()));
+    ConvertFloatToMLFloat16(log_prob_data.data(), log_prob_data_half.data(), log_prob_data.size());
     test.AddInput<MLFloat16>("log_prob", log_prob_dims, log_prob_data_half);
 
     test.AddInput<int64_t>("index", index_dims, index_data);
@@ -773,26 +779,28 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossGrad_LargeSizeTensor_half) {
   TestSoftmaxCrossEntropyLossGrad({2, 30528}, log_prob_dims, index_dims, dX_dims, "none", -1, true, 5e-2);
 }
 
-static void PrepareSCELossInternalGradTestData(
+template <typename T, typename TOut>
+void PrepareSCELossInternalGradTestData(
     const std::vector<int64_t>& dY_dims, const std::vector<int64_t>& log_prob_dims,
     const std::vector<int64_t>& index_dims, const std::vector<int64_t>& weight_dims,
     const std::vector<int64_t>& dX_dims, const std::int64_t ignore_index, bool has_bias,
-    std::vector<float>& dY_data, std::vector<float>& log_prob_data,
-    std::vector<int64_t>& index_data, std::vector<float>& weight_data,
-    std::vector<float>& bias_data) {
+    std::vector<T>& dY_data, std::vector<T>& log_prob_data,
+    std::vector<int64_t>& index_data, std::vector<T>& weight_data,
+    std::vector<TOut>& bias_data) {
   // Create rand inputs
   RandomValueGenerator random{2333};
-  dY_data = random.Uniform<float>(dY_dims, -10.0f, 10.0f);
-  log_prob_data = random.Uniform<float>(log_prob_dims, -10.0f, 10.0f);
+  ParallelRandomValueGenerator prandom{2333};
+  dY_data = prandom.Uniform<T>(dY_dims, -10.0f, 10.0f);
+  log_prob_data = prandom.Uniform<T>(log_prob_dims, -10.0f, 10.0f);
   index_data = random.Uniform<int64_t>(index_dims, 0, dX_dims[1]);
   // Add one data point that has ignore_index.
   if ((ignore_index != -1) && (index_data.size() > 0)) {
     index_data[0] = ignore_index;
   }
-  weight_data = random.Uniform<float>(weight_dims, 0.0f, 1.0f);
+  weight_data = prandom.Uniform<T>(weight_dims, 0.0f, 1.0f);
 
   if (has_bias) {
-    bias_data = random.Uniform<float>(dX_dims, 0.0f, 1.0f);
+    bias_data = prandom.Uniform<TOut>(dX_dims, 0.0f, 1.0f);
   }
 }
 
@@ -809,11 +817,11 @@ static std::vector<OrtValue> RunSCELossInternalGradWithEP(
     const std::vector<int64_t>& index_dims,
     const std::vector<int64_t>& weight_dims,
     const std::vector<int64_t>& dX_dims,
-    std::vector<float>& dY_data,
-    std::vector<float>& log_prob_data,
+    std::vector<T>& dY_data,
+    std::vector<T>& log_prob_data,
     std::vector<int64_t>& index_data,
-    std::vector<float>& weight_data,
-    std::vector<float>& bias_data) {
+    std::vector<T>& weight_data,
+    std::vector<TOut>& bias_data) {
   /**
    * OpTester's atol/rtol check is too strict for our testing cases. Imagine expected value is 4.7683704451628728e-07,
    * real value is 0, even we set rtol=1e-1, atol = 1e-4. The check still fail with the following check:
@@ -825,7 +833,7 @@ static std::vector<OrtValue> RunSCELossInternalGradWithEP(
    * So here we disable OpTester's check by default, and do the check externally.
    */
   bool need_verify_outputs = false;
-  std::vector<float> expected_value = FillZeros<float>(dX_dims);
+  std::vector<TOut> expected_value = FillZeros<TOut>(dX_dims);
 
   ORT_ENFORCE((std::is_same<T, MLFloat16>::value || std::is_same<T, float>::value));
   ORT_ENFORCE((std::is_same<TOut, MLFloat16>::value || std::is_same<TOut, float>::value));
@@ -840,55 +848,20 @@ static std::vector<OrtValue> RunSCELossInternalGradWithEP(
     test->AddAttribute("output_type", static_cast<int64_t>(utils::ToTensorProtoElementType<TOut>()));
   }
 
-  if (std::is_same<T, MLFloat16>::value) {
-    std::vector<MLFloat16> dY_data_half(dY_data.size());
-    ConvertFloatToMLFloat16(dY_data.data(), dY_data_half.data(), static_cast<int>(dY_data.size()));
-    test->AddInput<MLFloat16>("dY", dY_dims, dY_data_half);
-
-    std::vector<MLFloat16> log_prob_data_half(log_prob_data.size());
-    ConvertFloatToMLFloat16(log_prob_data.data(), log_prob_data_half.data(), static_cast<int>(log_prob_data.size()));
-    test->AddInput<MLFloat16>("log_prob", log_prob_dims, log_prob_data_half);
-
-    test->AddInput<int64_t>("index", index_dims, index_data);
-
-    std::vector<MLFloat16> weight_data_half(weight_data.size());
-    ConvertFloatToMLFloat16(weight_data.data(), weight_data_half.data(), static_cast<int>(weight_data.size()));
-    test->AddInput<MLFloat16>("weight", weight_dims, weight_data_half);
-
-    if (ignore_index != -1 || has_bias) {
-      test->AddInput<int64_t>("ignore_index", {}, &ignore_index, 1);
-    }
-  } else {
-    test->AddInput<float>("dY", dY_dims, dY_data);
-    test->AddInput<float>("log_prob", log_prob_dims, log_prob_data);
-    test->AddInput<int64_t>("index", index_dims, index_data);
-    test->AddInput<float>("weight", weight_dims, weight_data);
-    if (ignore_index != -1 || has_bias) {
-      test->AddInput<int64_t>("ignore_index", {}, &ignore_index, 1);
-    }
+  test->AddInput<T>("dY", dY_dims, dY_data);
+  test->AddInput<T>("log_prob", log_prob_dims, log_prob_data);
+  test->AddInput<int64_t>("index", index_dims, index_data);
+  test->AddInput<T>("weight", weight_dims, weight_data);
+  if (ignore_index != -1 || has_bias) {
+    test->AddInput<int64_t>("ignore_index", {}, &ignore_index, 1);
   }
 
-  if (std::is_same<TOut, MLFloat16>::value) {
-    // Be noted, bias should be aligned with output's data type.
-    if (has_bias) {
-      std::vector<MLFloat16> bias_data_half(bias_data.size());
-      ConvertFloatToMLFloat16(bias_data.data(), bias_data_half.data(), static_cast<int>(bias_data.size()));
-      test->AddInput<MLFloat16>("bias", dX_dims, bias_data_half);
-    }
-
-    std::vector<MLFloat16> expected_data_half(expected_value.size());
-    ConvertFloatToMLFloat16(expected_value.data(), expected_data_half.data(), static_cast<int>(expected_value.size()));
-    test->AddOutput<MLFloat16>("dX", dX_dims, expected_data_half, false /*sort_output*/,
-                               error_tolerance /*rel_error*/, error_tolerance /*abs_error*/);
-
-  } else {
-    if (has_bias) {
-      test->AddInput<float>("bias", dX_dims, bias_data);
-    }
-
-    test->AddOutput<float>("dX", dX_dims, expected_value, false /*sort_output*/,
-                           error_tolerance /*rel_error*/, error_tolerance /*abs_error*/);
+  if (has_bias) {
+    test->AddInput<TOut>("bias", dX_dims, bias_data);
   }
+
+  test->AddOutput<TOut>("dX", dX_dims, expected_value, false /*sort_output*/,
+                        error_tolerance /*rel_error*/, error_tolerance /*abs_error*/);
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.emplace_back(ep_creator());
@@ -906,20 +879,56 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
                                                     const std::int64_t ignore_index = -1,
                                                     const double error_tolerance = 1e-4,
                                                     const bool has_bias = false) {
-  std::vector<float> dY_data, log_prob_data, weight_data, bias_data;
+  std::vector<T> dY_data, log_prob_data, weight_data;
+  std::vector<TOut> bias_data;
   std::vector<int64_t> index_data;
-  PrepareSCELossInternalGradTestData(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, ignore_index, has_bias,
-                                     dY_data, log_prob_data, index_data, weight_data, bias_data);
+  PrepareSCELossInternalGradTestData<T, TOut>(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, ignore_index,
+                                              has_bias, dY_data, log_prob_data, index_data, weight_data, bias_data);
 
+  std::vector<OrtValue> cpu_fetches;
   // Run on CPU using float input and output
   // (because the CPU implementation doesn't support variant input output types.)
   // Be noted, no result comparison is done here.
-  std::vector<OrtValue> cpu_fetches =
-      RunSCELossInternalGradWithEP<float, float>(
+  if constexpr (std::is_same<T, MLFloat16>::value) {
+    std::vector<float> dY_data_temp(dY_data.size());
+    std::vector<float> log_prob_data_temp(log_prob_data.size());
+    std::vector<float> weight_data_temp(weight_data.size());
+    ConvertMLFloat16ToFloat(reinterpret_cast<MLFloat16*>(dY_data.data()), dY_data_temp.data(), dY_data.size());
+    ConvertMLFloat16ToFloat(reinterpret_cast<MLFloat16*>(log_prob_data.data()), log_prob_data_temp.data(),
+                            log_prob_data.size());
+    ConvertMLFloat16ToFloat(reinterpret_cast<MLFloat16*>(weight_data.data()), weight_data_temp.data(), weight_data.size());
+    if constexpr (std::is_same<TOut, MLFloat16>::value) {
+      std::vector<float> bias_data_temp(bias_data.size());
+      ConvertMLFloat16ToFloat(reinterpret_cast<MLFloat16*>(bias_data.data()), bias_data_temp.data(), bias_data.size());
+      cpu_fetches = RunSCELossInternalGradWithEP<float, float>(
+          []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
+          reduction, ignore_index, error_tolerance, has_bias,
+          dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims,
+          dY_data_temp, log_prob_data_temp, index_data, weight_data_temp, bias_data_temp);
+    } else {
+      cpu_fetches = RunSCELossInternalGradWithEP<float, TOut>(
+          []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
+          reduction, ignore_index, error_tolerance, has_bias,
+          dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims,
+          dY_data_temp, log_prob_data_temp, index_data, weight_data_temp, bias_data);
+    }
+  } else {
+    if constexpr (std::is_same<TOut, MLFloat16>::value) {
+      std::vector<float> bias_data_temp(bias_data.size());
+      ConvertMLFloat16ToFloat(reinterpret_cast<MLFloat16*>(bias_data.data()), bias_data_temp.data(), bias_data.size());
+      cpu_fetches = RunSCELossInternalGradWithEP<T, float>(
+          []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
+          reduction, ignore_index, error_tolerance, has_bias,
+          dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims,
+          dY_data, log_prob_data, index_data, weight_data, bias_data_temp);
+    } else {
+      cpu_fetches = RunSCELossInternalGradWithEP<T, TOut>(
           []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
           reduction, ignore_index, error_tolerance, has_bias,
           dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims,
           dY_data, log_prob_data, index_data, weight_data, bias_data);
+    }
+  }
 
   // Run on CUDA and compare results with cpu results.
   std::vector<OrtValue> target_fetches =
@@ -938,22 +947,10 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
   // Compare
   ASSERT_EQ(cpu_fetches.size(), target_fetches.size());
   for (size_t i = 0; i < cpu_fetches.size(); i++) {
-    if (std::is_same<TOut, MLFloat16>::value) {
-      auto y_data_size = cpu_fetches[i].Get<Tensor>().Shape().Size();
-      std::vector<float> cpu_temp_buffer;
-      cpu_temp_buffer.resize(y_data_size);
-      const float* y_buffer = cpu_fetches[i].Get<Tensor>().Data<float>();
-      std::copy(y_buffer, y_buffer + y_data_size, cpu_temp_buffer.begin());
-
-      std::vector<MLFloat16> ret_half(cpu_temp_buffer.size());
-      ConvertFloatToMLFloat16(cpu_temp_buffer.data(), ret_half.data(), static_cast<int>(cpu_temp_buffer.size()));
-
-      OrtValue target;
-      test::CreateInputOrtValueOnCPU<MLFloat16>(cpu_fetches[i].Get<Tensor>().Shape().GetDims(), ret_half, &target);
-      auto ret = CompareOrtValue(target_fetches[i], target, error_tolerance /*per_sample_tolerance*/,
-                                 error_tolerance /*relative_per_sample_tolerance*/, false);
+    if (!std::is_same<TOut, float>::value) {
+      auto ret = CompareOrtValueNumerals(target_fetches[i], cpu_fetches[i], error_tolerance /*per_sample_tolerance*/,
+                                         error_tolerance /*relative_per_sample_tolerance*/);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
-
     } else {
       auto ret = CompareOrtValue(target_fetches[i], cpu_fetches[i], error_tolerance /*per_sample_tolerance*/,
                                  error_tolerance /*relative_per_sample_tolerance*/, false);
@@ -1072,6 +1069,27 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
   TestSoftmaxCrossEntropyLossInternalGrad<float, MLFloat16>({8}, log_prob_dims, index_dims, weight_dims, dX_dims,
                                                             "none", 0, 5e-2, true);
 }
+
+#ifndef _WIN32
+// Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
+// This test requires lots of memory, currently, it can run with 16GB V100 GPU.
+TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorUInt64Index) {
+  // The element count is bigger than the upper limit of int32_t.
+  constexpr int64_t bsz = 419431;
+  constexpr int64_t vocab_size = 5120;
+  std::vector<int64_t> dY_dims{};
+  std::vector<int64_t> log_prob_dims{bsz, vocab_size};
+  std::vector<int64_t> index_dims{bsz};
+  std::vector<int64_t> weight_dims{vocab_size};
+  std::vector<int64_t> dX_dims{bsz, vocab_size};
+  TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
+                                                                dX_dims, "mean", -1, 1e-3, false /*has_bias*/);
+
+  // This test did not test against reduce-sum because the absolute value after computing is pretty big, sometimes
+  // around 65535, CPU baseline result is smaller than 65535, but CUDA result is a little bigger than it, generating
+  // inf, which is not a good test case.
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

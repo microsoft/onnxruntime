@@ -38,14 +38,11 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
                   ParametersT& params,
                   const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
                   const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-                  const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
                   const GenerationDeviceHelper::TopkFunc& topk_func,
                   const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
                   const GenerationDeviceHelper::InitGreedyStateFunc<T>& init_greedy_state_func,
                   const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
-                  const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func,
-                  const void* cuda_device_prop,
-                  int cuda_device_arch)
+                  const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
       : GreedySearchBase<T, ParametersT>(context,
                                          decoder_session_state,
                                          thread_pool,
@@ -61,18 +58,26 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
         create_inputs_func_(create_inputs_func),
         add_to_feeds_func_(add_to_feeds_func),
         init_greedy_state_func_(init_greedy_state_func),
-        reorder_past_state_func_(reorder_past_state_func),
-        update_feeds_func_(update_feeds_func),
-        cuda_device_prop_(cuda_device_prop),
-        cuda_device_arch_(cuda_device_arch) {
+        update_feeds_func_(update_feeds_func) {}
+
+#ifdef USE_CUDA
+  Status InitializeCuda(
+      const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
+      const void* cuda_device_prop,
+      int cuda_device_arch) {
+    reorder_past_state_func_ = reorder_past_state_func;
+    cuda_device_prop_ = cuda_device_prop;
+    cuda_device_arch_ = cuda_device_arch;
     if (gpt_subgraph_.has_decoder_masked_attention_) {
-      ORT_ENFORCE(cuda_device_arch_ >= 530,
-                  "Decoder masked self attention can only be used on "
-                  "GPU cards of compute capability 5.3 or higher. "
-                  "This card has compute capability ",
-                  cuda_device_arch_);
+      ORT_RETURN_IF_NOT(cuda_device_arch_ >= 530,
+                        "Decoder masked self attention can only be used on "
+                        "GPU cards of compute capability 5.3 or higher. "
+                        "This card has compute capability ",
+                        cuda_device_arch_);
     }
+    return Status::OK();
   }
+#endif
 
   // Execute beam search in iterations util stopping criteria is reached.
   // In each iteration, GPT subgraph is called, and next token for each sequence is generated.
@@ -104,7 +109,9 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
   GenerationDeviceHelper::CreateGptInputsFunc create_inputs_func_;
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitGreedyStateFunc<T> init_greedy_state_func_;
+#ifdef USE_CUDA
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
+#endif
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
 
   const void* cuda_device_prop_ = nullptr;
@@ -222,7 +229,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(greedy_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
 
   if (gpt_subgraph_.past_present_share_buffer_) {  // Reuse past and present
-    fetches.reserve((int64_t)gpt_subgraph_.GetFirstPresentOutputIndex() + gpt_subgraph_.num_layers);
+    fetches.reserve(static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
     fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
     for (int layer = 0; layer < gpt_subgraph_.num_layers; layer++) {
       int feed_idx = gpt_subgraph_.GetFirstPastInputIndex() + layer;
@@ -329,6 +336,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     // Increase sequence length after a new token is generated.
     ++current_length;
 
+#ifdef USE_CUDA
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
     // contains DecoderMaskedSelfAttention nodes
     if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_attention_) {
@@ -345,6 +353,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                                                      this->ort_stream_));
       }
     }
+#endif
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {

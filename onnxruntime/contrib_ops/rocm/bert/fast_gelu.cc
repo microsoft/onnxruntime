@@ -1,15 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Modifications: Remove GetDeviceProp in LaunchFastGeluKernel.
-// Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
-// Licensed under the MIT License.
+#include "contrib_ops/rocm/bert/fast_gelu.h"
 
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/miopen_common.h"
-#include "contrib_ops/rocm/bert/fast_gelu.h"
-#include "contrib_ops/rocm/bert/fast_gelu_impl.h"
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
+#include "contrib_ops/rocm/bert/elementwise.h"
 #include "contrib_ops/rocm/bert/transformer_common.h"
 
 namespace onnxruntime {
@@ -48,13 +45,13 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToHipType<T>::MappedType HipT;
 
-  return LaunchFastGeluKernel<HipT>(GetTuningContext(),
-                                    Stream(context),
-                                    static_cast<int>(input_length),
-                                    static_cast<int>(bias_length),
-                                    reinterpret_cast<const HipT*>(input->Data<T>()),
-                                    (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
-                                    reinterpret_cast<HipT*>(output->MutableData<T>()));
+  const HipT* input_buffer = reinterpret_cast<const HipT*>(input->Data<T>());
+  const HipT* bias_buffer = (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr;
+  return LaunchElementwiseKernel<functor::FastGeLU, HipT>(
+      GetTuningContext(), Stream(context),
+      input_buffer, static_cast<int>(input_length),
+      bias_buffer, static_cast<int>(bias_length),
+      reinterpret_cast<HipT*>(output->MutableData<T>()));
 }
 
 }  // namespace rocm
