@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e -x
-while getopts "x:i:" parameter_Option
+while getopts "x:i:d:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
