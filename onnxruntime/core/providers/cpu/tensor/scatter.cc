@@ -339,8 +339,10 @@ Status ScatterData(
   //    output[i][indices[i][j][k]][k] = updates[i][j][k]
   // and so on
   std::vector<int64_t> dim_block_size(num_dims);
-
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds" // This warning occur when upgrading to gcc 12
   dim_block_size.back() = 1;
+#pragma GCC diagnostic pop
   if (num_dims > 1) {
     // We start at num_dims - 2 because we already pre-populated
     // the last element above
