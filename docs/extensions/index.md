@@ -8,10 +8,10 @@ nav_order: 7
 
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status%2Fmicrosoft.onnxruntime-extensions?branchName=main)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=209&branchName=main)
 
-
 ## What's ONNXRuntime-Extensions
 
-Introduction: ONNXRuntime-Extensions is a library that extends the capability of the ONNX models and inference with ONNX Runtime, via ONNX Runtime Custom Operator ABIs. It includes a set of [ONNX Runtime Custom Operators](https://onnxruntime.ai/docs/reference/operators/add-custom-op.html) to support the common pre- and post-processing operators for vision, text, and nlp models. And it supports multiple languages and platforms, like Python on Windows/Linux/macOS, some mobile platforms like Android and iOS, and Web-Assembly etc. The basic workflow is to enhance a ONNX model firstly and then do the model inference with ONNX Runtime and ONNXRuntime-Extensions package.
+Introduction: ONNXRuntime-Extensions is a library that extends the capability of the ONNX models and inference with ONNX Runtime, via ONNX Runtime Custom Operator ABIs. It includes a set of [ONNX Runtime Custom Operator](https://onnxruntime.ai/docs/reference/operators/add-custom-op.html) to support the common pre- and post-processing operators for vision, text, and nlp models. And it supports multiple languages and platforms, like Python on Windows/Linux/macOS, some mobile platforms like Android and iOS, and Web-Assembly etc. The basic workflow is to enhance a ONNX model firstly and then do the model inference with ONNX Runtime and ONNXRuntime-Extensions package.
+
 
 <img src="../../images/combine-ai-extensions-img.png" alt="Pre and post-processing custom operators for vision, text, and NLP models" width="100%"/>
 <sub>This image was created using <a href="https://github.com/sayanshaw24/combine" target="_blank">Combine.AI</a>, which is powered by Bing Chat, Bing Image Creator, and EdgeGPT.</sub>
@@ -24,7 +24,7 @@ pip install onnxruntime-extensions
 ````
 
 
-### **nightly build**
+### **Nightly Build**
 
 #### <strong>on Windows</strong>
 ```cmd
@@ -32,7 +32,7 @@ pip install --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_pa
 ```
 Please ensure that you have met the prerequisites of onnxruntime-extensions (e.g., onnx and onnxruntime) in your Python environment.
 #### <strong>on Linux/macOS</strong>
-the packages are not ready yet, so it could be installed from source. Please make sure the compiler toolkit like gcc(later than g++ 8.0) or clang, and the tool <strong>cmake</strong> are installed before the following command
+Please make sure the compiler toolkit like gcc(later than g++ 8.0) or clang are installed before the following command
 ```bash
 python -m pip install git+https://github.com/microsoft/onnxruntime-extensions.git
 ```
@@ -40,12 +40,16 @@ python -m pip install git+https://github.com/microsoft/onnxruntime-extensions.gi
 
 ## Usage
 
-## 1. Augment an ONNX model with a pre- and post-processing pipeline
-Check [tutorial](https://github.com/microsoft/onnxruntime-extensions/tree/main/tutorials) for a couple of examples on how to do it.
+## 1. Generate the pre-/post- processing ONNX model
+With onnxruntime-extensions Python package, you can easily get the ONNX processing graph by converting them from Huggingface transformer data processing classes, check the following API for details.
+```python
+help(onnxruntime_extensions.gen_processing_models)
+```
+### NOTE: These data processing model can be merged into other model [onnx.compose](https://onnx.ai/onnx/api/compose.html) if needed.
 ## 2. Using Extensions for ONNX Runtime inference
 
 ### Python
-
+There are individual packages for the following languages, please install it for the build.
 ```python
 import onnxruntime as _ort
 from onnxruntime_extensions import get_library_path as _lib_path
@@ -76,34 +80,13 @@ var sess_opt = new OrtSession.SessionOptions();
 sess_opt.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
 ```
 
-## Use exporters to generate graphs with custom operators
-
-The PyTorch and TensorFlow converters support custom operator generation if the operation from the original framework cannot be interpreted as a standard ONNX operators. Check the following two examples on how to do this.
-
-1. [CustomOp conversion by pytorch.onnx.exporter](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/pytorch_custom_ops_tutorial.ipynb)
-2. [CustomOp conversion by tf2onnx](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/tf2onnx_custom_ops_tutorial.ipynb)
-
-
-## Add a new custom operator to onnxruntime-extensions
-
-You can contribute customop C++ implementations directly in this repository if they have general applicability to other users. In addition, if you want to quickly verify the ONNX model with Python, you can wrap the custom operator with **[PyOp](pyop.md)**.
-
-```python
-import numpy
-from onnxruntime_extensions import PyOp, onnx_op
-
-# Implement the CustomOp by decorating a function with onnx_op
-@onnx_op(op_type="Inverse", inputs=[PyOp.dt_float])
-def inverse(x):
-    # the user custom op implementation here:
-    return numpy.linalg.inv(x)
-
-# Run the model with this custom op
-# model_func = PyOrtFunction(model_path)
-# outputs = model_func(inputs)
-# ...
+### C#
+```C#
+SessionOptions options = new SessionOptions()
+options.RegisterOrtExtensions()
+session = new InferenceSession(model, options)
 ```
-Check [development.md](./development.md) for build and test
+
 
 ## Contributing
 
