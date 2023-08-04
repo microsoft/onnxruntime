@@ -6,6 +6,9 @@ jobs:
   steps:
   - checkout: none
   - bash: |
+      python3 -m pip list
+
+  - bash: |
       set -e -x
 
       XCODE_DEVELOPER_DIR="/Applications/Xcode_14.3.app/Contents/Developer"
