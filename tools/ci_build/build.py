@@ -1653,8 +1653,12 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    simulator_device_name = subprocess.check_output(
-        ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
+    ios_simulator_destination_specifier = subprocess.check_output(
+        [
+            sys.executable,
+            os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_info.py"),
+            "platform=iOS Simulator,OS={runtime_version},name={device_type_name}",
+        ],
         text=True,
     ).strip()
 
@@ -1680,7 +1684,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
+                ios_simulator_destination_specifier,
             ],
             cwd=cwd,
         )
