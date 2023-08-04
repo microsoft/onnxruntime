@@ -3,16 +3,20 @@
 
 #include "core/providers/coreml/coreml_execution_provider.h"
 
+#include <algorithm>
+
 #include "core/framework/compute_capability.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/providers/coreml/builders/helper.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/coreml/builders/helper.h"
 
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/model.h"
+#include "core/providers/coreml/shape_utils.h"
 #endif
 
 namespace onnxruntime {
@@ -45,7 +49,8 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     return result;
   }
 
-  const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, logger);
+  const auto builder_params = coreml::MakeOpBuilderParams(graph_viewer, coreml_flags_);
+  const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, builder_params, logger);
 
   const auto gen_metadef_name = [&]() {
     HashValue model_hash;
@@ -144,6 +149,17 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
         auto input_tensor = ctx.GetInput(i);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
+
+        // Disallow inputs with dynamic shape which actually have zero elements.
+        // CoreML doesn't consistently handle this well (e.g., there may be runtime errors).
+        if (const auto* model_input_info = model->TryGetInputOutputInfo(input_name); model_input_info != nullptr) {
+          const auto& inferred_shape = model_input_info->shape;
+          ORT_RETURN_IF(!coreml::IsStaticShape(inferred_shape) && coreml::DoesShapeSpecifyZeroElements(shape),
+                        "Input (", input_name, ") has a dynamic shape (", coreml::Shape2String(inferred_shape),
+                        ") but the runtime shape (", coreml::Shape2String(shape),
+                        ") has zero elements. This is not supported by the CoreML EP.");
+        }
+
         // If we have an empty shape, this is a scalar input,
         // Since all the input output of CoreML EP is MultiArray, we will make the scalar input as a {1} MultiArray
         if (shape.empty())
@@ -165,8 +181,30 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       // TODO, investigate concurrent runs for different executions from the same model
       {
         std::unique_lock<OrtMutex> lock(model->GetMutex());
-        std::unordered_map<std::string, coreml::OnnxTensorData> outputs;
+        std::unordered_map<std::string, coreml::OnnxTensorInfo> outputs;
         outputs.reserve(model_outputs.size());
+
+        coreml::GetOutputTensorMutableRawDataFn get_output_tensor_mutable_raw_data_fn =
+            [&ctx, &model_outputs](
+                const std::string& name,
+                int32_t requested_onnx_tensor_element_type,
+                gsl::span<const int64_t> static_shape) -> void* {
+          const auto model_output_it = std::find(model_outputs.begin(), model_outputs.end(), name);
+          ORT_ENFORCE(model_output_it != model_outputs.end(), "Failed to find CoreML model output name: ", name);
+          const auto output_idx = gsl::narrow_cast<size_t>(std::distance(model_outputs.begin(), model_output_it));
+
+          auto output_tensor = ctx.GetOutput(output_idx, static_shape.data(), static_shape.size());
+
+          const auto type_and_shape_info = output_tensor.GetTensorTypeAndShapeInfo();
+          const auto actual_element_type = type_and_shape_info.GetElementType();
+          ORT_ENFORCE(utils::CApiElementTypeFromProtoType(requested_onnx_tensor_element_type) == actual_element_type,
+                      "Requested and actual output tensor element types do not match. Requested: ",
+                      utils::CApiElementTypeFromProtoType(requested_onnx_tensor_element_type),
+                      ", actual: ", actual_element_type);
+
+          return output_tensor.GetTensorMutableRawData();
+        };
+
         for (size_t i = 0; i < model_outputs.size(); i++) {
           const auto& output_name = model_outputs[i];
           const auto& output_info = model->GetInputOutputInfo(output_name);
@@ -183,34 +221,10 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           if (model->IsInt64Output(output_name))
             output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
 
-          auto output_tensor =
-              ctx.GetOutput(i, output_shape.data(), output_shape.size());
-
-          void* output_buffer;
-          switch (output_type) {
-            case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-              output_buffer = output_tensor.GetTensorMutableData<float>();
-              break;
-            case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-              output_buffer = output_tensor.GetTensorMutableData<int32_t>();
-              break;
-            case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-              output_buffer = output_tensor.GetTensorMutableData<int64_t>();
-              break;
-            default:
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                     "Unsupported type: ", output_type, " for output: ", output_name);
-              break;
-          }
-
-          outputs.emplace(output_name,
-                          coreml::OnnxTensorData{
-                              coreml::OnnxTensorInfo{output_type, output_shape},
-                              output_buffer,
-                          });
+          outputs.emplace(output_name, coreml::OnnxTensorInfo{output_type, output_shape});
         }
 
-        return model->Predict(inputs, outputs);
+        return model->Predict(inputs, outputs, get_output_tensor_mutable_raw_data_fn);
       }
     };
 
