@@ -678,8 +678,6 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
-    parser.add_argument("--use_azure", action="store_true", help="Enable azure EP.")
-
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
     parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
@@ -1309,9 +1307,6 @@ def generate_build_tree(
 
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
-
-    if args.use_azure:
-        add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
 
     if args.use_lock_free_queue:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
@@ -2561,7 +2556,7 @@ def main():
                 args.use_armnn,
                 args.use_dml,
                 args.use_cann,
-                args.use_azure,
+                True,
                 args.use_qnn,
                 args.wheel_name_suffix,
                 args.enable_training,
