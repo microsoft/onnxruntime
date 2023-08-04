@@ -1141,7 +1141,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="inputValues">input ort values</param>
         /// <param name="outputNames">name of outputs</param>
         /// <param name="outputValues">output of ort values</param>
-        /// <param name="callback">callback function</param>
         public async Task<IReadOnlyCollection<OrtValue>> RunAsync(RunOptions options,
                                                                   IReadOnlyCollection<string> inputNames,
                                                                   IReadOnlyCollection<OrtValue> inputValues,
