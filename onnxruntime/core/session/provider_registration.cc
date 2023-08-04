@@ -289,6 +289,26 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString,
   return CreateNotEnabledStatus("TensorRT");
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateNotEnabledStatus("TensorRT");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
+                    _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateNotEnabledStatus("TensorRT");
+}
+
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
 }

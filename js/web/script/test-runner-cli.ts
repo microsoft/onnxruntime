@@ -234,7 +234,7 @@ async function main() {
       }
 
       const test = testIds && testIds.length > 0 ? allTests[testIds[0]] : undefined;
-      const condition = test && typeof test !== 'string' ? test.condition : undefined;
+      const platformCondition = test && typeof test !== 'string' ? test.platformCondition : undefined;
 
       const opsetVersion = folder.split('/')[0];
       const category = `node-${opsetVersion}-${backend}`;
@@ -243,14 +243,16 @@ async function main() {
         modelTests = [];
         opsetTests.set(category, modelTests);
       }
-      modelTests.push(modelTestFromFolder(path.resolve(TEST_DATA_MODEL_NODE_ROOT, folder), backend, condition, times));
+      modelTests.push(
+          modelTestFromFolder(path.resolve(TEST_DATA_MODEL_NODE_ROOT, folder), backend, platformCondition, times));
     }
 
     return Array.from(opsetTests.keys()).map(category => ({name: category, tests: opsetTests.get(category)!}));
   }
 
   function modelTestFromFolder(
-      testDataRootFolder: string, backend: string, condition?: Test.Condition, times?: number): Test.ModelTest {
+      testDataRootFolder: string, backend: string, platformCondition?: Test.PlatformCondition,
+      times?: number): Test.ModelTest {
     if (times === 0) {
       npmlog.verbose('TestRunnerCli.Init.Model', `Skip test data from folder: ${testDataRootFolder}`);
       return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: []};
@@ -326,7 +328,7 @@ async function main() {
     npmlog.verbose('TestRunnerCli.Init.Model', ` Test set(s): ${cases.length} (${caseCount})`);
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
 
-    return {name: path.basename(testDataRootFolder), condition, modelUrl, backend, cases};
+    return {name: path.basename(testDataRootFolder), platformCondition, modelUrl, backend, cases};
   }
 
   function tryLocateModelTestFolder(searchPattern: string): string {
@@ -385,7 +387,7 @@ async function main() {
       // field 'verbose' and 'backend' is not set
       for (const test of tests) {
         test.backend = backend;
-        test.opsets = test.opsets || [{domain: '', version: MAX_OPSET_VERSION}];
+        test.opset = test.opset || {domain: '', version: MAX_OPSET_VERSION};
       }
       npmlog.verbose('TestRunnerCli.Init.Op', 'Finished preparing test data.');
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');
