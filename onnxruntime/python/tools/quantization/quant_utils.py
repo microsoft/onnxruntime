@@ -77,6 +77,8 @@ class QuantizedValueType(Enum):
 class QuantType(Enum):
     QInt8 = 0
     QUInt8 = 1
+    QInt16 = 2
+    QUInt16 = 3
 
     def __str__(self):
         return self.name
@@ -107,14 +109,31 @@ class QuantFormat(Enum):
 ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.INT8: numpy.dtype("int8"),
     onnx_proto.TensorProto.UINT8: numpy.dtype("uint8"),
+    onnx_proto.TensorProto.INT16: numpy.dtype("int16"),
+    onnx_proto.TensorProto.UINT16: numpy.dtype("uint16"),
 }
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert qType in ONNX_TYPE_TO_NP_TYPE, f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
+    assert (
+        qType in ONNX_TYPE_TO_NP_TYPE
+    ), f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
     dtype = ONNX_TYPE_TO_NP_TYPE[qType]
-    cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
-    cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
+    (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
+
+    if dtype == numpy.uint8 or dtype == numpy.int8:
+        if low is None:
+            low = -127
+        if high is None:
+            high = 255
+    elif dtype == numpy.uint16 or dtype == numpy.int16:
+        if low is None:
+            low = -32767
+        if high is None:
+            high = 65535
+
+    cliplow = max(qmin, low)
+    cliphigh = min(qmax, high)
     arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
     numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
     return arr_fp32.astype(dtype)
@@ -215,8 +234,15 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
             (qmin, qmax) = (-64, 64) if reduce_range else (-127, 127)
         else:
             (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
+    elif qType == onnx_proto.TensorProto.UINT16:
+        (qmin, qmax) = (0, 32767) if reduce_range else (0, 65535)
+    elif qType == onnx_proto.TensorProto.INT16:
+        if symmetric:
+            (qmin, qmax) = (-16384, 16384) if reduce_range else (-32767, 32767)
+        else:
+            (qmin, qmax) = (-16384, 16384) if reduce_range else (-32768, 32767)
     else:
-        raise ValueError(f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported.")
+        raise ValueError(f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported.")
     return qmin, qmax
 
 
