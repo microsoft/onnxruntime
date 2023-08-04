@@ -4,6 +4,7 @@ while getopts "x:i:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
+d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 esac
 done
@@ -19,7 +20,7 @@ docker run --rm \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
     $ADDITIONAL_DOCKER_PARAMETER \
-    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_arm64_python_package.sh $BUILD_EXTR_PAR
+    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_arm64_python_package.sh $DEVICE $BUILD_EXTR_PAR
 
 sudo rm -rf $BUILD_BINARIESDIRECTORY/Release/onnxruntime $BUILD_BINARIESDIRECTORY/Release/pybind11 \
     $BUILD_BINARIESDIRECTORY/Release/models $BUILD_BINARIESDIRECTORY/Release/_deps \

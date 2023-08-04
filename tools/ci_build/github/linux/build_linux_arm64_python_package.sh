@@ -8,12 +8,13 @@ CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-st
 BUILD_DEVICE="CPU"
 BUILD_CONFIG="Release"
 PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11")
-while getopts "d:p:" parameter_Option
+while getopts "d:p:x:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU or CPU.
 d) BUILD_DEVICE=${OPTARG};;
 p) PYTHON_EXES=(${OPTARG});;
+x) EXTRA_ARG=(${OPTARG});;
 esac
 done
 
@@ -32,8 +33,7 @@ if [ "$ARCH" == "x86_64" ] && [ "$GCC_VERSION" -ge 9 ]; then
     CXXFLAGS="$CXXFLAGS -fcf-protection"
 fi
 
-
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--enable_lto" "--build_wheel")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--enable_lto" "--build_wheel" "$BUILD_DEVICE")
 
 if [ "$ARCH" == "x86_64" ]; then
     #ARM build machines do not have the test data yet.
@@ -44,14 +44,14 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     #Enable CUDA and TRT EPs.
     ONNXRUNTIME_CUDA_VERSION="11.8"
     BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$ONNXRUNTIME_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
-elif [ "$BUILD_DEVICE" == "AZURE" ]; then
-    BUILD_ARGS+=("--use_azure")
-    if [ -f /etc/lsb-release ]; then
-        # for ubuntu
-        apt-get install -y libipc-system-simple-perl python3 libssl-dev
-    else
-        export PATH=/opt/python/cp38-cp38/bin:$PATH
-    fi
+#elif [ "$BUILD_DEVICE" == "AZURE" ]; then
+#    BUILD_ARGS+=("--use_azure")
+#    if [ -f /etc/lsb-release ]; then
+#        # for ubuntu
+#        apt-get install -y libipc-system-simple-perl python3 libssl-dev
+#    else
+#        export PATH=/opt/python/cp38-cp38/bin:$PATH
+#    fi
 fi
 
 export CFLAGS

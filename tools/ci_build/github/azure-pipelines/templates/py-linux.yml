@@ -25,6 +25,10 @@ parameters:
   type: boolean
   default: false
 
+- name: extra_build_arg
+  type: string
+  default: ''
+
 jobs:
 - job: Linux_py_Wheels_${{ parameters.arch }}
   timeoutInMinutes: 240
