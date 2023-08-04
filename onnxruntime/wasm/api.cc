@@ -402,7 +402,7 @@ char* OrtEndProfiling(ort_session_handle_t session) {
 #define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
 
-OrtCheckpointState* EMSCRIPTEN_KEEPALIVE OrtLoadCheckpointForTraining(void* checkpoint, size_t checkpoint_size) {
+OrtCheckpointState* EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpointState(void* checkpoint_data_buffer, size_t checkpoint_size) {
   OrtCheckpointState* checkpoint_state = nullptr;
   return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint, checkpoint_size, &checkpoint_state) == ORT_OK)
              ? checkpoint_state
