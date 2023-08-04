@@ -190,7 +190,10 @@ export const tensorFromImage = async(
       throw new Error('Please provide image config with format for Imagebitmap');
     }
 
-    const pixels2DContext = document.createElement('canvas').getContext('2d');
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const pixels2DContext = canvas.getContext('2d');
 
     if (pixels2DContext != null) {
       const height = image.height;
