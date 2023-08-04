@@ -3,14 +3,16 @@
 
 #pragma once
 
-#include "core/framework/framework_common.h"
-#include "core/framework/execution_provider.h"
-#include "core/framework/ort_value.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
-
 #include <memory>
+#include <string_view>
 #include <string>
 #include <vector>
+
+#include "core/common/gsl.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/framework_common.h"
+#include "core/framework/ort_value.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 
 namespace onnxruntime {
 class Graph;
@@ -44,14 +46,14 @@ int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type);
 // Run the model using the CPU EP to get expected output, comparing to the output when the 'execution_provider'
 // is enabled. requires that at least one node is assigned to 'execution_provider'
 void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path,
-                               const char* log_id,
+                               std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params = EPVerificationParams());
 
 // A helper function that takes in model_data
 void RunAndVerifyOutputsWithEP(const std::string& model_data,
-                               const char* log_id,
+                               std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params = EPVerificationParams());
@@ -66,8 +68,8 @@ void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
 
 // Create OrtValue on CPU copying from provided inputs.
 template <typename T>
-void CreateInputOrtValueOnCPU(gsl::span<const int64_t> dims, const std::vector<T>& value,
-                              OrtValue* p_ortvalue, AllocatorPtr alloc = nullptr) {
+OrtValue CreateInputOrtValueOnCPU(gsl::span<const int64_t> dims, gsl::span<const T> value,
+                                  AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
   static AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
@@ -82,9 +84,11 @@ void CreateInputOrtValueOnCPU(gsl::span<const int64_t> dims, const std::vector<T
     memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());
   }
 
-  p_ortvalue->Init(p_tensor.release(),
-                   DataTypeImpl::GetType<Tensor>(),
-                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  OrtValue ort_value;
+  ort_value.Init(p_tensor.release(),
+                 DataTypeImpl::GetType<Tensor>(),
+                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  return ort_value;
 }
 
 }  // namespace test

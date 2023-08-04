@@ -3244,8 +3244,14 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
-    // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+    tester.Run(expect, error_msg,
+               // exclude EPs that don't handle this
+               {
+                   kCoreMLExecutionProvider,
+                   kOpenVINOExecutionProvider,
+                   kQnnExecutionProvider,
+                   kTensorrtExecutionProvider,
+               });
   };
 
   // reduce on all axes keeping dims. should allow the 0 to be the reduced value
@@ -3285,8 +3291,14 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
-    // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+    tester.Run(expect, error_msg,
+               // exclude EPs that don't handle this
+               {
+                   kOpenVINOExecutionProvider,
+                   kQnnExecutionProvider,
+                   kTensorrtExecutionProvider,
+                   kCoreMLExecutionProvider,
+               });
   };
 
   // reduction without keeping dims on all axes. can't reduce on an axis with value of 0
@@ -3323,8 +3335,14 @@ TEST(ReductionOpTest, ReduceSum_ReduceDimWithZero3) {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
-    // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+    tester.Run(expect, error_msg,
+               // exclude EPs that don't handle this
+               {
+                   kCoreMLExecutionProvider,
+                   kTensorrtExecutionProvider,
+                   kOpenVINOExecutionProvider,
+                   kQnnExecutionProvider,
+               });
   };
 
   // reduction is possible without keeping dims if we only reduce on non-zero dims

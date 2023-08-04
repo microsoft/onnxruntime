@@ -208,8 +208,8 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+  target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
   size_t step = 0;
@@ -326,8 +326,8 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
 
     OrtValue input, target;
     GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-    onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-        std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+    target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+        std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
 
     /// Load test data for learning rate schedulers.
     auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
@@ -452,8 +452,8 @@ TEST(TrainingApiTest, OptimStep) {
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+  target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
   size_t step = 0;
