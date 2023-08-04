@@ -40,6 +40,12 @@ struct EPVerificationParams {
   const std::function<void(const Graph&)>* graph_verifier{nullptr};
 };
 
+// Verify equality of two output tensors.
+void VerifyOutput(const std::string& output_name,
+                  const Tensor& expected_tensor,
+                  const Tensor& tensor,
+                  float fp32_abs_err);
+
 // Return number of nodes in the Graph and any subgraphs that are assigned to the specified execution provider
 int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type);
 
