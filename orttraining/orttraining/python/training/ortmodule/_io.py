@@ -17,8 +17,8 @@ from onnxruntime.training.utils import (
     ORTModelInputOutputSchemaType,
     ORTModelInputOutputType,
     PrimitiveType,
-    flatten_data_with_schema,
-    unflatten_from_data_and_schema,
+    extract_data_and_schema,
+    unflatten_data_using_schema,
 )
 
 from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
@@ -284,7 +284,7 @@ def deepcopy_model_input(
 
 def unflatten_user_output(output_schema: Optional[ORTModelInputOutputSchemaType], outputs: List[torch.Tensor]):
     try:
-        return unflatten_from_data_and_schema(outputs, output_schema)
+        return unflatten_data_using_schema(outputs, output_schema)
     except TypeError as e:
         raise wrap_exception(
             ORTModuleIOError,
@@ -294,7 +294,7 @@ def unflatten_user_output(output_schema: Optional[ORTModelInputOutputSchemaType]
 
 def _extract_schema(data: ORTModelInputOutputType, device) -> ORTModelInputOutputSchemaType:
     try:
-        schema, _ = flatten_data_with_schema(data, constant_as_tensor=True, device=device)
+        _, schema = extract_data_and_schema(data, constant_as_tensor=True, device=device)
         return schema
     except TypeError as e:
         raise wrap_exception(ORTModuleIOError, TypeError(f"ORTModule fails to extract schema from data: {e}")) from None

@@ -122,10 +122,11 @@ def _warn_of_constant_inputs(data):
     )
 
 
-def flatten_data_with_schema(
+def extract_data_and_schema(
     data: ORTModelInputOutputType, constant_as_tensor=False, device: Optional[torch.device] = None
-) -> Tuple[ORTModelInputOutputSchemaType, List[torch.Tensor]]:
-    """Extract the data schema by replacing every torch.Tensor value with _TensorStub.
+) -> Tuple[List[torch.Tensor], ORTModelInputOutputSchemaType]:
+    """Extract the data schema by replacing every torch.Tensor value with _TensorStub, and return all tensors in
+    a list.
 
     Depth first traversal to iterate over the data:
     > Replace every tensor with a stub
@@ -168,8 +169,9 @@ def flatten_data_with_schema(
 
     Returns:
         Tuple:
-            The first value: schema of the data, which has the same structure as the data.
-            The second value: a list of tensors extracted from the data.
+            The first value: a list of tensors extracted from the data.
+            The second value: schema of the data, which has the same structure as the data.
+
 
     """
 
@@ -225,10 +227,10 @@ def flatten_data_with_schema(
             raise TypeError(f"Unsupported flatten data type: {type(data)}")
 
     schemas = _flatten_from_data(data)
-    return schemas, flatten_tensor_data
+    return flatten_tensor_data, schemas
 
 
-def unflatten_from_data_and_schema(
+def unflatten_data_using_schema(
     data: List[torch.Tensor], schema: ORTModelInputOutputSchemaType
 ) -> ORTModelInputOutputType:
     """Follows the schema to generate an output that is expected by the user.

@@ -6,7 +6,7 @@ from collections import abc
 import pytest
 import torch
 
-from onnxruntime.training.utils import flatten_data_with_schema, unflatten_from_data_and_schema
+from onnxruntime.training.utils import extract_data_and_schema, unflatten_data_using_schema
 from onnxruntime.training.utils.torch_io_helper import _TensorStub
 
 
@@ -255,7 +255,7 @@ def test_data_flatten_and_unflatten(input_output_map, flag: int):
                 assert real == expected
 
     if flag == 0:
-        schema, out = flatten_data_with_schema(raw_data)
+        out, schema = extract_data_and_schema(raw_data)
         assert all([torch.allclose(o, d) if isinstance(o, torch.Tensor) else o == d for o, d in zip(out, flatten_data)])
         if not isinstance(raw_data, torch.Tensor):
             assert type(schema) == type(raw_data)
@@ -263,7 +263,7 @@ def test_data_flatten_and_unflatten(input_output_map, flag: int):
         assert str(schema) == str(flatten_schema)
 
         flatten_data_constant_as_tensor = input_output_map[3]
-        schema, out = flatten_data_with_schema(raw_data, constant_as_tensor=True, device=torch.device("cpu"))
+        out, schema = extract_data_and_schema(raw_data, constant_as_tensor=True, device=torch.device("cpu"))
         if isinstance(
             raw_data,
             (
@@ -281,10 +281,10 @@ def test_data_flatten_and_unflatten(input_output_map, flag: int):
             )
 
     elif flag == 1:
-        restored_data = unflatten_from_data_and_schema(flatten_data, flatten_schema)
+        restored_data = unflatten_data_using_schema(flatten_data, flatten_schema)
         _recursive_compare(restored_data, raw_data)
     elif flag == 2:
-        schema, out = flatten_data_with_schema(raw_data)
-        restored_data = unflatten_from_data_and_schema(out, schema)
+        out, schema = extract_data_and_schema(raw_data)
+        restored_data = unflatten_data_using_schema(out, schema)
 
         _recursive_compare(restored_data, raw_data)
