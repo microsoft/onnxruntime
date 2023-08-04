@@ -19,7 +19,15 @@ parameters:
   displayName: 'Package name'
   type: string
   default: 'NPM_packages'
-
+pr:
+ branches:
+   include:
+     - main
+     - rel-*
+   paths:
+     include:
+       - 'js'
+       - 'onnxruntime/core/providers/js'
 jobs:
 - job: build_onnxruntime_web
   pool: ${{ parameters.PoolName }}
