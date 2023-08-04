@@ -1064,7 +1064,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static OrtCallbackDelegate ortCallback = new OrtCallbackDelegate(OrtCallback);
 
-        public delegate void UserCallbackDelegate(IReadOnlyCollection<OrtValue> outputs, IntPtr status);
+        private delegate void UserCallbackDelegate(IReadOnlyCollection<OrtValue> outputs, IntPtr status);
 
         private class CallbackHost
         {
