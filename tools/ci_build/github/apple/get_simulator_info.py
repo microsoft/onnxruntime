@@ -30,7 +30,7 @@ class SimulatorInfoKey(str, enum.Enum):
 def get_simulator_info(
     requested_runtime_platform: str | None = "iOS",
     requested_device_type_product_family: str | None = "iPhone",
-    max_runtime_version: str | None = "16.4",
+    max_runtime_version: str | None = None,
 ) -> dict[str, str]:
     """
     Retrieves simulator information for a runtime and device type from Xcode.
@@ -112,7 +112,12 @@ def main():
     )
     args = parser.parse_args()
 
-    info = get_simulator_info()
+    info = get_simulator_info(
+        # The macOS-13 hosted agent image has iOS 17 which is currently in beta. Limit it to 16.4 for now.
+        # See https://github.com/actions/runner-images/issues/8023
+        # TODO Remove max_runtime_version limit.
+        max_runtime_version="16.4",
+    )
 
     if args.output_format is not None:
         print(args.output_format.format_map(info))
