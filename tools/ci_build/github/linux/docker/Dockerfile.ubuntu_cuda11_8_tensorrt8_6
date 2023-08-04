@@ -41,6 +41,8 @@ RUN v="8.6.1.6-1+cuda11.8" &&\
 # Compile trtexec
 RUN cd /usr/src/tensorrt/samples/trtexec && make
 
+# Install Valgrind
+RUN apt-get install -y valgrind
 
 # Build final image from base. Builds ORT.
 FROM base as final
