@@ -175,6 +175,13 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+// Explicit template instantiation is necessary in order to define 16-bit versions of DequantizeLinear
+// without having to use the ONNX registration macros. The 16-bit DequantizeLinear implementations
+// are currently used by the contrib op com.microsoft.DequantizeLinear.
+// TODO: These can be removed when/if the ONNX spec adds support for 16-bit DequantizeLinear.
+template DequantizeLinear<int16_t>;
+template DequantizeLinear<uint16_t>;
+
 #define REGISTER_QUANTIZELINEAR(T)                                          \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                           \
       QuantizeLinear,                                                       \
@@ -274,5 +281,12 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   return Status::OK();
 }
+
+// Explicit template instantiation is necessary in order to define 16-bit versions of QuantizeLinear
+// without having to use the ONNX registration macros. The 16-bit QuantizeLinear implementations
+// are currently used by the contrib op com.microsoft.QuantizeLinear.
+// TODO: These can be removed when/if the ONNX spec adds support for 16-bit QuantizeLinear.
+template QuantizeLinear<int16_t>;
+template QuantizeLinear<uint16_t>;
 
 }  // namespace onnxruntime

@@ -26,6 +26,24 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     DequantizeLinear<int8_t>);
 
 ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    DequantizeLinear,
+    1,
+    uint16_t,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint16_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
+    DequantizeLinear<uint16_t>);
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    DequantizeLinear,
+    1,
+    int16_t,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int16_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
+    DequantizeLinear<int16_t>);
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     QuantizeLinear,
     1,
     uint8_t,
@@ -42,6 +60,24 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>()),
     QuantizeLinear<int8_t>);
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    QuantizeLinear,
+    1,
+    uint16_t,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint16_t>()),
+    QuantizeLinear<uint16_t>);
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    QuantizeLinear,
+    1,
+    int16_t,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int16_t>()),
+    QuantizeLinear<int16_t>);
 
 }  // namespace contrib
 }  // namespace onnxruntime
