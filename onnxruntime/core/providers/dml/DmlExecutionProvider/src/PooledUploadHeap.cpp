@@ -118,8 +118,23 @@ namespace Dml
 
     std::pair<PooledUploadHeap::Chunk*, size_t> PooledUploadHeap::Reserve(size_t sizeInBytes)
     {
+        // Try to find a chunk with enough free space to accommodate the requested allocation size
+        for (Chunk& chunk : m_chunks)
+        {
+            std::optional<size_t> offsetForAllocation = FindOffsetForAllocation(chunk, sizeInBytes);
+            if (offsetForAllocation)
+            {
+                // There's enough space in this chunk - return
+                return std::make_pair(&chunk, *offsetForAllocation);
+            }
+        }
+
+        // No chunks were able to accommodate the allocation - create a new chunk and return that instead
+
         // At least double the capacity of the pool
-        m_chunks.push_back(CreateChunk(m_device.Get(), sizeInBytes));
+        const size_t newChunkSize = std::max({ m_totalCapacity, c_minChunkSize, sizeInBytes });
+        m_chunks.push_back(CreateChunk(m_device.Get(), newChunkSize));
+        m_totalCapacity += newChunkSize;
 
         // Allocate from the beginning of the new chunk
         return std::make_pair(&m_chunks.back(), 0);
@@ -197,6 +212,13 @@ namespace Dml
             return c.allocations.empty();
         });
         m_chunks.erase(it, m_chunks.end());
+
+        // Re-calculate total capacity
+        m_totalCapacity = 0;
+        for (const auto& chunk : m_chunks)
+        {
+            m_totalCapacity += chunk.capacityInBytes;
+        }
     }
 
     void PooledUploadHeap::AssertInvariants()
@@ -208,7 +230,7 @@ namespace Dml
         };
 
         // Chunks should be sorted by ascending capacity
-        // assert(std::is_sorted(m_chunks.begin(), m_chunks.end(), chunkCapacityComparer));
+        assert(std::is_sorted(m_chunks.begin(), m_chunks.end(), chunkCapacityComparer));
 
         // Allocations in a chunk should be sorted by ascending fence value
         for (const auto& chunk : m_chunks)
@@ -253,6 +275,14 @@ namespace Dml
                 assert(alloc.offsetInChunk + alloc.sizeInBytes <= nextAlloc.offsetInChunk);
             }
         }
+
+        // Validate total capacity of pool
+        size_t calculatedCapacity = 0;
+        for (const auto& chunk : m_chunks)
+        {
+            calculatedCapacity += chunk.capacityInBytes;
+        }
+        assert(calculatedCapacity == m_totalCapacity);
 
     #endif // #ifdef _DEBUG
     }
