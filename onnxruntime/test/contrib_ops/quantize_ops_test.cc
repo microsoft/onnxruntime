@@ -48,7 +48,8 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int16_cpu) {
   test.AddInput<float>("scale", {}, {2.0f}, true);
   test.AddInput<int16_t>("zero_point", {}, {-1024}, true);
   test.AddOutput<float>("y", dims, {1448.0f, 1988.0f, -2.0f, 4588.0f});
-  // Only implemented for CPU EP.
+
+  // 16-bit DequantizeLinear is currently only implemented for CPU EP.
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider(false));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -61,7 +62,8 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint16_cpu) {
   test.AddInput<float>("scale", {}, {2.0f}, true);
   test.AddInput<uint16_t>("zero_point", {}, {32767}, true);
   test.AddOutput<float>("y", dims, {-5534.0f, -3534.0f, 2.0f, 466.0f});
-  // Only implemented for CPU EP.
+
+  // 16-bit DequantizeLinear is currently only implemented for CPU EP.
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider(false));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -270,6 +272,66 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
                           127, -128});
   // Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test uint16 com.microsoft.QuantizeLinear (per tensor)
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint16) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{12};
+  test.AddInput<float>("x", dims, {
+                                      0.f, -128.f,        //
+                                      3.f, -3.f,          // rounding half to even
+                                      2.9f, -2.9f,        // round < .5
+                                      3.1f, -3.1f,        // round > .5
+                                      65536.f, -65534.f,  // critical point
+                                      70000.f, -70000.f   // saturate case
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<uint16_t>("zero_point", {}, {32767}, true);
+  test.AddOutput<uint16_t>("y", dims,
+                           {32767, 32703,
+                            32769, 32765,
+                            32768, 32766,
+                            32769, 32765,
+                            65535, 0,
+                            65535, 0});
+
+  // 16-bit QuantizeLinear is currently only implemented for CPU EP.
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider(false));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test int16 com.microsoft.QuantizeLinear (per tensor)
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int16) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{16};
+  test.AddInput<float>("x", dims, {
+                                      0.f, -514.f,        //
+                                      3.f, -3.f,          // rounding half to even
+                                      2.9f, -2.9f,        // round < .5
+                                      3.1f, -3.1f,        // round > .5
+                                      65022.f, -66046.f,  // critical point
+                                      65023.f, -66047.f,  // critical point
+                                      65024.f, -66048.f,  // critical point
+                                      70000.f, -70000.f   // saturate case
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<int16_t>("zero_point", {}, {256}, true);
+  test.AddOutput<int16_t>("y", dims,
+                          {256, -1,
+                           258, 254,
+                           257, 255,
+                           258, 254,
+                           32767, -32767,
+                           32767, -32768,
+                           32767, -32768,
+                           32767, -32768});
+
+  // 16-bit QuantizeLinear is currently only implemented for CPU EP.
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider(false));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 #ifdef USE_CUDA
