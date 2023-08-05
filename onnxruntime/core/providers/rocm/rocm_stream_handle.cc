@@ -1,6 +1,7 @@
 #include "core/providers/rocm/rocm_stream_handle.h"
 #include "core/providers/rocm/rocm_common.h"
 // #include "core/common/spin_pause.h"
+#include "core/providers/rocm/rocm_resource.h"
 
 namespace onnxruntime {
 
@@ -129,7 +130,25 @@ Status RocmStream::CleanUpOnRunEnd() {
   return Status::OK();
 }
 
-// CPU Stream command handles
+void* RocmStream::GetResource(int version, int type) const {
+  ORT_ENFORCE(version <= ORT_ROCM_RESOUCE_VERSION, "resource version unsupported!");
+  void* resource{};
+  switch (type) {
+    case RocmResource::hip_stream_t:
+      return reinterpret_cast<void*>(GetHandle());
+      break;
+    case RocmResource::miopen_handle_t:
+      return reinterpret_cast<void*>(miopen_handle_);
+      break;
+    case RocmResource::rocblas_handle_t:
+      return reinterpret_cast<void*>(rocblas_handle_);
+      break;
+    default:
+      break;
+  }
+  return resource;
+}
+
 void WaitRocmNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
   static_cast<RocmNotification*>(&notification)->wait_on_device(stream);
 }

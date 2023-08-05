@@ -1452,6 +1452,10 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   else()
     onnxruntime_add_shared_library(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
   endif()
+
+  if (onnxruntime_USE_ROCM)
+    target_include_directories(custom_op_library PRIVATE ${onnxruntime_ROCM_HOME}/include)
+  endif()
   
   if (onnxruntime_USE_DML)
     target_include_directories(custom_op_library PRIVATE WIL::WIL)

@@ -28,6 +28,16 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 #include "core/providers/dml/dml_context.h"
 #endif
 
+#ifdef USE_ROCM
+#include <hip/hip_runtime.h>
+//#include <hipfft/hipfft.h>
+//#include <hiprand/hiprand.h>
+//#include <hipsparse/hipsparse.h>
+#include <miopen/miopen.h>
+#include <rocblas/rocblas.h>
+#include "core/providers/rocm/rocm_context.h"
+#endif
+
 #include "onnxruntime_lite_custom_op.h"
 
 static const char* c_OpDomain = "test.customop";
@@ -118,6 +128,21 @@ void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
   auto z_raw = Z.Allocate(input_shape);
   cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream);
 }
+#elif USE_ROCM
+void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
+               const Ort::Custom::Tensor<float>& X,
+               const Ort::Custom::Tensor<float>& Y,
+               Ort::Custom::Tensor<float>& Z) {
+  auto input_shape = X.Shape();
+
+  CUSTOM_ENFORCE(rocm_ctx.hip_stream, "failed to fetch hip stream");
+  CUSTOM_ENFORCE(rocm_ctx.miopen_handle, "failed to fetch miopen handle");
+  CUSTOM_ENFORCE(rocm_ctx.rlas_handle, "failed to fetch rocblas handle");
+
+  auto z_raw = Z.Allocate(input_shape);
+  //rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream);
+}
+
 #else
 struct KernelOne {
   OrtStatusPtr ComputeV2(OrtKernelContext* context) {
@@ -328,6 +353,8 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 
 #ifdef USE_CUDA
   static const std::unique_ptr<LiteOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CUDAExecutionProvider", KernelOne)};
+#elif USE_ROCM
+  static const std::unique_ptr<LiteOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "ROCMExecutionProvider", KernelOne)};
 #else
   static const CustomOpOne c_CustomOpOne;
 #endif  // !1
