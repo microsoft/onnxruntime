@@ -34,7 +34,7 @@
   </Type>
 
   <Type Name="google::protobuf::internal::TaggedStringPtr">
-    <DisplayString>{{ { ( *(std::string*)(ptr_ &amp; ~0x3)  } }}</DisplayString>
+    <DisplayString>{{ { *(std::string*)((uintptr_t)(ptr_) &amp; ~0x3)  } }}</DisplayString>
     <Expand>
     </Expand>
   </Type>
