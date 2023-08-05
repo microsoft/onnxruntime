@@ -53,7 +53,7 @@ parameters:
 - name: NugetPackageSuffix
   displayName: Suffix to append to nuget package
   type: string
-  default: ''
+  default: 'NONE'
 
 - name: AdditionalBuildFlag
   displayName: Build flags to append to build command
@@ -112,8 +112,11 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
-    AdditionalBuildFlags: ''
+    ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
+      OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    ${{ else }}:
+      OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
+    AdditionalBuildFlags: '${{parameters.AdditionalBuildFlag}}'
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
     BuildVariant: 'default'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
