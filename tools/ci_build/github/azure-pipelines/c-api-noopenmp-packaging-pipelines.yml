@@ -53,12 +53,12 @@ parameters:
 - name: NugetPackageSuffix
   displayName: Suffix to append to nuget package
   type: string
-  default: 'NONE'
+  default: ''
 
 - name: AdditionalBuildFlag
   displayName: Build flags to append to build command
   type: string
-  default: 'NONE'
+  default: '--use_azure'
 
 resources:
   repositories:
@@ -112,15 +112,9 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
-      OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
-    ${{ else }}:
-      OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
     AdditionalBuildFlags: ''
-    ${{ if eq(parameters.AdditionalBuildFlag, 'NONE') }}:
-      AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
-    ${{ else }}:
-      AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
+    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
     BuildVariant: 'default'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
@@ -198,7 +192,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
