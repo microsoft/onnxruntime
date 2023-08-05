@@ -2630,15 +2630,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
 
           // Build engine
-          std::chrono::steady_clock::time_point engine_build_start;
-          if (detailed_build_log_) {
-            engine_build_start = std::chrono::steady_clock::now();
-          }
-          *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-              trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
-          if (detailed_build_log_) {
-            auto engine_build_stop = std::chrono::steady_clock::now();
-            LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+          {
+            auto lock = GetApiLock();
+            std::chrono::steady_clock::time_point engine_build_start;
+            if (detailed_build_log_) {
+              engine_build_start = std::chrono::steady_clock::now();
+            }
+            *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
+                trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
+            if (detailed_build_log_) {
+              auto engine_build_stop = std::chrono::steady_clock::now();
+              LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+            }
           }
           if (*(trt_state->engine) == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
