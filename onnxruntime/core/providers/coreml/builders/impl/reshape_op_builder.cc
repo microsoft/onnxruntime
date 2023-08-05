@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/providers/cpu/tensor/reshape_helper.h"
 #include "core/optimizer/initializer.h"
-
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/coreml/shape_utils.h"
+#include "core/providers/cpu/tensor/reshape_helper.h"
+#include "core/providers/shared/utils/utils.h"
+
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
-#include "core/providers/coreml/builders/op_builder_factory.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -25,8 +25,8 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
@@ -60,7 +60,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto size = target_shape_tensor.dims()[0];
   TensorShapeVector target_shape{raw_target_shape, raw_target_shape + size};
   std::vector<int64_t> input_shape;
-  ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
+  ORT_RETURN_IF_NOT(GetStaticShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   ReshapeHelper helper(TensorShape(input_shape), target_shape);
   *layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
   *layer->mutable_input()->Add() = input_defs[0]->Name();
@@ -93,7 +93,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   }
 
   std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
+  if (!GetStaticShape(*input_defs[0], input_shape, logger))
     return false;
 
   if (input_shape.empty()) {
