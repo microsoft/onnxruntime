@@ -5,10 +5,33 @@
 from __future__ import annotations
 
 import argparse
+import functools
+import itertools
 import json
 import subprocess
 
-from packaging.version import Version
+
+@functools.total_ordering
+class Version:
+    """
+    A simple Version class.
+    We opt to use this instead of `packaging.version.Version` to avoid depending on the external `packaging` package.
+    It only supports integer version components.
+    """
+
+    def __init__(self, version_string: str):
+        self._components = tuple(int(component) for component in version_string.split("."))
+
+    def __eq__(self, other: Version) -> bool:
+        component_pairs = itertools.zip_longest(self._components, other._components, fillvalue=0)
+        return all(pair[0] == pair[1] for pair in component_pairs)
+
+    def __lt__(self, other: Version) -> bool:
+        component_pairs = itertools.zip_longest(self._components, other._components, fillvalue=0)
+        for self_component, other_component in component_pairs:
+            if self_component != other_component:
+                return self_component < other_component
+        return False
 
 
 def get_simulator_device_info(
