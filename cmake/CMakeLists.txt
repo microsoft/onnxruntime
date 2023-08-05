@@ -30,6 +30,17 @@ endif()
 # Project
 project(onnxruntime C CXX ASM)
 
+# Disable fast-math for Intel oneAPI compiler
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
+    # Using icx-cl compiler driver with MSVC-like arguments
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fp:precise")
+  else()
+    # Using icpx compiler driver
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-fast-math")
+  endif()
+endif()
+
 # Needed for Java
 set(CMAKE_C_STANDARD 99)
 
@@ -926,6 +937,7 @@ function(onnxruntime_set_compile_flags target_name)
 
       # float16.h:90:12: error: ‘tmp’ is used uninitialized
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
+      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-deprecated-copy)
 
       # some #pragma unroll will fail, do not treat them as error
       # #warning must not be treated as error
