@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -38,6 +39,32 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int8) {
   test.AddOutput<float>("y", dims, {-40.0f, 14.0f, 220.0f, 274.0f});
   // Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int16_cpu) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int16_t>("x", dims, {-300, -30, -1025, 1270});
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<int16_t>("zero_point", {}, {-1024}, true);
+  test.AddOutput<float>("y", dims, {1448.0f, 1988.0f, -2.0f, 4588.0f});
+  // Only implemented for CPU EP.
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider(false));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint16_cpu) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint16_t>("x", dims, {30000, 31000, 32768, 33000});
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<uint16_t>("zero_point", {}, {32767}, true);
+  test.AddOutput<float>("y", dims, {-5534.0f, -3534.0f, 2.0f, 466.0f});
+  // Only implemented for CPU EP.
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider(false));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 #ifdef USE_CUDA
