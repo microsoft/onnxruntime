@@ -116,7 +116,7 @@ stages:
       OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
     ${{ else }}:
       OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
-    AdditionalBuildFlags: '${{parameters.AdditionalBuildFlag}}'
+    AdditionalBuildFlags: ''
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
     BuildVariant: 'default'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
