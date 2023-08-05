@@ -9,6 +9,7 @@ import sys
 import tempfile
 import textwrap
 import time
+import warnings
 from contextlib import contextmanager
 from enum import IntEnum
 from functools import partial
@@ -171,6 +172,8 @@ def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
     if enable:
         # stdout and stderr is written to a tempfile instead
         with tempfile.TemporaryFile() as fp:
+            old_stdout = None
+            old_stderr = None
             try:
                 # Store original stdout and stderr file no.
                 old_stdout = os.dup(sys.stdout.fileno())
@@ -185,8 +188,10 @@ def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
                 sys.stderr.flush()
 
                 # Restore stdout and stderr.
-                os.dup2(old_stdout, sys.stdout.fileno())
-                os.dup2(old_stderr, sys.stderr.fileno())
+                if old_stdout is not None:
+                    os.dup2(old_stdout, sys.stdout.fileno())
+                if old_stderr is not None:
+                    os.dup2(old_stderr, sys.stderr.fileno())
 
                 if on_exit:
                     on_exit(fp)

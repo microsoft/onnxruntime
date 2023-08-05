@@ -159,7 +159,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 
         # TODO: add fully-qualified name.
         attrs = {
-            "name_s": name,
+            "func_name_s": name,
             "inplace_i": inplace,
             "input_convention_s": cconv,
             "outputs": n.outputsSize(),
@@ -247,7 +247,7 @@ def _post_process_enabling_autograd_fallback(exported_model):
             node.output.append(output_names[0] + "_ctx")
             node.output.extend(output_names)
             for attr in node.attribute:
-                if attr.name == "name":
+                if attr.name == "func_name":
                     kclass_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
                     # If the duplicated function is used in ONNX graph, we will fail in case of a wrong function call.
                     # Todo: remove this trick once exporter can support fully qualified name for PythonOp.
