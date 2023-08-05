@@ -133,7 +133,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #ifdef USE_ROCM
     std::cout << "Running simple inference with rocm provider" << std::endl;
     OrtROCMProviderOptions rocm_options;
-    rocm_options.do_copy_in_default_stream = true;
+    // rocm_options.do_copy_in_default_stream = true;
     session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     return;

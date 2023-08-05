@@ -12,9 +12,9 @@ namespace Custom {
 
 struct RocmContext : public Context {
 
-  hip_stream_t hip_stream = {};
-  miopen_handle_t miopen_handle = {};
-  rocblas_handle_t rocblas_handle = {};
+  hipStream_t hip_stream = {};
+  miopenHandle_t miopen_handle = {};
+  rocblas_handle rblas_handle = {};
 
   void Init(const OrtKernelContext& kernel_ctx) override {
     const auto& ort_api = Ort::GetApi();
@@ -39,7 +39,7 @@ struct RocmContext : public Context {
     if (status) {
       ORT_CXX_API_THROW("failed to fetch rocblas handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
-    rblas_handle = reinterpret_cast<rocblasHandle_t>(resource);
+    rblas_handle = reinterpret_cast<rocblas_handle>(resource);
   }
 };
 

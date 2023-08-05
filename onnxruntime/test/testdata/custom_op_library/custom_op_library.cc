@@ -36,6 +36,7 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 #include <miopen/miopen.h>
 #include <rocblas/rocblas.h>
 #include "core/providers/rocm/rocm_context.h"
+void rocm_add(int64_t, float*, const float*, const float*, hipStream_t compute_stream);
 #endif
 
 #include "onnxruntime_lite_custom_op.h"
@@ -137,12 +138,11 @@ void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
 
   CUSTOM_ENFORCE(rocm_ctx.hip_stream, "failed to fetch hip stream");
   CUSTOM_ENFORCE(rocm_ctx.miopen_handle, "failed to fetch miopen handle");
-  CUSTOM_ENFORCE(rocm_ctx.rlas_handle, "failed to fetch rocblas handle");
+  CUSTOM_ENFORCE(rocm_ctx.rblas_handle, "failed to fetch rocblas handle");
 
   auto z_raw = Z.Allocate(input_shape);
-  //rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream);
+  rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), rocm_ctx.hip_stream);
 }
-
 #else
 struct KernelOne {
   OrtStatusPtr ComputeV2(OrtKernelContext* context) {
@@ -379,6 +379,8 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   ORT_TRY {
     Ort::CustomOpDomain domain{c_OpDomain};
 #ifdef USE_CUDA
+    domain.Add(c_CustomOpOne.get());
+#elif USE_ROCM
     domain.Add(c_CustomOpOne.get());
 #else
     domain.Add(&c_CustomOpOne);
