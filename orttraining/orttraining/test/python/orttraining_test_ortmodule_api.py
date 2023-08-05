@@ -4208,21 +4208,14 @@ def test_hf_save_pretrained():
             assert p1.data.ne(p2.data).sum() == 0
 
 
-def test_ortmodule_string_inputs_are_ignored(caplog):
+def test_ortmodule_string_inputs_are_ignored():
     pt_model = MyStrNet()
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
-    x = torch.randn(1, 2)
-
-    out = ort_model(x, "hello")
-
     target_str = "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
-    found_target_str = False
-    for record in caplog.records:
-        if target_str in record.message:
-            found_target_str = True
-
-    assert found_target_str
-    _test_helpers.assert_values_are_close(out, x + 1)
+    with pytest.warns(UserWarning, match=target_str):
+        ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
+        x = torch.randn(1, 2)
+        out = ort_model(x, "hello")
+        _test_helpers.assert_values_are_close(out, x + 1)
 
 
 def test_ortmodule_list_input():
@@ -6147,3 +6140,34 @@ def test_cache_exported_model():
         torch.onnx.export.reset_mock()
 
         del os.environ["ORTMODULE_CACHE_DIR"]
+
+
+def test_reciprocal_gradient():
+    class ReciprocalModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, x):
+            return 1 / x
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = "cuda"
+    pt_model = ReciprocalModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.zeros(3, 224, 224, requires_grad=True, device=device)
+    with torch.no_grad():
+        pt_x[pt_x <= 0] -= 0.2
+        pt_x[pt_x > 0] += 0.2
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
