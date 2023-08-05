@@ -111,7 +111,6 @@ stages:
     - script: |
         set -e -x
 
-        python3 -m pip install packaging  # required for get_simulator_device_info.py
         SIMULATOR_DEVICE_ID=$(set -o pipefail; python3 tools/ci_build/github/apple/get_simulator_device_info.py | jq --raw-output '.device_udid')
 
         cp "$(Pipeline.Workspace)/ios_packaging_artifacts_full/pod-archive-onnxruntime-c-$(ortPodVersion).zip" swift/
