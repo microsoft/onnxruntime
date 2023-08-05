@@ -70,7 +70,7 @@ bool CustomEp2::CanCopy(const OrtDevice& src, const OrtDevice& dest) {
   return true;
 }
 
-void CustomEp2::MemoryCpy(OrtValue& dst, const OrtValue& src) {
+void CustomEp2::MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) {
   std::cout<<"Custom2's MemoryCpy()\n";
   //memcpy(dst, src, bytes_count);
 }

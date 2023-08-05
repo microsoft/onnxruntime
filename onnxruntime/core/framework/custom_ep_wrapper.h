@@ -22,7 +22,10 @@ namespace onnxruntime {
             const void* src_raw = src.DataRaw();
             Tensor::InitOrtValue(src.DataType(), src.Shape(), const_cast<void*>(src_raw), src.Location(), src_value, src.ByteOffset());
             Tensor::InitOrtValue(dst.DataType(), dst.Shape(), dst.MutableDataRaw(), dst.Location(), dst_value, dst.ByteOffset());
-            external_ep_impl_->MemoryCpy(dst_value, src_value);
+
+            Ort::ConstValue src_cv{&src_value};
+            Ort::UnownedValue dst_uv{&dst_value};
+            external_ep_impl_->MemoryCpy(dst_uv, src_cv);
             return Status::OK();
         }
 

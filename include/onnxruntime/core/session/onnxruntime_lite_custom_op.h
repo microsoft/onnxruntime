@@ -31,6 +31,10 @@ class TensorBase {
     return shape_.has_value();
   }
 
+  void SetShape(std::vector<int64_t> shape) {
+    shape_ = shape;
+  }
+
  protected:
   struct KernelContext ctx_;
   std::optional<std::vector<int64_t>> shape_;
@@ -104,6 +108,37 @@ class Tensor : public TensorBase {
     }
     return *Data();
   }
+
+  ONNXTensorElementDataType GetTensorElementDataType() {
+    if (is_input_) {
+      return const_value_.GetTensorTypeAndShapeInfo().GetElementType();
+    } else {
+      ctx_.GetOutput(indice_, shape_.value()).GetTensorTypeAndShapeInfo().GetElementType();
+    }
+  }
+
+  OrtMemoryInfoDeviceType GetDeviceType() {
+    if (is_input_) {
+      return const_value_.GetTensorMemoryInfo().GetDeviceType();
+    } else {
+      ctx_.GetOutput(indice_, shape_.value()).GetTensorMemoryInfo().GetDeviceType();
+    }
+  }
+
+  const void* GetTensorRawData() {
+    return const_value_.GetTensorRawData();
+  }
+
+  void* GetTensorMutableRawData() {
+    return ctx_.GetOutput(indice_, shape_.value()).GetTensorMutableRawData();
+  }
+
+//  ConstValue& GetSourceValue() { return const_value_; }
+//
+//  UnownedValue& GetDestValue(const std::vector<int64_t>& shape) {
+//    shape_ = shape;
+//    return ctx_.GetOutput(indice_, shape);
+//  }
 
  private:
   size_t indice_;

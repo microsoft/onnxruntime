@@ -13,7 +13,7 @@ public:
     CustomEp2(const CustomEp2Info& info);
     ~CustomEp2() override = default;
     bool CanCopy(const OrtDevice& src, const OrtDevice& dest) override;
-    void MemoryCpy(OrtValue& dst, const OrtValue& src) override;
+    void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) override;
 private:
     CustomEp2Info info_;
 };

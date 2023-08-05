@@ -51,7 +51,8 @@ namespace onnxruntime{
         std::string& GetType() { return type_; }
 
         virtual bool CanCopy(const OrtDevice&, const OrtDevice&) { return false; }
-        virtual void MemoryCpy(OrtValue&, const OrtValue&) {}
+        //virtual void MemoryCpy(OrtValue&, const OrtValue&) {}
+        virtual void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) {}
 
         protected:
         std::vector<OrtAllocator*> allocators_;
