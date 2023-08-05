@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 
 import inspect
-import warnings
 from collections import OrderedDict
 from types import CodeType, FunctionType
 from typing import Callable, Tuple
@@ -15,16 +14,36 @@ from onnxruntime.training.utils import ORTModelInputOutputType, extract_data_and
 
 from ._subscriber_base import SubscriberBase, _RuntimeStates
 
-IS_DEEPSPEED_INSTALLED = False
+
+# Used to monkey patch the original function
+# Adapted from https://github.com/microsoft/DeepSpeed/blob/e8318634b4313eaad89842cf4322e1762d34ced3/deepspeed/runtime/zero/parameter_offload.py#L333
+def _setup_zero_stage3_ort_compatible_hooks(self):
+    self.hierarchy = 0
+
+    from onnxruntime.training.utils.hooks import SubscriberManager, ZeROOffloadSubscriber
+    from onnxruntime.training.utils.hooks._zero_offload_subscriber import _zero_offload_one_time_initializer
+
+    # Each deepspeed engine has a separated subscriber manager.
+    self._offload_subscriber_manager = SubscriberManager()
+    self._offload_subscriber_manager.subscribe(
+        self.module, [ZeROOffloadSubscriber(self, _zero_offload_one_time_initializer)]
+    )
+    self.forward_hooks.extend(self._offload_subscriber_manager._pre_forward_hooks)
+    self.forward_hooks.extend(self._offload_subscriber_manager._post_forward_hooks)
+
+    # Add top module to stack trace
+    global FWD_MODULE_STACK  # noqa: PLW0602
+    FWD_MODULE_STACK.append(self.module)
+
+
 _zero_offload_one_time_initializer = None
 
 try:
+    # Have to import below explicitly, otherwise it complains about _apply_to_tensors_only not found.
     # The hooks reference functions or classes in that file.
     from deepspeed.runtime.zero.parameter_offload import *  # noqa: F403
-    from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
+    from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload, _apply_to_tensors_only  # noqa: F401
     from deepspeed.utils import instrument_w_nvtx  # noqa: F401
-
-    IS_DEEPSPEED_INSTALLED = True
 
     class _ZeROOffloadOneTimeInitializer:
         """Store the hook functions from DeepSpeed ZeRO offload.
@@ -50,46 +69,20 @@ try:
     # Used to collect the hook functions's code object from DeepSpeed ZeRO offload, this should be initialized only once.
     _zero_offload_one_time_initializer = _ZeROOffloadOneTimeInitializer()
 
+    # This is the function to enable ORT ZeRO offload.
+    def configure_ort_compatible_zero_stage3():
+        """Configure ZeRO stage3 to be ORT compatible.
+
+        This function will overwrite the original DeepSpeed ZeRO stage3 hooks to make it ORT compatible.
+        """
+
+        # Only done once no matter how many times this function is called for different modules.
+        DeepSpeedZeRoOffload.setup_zero_stage3_hooks = _setup_zero_stage3_ort_compatible_hooks
+
 except ImportError:
-    warnings.warn("DeepSpeed is not installed, ZeRO offload hooks will not work.")
-    IS_DEEPSPEED_INSTALLED = False
-    _zero_offload_one_time_initializer = None
 
-
-# Used to monkey patch the original function
-# Adapted from https://github.com/microsoft/DeepSpeed/blob/e8318634b4313eaad89842cf4322e1762d34ced3/deepspeed/runtime/zero/parameter_offload.py#L333
-def _setup_zero_stage3_ort_compatible_hooks(self):
-    self.hierarchy = 0
-
-    from onnxruntime.training.utils.hooks import SubscriberManager, ZeROOffloadSubscriber
-    from onnxruntime.training.utils.hooks._zero_offload_subscriber import _zero_offload_one_time_initializer
-
-    # Each deepspeed engine has a separated subscriber manager.
-    self._offload_subscriber_manager = SubscriberManager()
-    self._offload_subscriber_manager.subscribe(
-        self.module, [ZeROOffloadSubscriber(self, _zero_offload_one_time_initializer)]
-    )
-    self.forward_hooks.extend(self._offload_subscriber_manager._pre_forward_hooks)
-    self.forward_hooks.extend(self._offload_subscriber_manager._post_forward_hooks)
-
-    # Add top module to stack trace
-    global FWD_MODULE_STACK  # noqa: PLW0602
-    FWD_MODULE_STACK.append(self.module)
-
-
-# This is the function to enable ORT ZeRO offload.
-def configure_ort_compatible_zero_stage3():
-    """Configure ZeRO stage3 to be ORT compatible.
-
-    This function will overwrite the original DeepSpeed ZeRO stage3 hooks to make it ORT compatible.
-    """
-
-    if IS_DEEPSPEED_INSTALLED is False:
+    def configure_ort_compatible_zero_stage3():
         raise RuntimeError("DeepSpeed is not installed, cannot configure ORT compatible ZeRO stage3.")
-
-    # Only done once no matter how many times this function is called for different modules.
-    DeepSpeedZeRoOffload.setup_zero_stage3_hooks = _setup_zero_stage3_ort_compatible_hooks
-    warnings.warn("ZeRO stage3 is configured to be ORT compatible.")
 
 
 class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
@@ -101,10 +94,14 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         post_backward_function,
         args_schema,
         kwargs_schema,
-        args_tensors,
-        kwargs_tensors,
-        partitioned_params,
+        args_tensor_count,
+        kwargs_tensor_count,
+        *tensor_list,
     ):
+        args_tensors = tensor_list[:args_tensor_count]
+        kwargs_tensors = tensor_list[args_tensor_count : args_tensor_count + kwargs_tensor_count]
+        partitioned_params = tensor_list[args_tensor_count + kwargs_tensor_count :]
+
         args = unflatten_data_using_schema(args_tensors, args_schema)
         kwargs = unflatten_data_using_schema(kwargs_tensors, kwargs_schema)
         f_ret = pre_forward_function(module, args, kwargs)
@@ -118,10 +115,8 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         # Moved from _post_backward_module_hook to make sure ORT run will trigger every iteration.
         module.ds_grads_remaining = 0
 
+        ctx.module = module
         ctx.post_backward_function = post_backward_function
-        ctx.args_count = len(args_tensors)
-        ctx.kwargs_count = len(kwargs_tensors)
-        ctx.partitioned_params_count = len(partitioned_params)
 
         updated_args_tensors, _ = extract_data_and_schema(updated_args)
         updated_kwargs_tensors, _ = extract_data_and_schema(updated_kwargs)
@@ -134,8 +129,14 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         return rets
 
     @staticmethod
-    def backward(ctx, *args):
-        return (None, None, None, None, None, *args)
+    def backward(ctx, *grads):
+        updated_grads = grads
+        if ctx.post_backward_function is not None:
+            ret = ctx.post_backward_function(ctx.module, grads)
+            if ret is not None:
+                updated_grads = ret
+
+        return (None, None, None, None, None, None, None, *updated_grads)
 
 
 class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
@@ -161,11 +162,16 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         ctx.module = module
         ctx.pre_backward_function = pre_backward_function
 
-        return tuple([o.detach().requires_grad_(o.requires_grad) for o in updated_output_tensors])
+        return [o.detach().requires_grad_(o.requires_grad) for o in updated_output_tensors]
 
     @staticmethod
-    def backward(ctx, *args):
-        return (None, None, None, None, *args)
+    def backward(ctx, *grads):
+        updated_args = grads
+        if ctx.pre_backward_function is not None:
+            ret = ctx.pre_backward_function(ctx.module, grads)
+            if ret is not None:
+                updated_args = ret
+        return (None, None, None, None, *updated_args)
 
 
 class _ZeROOffloadFunctions:
@@ -194,10 +200,10 @@ class _ZeROOffloadFunctions:
 class ZeROOffloadSubscriber(SubscriberBase):
     """This subscriber is used to enable ZeRO Offload feature in a way compatible with ORTModule."""
 
-    def __init__(self, offloader):
+    def __init__(self, offloader, one_time_init: _ZeROOffloadOneTimeInitializer):
         super().__init__(None, None)
         self._offloader = offloader
-        self._functions = _ZeROOffloadFunctions(self._offloader._one_time_init, self._offloader)
+        self._functions = _ZeROOffloadFunctions(one_time_init, self._offloader)
 
     def pre_forward_module_apply_impl(
         self,
@@ -221,28 +227,28 @@ class ZeROOffloadSubscriber(SubscriberBase):
 
         _pre_forward_module_hook = self._functions.get("_pre_forward_module_hook")
 
-        def _post_backward_function(module, grads):
-            return
+        args_tensor_count = len(args_tensors)
+        kwargs_tensor_count = len(kwargs_tensors)
 
         rets = ORTZeROOffloadPreForwardFunction.apply(
             module,
             _pre_forward_module_hook,
-            _post_backward_function,
+            None,
             args_schema,
             kwargs_schema,
-            args_tensors,
-            kwargs_tensors,
-            partitioned_params,
+            args_tensor_count,
+            kwargs_tensor_count,
+            *(args_tensors + kwargs_tensors + partitioned_params),
         )
 
-        updated_args_tensors = rets[: len(args_tensors)]
-        updated_kwargs_tensors = rets[len(args_tensors) : len(args_tensors) + len(kwargs_tensors)]
+        updated_args_tensors = rets[:args_tensor_count]
+        updated_kwargs_tensors = rets[args_tensor_count : args_tensor_count + kwargs_tensor_count]
 
         updated_args = unflatten_data_using_schema(updated_args_tensors, args_schema)
         updated_kwargs = unflatten_data_using_schema(updated_kwargs_tensors, kwargs_schema)
 
         _post_backward_module_hook = self._functions.get("_post_backward_module_hook")
-        # _post_backward_module_hook can be traced correctly so we don't need wrap with PythonOp.
+        # _post_backward_module_hook can be traced correctly so we don't need to wrap with PythonOp.
         updated_args = _post_backward_module_hook(module, updated_args)
 
         return updated_args, updated_kwargs
@@ -256,12 +262,9 @@ class ZeROOffloadSubscriber(SubscriberBase):
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         outputs_tensors, outputs_schema = extract_data_and_schema(outputs)
 
-        def _pre_backward_function(module, grads):
-            return
-
         _post_forward_module_hook = self._functions.get("_post_forward_module_hook")
         updated_outputs_tensors = ORTZeROOffloadPostForwardFunction.apply(
-            module, _post_forward_module_hook, _pre_backward_function, outputs_schema, *outputs_tensors
+            module, _post_forward_module_hook, None, outputs_schema, *outputs_tensors
         )
 
         assert len(updated_outputs_tensors) == len(outputs_tensors)

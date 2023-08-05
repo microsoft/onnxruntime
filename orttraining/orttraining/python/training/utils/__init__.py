@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 # __init__.py
 
-from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3
 from onnxruntime.training.utils.torch_io_helper import (
     ORTModelInputOutputSchemaType,
     ORTModelInputOutputType,
@@ -17,5 +16,4 @@ __all__ = [
     "ORTModelInputOutputSchemaType",
     "extract_data_and_schema",
     "unflatten_data_using_schema",
-    "configure_ort_compatible_zero_stage3",
 ]
