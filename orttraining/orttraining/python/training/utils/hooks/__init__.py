@@ -10,11 +10,12 @@ __all__ = [
     "ZeROOffloadSubscriber",
     "GlobalSubscriberManager",
     "inspect_activation",
+    "configure_ort_compatible_zero_stage3",
 ]
 
 from ._statistics_subscriber import StatisticsSubscriber, _InspectActivation
 from ._subscriber_manager import SubscriberManager
-from ._zero_offload_subscriber import ZeROOffloadSubscriber
+from ._zero_offload_subscriber import ZeROOffloadSubscriber, configure_ort_compatible_zero_stage3
 
 # Define a global uninitialized subscriber manager for usage where it is needed by different Python files.
 GlobalSubscriberManager = SubscriberManager()

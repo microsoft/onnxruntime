@@ -19,7 +19,7 @@ from torch.utils.cpp_extension import ROCM_HOME
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from onnxruntime.training.utils import ORTModelInputOutputSchemaType
+from onnxruntime.training.utils import ORTModelInputOutputSchemaType, configure_ort_compatible_zero_stage3
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
 from ._custom_autograd_function_exporter import _post_process_after_export
@@ -139,6 +139,10 @@ class GraphExecutionManager(GraphExecutionInterface):
             from onnxruntime.training.ort_triton import register_triton_op_executor
 
             register_triton_op_executor()
+
+        if self._runtime_options.enable_zero_stage3_support:
+            # Cannot toggle feature enabling/disabling after the first time enabled.
+            configure_ort_compatible_zero_stage3()
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():

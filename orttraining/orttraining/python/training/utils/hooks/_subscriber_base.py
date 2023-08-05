@@ -4,10 +4,8 @@
 # --------------------------------------------------------------------------
 
 
-from __future__ import annotations
-
 import sys
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 
@@ -49,7 +47,7 @@ class SubscriberBase:
 
     """
 
-    def __init__(self, start_step: None | int, end_step: None | int):
+    def __init__(self, start_step: Optional[int], end_step: Optional[int]):
         """
         Steps in [start_step, end_step) will run the subscriber's actions, and other steps will skip.
         If start_step is None, 0 is given; if end_step is None, sys.maxsize is given.
@@ -63,7 +61,7 @@ class SubscriberBase:
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is called inside the nn.Module's pre forward hook.
 
         Args:
@@ -83,8 +81,8 @@ class SubscriberBase:
         if self._need_skip_step(run_rtx.global_states.execution_step):
             return args, kwargs
 
-        outputs1, outputs2 = self.pre_forward_module_apply_impl(run_rtx, module, args, kwargs)
-        return outputs1, outputs2
+        updated_args, updated_kwargs = self.pre_forward_module_apply_impl(run_rtx, module, args, kwargs)
+        return updated_args, updated_kwargs
 
     def pre_forward_module_apply_impl(
         self,
@@ -92,7 +90,7 @@ class SubscriberBase:
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         return args, kwargs
 
     def pre_forward_tensor_apply(
@@ -101,8 +99,8 @@ class SubscriberBase:
         """This function is called inside the nn.Module's pre forward hook.
 
         Args:
-            module (torch.nn.Module): The module that is being executed.
             run_rtx (_RuntimeStates): The runtime states of SubscriberManager.
+            module (torch.nn.Module): The module that is being executed.
             tensor_index (int): The index of the tensor in the input tensor list.
             tensor (torch.Tensor): The tensor which is one of module's forward inputs.
         """
@@ -122,7 +120,7 @@ class SubscriberBase:
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         output: ORTModelInputOutputType,
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         if self._need_skip_step(run_rtx.global_states.execution_step):
             return args, output
 
@@ -132,9 +130,9 @@ class SubscriberBase:
         self,
         run_rtx: _RuntimeStates,
         module: torch.nn.Module,
-        args: ORTModelInputOutputType,  # ?? can be tensor?
-        output: ORTModelInputOutputType,  # ?? can be tensor?
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+        args: ORTModelInputOutputType,
+        output: ORTModelInputOutputType,
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         return args, output
 
     def post_forward_tensor_apply(
@@ -161,9 +159,9 @@ class SubscriberBase:
         self,
         run_rtx: _RuntimeStates,
         module: torch.nn.Module,
-        input_args: ORTModelInputOutputType,  # ?? can be tensor?
-        outputs: ORTModelInputOutputType,  # ?? can be tensor?
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+        input_args: ORTModelInputOutputType,
+        outputs: ORTModelInputOutputType,
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         if self._need_skip_step(run_rtx.global_states.execution_step):
             return input_args, outputs
 
@@ -173,7 +171,7 @@ class SubscriberBase:
         self,
         run_rtx: _RuntimeStates,
         module: torch.nn.Module,
-        input_args: ORTModelInputOutputType,  # ?? can be tensor?
-        outputs: ORTModelInputOutputType,  # ?? can be tensor?
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+        input_args: ORTModelInputOutputType,
+        outputs: ORTModelInputOutputType,
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         return input_args, outputs
