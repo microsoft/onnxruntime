@@ -167,17 +167,15 @@ __global__ void SkipLayerNormKernelSmall(
 }
 
 template <typename T, bool Simplified>
-Status LaunchSkipLayerNormKernel(
+void LaunchSkipLayerNormKernel(
     cudaStream_t stream, T* output, T* skip_input_bias_add_output, const T* input, const T* skip, const T* gamma,
-    const T* beta, const T* bias, float epsilon, const int ld, const int element_count,
-    size_t element_size) {
+    const T* beta, const T* bias, float epsilon, int ld, int row_count) {
   // this must be true because n is the total size of the tensor
-  assert(element_count % ld == 0);
   bool hasBias = (bias == nullptr) ? false : true;
   bool hasSkipInputBiasAdditionOutput = (skip_input_bias_add_output == nullptr) ? false : true;
 
   const int next_size = NextSize(ld);
-  const int grid_size = element_count / ld;
+  const int grid_size = row_count;
   bool flag_vec2 =
       CanVectorized<T, 2>(output, skip_input_bias_add_output, input, skip, gamma, beta, bias, ld, next_size);
   bool flag_vec4 =
@@ -219,17 +217,14 @@ Status LaunchSkipLayerNormKernel(
 #undef LAUNCH_SKIP_LAYER_NORM_KERNEL
 #undef LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL
   }
-
-  return CUDA_CALL(cudaGetLastError());
 }
 
-#define SKIPLAYERNORM_IMPL(T, Simplified)                                                                 \
-  template Status LaunchSkipLayerNormKernel<T, Simplified>(cudaStream_t stream, T * output,               \
-                                                           T * skip_input_bias_add_output,                \
-                                                           const T* input, const T* skip, const T* gamma, \
-                                                           const T* beta, const T* bias, float epsilon,   \
-                                                           const int ld, const int element_count,         \
-                                                           size_t element_size);
+#define SKIPLAYERNORM_IMPL(T, Simplified)                                                               \
+  template void LaunchSkipLayerNormKernel<T, Simplified>(cudaStream_t stream, T * output,               \
+                                                         T * skip_input_bias_add_output,                \
+                                                         const T* input, const T* skip, const T* gamma, \
+                                                         const T* beta, const T* bias, float epsilon,   \
+                                                         int ld, int row_count);
 
 SKIPLAYERNORM_IMPL(float, true);
 SKIPLAYERNORM_IMPL(float, false);
