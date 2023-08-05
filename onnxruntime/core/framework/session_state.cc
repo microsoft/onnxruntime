@@ -168,7 +168,6 @@ void SessionState::CreateGraphInfo() {
                         << " to OrtValueIndex with index: " << idx;
     }
   }
-
   LOGS(logger_, VERBOSE) << "Done saving OrtValue mappings.";
 }
 

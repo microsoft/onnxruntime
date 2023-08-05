@@ -169,7 +169,7 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
 #pragma unroll
     for (int i = 0; i < ILP; i++) {
       output_v[i] = (beta != nullptr)
-                        ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i]
+                        ? (gamma_v[i]) * (input_v[i] - mu) * rsigma + beta_v[i]
                         : gamma_v[i] * (input_v[i] - mu) * rsigma;
     }
     *(reinterpret_cast<VecT*>(&output[idx])) = *output_val;

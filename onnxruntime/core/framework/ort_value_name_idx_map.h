@@ -8,6 +8,7 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 
+
 // This class is not thread-safe
 // TODO: this is a static hash lookup, it's easy to do it better
 namespace onnxruntime {
@@ -55,6 +56,7 @@ class OrtValueNameIdxMap {
     name = it->second;
     return common::Status::OK();
   }
+
 
   size_t Size() const { return map_.size(); };
   int MaxIdx() const { return next_idx_ - 1; }

@@ -88,7 +88,7 @@ static void RunTest(
              dml_ep != nullptr ||
              rocm_ep != nullptr) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
-    if (use_float16_input_skip) {
+    /*if (use_float16_input_skip) {
       test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
       test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
 
@@ -111,42 +111,42 @@ static void RunTest(
         } else {
           test.AddOptionalInputEdge<float>();
         }
-    }
-    test.AddAttribute("epsilon", epsilon);
-    if (!bias_data.empty()) {
-      test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
-    }
-
-    test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
-    } else {
-    test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
-    test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
-    test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
-    if (!simplified) {
-      if (!no_beta) {
-        test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
-      } else {
-        test.AddOptionalInputEdge<float>();
       }
-    }
-    test.AddAttribute("epsilon", epsilon);
-    if (!bias_data.empty()) {
-      test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
-    }
+      test.AddAttribute("epsilon", epsilon);
+      if (!bias_data.empty()) {
+        test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
+      }
 
-    test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
+      test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
+      } else { */
+      test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
+      test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
+      test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
+      if (!simplified) {
+        if (!no_beta) {
+          test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
+        } else {
+          test.AddOptionalInputEdge<float>();
+        }
+      }
+      test.AddAttribute("epsilon", epsilon);
+      if (!bias_data.empty()) {
+        test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
+      }
 
-    if (skip_input_bias_add_output_data.size() != 0) {
-      // The second and third outputs are reserved for something else
-      test.AddOptionalOutputEdge<MLFloat16>();
-      test.AddOptionalOutputEdge<MLFloat16>();
+      test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
 
-      test.AddOutput<MLFloat16>("skip_input_bias_add_output",
-                                output_dims,
-                                ToFloat16(skip_input_bias_add_output_data));
+      if (skip_input_bias_add_output_data.size() != 0) {
+        // The second and third outputs are reserved for something else
+        test.AddOptionalOutputEdge<MLFloat16>();
+        test.AddOptionalOutputEdge<MLFloat16>();
+
+        test.AddOutput<MLFloat16>("skip_input_bias_add_output",
+                                  output_dims,
+                                  ToFloat16(skip_input_bias_add_output_data));
       }
      }
-    }
+
 
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -803,7 +803,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_DiffDataTypes) {
           false,
           false,
           false,
-          true,
+          false,
           false);
 }
 

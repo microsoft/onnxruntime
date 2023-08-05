@@ -77,7 +77,7 @@ __device__ void cuChanOnlineSum(
   }
 }
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename U, typename V, bool simplified>
 __device__ void cuWelfordMuSigma2(
     const T* __restrict__ vals,
     const int n1,
@@ -87,7 +87,7 @@ __device__ void cuWelfordMuSigma2(
     U& sigma2,
     U* buf,
     const T* __restrict__ skip,
-    const T* __restrict__ bias) {
+    const V* __restrict__ bias) {
   // Assumptions:
   // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensor is contiguous
@@ -347,7 +347,7 @@ __global__ void cuApplyLayerNorm(
     SharedMemory<U> shared;
     U* buf = shared.getPointer();
     U mu, sigma2;
-    cuWelfordMuSigma2<T, U, simplified>(vals, n1, n2, i1, mu, sigma2, buf, skip, bias);
+    cuWelfordMuSigma2<T, U, V, simplified>(vals, n1, n2, i1, mu, sigma2, buf, skip, bias);
     const T* lvals = vals + i1 * n2;
     const T* skip_vals = (skip != NULL) ? skip + i1 * n2 : NULL;
     V* ovals = output_vals + i1 * n2;
@@ -366,8 +366,8 @@ __global__ void cuApplyLayerNorm(
 
       curr += static_cast<U>(skip_vals[i]);
 
-      U gamma_i = (gamma != NULL) ? (U)gamma[i] : (U)1;
-      U beta_i = (beta != NULL) ? (U)beta[i] : (U)0;
+      U gamma_i = (gamma != NULL) ? (U)static_cast<U>(gamma[i]) : (U)1;
+      U beta_i = (beta != NULL) ? (U)static_cast<U>(beta[i]) : (U)0;
       if (simplified) {
         ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
       } else {
@@ -448,13 +448,10 @@ void HostApplyLayerNorm(
 
 #define LAYERNORM_LINEAR_IMPL(T, U, V, simplified)                                                                    \
   template void HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output,   \
-                                                        U* mean, U* inv_std_dev, const V* input, int n1, int n2,      \
+                                                        U* mean, U* inv_std_dev, const T* input, int n1, int n2,      \
                                                         double epsilon, const V* gamma, const V* beta, const T* skip, \
                                                         const V* bias, T* skip_input_bias_add_output);
-  template void HostApplyLayerNorm<float, float, half, true>(const cudaDeviceProp& prop, cudaStream_t stream, half* output,
-                                                        float* mean, float* inv_std_dev, const float* input, int n1, int n2,
-                                                        double epsilon, const half* gamma, const half* beta, const float* skip,
-                                                        const half* bias, float* skip_input_bias_add_output);
+
 
 LAYERNORM_LINEAR_IMPL(float, float, float, true)
 LAYERNORM_LINEAR_IMPL(half, float, half, true)
