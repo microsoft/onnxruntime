@@ -11,7 +11,7 @@ from typing import Optional, Union
 
 import torch
 
-from ._subscriber_base import SubscriberBase, _RuntimeStates
+from ._subscriber_base import RuntimeStates, SubscriberBase
 
 
 class _InspectActivation(torch.autograd.Function):
@@ -27,7 +27,7 @@ class _InspectActivation(torch.autograd.Function):
         ctx,
         activation_name: str,
         module_idx: Optional[int],
-        run_ctx: _RuntimeStates,
+        run_ctx: RuntimeStates,
         input_tensor: torch.Tensor,
         module_post_forward,
         module_pre_backward,
@@ -60,7 +60,6 @@ class _InspectActivation(torch.autograd.Function):
         ctx.depth = depth
         ctx.module_pre_backward = module_pre_backward
 
-        # Run subscribers sequentially.
         module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step)
 
         return input_tensor.detach() if input_tensor is not None else None
@@ -140,7 +139,7 @@ class StatisticsSubscriber(SubscriberBase):
                 )
 
     def post_forward_tensor_apply_impl(
-        self, run_rtx: _RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
+        self, run_rtx: RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
     ) -> torch.Tensor:
         module_index = run_rtx.global_states.module_to_module_index[module]
         name = f"{module.__class__.__name__}_{module_index}_{tensor_index}th_output"

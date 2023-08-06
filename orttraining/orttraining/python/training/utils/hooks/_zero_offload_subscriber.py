@@ -12,7 +12,7 @@ import torch
 
 from onnxruntime.training.utils import ORTModelInputOutputType, extract_data_and_schema, unflatten_data_using_schema
 
-from ._subscriber_base import SubscriberBase, _RuntimeStates
+from ._subscriber_base import RuntimeStates, SubscriberBase
 
 
 # Used to monkey patch the original function
@@ -23,7 +23,7 @@ def _setup_zero_stage3_ort_compatible_hooks(self):
     from onnxruntime.training.utils.hooks import SubscriberManager, ZeROOffloadSubscriber
     from onnxruntime.training.utils.hooks._zero_offload_subscriber import _zero_offload_one_time_initializer
 
-    # Each deepspeed engine has a separated subscriber manager.
+    # Each DeepSpeed engine has a separate subscriber manager.
     self._offload_subscriber_manager = SubscriberManager()
     self._offload_subscriber_manager.subscribe(
         self.module, [ZeROOffloadSubscriber(self, _zero_offload_one_time_initializer)]
@@ -84,6 +84,10 @@ except ImportError:
 
 
 class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
+    """This function is a common bridge to call original PyTorch's
+    pre_forward_function and post_backward_function.
+    """
+
     @staticmethod
     def forward(
         ctx,
@@ -96,6 +100,21 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         kwargs_tensor_count,
         *tensor_list,
     ):
+        """
+        Args:
+            ctx: context object
+            module: the module to be called
+            pre_forward_function: the function to be called before forward (PyTorch's pre_forward_function)
+            post_backward_function: the function to be called after backward (PyTorch's post_backward_function)
+            args_schema: the schema of the args, used to reconstruct the args in original form in
+                PyTorch's pre_forward_function's inputs.
+            kwargs_schema: the schema of the kwargs, used to reconstruct the kwargs in original form in
+                PyTorch's pre_forward_function's inputs.
+            args_tensor_count: the number of tensors in args.
+            kwargs_tensor_count: the number of tensors in kwargs.
+            tensor_list: the list of tensors, the first args_tensor_count tensors are args, the next
+                kwargs_tensor_count tensors are kwargs, the rest are the parameters for offload.
+        """
         args_tensors = tensor_list[:args_tensor_count]
         kwargs_tensors = tensor_list[args_tensor_count : args_tensor_count + kwargs_tensor_count]
         partitioned_params = tensor_list[args_tensor_count + kwargs_tensor_count :]
@@ -109,9 +128,6 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         else:
             assert isinstance(f_ret, tuple)
             updated_args, updated_kwargs = f_ret
-
-        # Moved from _post_backward_module_hook to make sure ORT run will trigger every iteration.
-        module.ds_grads_remaining = 0
 
         ctx.module = module
         ctx.post_backward_function = post_backward_function
@@ -147,9 +163,20 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         output_schema,
         *output_tensors,
     ):
+        """
+        Args:
+            ctx: context object
+            module: the module to be called
+            post_forward_function: the function to be called after forward (PyTorch's post_forward_function)
+            pre_backward_function: the function to be called before backward (PyTorch's pre_backward_function)
+            output_schema: the schema of the output, used to reconstruct the output in original form in
+                PyTorch's post_forward_function's inputs.
+            output_tensors: the list of tensors.
+
+        """
         outputs = unflatten_data_using_schema(output_tensors, output_schema)
 
-        # WARN: _post_forward_module_hook's second argument `input is not used, so we just pass a None here.
+        # STAGE3WARN: _post_forward_module_hook's second argument `input is not used, so we just pass a None here.
         updated_outputs = post_forward_function(module, None, outputs)
 
         if updated_outputs is None:
@@ -205,7 +232,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
 
     def pre_forward_module_apply_impl(
         self,
-        run_rtx: _RuntimeStates,
+        run_rtx: RuntimeStates,
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
@@ -239,6 +266,22 @@ class ZeROOffloadSubscriber(SubscriberBase):
             *(args_tensors + kwargs_tensors + partitioned_params),
         )
 
+        # STAGE3WARN: Moved from _post_backward_module_hook to make sure ORT run will trigger every iteration.
+        def _set_ds_grads_remaining_hook(module, args, kwargs):
+            module.ds_grads_remaining = 0
+            return args, kwargs
+
+        rets = ORTZeROOffloadPreForwardFunction.apply(
+            module,
+            _set_ds_grads_remaining_hook,
+            None,
+            args_schema,
+            kwargs_schema,
+            args_tensor_count,
+            kwargs_tensor_count,
+            *rets,
+        )
+
         updated_args_tensors = rets[:args_tensor_count]
         updated_kwargs_tensors = rets[args_tensor_count : args_tensor_count + kwargs_tensor_count]
 
@@ -246,14 +289,15 @@ class ZeROOffloadSubscriber(SubscriberBase):
         updated_kwargs = unflatten_data_using_schema(updated_kwargs_tensors, kwargs_schema)
 
         _post_backward_module_hook = self._functions.get("_post_backward_module_hook")
-        # _post_backward_module_hook can be traced correctly so we don't need to wrap with PythonOp.
+        # STAGE3WARN: Other part of _post_backward_module_hook can be traced correctly so we don't need to
+        # wrap with PythonOp.
         updated_args = _post_backward_module_hook(module, updated_args)
 
         return updated_args, updated_kwargs
 
     def post_forward_module_apply_impl(
         self,
-        run_rtx: _RuntimeStates,
+        run_rtx: RuntimeStates,
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
@@ -271,17 +315,17 @@ class ZeROOffloadSubscriber(SubscriberBase):
         updated_outputs = unflatten_data_using_schema(updated_outputs_tensors, outputs_schema)
 
         _pre_backward_module_hook = self._functions.get("_pre_backward_module_hook")
-        # WARN: _pre_backward_module_hook's second argument `input is not used, so we just pass a None here.
+        # STAGE3WARN: _pre_backward_module_hook's second argument `input is not used, so we just pass a None here.
         updated_outputs = _pre_backward_module_hook(module, None, updated_outputs)
 
         return args, updated_outputs
 
     def post_forward_outmost_module_apply_impl(
         self,
-        run_rtx: _RuntimeStates,
+        run_rtx: RuntimeStates,
         module: torch.nn.Module,
-        args: ORTModelInputOutputType,  # ?? can be tensor?
-        outputs: ORTModelInputOutputType,  # ?? can be tensor?
+        args: ORTModelInputOutputType,
+        outputs: ORTModelInputOutputType,
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         outputs_tensors, outputs_schema = extract_data_and_schema(outputs)
 
