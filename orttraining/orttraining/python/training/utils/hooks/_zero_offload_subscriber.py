@@ -255,31 +255,25 @@ class ZeROOffloadSubscriber(SubscriberBase):
         args_tensor_count = len(args_tensors)
         kwargs_tensor_count = len(kwargs_tensors)
 
+        def _wrap_pre_forward_module_hook(module, args, kwargs):
+            rets = _pre_forward_module_hook(module, args, kwargs)
+            updated_args, updated_kwargs = args, kwargs
+            if rets is not None:
+                updated_args, updated_kwargs = rets
+
+            # STAGE3WARN: Moved from _post_backward_module_hook to make sure ORT run will trigger every iteration.
+            module.ds_grads_remaining = 0
+            return updated_args, updated_kwargs
+
         rets = ORTZeROOffloadPreForwardFunction.apply(
             module,
-            _pre_forward_module_hook,
+            _wrap_pre_forward_module_hook,
             None,
             args_schema,
             kwargs_schema,
             args_tensor_count,
             kwargs_tensor_count,
             *(args_tensors + kwargs_tensors + partitioned_params),
-        )
-
-        # STAGE3WARN: Moved from _post_backward_module_hook to make sure ORT run will trigger every iteration.
-        def _set_ds_grads_remaining_hook(module, args, kwargs):
-            module.ds_grads_remaining = 0
-            return args, kwargs
-
-        rets = ORTZeROOffloadPreForwardFunction.apply(
-            module,
-            _set_ds_grads_remaining_hook,
-            None,
-            args_schema,
-            kwargs_schema,
-            args_tensor_count,
-            kwargs_tensor_count,
-            *rets,
         )
 
         updated_args_tensors = rets[:args_tensor_count]
