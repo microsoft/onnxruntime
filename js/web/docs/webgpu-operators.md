@@ -14,6 +14,8 @@ Do not modify directly.*
 | Acos | ai.onnx(7+) |  |
 | Acosh | ai.onnx(9+) |  |
 | Add | ai.onnx(7-12,13,14+) |  |
+| ArgMax | ai.onnx(1-10,11-12,13+) |  |
+| ArgMin | ai.onnx(1-10,11-12,13+) |  |
 | Asin | ai.onnx(7+) |  |
 | Asinh | ai.onnx(9+) |  |
 | Atan | ai.onnx(7+) |  |
@@ -33,6 +35,7 @@ Do not modify directly.*
 | Expand | ai.onnx(8-12,13+) |  |
 | Flatten | ai.onnx(1-8,9-10,11-12,13+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
+| Gather | ai.onnx(1-10,11-12,13+) |  |
 | Gelu | com.microsoft(1+) |  |
 | Gemm | ai.onnx(7-8,9-10,11+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
@@ -58,12 +61,13 @@ Do not modify directly.*
 | ReduceSumSquare | ai.onnx(1-10,11-12,13-17,18+) |  |
 | Relu | ai.onnx(6-12,13,14+) |  |
 | Reshape | ai.onnx(5-12,13,14+) | no GPU kernel |
-| Resize | ai.onnx(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
+| Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
 | Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
 | Slice | ai.onnx(1-9,10,11-12,13+) |  |
+| Softmax | ai.onnx(1-10,11-12,13+) |  |
 | Split | ai.onnx(1,2-10,11-12,13-17,18+) |  |
 | Sqrt | ai.onnx(6-12,13+) |  |
 | Squeeze | ai.onnx(1-10,11-12,13+) |  |

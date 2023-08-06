@@ -16,14 +16,14 @@
 namespace onnxruntime {
 namespace coreml {
 
-common::Status ComputeConvPads(const std::vector<int64_t> input_shape,
-                               const int64_t weight_size_y,
-                               const int64_t weight_size_x,
-                               const std::vector<int64_t>& onnx_pads,
-                               const std::vector<int64_t>& onnx_strides,
-                               const std::vector<int64_t>& onnx_dilations,
-                               AutoPadType auto_pad_type,
-                               std::vector<int64_t>& pads_out) {
+Status ComputeConvPads(const std::vector<int64_t> input_shape,
+                       const int64_t weight_size_y,
+                       const int64_t weight_size_x,
+                       const std::vector<int64_t>& onnx_pads,
+                       const std::vector<int64_t>& onnx_strides,
+                       const std::vector<int64_t>& onnx_dilations,
+                       AutoPadType auto_pad_type,
+                       std::vector<int64_t>& pads_out) {
   const int64_t input_size_y = input_shape[2];
   const int64_t input_size_x = input_shape[3];
   const int64_t stride_y = onnx_strides[0];
@@ -50,16 +50,18 @@ common::Status ComputeConvPads(const std::vector<int64_t> input_shape,
   return Status::OK();
 }
 
-common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
-                             const int64_t weight_size_y,
-                             const int64_t weight_size_x,
-                             const std::vector<int64_t>& onnx_pads,
-                             const std::vector<int64_t>& onnx_strides,
-                             const std::vector<int64_t>& onnx_dilations,
-                             AutoPadType auto_pad_type,
-                             AutoPadType& auto_pad_type_out) {
+Status HandleAutoPad(const std::vector<int64_t> input_shape,
+                     const int64_t weight_size_y,
+                     const int64_t weight_size_x,
+                     const std::vector<int64_t>& onnx_pads,
+                     const std::vector<int64_t>& onnx_strides,
+                     const std::vector<int64_t>& onnx_dilations,
+                     AutoPadType auto_pad_type,
+                     AutoPadType& auto_pad_type_out) {
   auto_pad_type_out = auto_pad_type;
-  if (auto_pad_type == AutoPadType::NOTSET && onnx_dilations == std::vector<int64_t>{1, 1}) {
+  if (auto_pad_type == AutoPadType::NOTSET && onnx_dilations == std::vector<int64_t>{1, 1} &&
+      // ComputeConvPads() only handles known dimensions of input_shape[2] and input_shape[3]
+      input_shape[2] != -1 && input_shape[3] != -1) {
     {
       std::vector<int64_t> same_upper_pads;
       ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
@@ -91,8 +93,8 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
   *weight.mutable_floatvalue() = {data, data + num_elements};
 }
 
-common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
-                                  const ONNX_NAMESPACE::TensorProto& tensor) {
+Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
+                          const ONNX_NAMESPACE::TensorProto& tensor) {
   auto data_type = tensor.data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     Initializer unpacked_tensor(tensor);
@@ -105,7 +107,7 @@ common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                            tensor.name(), " type: ", data_type);
   }
 
-  return common::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace coreml
