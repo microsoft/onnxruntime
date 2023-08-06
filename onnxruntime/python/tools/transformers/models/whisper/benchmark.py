@@ -73,9 +73,9 @@ def get_audio(args, load_with="ffmpeg", features_type=""):
 
     processor = AutoProcessor.from_pretrained(args.model_name)
 
-    feature_extractor_fn = lambda audio: processor.feature_extractor(
+    feature_extractor_fn = lambda audio: processor.feature_extractor(  # noqa: E731
         [audio] * args.batch_size, return_tensors=features_type
-    ).input_features  # noqa: E731
+    ).input_features
     input_features, metrics = time_fn(args, feature_extractor_fn, audio)
     logger.info(f"Feature extraction: {metrics[1]} s")
 
