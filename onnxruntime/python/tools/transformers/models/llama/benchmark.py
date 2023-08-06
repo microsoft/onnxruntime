@@ -1,7 +1,3 @@
-########################
-# Benchmark LLaMA model
-########################
-
 import argparse
 import datetime
 import gc

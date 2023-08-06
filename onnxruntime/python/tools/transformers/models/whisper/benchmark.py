@@ -1,7 +1,3 @@
-##########################
-# Benchmark Whisper model
-##########################
-
 import argparse
 import datetime
 import gc
