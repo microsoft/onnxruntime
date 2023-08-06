@@ -33,9 +33,9 @@ const createBinaryOpProgramShader =
       }
 
       let broadcastImpl = '';
-      const output = outputVariable('outputData', typeOutput, dimsOutput, true);
-      const a = inputVariable('aData', typeA, dimsA, true);
-      const b = inputVariable('bData', typeB, dimsB, true);
+      const output = outputVariable('outputData', typeOutput, dimsOutput, 4);
+      const a = inputVariable('aData', typeA, dimsA, 4);
+      const b = inputVariable('bData', typeB, dimsB, 4);
       if (doBroadcast) {
         const calcOffsetImpl = (dims: readonly number[]) => {
           const strides = ShapeUtil.computeStrides(dims);

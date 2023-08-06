@@ -215,27 +215,27 @@ export interface IndicesHelper {
   readonly shape: readonly number[];
 }
 
-const getWgslValueType = (type: number, isVec4: boolean): [string, string] => {
-  // return type is [ storage type, runtime type ]
+const getWgslValueType = (type: number, components: 1|2|3|4): string|[string, string] => {
+  // return type is [ storage type, runtime type ] or a single string for both
   switch (type) {
     case DataType.float:
-      return isVec4 ? ['vec4<f32>', 'vec4<f32>'] : ['f32', 'f32'];
+      return components > 1 ? `vec${components}<f32>` : 'f32';
     case DataType.int32:
-      return isVec4 ? ['vec4<i32>', 'vec4<i32>'] : ['i32', 'i32'];
+      return components > 1 ? `vec${components}<i32>` : 'i32';
     case DataType.uint32:
-      return isVec4 ? ['vec4<u32>', 'vec4<u32>'] : ['u32', 'u32'];
+      return components > 1 ? `vec${components}<u32>` : 'u32';
     case DataType.int64:
-      if (isVec4) {
-        throw new Error('currently not supported vec4 of uint64 yet');
+      if (components > 1) {
+        throw new Error('currently not supported vecX of uint64 yet');
       }
       return ['vec2<u32>', 'i32'];
     case DataType.uint64:
-      if (isVec4) {
-        throw new Error('currently not supported vec4 of uint64 yet');
+      if (components > 1) {
+        throw new Error('currently not supported vecX of uint64 yet');
       }
       return ['vec2<u32>', 'u32'];
     case DataType.bool:
-      if (!isVec4) {
+      if (components !== 4) {
         throw new Error('bool must be vec4');
       }
       return ['u32', 'vec4<bool>'];
@@ -252,30 +252,34 @@ const getWgslValueType = (type: number, isVec4: boolean): [string, string] => {
  * @param tensorType - the tensor type of the input or output.
  * @param shape - the tensor shape of the input or output.
  * @param isInput - whether the helper is for an input or an output.
- * @param isVec4 - whether the helper is for a vec4 input or output.
+ * @param components - indicates the number of components of each element. 1 for scalar, 2 for vec2, 3 for vec3, 4 for
+ *    vec4.
  */
 const createIndicesHelper =
-    (name: string, tensorType: number, shape: readonly number[], isInput: boolean, isVec4: boolean): IndicesHelper => {
-      const rank = shape.length;
-      const indicesType = rank < 2 ? 'u32' : rank <= 4 ? `vec${rank}<u32>` : `array<u32, ${rank}>`;
-      const [valueType, storageType] = getWgslValueType(tensorType, isVec4);
-      const type = {indices: indicesType, value: valueType, storage: storageType, tensor: tensorType};
+    (name: string, tensorType: number, shape: readonly number[], isInput: boolean, components: 1|2|3|4):
+        IndicesHelper => {
+          const rank = shape.length;
+          const indicesType = rank < 2 ? 'u32' : rank <= 4 ? `vec${rank}<u32>` : `array<u32, ${rank}>`;
+          const mappedType = getWgslValueType(tensorType, components);
+          const valueType = typeof mappedType === 'string' ? mappedType : mappedType[1];
+          const storageType = typeof mappedType === 'string' ? mappedType : mappedType[0];
+          const type = {indices: indicesType, value: valueType, storage: storageType, tensor: tensorType};
 
-      const normalizeDim = (dim: number|string): string => typeof dim === 'string' ? dim : `${dim}u`;
+          const normalizeDim = (dim: number|string): string => typeof dim === 'string' ? dim : `${dim}u`;
 
-      const strides = ShapeUtil.computeStrides(shape);
-      let o2iSnippet = '';
-      for (let i = 0; i < rank - 1; i++) {
-        o2iSnippet += `
+          const strides = ShapeUtil.computeStrides(shape);
+          let o2iSnippet = '';
+          for (let i = 0; i < rank - 1; i++) {
+            o2iSnippet += `
     let dim${i} = current / ${strides[i]}u;
     let rest${i} = current % ${strides[i]}u;
     indices[${i}] = dim${i};
     current = rest${i};
     `;
-      }
-      o2iSnippet += `indices[${rank - 1}] = current;`;
+          }
+          o2iSnippet += `indices[${rank - 1}] = current;`;
 
-      const offsetToIndicesImplementation = rank < 2 ? '' : `
+          const offsetToIndicesImplementation = rank < 2 ? '' : `
   fn o2i_${name}(offset: u32) -> ${type.indices} {
     var indices: ${type.indices};
     var current = offset;
@@ -283,49 +287,49 @@ const createIndicesHelper =
     return indices;
   }`;
 
-      const offsetToIndices = (varOffset: string) => rank < 2 ? varOffset : `o2i_${name}(${varOffset})`;
+          const offsetToIndices = (varOffset: string) => rank < 2 ? varOffset : `o2i_${name}(${varOffset})`;
 
-      const offsets: string[] = [];
-      if (rank >= 2) {
-        for (let i = rank - 1; i >= 0; i--) {
-          offsets.push(`${strides[i]}u * (indices[${i}])`);
-        }
-      }
+          const offsets: string[] = [];
+          if (rank >= 2) {
+            for (let i = rank - 1; i >= 0; i--) {
+              offsets.push(`${strides[i]}u * (indices[${i}])`);
+            }
+          }
 
-      const indicesToOffsetImplementation = rank < 2 ? '' : `
+          const indicesToOffsetImplementation = rank < 2 ? '' : `
   fn i2o_${name}(indices: ${type.indices}) -> u32 {
     return ${offsets.join('+')};
   }`;
 
-      const indicesToOffset = (varIndices: string) => rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
+          const indicesToOffset = (varIndices: string) => rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
 
-      const indices = (...init: string[]) => rank === 0 ? '0u' : `${type.indices}(${init.join(',')})`;
+          const indices = (...init: string[]) => rank === 0 ? '0u' : `${type.indices}(${init.join(',')})`;
 
-      const indicesGet = (varIndices: string, idx: number|string) => {
-        if (rank < 2) {
-          return `${varIndices}`;
-        } else {
-          return `${varIndices}[${idx}]`;
-        }
-      };
+          const indicesGet = (varIndices: string, idx: number|string) => {
+            if (rank < 2) {
+              return `${varIndices}`;
+            } else {
+              return `${varIndices}[${idx}]`;
+            }
+          };
 
-      const indicesSet = (varIndices: string, idx: number|string, value: string) => {
-        if (rank < 2) {
-          return `${varIndices}=${value};`;
-        } else {
-          return `${varIndices}[${idx}]=${value};`;
-        }
-      };
+          const indicesSet = (varIndices: string, idx: number|string, value: string) => {
+            if (rank < 2) {
+              return `${varIndices}=${value};`;
+            } else {
+              return `${varIndices}[${idx}]=${value};`;
+            }
+          };
 
-      // TODO support storage type
-      const setByOffset = (offset: number|string, value: string) => `${name}[${offset}]=${value};`;
+          // TODO support storage type
+          const setByOffset = (offset: number|string, value: string) => `${name}[${offset}]=${value};`;
 
-      const getByOffset = (offset: number|string) => `${name}[${offset}]`;
+          const getByOffset = (offset: number|string) => `${name}[${offset}]`;
 
-      const getImplementation = rank < 2 ? '' : (() => {
-        const params = shape.map((_, i) => `d${i}: u32`).join(', ');
-        const dims = shape.map((_, i) => `d${i}`).join(', ');
-        return `
+          const getImplementation = rank < 2 ? '' : (() => {
+            const params = shape.map((_, i) => `d${i}: u32`).join(', ');
+            const dims = shape.map((_, i) => `d${i}`).join(', ');
+            return `
   fn get_${name}ByIndices(indices: ${type.indices}) -> ${valueType} {
     return ${name}[i2o_${name}(indices)];
   }
@@ -333,37 +337,37 @@ const createIndicesHelper =
     return get_${name}ByIndices(${indices(dims)});
   }
   `;
-      })();
+          })();
 
-      const get = (...indices: ReadonlyArray<number|string>) => {
-        if (indices.length !== rank) {
-          throw new Error(`indices length must be ${rank}`);
-        }
+          const get = (...indices: ReadonlyArray<number|string>) => {
+            if (indices.length !== rank) {
+              throw new Error(`indices length must be ${rank}`);
+            }
 
-        const normalizedIndices = indices.map(normalizeDim).join(',');
-        const funcName = `get_${name}`;
+            const normalizedIndices = indices.map(normalizeDim).join(',');
+            const funcName = `get_${name}`;
 
-        if (rank === 0) {
-          return getByOffset('0u');
-        } else if (rank === 1) {
-          return getByOffset(normalizedIndices[0]);
-        } else {
-          return `${funcName}(${normalizedIndices})`;
-        }
-      };
+            if (rank === 0) {
+              return getByOffset('0u');
+            } else if (rank === 1) {
+              return getByOffset(normalizedIndices[0]);
+            } else {
+              return `${funcName}(${normalizedIndices})`;
+            }
+          };
 
-      const getByIndices = (varIndices: string) => {
-        if (rank < 2) {
-          return getByOffset(varIndices);
-        } else {
-          return `get_${name}ByIndices(${varIndices})`;
-        }
-      };
+          const getByIndices = (varIndices: string) => {
+            if (rank < 2) {
+              return getByOffset(varIndices);
+            } else {
+              return `get_${name}ByIndices(${varIndices})`;
+            }
+          };
 
-      const setImplementation = rank < 2 ? '' : (() => {
-        const params = shape.map((_, i) => `d${i}: u32`).join(', ');
-        const dims = shape.map((_, i) => `d${i}`).join(', ');
-        return `
+          const setImplementation = rank < 2 ? '' : (() => {
+            const params = shape.map((_, i) => `d${i}: u32`).join(', ');
+            const dims = shape.map((_, i) => `d${i}`).join(', ');
+            return `
   fn set_${name}ByIndices(indices: ${type.indices}, value: ${valueType}) {
     ${setByOffset(`i2o_${name}(indices)`, 'value')}
   }
@@ -371,79 +375,79 @@ const createIndicesHelper =
     set_${name}ByIndices(${indices(dims)}, value);
   }
   `;
-      })();
+          })();
 
-      const set = (...indicesAndValue: ReadonlyArray<number|string>) => {
-        if (indicesAndValue.length !== rank + 1) {
-          throw new Error(`indices length must be ${rank}`);
-        }
-        const value = indicesAndValue[rank];
-        if (typeof value !== 'string') {
-          throw new Error('value must be string');
-        }
+          const set = (...indicesAndValue: ReadonlyArray<number|string>) => {
+            if (indicesAndValue.length !== rank + 1) {
+              throw new Error(`indices length must be ${rank}`);
+            }
+            const value = indicesAndValue[rank];
+            if (typeof value !== 'string') {
+              throw new Error('value must be string');
+            }
 
-        const normalizedIndices = indicesAndValue.slice(0, rank).map(normalizeDim).join(',');
+            const normalizedIndices = indicesAndValue.slice(0, rank).map(normalizeDim).join(',');
 
-        if (rank === 0) {
-          return setByOffset('0u', value);
-        } else if (rank === 1) {
-          return setByOffset(normalizedIndices[0], value);
-        } else {
-          return `set_${name}(${normalizedIndices}, ${value})`;
-        }
-      };
+            if (rank === 0) {
+              return setByOffset('0u', value);
+            } else if (rank === 1) {
+              return setByOffset(normalizedIndices[0], value);
+            } else {
+              return `set_${name}(${normalizedIndices}, ${value})`;
+            }
+          };
 
-      const setByIndices = (varIndices: string, value: string) => {
-        if (rank < 2) {
-          return setByOffset(varIndices, value);
-        } else {
-          return `set_${name}ByIndices(${varIndices}, ${value});`;
-        }
-      };
+          const setByIndices = (varIndices: string, value: string) => {
+            if (rank < 2) {
+              return setByOffset(varIndices, value);
+            } else {
+              return `set_${name}ByIndices(${varIndices}, ${value});`;
+            }
+          };
 
-      const funcImpls = {
-        offsetToIndices: offsetToIndicesImplementation,
-        indicesToOffset: indicesToOffsetImplementation,
-        set: setImplementation,
-        get: getImplementation,
-      };
-      const impl = (...functions: Array<keyof IndicesHelperImplementations>) => {
-        const impls = [];
-        if (functions.length === 0) {
-          functions.push('offsetToIndices', 'indicesToOffset', 'set', 'get');
-        }
-        for (const func of functions) {
-          const impl = funcImpls[func];
-          if (impl === undefined) {
-            throw new Error(`unknown function ${func}`);
-          } else {
-            impls.push(impl);
-          }
-        }
-        return impls.join('\n');
-      };
-      impl.toString = () => impl();
+          const funcImpls = {
+            offsetToIndices: offsetToIndicesImplementation,
+            indicesToOffset: indicesToOffsetImplementation,
+            set: setImplementation,
+            get: getImplementation,
+          };
+          const impl = (...functions: Array<keyof IndicesHelperImplementations>) => {
+            const impls = [];
+            if (functions.length === 0) {
+              functions.push('offsetToIndices', 'indicesToOffset', 'set', 'get');
+            }
+            for (const func of functions) {
+              const impl = funcImpls[func];
+              if (impl === undefined) {
+                throw new Error(`unknown function ${func}`);
+              } else {
+                impls.push(impl);
+              }
+            }
+            return impls.join('\n');
+          };
+          impl.toString = () => impl();
 
-      return {
-        impl,
-        type,
-        offsetToIndices,
-        indicesToOffset,
-        indices,
-        indicesGet,
-        indicesSet,
-        set,
-        setByOffset,
-        setByIndices,
-        get,
-        getByOffset,
-        getByIndices,
-        // isVec4,
-        usage: isInput ? 'input' : 'output',
-        name,
-        shape
-      };
-    };
+          return {
+            impl,
+            type,
+            offsetToIndices,
+            indicesToOffset,
+            indices,
+            indicesGet,
+            indicesSet,
+            set,
+            setByOffset,
+            setByIndices,
+            get,
+            getByOffset,
+            getByIndices,
+            // isVec4,
+            usage: isInput ? 'input' : 'output',
+            name,
+            shape
+          };
+        };
 
 /**
  * Create a IndicesHelper for an input.
@@ -451,10 +455,12 @@ const createIndicesHelper =
  * @param name - the name of the input.
  * @param type - the tensor type of the input.
  * @param shape - the tensor shape of the input.
+ * @param components - the number of components of the input. available values are 1, 2, 3, 4. default is 1.
  * @returns an IndicesHelper for the input.
  */
-export const inputVariable = (name: string, type: number, shape: readonly number[], isVec4 = false): IndicesHelper =>
-    createIndicesHelper(name, type, shape, true, isVec4);
+export const inputVariable =
+    (name: string, type: number, shape: readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
+        createIndicesHelper(name, type, shape, true, components);
 
 /**
  * Create a IndicesHelper for an output.
@@ -462,10 +468,12 @@ export const inputVariable = (name: string, type: number, shape: readonly number
  * @param name - the name of the output.
  * @param type - the tensor type of the output.
  * @param shape - the tensor shape of the output.
+ * @param components - the number of components of the input. available values are 1, 2, 3, 4. default is 1.
  * @returns an IndicesHelper for the output.
  */
-export const outputVariable = (name: string, type: number, shape: readonly number[], isVec4 = false): IndicesHelper =>
-    createIndicesHelper(name, type, shape, false, isVec4);
+export const outputVariable =
+    (name: string, type: number, shape: readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
+        createIndicesHelper(name, type, shape, false, components);
 
 /**
  * A ShaderHelper is a helper class for generating WGSL code.

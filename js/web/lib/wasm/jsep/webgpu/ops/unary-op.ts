@@ -25,8 +25,8 @@ const createElementwiseProgramShader =
         expression = funcCall('a');
       }
 
-      const input = inputVariable('inputData', DataType.float, [vecSize], true);
-      const output = outputVariable('outputData', DataType.float, [vecSize], true);
+      const input = inputVariable('inputData', DataType.float, [vecSize], 4);
+      const output = outputVariable('outputData', DataType.float, [vecSize], 4);
 
       return `
   ${shaderHelper.declareVariables(input, output)}
