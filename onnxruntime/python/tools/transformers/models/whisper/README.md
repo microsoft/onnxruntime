@@ -137,12 +137,9 @@ python3 benchmark.py \
 ```
 
 7) ONNX Runtime, FP32
-```
-# Creating the E2E ONNX model requires two steps:
-# 1) Run `convert_to_onnx.py` (https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/whisper/convert_to_onnx.py)
-# 2) Run `whisper_e2e.py` (https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/whisper_e2e.py)
-# Note: This benchmark example can work for the ONNX model produced at the end of either step.
 
+Note: This benchmark example can work for the ONNX model produced by `convert_to_onnx.py` or the E2E model produced by [Olive](https://github.com/microsoft/Olive).
+```
 python3 benchmark.py \
     --benchmark-type ORT \
     --ort-model-path wtiny_fp32/whisper-tiny_all.onnx \
