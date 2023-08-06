@@ -156,8 +156,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                         )
                 else:
                     is_inspect_activation = (
-                        func_full_qual_name
-                        == "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation"
+                        func_full_qual_name == "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation"
                     )
                     if is_inspect_activation and isinstance(arg, str):
                         # _InspectActivation is a special case where the first argument is a string

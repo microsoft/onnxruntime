@@ -2388,8 +2388,8 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
         # TODO(pengwa): allow custom PythonOp shape inference.
         if get_attribute(node, "name").decode() in [
-            "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation",
-            "onnxruntime.training.utils.hooks._statistics_subscriber._IncrementStep",
+            "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation",
+            "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep",
         ]:
             # PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
             # PythonOp when execution. The only difference is that
