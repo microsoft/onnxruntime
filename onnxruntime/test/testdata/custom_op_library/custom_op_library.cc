@@ -130,6 +130,7 @@ void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
   cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream);
 }
 #elif USE_ROCM
+#include <iostream>
 void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
                const Ort::Custom::Tensor<float>& X,
                const Ort::Custom::Tensor<float>& Y,
@@ -139,7 +140,7 @@ void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
   CUSTOM_ENFORCE(rocm_ctx.hip_stream, "failed to fetch hip stream");
   CUSTOM_ENFORCE(rocm_ctx.miopen_handle, "failed to fetch miopen handle");
   CUSTOM_ENFORCE(rocm_ctx.rblas_handle, "failed to fetch rocblas handle");
-
+  std::cout << "Running rocm kernel one" << std::endl;
   auto z_raw = Z.Allocate(input_shape);
   rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), rocm_ctx.hip_stream);
 }
