@@ -64,9 +64,7 @@ def get_audio(args, load_with="ffmpeg", features_type=""):
         load_via_ffmpeg if load_with == "ffmpeg" else load_via_librosa if load_with == "librosa" else load_via_basic
     )
 
-    def load_audio_fn(dummy_input):
-        return load_audio()
-
+    load_audio_fn = lambda dummy_input: load_audio()  # noqa: E731
     audio, metrics = time_fn(args, load_audio_fn, None)
     logger.info(f"Load audio: {metrics[1]} s")
 
@@ -75,9 +73,9 @@ def get_audio(args, load_with="ffmpeg", features_type=""):
 
     processor = AutoProcessor.from_pretrained(args.model_name)
 
-    def feature_extractor_fn(audio):
-        return processor.feature_extractor([audio] * args.batch_size, return_tensors=features_type).input_features
-
+    feature_extractor_fn = lambda audio: processor.feature_extractor(
+        [audio] * args.batch_size, return_tensors=features_type
+    ).input_features  # noqa: E731
     input_features, metrics = time_fn(args, feature_extractor_fn, audio)
     logger.info(f"Feature extraction: {metrics[1]} s")
 
@@ -407,9 +405,7 @@ def run_hf_pipeline_inference(args, audio, pipe):
 
         return
 
-    def transcription_fn(audio):
-        return pipe([audio] * args.batch_size)
-
+    transcription_fn = lambda audio: pipe([audio] * args.batch_size)  # noqa: E731
     transcription, metrics = time_fn(args, transcription_fn, audio)
     logger.info(f"Batch size = {metrics[0]}, latency = {metrics[1]} s, throughput = {metrics[2]} qps")
 
@@ -456,9 +452,7 @@ def run_hf_generate_and_decode_inference(args, inputs, processor, model):
 
         return
 
-    def transcription_fn(dummy_input):
-        return gen_and_dec()
-
+    transcription_fn = lambda dummy_input: gen_and_dec()  # noqa: E731
     transcription, metrics = time_fn(args, transcription_fn, None)
     logger.info(f"Batch size = {metrics[0]}, latency = {metrics[1]} s, throughput = {metrics[2]} qps")
 
@@ -509,16 +503,10 @@ def run_ort_only_inference(args, inputs, model):
         return
 
     if args.device == "cpu":
-
-        def generate_fn(inputs):
-            return model.run(None, inputs)
-
+        generate_fn = lambda inputs: model.run(None, inputs)  # noqa: E731
         outputs, metrics = time_fn(args, generate_fn, inputs)
     else:
-
-        def generate_fn(io_binding):
-            return model.run_with_iobinding(io_binding)
-
+        generate_fn = lambda io_binding: model.run_with_iobinding(io_binding)  # noqa: E731
         outputs, metrics = time_fn(args, generate_fn, io_binding)
     logger.info(f"Batch size = {metrics[0]}, latency = {metrics[1]} s, throughput = {metrics[2]} qps")
 
@@ -688,13 +676,13 @@ def parse_args():
         args.hf_api = None
 
     # Set model properties
-    args.model_name = f"openai/whisper-{args.model_size}"
+    setattr(args, "model_name", f"openai/whisper-{args.model_size}")  # noqa: B010
     config = AutoConfig.from_pretrained(args.model_name)
     (num_layers, num_heads, hidden_size) = config.num_hidden_layers, config.decoder_attention_heads, config.d_model
-    args.num_layers = num_layers
-    args.num_heads = num_heads
-    args.hidden_size = hidden_size
-    args.head_size = hidden_size // num_heads
+    setattr(args, "num_layers", num_layers)  # noqa: B010
+    setattr(args, "num_heads", num_heads)  # noqa: B010
+    setattr(args, "hidden_size", hidden_size)  # noqa: B010
+    setattr(args, "head_size", hidden_size // num_heads)  # noqa: B010
 
     return args
 

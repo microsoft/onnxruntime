@@ -233,18 +233,14 @@ def run_hf_inference(args, inputs, tokenizer, model):
         return
 
     logger.info("Evaluating `model.generate` step")
-
-    def generate_fn(inputs):
-        return model.generate(**inputs)
-
+    generate_fn = lambda inputs: model.generate(**inputs)  # noqa: E731
     predicted_ids, metrics = time_fn(args, generate_fn, inputs)
     logger.info(f"Batch size = {metrics[0]}, latency = {metrics[1]} s, throughput = {metrics[2]} qps")
 
     logger.info("Evaluating `tokenizer.batch_decode` step")
-
-    def transcription_fn(pred_ids):
-        return tokenizer.batch_decode(pred_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-
+    transcription_fn = lambda pred_ids: tokenizer.batch_decode(  # noqa: E731
+        pred_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+    )
     transcription, metrics = time_fn(args, transcription_fn, predicted_ids)
     logger.info(f"Batch size = {metrics[0]}, latency = {metrics[1]} s, throughput = {metrics[2]} qps")
 
@@ -294,16 +290,10 @@ def run_ort_inference(args, inputs, model):
         return
 
     if args.device == "cpu":
-
-        def generate_fn(inputs):
-            return model.run(None, inputs)
-
+        generate_fn = lambda inputs: model.run(None, inputs)  # noqa: E731
         outputs, metrics = time_fn(args, generate_fn, inputs)
     else:
-
-        def generate_fn(io_binding):
-            return model.run_with_iobinding(io_binding)
-
+        generate_fn = lambda io_binding: model.run_with_iobinding(io_binding)  # noqa: E731
         outputs, metrics = time_fn(args, generate_fn, io_binding)
     logger.info(f"Batch size = {metrics[0]}, latency = {metrics[1]} s, throughput = {metrics[2]} qps")
 
@@ -396,7 +386,7 @@ def get_args():
 
     # Set runtime properties
     if "ort" in args.benchmark_type:
-        args.execution_provider = f"{args.device.upper()}ExecutionProvider"
+        setattr(args, "execution_provider", f"{args.device.upper()}ExecutionProvider")  # noqa: B010
         if args.execution_provider == "CUDAExecutionProvider":
             args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
         elif args.execution_provider == "ROCMExecutionProvider":
