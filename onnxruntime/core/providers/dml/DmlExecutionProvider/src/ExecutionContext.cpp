@@ -46,16 +46,17 @@ namespace Dml
             D3D12_HEAP_PROPERTIES heapProperties = {
                 D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
 
-            D3D12_RESOURCE_DESC resourceDesc = {D3D12_RESOURCE_DIMENSION_BUFFER,
-                                                0,
-                                                byteCount,
-                                                1,
-                                                1,
-                                                1,
-                                                DXGI_FORMAT_UNKNOWN,
-                                                {1, 0},
-                                                D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-                                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
+            D3D12_RESOURCE_DESC resourceDesc = {
+                D3D12_RESOURCE_DIMENSION_BUFFER,
+                0,
+                byteCount,
+                1,
+                1,
+                1,
+                DXGI_FORMAT_UNKNOWN,
+                {1, 0},
+                D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
 
             ComPtr<ID3D12Resource> intermediateBuffer;
             ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommittedResource(
