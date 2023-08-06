@@ -70,7 +70,6 @@ namespace Dml
             // Reset the compiled operators for the current iteration
             compiledPartitionInfos.clear();
             compiledPartitionInfos.resize(partitions.size());
-            uint32_t partitionIndexOffset = 0;
 
             // Create a map between each initialized tensor and the partition(s) it is part of.
             auto initializerPartitionMap = DmlGraphFusionHelper::GetInitializerToPartitionMap(graphViewer, partitions);
@@ -176,15 +175,8 @@ namespace Dml
 
                     if (!compiledPartition)
                     {
-                        if (indexedSubGraph.nodes.size() < 2)
-                        {
-                            // Fail early if even a single operator is too big to compile. This is highly unlikely.
-                            ORT_THROW_HR(E_INVALIDARG);
-                        }
-
-                        // Insert a null operator next to the current one because it will get split in half during the next attempt
-                        compiledPartitionInfos.insert(compiledPartitionInfos.begin() + partitionIndex + partitionIndexOffset, {});
-                        ++partitionIndexOffset;
+                        // Fail early if even a single operator is too big to compile. This is highly unlikely.
+                        ORT_THROW_HR_IF(E_INVALIDARG, indexedSubGraph.nodes.size() < 2);
 
                         // Tell the partitioner to split the current partition in half, in the middle
                         additionalSplittingNodes.push_back(indexedSubGraph.nodes[indexedSubGraph.nodes.size() / 2]);
