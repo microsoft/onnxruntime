@@ -9,7 +9,6 @@ import sys
 import tempfile
 import textwrap
 import time
-import warnings
 from contextlib import contextmanager
 from enum import IntEnum
 from functools import partial
