@@ -7,38 +7,38 @@
 namespace Dml
 {
 
-    D3D12BufferRegion::D3D12BufferRegion(uint64_t offset, uint64_t size_in_bytes, ID3D12Resource* resource)
+    D3D12BufferRegion::D3D12BufferRegion(uint64_t offset, uint64_t sizeInBytes, ID3D12Resource* resource)
         : m_resource(resource),
-        offset_(offset),
-        size_in_bytes_(size_in_bytes)
+        m_offset(offset),
+        m_sizeInBytes(sizeInBytes)
     {
         ORT_THROW_HR_IF(E_INVALIDARG, m_resource == nullptr);
 
         // Regions cannot be empty.
-        ORT_THROW_HR_IF(E_INVALIDARG, size_in_bytes_ == 0);
+        ORT_THROW_HR_IF(E_INVALIDARG, m_sizeInBytes == 0);
 
         // Regions cannot extend beyond the size of the resource.
-        uint64_t buffer_size = m_resource->GetDesc().Width;
-        ORT_THROW_HR_IF(E_INVALIDARG, offset_ >= buffer_size);
-        ORT_THROW_HR_IF(E_INVALIDARG, size_in_bytes_ > buffer_size - offset);
+        uint64_t bufferSize = m_resource->GetDesc().Width;
+        ORT_THROW_HR_IF(E_INVALIDARG, m_offset >= bufferSize);
+        ORT_THROW_HR_IF(E_INVALIDARG, m_sizeInBytes > bufferSize - offset);
 
         // All three resources, if provided, must be identical aside from state.
         assert(m_resource->GetDesc().Dimension == D3D12_RESOURCE_DIMENSION_BUFFER);
-        assert(m_resource->GetDesc().Width == buffer_size);
+        assert(m_resource->GetDesc().Width == bufferSize);
     }
 
     D3D12BufferRegion::D3D12BufferRegion(D3D12BufferRegion&& that) noexcept
     {
         std::swap(this->m_resource, that.m_resource);
-        std::swap(this->offset_, that.offset_);
-        std::swap(this->size_in_bytes_, that.size_in_bytes_);
+        std::swap(this->m_offset, that.m_offset);
+        std::swap(this->m_sizeInBytes, that.m_sizeInBytes);
     }
 
     D3D12BufferRegion& D3D12BufferRegion::operator=(D3D12BufferRegion&& that) noexcept
     {
         std::swap(this->m_resource, that.m_resource);
-        std::swap(this->offset_, that.offset_);
-        std::swap(this->size_in_bytes_, that.size_in_bytes_);
+        std::swap(this->m_offset, that.m_offset);
+        std::swap(this->m_sizeInBytes, that.m_sizeInBytes);
         return *this;
     }
 
@@ -49,12 +49,12 @@ namespace Dml
 
     uint64_t D3D12BufferRegion::Offset() const
     {
-        return m_resource ? offset_ : 0;
+        return m_resource ? m_offset : 0;
     }
 
     uint64_t D3D12BufferRegion::SizeInBytes() const
     {
-        return m_resource ? size_in_bytes_ : 0;
+        return m_resource ? m_sizeInBytes : 0;
     }
 
     DML_BUFFER_BINDING D3D12BufferRegion::GetBufferBinding() const
@@ -64,7 +64,7 @@ namespace Dml
             return DML_BUFFER_BINDING{};
         }
 
-        return DML_BUFFER_BINDING{m_resource, offset_, size_in_bytes_};
+        return DML_BUFFER_BINDING{m_resource, m_offset, m_sizeInBytes};
     }
 
 } // namespace Dml

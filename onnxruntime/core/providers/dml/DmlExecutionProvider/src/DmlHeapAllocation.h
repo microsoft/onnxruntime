@@ -13,6 +13,6 @@ namespace Dml
         // an allocation may comprise multiple heaps. If tiling is not supported
         // an allocation will only have a single heap.
         std::vector<Microsoft::WRL::ComPtr<ID3D12Heap>> heaps;
-        Microsoft::WRL::ComPtr<ID3D12Resource> resource_uav_state;
+        Microsoft::WRL::ComPtr<ID3D12Resource> resourceUavState;
     };
 }

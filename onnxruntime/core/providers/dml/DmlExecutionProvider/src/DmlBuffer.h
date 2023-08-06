@@ -18,7 +18,7 @@ class OpKernelContext;
 class DmlBuffer
 {
   public:
-    explicit DmlBuffer(DmlGpuAllocator* allocator, uint64_t size_in_bytes);
+    explicit DmlBuffer(DmlGpuAllocator* allocator, uint64_t sizeInBytes);
     ~DmlBuffer();
 
     // Move-only
@@ -30,15 +30,14 @@ class DmlBuffer
     ID3D12Resource* GetD3D12Resource() const;
     uint64_t Offset() const;
     uint64_t SizeInBytes() const;
-    const D3D12BufferRegion& Region() const { return buffer_region_; }
-
+    const D3D12BufferRegion& Region() const { return m_bufferRegion; }
     DML_BUFFER_BINDING GetBufferBinding() const;
 
-    explicit operator bool() const { return !!buffer_region_; }
+    explicit operator bool() const { return !!m_bufferRegion; }
 
   private:
-    DmlGpuAllocator* allocator_;
-    D3D12BufferRegion buffer_region_;
+    DmlGpuAllocator* m_allocator;
+    D3D12BufferRegion m_bufferRegion;
     void* m_opaqueData;
 };
 

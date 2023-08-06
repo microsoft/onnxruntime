@@ -21,7 +21,7 @@ namespace Dml
         ),
         m_subAllocator(std::move(subAllocator)) {}
 
-        void* Alloc(size_t size_in_bytes) final { return m_subAllocator->Alloc(size_in_bytes); }
+        void* Alloc(size_t sizeInBytes) final { return m_subAllocator->Alloc(sizeInBytes); }
         void Free(void* ptr) final { m_subAllocator->Free(ptr); }
     private:
         std::shared_ptr<DmlReservedResourceSubAllocator> m_subAllocator;

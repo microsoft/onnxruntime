@@ -58,16 +58,16 @@ namespace Dml
         gsl::index index = static_cast<gsl::index>(ceil(log2(size)));
         assert((1ull << index) >= size); // This must be true unless there were some strange rounding issues
 
-        // The smallest bucket is 2^n bytes large, where n = c_minResourceSizeExponent
-        index = std::max<gsl::index>(index, c_minResourceSizeExponent);
-        index -= c_minResourceSizeExponent;
+        // The smallest bucket is 2^n bytes large, where n = MinResourceSizeExponent
+        index = std::max<gsl::index>(index, MinResourceSizeExponent);
+        index -= MinResourceSizeExponent;
 
         return index;
     }
 
     /*static*/ uint64_t BucketizedBufferAllocator::GetBucketSizeFromIndex(gsl::index index)
     {
-        return (1ull << (index + c_minResourceSizeExponent));
+        return (1ull << (index + MinResourceSizeExponent));
     }
 
     ComPtr<DmlResourceWrapper> BucketizedBufferAllocator::AllocCommittedResource(size_t size)
@@ -93,15 +93,15 @@ namespace Dml
         return static_cast<AllocationInfo*>(opaquePointer);
     }
 
-    D3D12BufferRegion BucketizedBufferAllocator::CreateBufferRegion(void* opaquePointer, uint64_t size_in_bytes) const
+    D3D12BufferRegion BucketizedBufferAllocator::CreateBufferRegion(void* opaquePointer, uint64_t sizeInBytes) const
     {
         auto allocationInfo = static_cast<AllocationInfo*>(opaquePointer);
 
         // Make sure that we are aligned to 4 bytes to satisfy DML's requirements
         constexpr uint64_t DML_ALIGNMENT = 4;
-        size_in_bytes = (1 + (size_in_bytes - 1) / DML_ALIGNMENT) * DML_ALIGNMENT;
+        sizeInBytes = (1 + (sizeInBytes - 1) / DML_ALIGNMENT) * DML_ALIGNMENT;
 
-        return D3D12BufferRegion(0, size_in_bytes, allocationInfo->GetD3D12Resource());
+        return D3D12BufferRegion(0, sizeInBytes, allocationInfo->GetD3D12Resource());
     }
 
     void* BucketizedBufferAllocator::Alloc(size_t size)

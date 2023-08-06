@@ -8,58 +8,58 @@
 namespace Dml
 {
 
-/*explicit*/ DmlBuffer::DmlBuffer(DmlGpuAllocator* allocator, uint64_t size_in_bytes)
-    : allocator_(allocator)
+/*explicit*/ DmlBuffer::DmlBuffer(DmlGpuAllocator* allocator, uint64_t sizeInBytes)
+    : m_allocator(allocator)
 {
-    m_opaqueData = allocator_->Alloc(size_in_bytes);
+    m_opaqueData = m_allocator->Alloc(sizeInBytes);
     ORT_THROW_HR_IF(E_OUTOFMEMORY, m_opaqueData == nullptr);
 
-    buffer_region_ = allocator_->CreateBufferRegion(m_opaqueData, size_in_bytes);
+    m_bufferRegion = m_allocator->CreateBufferRegion(m_opaqueData, sizeInBytes);
 }
 
 DmlBuffer::~DmlBuffer()
 {
     if (m_opaqueData != nullptr)
     {
-        allocator_->Free(m_opaqueData);
+        m_allocator->Free(m_opaqueData);
     }
 }
 
 DmlBuffer::DmlBuffer(DmlBuffer&& other) noexcept
 {
     m_opaqueData = other.m_opaqueData;
-    allocator_ = other.allocator_;
-    buffer_region_ = std::move(other.buffer_region_);
+    m_allocator = other.m_allocator;
+    m_bufferRegion = std::move(other.m_bufferRegion);
     other.m_opaqueData = nullptr;
 }
 
 DmlBuffer& DmlBuffer::operator=(DmlBuffer&& other) noexcept
 {
     m_opaqueData = other.m_opaqueData;
-    allocator_ = other.allocator_;
-    buffer_region_ = std::move(other.buffer_region_);
+    m_allocator = other.m_allocator;
+    m_bufferRegion = std::move(other.m_bufferRegion);
     other.m_opaqueData = nullptr;
     return *this;
 }
 
 ID3D12Resource* DmlBuffer::GetD3D12Resource() const
 {
-    return buffer_region_.GetD3D12Resource();
+    return m_bufferRegion.GetD3D12Resource();
 }
 
 uint64_t DmlBuffer::Offset() const
 {
-    return buffer_region_ ? buffer_region_.Offset() : 0;
+    return m_bufferRegion ? m_bufferRegion.Offset() : 0;
 }
 
 uint64_t DmlBuffer::SizeInBytes() const
 {
-    return buffer_region_ ? buffer_region_.SizeInBytes() : 0;
+    return m_bufferRegion ? m_bufferRegion.SizeInBytes() : 0;
 }
 
 DML_BUFFER_BINDING DmlBuffer::GetBufferBinding() const
 {
-    return buffer_region_ ? buffer_region_.GetBufferBinding()
+    return m_bufferRegion ? m_bufferRegion.GetBufferBinding()
                           : DML_BUFFER_BINDING{};
 }
 

@@ -36,10 +36,10 @@ namespace Dml
         m_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);
     }
 
-    void* DmlExternalGpuAllocator::Alloc(size_t size_in_bytes)
+    void* DmlExternalGpuAllocator::Alloc(size_t sizeInBytes)
     {
         Microsoft::WRL::ComPtr<ID3D12Resource> resource;
-        auto buffer = CD3DX12_RESOURCE_DESC::Buffer(size_in_bytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        auto buffer = CD3DX12_RESOURCE_DESC::Buffer(sizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         auto props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
         ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
             &props,

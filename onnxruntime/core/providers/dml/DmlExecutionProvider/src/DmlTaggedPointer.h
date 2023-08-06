@@ -16,18 +16,15 @@ namespace Dml
 // must be done using masks and shifts.
 struct TaggedPointer
 {
-    static constexpr uint64_t kDeviceIDBits = 4;
-    static constexpr uint64_t kAllocationIDBits = 20;
-    static constexpr uint64_t kOffsetBits = 40;
+    static constexpr uint64_t DeviceIDBits = 4;
+    static constexpr uint64_t AllocationIDBits = 20;
+    static constexpr uint64_t OffsetBits = 40;
 
-    uint64_t device_id : kDeviceIDBits;
-    uint64_t allocation_id : kAllocationIDBits;
-    uint64_t offset : kOffsetBits;
+    uint64_t deviceId : DeviceIDBits;
+    uint64_t allocationId : AllocationIDBits;
+    uint64_t offset : OffsetBits;
 
-    static void* Pack(
-        uint32_t device_id,
-        uint32_t allocation_id,
-        uint64_t offset);
+    static void* Pack(uint32_t deviceId, uint32_t allocationId, uint64_t offset);
     static TaggedPointer Unpack(const void* ptr);
     uint64_t GetUniqueId() const;
 };
@@ -36,9 +33,7 @@ static_assert(
     sizeof(TaggedPointer) == sizeof(void*),
     "DML requires a 64-bit architecture");
 static_assert(
-    TaggedPointer::kDeviceIDBits + TaggedPointer::kAllocationIDBits +
-            TaggedPointer::kOffsetBits ==
-        sizeof(void*) * CHAR_BIT,
+    TaggedPointer::DeviceIDBits + TaggedPointer::AllocationIDBits + TaggedPointer::OffsetBits == sizeof(void*) * CHAR_BIT,
     "DML requires a 64-bit architecture");
 
 } // namespace tfdml

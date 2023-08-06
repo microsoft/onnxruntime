@@ -16,10 +16,7 @@ namespace Dml
         // References a region of a buffer. The respective ID3D12Resource objects
         // must be in the appropriate states. Each resource is optional, but if more
         // than one are provided they must map to the same region of memory.
-        D3D12BufferRegion(
-            uint64_t offset,
-            uint64_t size_in_bytes,
-            ID3D12Resource* resource);
+        D3D12BufferRegion(uint64_t offset, uint64_t sizeInBytes, ID3D12Resource* resource);
 
         // Move-only
         D3D12BufferRegion(const D3D12BufferRegion&) = default;
@@ -37,21 +34,21 @@ namespace Dml
 
         // Creates a subregion at an offset from the start of this region. If no
         // size is provided the region runs to the end of the current region.
-        inline D3D12BufferRegion Subregion(uint64_t offset, uint64_t size_in_bytes = 0) const
+        inline D3D12BufferRegion Subregion(uint64_t offset, uint64_t sizeInBytes = 0) const
         {
             // start of subregion must be within current region
-            ORT_THROW_HR_IF(E_INVALIDARG, offset >= size_in_bytes_);
-            size_in_bytes = size_in_bytes == 0 ? size_in_bytes_ - offset : size_in_bytes;
+            ORT_THROW_HR_IF(E_INVALIDARG, offset >= m_sizeInBytes);
+            sizeInBytes = sizeInBytes == 0 ? m_sizeInBytes - offset : sizeInBytes;
             // end of subregion must be within current region
-            ORT_THROW_HR_IF(E_INVALIDARG, size_in_bytes > size_in_bytes_ - offset);
+            ORT_THROW_HR_IF(E_INVALIDARG, sizeInBytes > m_sizeInBytes - offset);
 
-            return D3D12BufferRegion(offset_ + offset, size_in_bytes, m_resource);
+            return D3D12BufferRegion(m_offset + offset, sizeInBytes, m_resource);
         }
 
     private:
         ID3D12Resource* m_resource = nullptr;
-        uint64_t offset_ = 0;
-        uint64_t size_in_bytes_ = 0;
+        uint64_t m_offset = 0;
+        uint64_t m_sizeInBytes = 0;
     };
 
 } // namespace Dml

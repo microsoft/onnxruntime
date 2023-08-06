@@ -37,7 +37,7 @@ namespace Dml
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
         AllocationInfo* GetAllocationInfo(void* opaquePointer);
-        D3D12BufferRegion CreateBufferRegion(void* opaquePointer, uint64_t size_in_bytes) const;
+        D3D12BufferRegion CreateBufferRegion(void* opaquePointer, uint64_t sizeInBytes) const;
         uint64_t GetUniqueId(void* opaquePointer);
 
     public: // onnxruntime::IAllocator
@@ -45,7 +45,7 @@ namespace Dml
         void Free(void* p) final;
 
     private:
-        static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB
+        static const uint32_t MinResourceSizeExponent = 16; // 2^16 = 64KB
 
         // The pool consists of a number of buckets, and each bucket contains a number of resources of the same size.
         // The resources in each bucket are always sized as a power of two, and each bucket contains resources twice

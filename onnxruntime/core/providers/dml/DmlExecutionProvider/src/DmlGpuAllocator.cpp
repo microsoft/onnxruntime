@@ -31,14 +31,14 @@ namespace Dml
     m_bfcSubAllocator(bfcSubAllocator),
     m_activeAllocator(activeAllocator) {}
 
-    void* DmlGpuAllocator::Alloc(size_t size_in_bytes)
+    void* DmlGpuAllocator::Alloc(size_t sizeInBytes)
     {
         switch(m_activeAllocator)
         {
         case ActiveAllocator::BfcAllocator:
-            return m_bfcAllocator->Alloc(size_in_bytes);
+            return m_bfcAllocator->Alloc(sizeInBytes);
         case ActiveAllocator::BucketizedBufferAllocator:
-            return m_bucketizedBufferAllocator->Alloc(size_in_bytes);
+            return m_bucketizedBufferAllocator->Alloc(sizeInBytes);
         default:
             ORT_THROW_HR(E_UNEXPECTED);
         }
@@ -57,14 +57,14 @@ namespace Dml
         }
     }
 
-    D3D12BufferRegion DmlGpuAllocator::CreateBufferRegion(void* opaquePointer, uint64_t size_in_bytes)
+    D3D12BufferRegion DmlGpuAllocator::CreateBufferRegion(void* opaquePointer, uint64_t sizeInBytes)
     {
         switch(m_activeAllocator)
         {
         case ActiveAllocator::BfcAllocator:
-            return m_bfcSubAllocator->CreateBufferRegion(opaquePointer, size_in_bytes);
+            return m_bfcSubAllocator->CreateBufferRegion(opaquePointer, sizeInBytes);
         case ActiveAllocator::BucketizedBufferAllocator:
-            return m_bucketizedBufferAllocator->CreateBufferRegion(opaquePointer, size_in_bytes);
+            return m_bucketizedBufferAllocator->CreateBufferRegion(opaquePointer, sizeInBytes);
         default:
             ORT_THROW_HR(E_UNEXPECTED);
         }

@@ -29,9 +29,9 @@ namespace Dml
             std::shared_ptr<DmlReservedResourceSubAllocator> bfcSubAllocator,
             ActiveAllocator activeAllocator);
 
-        void* Alloc(size_t size_in_bytes) final;
+        void* Alloc(size_t sizeInBytes) final;
         void Free(void* ptr) final;
-        D3D12BufferRegion CreateBufferRegion(void* opaquePointer, uint64_t size_in_bytes);
+        D3D12BufferRegion CreateBufferRegion(void* opaquePointer, uint64_t sizeInBytes);
         AllocationInfo* GetAllocationInfo(void* opaquePointer);
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
         DmlBuffer AllocateDefaultBuffer(uint64_t num_bytes);
