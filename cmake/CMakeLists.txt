@@ -269,7 +269,7 @@ endif()
 if (onnxruntime_ENABLE_TRAINING_APIS)
   set(onnxruntime_ENABLE_TRAINING_OPS ON)
   if (onnxruntime_ENABLE_PYTHON AND NOT onnxruntime_ENABLE_TRAINING)
-    message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindinds! "
+    message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindings! "
     "Please use the --enable_training flag instead of the --enable_training_apis flag.")
   endif()
 endif()
