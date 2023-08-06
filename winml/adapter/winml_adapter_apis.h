@@ -62,7 +62,6 @@ ORT_API_STATUS(SessionGetIntraOpThreadSpinning, _In_ OrtSession* session, _Out_ 
 ORT_API_STATUS(SessionGetNamedDimensionsOverrides, _In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& overrides);
 
 // Dml methods (TODO need to figure out how these need to move to session somehow...)
-ORT_API_STATUS(DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled);
 ORT_API_STATUS(DmlExecutionProviderFlushContext, _In_ OrtExecutionProvider* dml_provider);
 ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecutionProvider* dml_provider);
 
