@@ -37,7 +37,7 @@ export interface ReduceAttributes extends AttributeWithCacheKey {
  */
 export type ReduceOp = (input: IndicesHelper, axes: number[]) => string[];
 
-const noOp: ReduceOp = (): string[] => ['', '', 'var value = _A[inputIdx];', ''];
+const noOp: ReduceOp = (input): string[] => ['', '', `var value = ${input.getByOffset('inputOffset')};`, ''];
 export const createReduceProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], reduceOp: ReduceOp, axesInput: number[],
      outputDataType: DataType, keepDims = false, noopWithEmptyAxes = false): ProgramInfo => {
@@ -49,11 +49,11 @@ export const createReduceProgramInfo =
       const axes = ShapeUtil.normalizeAxes(axesInput, inputs[0].dims.length);
       const input = inputVariable('_A', inputs[0].dataType, inputShape);
       const ops = reduceOp(input, axes);
-      const inputIdxAssignment = `inputIdx = ${input.indicesToOffset('inputIndices')};`;
-      const initInputIdxLet = `let ${inputIdxAssignment};`;
-      const initInputIdxVar = `var ${inputIdxAssignment};`;
-      const initInputIdx = (ops[1] === '') ? '' : initInputIdxVar;
-      let reduceOps = ((ops[1] === '') ? initInputIdxLet : inputIdxAssignment) + '\n' + ops[2];
+      const inputOffsetAssignment = `inputOffset = ${input.indicesToOffset('inputIndices')};`;
+      const initinputOffsetLet = `let ${inputOffsetAssignment};`;
+      const initinputOffsetVar = `var ${inputOffsetAssignment};`;
+      const initinputOffset = (ops[1] === '') ? '' : initinputOffsetVar;
+      let reduceOps = ((ops[1] === '') ? initinputOffsetLet : inputOffsetAssignment) + '\n' + ops[2];
       const reduceOnAllAxes = !noopWithEmptyAxes && axes.length === 0;
       inputShape.forEach((d, i) => {
         if (reduceOnAllAxes || axes.indexOf(i) >= 0) {
@@ -99,7 +99,7 @@ export const createReduceProgramInfo =
 
           ${idxCopy.join('\n')}
           ${ops[0]}       // init ops for reduce max/min
-          ${initInputIdx}
+          ${initinputOffset}
           ${ops[1]}
           ${reduceOps}
           ${ops[3]}
@@ -145,27 +145,30 @@ const createReduceProgramInfoLoader =
 
 export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['var value = 0.0;', '', 'value += _A[inputIdx];', 'value = log(value);'];
+  const reduceOp: ReduceOp = (input):
+      string[] => ['var value = 0.0;', '', `value += ${input.getByOffset('inputOffset')};`, 'value = log(value);'];
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSum', attributes, reduceOp), {inputs: [0]});
 };
 
 export const reduceL1 = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['var value = 0.0;', '', 'value += abs(_A[inputIdx]);', ''];
+  const reduceOp: ReduceOp =
+      (input): string[] => ['var value = 0.0;', '', `value += abs(${input.getByOffset('inputOffset')});`, ''];
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceL1', attributes, reduceOp), {inputs: [0]});
 };
 
 export const reduceL2 = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] =>
-      ['var t = f32(0); var value = 0.0;', '', 't = _A[inputIdx]; value += (t * t);', 'value = sqrt(value);'];
+  const reduceOp: ReduceOp = (input): string[] =>
+      ['var t = f32(0); var value = 0.0;', '', `t = ${input.getByOffset('inputOffset')}; value += (t * t);`,
+       'value = sqrt(value);'];
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceL2', attributes, reduceOp), {inputs: [0]});
 };
 
 export const reduceLogSumExp = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp =
-      (): string[] => ['var value = 0.0;', '', 'value += exp(_A[inputIdx]);', 'value = log(value);'];
+  const reduceOp: ReduceOp = (input):
+      string[] => ['var value = 0.0;', '', `value += exp(${input.getByOffset('inputOffset')});`, 'value = log(value);'];
   context.compute(
       createReduceProgramInfoLoader(context.inputs, 'ReduceLogSumExp', attributes, reduceOp), {inputs: [0]});
 };
@@ -180,7 +183,10 @@ export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes)
       }
     }
 
-    return [`${idxZero.join('\n')}`, 'var value = _A[inputIdx];', 'value = max(value, _A[inputIdx]);', ''];
+    return [
+      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('inputOffset')};`,
+      `value = max(value, ${input.getByOffset('inputOffset')});`, ''
+    ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMax', attributes, reduceOp), {inputs: [0]});
 };
@@ -196,7 +202,7 @@ export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes
     }
 
     return [
-      'var value = 0.0;', '', 'value += _A[inputIdx];', `value = value / ${size}.;`
+      'var value = 0.0;', '', `value += ${input.getByOffset('inputOffset')};`, `value = value / ${size}.;`
     ];  // ensure real number with `.`
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp), {inputs: [0]});
@@ -212,27 +218,32 @@ export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes)
       }
     }
 
-    return [`${idxZero.join('\n')}`, 'var value = _A[inputIdx];', 'value = min(value, _A[inputIdx]);', ''];
+    return [
+      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('inputOffset')};`,
+      `value = min(value, ${input.getByOffset('inputOffset')});`, ''
+    ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMin', attributes, reduceOp), {inputs: [0]});
 };
 
 export const reduceProd = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['var value = 1.0;', '', 'value *= _A[inputIdx];', ''];
+  const reduceOp: ReduceOp =
+      (input): string[] => ['var value = 1.0;', '', `value *= ${input.getByOffset('inputOffset')};`, ''];
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceProd', attributes, reduceOp), {inputs: [0]});
 };
 
 export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['var value = 0.0;', '', 'value += _A[inputIdx];', ''];
+  const reduceOp: ReduceOp =
+      (input): string[] => ['var value = 0.0;', '', `value += ${input.getByOffset('inputOffset')};`, ''];
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSum', attributes, reduceOp), {inputs: [0]});
 };
 
 export const reduceSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp =
-      (): string[] => ['var t = f32(0); var value = 0.0;', '', 't = _A[inputIdx]; value += t * t;', ''];
+  const reduceOp: ReduceOp = (input): string[] =>
+      ['var t = f32(0); var value = 0.0;', '', `t = ${input.getByOffset('inputOffset')}; value += t * t;`, ''];
   context.compute(
       createReduceProgramInfoLoader(context.inputs, 'ReduceSumSquare', attributes, reduceOp), {inputs: [0]});
 };

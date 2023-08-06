@@ -60,10 +60,12 @@ export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       }
     }
     return [
-      `${idxZero.join('\n')}`, 'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
-      `if (_A[inputIdx] ${
-          attributes.selectLastIndex > 0 ? '<=' : '<'} value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);} `,
-      '', 'output[global_idx*2] = bestIndex;', 'output[global_idx*2+1] = 0;'
+      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('inputOffset')};\nvar bestIndex : i32 = 0;`,
+      `if (${input.getByOffset('inputOffset')} ${attributes.selectLastIndex > 0 ? '<=' : '<'} value) {
+         value = ${input.getByOffset('inputOffset')};
+         bestIndex = i32(lastIndex);
+       }`,
+      '', 'output[global_idx] = vec2<u32>(u32(bestIndex), 0u);'
     ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ArgMin', attributes, argMinMaxOp), {inputs: [0]});
@@ -79,10 +81,12 @@ export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       }
     }
     return [
-      `${idxZero.join('\n')}`, 'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
-      `if (_A[inputIdx] ${
-          attributes.selectLastIndex > 0 ? '>=' : '>'} value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);}`,
-      '', 'output[global_idx*2] = bestIndex;', 'output[global_idx*2+1] = 0;'
+      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('inputOffset')};\nvar bestIndex : i32 = 0;`,
+      `if (${input.getByOffset('inputOffset')} ${attributes.selectLastIndex > 0 ? '>=' : '>'} value) {
+         value = ${input.getByOffset('inputOffset')};
+         bestIndex = i32(lastIndex);
+       }`,
+      '', 'output[global_idx] = vec2<u32>(u32(bestIndex), 0u);'
     ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'argMax', attributes, argMinMaxOp), {inputs: [0]});
