@@ -33,3 +33,5 @@ def inspect_activation(activation_name: str, tensor: torch.Tensor) -> torch.Tens
                 sub.module_post_forward_impl,
                 sub.module_pre_backward_impl,
             )
+
+    raise RuntimeError("StatisticsSubscriber is not registered, cannot inspect activation.")

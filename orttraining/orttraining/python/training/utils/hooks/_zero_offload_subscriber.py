@@ -36,6 +36,23 @@ def _setup_zero_stage3_ort_compatible_hooks(self):
     FWD_MODULE_STACK.append(self.module)
 
 
+class _ZeROOffloadOneTimeInitializer:
+    """Store the hook functions from DeepSpeed ZeRO offload.
+
+    Hook functions code collected from DeepSpeed.
+    """
+
+    def __init__(self):
+        self._code_store: OrderedDict[str, CodeType] = {}
+
+    def collect_code(self, function: Callable):
+        """Collect the function `CodeType`, which is the code object of the function."""
+        code_obj = function.__code__
+        for c in code_obj.co_consts:
+            if inspect.iscode(c):
+                self._code_store[c.co_name] = c
+
+
 _zero_offload_one_time_initializer = None
 
 try:
@@ -45,29 +62,10 @@ try:
     from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload, _apply_to_tensors_only  # noqa: F401
     from deepspeed.utils import instrument_w_nvtx  # noqa: F401
 
-    class _ZeROOffloadOneTimeInitializer:
-        """Store the hook functions from DeepSpeed ZeRO offload.
-
-        Hook functions collected from DeepSpeed, which will be called in the offload subscriber.
-        Collect the function `CodeType`, which is the code object of the function, then
-        create new function instances with `FunctionType` by passing the code object and a closure that
-        contains the `DeepSpeedZeRoOffload` instance.
-        """
-
-        def __init__(self):
-            self._code_store: OrderedDict[str, CodeType] = {}
-            self._collect_code(DeepSpeedZeRoOffload._register_hooks_recursively)
-            self._collect_code(DeepSpeedZeRoOffload.setup_zero_stage3_hooks)
-
-        def _collect_code(self, function: Callable):
-            """Collect the hook function `CodeType` from DeepSpeed and store them as `FunctionType`."""
-            code_obj = function.__code__
-            for c in code_obj.co_consts:
-                if inspect.iscode(c):
-                    self._code_store[c.co_name] = c
-
     # Used to collect the hook functions's code object from DeepSpeed ZeRO offload, this should be initialized only once.
     _zero_offload_one_time_initializer = _ZeROOffloadOneTimeInitializer()
+    _zero_offload_one_time_initializer.collect_code(DeepSpeedZeRoOffload._register_hooks_recursively)
+    _zero_offload_one_time_initializer.collect_code(DeepSpeedZeRoOffload.setup_zero_stage3_hooks)
 
     # This is the function to enable ORT ZeRO offload.
     def configure_ort_compatible_zero_stage3():
