@@ -419,6 +419,13 @@ def check_function_has_param(function: Callable, param_name: str) -> bool:
     return param_name in inspect.signature(function).parameters
 
 
+def get_fully_qualified_class_name(klass):
+    module = klass.__module__
+    if module == "builtins":
+        return klass.__qualname__  # avoid outputs like 'builtins.str'
+    return module + "." + klass.__qualname__
+
+
 def save_tuning_results(session, is_training, tuning_results_path):
     """Save the online Op tuning results to a json file in the specified path."""
 
