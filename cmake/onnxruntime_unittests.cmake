@@ -1449,10 +1449,15 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (HAS_QSPECTRE)
       target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
     endif()
+  elseif (onnxruntime_USE_ROCM)
+    onnxruntime_add_shared_library(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/rocm_ops.hip
+	                                             ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+    target_include_directories(custom_op_library PRIVATE ${onnxruntime_ROCM_HOME}/include)
+    target_compile_options(custom_op_library PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
   else()
     onnxruntime_add_shared_library(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
   endif()
-  
+
   if (onnxruntime_USE_DML)
     target_include_directories(custom_op_library PRIVATE WIL::WIL)
     target_link_libraries(custom_op_library PRIVATE dxguid.lib d3d12.lib dxgi.lib)

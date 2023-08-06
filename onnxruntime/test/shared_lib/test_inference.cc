@@ -129,6 +129,15 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #else
     return;
 #endif
+  } else if (provider_type == 3) {
+#ifdef USE_ROCM
+    std::cout << "Running simple inference with rocm provider" << std::endl;
+    OrtROCMProviderOptions rocm_options;
+    // rocm_options.do_copy_in_default_stream = true;
+    session_options.AppendExecutionProvider_ROCM(rocm_options);
+#else
+    return;
+#endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
   }
@@ -1398,6 +1407,9 @@ TEST(CApiTest, test_custom_op_library) {
 #ifdef USE_CUDA
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 1, nullptr, lib_name.c_str());
+#elif USE_ROCM
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 3, nullptr, lib_name.c_str());
 #else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 0, nullptr, lib_name.c_str());
