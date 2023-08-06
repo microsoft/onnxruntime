@@ -10,6 +10,7 @@ import {TensorView} from '../../tensor';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
+import {IndicesHelper} from './common';
 import {createReduceProgramInfo, ReduceOp} from './reduce';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
@@ -51,9 +52,9 @@ const createReduceProgramInfoLoader =
 
 export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes): void => {
   validateInputs(context.inputs);
-  const argMinMaxOp: ArgMinMaxOp = (inputs: TensorView[], axes: number[]): string[] => {
+  const argMinMaxOp: ArgMinMaxOp = (input: IndicesHelper, axes: number[]): string[] => {
     const idxZero = [];
-    for (let k = 0; k < inputs[0].dims.length; k++) {
+    for (let k = 0; k < input.shape.length; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
         idxZero.push(`inputIndices[${k}] = 0;`);  // first element
       }
@@ -70,9 +71,9 @@ export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes)
 
 export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes): void => {
   validateInputs(context.inputs);
-  const argMinMaxOp: ArgMinMaxOp = (inputs: TensorView[], axes: number[]): string[] => {
+  const argMinMaxOp: ArgMinMaxOp = (input: IndicesHelper, axes: number[]): string[] => {
     const idxZero = [];
-    for (let k = 0; k < inputs[0].dims.length; k++) {
+    for (let k = 0; k < input.shape.length; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
         idxZero.push(`inputIndices[${k}] = 0;`);  // first element
       }
