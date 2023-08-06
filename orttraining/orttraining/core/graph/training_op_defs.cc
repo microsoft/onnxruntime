@@ -3918,7 +3918,9 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
         std::string func_name = getAttribute(ctx, "name", "");
-        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+        // TODO(pengwa): allow custom PythonOp shape inference.
+        if (func_name == "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation" ||
+            func_name == "onnxruntime.training.utils.hooks._statistics_subscriber._IncrementStep") {
           // PythonOp with the name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly the
           // same as a normal PythonOp when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;
@@ -4063,7 +4065,9 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
 
         std::string func_name = getAttribute(ctx, "name", "");
-        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+        // TODO(pengwa): allow custom PythonOp shape inference.
+        if (func_name == "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation" ||
+            func_name == "onnxruntime.training.utils.hooks._statistics_subscriber._IncrementStep") {
           // PythonOpGrad with name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly
           // the same as a normal PythonOpGrad when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;

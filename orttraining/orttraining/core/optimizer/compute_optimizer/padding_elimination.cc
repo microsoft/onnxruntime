@@ -309,7 +309,8 @@ void IterateSubgraphFromNode(Graph& graph,
         continue;
       }
       auto func_name = static_cast<std::string>(cur->GetAttributes().at("name").s());
-      if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+      if (func_name == "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation" ||
+          func_name == "onnxruntime.training.utils.hooks._statistics_subscriber._IncrementStep") {
         subgraph.insert(cur->MutableOutputDefs()[1]);
         PushAllOutputNode(graph, to_visit, cur, visited);
       } else {
