@@ -192,8 +192,13 @@ def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
                 if old_stderr is not None:
                     os.dup2(old_stderr, sys.stderr.fileno())
 
+                # Close file descriptors
+                os.close(old_stdout)
+                os.close(old_stderr)
+
                 if on_exit:
                     on_exit(fp)
+
     else:
         yield
 
