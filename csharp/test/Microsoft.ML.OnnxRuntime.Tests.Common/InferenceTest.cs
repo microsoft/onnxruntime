@@ -2027,6 +2027,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+#if USE_AZURE
         [Fact(DisplayName = "TestLoadAzureEP")]
         private void TestLoadAzureEP()
         {
@@ -2051,5 +2052,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+#endif
     }
 }
