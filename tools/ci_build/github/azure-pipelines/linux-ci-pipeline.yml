@@ -162,7 +162,6 @@ stages:
               --build_wheel
               --enable_onnx_tests
               --enable_transformers_tool_test
-              --build_nodejs
               --ctest_path ""
 
       - task: CmdLine@2
