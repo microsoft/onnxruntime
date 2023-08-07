@@ -219,6 +219,15 @@ class ModelTestBuilder {
     return &graph_.GetOrCreateNodeArg(name, nullptr);
   }
 
+  NodeArg* MakeRandInitializerBool(const std::vector<int64_t>& shape) {
+    std::vector<uint8_t> data_uint8 = rand_gen_.Uniform<uint8_t>(shape, 0, 1);
+    std::vector<bool> data;
+    for (uint8_t x : data_uint8) {
+      data.push_back(x != 0);
+    }
+    return MakeInitializerBool(shape, data);
+  }
+
   template <typename T>
   NodeArg* MakeInitializer(const std::vector<int64_t>& shape, T min, T max) {
     return MakeInitializer<T>(shape, rand_gen_.Uniform<T>(shape, min, max));

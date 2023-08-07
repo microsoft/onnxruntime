@@ -1760,8 +1760,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   std::vector<NodeDef> result;
   auto src_attrs = SrcNodeAttributes();
   std::vector<AttributeProto> attrs;
-  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
-  attrs.push_back(MakeAttribute("name", src_attrs.at("name").s()));
+  ORT_ENFORCE(src_attrs.count("func_name") > 0, "func_name attribute is missing.");
+  ORT_ENFORCE(utils::HasString(src_attrs.at("func_name")));
+  attrs.push_back(MakeAttribute("func_name", src_attrs.at("func_name").s()));
   attrs.push_back(MakeAttribute("output_convention", src_attrs.at("input_convention").s()));
   attrs.push_back(MakeAttribute("inplace", src_attrs.at("inplace").i()));
 
@@ -1992,6 +1993,15 @@ IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
   }
 
   return {NodeDef(OpDef{"LSTMGrad", kMSDomain, 1}, input_args, output_args, SrcNodeAttributes())};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
+  // y = 1 / x
+  // dy/dx = -1 / x^2
+  // dL/dx = dL/dy * dy/dx = dL/dy * (-1 / x^2)
+  return {NodeDef("Mul", {O(0), O(0)}, {IA("Square_O0")}),
+          NodeDef("Neg", {IA("Square_O0")}, {IA("Neg_Square_O0")}),
+          NodeDef("Mul", {GO(0), IA("Neg_Square_O0")}, {GI(0)})};
 }
 
 }  // namespace training
