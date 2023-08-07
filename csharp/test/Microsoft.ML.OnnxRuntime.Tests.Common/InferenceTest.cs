@@ -2029,17 +2029,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        private static void AsyncCallback(IntPtr user_data, IReadOnlyCollection<NamedOnnxValue> outputs)
-        {
-            GCHandle evtHdl = GCHandle.FromIntPtr(user_data);
-            var evt = (ManualResetEvent)evtHdl.Target;
-            var valueOut = outputs.ElementAt(0);
-            var tensorOut = valueOut.AsTensor<Float16>();
-            var dims = tensorOut.Dimensions;
-            Assert.Equal(new Float16(16896), tensorOut.ElementAtOrDefault(2));
-            evt.Set();
-        }
-
         [Fact(DisplayName = "TestModelRunAsyncTask")]
         private async void TestModelRunAsyncTask()
         {
