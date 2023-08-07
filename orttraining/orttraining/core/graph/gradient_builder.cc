@@ -2006,8 +2006,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetLeakyReluGradient) {
   // y = alpha * x if x < 0 else x
-  // dy/dx = max(sign(x), 0) - alpha * min(sign(x), 0)
-  // dL/dx = dL/dy * dy/dx = dL/dy * (max(sign(x), 0) - alpha * min(sign(x), 0))
+  // dy/dx = alpha if x < 0 else 1
+  // dL/dx = dL/dy * dy/dx = dL/dy * (alpha if x < 0 else 1)
   NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
   ArgDef zero = zero_constant_node.output_args.front();
 
