@@ -163,9 +163,8 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
         onnx_registry = torch.onnx.OnnxRegistry()
         onnx_registry.register_op(
             function=custom_exporter_for_aten_add_Tensor,
-            namespace="aten",
-            op_name="mul",
-            overload="Tensor",
+            namespace="foo",
+            op_name="bar",
         )
 
         # Create executor of ONNX model.
