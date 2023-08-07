@@ -6,7 +6,6 @@ import onnxruntime as ort
 
 
 class TestAzureEP(unittest.TestCase):
-
     def test_availability(self):
         self.assertTrue("AzureExecutionProvider" in ort.get_available_providers())
 
