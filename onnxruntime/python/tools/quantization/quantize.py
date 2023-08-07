@@ -350,6 +350,11 @@ def quantize_static(
                 SmoothQuantFolding = True/False :
                     Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
                     SmoothQuant will be folded into the previous op if the previous op is foldable.
+                UseQDQContribOps = True/False :
+                    Default is False. If enabled, the inserted QuantizeLinear and DequantizeLinear ops will have the
+                    `com.microsoft` domain, which forces use of ONNX Runtime's QuantizeLinear and DequantizeLinear
+                    contrib op implementations. The contrib op implementations may support features not standardized
+                    into the ONNX specification (e.g., 16-bit quantization types).
     """
 
     extra_options = extra_options or {}

@@ -25,6 +25,7 @@ from .quant_utils import (
     add_quant_output_suffix,
     add_quant_suffix,
     find_by_name,
+    ms_domain,
 )
 from .registry import CreateQDQQuantizer
 
@@ -118,6 +119,8 @@ class QDQQuantizer(ONNXQuantizer):
             if "QDQOpTypePerChannelSupportToAxis" not in extra_options
             else extra_options["QDQOpTypePerChannelSupportToAxis"]
         )
+
+        self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else ""
 
     def _is_tensor_quantizable(self, tensor_name):
         """
@@ -249,6 +252,7 @@ class QDQQuantizer(ONNXQuantizer):
             [q_output],
             quant_node_name,
             axis=axis,
+            domain=self.qdq_op_domain,
         )
         dequant_node = onnx.helper.make_node(
             DEQUANT_OP_NAME,
@@ -256,6 +260,7 @@ class QDQQuantizer(ONNXQuantizer):
             [dq_output],
             dequant_node_name,
             axis=axis,
+            domain=self.qdq_op_domain,
         )
         self.model.add_nodes([qlinear_node, dequant_node])
 
@@ -297,6 +302,7 @@ class QDQQuantizer(ONNXQuantizer):
                 [weight_dequant_output],
                 add_dequant_suffix(weight_name),
                 axis=axis,
+                domain=self.qdq_op_domain,
             )
             self.model.add_node(dequant_node)
 
@@ -422,6 +428,7 @@ class QDQQuantizer(ONNXQuantizer):
                     [bias_name],
                     node_name,
                     axis=quant_value.axis,
+                    domain=self.qdq_op_domain,
                 )
             else:
                 dequant_node = onnx.helper.make_node(
@@ -429,6 +436,7 @@ class QDQQuantizer(ONNXQuantizer):
                     inputs,
                     [bias_name],
                     node_name,
+                    domain=self.qdq_op_domain,
                 )
             self.model.add_node(dequant_node)
 
