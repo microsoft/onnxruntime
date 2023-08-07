@@ -1646,21 +1646,6 @@ inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_GELU_OPERATOR_D
         OperatorField(&DML_ACTIVATION_GELU_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
     };
 }
-inline std::vector<OperatorField> GetFields(const DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC& desc)
-{
-    return {
-        OperatorField(&DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ATensor))),
-        OperatorField(&DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.AScaleTensor))),
-        OperatorField(&DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.AZeroPointTensor))),
-        OperatorField(&DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BTensor))),
-        OperatorField(&DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BScaleTensor))),
-        OperatorField(&DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BZeroPointTensor))),
-        OperatorField(&DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputScaleTensor))),
-        OperatorField(&DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputZeroPointTensor))),
-        OperatorField(&DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
-    };
-}
-
 inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
 {
     switch (operatorType)
@@ -1831,7 +1816,6 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ACTIVATION_GELU: return DML_ACTIVATION_GELU_OPERATOR_SCHEMA;
 #pragma warning(push)
 #pragma warning(disable: 4063)
-    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1: return DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA;
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA;
 #pragma warning(pop)
     default:
@@ -2508,10 +2492,6 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC*>(opDesc.Desc)));
-    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1:
-        return AbstractOperatorDesc(
-            &DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA,
-            GetFields(*static_cast<const DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC*>(opDesc.Desc)));
 #pragma warning(pop)
 
     default:
