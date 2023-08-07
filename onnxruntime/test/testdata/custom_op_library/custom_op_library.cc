@@ -362,7 +362,7 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 #endif
   using LiteOp = Ort::Custom::OrtLiteCustomOp;
 
-  static const std::unique_ptr<LiteOp> c_CustomOpOneCpu{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CpuExecutionProvider", KernelOneCpu)};
+  static const std::unique_ptr<LiteOp> c_CustomOpOneCpu{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CPUExecutionProvider", KernelOneCpu)};
 
 #ifdef USE_CUDA
   static const std::unique_ptr<LiteOp> c_CustomOpOneCuda{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CUDAExecutionProvider", KernelOneCuda)};
