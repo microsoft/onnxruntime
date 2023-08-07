@@ -505,6 +505,7 @@ classifiers = [
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
 ]
 
 if not enable_training:
@@ -531,6 +532,7 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
                 "onnxruntime.training.ort_triton",
                 "onnxruntime.training.ort_triton.kernel",
+                "onnxruntime.training.utils",
                 "onnxruntime.training.utils.data",
                 "onnxruntime.training.utils.hooks",
             ]

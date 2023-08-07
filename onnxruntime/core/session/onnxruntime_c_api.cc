@@ -2711,6 +2711,8 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::ReleaseROCMProviderOptions,
     &OrtApis::CreateAndRegisterAllocatorV2,
     &OrtApis::RunAsync,
+    &OrtApis::UpdateTensorRTProviderOptionsWithValue,
+    &OrtApis::GetTensorRTProviderOptionsByName,
     &OrtApis::KernelContext_GetResource,
 };
 

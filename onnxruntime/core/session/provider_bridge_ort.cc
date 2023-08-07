@@ -763,6 +763,8 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesEnd(const Node* p) noexcept override { return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesEnd()); }
 
   void Node__ForEachDef(const Node* p, std::function<void(const NodeArg&, bool is_input)> func, bool include_missing_optional_defs) override { p->ForEachDef(func, std::move(include_missing_optional_defs)); }
+  const std::unordered_map<std::string, gsl::not_null<Graph*>>& Node__GetAttributeNameToMutableSubgraphMap(Node* p) noexcept override { return p->GetAttributeNameToMutableSubgraphMap(); }
+  std::unordered_map<std::string, gsl::not_null<const Graph*>> Node__GetAttributeNameToSubgraphMap(const Node* p) const override { return p->GetAttributeNameToSubgraphMap(); }
 
   // NodeArg (wrapped)
   const std::string& NodeArg__Name(const NodeArg* p) noexcept override { return p->Name(); }
@@ -803,8 +805,10 @@ struct ProviderHostImpl : ProviderHost {
   // Graph (wrapped)
   std::unique_ptr<GraphViewer> Graph__CreateGraphViewer(const Graph* p) override { return std::make_unique<GraphViewer>(*p); }
   std::unique_ptr<ONNX_NAMESPACE::GraphProto> Graph__ToGraphProto(const Graph* p) override { return std::make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
+  void Graph__SetInputs(Graph* p, gsl::span<const NodeArg* const> inputs) override { p->SetInputs(inputs); }
 
   NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
+  void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) override { p->AddOuterScopeNodeArg(name); }
 
   Status Graph__Resolve(Graph* p) override { return p->Resolve(); }
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
@@ -820,10 +824,15 @@ struct ProviderHostImpl : ProviderHost {
 
   const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
+  Graph* Graph__MutableParentGraph(Graph* p) override { return p->MutableParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
   const Path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
+  int Graph__MaxNodeIndex(const Graph* p) const noexcept override { return p->MaxNodeIndex(); }
+  Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept override { return p->GetNode(node_index); }
+  const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const override { return p->GetNode(node_index); }
+  const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const override { return p->GetNodeArg(name); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
@@ -1811,6 +1820,49 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtT
 #else
   ORT_UNUSED_PARAMETER(tensorrt_options);
   ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
+  if (strcmp(key, "user_compute_stream") == 0) {
+    tensorrt_options->has_user_compute_stream = 1;
+    tensorrt_options->user_compute_stream = value;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
+                    _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
+  if (strcmp(key, "user_compute_stream") == 0) {
+    *ptr = tensorrt_options->user_compute_stream;
+  } else {
+    *ptr = nullptr;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
   ORT_UNUSED_PARAMETER(ptr);
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
 #endif

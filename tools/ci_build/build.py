@@ -542,7 +542,6 @@ def parse_arguments():
             "Ninja",
             "NMake Makefiles",
             "Unix Makefiles",
-            "Visual Studio 16 2019",
             "Visual Studio 17 2022",
             "Xcode",
         ],
@@ -1681,7 +1680,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
+                # hardcode iOS 16.4 for now. latest macOS-13 image defaults to iOS 17 (beta) which doesn't work.
+                f"platform=iOS Simulator,OS=16.4,name={simulator_device_name}",
             ],
             cwd=cwd,
         )
@@ -1787,6 +1787,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
+
+            if args.use_tensorrt:
+                run_subprocess(
+                    [sys.executable, "onnxruntime_test_python_nested_control_flow_op.py"], cwd=cwd, dll_path=dll_path
+                )
 
             try:
                 import onnx  # noqa: F401

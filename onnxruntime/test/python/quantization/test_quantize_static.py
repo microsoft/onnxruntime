@@ -7,6 +7,7 @@
 
 import tempfile
 import unittest
+from importlib.util import find_spec
 from pathlib import Path
 
 import numpy as np
@@ -97,6 +98,25 @@ class TestStaticQuantization(unittest.TestCase):
         data_reader.rewind()
         check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
         data_reader.rewind()
+
+    @unittest.skip(
+        "Skip failed test in Python Packaging Test Pipeline."
+        "During importing neural_compressor, pycocotools throws ValueError: numpy.ndarray size changed"
+    )
+    def test_smooth_quant(self):
+        if not find_spec("neural_compressor"):
+            self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
+        data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
+        quant_config = StaticQuantConfig(data_reader, extra_options={"SmoothQuant": True})
+        quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.config.onnx")
+        quantize(self._model_fp32_path, quant_model_path, quant_config)
+
+        data_reader.rewind()
+        check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
+        data_reader.rewind()
+
+        model = onnx.load(quant_model_path)
+        self.assertIn("Mul", [i.op_type for i in model.graph.node])
 
 
 if __name__ == "__main__":
