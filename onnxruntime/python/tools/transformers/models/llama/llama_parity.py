@@ -68,7 +68,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, tokenizer: Llam
             inputs[k] = v.detach().cpu().numpy()
 
     if "past_key_values" in inputs:
-        np_dtype = np.float16 if "fp16" in args.onnxruntime else np.float32
+        np_dtype = np.float16 if ort_model.get_outputs()[0].type == "tensor(float16)" else np.float32
         for i, (past_k, past_v) in enumerate(inputs["past_key_values"]):
             inputs[f"past_key_values.{i}.key"] = past_k.detach().cpu().numpy().astype(np_dtype)
             inputs[f"past_key_values.{i}.value"] = past_v.detach().cpu().numpy().astype(np_dtype)

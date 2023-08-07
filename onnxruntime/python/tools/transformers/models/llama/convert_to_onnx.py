@@ -14,7 +14,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision, prepare_environment, setup_logger  # noqa: E402
 from llama_parity import main as parity_check  # noqa: E402
 from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 from onnxruntime import quantization  # noqa: E402
 
@@ -197,7 +196,7 @@ def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llam
     dynamic_axes = get_model_dynamic_axes(input_names, output_names)
     temp_dir = tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir.name, "temp.onnx")
-    torch_onnx_export(
+    torch.onnx.export(
         llama,
         args=decoder_inputs,
         f=temp_path,
@@ -207,7 +206,6 @@ def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llam
         dynamic_axes=dynamic_axes,
         opset_version=13,
         do_constant_folding=True,
-        use_external_data_format=True,
         verbose=args.verbose,
     )
 
@@ -246,7 +244,7 @@ def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llam
     dynamic_axes = get_model_with_past_kv_dynamic_axes(input_names, output_names)
     temp_dir = tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir.name, "temp.onnx")
-    torch_onnx_export(
+    torch.onnx.export(
         llama,
         args=decoder_with_past_inputs,
         f=temp_path,
@@ -256,7 +254,6 @@ def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llam
         dynamic_axes=dynamic_axes,
         opset_version=13,
         do_constant_folding=True,
-        use_external_data_format=True,
         verbose=args.verbose,
     )
 
@@ -418,7 +415,7 @@ def main():
         # Convert decoder_model.onnx to FP16
         decoder_model_fp16_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp16.onnx")
         model = OnnxModel(onnx.load_model(decoder_model_fp32_path, load_external_data=True))
-        model.convert_model_float32_to_float16(cast_input_output=False)
+        model.convert_float_to_float16(keep_io_types=False, op_block_list=["If"])
         model.save_model_to_file(decoder_model_fp16_path, use_external_data_format=True, all_tensors_to_one_file=True)
         del model
 
@@ -427,7 +424,7 @@ def main():
             args.output, f"{args.model_name}_decoder_with_past_model_fp16.onnx"
         )
         model = OnnxModel(onnx.load_model(decoder_with_past_model_fp32_path, load_external_data=True))
-        model.convert_model_float32_to_float16(cast_input_output=False)
+        model.convert_float_to_float16(keep_io_types=False, op_block_list=["If"])
         model.save_model_to_file(
             decoder_with_past_model_fp16_path, use_external_data_format=True, all_tensors_to_one_file=True
         )
@@ -461,6 +458,7 @@ def main():
         )
 
     # Verify parity on all saved ONNX models
+    del llama  # Delete LLaMA model from memory since it will be loaded again during parity check
     logger.info("Verifying parity on all ONNX models created")
     for fle in os.listdir(args.output):
         if ".data" in fle or ".onnx" not in fle:
