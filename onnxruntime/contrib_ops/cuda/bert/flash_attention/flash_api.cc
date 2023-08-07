@@ -6,9 +6,8 @@
 //#include <ATen/cuda/CUDAContext.h>
 //#include <c10/cuda/CUDAGuard.h>
 
-//#include "core/common/common.h"
-#include <cutlass/numeric_types.h>
 #include "core/providers/cuda/cuda_common.h"
+#include <cutlass/numeric_types.h>
 
 #include "flash.h"
 #include "static_switch.h"
@@ -100,9 +99,6 @@ void set_params_fprop(Flash_fwd_params& params,
   // Set the different scale values.
   params.scale_softmax = softmax_scale;
   params.scale_softmax_log2 = softmax_scale * M_LOG2E;
-
-  // TODO: idk what blockmask is but everything gets zeroed by memset so...
-  params.blockmask = 0;
 
   // Set this to probability of keeping an element to simplify things.
   //params.p_dropout = 1.f - p_dropout;
@@ -227,7 +223,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   const int seqlen_q_rounded = round_multiple(max_seqlen_q, 128);
   const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
 
-  Flash_fwd_params params;
+  Flash_fwd_params params{};
   set_params_fprop(params,
                    batch_size,
                    max_seqlen_q, max_seqlen_k,
