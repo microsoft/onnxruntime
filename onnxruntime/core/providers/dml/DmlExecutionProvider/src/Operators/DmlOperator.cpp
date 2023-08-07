@@ -3,6 +3,8 @@
 
 #include "precomp.h"
 #include "DmlOperator.h"
+#include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
 
 namespace Dml
 {
@@ -462,6 +464,37 @@ namespace Dml
         InitializeOutputsWithShapes(kernelInfo, kernelOutputIndices, outputShapes, minDimensionCount);
     }
 
+    template <typename T>
+    static void PrintNaN(const char* operatorName, const onnxruntime::Tensor& cpuData)
+    {
+        auto data = cpuData.DataAsSpan<T>();
+        uint32_t nanCount = 0;
+
+        printf("**********************************");
+        printf("%s\n", operatorName);
+
+        for (uint32_t i = 0; i < data.size(); ++i)
+        {
+            auto element = data[i];
+
+            if (nanCount < 10 && (std::isnan(element) || std::isinf(element)))
+            {
+                if (std::isnan(element))
+                {
+                    printf("index %u: NaN\n", i);
+                }
+                else if (std::isinf(element))
+                {
+                    printf("index %u: INF\n", i);
+                }
+
+                ++nanCount;
+            }
+        }
+
+        printf("**********************************");
+    }
+
     void DmlOperator::Compute(const MLOperatorKernelContext& kernelContext)
     {
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);
@@ -472,6 +505,50 @@ namespace Dml
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
             gsl::make_span(outputTensors)));
+
+        auto outputDataType = outputTensors[0]->GetTensorDataType();
+
+        if (!outputTensors.empty() && (outputDataType == MLOperatorTensorDataType::Float || outputDataType == MLOperatorTensorDataType::Float16))
+        {
+            ExecutionProviderImpl* executionProvider = static_cast<ExecutionProviderImpl*>(m_executionProvider.Get());
+
+            std::vector<uint32_t> outputSizes(outputTensors[0]->GetDimensionCount());
+            ORT_THROW_IF_FAILED(outputTensors[0]->GetShape(gsl::narrow_cast<uint32_t>(outputSizes.size()), outputSizes.data()));
+            std::vector<int64_t> outputInt64Sizes(outputSizes.begin(), outputSizes.end());
+
+            auto outputDataTypeImpl = outputDataType == MLOperatorTensorDataType::Float
+                ? onnxruntime::DataTypeImpl::GetType<float>()
+                : onnxruntime::DataTypeImpl::GetType<::MLFloat16>();
+
+            onnxruntime::Tensor outputCountCpu(
+                outputDataTypeImpl,
+                onnxruntime::TensorShape(outputInt64Sizes),
+                executionProvider->GetCpuInputAllocator());
+
+            Microsoft::WRL::ComPtr<IMLOperatorTensor> outputCountCpuWrapper = wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::TensorWrapper>(
+                &outputCountCpu,
+                false,
+                executionProvider,
+                true);
+
+            ORT_THROW_IF_FAILED(executionProvider->CopyTensor(
+                outputCountCpuWrapper.Get(),
+                outputTensors[0]));
+
+            switch (outputDataType)
+            {
+            case MLOperatorTensorDataType::Float16:
+                PrintNaN<::MLFloat16>(typeid(*this).name(), outputCountCpu);
+                break;
+
+            case MLOperatorTensorDataType::Float:
+                PrintNaN<float>(typeid(*this).name(), outputCountCpu);
+                break;
+
+            default:
+                ORT_THROW_HR(E_INVALIDARG);
+            }
+        }
     }
 
     bool DmlOperator::AllowHalfPrecisionComputation() const
