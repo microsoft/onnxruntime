@@ -113,36 +113,45 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                     # A int.
                     input_int_scalar_positions.append(i)
                     input_int_scalars.append(arg)
-                elif isinstance(arg, tuple):
-                    assert len(arg) > 0
-                    # A tuple of int or float.
-                    if all(isinstance(ele, int) for ele in arg):
-                        # A tuple of ints.
-                        input_int_tuple_positions.append(i)
-                        input_int_tuple_begins.append(len(input_int_tuples))
-                        input_int_tuples.extend(list(arg))
-                    elif all(isinstance(ele, float) for ele in arg):
-                        # A tuple of floats.
-                        input_float_tuple_positions.append(i)
-                        input_float_tuple_begins.append(len(input_float_tuples))
-                        input_float_tuples.extend(list(arg))
-                    else:
-                        raise wrap_exception(
-                            ORTModuleONNXModelException, Exception(f"Unknown argument type found: {type(arg)}.")
-                        )
                 else:
-                    if name == "_InspectActivation" and isinstance(arg, str):
-                        # _InspectActivation is a special case where the first argument is a string
-                        # that is used to determine the activation name to be inspected.
-                        debug_comment += arg
+                    is_int_tuple = isinstance(arg, tuple) and len(arg) > 0 and all(isinstance(ele, int) for ele in arg)
+                    is_float_tuple = (
+                        isinstance(arg, tuple) and len(arg) > 0 and all(isinstance(ele, float) for ele in arg)
+                    )
+                    # Only support tuple of int or float, for other types, handle it as a pointer.
+                    if isinstance(arg, tuple) and (is_int_tuple or is_float_tuple):
+                        assert len(arg) > 0, f"Empty tuple is not supported. {arg}"
+                        # A tuple of int or float.
+                        if is_int_tuple:
+                            # A tuple of ints.
+                            input_int_tuple_positions.append(i)
+                            input_int_tuple_begins.append(len(input_int_tuples))
+                            input_int_tuples.extend(list(arg))
+                        elif is_float_tuple:
+                            # A tuple of floats.
+                            input_float_tuple_positions.append(i)
+                            input_float_tuple_begins.append(len(input_float_tuples))
+                            input_float_tuples.extend(list(arg))
+                        else:
+                            raise wrap_exception(
+                                ORTModuleONNXModelException,
+                                Exception(
+                                    f"Unknown argument type found: {type(arg)} for node: {kwargs['module']}.{kwargs['name']}, {arg}"
+                                ),
+                            )
+                    else:
+                        if name == "_InspectActivation" and isinstance(arg, str):
+                            # _InspectActivation is a special case where the first argument is a string
+                            # that is used to determine the activation name to be inspected.
+                            debug_comment += arg
 
-                    # All other inputs are accessed via "pointers".
-                    input_pointer_scalar_positions.append(i)
-                    input_pointer_scalars.append(id(arg))
+                        # All other inputs are accessed via "pointers".
+                        input_pointer_scalar_positions.append(i)
+                        input_pointer_scalars.append(id(arg))
 
-                    # For pointer (for example, ProcessGroup passed to PythonOp) needed for PythonOp execution,
-                    # we append it into a global store to hold a reference (in case it is released after module exported).
-                    register_miscellaneous_const_input(arg)
+                        # For pointer (for example, ProcessGroup passed to PythonOp) needed for PythonOp execution,
+                        # we append it into a global store to hold a reference (in case it is released after module exported).
+                        register_miscellaneous_const_input(arg)
             else:
                 raise wrap_exception(
                     ORTModuleONNXModelException,

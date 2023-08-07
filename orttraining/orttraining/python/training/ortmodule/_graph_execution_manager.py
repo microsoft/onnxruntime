@@ -320,7 +320,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # WARNING/ERROR -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # Be noted: rank 0 log only is controlled by logger configured in _logger.py
         torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
-        self._logger.info("Exporting the PyTorch model to ONNX...")
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
@@ -335,6 +334,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
         self._flattened_module._input_info = self._input_info
+
+        self._logger.info("Exporting the PyTorch model to ONNX...")
 
         # Leverage cached model if available
         cache_dir = self._runtime_options.ortmodule_cache_dir

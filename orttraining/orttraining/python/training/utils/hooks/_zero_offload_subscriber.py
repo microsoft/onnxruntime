@@ -92,7 +92,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
     def forward(
         ctx,
         module,
-        pre_forward_function,
+        pre_forward_with_kwargs_function,
         post_backward_function,
         args_schema,
         kwargs_schema,
@@ -104,7 +104,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         Args:
             ctx: context object
             module: the module to be called
-            pre_forward_function: the function to be called before forward (PyTorch's pre_forward_function)
+            pre_forward_with_kwargs_function: the function to be called before forward (PyTorch's pre_forward_function)
             post_backward_function: the function to be called after backward (PyTorch's post_backward_function)
             args_schema: the schema of the args, used to reconstruct the args in original form in
                 PyTorch's pre_forward_function's inputs.
@@ -121,7 +121,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
 
         args = unflatten_data_using_schema(args_tensors, args_schema)
         kwargs = unflatten_data_using_schema(kwargs_tensors, kwargs_schema)
-        f_ret = pre_forward_function(module, args, kwargs)
+        f_ret = pre_forward_with_kwargs_function(module, args, kwargs)
 
         if f_ret is None:
             updated_args, updated_kwargs = args, kwargs
@@ -135,7 +135,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         updated_args_tensors, _ = extract_data_and_schema(updated_args)
         updated_kwargs_tensors, _ = extract_data_and_schema(updated_kwargs)
 
-        rets = updated_args_tensors + updated_kwargs_tensors
+        rets = tuple(updated_args_tensors + updated_kwargs_tensors)
         rets += tuple([p.detach().requires_grad_(p.requires_grad) for p in partitioned_params])
 
         # PyTorch exporter does not support an empty list of tensors, so we have this check.
@@ -180,14 +180,14 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         updated_outputs = post_forward_function(module, None, outputs)
 
         if updated_outputs is None:
-            updated_outputs = outputs
-
-        updated_output_tensors, _ = extract_data_and_schema(updated_outputs)
+            updated_output_tensors = output_tensors
+        else:
+            updated_output_tensors, _ = extract_data_and_schema(updated_outputs)
 
         ctx.module = module
         ctx.pre_backward_function = pre_backward_function
-
-        return [o.detach().requires_grad_(o.requires_grad) for o in updated_output_tensors]
+        rets = [o.detach().requires_grad_(o.requires_grad) for o in updated_output_tensors]
+        return tuple(rets)
 
     @staticmethod
     def backward(ctx, *grads):
@@ -225,10 +225,11 @@ class _ZeROOffloadFunctions:
 class ZeROOffloadSubscriber(SubscriberBase):
     """This subscriber is used to enable ZeRO Offload feature in a way compatible with ORTModule."""
 
-    def __init__(self, offloader, one_time_init: _ZeROOffloadOneTimeInitializer):
+    def __init__(self, offloader, one_time_init: _ZeROOffloadOneTimeInitializer, enable_debug_info: bool = False):
         super().__init__(None, None)
         self._offloader = offloader
         self._functions = _ZeROOffloadFunctions(one_time_init, self._offloader)
+        self._enable_debug_info = enable_debug_info
 
     def pre_forward_module_apply_impl(
         self,
@@ -256,14 +257,18 @@ class ZeROOffloadSubscriber(SubscriberBase):
         kwargs_tensor_count = len(kwargs_tensors)
 
         def _wrap_pre_forward_module_hook(module, args, kwargs):
-            rets = _pre_forward_module_hook(module, args, kwargs)
+            rets = _pre_forward_module_hook(module, args)
             updated_args, updated_kwargs = args, kwargs
             if rets is not None:
-                updated_args, updated_kwargs = rets
+                updated_args = rets
 
             # STAGE3WARN: Moved from _post_backward_module_hook to make sure ORT run will trigger every iteration.
             module.ds_grads_remaining = 0
             return updated_args, updated_kwargs
+
+        all_tensors = args_tensors + kwargs_tensors + partitioned_params
+
+        self._check_all_tensor(all_tensors, module, "pre_forward_module_apply_impl input check")
 
         rets = ORTZeROOffloadPreForwardFunction.apply(
             module,
@@ -273,8 +278,10 @@ class ZeROOffloadSubscriber(SubscriberBase):
             kwargs_schema,
             args_tensor_count,
             kwargs_tensor_count,
-            *(args_tensors + kwargs_tensors + partitioned_params),
+            *all_tensors,
         )
+
+        self._check_all_tensor(rets, module, "pre_forward_module_apply_impl output check")
 
         updated_args_tensors = rets[:args_tensor_count]
         updated_kwargs_tensors = rets[args_tensor_count : args_tensor_count + kwargs_tensor_count]
@@ -299,9 +306,14 @@ class ZeROOffloadSubscriber(SubscriberBase):
         outputs_tensors, outputs_schema = extract_data_and_schema(outputs)
 
         _post_forward_module_hook = self._functions.get("_post_forward_module_hook")
+
+        self._check_all_tensor(outputs_tensors, module, "post_forward_module_apply_impl input check")
+
         updated_outputs_tensors = ORTZeROOffloadPostForwardFunction.apply(
             module, _post_forward_module_hook, None, outputs_schema, *outputs_tensors
         )
+
+        self._check_all_tensor(updated_outputs_tensors, module, "post_forward_module_apply_impl output check")
 
         assert len(updated_outputs_tensors) == len(outputs_tensors)
 
@@ -327,10 +339,23 @@ class ZeROOffloadSubscriber(SubscriberBase):
             return
 
         _end_of_forward_hook = self._functions.get("_end_of_forward_hook")
+
+        self._check_all_tensor(outputs_tensors, module, "post_forward_outmost_module_apply_impl input check")
+
         updated_outputs_tensors = ORTZeROOffloadPostForwardFunction.apply(
             module, _end_of_forward_hook, _pre_backward_function, outputs_schema, *outputs_tensors
         )
 
+        self._check_all_tensor(updated_outputs_tensors, module, "post_forward_outmost_module_apply_impl output check")
+
         assert len(updated_outputs_tensors) == len(outputs_tensors)
         updated_outputs = unflatten_data_using_schema(updated_outputs_tensors, outputs_schema)
         return args, updated_outputs
+
+    def _check_all_tensor(self, tensor_list: Tuple[torch.Tensor], module: torch.nn.Module, name: str):
+        if not self._enable_debug_info:
+            return
+
+        for t in tensor_list:
+            if not isinstance(t, torch.Tensor):
+                raise RuntimeError(f"{name} fail: {module.__class__.__name__}, input type: {type(t)}")
