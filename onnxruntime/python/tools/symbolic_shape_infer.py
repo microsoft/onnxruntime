@@ -1859,8 +1859,11 @@ class SymbolicShapeInference:
         if (
             node.input[0] in self.sympy_data_
             and [0] == axes
+            and starts is not None
             and len(starts) == 1
+            and ends is not None
             and len(ends) == 1
+            and steps is not None
             and len(steps) == 1
         ):
             input_sympy_data = self.sympy_data_[node.input[0]]
@@ -2386,8 +2389,8 @@ class SymbolicShapeInference:
         # The first output is autograd's context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-        if get_attribute(node, "name").decode() in ["_InspectActivation", "_IncrementStep"]:
-            # PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
+        if get_attribute(node, "func_name").decode() in ["_InspectActivation", "_IncrementStep"]:
+            # PythonOp with func_name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
             # PythonOp when execution. The only difference is that
             # 1). those ops having same number of tensor inputs and tensor outputs;
             # 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
