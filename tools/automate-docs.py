@@ -54,7 +54,7 @@ with open('./docs/extensions/pyop.md', 'w') as f:
     pyop_link = "https://raw.githubusercontent.com/microsoft/onnxruntime-extensions/main/docs/pyop.md"
     docs = requests.get(pyop_link)
     intro = """---
-title: Python Operators
+title: Python Operator
 description: Instructions to create a custom operator using Python functions and ORT inference integration.
 parent: Extensions
 nav_order: 4
