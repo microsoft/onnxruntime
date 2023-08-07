@@ -178,7 +178,7 @@ void LaunchSkipLayerNormKernel(
     cudaStream_t stream, T* output, T* skip_input_bias_add_output, const T* input, const T* skip, const T* gamma,
     const T* beta, const T* bias, float epsilon, int ld, int row_count, bool skip_broadcasted, int skip_size) {
   if (row_count == 0) {
-    return Status::OK();
+    return;
   }
 
   bool hasBias = (bias == nullptr) ? false : true;

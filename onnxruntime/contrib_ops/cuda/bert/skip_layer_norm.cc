@@ -112,7 +112,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
         hidden_size,
         row_count,
         skip_broadcasted,
-        skip_size);        
+        skip_size);
   }
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
