@@ -2007,7 +2007,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetLeakyReluGradient) {
   // y = alpha * x if x < 0 else x
   // dy/dx = alpha if x < 0 else 1
-  // dL/dx = dL/dy * dy/dx = dL/dy * (alpha if x < 0 else 1)
+  // dL/dx = dL/dy * dy/dx = dL/dy * (alpha if x <= 0 else 1)
   NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
   ArgDef zero = zero_constant_node.output_args.front();
 
@@ -2021,7 +2021,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetLeakyReluGradient) {
   return {zero_constant_node,
           one_constant_node,
           alpha_constant_node,
-          NodeDef("Less", {I(0), zero}, {IA("Less_I0")}),
+          NodeDef("LessOrEqual", {I(0), zero}, {IA("Less_I0")}),
           NodeDef("Where", {IA("Less_I0"), alpha, one}, {IA("LeakyRelu_Grad")}),
           NodeDef("Mul", {GO(0), IA("LeakyRelu_Grad")}, {GI(0)})};
 }
