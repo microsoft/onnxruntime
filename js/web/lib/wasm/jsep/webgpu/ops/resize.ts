@@ -270,8 +270,7 @@ const calculateOriginalIndicesFromOutputIndices =
 const calculateInputIndicesFromOutputIndices =
     (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[],
      scales: readonly number[], roi: readonly number[], useExtrapolation: boolean): string => `
-    fn calculateInputIndicesFromOutputIndices(outputIndices: ${output.type.indices}) -> array<u32, ${
-        inputShape.length}> {
+    fn calculateInputIndicesFromOutputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
         const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
         const outputShape = array<u32, ${outputShape.length}>(${outputShape.map(i => `${i}u`).join(',')});
         const scales = array<f32, ${scales.length}>(${scales.map(i => `${i}f`).join(',')});
@@ -297,7 +296,7 @@ const calculateInputIndicesFromOutputIndices =
               inputIndex = u32(original_idx);
             }
           }
-          ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'} = inputIndex;
+          ${input.indicesSet('inputIndices', 'i', 'inputIndex')}
         }
         return inputIndices;
     }`;
