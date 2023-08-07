@@ -20,6 +20,9 @@ HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(_In_ OnnxruntimeEngineF
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** out) {
+  RETURN_HR_IF_NULL(E_POINTER, out);
+  *out = nullptr;
+
   auto ort_api = engine_factory_->UseOrtApi();
 
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;
@@ -100,7 +103,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(wfc::IMapView<
   named_dimension_overrides_ = std::move(named_dimension_overrides);
   return S_OK;
 }
-  
+
 STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpNumThreadsOverride(uint32_t intra_op_num_threads) {
   intra_op_num_threads_override_ = intra_op_num_threads;
   return S_OK;
