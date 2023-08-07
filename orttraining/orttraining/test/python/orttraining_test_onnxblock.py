@@ -554,6 +554,55 @@ def test_adamw_optimizer_execution():
         _ = ort_session.run(ort_output_names, ort_inputs)
 
 
+def test_sgd_optimizer_execution():
+    # Given
+    device = "cuda"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+
+    x = torch.randn(batch_size, input_size, device=device)
+    target = torch.randn(batch_size, output_size, device=device)
+
+    simple_block = SimpleTrainingBlockWithMSELoss()
+    for name, _ in pt_model.named_parameters():
+        simple_block.requires_grad(name)
+
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    optimizer = onnxblock.optim.SGDOptimizer(learning_rate=0.001)
+    with onnxblock.empty_base() as accessor:
+        output_name = optimizer(simple_block.parameters())
+        optimizer_model = accessor.model
+
+    step = 1
+    ort_output_names = [output_name]
+
+    def mse_loss(prediction, target):
+        loss = torch.nn.MSELoss()
+        return loss(prediction, target)
+
+    # When
+    with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
+        onnx.save(optimizer_model, onnx_fo.name)
+
+        loss = mse_loss(pt_model(x), target)
+        loss.backward()
+
+        ort_inputs = {
+            "learning_rate": np.full(1, 0.001, dtype=np.float32),
+            "step": np.full(1, step, dtype=np.int64),
+            "params": [],
+            "gradients": [],
+        }
+        for _, param in pt_model.named_parameters():
+            ort_inputs["params"].append(_to_numpy(copy.deepcopy(param)))
+            ort_inputs["gradients"].append(_to_numpy(copy.deepcopy(param.grad)))
+
+        # Then no error occurs when executing the model
+        ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
+        _ = ort_session.run(ort_output_names, ort_inputs)
+
 def test_retrieve_parameters():
     # Given
     device = "cuda"

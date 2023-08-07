@@ -211,3 +211,48 @@ class AdamW(onnxblock_module.ForwardBlock):
         )
 
         return updated_flag_name
+
+class SGDOptimizer(blocks.Block):
+    """Adds an SGDOptimizer node to the onnx model."""
+
+    def __init__(self, learning_rate: float):
+        super().__init__()
+
+        self._learning_rate = learning_rate
+
+    def build(
+        self,
+        parameter_sequence_name: str,
+        gradient_sequence_name: str,
+        learning_rate_name: str = "learning_rate",
+    ):
+        """Adds the SGDOptimizer node to the model."""
+
+        # get the model to manipulate
+        onnx_model = self.base
+
+        # define the node attributes
+        node_attributes = {
+            "alpha": self._learning_rate,  # learning rate
+            "momentum": 0.0,  # momentum (SGD has no momentum, it's set to 0)
+        }
+
+        # add the sgd node to the onnx model
+        sgd_input_names = [
+            learning_rate_name,  # learning rate
+            parameter_sequence_name,  # param to be updated
+            gradient_sequence_name,  # gradient of the param to be used for update
+        ]
+        sgd_output_name = _graph_utils.generate_graph_name("sgd.updated_flag")
+        sgd_output_names = [sgd_output_name]
+        sgd_node = onnx.helper.make_node(
+            "SGDOptimizer",
+            sgd_input_names,
+            sgd_output_names,
+            name=_graph_utils.generate_graph_name("SGDOptimizer"),
+            domain="com.microsoft",
+            **node_attributes,
+        )
+        onnx_model.graph.node.append(sgd_node)
+
+        return sgd_output_name
