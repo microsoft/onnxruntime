@@ -10,6 +10,7 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
+#include "openvino/core/deprecated.hpp"
 #define IN_OV_COMPONENT
 #define NGRAPH_LEGACY_HEADER_INCLUDED
 #include <ngraph/frontend/onnx_import/onnx.hpp>
@@ -94,6 +95,7 @@ int GetOnnxOpSet(const GraphViewer& graph_viewer) {
 
 std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_opset) {
   std::map<std::string, std::set<std::string>> ng_supported_ops;
+  OPENVINO_SUPPRESS_DEPRECATED_START
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
   const std::set<std::string> ng_disabled_ops = {"LSTM"};  // Place-holder for ops not supported.
@@ -101,7 +103,7 @@ std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_op
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
   }
-
+  OPENVINO_SUPPRESS_DEPRECATED_END
   return ng_supported_ops;
 }
 

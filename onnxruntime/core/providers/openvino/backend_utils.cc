@@ -211,6 +211,10 @@ void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedVal
   }
 }
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4127)
+#endif
+
 template <typename T>
 void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ov::Node> node) {
   auto const_node = std::dynamic_pointer_cast<ov::op::v0::Constant>(node);
@@ -218,6 +222,10 @@ void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ov::Node> n
   T* tensor_data = out_tensor.GetTensorMutableData<T>();
   std::copy(res.begin(), res.end(), tensor_data);
 }
+
+#if defined(_MSC_VER)
+#pragma warning(default : 4127)
+#endif
 
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::KernelContext& context,
