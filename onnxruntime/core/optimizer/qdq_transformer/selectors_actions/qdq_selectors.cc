@@ -14,6 +14,12 @@
 namespace onnxruntime {
 namespace QDQ {
 namespace {
+
+constexpr bool Is16BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
+}
+
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
@@ -110,6 +116,17 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
+
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
@@ -154,7 +171,11 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  return dt_input == dt_output;
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || !Is16BitIntType(dt_input);
 }
 
 bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
@@ -168,8 +189,13 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return dt_input_1 == dt_input_2 &&
-         dt_input_1 == dt_output;
+
+  // All input and output types must match.
+  if (dt_input_1 != dt_input_2 || dt_input_1 != dt_output) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || !Is16BitIntType(dt_input_1);
 }
 
 bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
@@ -194,7 +220,12 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
       return false;
     }
   }
-  return dt_input == dt_output;
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || !Is16BitIntType(dt_input);
 }
 
 void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
@@ -232,7 +263,11 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
+  if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || (!Is16BitIntType(dt_input) && !Is16BitIntType(dt_weight));
 }
 
 void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
@@ -254,6 +289,10 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     if (!int8_allowed_ || dt_weight != dt_input) {
       return false;
     }
+  }
+
+  if (!int16_uint16_allowed_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
+    return false;
   }
 
   // potential match for QLinearMatMul or MatMulIntegerToFloat
@@ -299,6 +338,10 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
+  if (!int16_uint16_allowed_ && (Is16BitIntType(dt_A) || Is16BitIntType(dt_B))) {
+    return false;  // 16-bit int types must be explicitly allowed.
+  }
+
   if (dq_nodes.size() < 3) {  // no bias
     return true;
   }
@@ -326,8 +369,13 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   const int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return dt_input_1 == dt_input_2 &&
-         dt_input_1 == dt_output;
+
+  // All input and output types must match.
+  if (dt_input_1 != dt_input_2 || dt_input_1 != dt_output) {
+    return false;
+  }
+
+  return int16_uint16_allowed_ || !Is16BitIntType(dt_input_1);
 }
 
 bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,

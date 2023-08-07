@@ -42,21 +42,29 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
       MoveToSlot(dq, ArgType::kInput, 0, ArgType::kInput, 0),
       MoveToSlot(q, ArgType::kOutput, 0, ArgType::kOutput, 0)};
 
-  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
-
 #if !defined(ORT_MINIMAL_BUILD)
+  std::unique_ptr<NodeSelector> selector_disallow_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
+  std::unique_ptr<Action> action_disallow_16bit = std::make_unique<MergeIntoTarget>(
+      std::vector<NodeAndMoveInfo>(moves)  // Copy before std::move(moves)
+  );
+  qdq_selector_action_registry.RegisterSelectorAndAction("drop_no_int16_support",
+                                                         {{"MaxPool", {12}},  // int16 not supported by ONNX specification.
+                                                          {"Resize", {}}},    // int16 not supported by ORT implementation.
+                                                         std::move(selector_disallow_16bit),
+                                                         std::move(action_disallow_16bit));
+
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropQDQNodesSelector>();
+  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Gather", {}},
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
-                                                          {"MaxPool", {12}},
-                                                          {"Resize", {}},
                                                           {"Squeeze", {}},
                                                           {"Unsqueeze", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
+  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
 #endif
 }
@@ -91,7 +99,8 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>();
+  // QLinear ops do not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(false /* int16_uint16_allowed */);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
                                                           {"LeakyRelu", {}},
@@ -112,7 +121,8 @@ void BinaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>();
+  // QLinear ops do not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>(false /* int16_uint16_allowed */);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Add", {}},
                                                           {"Mul", {}}},
@@ -131,7 +141,8 @@ void VariadicOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::VariadicReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::InputVariadicSelector>();
+  // QLinearConcat does not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::InputVariadicSelector>(false /* int16_uint16_allowed */);
 
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Concat", {}}},
@@ -152,7 +163,9 @@ void ConvQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool is_
   std::unique_ptr<Action> action = std::make_unique<QDQ::ConvReplaceWithQLinear>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed);
+  // QLinearConv does not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed,
+                                                                               false /* int16_uint16_allowed */);
 
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Conv", {}}},
@@ -174,7 +187,10 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
   std::unique_ptr<Action> action = std::make_unique<QDQ::MatMulReplaceWithQLinear>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::MatMulSelector>(is_int8_allowed);
+  // QLinearMatMul and MatMulIntegerToFloat do not yet support 16bit integer types, so disable action
+  // for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::MatMulSelector>(is_int8_allowed,
+                                                                                 false /* int16_uint16_allowed */);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"MatMul", {}}},
                                                          std::move(selector),
@@ -195,7 +211,8 @@ void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::GemmReplaceWithQuant>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::GemmSelector>();
+  // QGemm does not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::GemmSelector>(false /* int16_uint16_allowed */);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Gemm", {}}},
                                                          std::move(selector),
@@ -215,7 +232,8 @@ void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::WhereReplaceWithQLinear>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::WhereSelector>();
+  // QLinearWhere does not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::WhereSelector>(false /* int16_uint16_allowed */);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Where", {}}},
                                                          std::move(selector),
