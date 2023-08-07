@@ -115,11 +115,23 @@ struct IdentityDML {
 };
 #endif
 
+void KernelOneCpu(const Ort::Custom::Tensor<float>& X,
+                  const Ort::Custom::Tensor<float>& Y,
+                  Ort::Custom::Tensor<float>& Z) {
+  auto input_shape = X.Shape();
+  auto x_raw = X.Data();
+  auto y_raw = Y.Data();
+  auto z_raw = Z.Allocate(input_shape);
+  for (int64_t i = 0; i < Z.NumberOfElement(); ++i) {
+    z_raw[i] = x_raw[i] + y_raw[i];
+  }
+}
+
 #ifdef USE_CUDA
-void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
-               const Ort::Custom::Tensor<float>& X,
-               const Ort::Custom::Tensor<float>& Y,
-               Ort::Custom::Tensor<float>& Z) {
+void KernelOneCuda(const Ort::Custom::CudaContext& cuda_ctx,
+                   const Ort::Custom::Tensor<float>& X,
+                   const Ort::Custom::Tensor<float>& Y,
+                   Ort::Custom::Tensor<float>& Z) {
   auto input_shape = X.Shape();
 
   CUSTOM_ENFORCE(cuda_ctx.cuda_stream, "failed to fetch cuda stream");
@@ -129,12 +141,14 @@ void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
   auto z_raw = Z.Allocate(input_shape);
   cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream);
 }
-#elif USE_ROCM
+#endif
+
+#ifdef USE_ROCM
 #include <iostream>
-void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
-               const Ort::Custom::Tensor<float>& X,
-               const Ort::Custom::Tensor<float>& Y,
-               Ort::Custom::Tensor<float>& Z) {
+void KernelOneRocm(const Ort::Custom::RocmContext& rocm_ctx,
+                   const Ort::Custom::Tensor<float>& X,
+                   const Ort::Custom::Tensor<float>& Y,
+                   Ort::Custom::Tensor<float>& Z) {
   auto input_shape = X.Shape();
 
   CUSTOM_ENFORCE(rocm_ctx.hip_stream, "failed to fetch hip stream");
@@ -144,52 +158,48 @@ void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
   auto z_raw = Z.Allocate(input_shape);
   rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), rocm_ctx.hip_stream);
 }
-#else
-struct KernelOne {
-  OrtStatusPtr ComputeV2(OrtKernelContext* context) {
-    // Setup inputs
-    Ort::KernelContext ctx(context);
-    auto input_X = ctx.GetInput(0);
-    auto input_Y = ctx.GetInput(1);
-    const float* X = input_X.GetTensorData<float>();
-    const float* Y = input_Y.GetTensorData<float>();
-
-    // Setup output
-    auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
-
-    auto output = ctx.GetOutput(0, dimensions);
-    float* out = output.GetTensorMutableData<float>();
-
-    const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
-
-    // Do computation
-    for (size_t i = 0; i < size; i++) {
-      out[i] = X[i] + Y[i];
-    }
-    return nullptr;
-  }
-};
-
-// legacy custom op registration with kernel creation and compute function that return an OrtStatusPtr
-struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne, true> {
-  OrtStatusPtr CreateKernelV2(const OrtApi& /* api */, const OrtKernelInfo* /* info */, void** op_kernel) const {
-    *op_kernel = reinterpret_cast<void*>(std::make_unique<KernelOne>().release());
-    return nullptr;
-  };
-
-  const char* GetName() const { return "CustomOpOne"; };
-
-#ifdef USE_CUDA
-  const char* GetExecutionProviderType() const { return "CUDAExecutionProvider"; };
 #endif
 
-  size_t GetInputTypeCount() const { return 2; };
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
-
-  size_t GetOutputTypeCount() const { return 1; };
-  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
-};
-#endif
+//struct KernelOneCpu {
+//  OrtStatusPtr ComputeV2(OrtKernelContext* context) {
+//    // Setup inputs
+//    Ort::KernelContext ctx(context);
+//    auto input_X = ctx.GetInput(0);
+//    auto input_Y = ctx.GetInput(1);
+//    const float* X = input_X.GetTensorData<float>();
+//    const float* Y = input_Y.GetTensorData<float>();
+//
+//    // Setup output
+//    auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
+//
+//    auto output = ctx.GetOutput(0, dimensions);
+//    float* out = output.GetTensorMutableData<float>();
+//
+//    const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
+//
+//    // Do computation
+//    for (size_t i = 0; i < size; i++) {
+//      out[i] = X[i] + Y[i];
+//    }
+//    return nullptr;
+//  }
+//};
+//
+//// legacy custom op registration with kernel creation and compute function that return an OrtStatusPtr
+//struct CustomOpOneCpu : Ort::CustomOpBase<CustomOpOneCpu, KernelOneCpu, true> {
+//  OrtStatusPtr CreateKernelV2(const OrtApi& /* api */, const OrtKernelInfo* /* info */, void** op_kernel) const {
+//    *op_kernel = reinterpret_cast<void*>(std::make_unique<KernelOneCpu>().release());
+//    return nullptr;
+//  };
+//
+//  const char* GetName() const { return "CustomOpOne"; };
+//
+//  size_t GetInputTypeCount() const { return 2; };
+//  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+//
+//  size_t GetOutputTypeCount() const { return 1; };
+//  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+//};
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
@@ -352,13 +362,15 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 #endif
   using LiteOp = Ort::Custom::OrtLiteCustomOp;
 
+  static const std::unique_ptr<LiteOp> c_CustomOpOneCpu{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CpuExecutionProvider", KernelOneCpu)};
+
 #ifdef USE_CUDA
-  static const std::unique_ptr<LiteOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CUDAExecutionProvider", KernelOne)};
-#elif USE_ROCM
-  static const std::unique_ptr<LiteOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "ROCMExecutionProvider", KernelOne)};
-#else
-  static const CustomOpOne c_CustomOpOne;
-#endif  // !1
+  static const std::unique_ptr<LiteOp> c_CustomOpOneCuda{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CUDAExecutionProvider", KernelOneCuda)};
+#endif
+
+#ifdef USE_ROCM
+  static const std::unique_ptr<LiteOp> c_CustomOpOneRocm{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "ROCMExecutionProvider", KernelOneRocm)};
+#endif
 
   static const std::unique_ptr<LiteOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};
   static const std::unique_ptr<LiteOp> c_MulTopOpFloat{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<float>)};
@@ -379,12 +391,15 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 
   ORT_TRY {
     Ort::CustomOpDomain domain{c_OpDomain};
+
+    domain.Add(c_CustomOpOneCpu.get());
+
 #ifdef USE_CUDA
-    domain.Add(c_CustomOpOne.get());
-#elif USE_ROCM
-    domain.Add(c_CustomOpOne.get());
-#else
-    domain.Add(&c_CustomOpOne);
+    domain.Add(c_CustomOpOneCuda.get());
+#endif
+
+#ifdef USE_ROCM
+    domain.Add(c_CustomOpOneRocm.get());
 #endif
 
 #if !defined(DISABLE_FLOAT8_TYPES)
