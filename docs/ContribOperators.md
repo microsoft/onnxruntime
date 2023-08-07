@@ -4651,7 +4651,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input</tt> : T</dt>
 <dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>skip</tt> : T</dt>
-<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size) or (1, sequence_length, hidden_size) or (sequence_length, hidden_size)</dd>
 <dt><tt>gamma</tt> : T</dt>
 <dd>1D input tensor with shape (hidden_size)</dd>
 <dt><tt>beta</tt> (optional) : T</dt>
