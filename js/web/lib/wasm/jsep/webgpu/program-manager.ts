@@ -61,14 +61,19 @@ export class ProgramManager {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (computePassEncoder as any).writeTimestamp(this.backend.profilingQuerySet, 1);
-      // eslint-disable-next-line no-bitwise
-      const queryData = this.backend.gpuDataManager.create(16, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
+      if (this.backend.profilingQueryData == null) {
+        this.backend.profilingQueryData =
+            // eslint-disable-next-line no-bitwise
+            this.backend.gpuDataManager.create(16, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
+      }
       // eslint-disable-next-line no-bitwise
       const syncData = this.backend.gpuDataManager.create(16, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
 
       this.backend.endComputePass();
-      this.backend.getCommandEncoder().resolveQuerySet(this.backend.profilingQuerySet, 0, 2, queryData.buffer, 0);
-      this.backend.getCommandEncoder().copyBufferToBuffer(queryData.buffer, 0, syncData.buffer, 0, 16);
+      this.backend.getCommandEncoder().resolveQuerySet(
+          this.backend.profilingQuerySet, 0, 2, this.backend.profilingQueryData.buffer, 0);
+      this.backend.getCommandEncoder().copyBufferToBuffer(
+          this.backend.profilingQueryData.buffer, 0, syncData.buffer, 0, 16);
       this.backend.flush();
 
       const kernelId = this.backend.currentKernelId!;
@@ -92,7 +97,6 @@ export class ProgramManager {
           throw new RangeError('incorrect timestamp range');
         }
 
-        this.backend.gpuDataManager.release(queryData.id);
         this.backend.gpuDataManager.release(syncData.id);
 
         // eslint-disable-next-line no-console

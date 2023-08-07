@@ -3764,7 +3764,7 @@ Return true if all elements are true and false otherwise.
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .Attr(
-          "name",
+          "func_name",
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
@@ -3917,7 +3917,7 @@ Return true if all elements are true and false otherwise.
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
-        std::string func_name = getAttribute(ctx, "name", "");
+        std::string func_name = getAttribute(ctx, "func_name", "");
         // TODO(pengwa): allow custom PythonOp shape inference.
         if (func_name == "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation" ||
             func_name == "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep") {
@@ -3982,7 +3982,7 @@ Return true if all elements are true and false otherwise.
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .Attr(
-          "name",
+          "func_name",
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
@@ -4064,7 +4064,7 @@ Return true if all elements are true and false otherwise.
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
 
-        std::string func_name = getAttribute(ctx, "name", "");
+        std::string func_name = getAttribute(ctx, "func_name", "");
         // TODO(pengwa): allow custom PythonOp shape inference.
         if (func_name == "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation" ||
             func_name == "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep") {

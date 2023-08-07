@@ -43,6 +43,84 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
                             helper.feeds_, verification_params);
 }
 
+void InferenceModel(const std::string& model_data, const char* log_id,
+                    std::unique_ptr<IExecutionProvider> execution_provider,
+                    ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
+                    std::vector<std::string>& output_names, std::vector<OrtValue>& output_vals) {
+  SessionOptions so;
+  so.session_logid = log_id;
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  std::string provider_type = kCpuExecutionProvider;
+  if (execution_provider) {
+    provider_type = execution_provider->Type();
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+  }
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  const auto& graph = session_object.GetGraph();
+
+  auto ep_nodes = CountAssignedNodes(graph, provider_type);
+  if (expected_ep_assignment == ExpectedEPNodeAssignment::All) {
+    // Verify the entire graph is assigned to the EP
+    ASSERT_EQ(ep_nodes, graph.NumberOfNodes()) << "Not all nodes were assigned to " << provider_type;
+  } else if (expected_ep_assignment == ExpectedEPNodeAssignment::None) {
+    ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << provider_type;
+  } else {
+    ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
+  }
+
+  const auto& outputs = graph.GetOutputs();
+
+  // fetch all outputs if necessary.
+  if (output_names.empty()) {
+    output_names.reserve(outputs.size());
+    for (const auto* node_arg : outputs) {
+      if (node_arg->Exists()) {
+        output_names.push_back(node_arg->Name());
+      }
+    }
+  }
+
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &output_vals));
+}
+
+NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale) {
+  NodeArg* bias_int32 = nullptr;
+
+  // Bias must be int32 to be detected as a QDQ node unit.
+  // We must quantize the data.
+  if (bias_def.IsRandomData()) {
+    // Create random initializer def that is quantized to int32
+    const auto& rand_info = bias_def.GetRandomDataInfo();
+    TestInputDef<int32_t> bias_int32_def(bias_def.GetShape(), bias_def.IsInitializer(), static_cast<int32_t>(rand_info.min / bias_scale),
+                                         static_cast<int32_t>(rand_info.max / bias_scale));
+    bias_int32 = MakeTestInput(builder, bias_int32_def);
+  } else {
+    assert(bias_def.IsRawData());
+    // Create raw data initializer def that is quantized to int32
+    const auto& bias_f32_raw = bias_def.GetRawData();
+    const size_t num_elems = bias_f32_raw.size();
+
+    std::vector<int32_t> bias_int32_raw(num_elems);
+    for (size_t i = 0; i < num_elems; i++) {
+      bias_int32_raw[i] = static_cast<int32_t>(bias_f32_raw[i] / bias_scale);
+    }
+
+    TestInputDef<int32_t> bias_int32_def(bias_def.GetShape(), bias_def.IsInitializer(), bias_int32_raw);
+    bias_int32 = MakeTestInput(builder, bias_int32_def);
+  }
+
+  auto* bias = builder.MakeIntermediate();
+  builder.AddDequantizeLinearNode<int32_t>(bias_int32, bias_scale, 0, bias);
+
+  return bias;
+}
+
 // Mock IKernelLookup class passed to QNN EP's GetCapability() function in order to
 // determine if the HTP backend is supported on specific platforms (e.g., Windows ARM64).
 // TODO: Remove once HTP can be emulated on Windows ARM64.

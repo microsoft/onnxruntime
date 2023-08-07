@@ -185,7 +185,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             output_tensor_ranks.append(arg.type().dim())
 
         attrs = {
-            "name_s": func_full_qual_name,
+            "func_name_s": func_full_qual_name,
             "inplace_i": inplace,
             "input_convention_s": cconv,
             "outputs": n.outputsSize(),
@@ -246,7 +246,7 @@ def _post_process_enabling_autograd_fallback(exported_model):
             node.output.append(output_names[0] + "_ctx")
             node.output.extend(output_names)
             for attr in node.attribute:
-                if attr.name == "name":
+                if attr.name == "func_name":
                     kclass_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
                     op_name_prefix = kclass_name
                     break
