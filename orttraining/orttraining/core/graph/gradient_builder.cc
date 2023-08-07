@@ -1760,8 +1760,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   std::vector<NodeDef> result;
   auto src_attrs = SrcNodeAttributes();
   std::vector<AttributeProto> attrs;
-  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
-  attrs.push_back(MakeAttribute("name", src_attrs.at("name").s()));
+  ORT_ENFORCE(src_attrs.count("func_name") > 0, "func_name attribute is missing.");
+  ORT_ENFORCE(utils::HasString(src_attrs.at("func_name")));
+  attrs.push_back(MakeAttribute("func_name", src_attrs.at("func_name").s()));
   attrs.push_back(MakeAttribute("output_convention", src_attrs.at("input_convention").s()));
   attrs.push_back(MakeAttribute("inplace", src_attrs.at("inplace").i()));
 
