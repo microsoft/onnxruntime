@@ -3787,6 +3787,17 @@ Return true if all elements are true and false otherwise.
           "input_tensor_ranks",
           "Input tensors' ranks of autograd.Function.apply.",
           AttributeProto::INTS)
+      // Input bool scalars.
+      .Attr(
+          "input_bool_scalars",
+          "Python bool arguments.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_bool_scalar_positions",
+          "",
+          AttributeProto::INTS,
+          false)
       // Input int scalars.
       .Attr(
           "input_int_scalars",
@@ -3806,6 +3817,22 @@ Return true if all elements are true and false otherwise.
           false)
       .Attr(
           "input_float_scalar_positions",
+          "",
+          AttributeProto::INTS,
+          false)
+      // Input bool tuple.
+      .Attr(
+          "input_bool_tuples",
+          "Python bool-tuple arguments.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_bool_tuple_positions",
+          "",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_bool_tuple_begins",
           "",
           AttributeProto::INTS,
           false)
@@ -3966,7 +3993,10 @@ Return true if all elements are true and false otherwise.
       .Input(
           1,
           "inputs",
-          "The gradient inputs (as inputs of autograd.Function.backward).",
+          "The gradient inputs (as inputs of autograd.Function.backward)."
+          "Be noted: input name can be empty for cases its grad input is not needed by the autograd.Function.backward."
+          "In torch, if a forward tensor don't requres grad, then it is possible the corresponding grad "
+          "be all zero or None, depending on setting of ctx.set_materialize_grads.",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -4037,16 +4067,18 @@ Return true if all elements are true and false otherwise.
         const auto input_tensor_types_proto = ctx.getAttribute("input_tensor_types");
         // This is a required field.
         ORT_ENFORCE(input_tensor_types_proto, "PythonOpGrad's must have \"input_tensor_types\" attribute.");
-        // Check if the inferred input types match those described in the
-        // "input_tensor_types" attributes.
+        // Check if the inferred input types match those described in the "input_tensor_types" attributes.
         // Expected input schema: [ctx, grad_input_1, ..., grad_input_N]
         // Other variables are used to invoke autograd.Function.backward(ctx, grad_input1, ..., grad_input_N).
         // The "input_count" here means 1 + N.
         const auto input_count = input_tensor_types_proto->ints().size() + 1;
-        // The first input is a pointer which points to
-        // a Python object created by torch.autograd.Function.apply.
+        // The first input is a pointer which points to a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it in PythonOpGrad implementation.
         for (auto i = 1; i < input_count; ++i) {
+          if (!ctx.hasInput(i)) {
+            continue;
+          }
+
           const auto inferred_input_type = ctx.getInputType(i);
           ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "-th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
