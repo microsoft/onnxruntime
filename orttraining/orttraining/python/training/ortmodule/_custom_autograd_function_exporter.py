@@ -114,31 +114,23 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                     input_int_scalar_positions.append(i)
                     input_int_scalars.append(arg)
                 else:
-                    is_int_tuple = isinstance(arg, tuple) and len(arg) > 0 and all(isinstance(ele, int) for ele in arg)
-                    is_float_tuple = (
-                        isinstance(arg, tuple) and len(arg) > 0 and all(isinstance(ele, float) for ele in arg)
-                    )
+                    is_int_tuple = False
+                    is_float_tuple = False
+                    if isinstance(arg, tuple) and len(arg) > 0:
+                        is_int_tuple = all(isinstance(ele, int) for ele in arg)
+                        is_float_tuple = not is_int_tuple and all(isinstance(ele, float) for ele in arg)
+
                     # Only support tuple of int or float, for other types, handle it as a pointer.
-                    if isinstance(arg, tuple) and (is_int_tuple or is_float_tuple):
-                        assert len(arg) > 0, f"Empty tuple is not supported. {arg}"
-                        # A tuple of int or float.
-                        if is_int_tuple:
-                            # A tuple of ints.
-                            input_int_tuple_positions.append(i)
-                            input_int_tuple_begins.append(len(input_int_tuples))
-                            input_int_tuples.extend(list(arg))
-                        elif is_float_tuple:
-                            # A tuple of floats.
-                            input_float_tuple_positions.append(i)
-                            input_float_tuple_begins.append(len(input_float_tuples))
-                            input_float_tuples.extend(list(arg))
-                        else:
-                            raise wrap_exception(
-                                ORTModuleONNXModelException,
-                                Exception(
-                                    f"Unknown argument type found: {type(arg)} for node: {kwargs['module']}.{kwargs['name']}, {arg}"
-                                ),
-                            )
+                    if is_int_tuple:
+                        # A tuple of ints.
+                        input_int_tuple_positions.append(i)
+                        input_int_tuple_begins.append(len(input_int_tuples))
+                        input_int_tuples.extend(list(arg))
+                    elif is_float_tuple:
+                        # A tuple of floats.
+                        input_float_tuple_positions.append(i)
+                        input_float_tuple_begins.append(len(input_float_tuples))
+                        input_float_tuples.extend(list(arg))
                     else:
                         if name == "_InspectActivation" and isinstance(arg, str):
                             # _InspectActivation is a special case where the first argument is a string
