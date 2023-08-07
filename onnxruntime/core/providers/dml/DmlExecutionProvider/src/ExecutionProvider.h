@@ -5,7 +5,7 @@
 
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
-
+#include "core/providers/dml/dml_resource.h"
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
