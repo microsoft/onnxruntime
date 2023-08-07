@@ -1,5 +1,5 @@
 ---
-title: Python Operators
+title: Python Operator
 description: Instructions to create a custom operator using Python functions and ORT inference integration.
 parent: Extensions
 nav_order: 4
