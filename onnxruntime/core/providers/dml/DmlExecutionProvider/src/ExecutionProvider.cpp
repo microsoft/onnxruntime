@@ -961,13 +961,6 @@ namespace Dml
         assert(!m_closed);
         m_context->Flush();
     }
-    
-    void __stdcall ExecutionProviderImpl::FlushAndSync() const
-    {
-        Flush();
-        m_context->GetCurrentCompletionEvent().WaitForSignal();
-        m_context->ReleaseCompletedReferences();
-    }
 
     void ExecutionProviderImpl::ReleaseCompletedReferences()
     {
