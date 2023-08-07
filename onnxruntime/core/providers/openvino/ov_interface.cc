@@ -42,7 +42,7 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std
   }
 }
 
-#if defined(OPENVINO_2023_0)
+#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
 OVExeNetwork OVCore::LoadNetwork(const std::string& model, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
   ov::CompiledModel obj;
   try {
