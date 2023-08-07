@@ -335,7 +335,7 @@ def quantize_static(
                     Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
-                CalibMaxIntermediateOutputs = Optoinal[int] :
+                CalibMaxIntermediateOutputs = Optional[int] :
                     Default is None. If set to an integer, during calculation of the min-max range of the tensors
                     it will load at max value number of outputs before computing and merging the range. This will
                     produce the same result as all computing with None, but is more memory efficient.
