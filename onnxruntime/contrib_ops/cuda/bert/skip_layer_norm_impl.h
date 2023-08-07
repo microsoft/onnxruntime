@@ -20,7 +20,9 @@ void LaunchSkipLayerNormKernel(
     const T* bias,                  // Layer normalization beta tensor
     float epsilon,                  // Layer normalization epsilon
     int hidden_size,                // hidden size, it is the leading dimension (ld)
-    int row_count);                 // number of rows. That is total number of elements divided by hidden size.
+    int row_count,                  // number of rows. That is total number of elements divided by hidden size.
+    bool skip_broadcasted,          // determines if broadcasting should be implemented
+    int skip_size);                 // determines size of the skip tensor
 
 }  // namespace cuda
 }  // namespace contrib

@@ -44,6 +44,9 @@ RUN v="8.4.1-1+cuda11.6" &&\
 # Compile trtexec
 RUN cd /usr/src/tensorrt/samples/trtexec && make
 
+# Install Valgrind
+RUN apt-get install -y valgrind
+
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
