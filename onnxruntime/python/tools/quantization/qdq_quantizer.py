@@ -120,7 +120,7 @@ class QDQQuantizer(ONNXQuantizer):
             else extra_options["QDQOpTypePerChannelSupportToAxis"]
         )
 
-        self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else ""
+        self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else None
 
     def _is_tensor_quantizable(self, tensor_name):
         """

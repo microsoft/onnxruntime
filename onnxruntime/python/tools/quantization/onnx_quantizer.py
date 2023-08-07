@@ -83,7 +83,6 @@ class ONNXQuantizer:
         self.is_activation_symmetric = (
             False if "ActivationSymmetric" not in self.extra_options else self.extra_options["ActivationSymmetric"]
         )
-        self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else ""
 
         qtype_map = {
             QuantType.QInt8: onnx_proto.TensorProto.INT8,
@@ -609,7 +608,6 @@ class ONNXQuantizer:
                 [input_name, scale_name, zp_name],
                 [output_name],
                 ql_node_name,
-                domain=self.qdq_op_domain,
             )
         else:
             if self.static:
@@ -637,7 +635,6 @@ class ONNXQuantizer:
                     [input_name, scale_name, zp_name],
                     [output_name],
                     ql_node_name,
-                    domain=self.qdq_op_domain,
                 )
 
         self.quantized_value_map[input_name] = QuantizedValue(input_name, output_name, scale_name, zp_name, qType)
@@ -1052,7 +1049,7 @@ class ONNXQuantizer:
                     quantized_value.zp_name,
                 ]
                 dequantize_node = onnx.helper.make_node(
-                    "DequantizeLinear", dqlinear_inputs, [value_name], dqlinear_name, domain=self.qdq_op_domain,
+                    "DequantizeLinear", dqlinear_inputs, [value_name], dqlinear_name
                 )
                 return dequantize_node
             else:
