@@ -46,12 +46,12 @@ const calculateInputIndexImpl = (numberOfTensors: number): string => `
     return ${numberOfTensors}u;
   }`;
 
-const readBufferDataImpl = (inputs: readonly IndicesHelper[], _tensorRank: number) => {
+const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelper) => {
   const numberOfTensors = inputs.length;
+
   const codeLines: string[] = [];
   for (let i = 0; i < numberOfTensors; ++i) {
-    // const returnSnippet = `return input${i}[${inputs[i].indicesToOffset('indices', true)}];`;
-    const returnSnippet = `return ${inputs[i].getByIndices('indices')};`;
+    const returnSnippet = output.setByOffset('global_idx', inputs[i].getByIndices('indices'));
     if (numberOfTensors === 1) {
       codeLines.push(returnSnippet);
     } else if (i === 0) {
@@ -62,10 +62,7 @@ const readBufferDataImpl = (inputs: readonly IndicesHelper[], _tensorRank: numbe
       codeLines.push(`else if (inputIndex == ${i}) { ${returnSnippet} }`);
     }
   }
-  return `
-    fn readBufferData(inputIndex: u32, indices: ${inputs[0].type.indices}) -> ${inputs[0].type.value} {
-      ${codeLines.join('\n')}
-    }`;
+  return codeLines.join('\n');
 };
 
 const createConcatProgramInfo =
@@ -93,7 +90,6 @@ const createConcatProgramInfo =
       }
 
       const outputSize = ShapeUtil.size(outputShape);
-      const rank = outputShape.length;
 
       const sizeInConcatAxis = new Array<number>(inputs.length);
       const inputVars = new Array<IndicesHelper>(inputs.length);
@@ -109,7 +105,7 @@ const createConcatProgramInfo =
 
       const output = outputVariable('output', dataType, outputShape);
 
-      const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
+      const indicesAxis = output.indicesGet('indices', adjustedAxis);
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.declareVariables(...inputVars, output)}
 
@@ -118,7 +114,6 @@ const createConcatProgramInfo =
 
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
-  ${readBufferDataImpl(inputVars, rank)}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
@@ -130,7 +125,7 @@ const createConcatProgramInfo =
       ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1u];
     }
 
-    output[global_idx] = readBufferData(inputIndex, indices);
+    ${assignOutputData(inputVars, output)}
   }`;
       return {
         ...metadata,

@@ -131,7 +131,7 @@ export interface IndicesHelper {
    *
    * @param init - initial value.
    */
-  readonly indices: (...init: string[]) => string;
+  readonly indices: (...init: ReadonlyArray<number|string>) => string;
 
   /**
    * WGSL code of a statement for setting indices.
@@ -303,7 +303,8 @@ const createIndicesHelper =
 
       const indicesToOffset = (varIndices: string) => rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
 
-      const indices = (...init: string[]) => rank === 0 ? '0u' : `${type.indices}(${init.join(',')})`;
+      const indices = (...init: ReadonlyArray<number|string>) =>
+          rank === 0 ? '0u' : `${type.indices}(${init.map(normalizeDim).join(',')})`;
 
       const indicesGet = (varIndices: string, idx: number|string) => {
         if (rank < 2) {

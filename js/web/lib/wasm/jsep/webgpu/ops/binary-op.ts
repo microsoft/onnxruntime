@@ -69,9 +69,12 @@ const createBinaryOpProgramShader =
       let outputIndices = ${output.offsetToIndices('global_idx * 4u')};
       let offsetA = calcOffsetA(outputIndices);
       let offsetB = calcOffsetB(outputIndices);
-      outputData[global_idx] = ${expressionVector('aData[offsetA / 4u]', 'bData[offsetB / 4u]')};`;
+      ${
+              output.setByOffset(
+                  'global_idx', expressionVector(a.getByOffset('offsetA / 4u'), b.getByOffset('offsetB / 4u')))}`;
         } else {
-          assignment = `outputData[global_idx] = ${expressionVector('aData[global_idx]', 'bData[global_idx]')};`;
+          assignment = output.setByOffset(
+              'global_idx', expressionVector(a.getByOffset('global_idx'), b.getByOffset('global_idx')));
         }
       } else {
         if (!doBroadcast) {
