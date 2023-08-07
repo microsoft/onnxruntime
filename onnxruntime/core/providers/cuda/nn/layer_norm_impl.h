@@ -43,7 +43,9 @@ void HostApplyLayerNorm(
     const V* beta,
     const T* skip = nullptr,
     const T* bias = nullptr,
-    T* skip_input_bias_add_output = nullptr);
+    T* skip_input_bias_add_output = nullptr,
+    const bool skip_broadcasted = false,
+    const int skip_size = 0);
 
 }  // namespace cuda
 }  // namespace onnxruntime
