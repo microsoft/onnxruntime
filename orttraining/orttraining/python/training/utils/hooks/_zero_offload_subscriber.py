@@ -63,9 +63,10 @@ try:
     from deepspeed.utils import instrument_w_nvtx  # noqa: F401
 
     # Used to collect the hook functions's code object from DeepSpeed ZeRO offload, this should be initialized only once.
-    _zero_offload_one_time_initializer = _ZeROOffloadOneTimeInitializer()
-    _zero_offload_one_time_initializer.collect_code(DeepSpeedZeRoOffload._register_hooks_recursively)
-    _zero_offload_one_time_initializer.collect_code(DeepSpeedZeRoOffload.setup_zero_stage3_hooks)
+    if _zero_offload_one_time_initializer is None:
+        _zero_offload_one_time_initializer = _ZeROOffloadOneTimeInitializer()
+        _zero_offload_one_time_initializer.collect_code(DeepSpeedZeRoOffload._register_hooks_recursively)
+        _zero_offload_one_time_initializer.collect_code(DeepSpeedZeRoOffload.setup_zero_stage3_hooks)
 
     # This is the function to enable ORT ZeRO offload.
     def configure_ort_compatible_zero_stage3():
