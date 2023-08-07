@@ -90,6 +90,7 @@ module.exports = function(config) {
     hostname,
     listenAddress,
     customLaunchers: {
+      // the following flags are used to make sure Edge on CI agents to initialize WebGPU correctly.
       EdgeWebGpuTest: {base: 'Edge', flags: ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de']},
       ChromeTest: {base: 'Chrome', flags: ['--enable-features=SharedArrayBuffer']},
       ChromeTestHeadless: {base: 'ChromeHeadless', flags: ['--enable-features=SharedArrayBuffer']},
