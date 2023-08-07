@@ -1,9 +1,9 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 import unittest
-
-import numpy as np
-from helper import get_name
-
 import onnxruntime as ort
+
 
 class TestAzureEP(unittest.TestCase):
 
