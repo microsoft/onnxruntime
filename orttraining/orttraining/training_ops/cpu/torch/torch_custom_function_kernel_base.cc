@@ -27,7 +27,7 @@ std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
 }
 
 void PythonOpBase::Init(const OpKernelInfo& info) {
-  ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
+  ORT_THROW_IF_ERROR(info.GetAttr("func_name", &name_));
   ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
 
   is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
@@ -234,7 +234,7 @@ void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValu
 }
 
 void PythonOpGradBase::Init(const OpKernelInfo& info) {
-  ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
+  ORT_THROW_IF_ERROR(info.GetAttr("func_name", &name_));
   ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
   ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
   ORT_THROW_IF_ERROR(info.GetAttr("output_convention", &output_convention_));
