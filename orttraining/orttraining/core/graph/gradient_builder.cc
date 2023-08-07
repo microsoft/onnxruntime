@@ -2004,5 +2004,26 @@ IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
           NodeDef("Mul", {GO(0), IA("Neg_Square_O0")}, {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetLeakyReluGradient) {
+  // y = alpha * x if x < 0 else x
+  // dy/dx = max(sign(x), 0) - alpha * min(sign(x), 0)
+  // dL/dx = dL/dy * dy/dx = dL/dy * (max(sign(x), 0) - alpha * min(sign(x), 0))
+  NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
+  ArgDef zero = zero_constant_node.output_args.front();
+
+  NodeDef alpha_constant_node = ConstantScalarNode(SrcNodeAttributes().at("alpha").f(),
+                                                   Name("AlphaConstant"), IElemType(0));
+  ArgDef alpha = alpha_constant_node.output_args.front();
+
+  return {zero_constant_node,
+          alpha_constant_node,
+          NodeDef("Sign", {I(0)}, {IA("Sign_I0")}),
+          NodeDef("Max", {zero, IA("Sign_I0")}, {IA("Max_Sign_I0")}),
+          NodeDef("Min", {zero, IA("Sign_I0")}, {IA("Min_Sign_I0")}),
+          NodeDef("Mul", {alpha, IA("Min_Sign_I0")}, {IA("Alpha_Min_Sign_I0")}),
+          NodeDef("Sub", {IA("Max_Sign_I0"), IA("Alpha_Min_Sign_I0")}, {IA("LeakyRelu_Grad")}),
+          NodeDef("Mul", {GO(0), IA("LeakyRelu_Grad")}, {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime
