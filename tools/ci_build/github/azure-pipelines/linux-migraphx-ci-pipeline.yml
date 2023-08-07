@@ -9,7 +9,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 5.5
+    value: 5.6
 
 jobs:
 - job: Linux_Build
@@ -31,10 +31,15 @@ jobs:
     clean: true
     submodules: recursive
 
+
+  - script: cp $(Build.SourcesDirectory)/cmake/deps.txt $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/
+    displayName: Copy deps.txt
+
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
@@ -131,6 +136,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2

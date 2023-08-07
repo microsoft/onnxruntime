@@ -3,14 +3,15 @@ ARG ROCM_VERSION=5.6
 FROM rocm/dev-ubuntu-22.04:${ROCM_VERSION}-complete
 
 RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y libprotobuf\* protobuf-compiler\* && \
-    rm -f /usr/local/bin/protoc && apt-get install -y locales unzip && apt-get clean -y
+    rm -f /usr/local/bin/protoc && apt-get install -y locales unzip wget git && apt-get clean -y
 RUN locale-gen en_US.UTF-8
 RUN update-locale LANG=en_US.UTF-8
 ENV LC_ALL C.UTF-8
 ENV LANG C.UTF-8
 
-RUN apt-get update && apt-get install  -y cifs-utils wget git && \
-    apt-get clean -y
+
+ARG ROCM_VERSION
+
 
 WORKDIR /stage
 
@@ -38,7 +39,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
 # Create rocm-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/rocm-ci
 ENV CONDA_DEFAULT_ENV rocm-ci
-RUN conda create -y -p $CONDA_ENVIRONMENT_PATH python=3.8
+RUN conda create -y -n $CONDA_DEFAULT_ENV python=3.8
 ENV PATH $CONDA_ENVIRONMENT_PATH/bin:${PATH}
 
 # Enable rocm-ci environment
@@ -70,6 +71,7 @@ RUN git clone https://github.com/ROCmSoftwarePlatform/cupy && cd cupy && \
     git submodule update --init && \
     pip install -e . --no-cache-dir -vvvv
 
+##### Install transformers to run tests
 # rocm-ci branch contains instrumentation needed for loss curves and perf
 RUN git clone https://github.com/microsoft/huggingface-transformers.git &&\
     cd huggingface-transformers &&\
@@ -77,6 +79,7 @@ RUN git clone https://github.com/microsoft/huggingface-transformers.git &&\
     pip install -e .
 
 RUN  pip install \
+     flatbuffers==2.0 \
      numpy==1.24.1 \
      onnx \
      cerberus \
@@ -94,6 +97,8 @@ RUN  pip install \
      pytorch_lightning==1.6.0 \
      pytest-xdist \
      pytest-rerunfailures
+
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/:$LD_LIBRARY_PATH
 
 ENV ORTMODULE_ONNX_OPSET_VERSION=15
 

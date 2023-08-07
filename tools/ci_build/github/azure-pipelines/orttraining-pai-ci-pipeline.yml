@@ -131,7 +131,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) ROCM_VERSION=$(RocmVersion)"
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test
 
   - task: Bash@3
