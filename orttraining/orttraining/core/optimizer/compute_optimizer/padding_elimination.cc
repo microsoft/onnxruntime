@@ -75,11 +75,12 @@ NodeArg* InsertExpandForNodeInput(Graph& graph,
                                   NodeArg* first_two_dims_arg,
                                   const logging::Logger& logger) {
   auto input_shape = node.InputDefs()[1 - in_index]->Shape();
+  ORT_ENFORCE(input_shape->dim_size() >= 2);
   NodeArg* expand_shape_arg = nullptr;
-  if (input_shape->dim_size() <= 2) {
+  if (input_shape->dim_size() == 2) {
     expand_shape_arg = first_two_dims_arg;
   } else {
-    std::vector<int64_t> other_indices(input_shape->dim_size() - 2, 1);
+    std::vector<int64_t> other_indices(static_cast<int64_t>(input_shape->dim_size()) - 2, 1);
     ONNX_NAMESPACE::TensorProto other_indices_const_tensor;
     other_indices_const_tensor.set_name(graph.GenerateNodeArgName("other_shape"));
     other_indices_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
@@ -128,8 +129,7 @@ NodeArg* InsertExpandForNodeInput(Graph& graph,
       "",
       logger);
   new_expand_node->SetExecutionProviderType(node.GetExecutionProviderType());
-  auto expand_out_arg = new_expand_node->MutableOutputDefs()[0];
-  return expand_out_arg;
+  return new_expand_node->MutableOutputDefs()[0];
 }
 
 // Insert Reshape + ShrunkenGather to flatten the in_index-th input of node.
@@ -283,12 +283,23 @@ void IterateSubgraphFromNode(Graph& graph,
         graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Mul", {7, 13, 14})) {
       ORT_ENFORCE(subgraph.find(cur->MutableInputDefs()[0]) != subgraph.end() ||
                   subgraph.find(cur->MutableInputDefs()[1]) != subgraph.end());
-      if (cur->MutableInputDefs()[0]->Shape() && cur->MutableInputDefs()[1]->Shape()) {
+      if (cur->InputDefs()[0]->Shape() && cur->InputDefs()[1]->Shape()) {
+        if ((subgraph.find(cur->MutableInputDefs()[0]) == subgraph.end() &&
+             cur->InputDefs()[0]->Shape()->dim_size() > cur->InputDefs()[1]->Shape()->dim_size()) ||
+            (subgraph.find(cur->MutableInputDefs()[1]) == subgraph.end() &&
+             cur->InputDefs()[1]->Shape()->dim_size() > cur->InputDefs()[0]->Shape()->dim_size())) {
+          // If the shape of one of the inputs is not in the subgraph, and it has more dimensions,
+          // this case is not supported now.
+          LOG_DEBUG_INFO(logger, "PaddingElimination::Input shapes of node:" + cur->Name() + " are not compatible." +
+                                     " arg not in subgraph has more dimensions.");
+          candidate_outputs.insert(cur);
+          continue;
+        }
         subgraph.insert(cur->MutableOutputDefs()[0]);
         PushAllOutputNode(graph, to_visit, cur, visited);
         candidate_inputs.insert(cur);
       } else {
-        LOG_DEBUG_INFO(logger, "PaddingElimination::Input shapes of node:" + cur->Name() + "are not compatible.");
+        LOG_DEBUG_INFO(logger, "PaddingElimination::Input shapes of node:" + cur->Name() + " are not compatible.");
         candidate_outputs.insert(cur);
         continue;
       }
@@ -383,7 +394,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   std::unordered_set<Node*> candidate_outputs;
   int64_t handled_input_count = 0;
   int64_t handled_output_count = 0;
-  int64_t expanded_shape = 0;
+  int64_t expanded_input_count = 0;
 
   // Find the valid embedding node
   for (auto node_index : node_topology_list) {
@@ -430,25 +441,26 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
     return Status::OK();
   }
 
+  auto input_ids_shape = input_ids_arg->Shape();
+  // For now, we only support all the dims of input_ids_shape besides the first two has dim_value.
+  for (int k = 2; k < input_ids_shape->dim_size(); k++) {
+    ORT_ENFORCE(input_ids_shape->dim(k).has_dim_value());
+  }
+
   IterateSubgraphFromNode(graph, embedding_node, subgraph, candidate_inputs, candidate_outputs, logger);
 
   // Add Reshape + Sub + NonZero + Squeeze to get the not padding index to be gathered
   InlinedVector<NodeArg*> reshape_input_args;
+  reshape_input_args.reserve(2);
   reshape_input_args.push_back(input_ids_arg);
-  std::vector<int64_t> new_input_ids_shape;
+  InlinedVector<int64_t> new_input_ids_shape;
+  new_input_ids_shape.reserve(static_cast<int64_t>(input_ids_shape->dim_size()) - 1);
   new_input_ids_shape.push_back(-1);  // Flatten the two leading dims
-  auto input_ids_shape = input_ids_arg->Shape();
   for (int k = 2; k < input_ids_shape->dim_size(); k++) {
-    ORT_ENFORCE(input_ids_shape->dim(k).has_dim_value());
     new_input_ids_shape.push_back(input_ids_shape->dim(k).dim_value());
   }
-  ONNX_NAMESPACE::TensorProto new_shape_const_tensor;
-  new_shape_const_tensor.set_name(graph.GenerateNodeArgName("flattened_shape"));
-  new_shape_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  new_shape_const_tensor.add_dims(new_input_ids_shape.size());
-  new_shape_const_tensor.set_raw_data(new_input_ids_shape.data(), new_input_ids_shape.size() * sizeof(int64_t));
-  NodeArg* new_input_ids_shape_arg = &graph_utils::AddInitializer(graph, new_shape_const_tensor);
-  reshape_input_args.push_back(new_input_ids_shape_arg);
+  reshape_input_args.push_back(
+      CreateInitializerFromVector(graph, {static_cast<int64_t>(new_input_ids_shape.size())}, new_input_ids_shape, "flattened_shape"));
 
   InlinedVector<NodeArg*> reshape_output_args;
   reshape_output_args.push_back(
@@ -467,15 +479,11 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   NodeArg* squeeze_out_arg = InsertNodesForValidIndices(
       graph, reshape_output_args[0], embedding_node->MutableInputDefs()[2], embedding_node->GetExecutionProviderType());
 
-  std::vector<int64_t> first_two_indices{0, 1};
-  ONNX_NAMESPACE::TensorProto first_two_indices_const_tensor;
-  first_two_indices_const_tensor.set_name(graph.GenerateNodeArgName("first_two_indices"));
-  first_two_indices_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  first_two_indices_const_tensor.add_dims(first_two_indices.size());
-  first_two_indices_const_tensor.set_raw_data(first_two_indices.data(), first_two_indices.size() * sizeof(int64_t));
-  NodeArg* first_two_indices_arg = &graph_utils::AddInitializer(graph, first_two_indices_const_tensor);
   // Get the first two dims value of input_ids which is [batch_size, seq_len]
-  NodeArg* first_two_dims_arg = GetDimsValue(graph, input_ids_arg, first_two_indices_arg, *embedding_node);
+  NodeArg* first_two_dims_arg = GetDimsValue(graph,
+                                             input_ids_arg,
+                                             CreateInitializerFromVector(graph, {2}, {0, 1}, "first_two_indices"),
+                                             *embedding_node);
 
   // Add flatten pattern to each input node of the subgraph
   // to flattern the shape of [batch_size, seqlen, ...] to [valid_token_count, ...]
@@ -485,15 +493,17 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   for (auto& node : candidate_inputs) {
     for (uint32_t i = 0; i < node->InputDefs().size(); ++i) {
       if (subgraph.find(node->MutableInputDefs()[i]) == subgraph.end()) {
-        // The type of node is one of 'Add', 'BiasGelu', 'Sub', 'Mul',
+        // The type of node is one of Elementwise ops.
         // The input size must be 2 and there must be more than one input in the subgraph.
         ORT_ENFORCE(node->InputDefs().size() == 2);
-        // One input in the subgraph must has shape of [batch_size, seq_len, ...]
+        // Because candidate_inputs are nodes iterated from embedding node, each of them must have at least one arg in
+        // the subgraph and the i-th input of this node is not in the subgraph, so the other input must be in the subgraph
+        // and has shape of [batch_size, seq_len, ...]
         NodeArg* arg_in_subgraph = node->MutableInputDefs()[1 - i];
         NodeArg* arg_not_in_subgraph = node->MutableInputDefs()[i];
         // There are three possibilities for the shape of arg_not_in_subgraph:
         //  1. The size of arg_not_in_subgraph->Shape is smaller than arg_in_subgraph->Shape by 2,
-        //     which means the shape of arg_not_in_subgraph has no [batch_size, seq_len] in begining,
+        //     which means the shape of arg_not_in_subgraph has no [batch_size, seq_len] in beginning,
         //     and do not need to add flatten pattern to it.
         //  2. The arg_not_in_subgraph->Shape.size == arg_in_subgraph->Shape.size or arg_in_subgraph->Shape.size - 1,
         //     and the first two dims do not equal [batch_size, seq_len].
@@ -509,7 +519,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
                    arg_in_subgraph->Shape()->dim(0) != arg_not_in_subgraph->Shape()->dim(0) ||
                    arg_in_subgraph->Shape()->dim(1) != arg_not_in_subgraph->Shape()->dim(1)) {
           InsertExpandForNodeInput(graph, *node, i, first_two_dims_arg, logger);
-          expanded_shape++;
+          expanded_input_count++;
         }
         InsertFlattenPatternForInput(graph, *node, i, squeeze_out_arg, logger);
         handled_input_count++;
@@ -540,9 +550,11 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
       edge->SetShape(flattened_shape);
     }
   }
-  LOGS(logger, INFO) << "PaddingElimination::Total handled input node count:  " << handled_input_count
-                     << " output node count: " << handled_output_count
-                     << " expanded shape count: " << expanded_shape;
+  if (handled_input_count > 0 || handled_output_count > 0) {
+    LOGS(logger, INFO) << "PaddingElimination::Total handled input node count:  " << handled_input_count
+                       << " output node count: " << handled_output_count
+                       << " expanded shape count: " << expanded_input_count;
+  }
   return Status::OK();
 }
 
