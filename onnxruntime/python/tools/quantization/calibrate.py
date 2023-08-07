@@ -163,6 +163,7 @@ class MinMaxCalibrater(CalibraterBase):
         use_external_data_format=False,
         moving_average=False,
         averaging_constant=0.01,
+        max_intermediate_outputs=None,
     ):
         """
         :param model_path: ONNX model to calibrate. It is a model path
@@ -172,6 +173,7 @@ class MinMaxCalibrater(CalibraterBase):
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
         :param moving_average: compute the moving average of the minimum and maximum values instead of the global minimum and maximum.
         :param averaging_constant: constant smoothing factor to use when computing the moving average.
+        :param max_intermediate_outputs: maximum number of intermediate outputs before an intermediate range is computed.
         """
         super().__init__(
             model_path,
@@ -188,6 +190,7 @@ class MinMaxCalibrater(CalibraterBase):
         if moving_average and (averaging_constant < 0 or averaging_constant > 1):
             raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
         self.averaging_constant = averaging_constant
+        self.max_intermediate_outputs = max_intermediate_outputs
 
     def augment_graph(self):
         """
@@ -241,8 +244,11 @@ class MinMaxCalibrater(CalibraterBase):
             if not inputs:
                 break
             self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+            if len(self.intermediate_outputs) == self.max_intermediate_outputs:
+                self.compute_range()
+                self.clear_collected_data()
 
-        if len(self.intermediate_outputs) == 0:
+        if len(self.intermediate_outputs) == 0 and self.calibrate_tensors_range is None:
             raise ValueError("No data is collected.")
 
         self.compute_range()
@@ -845,6 +851,7 @@ def create_calibrator(
         symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
         moving_average = False if "moving_average" not in extra_options else extra_options["moving_average"]
         averaging_constant = 0.01 if "averaging_constant" not in extra_options else extra_options["averaging_constant"]
+        max_intermediate_outputs = None if "max_intermediate_outputs" not in extra_options else extra_options["max_intermediate_outputs"]
         calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
@@ -853,6 +860,7 @@ def create_calibrator(
             symmetric=symmetric,
             moving_average=moving_average,
             averaging_constant=averaging_constant,
+            max_intermediate_outputs=max_intermediate_outputs,
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
