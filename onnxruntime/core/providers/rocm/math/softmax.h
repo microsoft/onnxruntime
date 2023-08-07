@@ -13,7 +13,7 @@ using tunable::RocmTuningContext;
 
 template <typename T, typename TOut, bool IsLogSoftmax>
 Status SoftMaxComputeHelper(
-    hipStream_t stream,
+    Stream* stream,
     const T* input,
     const TensorShape& shape,
     TOut* Y,
@@ -21,12 +21,12 @@ Status SoftMaxComputeHelper(
     RocmTuningContext* tuning_ctx = nullptr);
 
 template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
-Status dispatch_warpwise_softmax_forward(hipStream_t stream, OutputT* dst, const InputT* src, int softmax_elements,
+Status dispatch_warpwise_softmax_forward(Stream* stream, OutputT* dst, const InputT* src, int softmax_elements,
                                          int softmax_elements_stride, int batch_count,
                                          RocmTuningContext* tuning_ctx = nullptr);
 
 template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
-Status dispatch_blockwise_softmax_forward(hipStream_t stream, OutputT* output, const InputT* input, int softmax_elements,
+Status dispatch_blockwise_softmax_forward(Stream* stream, OutputT* output, const InputT* input, int softmax_elements,
                                           int input_stride, int output_stride, int batch_count,
                                           RocmTuningContext* tuning_ctx = nullptr);
 

@@ -136,19 +136,17 @@ const TuningResultsValidator& RocmTuningContext::GetTuningResultsValidator() con
 }
 
 IAllocatorUniquePtr<void> RocmTuningContext::GetScratchBuffer(
-    size_t num_bytes, hipStream_t stream, OrtMemType mem_type) const {
+    size_t num_bytes, Stream* stream, OrtMemType mem_type) const {
   if (num_bytes == 0) {
     return nullptr;
   }
 
-  OrtDevice dev = ep_->GetOrtDeviceByMemType(mem_type);
-  auto it = allocators_->find(dev);
+  auto it = allocators_->find(ep_->GetOrtDeviceByMemType(mem_type));
   if (it == allocators_->end()) {
     return nullptr;
   }
 
-  Stream ort_stream{stream, dev};
-  return IAllocator::MakeUniquePtr<void>(it->second, num_bytes, false, &ort_stream, WaitRocmNotificationOnDevice);
+  return IAllocator::MakeUniquePtr<void>(it->second, num_bytes, false, stream, WaitRocmNotificationOnDevice);
 }
 
 }  // namespace tunable

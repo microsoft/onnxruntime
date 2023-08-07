@@ -50,7 +50,7 @@ class IKernelExplorer {
     for (int i = 0; i < 5; i++) {
       Run();
     }
-    Timer timer{Stream()};
+    Timer timer{static_cast<Timer::TimerBase::NativeStreamT>(Stream()->GetHandle())};
     timer.Start();
     for (int i = 0; i < repeats_; i++) {
       Run();
@@ -74,6 +74,7 @@ class IKernelExplorer {
       if (nullptr != tuning_ctx) {
         tuning_ctx->RegisterAllocatorsView(&this->allocators_);
       }
+      stream_ = std::make_unique<onnxruntime::Stream>(nullptr, this->ep_->GetOrtDeviceByMemType(OrtMemTypeDefault));
     });
     return ep_.get();
   }
@@ -82,13 +83,14 @@ class IKernelExplorer {
     return static_cast<TuningContextT*>(GetEp()->GetTuningContext());
   }
 
-  StreamT Stream() { return stream_; }
+  onnxruntime::Stream* Stream() { return stream_.get(); }
 
  private:
   std::once_flag ep_create_once_;
   std::unique_ptr<ExecutionProvider> ep_{};
   std::map<OrtDevice, AllocatorPtr> allocators_;
-  StreamT stream_{0};
+  OrtDevice dev_;
+  std::unique_ptr<onnxruntime::Stream> stream_;
   int repeats_{100};
 };
 

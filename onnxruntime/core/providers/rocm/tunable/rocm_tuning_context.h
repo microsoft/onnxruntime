@@ -50,7 +50,7 @@ class RocmTuningContext : public ITuningContext {
   const TuningResultsValidator& GetTuningResultsValidator() const override;
 
   IAllocatorUniquePtr<void> GetScratchBuffer(
-      size_t bytes, hipStream_t stream, OrtMemType mem_type = OrtMemTypeDefault) const;
+      size_t bytes, Stream* stream, OrtMemType mem_type = OrtMemTypeDefault) const;
 
  private:
   TunableOpInfo* info_;  // non-owning handle
