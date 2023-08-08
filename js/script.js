@@ -641,7 +641,7 @@ var ot_validCombos = {
     "ot_ios,ot_on_device,ot_c,ot_X64,ot_CPU":
         "Add 'onnxruntime-training-c' or 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
-    "ot_ios,ot_on_device,ot_plusplus,ot_X64,ot_CPU":
+    "ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
         "Add 'onnxruntime-training-c' or 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
 };
