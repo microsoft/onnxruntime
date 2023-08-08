@@ -129,7 +129,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 #if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
   if (global_context_.device_type.find("VPUX") != std::string::npos) {
     std::pair<std::string, ov::Any> device_property;
-    device_property = std::make_pair("VPUX_COMPILER_TYPE", "MLIR");
+    device_property = std::make_pair("VPU_COMPILER_TYPE", "MLIR");
     device_config.emplace(ov::device::properties("VPUX", device_property));
   }
 #endif

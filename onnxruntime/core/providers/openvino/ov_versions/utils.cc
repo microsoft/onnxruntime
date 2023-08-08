@@ -47,6 +47,7 @@ bool IsOpSupportedOnlyInModel(std::string name) {
       "Concat",
       "ConstantOfShape",
       "Dropout",
+      "Einsum",
       "Expand",
       "EyeLike",
       "Exp",
