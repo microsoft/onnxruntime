@@ -421,7 +421,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
-} else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -502,7 +502,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ov_options[key] = value;
         }
-      }else {
+      } else {
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling|true'] \n");
       }
     }

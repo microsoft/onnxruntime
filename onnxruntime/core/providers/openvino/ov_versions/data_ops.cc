@@ -1028,10 +1028,10 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
         // Zero dimension check
         for (const auto& dim : shape->dim()) {
           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
-            if (((device_id_.find("CPU") != std::string::npos) || (device_id_.find("GPU") != std::string::npos) ) &&
-                                                                  ((optype == "Expand") || (optype == "Equal") ||
-                                                                  (optype == "Slice") || (optype == "Concat") ||
-                                                                  (optype == "Shape"))) {
+            if (((device_id_.find("CPU") != std::string::npos) || (device_id_.find("GPU") != std::string::npos)) &&
+                ((optype == "Expand") || (optype == "Equal") ||
+                 (optype == "Slice") || (optype == "Concat") ||
+                 (optype == "Shape"))) {
               return;
             }
             has_unsupported_dimension = true;

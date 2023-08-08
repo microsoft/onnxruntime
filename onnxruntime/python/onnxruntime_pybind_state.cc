@@ -789,19 +789,19 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           continue;
         } else if (option.first == "enable_vpu_fast_compile") {
           if (!(option.second == "True" || option.second == "true" ||
-              option.second == "False" || option.second == "false")) {
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_opencl_throttling") {
           if (!(option.second == "True" || option.second == "true" ||
-              option.second == "False" || option.second == "false")) {
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_dynamic_shapes") {
           if (!(option.second == "True" || option.second == "true" ||
-              option.second == "False" || option.second == "false")) {
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
@@ -826,7 +826,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
     if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
-                                                                                &OV_provider_options_map)) {
+            &OV_provider_options_map)) {
       auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();

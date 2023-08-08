@@ -6,14 +6,13 @@
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
-
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device_type, bool enable_vpu_fast_compile,
                           const char* device_id, size_t num_of_threads,
                           const char* cache_dir, int num_streams, void* context,
                           bool enable_opencl_throttling, bool enable_dynamic_shapes)
-      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), num_streams_(num_streams),context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
+      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), num_streams_(num_streams), context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     device_id_ = (device_id == nullptr) ? "" : device_id;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
@@ -79,47 +78,47 @@ struct OpenVINO_Provider : Provider {
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
       device_type = provider_options_map.at("device_type").c_str();
     }
-    if (provider_options_map.find("device_id") != provider_options_map.end()){
+    if (provider_options_map.find("device_id") != provider_options_map.end()) {
       device_id = provider_options_map.at("device_id").c_str();
     }
-    if(provider_options_map.find("cache_dir") != provider_options_map.end()){
+    if (provider_options_map.find("cache_dir") != provider_options_map.end()) {
       cache_dir = provider_options_map.at("cache_dir").c_str();
     }
-    if(provider_options_map.find("context") != provider_options_map.end()){
-      context = (void*) provider_options_map.at("context").c_str();
+    if (provider_options_map.find("context") != provider_options_map.end()) {
+      context = (void*)provider_options_map.at("context").c_str();
     }
 
-    if(provider_options_map.find("num_of_threads") != provider_options_map.end()){
+    if (provider_options_map.find("num_of_threads") != provider_options_map.end()) {
       num_of_threads = std::stoi(provider_options_map.at("num_of_threads"));
     }
 
-    if(provider_options_map.find("num_streams") != provider_options_map.end()){
+    if (provider_options_map.find("num_streams") != provider_options_map.end()) {
       num_streams = std::stoi(provider_options_map.at("num_streams"));
     }
-    std::string bool_flag="";
-    if(provider_options_map.find("enable_vpu_fast_compile") != provider_options_map.end()){
+    std::string bool_flag = "";
+    if (provider_options_map.find("enable_vpu_fast_compile") != provider_options_map.end()) {
       bool_flag = provider_options_map.at("enable_vpu_fast_compile");
-      if(bool_flag=="true" || bool_flag=="True")
+      if (bool_flag == "true" || bool_flag == "True")
         enable_vpu_fast_compile = true;
-      else if(bool_flag=="false" || bool_flag=="False")
+      else if (bool_flag == "false" || bool_flag == "False")
         enable_vpu_fast_compile = false;
-      bool_flag="";
+      bool_flag = "";
     }
 
-    if(provider_options_map.find("enable_opencl_throttling") != provider_options_map.end()){
+    if (provider_options_map.find("enable_opencl_throttling") != provider_options_map.end()) {
       bool_flag = provider_options_map.at("enable_opencl_throttling");
-      if(bool_flag=="true" || bool_flag=="True")
+      if (bool_flag == "true" || bool_flag == "True")
         enable_opencl_throttling = true;
-      else if(bool_flag=="false" || bool_flag=="False")
+      else if (bool_flag == "false" || bool_flag == "False")
         enable_opencl_throttling = false;
-      bool_flag="";
+      bool_flag = "";
     }
 
-    if(provider_options_map.find("enable_dynamic_shapes") != provider_options_map.end()){
+    if (provider_options_map.find("enable_dynamic_shapes") != provider_options_map.end()) {
       bool_flag = provider_options_map.at("enable_dynamic_shapes");
-      if(bool_flag=="true" || bool_flag=="True")
+      if (bool_flag == "true" || bool_flag == "True")
         enable_dynamic_shapes = true;
-      else if(bool_flag=="false" || bool_flag=="False")
+      else if (bool_flag == "false" || bool_flag == "False")
         enable_dynamic_shapes = false;
     }
     return std::make_shared<OpenVINOProviderFactory>(device_type,

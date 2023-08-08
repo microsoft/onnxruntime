@@ -8,7 +8,6 @@
 #include "core/providers/providers.h"
 #include "core/framework/provider_options.h"
 
-
 struct OrtOpenVINOProviderOptions;
 
 namespace onnxruntime {

@@ -37,10 +37,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
-
   // Enable streams; default=1 unless ovverriden by user config
   EnableStreams();
-
 
 #ifndef NDEBUG
   if (IsDebugEnabled()) {
@@ -68,7 +66,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
 #else
 #if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
-        if (global_context_.enable_dynamic_shapes == false && dev_prec!="CPU_FP16") {
+      if (!subgraph_context_.has_dynamic_input_shape && dev_prec != "CPU_FP16") {
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, device_config, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
@@ -104,25 +102,25 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, nireq));
 }
 
-  bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>> & const_outputs_map) {
-    if (const_outputs_map.size() == subgraph_context_.output_names.size())
-      subgraph_context_.is_constant = true;
-    if (subgraph_context_.is_constant) {
-      LOGS_DEFAULT(INFO) << log_tag << "The subgraph is a const. Directly moving to Infer stage.";
-      return true;
-    }
-    return false;
+bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
+  if (const_outputs_map.size() == subgraph_context_.output_names.size())
+    subgraph_context_.is_constant = true;
+  if (subgraph_context_.is_constant) {
+    LOGS_DEFAULT(INFO) << log_tag << "The subgraph is a const. Directly moving to Infer stage.";
+    return true;
   }
+  return false;
+}
 
-  void BasicBackend::PopulateConfigValue(ov::AnyMap & device_config) {
-    device_config = {};
-    // Set inference precision based on device precision for OV backend
-    if (global_context_.precision_str.find("FP16")!= std::string::npos && global_context_.device_type == "GPU"){
-      device_config.emplace(ov::hint::inference_precision("f16"));
-    }
-    if (global_context_.precision_str.find("FP32")!= std::string::npos){
-      device_config.emplace(ov::hint::inference_precision("f32"));
-    }
+void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
+  device_config = {};
+  // Set inference precision based on device precision for OV backend
+  if (global_context_.precision_str.find("FP16") != std::string::npos && global_context_.device_type == "GPU") {
+    device_config.emplace(ov::hint::inference_precision("f16"));
+  }
+  if (global_context_.precision_str.find("FP32") != std::string::npos) {
+    device_config.emplace(ov::hint::inference_precision("f32"));
+  }
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     device_config.emplace(ov::enable_profiling(true));
@@ -167,24 +165,22 @@ void BasicBackend::EnableStreams() {
   global_context_.ie_core.SetStreams(global_context_.device_type, global_context_.num_streams);
 }
 
-
-  // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
-  // an Infer Request indexed by infer_req_idx
-  void BasicBackend::StartAsyncInference(Ort::KernelContext & context, OVInferRequestPtr infer_request) {
-    try {
-      auto graph_input_info = exe_network_.Get().inputs();
-      int input_idx = 0;
-      for (auto input_info_iter = graph_input_info.begin();
-           input_info_iter != graph_input_info.end(); ++input_info_iter) {
-        auto input_names = input_info_iter->get_names();
-        std::string onnx_input_name;
-        std::string input_name;
-        // use names retrieved from original ONNX model to assign the right onnx input name for the graph
-        for (auto it = subgraph_context_.input_names.begin(); it != subgraph_context_.input_names.end(); ++it) {
-          if (it->second == input_idx) {
-            onnx_input_name = it->first;
-            break;
-          }
+// Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
+// an Infer Request indexed by infer_req_idx
+void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
+  try {
+    auto graph_input_info = exe_network_.Get().inputs();
+    int input_idx = 0;
+    for (auto input_info_iter = graph_input_info.begin();
+         input_info_iter != graph_input_info.end(); ++input_info_iter) {
+      auto input_names = input_info_iter->get_names();
+      std::string onnx_input_name;
+      std::string input_name;
+      // use names retrieved from original ONNX model to assign the right onnx input name for the graph
+      for (auto it = subgraph_context_.input_names.begin(); it != subgraph_context_.input_names.end(); ++it) {
+        if (it->second == input_idx) {
+          onnx_input_name = it->first;
+          break;
         }
       }
       // using the input name retrieved from ONNX original to match with the input names returned by OV tensors
@@ -195,7 +191,6 @@ void BasicBackend::EnableStreams() {
       }
       size_t batch_slice_idx = 0;
       if (subgraph_context_.has_dynamic_input_shape &&
-          global_context_.enable_dynamic_shapes == true &&
           (global_context_.device_type.find("CPU") != std::string::npos ||
            global_context_.device_type.find("GPU") != std::string::npos)) {
         auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
