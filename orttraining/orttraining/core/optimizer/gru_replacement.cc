@@ -12,8 +12,12 @@ Status GRUReplacement::Apply(Graph& graph, Node& gru_node, RewriteRuleEffect& ru
   const auto& gru_inputs = gru_node.MutableInputDefs();
   auto& gru_outputs = gru_node.MutableOutputDefs();
 
+  const auto* type_proto = gru_inputs.front()->TypeAsProto();
+  ORT_ENFORCE(type_proto && type_proto->has_tensor_type() && type_proto->tensor_type().has_elem_type(),
+              "Could not decipher the type of input to GRU node: ", gru_node.Name());
+
   ONNX_NAMESPACE::TypeProto gru_input_type;
-  gru_input_type.mutable_tensor_type()->set_elem_type(gru_inputs.front()->TypeAsProto()->tensor_type().elem_type());
+  gru_input_type.mutable_tensor_type()->set_elem_type(type_proto->tensor_type().elem_type());
 
   if (gru_outputs.empty() || !gru_outputs[0]->Exists()) {
     // Add all GRU cell optional outputs for computation even if not required to ensure all outputs are computed

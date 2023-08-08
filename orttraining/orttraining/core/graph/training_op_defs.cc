@@ -4702,7 +4702,7 @@ Return true if all elements are true and false otherwise.
       .Input(5, "Ht0", "Initial hidden state input to the GRU cell", "T", OpSchema::Optional)
       .Output(0, "HAll", "Hidden states over all sequence steps.", "T", OpSchema::Optional)
       .Output(1, "HFinal", "Final hidden state.", "T", OpSchema::Optional)
-      .Output(2, "zrh", "Intermediate gate computations for all sequence steps.", "T", OpSchema::Optional)
+      .Output(2, "ZRH", "Intermediate gate computations for all sequence steps.", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float)"},
@@ -4800,7 +4800,7 @@ Return true if all elements are true and false otherwise.
       .Input(4, "SL", "Input sequence length of the input sequence.", "TSize", OpSchema::Optional)
       .Input(5, "Ht0", "Initial hidden state input to the GRU cell", "T", OpSchema::Optional)
       .Input(6, "HAll", "Hidden states over all sequence steps output from GRUTraining.", "T", OpSchema::Optional)
-      .Input(7, "zrh", "Intermediate gate computations for all sequence steps output from GRUTraining.", "T", OpSchema::Optional)
+      .Input(7, "ZRH", "Intermediate gate computations for all sequence steps output from GRUTraining.", "T", OpSchema::Optional)
       .Input(8, "dHAll", "Gradient of loss with respect to the output Y of the GRU cell", "T", OpSchema::Optional)
       .Input(9, "dHFinal", "Gradient of loss with respect to the output Y_h of the GRU cell", "T", OpSchema::Optional)
       .Output(0, "dX", "Gradient of loss with respect to the input (to the GRU cell).", "T", OpSchema::Optional)
