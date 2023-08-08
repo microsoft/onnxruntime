@@ -514,10 +514,6 @@ void BaseTester::Run(SessionOptions so,
                      const Graph::ResolveOptions& options,
                      /*out*/ size_t* number_of_pre_packed_weights_counter,
                      /*out*/ size_t* number_of_shared_pre_packed_weights_counter) {
-
-  so.enable_cpu_mem_arena = false;
-  so.enable_mem_pattern = false;
-  so.enable_mem_reuse = false;
   if (execution_providers == nullptr) {
     ctx_.run_with_specified_eps = false;
     ctx_.execution_providers.clear();
