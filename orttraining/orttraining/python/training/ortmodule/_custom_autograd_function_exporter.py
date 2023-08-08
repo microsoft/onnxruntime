@@ -5,6 +5,7 @@
 
 import sys
 
+import onnx
 import torch
 import torch.utils.checkpoint
 from packaging import version
@@ -229,13 +230,16 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 _export = wrap_custom_export_function(_export_pt_1_10)
 
 
-def _post_process_after_export(exported_model, enable_custom_autograd_function):
+def _post_process_after_export(
+    exported_model: onnx.ModelProto, enable_custom_autograd_function: bool
+) -> onnx.ModelProto:
+    """Post process the exported model."""
     if enable_custom_autograd_function:
-        return _post_process_enabling_autograd_fallback(exported_model)
+        return _post_process_enabling_autograd_function(exported_model)
     return exported_model
 
 
-def _post_process_enabling_autograd_fallback(exported_model):
+def _post_process_enabling_autograd_function(exported_model: onnx.ModelProto) -> onnx.ModelProto:
     # Loop all PythonOp, append "_ctx" as the first output.
     index = 0
     for node in exported_model.graph.node:

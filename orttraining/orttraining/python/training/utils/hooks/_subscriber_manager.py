@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-
 from collections import abc
 from typing import Callable, List, Optional, Union
 
