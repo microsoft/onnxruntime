@@ -292,6 +292,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr UpdateROCMProviderOptions;
         public IntPtr GetROCMProviderOptionsAsString;
         public IntPtr ReleaseROCMProviderOptions;
+        public IntPtr CreateAndRegisterAllocatorV2;
+        public IntPtr RunAsync;
     }
 
     internal static class NativeMethods
@@ -510,6 +512,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtUpdateROCMProviderOptions = (DOrtUpdateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateROCMProviderOptions, typeof(DOrtUpdateROCMProviderOptions));
             OrtGetROCMProviderOptionsAsString = (DOrtGetROCMProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetROCMProviderOptionsAsString, typeof(DOrtGetROCMProviderOptionsAsString));
             OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
+            OrtCreateAndRegisterAllocatorV2 = (DCreateAndRegisterAllocatorV2)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocatorV2, typeof(DCreateAndRegisterAllocatorV2));
+            OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
         }
 
         internal class NativeLib
@@ -915,6 +919,32 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 out UIntPtr /*(ulong* out)*/ startTime);
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(ONNStatus*)*/ DCreateAndRegisterAllocatorV2(
+                                                IntPtr /* (OrtEnv*) */ environment,
+                                                IntPtr /*(char*)*/ provider_type,
+                                                IntPtr /*(OrtMemoryInfo*)*/ mem_info,
+                                                IntPtr /*(OrtArenaCfg*)*/ arena_cfg,
+                                                IntPtr /*(char**)*/ provider_options_keys,
+                                                IntPtr /*(char**)*/ provider_options_values,
+                                                UIntPtr /*(size_t)*/num_keys);
+        public static DCreateAndRegisterAllocatorV2 OrtCreateAndRegisterAllocatorV2;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(ONNStatus*)*/ DOrtRunAsync(
+                                IntPtr /*(OrtSession*)*/ session,
+                                IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
+                                IntPtr[] /*(char**)*/ inputNames,
+                                IntPtr[] /*(OrtValue*[])*/ inputValues,
+                                UIntPtr /*(size_t)*/ inputCount,
+                                IntPtr[] /*(char**)*/ outputNames,
+                                UIntPtr /*(size_t)*/ outputCount,
+                                IntPtr[] /*(OrtValue*[])*/ outputValues,
+                                IntPtr /*(void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status))*/ callback,  // callback function
+                                IntPtr /*(void*)*/ user_data
+                                );
+        public static DOrtRunAsync OrtRunAsync;
 
         #endregion InferenceSession API
 
