@@ -20,6 +20,10 @@ parameters:
   type: string
   default: 'NPM_packages'
 
+- name: RunWebGpuTests
+  type: boolean
+  default: false
+
 jobs:
 - job: build_onnxruntime_web
   pool: ${{ parameters.PoolName }}
@@ -152,20 +156,26 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test
+     npm test -- -e=edge -b=webgl,wasm,xnnpack
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests'
+    displayName: 'Run ort-web tests (wasm,webgl,xnnpack backend)'
+    condition: ne('${{ parameters.RunWebGpuTests }}', 'true')
   - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl
+     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (ALL backends)'
+    condition: ne('${{ parameters.RunWebGpuTests }}', 'false')
+  - script: |
+     npm test -- --webgl-texture-pack-mode -b=webgl -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm
+     npm test -- --wasm-enable-proxy -b=wasm -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
-      npm run test:e2e
+      npm run test:e2e -- --browser=Edge_default
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'E2E package consuming test'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
