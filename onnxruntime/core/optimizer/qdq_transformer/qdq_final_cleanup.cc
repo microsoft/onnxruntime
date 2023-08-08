@@ -28,7 +28,7 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   const auto match_first = node_sequence_type == NodeSequence::Q_DQ ? &QDQ::MatchQNode : &QDQ::MatchDQNode;
   const auto match_second = node_sequence_type == NodeSequence::Q_DQ ? &QDQ::MatchDQNode : &QDQ::MatchQNode;
 
-  if (!match_first(first_node) ||
+  if (!match_first(first_node, true) ||
       // not filtering on provider currently
       // !graph_utils::IsSupportedProvider(first_node, compatible_execution_providers) ||
       !optimizer_utils::CheckOutputEdges(graph, first_node, 1)) {
@@ -36,7 +36,7 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   }
 
   Node& second_node = *graph.GetNode(first_node.OutputNodesBegin()->Index());
-  if (!match_second(second_node)
+  if (!match_second(second_node, true)
       // not filtering on provider currently
       // || !graph_utils::IsSupportedProvider(second_node, compatible_execution_providers)
   ) {

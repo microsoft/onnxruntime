@@ -29,7 +29,8 @@ constexpr auto* kTransformerName = "EnsureUniqueDQForNodeUnit";
 //                    +-------> DQ' -> Y
 //
 // Note: <DQ_inputs> may be graph inputs/initializers or nodes.
-Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output_edge, Graph& graph) {
+Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output_edge, Graph& graph,
+                                const std::string& domain) {
   // DQ
   Node* original_dq_node_ptr = graph.GetNode(original_dq_output_edge.src_node);
   assert(original_dq_node_ptr != nullptr);
@@ -52,7 +53,9 @@ Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output
                                     QDQ::DQOpName,
                                     MakeString("Added by ", kTransformerName),
                                     dq_inputs,
-                                    {&new_dq_output_nodearg});
+                                    {&new_dq_output_nodearg},
+                                    nullptr,
+                                    domain);
 
   // set up edges
   // remove DQ -> Y
@@ -74,7 +77,7 @@ Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output
 }
 
 Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, bool& modified) {
-  if (!QDQ::MatchDQNode(node)) {
+  if (!QDQ::MatchDQNode(node, true)) {
     return Status::OK();
   }
 
@@ -134,7 +137,7 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
   }
 
   for (; edge_to_process != dq_output_edges.end(); ++edge_to_process) {
-    ORT_RETURN_IF_ERROR(DuplicateDQForOutputEdge(*edge_to_process, graph));
+    ORT_RETURN_IF_ERROR(DuplicateDQForOutputEdge(*edge_to_process, graph, dq_node.Domain()));
     modified = true;
   }
 

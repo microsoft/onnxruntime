@@ -89,6 +89,50 @@ constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
 constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode};
 constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOps};
 
+// TODO: SHare with onnx_transpose_...
+static inline bool NormalizeAndValidateAxis(int64_t& axis, size_t rank) {
+  int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
+  if (axis < 0) {
+    axis += rank_int;
+  }
+
+  return axis >= 0 && axis < rank_int;
+}
+
+static bool HandleContribQuantizeDequantizeScale(const api::GraphRef& graph, const std::vector<int64_t>& perm,
+                                                 api::NodeRef& node, int64_t opset) {
+  ORT_UNUSED_PARAMETER(opset);
+  size_t rank = perm.size();
+
+  // Update axis if scale/zero_point are non-scalar
+  auto inputs = node.Inputs();
+
+  auto inp_shape = graph.GetValueInfo(inputs[1])->Shape();
+  bool scalar_params = inp_shape.has_value() && inp_shape->size() == 0;
+
+  if (!scalar_params) {
+    int64_t axis = node.GetAttributeIntDefault("axis", 1);
+    if (!NormalizeAndValidateAxis(axis, rank)) {
+      return false;
+    }
+    node.SetAttributeInt("axis", perm[gsl::narrow_cast<size_t>(axis)]);
+  }
+  return true;
+}
+
+static bool HandleContribQuantizeDequantizeLinear(HandlerArgs& args) {
+  if (!HandleContribQuantizeDequantizeScale(args.ctx.graph, args.perm, args.node, args.ctx.opset)) {
+    return false;
+  }
+
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, args.perm);
+
+  return true;
+}
+
+constexpr HandlerInfo contrib_quantize_dequantize_linear_handler = {&FirstInput, &HandleContribQuantizeDequantizeLinear};
+
 // ORT contrib ops and special cased ONNX ops where we have EP specific handling
 const HandlerMap& OrtExtendedHandlers() {
   static const HandlerMap extended_handler_map = []() {
@@ -102,6 +146,8 @@ const HandlerMap& OrtExtendedHandlers() {
         {"com.microsoft.QLinearMul", q_linear_binary_op_handler},
         {"com.microsoft.QLinearReduceMean", reduce_op_handler},
         {"com.microsoft.QLinearSigmoid", node_1_inp_handler},
+        {"com.microsoft.QuantizeLinear", contrib_quantize_dequantize_linear_handler},
+        {"com.microsoft.DequantizeLinear", contrib_quantize_dequantize_linear_handler},
     };
 
     return map;

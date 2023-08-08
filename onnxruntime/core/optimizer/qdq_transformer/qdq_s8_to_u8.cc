@@ -92,17 +92,17 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     // recognize Q + DQ pair
-    if (QDQ::MatchQNode(node) &&
+    if (QDQ::MatchQNode(node, true) &&
         optimizer_utils::CheckOutputEdges(graph, node, 1)) {
       Node& dq_node = *graph.GetNode(node.OutputNodesBegin()->Index());
-      if (QDQ::MatchDQNode(dq_node)) {
+      if (QDQ::MatchDQNode(dq_node, true)) {
         modified |= QDQ_S8_to_U8(graph, node, dq_node);
       }
       continue;
     }
 
     // recognize lone DQ node
-    if (weights_to_u8_ && QDQ::MatchDQNode(node)) {
+    if (weights_to_u8_ && QDQ::MatchDQNode(node, true)) {
       modified |= QDQ::ConvertS8WeightToU8(graph, node, 0, 2);
       continue;
     }

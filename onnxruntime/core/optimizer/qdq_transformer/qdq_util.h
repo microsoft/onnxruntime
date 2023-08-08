@@ -53,10 +53,10 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 // Check Q node op type, version, and domain.
-bool MatchQNode(const Node& node);
+bool MatchQNode(const Node& node, bool allow_contrib_op);
 
 // Check DQ node op type, version, and domain.
-bool MatchDQNode(const Node& node);
+bool MatchDQNode(const Node& node, bool allow_contrib_op);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }  // namespace QDQ
 }  // namespace onnxruntime
