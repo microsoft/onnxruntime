@@ -174,12 +174,12 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
         const int32_t type = type_proto->tensor_type().elem_type();
         if (GRAD_ALLOWED_TYPES.find(type) == GRAD_ALLOWED_TYPES.end()) {
           LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
-                                 << " of node: " << n->Name() << "because element type is: " << type;
+                                 << " of node: " << n->Name() << " because element type is: " << type;
           continue;
         }
       } else {
         LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
-                               << " of node: " << n->Name() << "because it is not a Tensor type";
+                               << " of node: " << n->Name() << " because it is not a Tensor type";
         continue;
       }
 
