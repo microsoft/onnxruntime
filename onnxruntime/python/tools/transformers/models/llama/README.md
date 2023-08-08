@@ -57,7 +57,7 @@ Note: In the below examples, `PyTorch` refers to running in PyTorch without `tor
 
 ### Variants
 
-1) PyTorch (without `torch.compile`), FP32, Hugging Face `generate()` and `decode()` API
+1. PyTorch (without `torch.compile`), FP32, Hugging Face `generate()` and `decode()` API
 ```
 python3 benchmark.py \
     --benchmark-type hf-pt \
@@ -70,7 +70,7 @@ python3 benchmark.py \
     --auth
 ```
 
-2) PyTorch 2.0 (with `torch.compile`), FP16, Hugging Face `generate()` and `decode()` API
+2. PyTorch 2.0 (with `torch.compile`), FP16, Hugging Face `generate()` and `decode()` API
 ```
 python3 benchmark.py \
     --benchmark-type hf-pt2 \
@@ -83,7 +83,7 @@ python3 benchmark.py \
     --auth
 ```
 
-3) ONNX Runtime, FP32
+3. ONNX Runtime, FP32
 ```
 python3 benchmark.py \
     --benchmark-type ort \
@@ -96,7 +96,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-4) ONNX Runtime, FP16
+4. ONNX Runtime, FP16
 ```
 python3 benchmark.py \
     --benchmark-type ort \
