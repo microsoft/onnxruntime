@@ -49,26 +49,26 @@ const createGatherProgramInfo =
       // That assumption is safe as it's not possible to allocate >2gb buffer for input tensor
       // Input data will be treated as u32 or two u32 for 8-byte tensors
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const N: u32 = ${N};
-  const elementSize: u32 = ${elementSize};
-  const indicesElementSize: u32 = ${indicesElementSize};
+  const N: i32 = ${N};
+  const elementSize: i32 = ${elementSize};
+  const indicesElementSize: i32 = ${indicesElementSize};
 
   @group(0) @binding(0) var<storage, read> input : array<u32>;
   @group(0) @binding(1) var<storage, read> inputIndices : array<i32>;
   @group(0) @binding(2) var<storage, read_write> output: array<u32>;
 
   ${shaderHelper.mainStart()}
-    let batch: u32 = global_idx / N;
-    let i: u32 = global_idx % N;
+    let batch: i32 = global_idx / N;
+    let i: i32 = global_idx % N;
 
-    let srcOffsetBatch: u32 = batch * ${dataBatchElements};
-    let dstOffsetBatch: u32 = batch * ${gatheredBatchElements};
+    let srcOffsetBatch: i32 = batch * ${dataBatchElements};
+    let dstOffsetBatch: i32 = batch * ${gatheredBatchElements};
     var idx = inputIndices[i * indicesElementSize];
     if (idx < 0) {
         idx = idx + ${axisDimLimit};
     }
 
-    let srcOffset = srcOffsetBatch + u32(idx) * ${blockSize};
+    let srcOffset = srcOffsetBatch + idx * ${blockSize};
     let dstOffset = dstOffsetBatch + i * ${blockSize};
     if (srcOffset >= ${inputSize}) {
         return;
@@ -76,7 +76,7 @@ const createGatherProgramInfo =
     if (dstOffset >= ${outputSize}) {
         return;
     }
-    for (var j: u32 = 0; j < ${blockSize}; j++) {
+    for (var j: i32 = 0; j < ${blockSize}; j++) {
         output[dstOffset + j] = input[srcOffset + j];
     }
   }`;

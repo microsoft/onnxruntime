@@ -41,22 +41,22 @@ const createBinaryOpProgramShader =
           const strides = ShapeUtil.computeStrides(dims);
           const offsets: string[] = [];
           for (let i = dims.length - 1; i >= 0; i--) {
-            const idx = dimsOutput.length === 0 ? '0u' :
+            const idx = dimsOutput.length === 0 ? '0' :
                 (dimsOutput.length === 1)       ? 'outputIndices' :
                                                   `outputIndices[${i + dimsOutput.length - dims.length}]`;
-            offsets.push(`${strides[i]}u * (${idx} % ${dims[i]}u)`);
+            offsets.push(`${strides[i]} * (${idx} % ${dims[i]})`);
           }
-          return offsets.length > 0 ? offsets.join('+') : '0u';
+          return offsets.length > 0 ? offsets.join('+') : '0';
         };
 
         broadcastImpl = `
   ${output.impl('offsetToIndices')}
 
-  fn calcOffsetA(outputIndices: ${output.type.indices}) -> u32 {
+  fn calcOffsetA(outputIndices: ${output.type.indices}) -> i32 {
     return ${calcOffsetImpl(dimsA)};
   }
 
-  fn calcOffsetB(outputIndices: ${output.type.indices}) -> u32 {
+  fn calcOffsetB(outputIndices: ${output.type.indices}) -> i32 {
     return ${calcOffsetImpl(dimsB)};
   }
   `;
@@ -66,12 +66,12 @@ const createBinaryOpProgramShader =
       if (vectorize) {
         if (doBroadcast) {
           assignment = `
-      let outputIndices = ${output.offsetToIndices('global_idx * 4u')};
+      let outputIndices = ${output.offsetToIndices('global_idx * 4')};
       let offsetA = calcOffsetA(outputIndices);
       let offsetB = calcOffsetB(outputIndices);
       ${
               output.setByOffset(
-                  'global_idx', expressionVector(a.getByOffset('offsetA / 4u'), b.getByOffset('offsetB / 4u')))}`;
+                  'global_idx', expressionVector(a.getByOffset('offsetA / 4'), b.getByOffset('offsetB / 4')))}`;
         } else {
           assignment = output.setByOffset(
               'global_idx', expressionVector(a.getByOffset('global_idx'), b.getByOffset('global_idx')));
@@ -84,13 +84,13 @@ const createBinaryOpProgramShader =
           const expressionA = `aData[indexA${x}][componentA${x}]`;
           const expressionB = `bData[indexB${x}][componentB${x}]`;
           return `
-      let outputIndices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
+      let outputIndices${x} = ${output.offsetToIndices(`global_idx * 4 + ${x}`)};
       let offsetA${x} = calcOffsetA(outputIndices${x});
       let offsetB${x} = calcOffsetB(outputIndices${x});
-      let indexA${x} = offsetA${x} / 4u;
-      let indexB${x} = offsetB${x} / 4u;
-      let componentA${x} = offsetA${x} % 4u;
-      let componentB${x} = offsetB${x} % 4u;
+      let indexA${x} = offsetA${x} / 4;
+      let indexB${x} = offsetB${x} / 4;
+      let componentA${x} = offsetA${x} % 4;
+      let componentB${x} = offsetB${x} % 4;
       outputData[global_idx][${x}] = ${expressionScalar(expressionA, expressionB)};`;
         };
 

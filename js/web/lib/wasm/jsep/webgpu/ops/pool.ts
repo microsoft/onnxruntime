@@ -80,7 +80,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     let codeHEnd = '';
     if (pwStart + pwEnd !== 0) {
       codeW = `
-              for (var i: u32 = 0u; i < ${kw}u; i++) {
+              for (var i: i32 = 0; i < ${kw}; i++) {
                 xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
                 if (xIndices[${dimIdxW}] < 0 || xIndices[${dimIdxW}] >= ${inputDims[dimIdxW]}) {
                   pad++;
@@ -91,7 +91,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
               }`;
     } else {
       codeW = `
-              for (var i: u32 = 0u; i < ${kw}u; i++) {
+              for (var i: i32 = 0; i < ${kw}; i++) {
                 xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
                 let x_val = x[${x.indicesToOffset('xIndices')}];
                 ${op1}
@@ -107,7 +107,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
       const dimH = inputDims[dimIdxH];
       if (phStart + phEnd !== 0) {
         codeH = `
-                for (var j: u32 = 0u; j < ${kh}u; j++) {
+                for (var j: i32 = 0; j < ${kh}; j++) {
                   xIndices[${dimIdxH}] = indices[${dimIdxH}] * ${sh} - ${phStart} + j;
                   if (xIndices[${dimIdxH}] < 0 || xIndices[${dimIdxH}] >= ${dimH}) {
                     pad+= ${kw};
@@ -116,7 +116,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
               `;
       } else {
         codeH = `
-                for (var j: u32 = 0u; j < ${kh}u; j++) {
+                for (var j: i32 = 0; j < ${kh}; j++) {
                   xIndices[${dimIdxH}] = indices[${dimIdxH}] * ${sh} - ${phStart} + j;
                 `;
       }

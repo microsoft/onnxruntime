@@ -70,7 +70,7 @@ export const createReduceProgramInfo =
             l++;
           }
           // loop over the d-th axis
-          reduceOps = `for(var j${k}: u32 = 0; j${k} < ${inputs[0].dims[k]}; j${k}++) {
+          reduceOps = `for(var j${k}: i32 = 0; j${k} < ${inputs[0].dims[k]}; j${k}++) {
                 ${ops[2].includes('lastIndex') ? `let lastIndex = j${k};` : ''}
                 ${input.indicesSet('inputIndices', k, `j${k}`)}
                 ${reduceOps}

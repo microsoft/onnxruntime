@@ -41,8 +41,8 @@ const createGroupedConvProgramInfo =
       }
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const strides: vec2<u32> = vec2(${attributes.strides[0]}u, ${attributes.strides[1]}u);
-  const pads: vec2<u32> = vec2(${attributes.pads[0]}u, ${attributes.pads[1]}u);
+  const strides: vec2<i32> = vec2(${attributes.strides[0]}, ${attributes.strides[1]});
+  const pads: vec2<i32> = vec2(${attributes.pads[0]}, ${attributes.pads[1]});
 
   ${shaderHelper.declareVariables(...inputVars, output)}
 
@@ -55,25 +55,25 @@ const createGroupedConvProgramInfo =
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
     let outputIndices = ${output.offsetToIndices('global_idx')};
-    let batch: u32 = outputIndices[0];
-    let output_channel: u32 = outputIndices[${isChannelLast ? 3 : 1}];
-    let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
+    let batch: i32 = outputIndices[0];
+    let output_channel: i32 = outputIndices[${isChannelLast ? 3 : 1}];
+    let xRCCorner: vec2<i32> = vec2<i32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
           isChannelLast ? 2 : 3}]) * strides - pads;
-    let group_id: u32 = output_channel / ${outputChannelsPerGroup}u;
+    let group_id: i32 = output_channel / ${outputChannelsPerGroup};
 
     var value: ${output.type.value} = ${output.type.value}(0);
-    for (var wInChannel: u32 = 0u; wInChannel < ${wShape[1]}u; wInChannel++) {
-      let input_channel = group_id * ${wShape[1]}u + wInChannel;
-      for (var wHeight: u32 = 0u; wHeight < ${wShape[2]}u; wHeight++) {
-        let xHeight = xRCCorner.x + wHeight * ${attributes.dilations[0]}u;
+    for (var wInChannel: i32 = 0; wInChannel < ${wShape[1]}; wInChannel++) {
+      let input_channel = group_id * ${wShape[1]} + wInChannel;
+      for (var wHeight: i32 = 0; wHeight < ${wShape[2]}; wHeight++) {
+        let xHeight = xRCCorner.x + wHeight * ${attributes.dilations[0]};
 
-        if (xHeight < 0u || xHeight >= ${xShape[isChannelLast ? 1 : 2]}u) {
+        if (xHeight < 0 || xHeight >= ${xShape[isChannelLast ? 1 : 2]}) {
           continue;
         }
 
-        for (var wWidth: u32 = 0u; wWidth < ${wShape[3]}u; wWidth++) {
-          let xWidth = xRCCorner.y + wWidth * ${attributes.dilations[1]}u;
-          if (xWidth < 0u || xWidth >= ${xShape[isChannelLast ? 2 : 3]}u) {
+        for (var wWidth: i32 = 0; wWidth < ${wShape[3]}; wWidth++) {
+          let xWidth = xRCCorner.y + wWidth * ${attributes.dilations[1]};
+          if (xWidth < 0 || xWidth >= ${xShape[isChannelLast ? 2 : 3]}) {
             continue;
           }
 

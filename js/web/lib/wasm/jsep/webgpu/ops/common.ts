@@ -70,7 +70,7 @@ interface IndicesHelperTypes {
  * input or output.
  *
  * The following is a list of terminologies used in this class:
- * - `offset`: a uint32 value representing the offset of an element in the data buffer.
+ * - `offset`: an int32 value representing the offset of an element in the data buffer.
  * - `indices`: an abstraction of a multi-dimensional array's indices representing the data's index on each dimension.
  * - `value`: a value of a data element.
  *
@@ -111,18 +111,18 @@ export interface IndicesHelper {
   /**
    * WGSL code of a expression for getting indices from offset.
    *
-   * @param varOffset - a u32 expression representing the offset.
+   * @param varOffset - an `i32` expression representing the offset.
    *
    * @returns an `type.indices` expression
    */
   readonly offsetToIndices: (varOffset: string) => string;
 
   /**
-   * WGSL code of an `u32` expression for getting offset from indices.
+   * WGSL code of an `i32` expression for getting offset from indices.
    *
    * @param varIndices - a `type.indices` expression representing the indices.
    *
-   * @returns an `u32` expression
+   * @returns an `i32` expression
    */
   readonly indicesToOffset: (varIndices: string) => string;
 
@@ -137,27 +137,27 @@ export interface IndicesHelper {
    * WGSL code of a statement for setting indices.
    *
    * @param varIndices - a variable name for the indices.
-   * @param idx - the index of the indices to set. can be a number or a string (WGSL `u32` expression).
-   * @param value - the value to set. can be a number or a string (WGSL `u32` expression).
+   * @param idx - the index of the indices to set. can be a number or a string (WGSL `i32` expression).
+   * @param value - the value to set. can be a number or a string (WGSL `i32` expression).
    *
    * @returns a WGSL statement
    */
   readonly indicesSet: (varIndices: string, idx: number|string, value: number|string) => void;
 
   /**
-   * WGSL code of an `u32` expression for getting indices.
+   * WGSL code of an `i32` expression for getting indices.
    *
    * @param varIndices - a variable name for the indices.
-   * @param idx - the index of the indices to get. can be a number or a string (WGSL `u32` expression).
+   * @param idx - the index of the indices to get. can be a number or a string (WGSL `i32` expression).
    *
-   * @returns an `u32` expression
+   * @returns an `i32` expression
    */
   readonly indicesGet: (varIndices: string, idx: number|string) => string;
 
   /**
    * WGSL code for a statement for setting data at the given indices.
    *
-   * @param indicesAndValue - an array of numbers or strings (WGSL `u32` expression) representing the indices, followed
+   * @param indicesAndValue - an array of numbers or strings (WGSL `i32` expression) representing the indices, followed
    *     by the value to set. This array should have exactly `shape.length + 1` elements.
    */
   readonly set: (...indicesAndValue: ReadonlyArray<number|string>) => string;
@@ -173,7 +173,7 @@ export interface IndicesHelper {
   /**
    * WGSL code for a statement for setting data at the given offset.
    *
-   * @param offset - a number or a string (WGSL `u32` expression) representing the offset.
+   * @param offset - a number or a string (WGSL `i32` expression) representing the offset.
    * @param value - the value to set. should be a WGSL expression.
    */
   readonly setByOffset: (offset: number|string, value: string) => string;
@@ -181,7 +181,7 @@ export interface IndicesHelper {
   /**
    * WGSL code for an expression for getting data at the given indices.
    *
-   * @param indices - an array of numbers or strings (WGSL `u32` expression) representing the indices.
+   * @param indices - an array of numbers or strings (WGSL `i32` expression) representing the indices.
    */
   readonly get: (...indices: ReadonlyArray<number|string>) => string;
 
@@ -195,7 +195,7 @@ export interface IndicesHelper {
   /**
    * WGSL code for an expression for getting data at the given offset.
    *
-   * @param offset - a number or a string (WGSL `u32` expression) representing the offset.
+   * @param offset - a number or a string (WGSL `i32` expression) representing the offset.
    */
   readonly getByOffset: (offset: number|string) => string;
 
@@ -259,20 +259,18 @@ const createIndicesHelper =
     (name: string, tensorType: number, shape: readonly number[], isInput: boolean,
      components: 1|2|3|4): IndicesHelper => {
       const rank = shape.length;
-      const indicesType = rank < 2 ? 'u32' : rank <= 4 ? `vec${rank}<u32>` : `array<u32, ${rank}>`;
+      const indicesType = rank < 2 ? 'i32' : rank <= 4 ? `vec${rank}<i32>` : `array<i32, ${rank}>`;
       const mappedType = getWgslValueType(tensorType, components);
       const valueType = typeof mappedType === 'string' ? mappedType : mappedType[1];
       const storageType = typeof mappedType === 'string' ? mappedType : mappedType[0];
       const type = {indices: indicesType, value: valueType, storage: storageType, tensor: tensorType};
 
-      const normalizeDim = (dim: number|string): string => typeof dim === 'string' ? dim : `${dim}u`;
-
       const strides = ShapeUtil.computeStrides(shape);
       let o2iSnippet = '';
       for (let i = 0; i < rank - 1; i++) {
         o2iSnippet += `
-    let dim${i} = current / ${strides[i]}u;
-    let rest${i} = current % ${strides[i]}u;
+    let dim${i} = current / ${strides[i]};
+    let rest${i} = current % ${strides[i]};
     indices[${i}] = dim${i};
     current = rest${i};
     `;
@@ -280,7 +278,7 @@ const createIndicesHelper =
       o2iSnippet += `indices[${rank - 1}] = current;`;
 
       const offsetToIndicesImplementation = rank < 2 ? '' : `
-  fn o2i_${name}(offset: u32) -> ${type.indices} {
+  fn o2i_${name}(offset: i32) -> ${type.indices} {
     var indices: ${type.indices};
     var current = offset;
     ${o2iSnippet}
@@ -292,19 +290,19 @@ const createIndicesHelper =
       const offsets: string[] = [];
       if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
-          offsets.push(`${strides[i]}u * (indices[${i}])`);
+          offsets.push(`${strides[i]} * (indices[${i}])`);
         }
       }
 
       const indicesToOffsetImplementation = rank < 2 ? '' : `
-  fn i2o_${name}(indices: ${type.indices}) -> u32 {
+  fn i2o_${name}(indices: ${type.indices}) -> i32 {
     return ${offsets.join('+')};
   }`;
 
       const indicesToOffset = (varIndices: string) => rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
 
       const indices = (...init: ReadonlyArray<number|string>) =>
-          rank === 0 ? '0u' : `${type.indices}(${init.map(normalizeDim).join(',')})`;
+          rank === 0 ? '0' : `${type.indices}(${init.join(',')})`;
 
       const indicesGet = (varIndices: string, idx: number|string) => {
         if (rank < 2) {
@@ -359,11 +357,11 @@ const createIndicesHelper =
       })();
 
       const getImplementation = rank < 2 ? '' : (() => {
-        const params = shape.map((_, i) => `d${i}: u32`).join(', ');
+        const params = shape.map((_, i) => `d${i}: i32`).join(', ');
         const dims = shape.map((_, i) => `d${i}`).join(', ');
         return `
   fn get_${name}ByIndices(indices: ${type.indices}) -> ${valueType} {
-    return ${name}[i2o_${name}(indices)];
+    return ${getByOffset(`i2o_${name}(indices)`)};
   }
   fn get_${name}(${params}) -> ${valueType} {
     return get_${name}ByIndices(${indices(dims)});
@@ -376,15 +374,12 @@ const createIndicesHelper =
           throw new Error(`indices length must be ${rank}`);
         }
 
-        const normalizedIndices = indices.map(normalizeDim).join(',');
-        const funcName = `get_${name}`;
+        const normalizedIndices = indices.join(',');
 
-        if (rank === 0) {
-          return getByOffset('0u');
-        } else if (rank === 1) {
-          return getByOffset(normalizedIndices[0]);
+        if (rank < 2) {
+          return getByOffset(normalizedIndices[0] ?? 0);
         } else {
-          return `${funcName}(${normalizedIndices})`;
+          return `get_${name}(${normalizedIndices})`;
         }
       };
 
@@ -397,7 +392,7 @@ const createIndicesHelper =
       };
 
       const setImplementation = rank < 2 ? '' : (() => {
-        const params = shape.map((_, i) => `d${i}: u32`).join(', ');
+        const params = shape.map((_, i) => `d${i}: i32`).join(', ');
         const dims = shape.map((_, i) => `d${i}`).join(', ');
         return `
   fn set_${name}ByIndices(indices: ${type.indices}, value: ${valueType}) {
@@ -418,12 +413,10 @@ const createIndicesHelper =
           throw new Error('value must be string');
         }
 
-        const normalizedIndices = indicesAndValue.slice(0, rank).map(normalizeDim).join(',');
+        const normalizedIndices = indicesAndValue.slice(0, rank).join(',');
 
-        if (rank === 0) {
-          return setByOffset('0u', value);
-        } else if (rank === 1) {
-          return setByOffset(normalizedIndices[0], value);
+        if (rank < 2) {
+          return setByOffset(normalizedIndices[0] ?? 0, value);
         } else {
           return `set_${name}(${normalizedIndices}, ${value})`;
         }
@@ -474,7 +467,6 @@ const createIndicesHelper =
         get,
         getByOffset,
         getByIndices,
-        // isVec4,
         usage: isInput ? 'input' : 'output',
         name,
         shape
@@ -545,7 +537,7 @@ export interface ShaderHelper {
    *
    * @param size - the size of the data to guard against. can be a number or a string (WGSL `u32` expression).
    */
-  guardAgainstOutOfBoundsWorkgroupSizes(size: unknown): string;
+  guardAgainstOutOfBoundsWorkgroupSizes(size: number|string): string;
 
   /**
    * A helper function to generate the code snippet for declaring multiple inputs or outputs.
@@ -560,8 +552,7 @@ class ShaderHelperImpl implements ShaderHelper {
 
   guardAgainstOutOfBoundsWorkgroupSizes(size: number|string): string {
     // Guard against out-of-bounds work group sizes
-    const sizeInCode = typeof size === 'number' ? `${size}u` : size;
-    return `if (global_idx >= ${sizeInCode}) { return; }`;
+    return `if (global_idx >= ${size}) { return; }`;
   }
 
   mainStart(workgroupSize: number|[number, number, number] = WORKGROUP_SIZE) {
@@ -574,10 +565,10 @@ class ShaderHelperImpl implements ShaderHelper {
                                              `@builtin(local_invocation_index) local_index : u32,
     @builtin(workgroup_id) workgroup_id : vec3<u32>`;
     const globalIdxDefinition = is1DimensionDispatch ?
-        'let global_idx = global_id.x;' :
-        `let global_idx = (workgroup_id.z * ${this.normalizedDispatchGroup[0] * this.normalizedDispatchGroup[1]}u +
+        'let global_idx = i32(global_id.x);' :
+        `let global_idx = i32((workgroup_id.z * ${this.normalizedDispatchGroup[0] * this.normalizedDispatchGroup[1]}u +
           workgroup_id.y * ${this.normalizedDispatchGroup[0]}u + workgroup_id.x) * ${
-            workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_index;`;
+            workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_index);`;
 
     return `@compute @workgroup_size(${workgroupSizeX}, ${workgroupSizeY}, ${workgroupSizeZ})
   fn main(${paramList}) {
@@ -592,8 +583,7 @@ class ShaderHelperImpl implements ShaderHelper {
   }
 
   declareVariables(...variables: IndicesHelper[]): string {
-    let i = 0;
-    return variables.filter(v => ShapeUtil.size(v.shape) > 0).map(v => this.declareVariable(v, i++)).join('\n');
+    return variables.filter(v => ShapeUtil.size(v.shape) > 0).map((v, i) => this.declareVariable(v, i)).join('\n');
   }
 }
 

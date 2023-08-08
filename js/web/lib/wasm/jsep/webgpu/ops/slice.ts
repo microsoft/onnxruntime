@@ -76,20 +76,19 @@ const fixStartEndValues =
           }
         };
 
-const calculateInputIndicesImpl =
-    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[]):
-        string => `fn calculateInputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
+const calculateInputIndicesImpl = (input: IndicesHelper, output: IndicesHelper): string =>
+    `fn calculateInputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
           var inputIndices: ${input.type.indices};
-          var carry = 0u;
-          for (var i = ${inputShape.length}; i >= 0; i--) {
-            var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
+          var carry: i32 = 0;
+          for (var i = ${input.shape.length}; i >= 0; i--) {
+            var outputIndex = ${output.indicesGet('outputIndices', 'i')};
             var inputIndex = outputIndex * steps[i] + starts[i] + carry;
             carry = inputIndex / inputShape[i];
             inputIndex = inputIndex % inputShape[i];
             if (signs[i] < 0) {
-              inputIndex = inputShape[i] - inputIndex - 1u + starts[i];
+              inputIndex = inputShape[i] - inputIndex - 1 + starts[i];
             }
-            ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'} = inputIndex;
+            ${input.indicesSet('inputIndices', 'i', 'inputIndex')}
           }
           return inputIndices;
       }`;
@@ -148,14 +147,13 @@ const createSliceProgramInfo =
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${shaderHelper.declareVariables(input, output)}
         const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});
-        const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});
-        const ends = array<u32, ${ends.length}>(${ends.map(i => `${i}u`).join(',')});
-        const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});
-        const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
+        const starts = array<i32, ${starts.length}>(${starts.join(',')});
+        const steps = array<i32, ${steps.length}>(${steps.join(',')});
+        const inputShape = ${input.indices(...inputShape)};
 
         ${output.impl('offsetToIndices')}
         ${input.impl('indicesToOffset', 'get')}
-        ${calculateInputIndicesImpl(input, output, inputShape, outputShape)}
+        ${calculateInputIndicesImpl(input, output)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
           let outputIndices = ${output.offsetToIndices('global_idx')};

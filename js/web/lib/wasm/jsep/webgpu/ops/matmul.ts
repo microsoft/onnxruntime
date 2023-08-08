@@ -36,9 +36,9 @@ const createMatmulProgramInfo =
           const K = aShape[aShape.length - 1];
           const N = outputShape[outputShape.length - 1];
           const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const M: u32 = ${M}u;
-  const N: u32 = ${N}u;
-  const K: u32 = ${K}u;
+  const M: i32 = ${M};
+  const N: i32 = ${N};
+  const K: i32 = ${K};
 
   @group(0) @binding(0) var<storage, read> a : array<${dataType}>;
   @group(0) @binding(1) var<storage, read> b : array<${dataType}>;
@@ -58,7 +58,7 @@ const createMatmulProgramInfo =
     let offsetB = stack * (K * N);
 
     var value = ${dataType}(0);
-    for (var k: u32 = 0u; k<${K}u; k++) {
+    for (var k: i32 = 0; k<${K}; k++) {
       value += a[offsetA + m * K + k] * b[offsetB + k * N + n];
     }
     ${applyActivation}

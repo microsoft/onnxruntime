@@ -37,13 +37,13 @@ const createConcatProgramMetadata = (inputCount: number, cacheHint: string) =>
     ({name: 'Concat', inputTypes: Array(inputCount).fill(GpuDataType.default), cacheHint});
 
 const calculateInputIndexImpl = (numberOfTensors: number): string => `
-  fn calculateInputIndex(index: u32) -> u32 {
-    for (var i: u32 = 0u; i < ${numberOfTensors}u; i += 1u ) {
+  fn calculateInputIndex(index: i32) -> i32 {
+    for (var i: u32 = 0u; i < ${numberOfTensors}u; i++) {
       if (index < sizeInConcatAxis[i]) {
         return i;
       }
     }
-    return ${numberOfTensors}u;
+    return ${numberOfTensors};
   }`;
 
 const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelper) => {
@@ -55,7 +55,7 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
     if (numberOfTensors === 1) {
       codeLines.push(returnSnippet);
     } else if (i === 0) {
-      codeLines.push(`if (inputIndex == ${i}u) { ${returnSnippet} }`);
+      codeLines.push(`if (inputIndex == ${i}) { ${returnSnippet} }`);
     } else if (i === numberOfTensors - 1) {
       codeLines.push(`else { ${returnSnippet} }`);
     } else {
@@ -112,7 +112,7 @@ const createConcatProgramInfo =
   ${inputVars.map(i => i.impl('indicesToOffset', 'get')).join('\n')}
   ${output.impl('offsetToIndices')}
 
-  const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
+  const sizeInConcatAxis = array<i32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.join(',')});
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
 
   ${shaderHelper.mainStart()}
@@ -121,8 +121,8 @@ const createConcatProgramInfo =
     let indices = ${output.offsetToIndices('global_idx')};
 
     let inputIndex = calculateInputIndex(${indicesAxis});
-    if (inputIndex != 0u) {
-      ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1u];
+    if (inputIndex != 0) {
+      ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1];
     }
 
     ${assignOutputData(inputVars, output)}
