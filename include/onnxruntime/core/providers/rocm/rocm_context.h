@@ -5,13 +5,15 @@
 
 #include "rocm_resource.h"
 #include "core/providers/context.h"
+#include <hip/hip_runtime.h>
+#include <miopen/miopen.h>
+#include <rocblas/rocblas.h>
 
 namespace Ort {
 
 namespace Custom {
 
 struct RocmContext : public Context {
-
   hipStream_t hip_stream = {};
   miopenHandle_t miopen_handle = {};
   rocblas_handle rblas_handle = {};
@@ -43,6 +45,5 @@ struct RocmContext : public Context {
   }
 };
 
-}  // namespace Csutom
+}  // namespace Custom
 }  // namespace Ort
-

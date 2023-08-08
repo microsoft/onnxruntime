@@ -29,12 +29,6 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 #endif
 
 #ifdef USE_ROCM
-#include <hip/hip_runtime.h>
-//#include <hipfft/hipfft.h>
-//#include <hiprand/hiprand.h>
-//#include <hipsparse/hipsparse.h>
-#include <miopen/miopen.h>
-#include <rocblas/rocblas.h>
 #include "core/providers/rocm/rocm_context.h"
 void rocm_add(int64_t, float*, const float*, const float*, hipStream_t compute_stream);
 #endif
@@ -159,47 +153,6 @@ void KernelOneRocm(const Ort::Custom::RocmContext& rocm_ctx,
   rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), rocm_ctx.hip_stream);
 }
 #endif
-
-//struct KernelOneCpu {
-//  OrtStatusPtr ComputeV2(OrtKernelContext* context) {
-//    // Setup inputs
-//    Ort::KernelContext ctx(context);
-//    auto input_X = ctx.GetInput(0);
-//    auto input_Y = ctx.GetInput(1);
-//    const float* X = input_X.GetTensorData<float>();
-//    const float* Y = input_Y.GetTensorData<float>();
-//
-//    // Setup output
-//    auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
-//
-//    auto output = ctx.GetOutput(0, dimensions);
-//    float* out = output.GetTensorMutableData<float>();
-//
-//    const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
-//
-//    // Do computation
-//    for (size_t i = 0; i < size; i++) {
-//      out[i] = X[i] + Y[i];
-//    }
-//    return nullptr;
-//  }
-//};
-//
-//// legacy custom op registration with kernel creation and compute function that return an OrtStatusPtr
-//struct CustomOpOneCpu : Ort::CustomOpBase<CustomOpOneCpu, KernelOneCpu, true> {
-//  OrtStatusPtr CreateKernelV2(const OrtApi& /* api */, const OrtKernelInfo* /* info */, void** op_kernel) const {
-//    *op_kernel = reinterpret_cast<void*>(std::make_unique<KernelOneCpu>().release());
-//    return nullptr;
-//  };
-//
-//  const char* GetName() const { return "CustomOpOne"; };
-//
-//  size_t GetInputTypeCount() const { return 2; };
-//  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
-//
-//  size_t GetOutputTypeCount() const { return 1; };
-//  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
-//};
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
