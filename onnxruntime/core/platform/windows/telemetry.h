@@ -10,8 +10,8 @@
 namespace onnxruntime {
 
 /**
-  * derives and implments a Telemetry provider on Windows
-  */
+ * derives and implments a Telemetry provider on Windows
+ */
 class WindowsTelemetry : public Telemetry {
  public:
   // these are allowed to be created, WindowsEnv will create one

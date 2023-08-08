@@ -1,8 +1,8 @@
-import random
+import random  # noqa: F401
 
 import numpy as np
 import onnx
-from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 batch = 6
 hidden_size = 4
@@ -66,7 +66,7 @@ where_shape_initializer = numpy_helper.from_array(
 dropout_np_vals = np.asarray([0.1], dtype=np.float32).reshape(())
 dropout_initializer = numpy_helper.from_array(dropout_np_vals, "ratio")
 
-dropout_mode_np_vals = np.array([False], dtype=np.bool).reshape(())
+dropout_mode_np_vals = np.array([False], dtype=bool).reshape(())
 dropout_mode_initializer = numpy_helper.from_array(dropout_mode_np_vals, "mode")
 
 shape_initializer3 = numpy_helper.from_array(

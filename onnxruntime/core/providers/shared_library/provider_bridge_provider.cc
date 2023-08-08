@@ -9,6 +9,7 @@
 #include "core/providers/shared/common.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/random_generator.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
@@ -32,21 +33,34 @@
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
 #include "contrib_ops/cpu/transformers/greedy_search.h"
+#include "contrib_ops/cpu/transformers/sampling.h"
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 #include "orttraining/training_ops/cpu/controlflow/group.h"
-#include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
+#include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
+
+// Should remove the include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+// 2). this is needed by inference for other purpose.
+#include "contrib_ops/cpu/tensor/shrunken_gather.h"
+#endif
+
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/controlflow/yield.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 #include "orttraining/core/framework/torch/refcount_tracker.h"
 #endif
 
+#endif
+
+#ifdef ENABLE_TRITON
+#include "orttraining/training_ops/cpu/triton/triton_op.h"
 #endif
 
 #ifndef _Ret_notnull_
@@ -106,14 +120,6 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
 }
 
-void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
-  return g_host->AllocatorManager__InsertAllocator(this, allocator);
-}
-
-AllocatorPtr AllocatorManager::GetAllocator(OrtMemType mem_type, OrtDevice device) const {
-  return g_host->AllocatorManager__GetAllocator(this, mem_type, device);
-}
-
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() { return Provider_GetHost()->DataTypeImpl__GetType_Tensor(); }
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -149,6 +155,18 @@ template <>
 MLDataType DataTypeImpl::GetType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetType_BFloat16(); }
 template <>
 MLDataType DataTypeImpl::GetType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetType_MLFloat16(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+template <>
+MLDataType DataTypeImpl::GetType<Float8E4M3FN>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E4M3FN(); }
+template <>
+MLDataType DataTypeImpl::GetType<Float8E4M3FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E4M3FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E5M2(); }
+template <>
+MLDataType DataTypeImpl::GetType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E5M2FNUZ(); }
+#endif
+
 template <>
 MLDataType DataTypeImpl::GetType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetType_string(); }
 template <>
@@ -177,6 +195,17 @@ template <>
 MLDataType DataTypeImpl::GetTensorType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_BFloat16(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_MLFloat16(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float8E4M3FN>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E4M3FN(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float8E4M3FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E4M3FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E5M2(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E5M2FNUZ(); }
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 template <>
@@ -207,6 +236,18 @@ template <>
 MLDataType DataTypeImpl::GetSparseTensorType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_BFloat16(); }
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_MLFloat16(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E4M3FN>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E4M3FN(); }
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E4M3FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E4M3FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2(); }
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ(); }
+#endif
+
 #endif
 
 Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -279,14 +320,6 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
-AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  return g_host->IExecutionProvider__GetAllocator(this, id, mem_type);
-}
-
-void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  g_host->IExecutionProvider__InsertAllocator(this, allocator);
-}
-
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const IKernelLookup& kernel_lookup) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
@@ -300,21 +333,17 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
 }
 
-void IExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
-}
-
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateCUDAPinnedAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(name);
 }
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
-  return g_host->CreateGPUDataTransfer(stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
 }
 #endif
 
@@ -323,12 +352,12 @@ std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* n
   return g_host->CreateROCMAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateROCMPinnedAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) {
+  return g_host->CreateROCMPinnedAllocator(name);
 }
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
-  return g_host->CreateGPUDataTransfer(stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
 }
 #endif
 
@@ -430,10 +459,6 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace sparse_utils
-
-float MLFloat16::ToFloat() const {
-  return math::halfToFloat(val);
-}
 
 std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
 
@@ -553,19 +578,17 @@ Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
 }
 
 Status AttentionBase::CheckInputs(const TensorShape& input_shape,
-                                  const TensorShape* weights_shape,
+                                  const TensorShape& weights_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* extra_add_qk,
-                                  const Tensor* key,
-                                  const Tensor* value,
+                                  const Tensor* relative_position_bias,
                                   void* parameters,
-                                  const int max_threads_per_block) const {
+                                  const int max_threads_per_block,
+                                  const Tensor* past_seq_len) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
-                                               mask_index, past, extra_add_qk,
-                                               key, value, parameters,
-                                               max_threads_per_block);
+                                               mask_index, past, relative_position_bias, parameters,
+                                               max_threads_per_block, past_seq_len);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
                                   int sequence_length, int& past_sequence_length) const {
@@ -592,6 +615,16 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
   return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name,
                                                              subgraph_session_state);
 }
+
+void Sampling::Init(const OpKernelInfo& info) { g_host_cpu.Sampling__Init(this, info); }
+
+Status Sampling::Compute(OpKernelContext* ctx) const { return g_host_cpu.Sampling__Compute(this, ctx); }
+
+Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
+                                            const SessionState& subgraph_session_state) {
+  return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
+}
+
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN
@@ -621,21 +654,27 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 template <>
 Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
-#ifdef ENABLE_TRAINING
+void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) { return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn); }
+
+#ifdef ENABLE_TRAINING_OPS
 namespace contrib {
 Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__PassThrough__Compute(this, context); }
-Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }
-
 Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimizerBase::Prepare& prepare) const {
   return g_host_cpu.contrib__AdamWOptimizerBase__PrepareForCompute(this, ctx, reinterpret_cast<contrib__AdamWOptimizerBase__Prepare&>(prepare));
 }
-
-Status AdamWOptimizerBase::GenerateOutputs(OpKernelContext* ctx, size_t number_of_values,
-                                           const TensorSeq* values, TensorSeq* updated_values) const {
-  return g_host_cpu.contrib__AdamWOptimizerBase__GenerateOutputs(this, ctx, number_of_values, values, updated_values);
+Status SGDOptimizerV2Base::PrepareForCompute(OpKernelContext* ctx, SGDOptimizerV2Base::Prepare& prepare) const {
+  return g_host_cpu.contrib__SGDOptimizerV2Base__PrepareForCompute(this, ctx, reinterpret_cast<contrib__SGDOptimizerV2Base__Prepare&>(prepare));
 }
+void ShrunkenGatherCommon::CheckInput(const Tensor* input_tensor, const Tensor* indices_tensor, int64_t axis_in) const {
+  return g_host_cpu.contrib__ShrunkenGatherCommon__CheckInput(this, input_tensor, indices_tensor, axis_in);
+}
+}  // namespace contrib
+#endif
 
+#ifdef ENABLE_TRAINING
+namespace contrib {
+Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }
 }  // namespace contrib
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -669,9 +708,48 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 #endif
 
 #endif
+
+#ifdef ENABLE_TRITON
+namespace contrib {
+Status TritonOp::Compute(OpKernelContext* context) const {
+  return g_host_cpu.contrib__TritonOp__Compute(this, context);
+}
+}  // namespace contrib
+#endif
+
 #endif
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream,
+                                WaitNotificationFn wait_fn) {
+  return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn);
+}
+
+namespace cann {
+std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+  return g_host->cann__CreateModel(graph_viewer, logger);
+}
+}  // namespace cann
+#endif
+
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
+}
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
+  return g_host->LoadDynamicLibrary(library_name);
+}
+#endif
+
+#ifdef _WIN32
+std::string ToUTF8String(const std::wstring& s) {
+  return g_host->ToUTF8String(s);
+}
+
+std::wstring ToWideString(const std::string& s) {
+  return g_host->ToWideString(s);
+}
 #endif
 }  // namespace onnxruntime

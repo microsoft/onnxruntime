@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace test {
 
 using namespace ::testing;
-//TVM is not working with StackTrace now.
+// TVM is not working with StackTrace now.
 #if !defined(ORT_NO_EXCEPTIONS)
 TEST(StacktraceTests, BasicTests) {
   auto result = ::onnxruntime::GetStackTrace();

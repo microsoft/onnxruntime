@@ -255,14 +255,16 @@
 #else
 // Disabled in Release builds.
 #define VLOGS(logger, level) \
-  if constexpr (true) {} else LOGS_CATEGORY(logger, VERBOSE, "VLOG" #level)
+  if constexpr (true) {      \
+  } else                     \
+    LOGS_CATEGORY(logger, VERBOSE, "VLOG" #level)
 #define VLOGS_USER(logger, level) \
-  if constexpr (true) {} else LOGS_USER_CATEGORY(logger, VERBOSE, "VLOG" #level)
+  if constexpr (true) {           \
+  } else                          \
+    LOGS_USER_CATEGORY(logger, VERBOSE, "VLOG" #level)
 #define VLOGF(logger, level, format_str, ...)
 #define VLOGF_USER(logger, level, format_str, ...)
 #endif
-
-
 
 // Default logger variants
 #define VLOGS_DEFAULT(level) \

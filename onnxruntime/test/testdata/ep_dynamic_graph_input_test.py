@@ -6,7 +6,7 @@ from onnx import TensorProto, helper
 # the whole graph in NNAPI EP if it has a dynamic input to checking the dynamic shape at individual operator support check level,
 # We have a separated test here using a graph with dynamic input that becomes fixed after a Resize
 # Please see BaseOpBuilder::HasSupportedInputs in <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [
         helper.make_node(
             "Resize",

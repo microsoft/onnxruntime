@@ -3,6 +3,10 @@
 
 #include "model_builder.h"
 
+#include <unordered_map>
+
+#include "core/common/common.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
@@ -10,6 +14,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -23,11 +28,11 @@ using namespace android::nn::wrapper;
 namespace onnxruntime {
 namespace nnapi {
 
-ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
-    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer), shaper_{graph_viewer} {}
-
-int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
-  return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
+ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
+                           gsl::span<const DeviceWrapper> nnapi_target_devices,
+                           TargetDeviceOption target_device_option)
+    : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)}, shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices), target_device_option_(target_device_option), nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
+  nnapi_model_->nnapi_effective_feature_level_ = nnapi_effective_feature_level_;
 }
 
 // Scalar operand is copied into the model, no need to persist
@@ -36,7 +41,7 @@ int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
     OperandType operandType(Type::op_type, InlinedVector<uint32_t>{});            \
     ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operandType, index));                  \
     RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
-        nnapi_->ANeuralNetworksModel_setOperandValue(                             \
+        nnapi_.ANeuralNetworksModel_setOperandValue(                              \
             nnapi_model_->model_, index, &value, sizeof(value)),                  \
         "value: " + std::to_string(value));                                       \
     return Status::OK();                                                          \
@@ -53,8 +58,10 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
 }
 
 Status ModelBuilder::Prepare() {
-  RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
-  ORT_RETURN_IF_ERROR(GetTargetDevices());
+  RETURN_STATUS_ON_ERROR(nnapi_.ANeuralNetworksModel_create(&nnapi_model_->model_));
+  // Uncomment the following line to set the execution preference to
+  // [PREFER_SUSTAINED_SPEED, PREFER_FAST_SINGLE_ANSWER, PREFER_LOW_POWER]
+  // SetExecutePreference(android::nn::wrapper::ExecutePreference::PREFER_SUSTAINED_SPEED);
   PreprocessNodeUnits();
   GetAllQuantizedOpInputs();
   PreprocessInitializers();
@@ -75,45 +82,6 @@ static size_t GetPaddedByteSize(size_t size) {
   //   return size;
   // This does exactly the same as the logic above
   return (size + kDefaultByteAlignmentForNNAPI - 1) & ~(kDefaultByteAlignmentForNNAPI - 1);
-}
-
-Status ModelBuilder::GetTargetDevices() {
-  // GetTargetDevices is only supported on API 29+
-  if (GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_3)
-    return Status::OK();
-
-  if (target_device_option_ == TargetDeviceOption::ALL_DEVICES)
-    return Status::OK();
-
-  const std::string nnapi_cpu("nnapi-reference");
-  uint32_t num_devices = 0;
-  RETURN_STATUS_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworks_getDeviceCount(&num_devices), "Getting count of available devices");
-
-  for (uint32_t i = 0; i < num_devices; i++) {
-    ANeuralNetworksDevice* device = nullptr;
-    const char* device_name = nullptr;
-    int32_t device_type;
-    RETURN_STATUS_ON_ERROR_WITH_NOTE(
-        nnapi_->ANeuralNetworks_getDevice(i, &device), "Getting " + std::to_string(i) + "th device");
-
-    RETURN_STATUS_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
-                                     "Getting " + std::to_string(i) + "th device's name");
-
-    RETURN_STATUS_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getType(device, &device_type),
-                                     "Getting " + std::to_string(i) + "th device's type");
-
-    bool device_is_cpu = nnapi_cpu == device_name;
-    if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
-        (target_device_option_ == TargetDeviceOption::CPU_ONLY && device_is_cpu)) {
-      nnapi_target_devices_.push_back(device);
-      const auto device_detail = MakeString("[Name: [", device_name, "], Type [", device_type, "]], ");
-      nnapi_target_devices_detail_ += device_detail;
-      LOGS_DEFAULT(VERBOSE) << "Target device " << device_detail << " is added";
-    }
-  }
-
-  return Status::OK();
 }
 
 void ModelBuilder::PreprocessInitializers() {
@@ -396,17 +364,17 @@ Status ModelBuilder::AddNewOperand(const std::string& name,
 
 Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_t& index) {
   RETURN_STATUS_ON_ERROR(
-      nnapi_->ANeuralNetworksModel_addOperand(nnapi_model_->model_, &operand_type.operandType));
+      nnapi_.ANeuralNetworksModel_addOperand(nnapi_model_->model_, &operand_type.operandType));
   index = next_index_++;
 
   if (operand_type.channelQuant) {
-    if (GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    if (nnapi_effective_feature_level_ < ANEURALNETWORKS_FEATURE_LEVEL_3) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Per-channel quantization is only supported on Android API level 29+,",
-                             " system NNAPI feature level: ", GetNNAPIFeatureLevel());
+                             " system NNAPI feature level: ", nnapi_effective_feature_level_);
     }
 
-    RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
+    RETURN_STATUS_ON_ERROR(nnapi_.ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
         nnapi_model_->model_, index, &operand_type.channelQuant->params));
   }
 
@@ -425,13 +393,13 @@ Status ModelBuilder::SetOperandValue(uint32_t index,
                                      size_t size, size_t offset) {
 #ifdef USENNAPISHAREDMEM
   RETURN_STATUS_ON_ERROR(
-      nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
+      nnapi_.ANeuralNetworksModel_setOperandValueFromMemory(
           nnapi_model_->model_, index,
           memory->GetHandle(),
           offset, size));
 #else
   RETURN_STATUS_ON_ERROR(
-      nnapi_->ANeuralNetworksModel_setOperandValue(
+      nnapi_.ANeuralNetworksModel_setOperandValue(
           nnapi_model_->model_, index,
           memory->GetDataPtr() + offset,
           size));
@@ -452,7 +420,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   // no need to persist
   if (size < ANEURALNETWORKS_MAX_SIZE_OF_IMMEDIATELY_COPIED_VALUES) {
     RETURN_STATUS_ON_ERROR(
-        nnapi_->ANeuralNetworksModel_setOperandValue(
+        nnapi_.ANeuralNetworksModel_setOperandValue(
             nnapi_model_->model_, index,
             buffer, size));
   } else {
@@ -508,6 +476,9 @@ Status ModelBuilder::AddOperations() {
 Status ModelBuilder::AddOperation(int op, const InlinedVector<uint32_t>& input_indices,
                                   const std::vector<std::string>& output_names,
                                   const std::vector<OperandType>& output_types) {
+#ifndef NDEBUG
+  operations_recorder_.emplace_back(current_onnx_node_index_, op);
+#endif
   InlinedVector<uint32_t> output_indices;
   for (size_t i = 0; i < output_types.size(); i++) {
     uint32_t index = 0;
@@ -516,7 +487,7 @@ Status ModelBuilder::AddOperation(int op, const InlinedVector<uint32_t>& input_i
   }
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworksModel_addOperation(
+      nnapi_.ANeuralNetworksModel_addOperation(
           nnapi_model_->model_, op, static_cast<uint32_t>(input_indices.size()), &input_indices[0],
           static_cast<uint32_t>(output_indices.size()), &output_indices[0]),
       "op = " + std::to_string(op));
@@ -531,7 +502,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   ORT_RETURN_IF_ERROR(Prepare());
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworksModel_identifyInputsAndOutputs(
+      nnapi_.ANeuralNetworksModel_identifyInputsAndOutputs(
           nnapi_model_->model_, static_cast<uint32_t>(input_index_vec_.size()),
           &input_index_vec_[0],
           static_cast<uint32_t>(output_index_vec_.size()),
@@ -539,29 +510,33 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       "on identifyInputsAndOutputs");
 
   // relax fp32tofp16 is only available on API 28+
-  if (use_fp16_ && GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_1) {
+  if (use_fp16_ && nnapi_effective_feature_level_ > ANEURALNETWORKS_FEATURE_LEVEL_1) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
-        nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+        nnapi_.ANeuralNetworksModel_relaxComputationFloat32toFloat16(
             nnapi_model_->model_, true),
         "Set fp16");
   }
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworksModel_finish(nnapi_model_->model_),
+      nnapi_.ANeuralNetworksModel_finish(nnapi_model_->model_),
       "on model finish");
 
+  InlinedVector<ANeuralNetworksDevice*> device_handles;
+  for (const auto& device_wp : nnapi_target_devices_) {
+    device_handles.push_back(device_wp.device);
+  }
   // We have a list of target devices, try to see if the model can be run entirely
   // using the list of target devices
   // This is only available on API 29+, for API 28- the nnapi_target_devices_ will
   // be empty so we will not check API level here, see GetTargetDevices()
   bool use_create_for_devices = false;
+  std::unique_ptr<bool[]> supported_ops_holder = std::make_unique<bool[]>(num_nnapi_ops_);
   if (!nnapi_target_devices_.empty()) {
-    std::unique_ptr<bool[]> supported_ops_holder = std::make_unique<bool[]>(num_nnapi_ops_);
     auto* supported_ops = supported_ops_holder.get();
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
-        nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
-            nnapi_model_->model_, nnapi_target_devices_.data(),
-            static_cast<uint32_t>(nnapi_target_devices_.size()), supported_ops),
+        nnapi_.ANeuralNetworksModel_getSupportedOperationsForDevices(
+            nnapi_model_->model_, device_handles.data(),
+            static_cast<uint32_t>(device_handles.size()), supported_ops),
         "on getSupportedOperationsForDevices");
 
     bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
@@ -571,35 +546,84 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       // Fail the Compile
       //
       // TODO, add some logic to not fail for some cases
-      // Such as, if there are some acceptable fall back to cpu (nnapi-reference)
-      // and cpu is not in the target devices list
+      // Such as, if there are some acceptable fall back to CPU (nnapi-reference)
+      // and CPU is not in the target devices list
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "The model cannot run using current set of target devices, ",
-                             nnapi_target_devices_detail_);
-    } else {
+                             "The model cannot run using the current set of target devices, ",
+                             GetDevicesDescription(nnapi_target_devices_));
+    }
+    // Workaround bugs in NNAPI drives on some phones
+    // where ops are passed checking by 'ANeuralNetworksModel_getSupportedOperationsForDevices'
+    // but failed at compilation.
+    // ANeuralNetworksCompilation_create allows falling back to CPU if compilation fails
+    if (target_device_option_ != TargetDeviceOption::ALL_DEVICES) {
       use_create_for_devices = true;
     }
   }
 
+#ifndef NDEBUG
+  if (nnapi_target_devices_.size() > 1 && nnapi_target_devices_.back().type == ANEURALNETWORKS_DEVICE_CPU) {
+    auto supported_ops = gsl::make_span(supported_ops_holder.get(), num_nnapi_ops_);
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(
+        nnapi_.ANeuralNetworksModel_getSupportedOperationsForDevices(
+            nnapi_model_->model_, device_handles.data(),
+            static_cast<uint32_t>(device_handles.size() - 1), supported_ops.data()),
+        "on getSupportedOperationsForDevices");
+
+    ORT_ENFORCE(num_nnapi_ops_ == operations_recorder_.size(), "num_nnapi_ops_!=operations_recorder_.size()");
+    std::unordered_map<std::string, std::pair<int32_t, int32_t>> optype_support_status;
+    for (size_t idx = 0; idx < operations_recorder_.size(); idx++) {
+      auto [onnx_node_idx, nnapi_idx] = operations_recorder_[idx];
+      const auto* node(graph_viewer_.GetNode(onnx_node_idx));
+      auto stat_name = node->OpType() + ".nnapi_op_" + std::to_string(nnapi_idx);
+
+      if (supported_ops[idx]) {
+        optype_support_status[stat_name].first++;
+      } else {
+        optype_support_status[stat_name].second++;
+      }
+    }
+    size_t fallback_ops = 0;
+    std::string fallback_op_detail, normal_op_detail;
+
+    for (const auto& [op, ops_status] : optype_support_status) {
+      auto& [support_cnt, unspport_cnt] = ops_status;
+      fallback_ops += unspport_cnt;
+      if (support_cnt > 0) {
+        normal_op_detail += MakeString(support_cnt, "x ", op, ", ");
+      }
+      if (unspport_cnt > 0) {
+        fallback_op_detail += MakeString(unspport_cnt, "x ", op, ", ");
+      }
+    }
+
+    LOGS_DEFAULT(VERBOSE) << fallback_ops << " Ops [" << fallback_op_detail << "] out of " << num_nnapi_ops_
+                          << " are falling-back to " << kNnapiCpuDeviceName << ", and ["
+                          << normal_op_detail << "] is running in accelerators.";
+  }
+#endif
+  // If an op is supported and assigned to a device, it will be compiled by that device.
+  // An internal compiling error will lead to the whole compilation process failure.
+  // However, ANeuralNetworksCompilation_create will fall back to CPU if compilation fails.
   if (use_create_for_devices) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
-        nnapi_->ANeuralNetworksCompilation_createForDevices(
-            nnapi_model_->model_, nnapi_target_devices_.data(),
-            static_cast<uint32_t>(nnapi_target_devices_.size()), &nnapi_model_->compilation_),
+        nnapi_.ANeuralNetworksCompilation_createForDevices(
+            nnapi_model_->model_, device_handles.data(),
+            static_cast<uint32_t>(device_handles.size()), &nnapi_model_->compilation_),
         "on createForDevices");
   } else {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
-        nnapi_->ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
+        nnapi_.ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
         "on create");
   }
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworksCompilation_setPreference(
+      nnapi_.ANeuralNetworksCompilation_setPreference(
           nnapi_model_->compilation_, static_cast<int32_t>(exe_pref_)),
       "on setPreference");
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworksCompilation_finish(nnapi_model_->compilation_),
+      nnapi_.ANeuralNetworksCompilation_finish(nnapi_model_->compilation_),
       "on compilation finish");
 
   model.reset(nnapi_model_.release());

@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/bfc_arena.h"
+#include "core/framework/allocator_utils.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include <cstdlib>
+#include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
 namespace test {
@@ -272,7 +274,7 @@ TEST(BFCArenaTest, AllocationsAndDeallocationsWithGrowth) {
 }
 
 TEST(BFCArenaTest, TestReserve) {
-  // Configure a 1MiB byte limit
+  // Configure a 1GiB byte limit
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
 
   void* first_ptr = a.Alloc(sizeof(float) * (1 << 6));
@@ -283,6 +285,22 @@ TEST(BFCArenaTest, TestReserve) {
   AllocatorStats stats;
   a.GetStats(&stats);
   EXPECT_EQ(stats.total_allocated_bytes, 1048576);
+}
+
+TEST(BFCArenaTest, TestShrink) {
+  AllocatorStats stats;
+  BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, ArenaExtendStrategy::kSameAsRequested);
+  void* p1k = a.Alloc(1024);
+  /* void* p10M =*/a.Alloc(10 * 1024 * 1024);
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.num_arena_extensions, 2) << "Expect 2 regions but got " << stats.num_arena_extensions << " region";
+  a.Free(p1k);
+
+  EXPECT_EQ(a.Shrink(), Status::OK());
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.num_arena_extensions, 1) << "1 region left as p10M is still in use";
+  EXPECT_EQ(stats.num_arena_shrinkages, 1) << "shrink only once as only p1k is freed";
+  EXPECT_EQ(stats.total_allocated_bytes, 10 * 1024 * 1024) << "Expect 10M bytes but actually " << stats.total_allocated_bytes << " bytes";
 }
 
 class BadAllocator : public IAllocator {
@@ -298,5 +316,164 @@ TEST(BFCArenaTest, TestBackoffDoesntHang) {
   BFCArena a(std::unique_ptr<IAllocator>(new BadAllocator()), 10 * 1024 * 1024);
   EXPECT_THROW(a.Alloc(1024), OnnxRuntimeException) << "Arena should be unable to allocate memory";
 }
+
+struct NotificationMock : public synchronize::Notification {
+ public:
+  NotificationMock(Stream& s) : Notification(s) {}
+  void Activate() override {}
+};
+
+struct StreamMock : public Stream {
+ public:
+  StreamMock(const OrtDevice& device) : Stream(nullptr, device) {}
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
+    return std::make_unique<NotificationMock>(*this);
+  }
+  void Flush() override {}
+  Status CleanUpOnRunEnd() override { return Status::OK(); }
+};
+
+TEST(StreamAwareArenaTest, TwoStreamAllocation) {
+  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, false);
+  CheckStats(&a, 0, 0, 0, 0);
+
+  OrtDevice tmp;
+
+  StreamMock stream1(tmp), stream2(tmp);
+
+  auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1, nullptr);
+  auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2, nullptr);
+  a.Free(stream1_chunk_a);
+  auto* stream2_chunk_b = a.AllocOnStream(4096, &stream2, nullptr);
+  // stream2 can't reuse stream1's chunk
+  EXPECT_NE(stream2_chunk_b, stream1_chunk_a);
+  a.Free(stream2_chunk_a);
+  auto* stream1_chunk_c = a.AllocOnStream(4096, &stream1, nullptr);
+  // it should pick the first chunk
+  EXPECT_EQ(stream1_chunk_c, stream1_chunk_a);
+
+  auto* stream1_chunk_d = a.AllocOnStream(4096, &stream1, nullptr);
+  // it shouldn't pick stream2_chunk_a's buffer
+  EXPECT_NE(stream1_chunk_d, stream2_chunk_a);
+  a.Free(stream2_chunk_b);
+  // test clean stream2
+  a.ReleaseStreamBuffers(&stream2);
+  auto stream1_chunk_e = a.AllocOnStream(8192, &stream1, nullptr);
+  // now it should pick the stream2_chunk_a's buffer
+  EXPECT_EQ(stream1_chunk_e, stream2_chunk_a);
+  a.Free(stream1_chunk_c);
+  a.Free(stream1_chunk_d);
+  // add stream2 to stream 1 depenency
+  auto stream1_notification_a = stream1.CreateNotification(1);
+  stream1_notification_a->ActivateAndUpdate();
+  stream2.UpdateStreamClock(stream1_notification_a->GetStreamSyncTable());
+  auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2, nullptr);
+  // it should pick the first chunk
+  EXPECT_EQ(stream2_chunk_c, stream1_chunk_c);
+  auto* stream2_chunk_d = a.AllocOnStream(4096, &stream2, nullptr);
+  // it should pick the third slot
+  EXPECT_EQ(stream2_chunk_d, stream1_chunk_d);
+  // continue allocate on stream1
+  auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1, nullptr);
+  a.Free(stream1_chunk_f);
+  auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2, nullptr);
+  EXPECT_NE(stream2_chunk_e, stream1_chunk_f);
+  a.Free(stream1_chunk_e);
+  // test clean stream1
+  a.ReleaseStreamBuffers(&stream1);
+  auto* stream2_chunk_f = a.AllocOnStream(8192, &stream2, nullptr);
+  // now it should pick stream1_chunk_e
+  EXPECT_EQ(stream2_chunk_f, stream1_chunk_e);
+
+  // cleanup
+  a.Free(stream2_chunk_d);
+  a.Free(stream2_chunk_e);
+  a.Free(stream2_chunk_f);
+}
+
+TEST(StreamAwareArenaTest, TestSecureTheChunk) {
+  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, true);
+  OrtDevice tmp;
+  StreamMock stream1(tmp), stream2(tmp);
+
+  void* p1 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream1, nullptr);
+  a.Free(p1);
+
+  bool waitFunctionInvoked = false;
+  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2,
+                             [&waitFunctionInvoked](Stream&, synchronize::Notification&) { waitFunctionInvoked = true; });
+
+  std::unordered_map<Stream*, uint64_t> syncTable;
+  stream2.CloneCurrentStreamSyncTable(syncTable);
+  EXPECT_EQ(syncTable.size(), 1u) << "stream2 has been updated with stream1's nofitication on the clock";
+  EXPECT_TRUE(waitFunctionInvoked) << "wait function should be invoked";
+  a.Free(p2);
+}
+
+TEST(BFCArenaTest, TestExtendStrategy) {
+  int64_t extend_delta_bytes = 0;
+  {
+    // Use kNextPowerOfTwo strategy with default extension limit: 1GB.
+    BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1UL << 30, ArenaExtendStrategy::kNextPowerOfTwo);
+    size_t block_size = 1 << 20;  // 1MB
+    a.Alloc(block_size);
+    AllocatorStats stats;
+    a.GetStats(&stats);
+    int64_t prev_allocated_bytes = stats.total_allocated_bytes;
+    extend_delta_bytes = stats.total_allocated_bytes;
+    ASSERT_EQ(extend_delta_bytes, static_cast<int64_t>(block_size));
+    for (int i = 1; i < 256; ++i) {
+      a.Alloc(block_size);
+      a.GetStats(&stats);
+      if (stats.total_allocated_bytes != prev_allocated_bytes) {
+        int64_t new_delta_bytes = stats.total_allocated_bytes - prev_allocated_bytes;
+        ASSERT_EQ(new_delta_bytes, 2 * extend_delta_bytes);
+        extend_delta_bytes = new_delta_bytes;
+        prev_allocated_bytes = stats.total_allocated_bytes;
+      }
+    }
+  }
+  int64_t extend_limit = 1 << 25;  // 32MB
+  ASSERT_GT(extend_delta_bytes, extend_limit);
+  extend_delta_bytes = 0;
+  {
+    // Use kNextPowerOfTwo strategy with much smaller extension limit: 32MB.
+    OrtArenaCfg config(0, 0, -1, -1, -1, extend_limit);
+    AllocatorCreationInfo device_info{
+        [](OrtDevice::DeviceId) { return std::make_unique<CPUAllocator>(); },
+        0, true, config};
+    auto allocator = CreateAllocator(device_info);
+    size_t block_size = 1 << 20;  // 1MB
+    BFCArena& a = *static_cast<BFCArena*>(allocator.get());
+    a.Alloc(block_size);
+    AllocatorStats stats;
+    a.GetStats(&stats);
+    int64_t prev_allocated_bytes = stats.total_allocated_bytes;
+    extend_delta_bytes = stats.total_allocated_bytes;
+    ASSERT_EQ(extend_delta_bytes, static_cast<int64_t>(block_size));
+    int reach_limit_count = 0;
+    for (int i = 1; i < 256; ++i) {
+      a.Alloc(block_size);
+      a.GetStats(&stats);
+      if (stats.total_allocated_bytes != prev_allocated_bytes) {
+        int64_t new_delta_bytes = stats.total_allocated_bytes - prev_allocated_bytes;
+        if (new_delta_bytes < extend_limit) {
+          ASSERT_EQ(new_delta_bytes, 2 * extend_delta_bytes) << "index:" << i;
+        } else {
+          // The increasing of new chunk reaches the limit.
+          ++reach_limit_count;
+          ASSERT_EQ(new_delta_bytes, extend_limit);
+        }
+        extend_delta_bytes = new_delta_bytes;
+        prev_allocated_bytes = stats.total_allocated_bytes;
+      }
+    }
+    ASSERT_GT(reach_limit_count, 2);
+    // It is OK to allocate more than extend_limit.
+    ASSERT_NE(a.Alloc(block_size * 64), nullptr);
+  }
+  ASSERT_EQ(extend_delta_bytes, extend_limit);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

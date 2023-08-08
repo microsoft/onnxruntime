@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_api/include/lr_scheduler.h"
+#include "orttraining/training_api/lr_scheduler.h"
 
 namespace onnxruntime {
 namespace training {

@@ -6,7 +6,6 @@
 
 #include <string>
 
-
 namespace onnxruntime {
 namespace tvm {
 

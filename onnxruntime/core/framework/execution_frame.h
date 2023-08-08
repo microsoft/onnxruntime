@@ -5,7 +5,6 @@
 
 #include <mutex>
 #include <vector>
-#include <unordered_map>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -25,6 +24,10 @@ class SessionState;
 class OrtValueNameIdxMap;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
+class Stream;
+#ifdef ORT_ENABLE_STREAM
+class DeviceStreamCollection;
+#endif
 
 class IExecutionFrame {
  protected:
@@ -57,6 +60,8 @@ class IExecutionFrame {
 #endif
 
 #ifdef ENABLE_TRAINING
+  // Referenced by PartialGraphExecutionState which is applicable when using ORTModule.
+  // These wont be needed when using ORT Training APIs
   void UpdateFeeds(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds);
   void UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
 
@@ -81,7 +86,7 @@ class IExecutionFrame {
    */
   Status GetOutputs(std::vector<OrtValue>& fetches);
 
-  AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const;
+  AllocatorPtr GetAllocator(const OrtDevice& info) const;
 
   Status ReleaseMLValue(int ort_value_idx);
 
@@ -108,7 +113,7 @@ class IExecutionFrame {
   // for the node.
   virtual void VerifyOutputSizes(int /*output_index*/, const Node& /*node*/, const TensorShape& /*output_shape*/) {}
 
-  virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
+  virtual AllocatorPtr GetAllocatorImpl(const OrtDevice& info) const = 0;
 
   virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) = 0;
 
@@ -136,20 +141,21 @@ class ExecutionFrame final : public IExecutionFrame {
                  gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+#ifdef ORT_ENABLE_STREAM
+                 const DeviceStreamCollection* device_streams,
+#endif
                  const SessionState& session_state);
-
   ~ExecutionFrame() override;
 
   // TODO: These two AllocateMLValue... methods are in the API purely for unit test usage.
   // Fix the unit tests so they set an execution plan that results in these methods being called by
   // GetOrCreateNodeOutputMLValue instead
   Status AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                            const OrtMemoryInfo& location, const TensorShape& shape,
-                                            bool create_fence = false);
+                                            const OrtDevice& location, const TensorShape& shape);
 
   Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
-                                                const OrtMemoryInfo& location, const TensorShape& shape,
-                                                bool create_fence = false, bool is_strided_tensor = false);
+                                                const OrtDevice& location, const TensorShape& shape,
+                                                bool is_strided_tensor = false);
 
   // thread-safe
   Status GeneratePatterns(MemoryPatternGroup& out);
@@ -165,7 +171,7 @@ class ExecutionFrame final : public IExecutionFrame {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Return the size of virtual memory allocated in runtime.
   // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
+  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() const {
     // This function is not thread-safe. Please make sure dynamic_activation_memory_sizes_in_byte_
     // is not being changed when calling this function.
     // If one day, race condition happens, please uncomment the following line:
@@ -175,7 +181,7 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Return the size of virtual memory allocated before computation.
   // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() {
+  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() const {
     // This function is not thread-safe. Please make sure static_activation_memory_sizes_in_byte_
     // is not being changed when calling this function.
     // If one day, race condition happens, please uncomment the following line:
@@ -187,7 +193,7 @@ class ExecutionFrame final : public IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
-  AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
+  AllocatorPtr GetAllocatorImpl(const OrtDevice& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
   void VerifyOutputSizes(int output_index, const Node& node, const TensorShape& output_shape) override;
@@ -199,16 +205,21 @@ class ExecutionFrame final : public IExecutionFrame {
   common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape);
 
   Status AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                                  const OrtMemoryInfo& location, const TensorShape& shape,
-                                                  bool create_fence);
+                                                  const OrtDevice& location, const TensorShape& shape);
 
   Status AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer, MLDataType element_type,
-                                                   const OrtMemoryInfo& location, const TensorShape& shape);
+                                                   const OrtDevice& location, const TensorShape& shape);
 
   void TraceAllocate(int ort_value_idx, size_t size);
   void TraceFree(int ort_value_idx);
 
   const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
+
+  Stream* GetValueStream(int ort_value_idx) const;
+
+#ifdef ORT_ENABLE_STREAM
+  const DeviceStreamCollection* device_streams_;
+#endif
 
   const SessionState& session_state_;
 
@@ -225,7 +236,7 @@ class ExecutionFrame final : public IExecutionFrame {
   std::optional<OrtValuePatternPlanner> planner_;
 
   // Big chunks on different locations that will be used by mem_pattern.
-  InlinedHashMap<OrtMemoryInfo, BufferUniquePtr> buffers_;
+  InlinedHashMap<OrtDevice, BufferUniquePtr> buffers_;
 
   // Given the input shapes of the executed graph, ExecutionFrame tries inferring
   // all symbolic shapes. inferred_shapes_[i] is the shape of OrtValue indexed

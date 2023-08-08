@@ -10,7 +10,6 @@
 #include "tvm_common.h"
 #include "tvm_ep_options.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -26,6 +25,7 @@ class TVMCompilerBase {
 
   virtual void compileTVMModule(const TvmEPOptions& options,
                                 const TVMTensorShapes& input_shapes) = 0;
+
  protected:
   ModulePtr mod_;
 };
@@ -57,7 +57,7 @@ class TVMSoCompiler : public TVMCompilerBase {
                         const TVMTensorShapes& input_shapes) final;
 };
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime
 
 #endif  // TVM_COMPILER_H

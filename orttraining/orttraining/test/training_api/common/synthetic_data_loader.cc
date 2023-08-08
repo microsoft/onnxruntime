@@ -19,9 +19,9 @@ namespace training_api {
 namespace {
 
 void RandomFloats(std::vector<float>& rets, size_t num_element) {
-  const float scale = 1.f;
-  const float mean = 0.f;
-  const float seed = 123.f;
+  constexpr float scale = 1.f;
+  constexpr float mean = 0.f;
+  constexpr float seed = 123.f;
   static std::default_random_engine generator{static_cast<uint32_t>(seed)};
   std::normal_distribution<float> distribution{mean, scale};
 

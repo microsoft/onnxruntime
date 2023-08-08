@@ -1385,14 +1385,11 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
 
 // TODO: Reshape missing
 
-#ifdef USE_CUDA
-// TODO fix flaky test
-// failing random seed: 4133818171
-TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
+TEST(GradientCheckerTest, BatchNormalizationGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"BatchNormalization"};
-  float error_tolerance = 1e-2f;
+  OpDef op_def{"BatchNormInternal", kMSDomain, 1};
+  float error_tolerance = 2e-2f;
   float epsilon = 1e-05f;
   float momentum = 0.1f;
 
@@ -1499,7 +1496,7 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
   // case for larger multi-dimensional X
   {
     int channel_dim = 5;
-    TensorShape in_out_shape({6, channel_dim, 1, 3, 2, 4});
+    TensorShape in_out_shape({6, channel_dim, 3, 2, 4});
     TensorShape channel_shape({channel_dim});
     // inputs
     TensorInfo x_info{in_out_shape, true};
@@ -1545,7 +1542,6 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
   }
   */
 }
-#endif
 
 TEST(GradientCheckerTest, SigmoidGrad) { UnaryOpGradientTest("Sigmoid"); }
 
@@ -3001,6 +2997,40 @@ TEST(GradientCheckerTest, TriluGrad) {
       EXPECT_IS_TINY(max_error);
     }
   }
+}
+
+// TODO (enable once found why it fails on ROCM)
+#if defined(USE_CUDA)
+TEST(GradientCheckerTest, PadAndUnflattenGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"PadAndUnflatten", kMSDomain, 1};
+  TensorInfo shape_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+  TensorInfo indices_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+  TensorInfo x_info({4, 3});
+  std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {3, 5, 0, 1}, {5, 2}};
+
+  TensorInfo padded_out_info({5, 2, 3}, true);
+  TensorInfo out_shape_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info, shape_info},
+                                                         {padded_out_info, out_shape_info}, &max_error,
+                                                         x_datas, {}, true, false, &execution_providers));
+  EXPECT_IS_TINY(max_error);
+}
+#endif
+
+TEST(GradientCheckerTest, ReciprocalGrad) {
+  // Avoid division by 0 by using the transformer.
+  std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
+  UnaryOpGradientTest("Reciprocal", kOnnxDomain, 12, nullptr, &transformer);
 }
 
 }  // namespace test

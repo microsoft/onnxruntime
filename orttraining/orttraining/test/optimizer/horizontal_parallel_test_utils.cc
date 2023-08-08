@@ -136,7 +136,7 @@ void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, b
   else if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     auto* expected = expected_tensor.template Data<MLFloat16>();
     auto* actual = actual_tensor.template Data<MLFloat16>();
-  
+
     std::vector<float> f_expected(size);
     std::vector<float> f_actual(size);
     ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));

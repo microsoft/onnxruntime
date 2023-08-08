@@ -84,7 +84,7 @@ class MlasSoftmaxTest : public MlasTestBase {
     return suite_name.c_str();
   }
 
-  MlasSoftmaxTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) { }
+  MlasSoftmaxTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
   void ExecuteShort(void) override {
     for (size_t d = 1; d < 128; d++) {
@@ -97,8 +97,10 @@ class MlasSoftmaxTest : public MlasTestBase {
   }
 };
 
-template <> MlasSoftmaxTest<false>* MlasTestFixture<MlasSoftmaxTest<false>>::mlas_tester(nullptr);
-template <> MlasSoftmaxTest<true>* MlasTestFixture<MlasSoftmaxTest<true>>::mlas_tester(nullptr);
+template <>
+MlasSoftmaxTest<false>* MlasTestFixture<MlasSoftmaxTest<false>>::mlas_tester(nullptr);
+template <>
+MlasSoftmaxTest<true>* MlasTestFixture<MlasSoftmaxTest<true>>::mlas_tester(nullptr);
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;

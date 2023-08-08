@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-class Gather final : public CudaKernel, public GatherBase {
+class Gather : public CudaKernel, public GatherBase {
  public:
   Gather(const OpKernelInfo& info) : CudaKernel(info), GatherBase(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;

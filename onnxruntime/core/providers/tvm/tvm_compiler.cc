@@ -6,7 +6,6 @@
 #include "tvm_compiler.h"
 #include "tvm_api.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -24,10 +23,9 @@ auto TVMCompilerBase::operator()(const TvmEPOptions& options,
 
 TVMCompiler::TVMCompiler(std::string&& onnx_model_str,
                          const std::string& model_path,
-                         int opset) :
-onnx_model_str_(std::move(onnx_model_str)),
-model_path_(model_path),
-opset_(opset) {
+                         int opset) : onnx_model_str_(std::move(onnx_model_str)),
+                                      model_path_(model_path),
+                                      opset_(opset) {
 }
 
 void TVMCompiler::compileTVMModule(const TvmEPOptions& options,
@@ -46,5 +44,5 @@ void TVMSoCompiler::compileTVMModule(const TvmEPOptions& options,
   *mod_ = tvm::TVMSoCompile(options);
 }
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime

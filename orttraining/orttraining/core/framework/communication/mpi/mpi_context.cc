@@ -79,7 +79,7 @@ MPIContext::MPIContext() : world_rank_(0),
 
   MPI_Allgather(&world_rank, 1, MPI_INT, ranks, 1, MPI_INT, MPI_COMM_WORLD);
 
-  //Get local rank and size
+  // Get local rank and size
   int local_rank;
   int local_size;
 
@@ -172,7 +172,7 @@ void MPIContext::AddMPIGroup(WorkerGroupType group_type, WorkerGroup& group) {
   ORT_ENFORCE(this->mpi_groups_[group_type].communicator != MPI_COMM_NULL,
               "Failed to add new MPI group for worker group: ",
               DistributedRunContext::GetInstance().GetWorkerGroupName(group_type));
-  //set the group initialized flag
+  // set the group initialized flag
   this->mpi_groups_[group_type].is_group_initialized = true;
 #else
   ORT_THROW("ORT must be built with MPI to add ", DistributedRunContext::GetInstance().GetWorkerGroupName(group_type), " with group id: ", group.group_id);

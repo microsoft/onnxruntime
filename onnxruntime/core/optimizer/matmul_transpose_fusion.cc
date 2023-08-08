@@ -66,7 +66,8 @@ static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg, bool& i
 
   // We can fuse the Transpose node only when the last axis of original tensor is within the last two dims after transpose.
   int64_t last_axis = static_cast<int64_t>(rank) - 1;
-  size_t last_axis_index = perms[rank - 1] == last_axis ? rank - 1 : perms[rank - 2] == last_axis ? rank - 2 : rank;
+  size_t last_axis_index = perms[rank - 1] == last_axis ? rank - 1 : perms[rank - 2] == last_axis ? rank - 2
+                                                                                                  : rank;
   if (last_axis_index == rank) {
     return nullptr;
   }
@@ -104,35 +105,35 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, InlinedHashMap<
 }
 
 /* ReorderCastAndTranspose:
-*  Interchange Cast and Transpose nodes in the graph and return the new Transpose node if possible else nullptr.
-*
-*
-*  Transform the following pattern
-*                              |
-*                         _____|______
-*                         |Transpose |
-*                         |__________|
-*                              |
-*                              |
-*                         _____V______
-*                         |  Cast    |
-*                         |__________|
-*                              |
-*                              V
-*
-*  to
-*                              |
-*                         _____|______
-*                         |  Cast    |
-*                         |__________|
-*                              |
-*                              |
-*                         _____V______
-*                         | Transpose|
-*                         |__________|
-*                              |
-*                              V
-*/
+ *  Interchange Cast and Transpose nodes in the graph and return the new Transpose node if possible else nullptr.
+ *
+ *
+ *  Transform the following pattern
+ *                              |
+ *                         _____|______
+ *                         |Transpose |
+ *                         |__________|
+ *                              |
+ *                              |
+ *                         _____V______
+ *                         |  Cast    |
+ *                         |__________|
+ *                              |
+ *                              V
+ *
+ *  to
+ *                              |
+ *                         _____|______
+ *                         |  Cast    |
+ *                         |__________|
+ *                              |
+ *                              |
+ *                         _____V______
+ *                         | Transpose|
+ *                         |__________|
+ *                              |
+ *                              V
+ */
 static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
                                      InlinedHashMap<NodeArg*, size_t>& consumer_count,
                                      std::deque<onnxruntime::NodeIndex>& removed_nodes,
@@ -161,12 +162,12 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
   const std::array new_transpose_output_defs = {cast_output};
 
   Node& new_cast = graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
-                      cast->OpType(),
-                      "Created a new Cast node to interchange Cast and Transpose nodes",
-                      new_cast_input_defs,
-                      new_cast_output_defs,
-                      &cast->GetAttributes(),
-                      cast->Domain());
+                                 cast->OpType(),
+                                 "Created a new Cast node to interchange Cast and Transpose nodes",
+                                 new_cast_input_defs,
+                                 new_cast_output_defs,
+                                 &cast->GetAttributes(),
+                                 cast->Domain());
   new_cast.SetExecutionProviderType(cast->GetExecutionProviderType());
 
   Node& new_transpose = graph.AddNode(graph.GenerateNodeName(transpose->Name() + "_transformed"),
@@ -358,7 +359,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
         }
         if (is_trans_batch_right) {
           is_trans_right = is_trans_batch_right = false;
-          right= nullptr;
+          right = nullptr;
         }
       }
     }

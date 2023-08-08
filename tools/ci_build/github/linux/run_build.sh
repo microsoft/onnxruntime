@@ -21,8 +21,6 @@ y) YOCTO_VERSION=${OPTARG};;
 esac
 done
 
-export PATH=$PATH:/usr/local/gradle/bin
-
 if [ $BUILD_OS = "yocto" ]; then
     YOCTO_FOLDER="4.19-warrior"
     if [ $YOCTO_VERSION = "4.14" ]; then
@@ -58,7 +56,6 @@ else
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Release $COMMON_BUILD_ARGS \
-            --tensorrt_placeholder_builder \
             --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ \
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/lib/x86_64-linux-gnu/ $BUILD_EXTR_PAR
@@ -67,4 +64,3 @@ else
             --config Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR
     fi
 fi
-

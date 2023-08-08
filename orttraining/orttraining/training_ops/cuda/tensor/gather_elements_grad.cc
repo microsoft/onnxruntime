@@ -29,10 +29,11 @@ ONNX_OPERATOR_KERNEL_EX(GatherElementsGrad, kMSDomain, 1, kCudaExecutionProvider
 
 #undef CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF
 
-#define CASE_GATHER_ELEMENTS_GRAD_IMPL(type)                                                            \
-  case sizeof(type): {                                                                                  \
-    const type* indices_data = reinterpret_cast<const type*>(indices_data_raw);                         \
-    ORT_RETURN_IF_ERROR(GatherElementsGradImpl(stream, indices_data, updates_data, output_data, args)); \
+#define CASE_GATHER_ELEMENTS_GRAD_IMPL(type)                                                       \
+  case sizeof(type): {                                                                             \
+    const type* indices_data = reinterpret_cast<const type*>(indices_data_raw);                    \
+    ORT_RETURN_IF_ERROR(GatherElementsGradNonDeterministicImpl(stream, indices_data, updates_data, \
+                                                               output_data, args));                \
   } break
 
 template <typename T>
@@ -77,7 +78,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   Tensor* dX = context->Output(0, data_shape);
   if (data_shape.Size() == 0) return Status::OK();
 
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream(context)));
 
   GatherScatterElementsArgs args;
   args.indices_size = indices_shape.Size();
@@ -100,8 +101,16 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
     ORT_THROW("Unsupported element size by the GatherElementsGrad CUDA kernel");
   }
 
+  if (context->GetUseDeterministicCompute()) {
+    static std::once_flag log_warning;
+    std::call_once(log_warning, []() {
+      LOGS_DEFAULT(WARNING) << "GatherElementsGrad has no deterministic GPU kernel, its outputs may still be nondeterministic.";
+    });
+  }
+
   utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(dtype);
-  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(), dY->DataRaw(), indices_tensor->DataRaw(), dX->MutableDataRaw(),
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), dY->DataRaw(), indices_tensor->DataRaw(),
+                                               dX->MutableDataRaw(),
                                                indices_tensor->DataType()->Size(), args);
 }
 

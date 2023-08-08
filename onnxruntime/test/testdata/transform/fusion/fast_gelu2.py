@@ -1,6 +1,6 @@
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 # Gelu formula: x * 0.5 * (1.0 + tanh((sqrt(2 / pi) * (x + 0.044715 * pow(x, 3)))))
 has_bias = False  # change it to True to generate fast_gelu_openai_with_bias.onnx
@@ -9,7 +9,7 @@ gelu_use_graph_input = True  # change it to False to let Gelu don't have graph i
 X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen", 64])
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "seqlen", 64])
 
-bias_np_vals = (0.01 * np.arange(64)).astype(np.float32).reshape((64))
+bias_np_vals = (0.01 * np.arange(64)).astype(np.float32).reshape(64)
 bias_initializer = numpy_helper.from_array(bias_np_vals, "input_bias")
 
 pow_np_vals = np.asarray([3]).astype(np.float32).reshape(())

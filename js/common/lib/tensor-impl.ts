@@ -1,7 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor as TensorInterface} from './tensor';
+import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
+import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
+import {tensorFromImage} from './tensor-factory-impl.js';
+import {TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromUrlOptions} from './tensor-factory.js';
+import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
+import {Tensor as TensorInterface} from './tensor.js';
 
 type TensorType = TensorInterface.Type;
 type TensorDataType = TensorInterface.DataType;
@@ -11,15 +16,13 @@ type SupportedTypedArrayConstructors = Float32ArrayConstructor|Uint8ArrayConstru
     Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor;
 type SupportedTypedArray = InstanceType<SupportedTypedArrayConstructors>;
 
-const isBigInt64ArrayAvailable = typeof BigInt64Array !== 'undefined' && typeof BigInt64Array.from === 'function';
-const isBigUint64ArrayAvailable = typeof BigUint64Array !== 'undefined' && typeof BigUint64Array.from === 'function';
-
 // a runtime map that maps type string to TypedArray constructor. Should match Tensor.DataTypeMap.
 const NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP = new Map<string, SupportedTypedArrayConstructors>([
   ['float32', Float32Array],
   ['uint8', Uint8Array],
   ['int8', Int8Array],
   ['uint16', Uint16Array],
+  ['float16', Uint16Array],
   ['int16', Int16Array],
   ['int32', Int32Array],
   ['bool', Uint8Array],
@@ -39,34 +42,28 @@ const NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP = new Map<SupportedTypedArrayConstru
   [Uint32Array, 'uint32'],
 ]);
 
-if (isBigInt64ArrayAvailable) {
-  NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('int64', BigInt64Array);
-  NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(BigInt64Array, 'int64');
-}
-if (isBigUint64ArrayAvailable) {
-  NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('uint64', BigUint64Array);
-  NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(BigUint64Array, 'uint64');
-}
+// the following code allows delaying execution of BigInt checking. This allows lazy initialization for
+// NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP and NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, which allows BigInt polyfill
+// if available.
+let isBigIntChecked = false;
+const checkBigInt = () => {
+  if (!isBigIntChecked) {
+    isBigIntChecked = true;
+    const isBigInt64ArrayAvailable = typeof BigInt64Array !== 'undefined' && typeof BigInt64Array.from === 'function';
+    const isBigUint64ArrayAvailable =
+        typeof BigUint64Array !== 'undefined' && typeof BigUint64Array.from === 'function';
 
-/**
- * calculate size from dims.
- *
- * @param dims the dims array. May be an illegal input.
- */
-const calculateSize = (dims: readonly unknown[]): number => {
-  let size = 1;
-  for (let i = 0; i < dims.length; i++) {
-    const dim = dims[i];
-    if (typeof dim !== 'number' || !Number.isSafeInteger(dim)) {
-      throw new TypeError(`dims[${i}] must be an integer, got: ${dim}`);
+    if (isBigInt64ArrayAvailable) {
+      NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('int64', BigInt64Array);
+      NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(BigInt64Array, 'int64');
     }
-    if (dim < 0) {
-      throw new RangeError(`dims[${i}] must be a non-negative integer, got: ${dim}`);
+    if (isBigUint64ArrayAvailable) {
+      NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('uint64', BigUint64Array);
+      NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(BigUint64Array, 'uint64');
     }
-    size *= dim;
   }
-  return size;
 };
+
 
 export class Tensor implements TensorInterface {
   // #region constructors
@@ -75,6 +72,8 @@ export class Tensor implements TensorInterface {
   constructor(
       arg0: TensorType|TensorDataType|readonly boolean[], arg1?: TensorDataType|readonly number[]|readonly boolean[],
       arg2?: readonly number[]) {
+    checkBigInt();
+
     let type: TensorType;
     let data: TensorDataType;
     let dims: typeof arg1|typeof arg2;
@@ -100,11 +99,31 @@ export class Tensor implements TensorInterface {
           throw new TypeError(`Unsupported tensor type: ${arg0}.`);
         }
         if (Array.isArray(arg1)) {
-          // use 'as any' here because TypeScript's check on type of 'SupportedTypedArrayConstructors.from()' produces
-          // incorrect results.
-          // 'typedArrayConstructor' should be one of the typed array prototype objects.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data = (typedArrayConstructor as any).from(arg1);
+          if (arg0 === 'float16') {
+            // Throw error here because when user try to use number array as data,
+            // e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
+            // Uint16Array.from(arg1) which generates wrong data.
+            throw new TypeError(
+                'Creating a float16 tensor from number array is not supported. Please use Uint16Array as data.');
+          } else if (arg0 === 'uint64' || arg0 === 'int64') {
+            // use 'as any' here because:
+            // 1. TypeScript's check on type of 'Array.isArray()' does not work with readonly arrays.
+            // see https://github.com/microsoft/TypeScript/issues/17002
+            // 2. TypeScript's check on union type of '(BigInt64ArrayConstructor|BigUint64ArrayConstructor).from()' does
+            // not accept parameter mapFn.
+            // 3. parameters of 'SupportedTypedArrayConstructors.from()' does not match the requirement of the union
+            // type.
+
+            // assume 'arg1' is of type "readonly number[]|readonly bigint[]" here.
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            data = (typedArrayConstructor as any).from(arg1, BigInt);
+          } else {
+            // assume 'arg1' is of type "readonly number[]" here.
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            data = (typedArrayConstructor as any).from(arg1);
+          }
         } else if (arg1 instanceof typedArrayConstructor) {
           data = arg1;
         } else {
@@ -167,6 +186,30 @@ export class Tensor implements TensorInterface {
   }
   // #endregion
 
+  // #region factory
+  static async fromImage(imageData: ImageData, options?: TensorFromImageDataOptions): Promise<Tensor>;
+  static async fromImage(imageElement: HTMLImageElement, options?: TensorFromImageElementOptions): Promise<Tensor>;
+  static async fromImage(bitmap: ImageBitmap, options: TensorFromImageBitmapOptions): Promise<Tensor>;
+  static async fromImage(urlSource: string, options?: TensorFromUrlOptions): Promise<Tensor>;
+
+  static async fromImage(
+      image: ImageData|HTMLImageElement|ImageBitmap|string,
+      options?: TensorFromImageDataOptions|TensorFromImageElementOptions|TensorFromImageBitmapOptions|
+      TensorFromUrlOptions): Promise<Tensor> {
+    return tensorFromImage(image, options);
+  }
+  // #endregion
+
+  // #region conversions
+  toDataURL(options?: TensorToDataUrlOptions): string {
+    return tensorToDataURL(this, options);
+  }
+
+  toImageData(options?: TensorToImageDataOptions): ImageData {
+    return tensorToImageData(this, options);
+  }
+  // #endregion
+
   // #region fields
   readonly dims: readonly number[];
   readonly type: TensorType;
@@ -176,7 +219,7 @@ export class Tensor implements TensorInterface {
 
   // #region tensor utilities
   reshape(dims: readonly number[]): Tensor {
-    return new Tensor(this.type, this.data, dims);
+    return tensorReshape(this, dims);
   }
   // #endregion
 }

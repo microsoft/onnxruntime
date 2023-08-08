@@ -17,7 +17,7 @@ class EyeLike final : public OpKernel {
 
     has_dtype_ = info.GetAttr("dtype", &dtype_).IsOK();
   }
-  
+
   Status Compute(OpKernelContext* context) const override;
 
  private:
@@ -26,4 +26,4 @@ class EyeLike final : public OpKernel {
   int64_t k_;
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

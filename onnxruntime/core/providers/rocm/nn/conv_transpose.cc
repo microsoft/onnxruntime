@@ -28,7 +28,7 @@ namespace rocm {
 
 REGISTER_KERNEL_TYPED(float)
 // not yet supported in MIOpen
-//REGISTER_KERNEL_TYPED(double)
+// REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
@@ -93,10 +93,9 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       }
       s_.y_dims = gsl::make_span(y_dims);
 
-      if (w_dims_changed)
-	{
-	  ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, MiopenTensor::GetDataType<HipT>()));
-	}
+      if (w_dims_changed) {
+        ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, MiopenTensor::GetDataType<HipT>()));
+      }
 
       // Special case when there is a dim value of 0 in the shape.
       // Return only after we have cached the following for subsequent runs :
@@ -129,12 +128,12 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       y_data = reinterpret_cast<HipT*>(p.Y->MutableData<T>());
 
       if (!s_.cached_benchmark_bwd_results.contains(x_dims)) {
-        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
+        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
 
         miopenConvAlgoPerf_t perf;
         int algo_count = 1;
         MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionBackwardDataAlgorithm(
-            MiopenHandle(),
+            GetMiopenHandle(context),
             s_.x_tensor,
             x_data,
             s_.w_desc,
@@ -147,7 +146,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
             &perf,
             algo_search_workspace.get(),
             AlgoSearchWorkspaceSize,
-	    false));
+            false));
         s_.cached_benchmark_bwd_results.insert(x_dims, {perf.bwd_data_algo, perf.memory});
       }
 
@@ -175,14 +174,14 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     const auto alpha = Consts<HipT>::One;
     const auto beta = Consts<HipT>::Zero;
 
-    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
+    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, context->GetComputeStream());
 
     MIOPEN_RETURN_IF_ERROR(
         miopenConvolutionBackwardData(
-            MiopenHandle(),
+            GetMiopenHandle(context),
             &alpha,
-	    s_.x_tensor,
-	    x_data,
+            s_.x_tensor,
+            x_data,
             s_.w_desc,
             w_data,
             s_.conv_desc,
@@ -196,7 +195,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     if (has_bias) {
       const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
       auto b_data = reinterpret_cast<const HipT*>(B->Data<T>());
-      MIOPEN_RETURN_IF_ERROR((miopenConvolutionForwardBias(MiopenHandle(), &alpha, s_.b_tensor, b_data, &beta, s_.y_tensor, y_data)));
+      MIOPEN_RETURN_IF_ERROR((miopenConvolutionForwardBias(GetMiopenHandle(context), &alpha, s_.b_tensor, b_data, &beta, s_.y_tensor, y_data)));
     }
   }
 

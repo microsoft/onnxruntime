@@ -5,7 +5,6 @@
 #include <map>
 #include <string>
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/ort_value.h"
@@ -31,18 +30,6 @@ class Graph;
 namespace test {
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
-
-#ifdef USE_NNAPI
-IExecutionProvider* TestNnapiExecutionProvider();
-#endif
-
-#ifdef USE_RKNPU
-IExecutionProvider* TestRknpuExecutionProvider();
-#endif
-
-#ifdef USE_COREML
-IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags);
-#endif
 
 template <typename T>
 inline void CopyVectorToTensor(const std::vector<T>& value, Tensor& tensor) {
@@ -104,7 +91,7 @@ inline int OpCount(const OpCountMap& op_count_map, const std::string& op_type) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies);
-#endif // DISABLE_SPARSE_TENSORS
+#endif  // DISABLE_SPARSE_TENSORS
 
 }  // namespace test
 }  // namespace onnxruntime

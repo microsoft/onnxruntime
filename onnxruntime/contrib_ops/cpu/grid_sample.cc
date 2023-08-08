@@ -6,16 +6,16 @@
 namespace onnxruntime {
 namespace contrib {
 
-#define REGISTER_KERNEL_TYPED(T)                                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
-      GridSample,                                                   \
-      kMSDomain,                                                    \
-      1,                                                            \
-      T,                                                            \
-      kCpuExecutionProvider,                                        \
-      KernelDefBuilder()                                            \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),  \
+#define REGISTER_KERNEL_TYPED(T)                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
+      GridSample,                                                  \
+      kMSDomain,                                                   \
+      1,                                                           \
+      T,                                                           \
+      kCpuExecutionProvider,                                       \
+      KernelDefBuilder()                                           \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       GridSample<T>);
 
 REGISTER_KERNEL_TYPED(float)

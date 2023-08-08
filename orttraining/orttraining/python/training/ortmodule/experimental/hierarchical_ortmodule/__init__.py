@@ -2,4 +2,4 @@
 # Licensed under the MIT License.
 # __init__.py
 
-from ._hierarchical_ortmodule import HierarchicalORTModule
+from ._hierarchical_ortmodule import HierarchicalORTModule  # noqa: F401

@@ -3,6 +3,7 @@ from pathlib import Path
 import onnx
 import onnx.helper as onnx_helper
 import onnx.numpy_helper as onnx_numpy_helper
+from onnx.onnx_pb import ModelProto
 
 from .quant_utils import attribute_to_kwarg, find_by_name
 
@@ -86,7 +87,7 @@ def _clean_initializers_helper(graph, model):
 
 
 class ONNXModel:
-    def __init__(self, model):
+    def __init__(self, model: ModelProto):
         self.model = model
 
     def nodes(self):
@@ -129,7 +130,7 @@ class ONNXModel:
         return None
 
     def get_initializer_name_set(self):
-        return set(initializer.name for initializer in self.model.graph.initializer)
+        return {initializer.name for initializer in self.model.graph.initializer}
 
     def remove_initializer(self, tensor):
         if tensor in self.model.graph.initializer:
@@ -176,7 +177,7 @@ class ONNXModel:
         for output in node.output:
             if output in input_name_to_nodes:
                 for node in input_name_to_nodes[output]:
-                    children.append(node)
+                    children.append(node)  # noqa: PERF402
         return children
 
     def get_parents(self, node, output_name_to_node=None):
@@ -255,30 +256,32 @@ class ONNXModel:
                     else:
                         kv = attribute_to_kwarg(attr)
                     kwargs.update(kv)
-                node = onnx_helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
+                node = onnx_helper.make_node(  # noqa: PLW2901
+                    node.op_type, node.input, node.output, name=node.name, **kwargs
+                )
 
             if node.op_type == "Gemm":
                 alpha = 1.0
                 beta = 1.0
-                transA = 0
-                transB = 0
+                transA = 0  # noqa: N806
+                transB = 0  # noqa: N806
                 for attr in node.attribute:
                     if attr.name == "alpha":
                         alpha = onnx_helper.get_attribute_value(attr)
                     elif attr.name == "beta":
                         beta = onnx_helper.get_attribute_value(attr)
                     elif attr.name == "transA":
-                        transA = onnx_helper.get_attribute_value(attr)
+                        transA = onnx_helper.get_attribute_value(attr)  # noqa: N806
                     elif attr.name == "transB":
-                        transB = onnx_helper.get_attribute_value(attr)
+                        transB = onnx_helper.get_attribute_value(attr)  # noqa: N806
                 if alpha == 1.0 and beta == 1.0 and transA == 0:
-                    inputB = node.input[1]
+                    inputB = node.input[1]  # noqa: N806
                     if transB == 1:
-                        B, Bs_graph = ONNXModel.__get_initializer(node.input[1], graph_path)
+                        B, Bs_graph = ONNXModel.__get_initializer(node.input[1], graph_path)  # noqa: N806
                         if B:
                             # assume B is not used by any other node
-                            B_array = onnx_numpy_helper.to_array(B)
-                            B_trans = onnx_numpy_helper.from_array(B_array.T)
+                            B_array = onnx_numpy_helper.to_array(B)  # noqa: N806
+                            B_trans = onnx_numpy_helper.from_array(B_array.T)  # noqa: N806
                             B_trans.name = B.name
                             Bs_graph.initializer.remove(B)
                             for input in Bs_graph.input:
@@ -287,12 +290,12 @@ class ONNXModel:
                                     break
                             Bs_graph.initializer.extend([B_trans])
                         else:
-                            inputB += "_Transposed"
+                            inputB += "_Transposed"  # noqa: N806
                             transpose_node = onnx_helper.make_node(
                                 "Transpose",
                                 inputs=[node.input[1]],
                                 outputs=[inputB],
-                                name=node.name + "_Transpose" if node.name != "" else "",
+                                name=node.name + "_Transpose" if node.name else "",
                             )
                             new_nodes.append(transpose_node)
 
@@ -300,7 +303,7 @@ class ONNXModel:
                         "MatMul",
                         inputs=[node.input[0], inputB],
                         outputs=[node.output[0] + ("_MatMul" if len(node.input) > 2 else "")],
-                        name=node.name + "_MatMul" if node.name != "" else "",
+                        name=node.name + "_MatMul" if node.name else "",
                     )
                     new_nodes.append(matmul_node)
 
@@ -309,7 +312,7 @@ class ONNXModel:
                             "Add",
                             inputs=[node.output[0] + "_MatMul", node.input[2]],
                             outputs=node.output,
-                            name=node.name + "_Add" if node.name != "" else "",
+                            name=node.name + "_Add" if node.name else "",
                         )
                         new_nodes.append(add_node)
 
@@ -393,16 +396,10 @@ class ONNXModel:
         self.remove_initializers(ununsed_weights)
 
     def is_graph_output(self, output_name):
-        for output in self.model.graph.output:
-            if output.name == output_name:
-                return True
-        return False
+        return any(output.name == output_name for output in self.model.graph.output)
 
     def is_graph_input(self, tensor_name: str) -> bool:
-        for input in self.model.graph.input:
-            if input.name == tensor_name:
-                return True
-        return False
+        return any(input.name == tensor_name for input in self.model.graph.input)
 
     # TODO:use OnnxModel.graph_topological_sort(self.model.graph) from transformers.onnx_model
     # Currently it breaks Openvino/Linux training gpu pipeline so hold off for 1.8 release
@@ -418,6 +415,8 @@ class ONNXModel:
                 continue
 
             for input_name in node.input:
+                if not input_name:
+                    continue
                 if input_name not in deps_to_nodes:
                     deps_to_nodes[input_name] = [node_idx]
                 else:

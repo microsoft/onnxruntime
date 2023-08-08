@@ -17,13 +17,16 @@
 
 namespace onnxruntime {
 
-common::Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
-  return CopyTensor(src, dst, 0);
+common::Status IDataTransfer::CopyTensor(const Tensor& /*src*/, Tensor& /*dst*/) const {
+  ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
 }
 
 common::Status IDataTransfer::CopyTensors(const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) const {
   for (const auto& pair : src_dst_pairs) {
-    ORT_RETURN_IF_ERROR(CopyTensor(pair.src, pair.dst, pair.exec_queue_id));
+    if (pair.src_stream)
+      ORT_RETURN_IF_ERROR(CopyTensorAsync(pair.src, pair.dst, *pair.src_stream));
+    else
+      ORT_RETURN_IF_ERROR(CopyTensor(pair.src, pair.dst));
   }
 
   return Status::OK();
@@ -32,7 +35,7 @@ common::Status IDataTransfer::CopyTensors(const std::vector<IDataTransfer::SrcDs
 #if !defined(DISABLE_SPARSE_TENSORS)
 common::Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const {
   for (const auto& pair : src_dst_pairs) {
-    ORT_RETURN_IF_ERROR(pair.src.get().Copy(*this, pair.dst, pair.exec_queue_id));
+    ORT_RETURN_IF_ERROR(pair.src.get().Copy(*this, pair.dst));
   }
   return Status::OK();
 }
@@ -42,7 +45,7 @@ bool CPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
   return src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU;
 }
 
-common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*exec_queue_id*/) const {
+common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
   if (src_data == dst_data) {
@@ -56,8 +59,10 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     auto src_stride_vec = src.Strides();
     onnxruntime::TensorShapeVector dst_stride{dst_stride_vec.begin(), dst_stride_vec.end()};
     onnxruntime::TensorShapeVector src_stride{src_stride_vec.begin(), src_stride_vec.end()};
-    return DispatchStridedCopy<element_type_lists::All>(nullptr, dst, dst.ByteOffset(), dst_stride, src.Shape(), src,
-                                                        src_stride);
+    return DispatchStridedCopy<element_type_lists::All>(nullptr,
+                                                        dst, 0, dst_stride,
+                                                        src.Shape(),
+                                                        src, 0, src_stride);
   } else {
 #endif
     // Copying only happens between two same size tensors.

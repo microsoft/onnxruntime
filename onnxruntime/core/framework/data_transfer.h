@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <vector>
+#include "core/common/common.h"
 
 struct OrtDevice;
 
@@ -15,6 +16,8 @@ class Tensor;
 class SparseTensor;
 #endif
 #endif
+class Stream;
+
 namespace common {
 class Status;
 }
@@ -27,12 +30,15 @@ class IDataTransfer {
   virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const = 0;
 
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const = 0;
+
+  virtual common::Status CopyTensorAsync(const Tensor& /*src*/, Tensor& /*dst*/, Stream& /*stream*/) const {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
 
   struct SrcDstPair {
     std::reference_wrapper<const Tensor> src;
     std::reference_wrapper<Tensor> dst;
-    int exec_queue_id;
+    Stream* src_stream;  // producer stream of src
   };
 
   // batched copy. default implementation copies each entry sequentially, and returns on first failure.
@@ -55,6 +61,6 @@ class CPUDataTransfer : public IDataTransfer {
   // Dampen MSVC warning about not fully overriding CopyTensor
   using IDataTransfer::CopyTensor;
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
-  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+  common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 };
 }  // namespace onnxruntime

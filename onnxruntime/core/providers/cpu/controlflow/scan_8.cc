@@ -142,7 +142,7 @@ void Scan<8>::Init(const OpKernelInfo& info) {
 
   ReadDirections(info, "directions", input_directions_, onnxruntime::narrow<size_t>(num_scan_inputs_));
 
-  device_helpers_.transpose_func = [](const gsl::span<const size_t>&, const Tensor&, Tensor&) -> Status {
+  device_helpers_.transpose_func = [](const gsl::span<const size_t>&, const Tensor&, Tensor&, Stream*) -> Status {
     ORT_NOT_IMPLEMENTED("Scan<8> spec does not support transpose of output. This should never be called.");
   };
 

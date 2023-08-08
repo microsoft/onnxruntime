@@ -51,13 +51,11 @@ class Loop : public controlflow::IControlFlowKernel {
  protected:
   // derived class can provide implementation for handling concatenation of Loop output on a different device
   void SetConcatOutputFunc(const ConcatOutput& concat_output_func) { concat_output_func_ = concat_output_func; }
-  void SetComputeStream(void* stream) { stream_ = stream; }
 
  private:
   // Info and FeedsFetchesManager re-used for each subgraph execution.
   std::unique_ptr<Info> info_;
   std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
   ConcatOutput concat_output_func_;
-  void* stream_;
 };
 }  // namespace onnxruntime

@@ -6,7 +6,7 @@
 #include <cmath>
 
 #include "core/providers/op_kernel_type_control.h"
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
 #endif
@@ -33,7 +33,7 @@ namespace contrib {
 
 // Currently this kernel is required to support Keras Mask-RCNN
 ONNX_OPERATOR_KERNEL_EX(
-    Range,  //name
+    Range,  // name
     kMSDomain,
     1,
     kCpuExecutionProvider,

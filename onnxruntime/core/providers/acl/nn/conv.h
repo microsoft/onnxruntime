@@ -57,5 +57,5 @@ class Conv : public onnxruntime::Conv<T> {
 
   arm_compute::TensorShape ACLReshapeWeightsDepthwise(arm_compute::Tensor* kernel) const;
 };
-}  // namespace mkl_dnn
+}  // namespace acl
 }  // namespace onnxruntime

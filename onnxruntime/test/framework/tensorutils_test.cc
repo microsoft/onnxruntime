@@ -19,7 +19,7 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
-//T must be float for double, and it must match with the 'type' argument
+// T must be float for double, and it must match with the 'type' argument
 template <typename T>
 void TestUnpackFloatTensor(TensorProto_DataType type, const Path& model_path) {
   TensorProto float_tensor_proto;

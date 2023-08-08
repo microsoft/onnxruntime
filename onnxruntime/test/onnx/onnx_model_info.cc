@@ -81,7 +81,7 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
     if (!init.has_name()) continue;
     initializer_names.insert(init.name());
   }
-  //Ignore the inputs that are already in initializers
+  // Ignore the inputs that are already in initializers
   for (const auto& p : graph.input()) {
     if (!p.has_name()) ORT_THROW("input without name??");
     if (initializer_names.find(p.name()) == initializer_names.end()) input_value_info_.push_back(p);

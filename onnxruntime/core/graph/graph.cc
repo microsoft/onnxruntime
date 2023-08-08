@@ -178,7 +178,7 @@ static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   node_arg_info_.set_name(name);
   // If the name is empty, it means the arg does not exist.
@@ -195,7 +195,7 @@ NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
     type_ = nullptr;
   }
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
   node_arg_info_ = std::move(node_arg_info);
@@ -567,7 +567,14 @@ const Path& Node::ModelPath() const noexcept {
 #if !defined(ORT_MINIMAL_BUILD)
 
 bool Node::CanBeInlined() const {
-  return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
+  if (func_body_ || func_template_)
+    return true;
+  if (!op_) return false;
+  ONNX_NAMESPACE::FunctionProto function_proto;
+  return TryGetFunctionProto(function_proto);
+  // Note: We end up doing some redundant work, which can be eliminated if we cache
+  // the constructed FunctionProto. Keeping the changes localized for now. A better
+  // implementation would require some more invasive refactoring.
 }
 
 bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_proto) const {
@@ -578,7 +585,7 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
     // Check if this node has a schema defined function proto.
     if (op_->HasContextDependentFunction()) {
       NodeProto node_proto;
-      ToProto(node_proto);
+      ToProto(node_proto, true);
       std::vector<TypeProto> input_types;
       for (size_t i = 0, n = InputDefs().size(); i < n; i++) {
         auto p_node_arg = InputDefs().at(i);
@@ -591,8 +598,29 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       return op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
     } else if (op_->HasFunction()) {
-      onnx_function_proto = *(op_->GetFunction());
-      return true;
+      const FunctionProto* function_ptr = nullptr;
+      // We need to get a function-body suitable for the ONNX opset used by the model.
+      // The first-parameter to GetFunction needs to be the ONNX opset used by the model.
+      // Unfortunately, ONNX's function-registration code uses the function's since-version
+      // as the default-version, which is incorrect in the case of functions belonging to
+      // non-onnx domains, like MSDOMAIN.
+
+      // We use the following as a temporary hack.
+      function_ptr = op_->GetFunction(SinceVersion(), false);
+
+      // TODO: Switch to following, once ONNX issue is fixed.
+      // auto& map = graph_->DomainToVersionMap();
+      // const auto iter = map.find(kOnnxDomain);
+      // if (iter != map.end()) {
+      //   function_ptr = op_->GetFunction(iter->second, true);
+      // } else {
+      //   function_ptr = op_->GetFunction();
+      // }
+
+      if (function_ptr != nullptr) {
+        onnx_function_proto = *function_ptr;
+        return true;
+      }
     }
   }
   return false;
@@ -613,6 +641,11 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
 
   if (!description_.empty())
     proto.set_doc_string(description_);
+
+  // Checks an attribute was not removed.
+  if (!can_be_saved_) {
+    ORT_THROW("Removable attributes were removed before the conversion is started.");
+  }
 
   // Set attributes.
   proto.clear_attribute();
@@ -665,6 +698,11 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto outputs = GetNodeArgsOrtFormat(definitions_.output_defs);
   auto input_arg_counts = builder.CreateVector(definitions_.input_arg_count);
   auto implicit_inputs = GetNodeArgsOrtFormat(definitions_.implicit_input_defs);
+
+  // Checks an attribute was not removed.
+  if (!can_be_saved_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Removable attributes were removed before the node is saved.");
+  }
 
   // Node attributes
   std::vector<flatbuffers::Offset<fbs::Attribute>> attributes_vec;
@@ -821,7 +859,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 void Node::Init(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
@@ -835,6 +873,7 @@ void Node::Init(const std::string& name,
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
   domain_ = domain;
+  can_be_saved_ = true;
   priority_ = 0;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
@@ -859,7 +898,9 @@ void Node::Init(const std::string& name,
     }
   }
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Node::Definitions& Node::MutableDefinitions() noexcept {
   // someone fetching these is going to change something
   graph_->SetGraphResolveNeeded();
@@ -944,6 +985,17 @@ bool Node::ClearAttribute(const std::string& attr_name) {
   return attributes_.erase(attr_name) > 0;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+int Node::PruneRemovableAttributes(gsl::span<const std::string> removable_attributes) {
+  graph_->SetGraphResolveNeeded();
+  graph_->SetGraphProtoSyncNeeded();
+  int n_removed = 0;
+  for (const auto& name : removable_attributes) {
+    n_removed += static_cast<int>(attributes_.erase(name));
+  }
+  can_be_saved_ = can_be_saved_ && n_removed == 0;
+  return n_removed;
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status Node::UpdateInputArgCount() {
@@ -1249,7 +1301,9 @@ Graph::Graph(const Model& owning_model,
 
   for (auto& node_arg : graph_proto_->value_info()) {
     if (utils::HasName(node_arg) && utils::HasType(node_arg)) {
-      name_to_type_map[node_arg.name()] = node_arg.type();
+      if (node_arg.name().size() > 0) {
+        name_to_type_map[node_arg.name()] = node_arg.type();
+      }
     }
   }
 
@@ -1573,11 +1627,12 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             Node& output_node = *entry->second.first;
             AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
 
-            // If this Graph was built manually, remove the implicit input from the graph outputs
-            // if it is present there and not explicitly listed in the ordered graph outputs
-            // (as that implies we should leave it as an output).
-            // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
-            if (!is_loaded_from_model_file_) {
+            // If this Graph was built manually and the outputs were not manually set, remove the implicit input from
+            // the graph outputs if it is present there.
+            //
+            // Otherwise, if the Graph was loaded from a GraphProto or the outputs were manually set, honor the
+            // explicit graph outputs and leave as is.
+            if (!is_loaded_from_model_file_ && !graph_outputs_manually_set_) {
               graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
                                    graph_outputs_.end());
             }
@@ -1630,7 +1685,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             // (they're internally available to the fused node but removed from the Graph instance).
             // Fusion happens after the model was loaded in full so we know the inputs were valid originally.
             bool check = node.NodeType() != Node::Type::Fused;
-#if defined(ENABLE_TRAINING)
+#if defined(ENABLE_TRAINING_CORE)
             // Only check initial model load for training as graph modifications there also render inputs 'invalid'.
             check = check && num_resolves_ == 0;
 #endif
@@ -3326,17 +3381,26 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 }
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                       const PathString& destination_file_path,
                                                                        size_t initializer_size_threshold) const {
   GraphProto result;
   ToGraphProtoInternal(result);
 
-  std::ofstream external_stream(external_file_name, std::ofstream::out | std::ofstream::binary);
+  Path parent_path = Path::Parse(destination_file_path).ParentPath();
+  Path external_file_path = Path::Parse(ToPathString(external_file_name));
+  // Check if parent_path is relative path (length = 0)
+  if (parent_path.ToPathString().length()) {
+    // Save external data file in same directory as model
+    external_file_path = parent_path.Append(external_file_path);
+  }
+
+  std::ofstream external_stream(external_file_path.ToPathString(), std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
   int64_t external_offset = 0;
 
   // Add the initializers to the result graph.
-#if !defined(DISABLE_SPARSE_TENSORS)
   const auto& model_path = ModelPath();
+#if !defined(DISABLE_SPARSE_TENSORS)
   const auto sparse_end = sparse_tensor_names_.end();
 #endif
 
@@ -3353,7 +3417,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       TensorProto* output_proto = result.add_initializer();
 
       std::vector<uint8_t> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data));
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
@@ -3814,13 +3878,17 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
 
   int cur_idx = 0;
   for (const auto& arg_name : func_meta_def->inputs) {
-    input_args.push_back(GetNodeArg(arg_name));
+    // In some cases, it needs to get the NodeArgs from ancestors.
+    // For example, if the subgraph we are going to build is the subgraph of the original graph
+    // and the NodeArgs of the outer scope values are defined in the top-level original graph.
+    input_args.push_back(GetNodeArgIncludingParentGraphs(arg_name));
     input_indexes[arg_name] = cur_idx++;
   }
 
   cur_idx = 0;
   for (const auto& arg_name : func_meta_def->outputs) {
-    output_args.push_back(GetNodeArg(arg_name));
+    // In some cases, it needs to get the NodeArgs from ancestors.
+    output_args.push_back(GetNodeArgIncludingParentGraphs(arg_name));
     output_indexes[arg_name] = cur_idx++;
   }
 
@@ -3962,9 +4030,8 @@ Status Graph::InlineFunction(Node& callnode) {
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
   std::stringstream ss;
-  ss << "_" << static_cast<const void*>(&callnode) << "_";
-  auto uniq_identifier = ss.str();
-
+  ss << "_inline_" << callnode.OpType();
+  auto uniq_identifier = GenerateNodeName(ss.str());
   // Replace a (function-call) node by an inlined graph.
   if (!callnode.GetFunctionBody()) {
     // This is the normal use-case: inlining a FunctionProto (representing

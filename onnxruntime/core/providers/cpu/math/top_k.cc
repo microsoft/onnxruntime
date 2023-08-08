@@ -130,7 +130,7 @@ static void SelectTopK(const Comparator& comparer,
 
   // find the top k (largest or smallest) elements in the data holder - O(n) average. O(n*n) worst case.
   // See https://en.wikipedia.org/wiki/Quickselect
-  nth_element(data_holder.begin(), data_holder.begin() + (k - 1), data_holder.end(), comparer);
+  std::nth_element(data_holder.begin(), data_holder.begin() + (k - 1), data_holder.end(), comparer);
 
   // sort the top k elements if needed - O (k log k)
   if (sort_top_k) {
@@ -210,7 +210,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
               // convert overall index to result index
               // avoid '/' if possible for perf reasons
               indices_map(i, onnxruntime::narrow<size_t>(j)) = block_slice == 1 ? (top_idx - row_offset - j)
-                                                   : (top_idx - row_offset - j) / block_slice;
+                                                                                : (top_idx - row_offset - j) / block_slice;
             }
           }
         };
@@ -264,7 +264,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
                   values_map(i, onnxruntime::narrow<size_t>(col_index)) = input_data[idx];
                   // convert overall index to result index. avoid '/' if possible for perf reasons
                   indices_map(i, onnxruntime::narrow<size_t>(col_index)) = block_slice == 1 ? (idx - row_offset - j)
-                                                               : (idx - row_offset - j) / block_slice;
+                                                                                            : (idx - row_offset - j) / block_slice;
 
                   // put the last value at the top of the heap to replace the removed one, and push it into
                   // place in a heap one smaller.
@@ -278,7 +278,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
                   values_map(i, onnxruntime::narrow<size_t>(col_index)) = input_data[idx];
                   // convert overall index to result index. avoid '/' if possible for perf reasons
                   indices_map(i, onnxruntime::narrow<size_t>(col_index)) = block_slice == 1 ? (idx - row_offset - j)
-                                                               : (idx - row_offset - j) / block_slice;
+                                                                                            : (idx - row_offset - j) / block_slice;
                 }
               }
             }
@@ -308,7 +308,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
                 values_map(i, onnxruntime::narrow<size_t>(col_index)) = input_data[idx];
                 // convert overall index to result index. avoid the cost of the '/' is possible
                 indices_map(i, onnxruntime::narrow<size_t>(col_index)) = block_slice == 1 ? (idx - row_offset - j)
-                                                             : (idx - row_offset - j) / block_slice;
+                                                                                          : (idx - row_offset - j) / block_slice;
               }
             }
           }

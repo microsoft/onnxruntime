@@ -1,6 +1,6 @@
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 hidden_size = 4
 weight_dim_to_split = 16

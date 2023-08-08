@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy
 import onnx
-from onnx import external_data_helper
+from onnx import ModelProto, TensorProto, external_data_helper
 from onnx import onnx_pb as onnx_proto
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
@@ -56,7 +56,7 @@ class QuantizationMode(Enum):
         try:
             return QuantizationMode[mode]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantizedValueType(Enum):
@@ -71,7 +71,7 @@ class QuantizedValueType(Enum):
         try:
             return QuantizedValueType[v]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantType(Enum):
@@ -86,7 +86,7 @@ class QuantType(Enum):
         try:
             return QuantType[t]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantFormat(Enum):
@@ -101,7 +101,7 @@ class QuantFormat(Enum):
         try:
             return QuantFormat[format]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 ONNX_TYPE_TO_NP_TYPE = {
@@ -111,9 +111,7 @@ ONNX_TYPE_TO_NP_TYPE = {
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert (
-        qType in ONNX_TYPE_TO_NP_TYPE
-    ), "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType)
+    assert qType in ONNX_TYPE_TO_NP_TYPE, f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
     dtype = ONNX_TYPE_TO_NP_TYPE[qType]
     cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
     cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
@@ -204,7 +202,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     return rmin, rmax, zero_point, scale, quantized_data
 
 
-def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
+def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
     """
     Return qmin and qmax, the minimum and maximum value representable by the given qType
     :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
@@ -218,11 +216,11 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
         else:
             (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
     else:
-        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
+        raise ValueError(f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported.")
     return qmin, qmax
 
 
-def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):
+def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
     """
     Helper function to get the quantization range for a type.
         parameter qType: quantization type.
@@ -245,8 +243,8 @@ class QuantizedInitializer:
         rmaxs,
         zero_points,
         scales,
-        data=[],
-        quantized_data=[],
+        data=[],  # noqa: B006
+        quantized_data=[],  # noqa: B006
         axis=None,
     ):
         self.name = name
@@ -265,7 +263,7 @@ class QuantizedInitializer:
 
 class QuantizedValue:
     """
-    Represents a linearly quantized value (input\output\intializer)
+    Represents a linearly quantized value (input\\output\\intializer)
     """
 
     def __init__(
@@ -303,7 +301,7 @@ def attribute_to_kwarg(attribute):
         :return: attribute in {key: value} format.
     """
     if attribute.type == 0:
-        raise ValueError("attribute {} does not have type specified.".format(attribute.name))
+        raise ValueError(f"attribute {attribute.name} does not have type specified.")
 
     # Based on attribute type definitions from AttributeProto
     # definition in https://github.com/onnx/onnx/blob/main/onnx/onnx.proto
@@ -328,7 +326,7 @@ def attribute_to_kwarg(attribute):
     elif attribute.type == 10:
         value = attribute.graphs
     else:
-        raise ValueError("attribute {} has unsupported type {}.".format(attribute.name, attribute.type))
+        raise ValueError(f"attribute {attribute.name} has unsupported type {attribute.type}.")
 
     return {attribute.name: value}
 
@@ -403,7 +401,7 @@ def write_calibration_table(calibration_cache):
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
 
-    logging.info("calibration cache: {}".format(calibration_cache))
+    logging.info(f"calibration cache: {calibration_cache}")
 
     with open("calibration.json", "w") as file:
         file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
@@ -507,10 +505,13 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     sess_option = SessionOptions()
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"])
+    kwargs = {}
+    # This will rename constant initializer names, disable it to make test pass.
+    kwargs["disabled_optimizers"] = ["ConstantSharing"]
+    _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"], **kwargs)
 
 
-def add_pre_process_metadata(model):
+def add_pre_process_metadata(model: ModelProto):
     """Tag the model that it went through quantization pre-processing"""
     metadata_props = {"onnx.quant.pre_process": "onnxruntime.quant"}
     if model.metadata_props:
@@ -519,7 +520,7 @@ def add_pre_process_metadata(model):
     onnx.helper.set_model_props(model, metadata_props)
 
 
-def model_has_pre_process_metadata(model):
+def model_has_pre_process_metadata(model: ModelProto) -> bool:
     """Check the model whether it went through quantization pre-processing"""
     if model.metadata_props:
         for prop in model.metadata_props:
@@ -528,7 +529,7 @@ def model_has_pre_process_metadata(model):
     return False
 
 
-def add_infer_metadata(model):
+def add_infer_metadata(model: ModelProto):
     metadata_props = {"onnx.infer": "onnxruntime.quant"}
     if model.metadata_props:
         for p in model.metadata_props:
@@ -536,7 +537,7 @@ def add_infer_metadata(model):
     onnx.helper.set_model_props(model, metadata_props)
 
 
-def model_has_infer_metadata(model):
+def model_has_infer_metadata(model: ModelProto) -> bool:
     if model.metadata_props:
         for p in model.metadata_props:
             if p.key == "onnx.infer" and p.value == "onnxruntime.quant":
@@ -544,44 +545,23 @@ def model_has_infer_metadata(model):
     return False
 
 
-def load_model_with_shape_infer(model_path: Path):
+def load_model_with_shape_infer(model_path: Path) -> ModelProto:
     inferred_model_path = generate_identified_filename(model_path, "-inferred")
     onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
     model = onnx.load(inferred_model_path.as_posix())
+    add_infer_metadata(model)
     inferred_model_path.unlink()
     return model
 
 
-def load_model(model_path: Path, need_optimize: bool):
-    with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
-        if need_optimize and not model_has_external_data(model_path):
-            opt_model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-            optimize_model(model_path, opt_model_path)
-            model_path = opt_model_path
-
-        model = load_model_with_shape_infer(model_path)
-        add_infer_metadata(model)
-        return model
-
-
-def save_and_reload_model(model):
+def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-        onnx.external_data_helper.convert_model_to_external_data(model, all_tensors_to_one_file=True)
-        onnx.save_model(model, model_path.as_posix())
-        return load_model(model_path, False)
+        onnx.save_model(model, model_path.as_posix(), save_as_external_data=True)
+        return load_model_with_shape_infer(model_path)
 
 
-def clone_model_with_shape_infer(model):
-    if model_has_infer_metadata(model):
-        cloned_model = onnx_proto.ModelProto()
-        cloned_model.CopyFrom(model)
-    else:
-        cloned_model = save_and_reload_model(model)
-    return cloned_model
-
-
-def tensor_proto_to_array(initializer):
+def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:
     if initializer.data_type == onnx_proto.TensorProto.FLOAT:
         return onnx.numpy_helper.to_array(initializer)
 
@@ -590,25 +570,25 @@ def tensor_proto_to_array(initializer):
     )
 
 
-def add_quant_suffix(tensor_name):
+def add_quant_suffix(tensor_name: str) -> str:
     return tensor_name + "_QuantizeLinear"
 
 
-def add_quant_input_suffix(tensor_name):
+def add_quant_input_suffix(tensor_name: str) -> str:
     return tensor_name + QUANT_INPUT_SUFFIX
 
 
-def add_quant_output_suffix(tensor_name):
+def add_quant_output_suffix(tensor_name) -> str:
     return tensor_name + "_QuantizeLinear_Output"
 
 
-def add_dequant_suffix(tensor_name):
+def add_dequant_suffix(tensor_name) -> str:
     return tensor_name + "_DequantizeLinear"
 
 
-def add_dequant_input_suffix(tensor_name):
+def add_dequant_input_suffix(tensor_name) -> str:
     return tensor_name + "_DequantizeLinear_Input"
 
 
-def add_dequant_output_suffix(tensor_name):
+def add_dequant_output_suffix(tensor_name) -> str:
     return tensor_name + DEQUANT_OUTPUT_SUFFIX

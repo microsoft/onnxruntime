@@ -1,5 +1,5 @@
 import onnx
-from onnx import onnx_pb as onnx_proto
+from onnx import onnx_pb as onnx_proto  # noqa: F401
 
 from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
@@ -29,7 +29,7 @@ class QLinearBinaryOp(QuantOperatorBase):
             return super().quantize()
 
         qlinear_binary_math_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_binary_math_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_binary_math_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:

@@ -113,7 +113,7 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
-  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(), input_tensor->DataRaw(), updates_tensor->DataRaw(),
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), input_tensor->DataRaw(), updates_tensor->DataRaw(),
                                                indices_tensor->DataRaw(), output_tensor->MutableDataRaw(),
                                                indices_tensor->DataType()->Size(), args);
 }

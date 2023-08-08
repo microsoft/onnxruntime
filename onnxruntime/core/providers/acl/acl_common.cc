@@ -60,8 +60,7 @@ arm_compute::Status ACLImportMemory(arm_compute::TensorAllocator* allocator, voi
 }
 
 template <typename T>
-void importDataToTensor(arm_compute::Tensor* tensor, const T* data){
-
+void importDataToTensor(arm_compute::Tensor* tensor, const T* data) {
   arm_compute::Window aclInpuWindow;
   aclInpuWindow.use_tensor_dimensions(tensor->info()->tensor_shape());
 
@@ -80,8 +79,7 @@ void importDataToTensor(arm_compute::Tensor* tensor, const T* data){
 template void importDataToTensor<float>(arm_compute::Tensor*, const float*);
 
 template <typename T>
-void importDataFromTensor(arm_compute::Tensor* tensor, T* data){
-
+void importDataFromTensor(arm_compute::Tensor* tensor, T* data) {
   arm_compute::Window aclInpuWindow;
   aclInpuWindow.use_tensor_dimensions(tensor->info()->tensor_shape());
 

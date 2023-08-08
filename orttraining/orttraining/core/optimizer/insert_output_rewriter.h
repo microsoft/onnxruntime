@@ -25,7 +25,7 @@ class InsertMaxPoolOutput : public RewriteRule {
 };
 
 // Rewrite rule that insert an addtional output to the matched node.
-// Adding this second output to expose FW intermediate result for speeding up BW computation 
+// Adding this second output to expose FW intermediate result for speeding up BW computation
 class InsertSoftmaxCrossEntropyLossOutput : public RewriteRule {
  public:
   InsertSoftmaxCrossEntropyLossOutput() noexcept

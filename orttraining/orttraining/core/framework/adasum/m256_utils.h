@@ -12,11 +12,11 @@ namespace training {
 // reduce 4xfloat64 into one double
 inline double Mm256ReductionPd(__m256d v) {
   __m128d vlow = _mm256_castpd256_pd128(v);
-  __m128d vhigh = _mm256_extractf128_pd(v, 1); // high 128
-  vlow = _mm_add_pd(vlow, vhigh);              // reduce down to 128
+  __m128d vhigh = _mm256_extractf128_pd(v, 1);  // high 128
+  vlow = _mm_add_pd(vlow, vhigh);               // reduce down to 128
 
   __m128d high64 = _mm_unpackhi_pd(vlow, vlow);
-  return _mm_cvtsd_f64(_mm_add_sd(vlow, high64)); // reduce to scalar
+  return _mm_cvtsd_f64(_mm_add_sd(vlow, high64));  // reduce to scalar
 }
 
 // load 8 float16s from a and return the __m256 register
@@ -49,84 +49,84 @@ inline void MmStorePhPartial(uint16_t* a, __m256 val, int len) {
   // but we cannot do this because the second argument to _mm_extract_epi16
   // has to be a compile time constant
   if (0 < len)
-      a[0] = (short)_mm_extract_epi16(r, 0);
+    a[0] = (short)_mm_extract_epi16(r, 0);
   if (1 < len)
-      a[1] = (short)_mm_extract_epi16(r, 1);
+    a[1] = (short)_mm_extract_epi16(r, 1);
   if (2 < len)
-      a[2] = (short)_mm_extract_epi16(r, 2);
+    a[2] = (short)_mm_extract_epi16(r, 2);
   if (3 < len)
-      a[3] = (short)_mm_extract_epi16(r, 3);
+    a[3] = (short)_mm_extract_epi16(r, 3);
   if (4 < len)
-      a[4] = (short)_mm_extract_epi16(r, 4);
+    a[4] = (short)_mm_extract_epi16(r, 4);
   if (5 < len)
-      a[5] = (short)_mm_extract_epi16(r, 5);
+    a[5] = (short)_mm_extract_epi16(r, 5);
   if (6 < len)
-      a[6] = (short)_mm_extract_epi16(r, 6);
+    a[6] = (short)_mm_extract_epi16(r, 6);
   if (7 < len)
-      a[7] = (short)_mm_extract_epi16(r, 7);
+    a[7] = (short)_mm_extract_epi16(r, 7);
 }
 
 inline void ComputeDotAndNormSqrdsfp16(const uint16_t* __restrict__ a,
-                                        const uint16_t* __restrict__ b,
-                                        int len, double& dotProduct,
-                                        double& anormsq, double& bnormsq) {
+                                       const uint16_t* __restrict__ b,
+                                       int len, double& dotProduct,
+                                       double& anormsq, double& bnormsq) {
   int i;
   __m256d dotProductVec = _mm256_setzero_pd();
   __m256d anormVec = _mm256_setzero_pd();
   __m256d bnormVec = _mm256_setzero_pd();
   for (i = 0; i < len - 7; i += 8) {
-      __m256 aVec = MmLoaduPh(&a[i]);
-      __m256 bVec = MmLoaduPh(&b[i]);
-      __m256d aBot = _mm256_cvtps_pd(_mm256_extractf128_ps(aVec, 0));
-      __m256d aTop = _mm256_cvtps_pd(_mm256_extractf128_ps(aVec, 1));
-      __m256d bBot = _mm256_cvtps_pd(_mm256_extractf128_ps(bVec, 0));
-      __m256d bTop = _mm256_cvtps_pd(_mm256_extractf128_ps(bVec, 1));
-      dotProductVec = _mm256_fmadd_pd(aBot, bBot, dotProductVec);
-      dotProductVec = _mm256_fmadd_pd(aTop, bTop, dotProductVec);
-      anormVec = _mm256_fmadd_pd(aBot, aBot, anormVec);
-      anormVec = _mm256_fmadd_pd(aTop, aTop, anormVec);
-      bnormVec = _mm256_fmadd_pd(bBot, bBot, bnormVec);
-      bnormVec = _mm256_fmadd_pd(bTop, bTop, bnormVec);
+    __m256 aVec = MmLoaduPh(&a[i]);
+    __m256 bVec = MmLoaduPh(&b[i]);
+    __m256d aBot = _mm256_cvtps_pd(_mm256_extractf128_ps(aVec, 0));
+    __m256d aTop = _mm256_cvtps_pd(_mm256_extractf128_ps(aVec, 1));
+    __m256d bBot = _mm256_cvtps_pd(_mm256_extractf128_ps(bVec, 0));
+    __m256d bTop = _mm256_cvtps_pd(_mm256_extractf128_ps(bVec, 1));
+    dotProductVec = _mm256_fmadd_pd(aBot, bBot, dotProductVec);
+    dotProductVec = _mm256_fmadd_pd(aTop, bTop, dotProductVec);
+    anormVec = _mm256_fmadd_pd(aBot, aBot, anormVec);
+    anormVec = _mm256_fmadd_pd(aTop, aTop, anormVec);
+    bnormVec = _mm256_fmadd_pd(bBot, bBot, bnormVec);
+    bnormVec = _mm256_fmadd_pd(bTop, bTop, bnormVec);
   }
   if (i < len) {
-      __m256 aVec = MmLoaduPhPartial(&a[i], len - i);
-      __m256 bVec = MmLoaduPhPartial(&b[i], len - i);
-      __m256d aBot = _mm256_cvtps_pd(_mm256_extractf128_ps(aVec, 0));
-      __m256d aTop = _mm256_cvtps_pd(_mm256_extractf128_ps(aVec, 1));
-      __m256d bBot = _mm256_cvtps_pd(_mm256_extractf128_ps(bVec, 0));
-      __m256d bTop = _mm256_cvtps_pd(_mm256_extractf128_ps(bVec, 1));
-      dotProductVec = _mm256_fmadd_pd(aBot, bBot, dotProductVec);
-      dotProductVec = _mm256_fmadd_pd(aTop, bTop, dotProductVec);
-      anormVec = _mm256_fmadd_pd(aBot, aBot, anormVec);
-      anormVec = _mm256_fmadd_pd(aTop, aTop, anormVec);
-      bnormVec = _mm256_fmadd_pd(bBot, bBot, bnormVec);
-      bnormVec = _mm256_fmadd_pd(bTop, bTop, bnormVec);
+    __m256 aVec = MmLoaduPhPartial(&a[i], len - i);
+    __m256 bVec = MmLoaduPhPartial(&b[i], len - i);
+    __m256d aBot = _mm256_cvtps_pd(_mm256_extractf128_ps(aVec, 0));
+    __m256d aTop = _mm256_cvtps_pd(_mm256_extractf128_ps(aVec, 1));
+    __m256d bBot = _mm256_cvtps_pd(_mm256_extractf128_ps(bVec, 0));
+    __m256d bTop = _mm256_cvtps_pd(_mm256_extractf128_ps(bVec, 1));
+    dotProductVec = _mm256_fmadd_pd(aBot, bBot, dotProductVec);
+    dotProductVec = _mm256_fmadd_pd(aTop, bTop, dotProductVec);
+    anormVec = _mm256_fmadd_pd(aBot, aBot, anormVec);
+    anormVec = _mm256_fmadd_pd(aTop, aTop, anormVec);
+    bnormVec = _mm256_fmadd_pd(bBot, bBot, bnormVec);
+    bnormVec = _mm256_fmadd_pd(bTop, bTop, bnormVec);
   }
-  
+
   dotProduct = Mm256ReductionPd(dotProductVec);
   anormsq = Mm256ReductionPd(anormVec);
   bnormsq = Mm256ReductionPd(bnormVec);
 }
 
 inline void ScaledAddfp16(int len, double acoeff, uint16_t* __restrict__ a,
-                        double bcoeff, uint16_t* __restrict__ b) {
+                          double bcoeff, uint16_t* __restrict__ b) {
   int i;
   __m256 acoeffVec = _mm256_set1_ps((float)(acoeff));
   __m256 bcoeffVec = _mm256_set1_ps((float)bcoeff);
   for (i = 0; i < len - 7; i += 8) {
-      __m256 aVec = MmLoaduPh(&a[i]);
-      __m256 bVec = MmLoaduPh(&b[i]);
-      aVec = _mm256_mul_ps(acoeffVec, aVec);
-      MmStorePh(&a[i], _mm256_fmadd_ps(bcoeffVec, bVec, aVec));
+    __m256 aVec = MmLoaduPh(&a[i]);
+    __m256 bVec = MmLoaduPh(&b[i]);
+    aVec = _mm256_mul_ps(acoeffVec, aVec);
+    MmStorePh(&a[i], _mm256_fmadd_ps(bcoeffVec, bVec, aVec));
   }
   if (i < len) {
-      __m256 aVec = MmLoaduPhPartial(&a[i], len - i);
-      __m256 bVec = MmLoaduPhPartial(&b[i], len - i);
-      aVec = _mm256_mul_ps(acoeffVec, aVec);
-      MmStorePhPartial(&a[i], _mm256_fmadd_ps(bcoeffVec, bVec, aVec), len - i);
+    __m256 aVec = MmLoaduPhPartial(&a[i], len - i);
+    __m256 bVec = MmLoaduPhPartial(&b[i], len - i);
+    aVec = _mm256_mul_ps(acoeffVec, aVec);
+    MmStorePhPartial(&a[i], _mm256_fmadd_ps(bcoeffVec, bVec, aVec), len - i);
   }
 }
 
-} // training
-} // onnxruntime
-#endif // ENABLE_CPU_FP16_TRAINING_OPS
+}  // namespace training
+}  // namespace onnxruntime
+#endif  // ENABLE_CPU_FP16_TRAINING_OPS

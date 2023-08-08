@@ -14,12 +14,12 @@ bool AdasumMPI::IsAdasumInitialized() {
 
 void AdasumMPI::InitializeVHDDReductionComms(WorkerGroupType worker_group) {
   int rank = GetMPIRank(MPIContext::GetInstance()
-                        .GetMPIGroup(worker_group)
-                        .communicator);
+                            .GetMPIGroup(worker_group)
+                            .communicator);
   int size = GetMPISize(MPIContext::GetInstance()
-                        .GetMPIGroup(worker_group)
-                        .communicator);
-  
+                            .GetMPIGroup(worker_group)
+                            .communicator);
+
   // Initialize communication groups for the vector halving, distance doubling
   // (VHDD) Adasum reduction. These are used in computing dot products and
   // norms for tensors whose elements are split across multiple ranks, which
@@ -35,7 +35,7 @@ void AdasumMPI::InitializeVHDDReductionComms(WorkerGroupType worker_group) {
   int nearest_power_2 = 1;
   int log_size;
   for (nearest_power_2 = 1, log_size = 0; (nearest_power_2 << 1) <= size;
-        nearest_power_2 = (nearest_power_2 << 1), log_size++)
+       nearest_power_2 = (nearest_power_2 << 1), log_size++)
     ;
   int shift_val;
   int level;
@@ -45,7 +45,7 @@ void AdasumMPI::InitializeVHDDReductionComms(WorkerGroupType worker_group) {
   auto node_rank = std::make_unique<std::vector<int>>();
   node_rank.get()->resize(size);
   for (level = 1, shift_val = 1; level < nearest_power_2;
-        level = (level << 1), shift_val++) {
+       level = (level << 1), shift_val++) {
     int base_rank = ((rank >> shift_val) << shift_val);
     for (int i = 0; i < (level << 1); i++) {
       node_rank.get()->at(i) = (base_rank + i);
@@ -87,7 +87,6 @@ void AdasumMPI::PointToPointSendRecv(
   int chunk_count =
       std::max((int)(adasum_mpi_chunk_size_ / element_size), 1);
 
-
   for (int i = 0; i < std::max(input_count, output_count); i += chunk_count) {
     status = MPI_Sendrecv((char*)input_data_buffer + i * element_size,
                           std::min(chunk_count, std::max(0, input_count - i)),
@@ -103,6 +102,6 @@ void AdasumMPI::PointToPointSendRecv(
   }
 }
 
-} // namespace training
-} // namespace onnxruntime
-#endif // USE_MPI
+}  // namespace training
+}  // namespace onnxruntime
+#endif  // USE_MPI

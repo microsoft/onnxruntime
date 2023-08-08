@@ -164,8 +164,8 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
     const std::unordered_set<size_t>* edges = GetStopGradientEdges(*n);
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
       if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
-        LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
-                            << " of node: " << n->Name();
+        LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << n->Name();
         continue;
       }
       const NodeArg* node_arg = n->InputDefs()[edge_it->GetDstArgIndex()];
@@ -173,14 +173,14 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
       if (nullptr != type_proto && type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType) {
         const int32_t type = type_proto->tensor_type().elem_type();
         if (GRAD_ALLOWED_TYPES.find(type) == GRAD_ALLOWED_TYPES.end()) {
-          LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
-                              << " of node: " << n->Name() << "because element type is: "<< type;
+          LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                                 << " of node: " << n->Name() << "because element type is: " << type;
           continue;
         }
       } else {
-        LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
-                              << " of node: " << n->Name() << "because it is not a Tensor type";
-          continue;
+        LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << n->Name() << "because it is not a Tensor type";
+        continue;
       }
 
       const Node& node = edge_it->GetNode();
@@ -232,7 +232,8 @@ const std::unordered_set<size_t>* GradientGraphBuilder::GetStopGradientEdges(con
         return nullptr;
       }
     } else {
-      ORT_THROW("Cast node ", node.Name(), " missing required attribute 'to'.");;
+      ORT_THROW("Cast node ", node.Name(), " missing required attribute 'to'.");
+      ;
     }
   } else {
     auto it = STOP_GRADIENT_EDGES.find(op_type);
@@ -279,7 +280,7 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
 
       const std::unordered_set<size_t>* edges = GetStopGradientEdges(next_node);
       if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
-        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+        LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                                << " of node: " << next_node.Name();
         continue;
       }
@@ -310,7 +311,7 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
         continue;
       }
 
-      //TODO: might not need two sets, the union of them might be enough
+      // TODO: might not need two sets, the union of them might be enough
       std::unordered_set<std::string> input_args_need_grad, output_args_need_grad;
       for (auto arg : node->InputDefs()) {
         if (visited_node_args.find(arg) != visited_node_args.end()) {

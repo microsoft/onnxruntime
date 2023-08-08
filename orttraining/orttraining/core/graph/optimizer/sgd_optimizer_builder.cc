@@ -39,10 +39,10 @@ Status SGDOptimizerBuilder::Build(
       if (opt_configs[i].update_weight) {
         output_weight_argdef = ArgDef(weight_name + "_SGD_out", weight_type_proto);
         output_args.push_back(output_weight_argdef);  // w_new
-        output_args.push_back(ArgDef());  // g_new
+        output_args.push_back(ArgDef());              // g_new
       } else {
         output_gradient_argdef = ArgDef(gradient_name + "_SGD_out", gradient_type_proto);
-        output_args.push_back(ArgDef());  // w_new
+        output_args.push_back(ArgDef());                // w_new
         output_args.push_back(output_gradient_argdef);  // g_new
       }
 

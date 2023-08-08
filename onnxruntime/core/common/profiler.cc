@@ -84,7 +84,7 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
   if (profile_with_logger_) {
     custom_logger_->SendProfileEvent(event);
   } else {
-    //TODO: sync_gpu if needed.
+    // TODO: sync_gpu if needed.
     std::lock_guard<OrtMutex> lock(mutex_);
     if (events_.size() < max_num_events_) {
       events_.emplace_back(std::move(event));
@@ -124,7 +124,7 @@ std::string Profiler::EndProfiling() {
 
   for (size_t i = 0; i < events_.size(); ++i) {
     auto& rec = events_[i];
-    profile_stream_ << R"({"cat" : ")" << event_categor_names_[rec.cat] << "\",";
+    profile_stream_ << R"({"cat" : ")" << event_category_names_[rec.cat] << "\",";
     profile_stream_ << "\"pid\" :" << rec.pid << ",";
     profile_stream_ << "\"tid\" :" << rec.tid << ",";
     profile_stream_ << "\"dur\" :" << rec.dur << ",";

@@ -51,4 +51,3 @@ class QLinearSigmoid final : public QLinearLookupBase<T> {
 
 }  // namespace contrib
 }  // namespace onnxruntime
-

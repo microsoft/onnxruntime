@@ -179,7 +179,7 @@ def run_profile(onnx_model_path, use_gpu, provider, basic_optimization, thread_n
 def load_profile_json(profile_file):
     print(f"loading profile output {profile_file} ...")
 
-    with open(profile_file, "r") as opened_file:
+    with open(profile_file) as opened_file:
         sess_time = json.load(opened_file)
 
     assert isinstance(sess_time, list)
@@ -256,7 +256,7 @@ def parse_kernel_results(sess_time, threshold=0):
         else:
             op_time[op_name] = duration
 
-    lines.append(f"\nGroup kernel time by operator:")
+    lines.append("\nGroup kernel time by operator:")
     lines.append("-" * 64)
     lines.append("Total(μs)\tTime%\tOperator")
     for op_name, duration in sorted(op_time.items(), key=lambda x: x[1], reverse=True):

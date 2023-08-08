@@ -321,7 +321,7 @@ set_target_properties(winml_adapter PROPERTIES CXX_STANDARD 17)
 set_target_properties(winml_adapter PROPERTIES CXX_STANDARD_REQUIRED ON)
 
 # Compiler definitions
-onnxruntime_add_include_to_target(winml_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers safeint_interface Boost::mp11)
+onnxruntime_add_include_to_target(winml_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
 target_include_directories(winml_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -405,7 +405,7 @@ target_include_directories(winml_lib_image PRIVATE ${winml_lib_api_image_dir})
 target_include_directories(winml_lib_image PRIVATE ${winml_lib_common_dir}/inc)
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_ROOT})
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})                                                        # for status.h
-onnxruntime_add_include_to_target(winml_lib_image onnx onnx_proto ${PROTOBUF_LIB} re2::re2 flatbuffers Boost::mp11)
+onnxruntime_add_include_to_target(winml_lib_image onnx onnx_proto ${PROTOBUF_LIB} re2::re2 flatbuffers::flatbuffers Boost::mp11)
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/winml)
 target_include_directories(winml_lib_image PRIVATE ${GSL_INCLUDE_DIR})
@@ -515,7 +515,7 @@ target_include_directories(winml_lib_api PRIVATE ${ONNXRUNTIME_ROOT})
 target_include_directories(winml_lib_api PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/winml)
 target_include_directories(winml_lib_api PRIVATE ${eigen_INCLUDE_DIRS})
-target_link_libraries(winml_lib_api PRIVATE ${GSL_TARGET} safeint_interface flatbuffers Boost::mp11 onnx onnx_proto)
+target_link_libraries(winml_lib_api PRIVATE ${GSL_TARGET} safeint_interface flatbuffers::flatbuffers Boost::mp11 onnx onnx_proto)
 
 # Properties
 set_target_properties(winml_lib_api
@@ -602,7 +602,7 @@ target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
 target_include_directories(winml_lib_api_experimental PRIVATE ${eigen_INCLUDE_DIRS})
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/winml)
-onnxruntime_add_include_to_target(winml_lib_api_experimental PRIVATE ${PROTOBUF_LIB} safeint_interface flatbuffers Boost::mp11 onnx onnx_proto ${GSL_TARGET})
+onnxruntime_add_include_to_target(winml_lib_api_experimental PRIVATE ${PROTOBUF_LIB} safeint_interface flatbuffers::flatbuffers Boost::mp11 onnx onnx_proto ${GSL_TARGET})
 
 # Properties
 set_target_properties(winml_lib_api_experimental
@@ -757,7 +757,7 @@ target_include_directories(winml_dll PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
 
 target_include_directories(winml_dll PRIVATE ${eigen_INCLUDE_DIRS})
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/winml)
-target_link_libraries(winml_dll PRIVATE onnx onnx_proto ${PROTOBUF_LIB} flatbuffers safeint_interface Boost::mp11 ${GSL_TARGET})
+target_link_libraries(winml_dll PRIVATE onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 ${GSL_TARGET})
 target_link_libraries(winml_dll PRIVATE debug Dbghelp)
 # Properties
 set_target_properties(winml_dll

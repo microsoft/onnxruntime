@@ -8,7 +8,7 @@ import warnings
 from ._modifier_registry import OptimizerModifierTypeRegistry
 
 
-def FP16_Optimizer(optimizer, **kwargs):
+def FP16_Optimizer(optimizer, **kwargs):  # noqa: N802
     """
     Simple wrapper to replace inefficient FP16_Optimizer function calls implemented by libraries for example
         Apex, DeepSpeed, Megatron-LM.

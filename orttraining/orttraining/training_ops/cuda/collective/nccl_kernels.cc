@@ -31,7 +31,7 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
 
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream()));
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
 #endif
   return Status::OK();
 }
@@ -63,7 +63,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   const int64_t alignment = size * 32;
   const int64_t padded_count = total_count + alignment - (total_count % alignment);
   const int64_t padded_size = padded_count * element_size;
-  auto fusion_buffer = GetScratchBuffer<void>(padded_size);
+  auto fusion_buffer = GetScratchBuffer<void>(padded_size, context->GetComputeStream());
   void* fusion_data = fusion_buffer.get();
 
   // Calculate the range of inputs this rank will send.
@@ -84,7 +84,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
       ORT_ENFORCE(offset + tensor_bytes <= rank_end, "A single rank must be responsible for the entire tensor.");
       void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
       const void* input_data = input_tensor->DataRaw();
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream(context)));
     }
 
     offset += tensor_bytes;
@@ -93,7 +93,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   // AllGather.
   const void* fusion_data_rank_offset = (const int8_t*)fusion_data + rank_start;
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclAllGather(fusion_data_rank_offset, fusion_data, rank_count, dtype, comm, Stream()));
+  NCCL_RETURN_IF_ERROR(ncclAllGather(fusion_data_rank_offset, fusion_data, rank_count, dtype, comm, Stream(context)));
 #endif
 
   // Copy AllGather results to outputs.
@@ -111,12 +111,12 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     if (offset < rank_start || offset >= rank_end) {
       void* output_data = output_tensor->MutableDataRaw();
       const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice, Stream(context)));
     } else {
       const void* input_data = input_tensor->DataRaw();
       void* output_data = output_tensor->MutableDataRaw();
       if (input_data != output_data) {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream(context)));
       }
     }
 
@@ -153,7 +153,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   const int64_t alignment = size * 32;
   const int64_t padded_count = total_count + alignment - (total_count % alignment);
   const int64_t padded_size = padded_count * element_size;
-  auto fusion_buffer = GetScratchBuffer<void>(padded_size);
+  auto fusion_buffer = GetScratchBuffer<void>(padded_size, context->GetComputeStream());
   void* fusion_data = fusion_buffer.get();
 
   // Calculate the range of outputs this rank will receive.
@@ -171,7 +171,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
 
     void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
     const void* input_data = input_tensor->DataRaw();
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream(context)));
 
     offset += tensor_bytes;
   }
@@ -179,7 +179,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   // ReduceScatter.
   void* fusion_data_rank_offset = (int8_t*)fusion_data + rank_start;
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclReduceScatter(fusion_data, fusion_data_rank_offset, rank_count, dtype, ncclSum, comm, Stream()));
+  NCCL_RETURN_IF_ERROR(ncclReduceScatter(fusion_data, fusion_data_rank_offset, rank_count, dtype, ncclSum, comm, Stream(context)));
 #endif
   // Copy this rank's ReduceScatter results to outputs.
   offset = 0;
@@ -197,12 +197,12 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
       ORT_ENFORCE(offset + tensor_bytes <= rank_end, "A single rank must be responsible for the entire tensor.");
       void* output_data = output_tensor->MutableDataRaw();
       const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice, Stream(context)));
     } else {
       const void* input_data = input_tensor->DataRaw();
       void* output_data = output_tensor->MutableDataRaw();
       if (input_data != output_data) {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream(context)));
       }
     }
 

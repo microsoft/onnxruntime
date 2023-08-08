@@ -37,7 +37,7 @@ class MatMulIntegerBase : public OpKernel {
 
       const auto* b_data = static_cast<const uint8_t*>(tensor.DataRaw());
 
-      BufferUniquePtr b_trans_buffer;
+      std::optional<Tensor> b_trans_buffer;
       if (IsBTransposed()) {
         std::swap(K, N);
         b_data = quantization::TransPoseInputData(b_data, b_trans_buffer, alloc, N, K);
@@ -47,15 +47,12 @@ class MatMulIntegerBase : public OpKernel {
         return Status::OK();
       }
 
-      auto* packed_b_data = alloc->Alloc(packed_b_size);
-
+      packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
       // Initialize memory to 0 as there could be some padding associated with pre-packed
       // buffer memory and we don not want it uninitialized and generate different hashes
       // if and when we try to cache this pre-packed buffer for sharing between sessions.
-      memset(packed_b_data, 0, packed_b_size);
-
-      packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(std::move(alloc)));
-      MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_data);
+      memset(packed_b_.get(), 0, packed_b_size);
+      MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_.get());
 
       bool share_prepacked_weights = (prepacked_weights != nullptr);
       if (share_prepacked_weights) {
@@ -83,8 +80,8 @@ class MatMulIntegerBase : public OpKernel {
 
  protected:
   /**
-   * @return input index of Matrix B, the weight tensor 
-  */
+   * @return input index of Matrix B, the weight tensor
+   */
   virtual int GetAIdx() const { return 0; }
   virtual int GetBIdx() const = 0;
 
@@ -100,7 +97,7 @@ class MatMulIntegerBase : public OpKernel {
   bool IsBQuantParamSupported(const TensorShape& B_quant_param_shape, const TensorShape& B_shape) const {
     int64_t B_quant_param_rank = B_quant_param_shape.NumDimensions();
     int64_t B_shape_rank = B_shape.NumDimensions();
-    if (B_quant_param_rank == 0 ||                                       //scalar
+    if (B_quant_param_rank == 0 ||                                       // scalar
         (B_quant_param_rank == 1 && B_quant_param_shape.Size() == 1)) {  // 1D tensor with size 1
       return true;
     }
@@ -129,7 +126,7 @@ class MatMulIntegerBase : public OpKernel {
 
   bool b_is_signed_{true};
   TensorShape b_shape_;
-  BufferUniquePtr packed_b_;
+  IAllocatorUniquePtr<void> packed_b_;
 };
 
 }  // namespace onnxruntime

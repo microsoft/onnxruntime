@@ -9,9 +9,9 @@ import argparse
 import json
 import logging
 import platform
-import sys
+import sys  # noqa: F401
 from os import environ
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union  # noqa: F401
 
 import cpuinfo
 import psutil
@@ -102,7 +102,7 @@ class MachineInfo:
         try:
             nvmlInit()
             driver_version = nvmlSystemGetDriverVersion()
-            deviceCount = nvmlDeviceGetCount()
+            deviceCount = nvmlDeviceGetCount()  # noqa: N806
             for i in range(deviceCount):
                 handle = nvmlDeviceGetHandleByIndex(i)
                 info = nvmlDeviceGetMemoryInfo(handle)

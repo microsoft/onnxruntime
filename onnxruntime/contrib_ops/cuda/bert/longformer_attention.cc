@@ -71,19 +71,18 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, shape);
 
-  cublasHandle_t cublas = CublasHandle();
-  cudaStream_t stream = Stream();
-  CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas, stream));
+  cublasHandle_t cublas = GetCublasHandle(context);
+  cudaStream_t stream = Stream(context);
 
   constexpr size_t element_size = sizeof(T);
 
   // TODO(tianleiwu): only calculate global index once per model instead of once per LongformerAttention node.
   // Build Global Index
-  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * sequence_length);
-  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
+  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * sequence_length, context->GetComputeStream());
+  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size, context->GetComputeStream());
 
   size_t global_scratch_bytes = GetGlobalScratchSize(sequence_length);
-  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes);
+  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes, context->GetComputeStream());
 
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(BuildGlobalIndex(
@@ -114,10 +113,10 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&is_copy_done, cudaEventDisableTiming));
   CUDA_RETURN_IF_ERROR(cudaEventRecord(is_copy_done, stream));
 
-  size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
+  size_t qkv_size = static_cast<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size;
   // Buffer for GEMM outputs of q, k, v, global_q, global_k and global_v
   // TODO(tianleiwu): compact global_q only need batch_size * window * hidden_size * element_size buffer size.
-  auto gemm_buffer = GetScratchBuffer<void>(qkv_size + qkv_size);
+  auto gemm_buffer = GetScratchBuffer<void>(qkv_size + qkv_size, context->GetComputeStream());
 
   bool use_merged_qkv_weights = (weights->Shape().NumDimensions() == 2);
 
@@ -147,10 +146,9 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         q_weight, n,
         input_data, k,
         &zero, q_data, n, device_prop));
-
     // k
-    const CudaT* k_weight = q_weight + hidden_size * hidden_size;
-    CudaT* k_data = q_data + batch_size * sequence_length * hidden_size;
+    const CudaT* k_weight = q_weight + static_cast<int64_t>(hidden_size) * hidden_size;
+    CudaT* k_data = q_data + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         k_weight, n,
@@ -158,8 +156,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         &zero, k_data, n, device_prop));
 
     // v
-    const CudaT* v_weight = k_weight + hidden_size * hidden_size;
-    CudaT* v_data = k_data + batch_size * sequence_length * hidden_size;
+    const CudaT* v_weight = k_weight + static_cast<int64_t>(hidden_size) * hidden_size;
+    CudaT* v_data = k_data + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         v_weight, n,
@@ -201,7 +199,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
     } else {
       // global q
       const CudaT* global_q_weight = global_weights_data;
-      CudaT* global_q = global_gemm_buffer + 2 * batch_size * sequence_length * hidden_size;
+      CudaT* global_q = global_gemm_buffer + static_cast<int64_t>(2) * batch_size * sequence_length * hidden_size;
       if (disable_compact_memory) {
         CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
             cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -209,28 +207,29 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
             input_data, k,
             &zero, global_q, n, device_prop));
       } else {
-        CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(cublas,
-                                                              CUBLAS_OP_N,
-                                                              CUBLAS_OP_N,
-                                                              hidden_size,                    // m
-                                                              max_num_global,                 // n
-                                                              hidden_size,                    // k
-                                                              &one,                           // alpha
-                                                              global_q_weight,                // A
-                                                              hidden_size,                    // lda
-                                                              0,                              // strideA
-                                                              input_data,                     // B
-                                                              hidden_size,                    // ldb
-                                                              sequence_length * hidden_size,  // strideB
-                                                              &zero,                          // beta
-                                                              global_q,                       // C
-                                                              hidden_size,                    // ldc
-                                                              max_num_global * hidden_size,   // strideC
-                                                              batch_size,                     // batch count
-                                                              device_prop));
+        CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
+            cublas,
+            CUBLAS_OP_N,
+            CUBLAS_OP_N,
+            hidden_size,                                          // m
+            max_num_global,                                       // n
+            hidden_size,                                          // k
+            &one,                                                 // alpha
+            global_q_weight,                                      // A
+            hidden_size,                                          // lda
+            0,                                                    // strideA
+            input_data,                                           // B
+            hidden_size,                                          // ldb
+            static_cast<int64_t>(sequence_length) * hidden_size,  // strideB
+            &zero,                                                // beta
+            global_q,                                             // C
+            hidden_size,                                          // ldc
+            static_cast<int64_t>(max_num_global) * hidden_size,   // strideC
+            batch_size,                                           // batch count
+            device_prop));
       }
       // global k
-      const CudaT* global_k_weight = global_weights_data + hidden_size * hidden_size;
+      const CudaT* global_k_weight = global_weights_data + static_cast<int64_t>(hidden_size) * hidden_size;
       CudaT* global_k = global_gemm_buffer;
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -239,8 +238,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           &zero, global_k, n, device_prop));
 
       // global v
-      const CudaT* global_v_weight = global_k_weight + hidden_size * hidden_size;
-      CudaT* global_v = global_gemm_buffer + batch_size * sequence_length * hidden_size;
+      const CudaT* global_v_weight = global_k_weight + static_cast<int64_t>(hidden_size) * hidden_size;
+      CudaT* global_v = global_gemm_buffer + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           global_v_weight, n,
@@ -257,35 +256,35 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                              max_num_global,
                                                              window_,
                                                              disable_compact_memory);
-  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
+  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
   ORT_RETURN_IF_ERROR(LaunchLongformerAttentionKernel(
-          device_prop,
-          cublas,
-          stream,
-          reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          reinterpret_cast<const CudaT*>(bias->Data<T>()),
-          reinterpret_cast<const CudaT*>(attention_mask->Data<T>()),
-          reinterpret_cast<const CudaT*>(global_gemm_buffer),
-          reinterpret_cast<const CudaT*>(global_bias->Data<T>()),
-          global_attention_mask->Data<int>(),
-          global_index_buffer.get(),
-          batch_global_num_buffer.get(),
-          pinned_buffer.get(),
-          workspace_buffer.get(),
-          output->MutableData<T>(),
-          batch_size,
-          sequence_length,
-          num_heads_,
-          head_size,
-          window_,
-          max_num_global,
-          element_size,
-          disable_compact_memory,
-          use_merged_qkv_weights,
-          use_half4_));
+      device_prop,
+      cublas,
+      stream,
+      reinterpret_cast<const CudaT*>(gemm_buffer.get()),
+      reinterpret_cast<const CudaT*>(bias->Data<T>()),
+      reinterpret_cast<const CudaT*>(attention_mask->Data<T>()),
+      reinterpret_cast<const CudaT*>(global_gemm_buffer),
+      reinterpret_cast<const CudaT*>(global_bias->Data<T>()),
+      global_attention_mask->Data<int>(),
+      global_index_buffer.get(),
+      batch_global_num_buffer.get(),
+      pinned_buffer.get(),
+      workspace_buffer.get(),
+      output->MutableData<T>(),
+      batch_size,
+      sequence_length,
+      num_heads_,
+      head_size,
+      window_,
+      max_num_global,
+      element_size,
+      disable_compact_memory,
+      use_merged_qkv_weights,
+      use_half4_));
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
-  this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
+  this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), context->GetComputeStream());
 
   return Status::OK();
 }

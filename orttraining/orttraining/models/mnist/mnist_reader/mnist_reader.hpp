@@ -38,12 +38,12 @@ struct MNIST_dataset {
   Container<Label> test_labels;      ///< The test labels
 
   /*!
-     * \brief Resize the training set to new_size
-     *
-     * If new_size is less than the current size, this function has no effect.
-     *
-     * \param new_size The size to resize the training sets to.
-     */
+   * \brief Resize the training set to new_size
+   *
+   * If new_size is less than the current size, this function has no effect.
+   *
+   * \param new_size The size to resize the training sets to.
+   */
   void resize_training(std::size_t new_size) {
     if (training_images.size() > new_size) {
       training_images.resize(new_size);
@@ -52,12 +52,12 @@ struct MNIST_dataset {
   }
 
   /*!
-     * \brief Resize the test set to new_size
-     *
-     * If new_size is less than the current size, this function has no effect.
-     *
-     * \param new_size The size to resize the test sets to.
-     */
+   * \brief Resize the test set to new_size
+   *
+   * If new_size is less than the current size, this function has no effect.
+   *
+   * \param new_size The size to resize the test sets to.
+   */
   void resize_test(std::size_t new_size) {
     if (test_images.size() > new_size) {
       test_images.resize(new_size);
@@ -83,9 +83,9 @@ bool read_mnist_image_file_flat(Container& images, const std::string& path, std:
     auto rows = read_header(buffer, 2);
     auto columns = read_header(buffer, 3);
 
-    //Skip the header
-    //Cast to unsigned char is necessary cause signedness of char is
-    //platform-specific
+    // Skip the header
+    // Cast to unsigned char is necessary cause signedness of char is
+    // platform-specific
     auto image_buffer = reinterpret_cast<unsigned char*>(buffer.get() + 16);
 
     if (limit > 0 && count > limit) {
@@ -123,9 +123,9 @@ void read_mnist_image_file(Container<Image>& images, const std::string& path, st
     auto rows = read_header(buffer, 2);
     auto columns = read_header(buffer, 3);
 
-    //Skip the header
-    //Cast to unsigned char is necessary cause signedness of char is
-    //platform-specific
+    // Skip the header
+    // Cast to unsigned char is necessary cause signedness of char is
+    // platform-specific
     auto image_buffer = reinterpret_cast<unsigned char*>(buffer.get() + 16);
 
     if (limit > 0 && count > limit) {
@@ -158,9 +158,9 @@ void read_mnist_label_file(Container<Label>& labels, const std::string& path, st
   if (buffer) {
     auto count = read_header(buffer, 1);
 
-    //Skip the header
-    //Cast to unsigned char is necessary cause signedness of char is
-    //platform-specific
+    // Skip the header
+    // Cast to unsigned char is necessary cause signedness of char is
+    // platform-specific
     auto label_buffer = reinterpret_cast<unsigned char*>(buffer.get() + 8);
 
     if (limit > 0 && count > limit) {
@@ -189,9 +189,9 @@ bool read_mnist_label_file_flat(Container& labels, const std::string& path, std:
   if (buffer) {
     auto count = read_header(buffer, 1);
 
-    //Skip the header
-    //Cast to unsigned char is necessary cause signedness of char is
-    //platform-specific
+    // Skip the header
+    // Cast to unsigned char is necessary cause signedness of char is
+    // platform-specific
     auto label_buffer = reinterpret_cast<unsigned char*>(buffer.get() + 8);
 
     if (limit > 0 && count > limit) {
@@ -222,9 +222,9 @@ bool read_mnist_label_file_categorical(Container& labels, const std::string& pat
   if (buffer) {
     auto count = read_header(buffer, 1);
 
-    //Skip the header
-    //Cast to unsigned char is necessary cause signedness of char is
-    //platform-specific
+    // Skip the header
+    // Cast to unsigned char is necessary cause signedness of char is
+    // platform-specific
     auto label_buffer = reinterpret_cast<unsigned char*>(buffer.get() + 8);
 
     if (limit > 0 && count > limit) {
@@ -402,6 +402,6 @@ MNIST_dataset<Container, Sub<Pixel>, Label> read_dataset(const std::string& fold
   return read_dataset_direct<Container, Sub<Pixel>>(folder, training_limit, test_limit);
 }
 
-}  //end of namespace mnist
+}  // end of namespace mnist
 
 #endif

@@ -1,33 +1,9 @@
-import inspect
-import onnx
-import os
 import pytest
 import torch
-import torchvision
-
-from numpy.testing import assert_allclose
-
-from onnxruntime import set_seed
-from onnxruntime.capi.ort_trainer import (
-    IODescription as Legacy_IODescription,
-    ModelDescription as Legacy_ModelDescription,
-    LossScaler as Legacy_LossScaler,
-    ORTTrainer as Legacy_ORTTrainer,
-)
-from onnxruntime.training import (
-    _utils,
-    amp,
-    optim,
-    orttrainer,
-    TrainStepInfo,
-    model_desc_validation as md_val,
-    orttrainer_options as orttrainer_options,
-)
-
 from _test_commons import _load_pytorch_transformer_model
 
-import _test_helpers
-
+from onnxruntime import set_seed
+from onnxruntime.training import optim, orttrainer
 
 ###############################################################################
 # Testing starts here #########################################################

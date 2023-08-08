@@ -1195,15 +1195,10 @@ Return Value:
     bool AllKernelsAreSmall = true;
 
     if (Dimensions > 3) {
-#ifdef MLAS_NO_EXCEPTION
-        abort();
-#else
-        throw std::runtime_error("bad dimensions");
-#endif
+        MLAS_THROW_EX(std::runtime_error, "bad dimensions");
     }
 
     for (size_t dim = 0; dim < Dimensions; dim++) {
-
         WorkBlock.InputShape[dim] = size_t(InputShape[dim]);
         WorkBlock.OutputShape[dim] = size_t(OutputShape[dim]);
 

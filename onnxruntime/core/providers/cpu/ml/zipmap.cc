@@ -77,7 +77,7 @@ common::Status ZipMapOp::Compute(OpKernelContext* context) const {
     auto* y_data = context->Output<std::vector<std::map<std::string, float>>>(0);
     if (y_data == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
-    //auto* y_data = Y->MutableData<std::vector<std::map<std::string, float>>>();
+    // auto* y_data = Y->MutableData<std::vector<std::map<std::string, float>>>();
     y_data->resize(onnxruntime::narrow<size_t>(batch_size));
     int64_t current_weight_0 = 0;
     for (int64_t n = 0; n < batch_size; n++) {
@@ -97,7 +97,7 @@ common::Status ZipMapOp::Compute(OpKernelContext* context) const {
     }
     auto* y_data = context->Output<std::vector<std::map<std::int64_t, float>>>(0);
     if (y_data == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-    //auto* y_data = Y->MutableData<std::vector<std::map<int64_t, float>>>();
+    // auto* y_data = Y->MutableData<std::vector<std::map<int64_t, float>>>();
     y_data->resize(onnxruntime::narrow<size_t>(batch_size));
     int64_t current_weight_0 = 0;
     for (int n = 0; n < batch_size; n++) {

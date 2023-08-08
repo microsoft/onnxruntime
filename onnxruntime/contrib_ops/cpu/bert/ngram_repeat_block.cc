@@ -3,7 +3,6 @@
 
 #include "ngram_repeat_block.h"
 
-
 namespace onnxruntime {
 namespace contrib {
 

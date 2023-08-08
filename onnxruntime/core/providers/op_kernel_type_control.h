@@ -169,7 +169,7 @@ struct EnabledTypes {
   ::onnxruntime::op_kernel_type_control::tags::OpArg<                           \
       ::onnxruntime::op_kernel_type_control::                                   \
           ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName), \
-      ::onnxruntime::op_kernel_type_control::OpArgDirection::k##ArgDirection,      \
+      ::onnxruntime::op_kernel_type_control::OpArgDirection::k##ArgDirection,   \
       ArgIndex>
 
 // INTERNAL

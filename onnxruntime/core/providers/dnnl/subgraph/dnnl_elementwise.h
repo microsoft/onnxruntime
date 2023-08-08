@@ -23,16 +23,16 @@ class DnnlElementwise {
 
  private:
   /*
-  * GetAlpha will get the 'alpha' attribute if the attribute is not found
-  * the the `default_alph_` will be returned instead. This is set to 1.0
-  * by the `DnnlElementwise` constructor but should be updated for any operator
-  * that has an 'alpha' property.
-  *
-  * See how `GetAlpha` is called for the 'Elu' operator in the `CreatePrimitive` code.
-  *
-  * Note: The number of operators that use the 'alpha' attribute is much smaller than
-  * initially expected.
-  */
+   * GetAlpha will get the 'alpha' attribute if the attribute is not found
+   * the the `default_alph_` will be returned instead. This is set to 1.0
+   * by the `DnnlElementwise` constructor but should be updated for any operator
+   * that has an 'alpha' property.
+   *
+   * See how `GetAlpha` is called for the 'Elu' operator in the `CreatePrimitive` code.
+   *
+   * Note: The number of operators that use the 'alpha' attribute is much smaller than
+   * initially expected.
+   */
   float GetAlpha(DnnlNode& node, float default_alpha);
 };
 

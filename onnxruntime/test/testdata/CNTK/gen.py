@@ -12,33 +12,27 @@ model_file = "model.onnx"
 data_dir = "test_data_set_0"
 
 
-def SaveTensorProto(file_path, variable, data, name):
+def SaveTensorProto(file_path, variable, data, name):  # noqa: N802
     # ONNX input shape always has sequence axis as the first dimension, if sequence axis exists
     if len(variable.dynamic_axes) == 2:
-        data = data.transpose(
-            (
-                1,
-                0,
-            )
-            + tuple(range(2, len(data.shape)))
-        )
+        data = data.transpose((1, 0, *tuple(range(2, len(data.shape)))))
     tp = numpy_helper.from_array(data, name if name else variable.uid)
     onnx.save_tensor(tp, file_path)
 
 
-def SaveData(test_data_dir, prefix, variables, data_list, name_replacements=None):
+def SaveData(test_data_dir, prefix, variables, data_list, name_replacements=None):  # noqa: N802
     if isinstance(data_list, np.ndarray):
         data_list = [data_list]
     for (i, d), v in zip(enumerate(data_list), variables):
         SaveTensorProto(
-            os.path.join(test_data_dir, "{0}_{1}.pb".format(prefix, i)),
+            os.path.join(test_data_dir, f"{prefix}_{i}.pb"),
             v,
             d,
             name_replacements[v.uid] if name_replacements else None,
         )
 
 
-def Save(dir, func, feed, outputs):
+def Save(dir, func, feed, outputs):  # noqa: N802
     if not os.path.exists(dir):
         os.makedirs(dir)
     onnx_file = os.path.join(dir, model_file)
@@ -74,7 +68,7 @@ def Save(dir, func, feed, outputs):
     SaveData(test_data_dir, "output", func.outputs, [outputs[var] for var in func.outputs])
 
 
-def GenSimple():
+def GenSimple():  # noqa: N802
     x = C.input_variable(
         (
             1,
@@ -87,7 +81,7 @@ def GenSimple():
     Save("test_simple", y, data_x, data_y)
 
 
-def GenSharedWeights():
+def GenSharedWeights():  # noqa: N802
     x = C.input_variable(
         (
             1,
@@ -101,7 +95,7 @@ def GenSharedWeights():
     Save("test_shared_weights", y, data_x, data_y)
 
 
-def GenSimpleMNIST():
+def GenSimpleMNIST():  # noqa: N802
     input_dim = 784
     num_output_classes = 10
     num_hidden_layers = 1
@@ -128,7 +122,7 @@ def GenSimpleMNIST():
     Save("test_simpleMNIST", model, data_feature, data_output)
 
 
-def GenMatMul_1k():
+def GenMatMul_1k():  # noqa: N802
     feature = C.input_variable(
         (
             1024,
@@ -143,23 +137,25 @@ def GenMatMul_1k():
     Save("test_MatMul_1k", model, data_feature, data_output)
 
 
-def LSTM(cell_dim, use_scan=True):
+def LSTM(cell_dim, use_scan=True):  # noqa: N802
     # we now create an LSTM_cell function and call it with the input and placeholders
-    LSTM_cell = C.layers.LSTM(cell_dim)
+    LSTM_cell = C.layers.LSTM(cell_dim)  # noqa: N806
 
     @C.Function
     def func(dh, dc, input):
-        LSTM_func = LSTM_cell(dh, dc, input)
+        LSTM_func = LSTM_cell(dh, dc, input)  # noqa: N806
         if use_scan:
-            LSTM_func_root = C.as_composite(LSTM_func.outputs[0].owner.block_root)
+            LSTM_func_root = C.as_composite(LSTM_func.outputs[0].owner.block_root)  # noqa: N806
             args = LSTM_func_root.arguments
-            LSTM_func = LSTM_func_root.clone(C.CloneMethod.share, {args[0]: input, args[1]: dh, args[2]: dc})
+            LSTM_func = LSTM_func_root.clone(  # noqa: N806
+                C.CloneMethod.share, {args[0]: input, args[1]: dh, args[2]: dc}
+            )
         return LSTM_func
 
     return func
 
 
-def GenLSTMx4(use_scan):
+def GenLSTMx4(use_scan):  # noqa: N802
     feature = C.sequence.input_variable((128,), np.float32)
     lstm1 = C.layers.Recurrence(LSTM(512, use_scan))(feature)
     lstm2_fw = C.layers.Recurrence(LSTM(512, use_scan))(lstm1)
@@ -178,7 +174,7 @@ def GenLSTMx4(use_scan):
     Save("test_LSTMx4_" + postfix, model, data_feature, data_output)
 
 
-def GenScan():
+def GenScan():  # noqa: N802
     np.random.seed(0)
     feature = C.sequence.input_variable((3,), np.float32)
     model = C.layers.For(range(4), lambda: C.layers.Recurrence(LSTM(2, use_scan=True)))(feature)
@@ -225,7 +221,7 @@ def GenScan():
     onnx.save(out_mp, "test_Scan/model.onnx", "wb")
 
 
-def GenSimpleScan():
+def GenSimpleScan():  # noqa: N802
     feature = C.sequence.input_variable((128,), np.float32)
     param = C.parameter(shape=(1,), dtype=np.float32)
     scan = C.layers.Recurrence(lambda h, x: x + h + param)(feature)
@@ -235,7 +231,7 @@ def GenSimpleScan():
     Save("test_SimpleScan", model, data_feature, data_output)
 
 
-def GenGRU():
+def GenGRU():  # noqa: N802
     feature = C.sequence.input_variable((64,), np.float32)
     gru_fw = C.layers.Recurrence(C.layers.GRU(128))(feature)
     gru_bw = C.layers.Recurrence(C.layers.GRU(128), go_backwards=True)(feature)
@@ -245,7 +241,7 @@ def GenGRU():
     Save("test_GRU", model, data_feature, data_output)
 
 
-def GenRNN():
+def GenRNN():  # noqa: N802
     feature = C.sequence.input_variable((64,), np.float32)
     model = C.optimized_rnnstack(
         feature,

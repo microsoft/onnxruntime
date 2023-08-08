@@ -94,7 +94,7 @@ class ValidNodes {
    public:
     using iterator_category = std::input_iterator_tag;
     using value_type = T;
-    using difference_type = typename TIterator::difference_type;
+    using difference_type = typename std::iterator_traits<TIterator>::difference_type;
     using pointer = T*;
     using reference = T&;
     using const_reference = const T&;
@@ -134,13 +134,13 @@ class ValidNodes {
     }
 
     /** Return the current Node&. This will be const if the iterator was returned from a const GraphNodes instance. */
-    reference operator*() {
+    reference operator*() const {
       // if iterator is valid we always have a non-nullptr node
       // if this is a nullptr we're at end_ and this shouldn't be being called
       return **current_;
     }
 
-    pointer operator->() {
+    pointer operator->() const {
       return current_->get();
     }
 

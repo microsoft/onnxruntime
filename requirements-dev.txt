@@ -1,6 +1,5 @@
 black>=22.3
 cerberus
-codecov
 flatbuffers
 isort
 jinja2

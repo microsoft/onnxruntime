@@ -16,6 +16,11 @@ namespace cann {
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CANN error executing ", #expr))
 
+#define CANN_GRAPH_RETURN_IF_ERROR(expr)         \
+  ORT_RETURN_IF_ERROR(CANN_GRAPH_CALL(expr)      \
+                          ? common::Status::OK() \
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CANN Graph error executing ", #expr))
+
 template <typename ElemType>
 struct Constants {
   static const ElemType Zero;

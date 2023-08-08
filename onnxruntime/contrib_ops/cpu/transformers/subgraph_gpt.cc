@@ -25,7 +25,10 @@ Status GptSubgraph::CreateInitialFeeds(
     std::vector<OrtValue>& feeds,
     const GenerationDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-    IAllocatorUniquePtr<char>& buffer) {
+    IAllocatorUniquePtr<char>& buffer,
+    Stream* ort_stream,
+    int past_present_share_buffer_max_seq_len,
+    bool need_cache_indir) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   const IExecutionProvider* provider = GetProvider();
@@ -44,15 +47,8 @@ Status GptSubgraph::CreateInitialFeeds(
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(input_ids.Location());
 
   // Store allocator, which will be used in remaining feeds
-  auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
+  auto default_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault));
   allocator_ = default_allocator;
-
-  // Initialize empty past state
-  auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
-  int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, 0, head_size};
-  TensorShape past_shape(&past_state_dims[0], 5);
-  OrtValue empty_past;
-  Tensor::InitOrtValue(past_type, past_shape, default_allocator, empty_past);
 
   // The ordering is the same as used in Setup
   feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
@@ -69,14 +65,51 @@ Status GptSubgraph::CreateInitialFeeds(
                                              expanded_position_ids,
                                              expanded_attention_mask));
 
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
+  AllocatorPtr pinned_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
+  const OrtMemoryInfo& location = default_allocator->Info();
+  ORT_RETURN_IF_ERROR(add_to_feeds_func(ort_stream,
                                         {expanded_input_ids, expanded_position_ids, expanded_attention_mask},
                                         feeds,
-                                        buffer));
+                                        buffer,
+                                        default_allocator,
+                                        pinned_allocator,
+                                        location));
 
-  // The remaining inputs are past state.
-  for (int i = first_past_input_index_; i < num_subgraph_inputs; ++i) {
-    feeds.push_back(empty_past);
+  auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
+  if (!past_present_share_buffer_) {
+    // Initialize empty past state
+    TensorShape past_shape{2, batch_size * num_beams, num_heads, 0, head_size};
+    OrtValue empty_past;
+    Tensor::InitOrtValue(past_type, past_shape, default_allocator, empty_past);
+
+    // The remaining inputs are past state.
+    for (int i = first_past_input_index_; i < num_subgraph_inputs; ++i) {
+      feeds.push_back(empty_past);
+    }
+  } else {
+    // Past state feeds
+    TensorShape past_shape{2, batch_size * num_beams, num_heads, past_present_share_buffer_max_seq_len, head_size};
+
+    // The remaining inputs are past state except the last one or three (see below for details)
+    // If `need_cache_indir` is false, then the last input is `past_sequence_length`
+
+    // If `need_cache_indir` is true, then the last inputs are `past_sequence_length`,
+    // `beam_width`, and `cache_indirection`
+    auto past_end_iter = need_cache_indir ? num_subgraph_inputs - 3 : num_subgraph_inputs - 1;
+    for (int i = first_past_input_index_; i < past_end_iter; ++i) {
+      OrtValue past_tensor;
+      Tensor::InitOrtValue(past_type, past_shape, default_allocator, past_tensor);
+      feeds.push_back(past_tensor);
+    }
+
+    // Past sequence length feed
+    ORT_RETURN_IF_ERROR(AppendPastSequenceLength(feeds, cpu_allocator, 0));
+
+    // Add beam search specific inputs
+    if (need_cache_indir) {
+      ORT_RETURN_IF_ERROR(AppendBeamWidthAndCacheIndir(feeds, cpu_allocator, default_allocator, batch_size, num_beams,
+                                                       past_present_share_buffer_max_seq_len));
+    }
   }
 
   // Pass in implicit inputs
@@ -92,8 +125,12 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
   ORT_RETURN_IF(num_subgraph_outputs <= first_present_output_index_,
                 "Invalid GPT-2 subgraph: number of outputs shall be larger than 1 (Need past state in outputs).");
 
-  ORT_RETURN_IF(num_subgraph_inputs != num_subgraph_outputs + 2,
-                "Invalid GPT-2 subgraph: number of inputs shall be number of outputs plus 2");
+  ORT_RETURN_IF(!((num_subgraph_inputs == num_subgraph_outputs + 2) ||
+                  (num_subgraph_inputs == num_subgraph_outputs + 3) ||
+                  (num_subgraph_inputs == num_subgraph_outputs + 5)),
+                "Invalid GPT-2 subgraph: number of inputs shall be number of outputs plus 2 or "
+                "3 (if past_present_share_buffer) or "
+                "5 (if past_present_share_buffer and use_decoder_masked_self_attention for BeamSearch)");
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
                 "subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());

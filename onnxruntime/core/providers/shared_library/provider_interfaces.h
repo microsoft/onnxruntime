@@ -30,6 +30,7 @@ struct ProviderHost;
 struct ProviderHostCPU;
 
 class PhiloxGenerator;
+using ProviderType = const std::string&;
 class RandomGenerator;
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -156,30 +157,30 @@ struct ProviderHost {
 
 #ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
+  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
 #endif
 
 #ifdef USE_ROCM
   virtual std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
+  virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
+  virtual void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
 #endif
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
@@ -221,8 +222,6 @@ struct ProviderHost {
   virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
 
   // IExecutionProvider
-  virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) = 0;
-  virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const IExecutionProvider::IKernelLookup& kernel_lookup) = 0;
 
@@ -230,7 +229,6 @@ struct ProviderHost {
 
   virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) = 0;
 
-  virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, AllocatorManager& allocator_manager) = 0;
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
 
@@ -431,11 +429,9 @@ struct ProviderHost {
   virtual std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) = 0;
 
   // DataTransferManager
-  virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) = 0;
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) = 0;
 #if !defined(DISABLE_SPARSE_TENSORS)
   virtual Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst) = 0;
-  virtual Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst, int exec_queue_id) = 0;
   virtual Status DataTransferManager__CopySparseTensors(const DataTransferManager* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) = 0;
 #endif
   virtual const IDataTransfer* DataTransferManager__GetDataTransfer(const DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) = 0;
@@ -534,6 +530,13 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetType_MLFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetType_string() = 0;
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual MLDataType DataTypeImpl__GetType_Float8E4M3FN() = 0;
+  virtual MLDataType DataTypeImpl__GetType_Float8E4M3FNUZ() = 0;
+  virtual MLDataType DataTypeImpl__GetType_Float8E5M2() = 0;
+  virtual MLDataType DataTypeImpl__GetType_Float8E5M2FNUZ() = 0;
+#endif
+
   virtual MLDataType DataTypeImpl__GetTensorType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_uint8() = 0;
@@ -547,6 +550,12 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetTensorType_double() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_MLFloat16() = 0;
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E4M3FN() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E4M3FNUZ() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E5M2() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E5M2FNUZ() = 0;
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   virtual MLDataType DataTypeImpl__GetSparseTensorType_bool() = 0;
@@ -563,6 +572,12 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetSparseTensorType_string() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() = 0;
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FN() = 0;
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FNUZ() = 0;
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() = 0;
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() = 0;
+#endif
 #endif
 
   virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
@@ -571,14 +586,39 @@ struct ProviderHost {
 #if !defined(DISABLE_SPARSE_TENSORS)
   virtual bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) = 0;
 #endif
+
   virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv9() = 0;
+
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv9() = 0;
+
   virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
   virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
@@ -618,6 +658,8 @@ struct ProviderHost {
   virtual std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesEnd(const Node* p) noexcept = 0;
 
   virtual void Node__ForEachDef(const Node* p, std::function<void(const NodeArg&, bool is_input)> func, bool include_missing_optional_defs) = 0;
+  virtual const std::unordered_map<std::string, gsl::not_null<Graph*>>& Node__GetAttributeNameToMutableSubgraphMap(Node* p) = 0;
+  virtual std::unordered_map<std::string, gsl::not_null<const Graph*>> Node__GetAttributeNameToSubgraphMap(const Node* p) const = 0;
 
   // NodeArg
   virtual const std::string& NodeArg__Name(const NodeArg* p) noexcept = 0;
@@ -655,6 +697,8 @@ struct ProviderHost {
   virtual std::unique_ptr<ONNX_NAMESPACE::GraphProto> Graph__ToGraphProto(const Graph* p) = 0;
 
   virtual NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) = 0;
+  virtual void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) = 0;
+  virtual void Graph__SetInputs(Graph* p, gsl::span<const NodeArg* const> inputs) = 0;
 
   virtual Status Graph__Resolve(Graph* p) = 0;
   virtual void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) = 0;
@@ -668,9 +712,15 @@ struct ProviderHost {
 
   virtual const Node* Graph__ParentNode(const Graph* p) const = 0;
   virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
+  virtual Graph* Graph__MutableParentGraph(Graph* p) = 0;
   virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
+  virtual const Path& Graph__ModelPath(const Graph* p) const = 0;
   virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
   virtual bool Graph__IsSubgraph(const Graph* p) = 0;
+  virtual int Graph__MaxNodeIndex(const Graph* p) const noexcept = 0;
+  virtual Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept = 0;
+  virtual const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const = 0;
+  virtual const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const = 0;
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;
@@ -704,6 +754,8 @@ struct ProviderHost {
 
   // Path
   virtual PathString Path__ToPathString(const Path* p) noexcept = 0;
+  virtual const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept = 0;
+  virtual bool Path__IsEmpty(const Path* p) noexcept = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;
@@ -730,11 +782,12 @@ struct ProviderHost {
   virtual bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) = 0;
   virtual bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
   virtual bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
+  virtual Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) = 0;
 
   // OpKernelInfo
   virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
   virtual void OpKernelInfo__operator_delete(OpKernelInfo* p) = 0;
-  virtual AllocatorPtr OpKernelInfo__GetAllocator(const OpKernelInfo* p, int device_id, OrtMemType mem_type) = 0;
+  virtual AllocatorPtr OpKernelInfo__GetAllocator(const OpKernelInfo* p, OrtMemType mem_type) = 0;
   virtual const IExecutionProvider* OpKernelInfo__GetExecutionProvider(const OpKernelInfo* p) = 0;
   virtual Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) = 0;
   virtual Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) = 0;
@@ -780,6 +833,13 @@ struct ProviderHost {
   virtual BFloat16* Tensor__MutableData_BFloat16(Tensor* p) = 0;
   virtual MLFloat16* Tensor__MutableData_MLFloat16(Tensor* p) = 0;
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual Float8E4M3FN* Tensor__MutableData_Float8E4M3FN(Tensor* p) = 0;
+  virtual Float8E4M3FNUZ* Tensor__MutableData_Float8E4M3FNUZ(Tensor* p) = 0;
+  virtual Float8E5M2* Tensor__MutableData_Float8E5M2(Tensor* p) = 0;
+  virtual Float8E5M2FNUZ* Tensor__MutableData_Float8E5M2FNUZ(Tensor* p) = 0;
+#endif
+
   virtual const bool* Tensor__Data_bool(const Tensor* p) = 0;
   virtual const int8_t* Tensor__Data_int8(const Tensor* p) = 0;
   virtual const uint8_t* Tensor__Data_uint8(const Tensor* p) = 0;
@@ -794,7 +854,16 @@ struct ProviderHost {
   virtual const BFloat16* Tensor__Data_BFloat16(const Tensor* p) = 0;
   virtual const MLFloat16* Tensor__Data_MLFloat16(const Tensor* p) = 0;
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual const Float8E4M3FN* Tensor__Data_Float8E4M3FN(const Tensor* p) = 0;
+  virtual const Float8E4M3FNUZ* Tensor__Data_Float8E4M3FNUZ(const Tensor* p) = 0;
+  virtual const Float8E5M2* Tensor__Data_Float8E5M2(const Tensor* p) = 0;
+  virtual const Float8E5M2FNUZ* Tensor__Data_Float8E5M2FNUZ(const Tensor* p) = 0;
+#endif
+
   virtual gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) = 0;
+
+  virtual void* Allocator__AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) = 0;
 
   virtual void* Tensor__MutableDataRaw(Tensor* p, MLDataType type) = 0;
   virtual const void* Tensor__DataRaw(const Tensor* p, MLDataType type) = 0;
@@ -816,6 +885,13 @@ struct ProviderHost {
   virtual bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataTypeString(const Tensor* p) noexcept = 0;
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual bool Tensor__IsDataType_Float8E4M3FN(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_Float8E4M3FNUZ(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_Float8E5M2(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_Float8E5M2FNUZ(const Tensor* p) noexcept = 0;
+#endif
+
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;
   virtual void Tensor__Reshape(Tensor* p, const TensorShape& new_shape) = 0;
   virtual void Tensor__SetByteOffset(Tensor* p, ptrdiff_t byte_offset) = 0;
@@ -834,7 +910,7 @@ struct ProviderHost {
 #if !defined(DISABLE_SPARSE_TENSORS)
   // SparseTensor
   virtual const TensorShape& SparseTensor__DenseShape(const SparseTensor*) = 0;
-  virtual Status SparseTensor__Copy(const SparseTensor*, const DataTransferManager&, int, SparseTensor&) = 0;
+  virtual Status SparseTensor__Copy(const SparseTensor*, const DataTransferManager&, SparseTensor&) = 0;
 #endif
 
   // TensorSeq
@@ -842,21 +918,19 @@ struct ProviderHost {
   virtual void TensorSeq__SetType(TensorSeq* p, MLDataType data_type) = 0;
   virtual size_t TensorSeq__Size(const TensorSeq* p) noexcept = 0;
   virtual const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) = 0;
+  virtual const OrtValue& TensorSeq__GetAt(const TensorSeq* p, size_t i) = 0;
+  virtual void TensorSeq__Add(TensorSeq* p, const OrtValue& tensor) = 0;
+  virtual void TensorSeq__Add(TensorSeq* p, OrtValue&& tensor) = 0;
   virtual void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) = 0;
   virtual void TensorSeq__Reserve(TensorSeq* p, size_t capacity) = 0;
-
-  // AllocatorManager
-  virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
-  virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p,
-                                                      OrtMemType mem_type, OrtDevice device) = 0;
 
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
 #endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-
   virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
+#endif
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   virtual void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) = 0;
@@ -871,14 +945,26 @@ struct ProviderHost {
   virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
   virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
 #endif
-#endif
 
 #if defined(USE_CANN)
   virtual RandomGenerator& RandomGenerator__Default() = 0;
+  virtual std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) = 0;
+#endif
+
+  virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
+
+#ifdef _WIN32
+  virtual std::string ToUTF8String(const std::wstring& s) = 0;
+  virtual std::wstring ToWideString(const std::string& s) = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  virtual Status LoadDynamicLibrary(onnxruntime::PathString library_name) = 0;
+#endif
 };
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif

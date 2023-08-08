@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/status.h"
 #include "core/providers/cuda/nn/conv.h"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -9,34 +10,31 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-class FusedConv : public onnxruntime::cuda::Conv<T> {
+class FusedConv : public onnxruntime::cuda::Conv<T, false> {
  public:
-  using Base = onnxruntime::cuda::Conv<T>;
-  FusedConv(const OpKernelInfo& info) : onnxruntime::cuda::Conv<T>(info) {
+  using Base = onnxruntime::cuda::Conv<T, false>;
+  FusedConv(const OpKernelInfo& info) : onnxruntime::cuda::Conv<T, false>(info) {
     std::string activation;
-    if (info.GetAttr<std::string>("activation", &activation) == Status::OK() &&
-        MapMode(activation) == Status::OK() &&
-        cudnnCreateActivationDescriptor(&activation_desc_) == CUDNN_STATUS_SUCCESS) {
-      status_ = cudnnSetActivationDescriptor(activation_desc_,
-                                             activation_mode_,
-                                             cudnnNanPropagation_t::CUDNN_NOT_PROPAGATE_NAN,
-                                             std::numeric_limits<double>::max());
-    }
+    ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &activation));
+    ORT_THROW_IF_ERROR(MapMode(activation));
+    CUDNN_CALL_THROW(cudnnCreateActivationDescriptor(&activation_desc_));
+    CUDNN_CALL_THROW(cudnnSetActivationDescriptor(
+        activation_desc_, activation_mode_, cudnnNanPropagation_t::CUDNN_NOT_PROPAGATE_NAN,
+        std::numeric_limits<double>::max()));
   }
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(FusedConv);
 
   ~FusedConv() {
     if (activation_desc_) {
-      cudnnDestroyActivationDescriptor(activation_desc_);
-      status_ = CUDNN_STATUS_NOT_INITIALIZED;
+      CUDNN_CALL_THROW(cudnnDestroyActivationDescriptor(activation_desc_));
       activation_desc_ = nullptr;
     }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    CUDNN_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
+    auto cudnnHandle = this->GetCudnnHandle(context);
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
     if (Base::s_.Y->Shape().Size() == 0) {
       return Status::OK();
@@ -46,8 +44,8 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     typedef typename onnxruntime::cuda::ToCudaType<T>::MappedType CudaT;
     const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
     const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
-    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
-    auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
+    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace(context->GetComputeStream());
+    auto cudnn_status = cudnnConvolutionBiasActivationForward(cudnnHandle,
                                                               &alpha,
                                                               Base::s_.x_tensor,
                                                               Base::s_.x_data,
@@ -66,7 +64,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                               Base::s_.y_tensor,
                                                               Base::s_.y_data);
     if (CUDNN_STATUS_SUCCESS != cudnn_status) {
-      CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(Base::CudnnHandle(),
+      CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(cudnnHandle,
                                                     &alpha,
                                                     Base::s_.x_tensor,
                                                     Base::s_.x_data,
@@ -80,19 +78,19 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                     Base::s_.y_tensor,
                                                     Base::s_.y_data));
       if (has_b) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.b_tensor, Base::s_.b_data,
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnnHandle, &alpha, Base::s_.b_tensor, Base::s_.b_data,
                                              &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
       if (has_z) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.z_tensor, Base::s_.z_data,
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnnHandle, &alpha, Base::s_.z_tensor, Base::s_.z_data,
                                              &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
-      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(Base::CudnnHandle(), activation_desc_, &alpha, Base::s_.y_tensor,
+      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(cudnnHandle, activation_desc_, &alpha, Base::s_.y_tensor,
                                                    Base::s_.y_data, &beta, Base::s_.y_tensor, Base::s_.y_data));
     }
     if (Base::s_.post_slicing_required) {
       ORT_RETURN_IF_ERROR(onnxruntime::cuda::SliceOutUnwantedOutputSection(
-          this->Stream(), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
+          this->Stream(context), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
           Base::s_.y_dims.GetDims(), Base::s_.slice_starts, Base::s_.slice_ends, Base::s_.slice_axes, Base::s_.element_size));
     }
     return Status::OK();
@@ -103,13 +101,12 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     if (activaton_mode == "Relu") {
       activation_mode_ = cudnnActivationMode_t::CUDNN_ACTIVATION_RELU;
     } else {
-      return Status(common::StatusCategory::ONNXRUNTIME,
-                    common::StatusCode::INVALID_ARGUMENT,
-                    "unsupported conv activation mode");
+      return ORT_MAKE_STATUS(
+          StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT,
+          "unsupported conv activation mode \"", activaton_mode, "\"");
     }
     return Status::OK();
   }
-  cudnnStatus_t status_ = CUDNN_STATUS_NOT_INITIALIZED;
   cudnnActivationMode_t activation_mode_;
   cudnnActivationDescriptor_t activation_desc_ = nullptr;
 };

@@ -34,6 +34,14 @@ class OrtTorchFunctionPool final {
   //  2. Caller of GetBackwardCore should not decrease the reference count of the returned object.
   PyObject* GetBackwardCore(const std::string& key);  // The "key" is the "name" attribute in PythonOpGrad.
 
+  // Autograd function may take input of "non-tensor && non int/float && non int/float tuple" types.
+  // While PythonOp running requires those inputs be there otherwise kernel execution will fail.
+  // So during model exporting, we need register those input with this API, then a ref cnt is increased by 1,
+  // they will not be released until OrtTorchFunctionPool is destroyed.
+  // We also trying to release those registration in 'UnRegisterFunctions' to avoid the issues of python program
+  // exits before we de-crease ref cnt for the already release python object.
+  void RegisterMiscellaneousConstInput(PyObject* obj);
+
   // Context is torch backward gradient function pointer, and
   // it is a property of forward run outputs (tensors), its lifecycle
   // is along with forward run outputs in PyTorch design.
@@ -76,11 +84,15 @@ class OrtTorchFunctionPool final {
   OrtTorchFunctionPool(){};
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtTorchFunctionPool);
 
+  void UnRegisterGlobalFunctions();
+  void UnRegisterModelSpecificFunctions();
+
   PythonObjectPtr forward_runner_;
   PythonObjectPtr backward_runner_;
 
   std::unordered_map<std::string, PythonObjectPtr> forward_core_pool_;
   std::unordered_map<std::string, PythonObjectPtr> backward_core_pool_;
+  std::unordered_map<std::string, PythonObjectPtr> miscellaneous_const_input_pool_;
   std::unordered_map<int64_t, PythonObjectPtr> func_context_pool_;
 
   std::mutex mutex_;

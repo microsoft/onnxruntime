@@ -48,14 +48,19 @@ TEST(MemcpyTest, copy1) {
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
-  SessionState s(model.MainGraph(), execution_providers, true, &tp, nullptr, dtm,
-                 DefaultLoggingManager().DefaultLogger(), profiler);
 
-  SessionOptions so;
-  ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so));
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
 
-  AllocatorPtr allocator =
-      execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
+  SessionState s(model.MainGraph(), execution_providers, &tp, nullptr, dtm,
+                 DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+
+  ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  AllocatorPtr allocator = s.GetAllocator(execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetOrtDeviceByMemType(OrtMemTypeDefault));
   auto* data_type = DataTypeImpl::GetType<float>();
   OrtValue input;
   Tensor::InitOrtValue(data_type, TensorShape({3, 2}), std::move(allocator), input);

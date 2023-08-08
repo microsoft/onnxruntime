@@ -18,9 +18,11 @@ std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::shared_ptr<TvmModule>& m
                                              const std::vector<DLTensor> output_tensors) {
   const std::string& name = options.executor;
   if (name == "graph") {
-    return std::make_shared<GERunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors);
+    return std::make_shared<GERunnerImpl>(mod, inputs_info, options.output_shapes,
+                                          output_tensors, options.set_output_zero_copy);
   } else if (name == "vm") {
-    return std::make_shared<VMRunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors);
+    return std::make_shared<VMRunnerImpl>(mod, inputs_info, options.output_shapes,
+                                          output_tensors, options.set_output_zero_copy);
   }
   return nullptr;
 }
@@ -30,10 +32,12 @@ std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::shared_ptr<TvmModule>& m
 RunnerImpl::RunnerImpl(const std::shared_ptr<TvmModule>& mod,
                        const InputsInfoMap& inputs_info,
                        const TVMTensorShapes output_shapes,
-                       const std::vector<DLTensor> output_tensors) : mod_(mod),
-                                                                     inputs_info_(inputs_info),
-                                                                     output_shapes_(output_shapes),
-                                                                     output_tensors_(output_tensors) {
+                       const std::vector<DLTensor> output_tensors,
+                       bool set_output_zero_copy) : mod_(mod),
+                                                    inputs_info_(inputs_info),
+                                                    output_shapes_(output_shapes),
+                                                    output_tensors_(output_tensors),
+                                                    set_output_zero_copy_(set_output_zero_copy) {
 }
 
 void RunnerImpl::convert_input_tensors2dl_tensors(Ort::KernelContext& context,
@@ -88,7 +92,8 @@ void RunnerImpl::add_device_type_data2output_tensors(Ort::KernelContext& context
 GERunnerImpl::GERunnerImpl(const std::shared_ptr<TvmModule>& mod,
                            const InputsInfoMap& inputs_info,
                            const TVMTensorShapes output_shapes,
-                           const std::vector<DLTensor> output_tensors) : RunnerImpl(mod, inputs_info, output_shapes, output_tensors) {
+                           const std::vector<DLTensor> output_tensors,
+                           bool set_output_zero_copy) : RunnerImpl(mod, inputs_info, output_shapes, output_tensors, set_output_zero_copy) {
 }
 
 void GERunnerImpl::set_input(Ort::KernelContext& context) {
@@ -103,8 +108,15 @@ void GERunnerImpl::connect_output_tensors2ort(Ort::KernelContext& context) {
   add_device_type_data2output_tensors(context);
 }
 
-void GERunnerImpl::run_and_get_output() {
+void GERunnerImpl::set_output_zero_copy() {
+  tvm::TVMSetOutputsZeroCopy(*mod_, output_tensors_);
+}
+
+void GERunnerImpl::run() {
   tvm::TVMRun(*mod_);
+}
+
+void GERunnerImpl::get_outputs() {
   tvm::TVMGetOutputs(*mod_, output_tensors_);
 }
 
@@ -113,7 +125,8 @@ void GERunnerImpl::run_and_get_output() {
 VMRunnerImpl::VMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
                            const InputsInfoMap& inputs_info,
                            const TVMTensorShapes output_shapes,
-                           const std::vector<DLTensor> output_tensors) : RunnerImpl(mod, inputs_info, output_shapes, output_tensors) {
+                           const std::vector<DLTensor> output_tensors,
+                           bool set_output_zero_copy) : RunnerImpl(mod, inputs_info, output_shapes, output_tensors, set_output_zero_copy) {
 }
 
 void VMRunnerImpl::set_input(Ort::KernelContext& context) {
@@ -125,6 +138,7 @@ void VMRunnerImpl::set_input(Ort::KernelContext& context) {
 }
 
 void VMRunnerImpl::connect_output_tensors2ort(Ort::KernelContext& context) {
+  // TODO(vvchernov): try to find more flexible solution
   if (!probe_infer_) {
     infer_once_to_get_output_shapes();
   }
@@ -132,13 +146,20 @@ void VMRunnerImpl::connect_output_tensors2ort(Ort::KernelContext& context) {
   add_device_type_data2output_tensors(context);
 }
 
-void VMRunnerImpl::run_and_get_output() {
+void VMRunnerImpl::set_output_zero_copy() {
+  tvm::TVM_VM_SetOutputsZeroCopy(*mod_, output_tensors_);
+}
+
+void VMRunnerImpl::run() {
   tvm::TVM_VM_Run(*mod_);
+}
+
+void VMRunnerImpl::get_outputs() {
   tvm::TVM_VM_GetOutputs(*mod_, output_tensors_);
 }
 
 void VMRunnerImpl::infer_once_to_get_output_shapes() {
-  tvm::TVM_VM_Run(*mod_);
+  run();
   size_t num_outputs = output_tensors_.size();
   // TODO(vvchernov): check it
   output_shapes_.resize(num_outputs);

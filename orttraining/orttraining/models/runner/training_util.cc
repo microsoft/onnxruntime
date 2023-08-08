@@ -36,7 +36,7 @@ common::Status DataSet::AddData(DataSet::SampleType&& single_sample) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DataSet::AddData failed");
   }
 
-  data_.emplace_back(move(single_sample));
+  data_.emplace_back(std::move(single_sample));
   return Status::OK();
 }
 
@@ -59,7 +59,7 @@ common::Status DataSet::AddData(const vector<ONNX_NAMESPACE::TensorProto>& featu
     ortvalue_buffers_.emplace_back(std::move(buffer));
   }
 
-  data_.emplace_back(move(sample));
+  data_.emplace_back(std::move(sample));
   return Status::OK();
 }
 

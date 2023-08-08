@@ -2,14 +2,16 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
+#include "core/common/string_helper.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/random_seed.h"
+#include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
-#include "core/session/abi_session_options_impl.h"
-#include "orttraining/training_api/include/checkpoint.h"
-#include "orttraining/training_api/include/training_session.h"
-#include "orttraining/training_api/include/ort_training_apis.h"
-#include "core/common/string_helper.h"
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/ort_training_apis.h"
+#include "orttraining/training_api/training_session.h"
 
 namespace {
 
@@ -31,6 +33,9 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
                     _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path,
                     _In_ const ORTCHAR_T* optimizer_model_path, _Outptr_ OrtTrainingSession** out) {
   API_IMPL_BEGIN
+  if (options != nullptr && options->value.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1") {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Use Env Allocators is not supported for on device training.");
+  }
   std::unique_ptr<onnxruntime::training::api::TrainingSession> train_sess;
   auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
   OrtStatus* status = nullptr;
@@ -42,13 +47,14 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
         env->GetEnvironment(),
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         options == nullptr ? ProvidersType() : CreateProviders(options->provider_factories),
-        chkpt_state->module_checkpoint_state.named_parameters,
+        chkpt_state,
         onnxruntime::training::api::ModelIdentifiers(
             onnxruntime::ToUTF8String(train_model_path),
             eval_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_path))
                             : std::nullopt,
             optimizer_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(optimizer_model_path))
-                                 : std::nullopt));
+                                 : std::nullopt),
+        options == nullptr ? gsl::span<OrtCustomOpDomain* const>() : options->custom_op_domains_);
 
     *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
   }
@@ -80,7 +86,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputCount, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelOutputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelOutputName, _In_ const OrtTrainingSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
@@ -90,7 +96,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelOutputName, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputName, _In_ const OrtTrainingSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
@@ -100,30 +106,26 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputName, _In_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::ResetGrad, _Inout_ OrtTrainingSession* session) {
+ORT_API_STATUS_IMPL(OrtTrainingApis::LazyResetGrad, _Inout_ OrtTrainingSession* session) {
   API_IMPL_BEGIN
   auto train_session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(train_session->ResetGrad());
+  ORT_API_RETURN_IF_STATUS_NOT_OK(train_session->LazyResetGrad());
 
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess,
-                    _In_opt_ const OrtRunOptions* run_options, size_t inputs_len,
-                    _In_reads_(inputs_len) const OrtValue* const* inputs, size_t outputs_len,
+                    _In_opt_ const OrtRunOptions* run_options, _In_ size_t inputs_len,
+                    _In_reads_(inputs_len) const OrtValue* const* inputs, _In_ size_t outputs_len,
                     _Inout_updates_all_(outputs_len) OrtValue** outputs) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  constexpr int queue_id = 0;
 
   std::vector<OrtValue> feeds(inputs_len);
 
   for (size_t i = 0; i != inputs_len; ++i) {
-    auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
-    if (ort_value.Fence()) {
-      ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
-    }
+    feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
   }
 
   // Create output feed
@@ -131,8 +133,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
   for (size_t i = 0; i != outputs_len; ++i) {
     if (outputs[i] != nullptr) {
       ::OrtValue& value = *(outputs[i]);
-      if (value.Fence())
-        value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
     }
   }
@@ -148,10 +148,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
     return onnxruntime::ToOrtStatus(status);
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (outputs[i] == nullptr) {
-      outputs[i] = new OrtValue(value);
+      outputs[i] = std::make_unique<OrtValue>(value).release();
     }
   }
   return nullptr;
@@ -159,19 +157,16 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* sess,
-                    _In_opt_ const OrtRunOptions* run_options, size_t inputs_len,
-                    _In_reads_(inputs_len) const OrtValue* const* inputs, size_t outputs_len,
+                    _In_opt_ const OrtRunOptions* run_options, _In_ size_t inputs_len,
+                    _In_reads_(inputs_len) const OrtValue* const* inputs, _In_ size_t outputs_len,
                     _Inout_updates_all_(outputs_len) OrtValue** outputs) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  constexpr int queue_id = 0;
 
   std::vector<OrtValue> feeds(inputs_len);
 
   for (size_t i = 0; i != inputs_len; ++i) {
-    auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
-
-    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+    feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
   }
 
   // Create output feed
@@ -179,8 +174,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
   for (size_t i = 0; i != outputs_len; ++i) {
     if (outputs[i] != nullptr) {
       ::OrtValue& value = *(outputs[i]);
-      if (value.Fence())
-        value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
     }
   }
@@ -196,10 +189,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
     return onnxruntime::ToOrtStatus(status);
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (outputs[i] == nullptr) {
-      outputs[i] = new OrtValue(value);
+      outputs[i] = std::make_unique<OrtValue>(value).release();
     }
   }
   return nullptr;
@@ -256,7 +247,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::RegisterLinearLRScheduler, _Inout_ OrtTrain
         return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
             optimizer, warmup_step_count, total_step_count);
       },
-                                 std::optional<float>(initial_lr)));
+                                 initial_lr));
 
   return status;
   API_IMPL_END
@@ -284,13 +275,28 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::LoadCheckpoint, _In_ const ORTCHAR_T* check
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path,
-                    _In_ const OrtTrainingSession* sess, bool save_optimizer_state) {
+ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ OrtCheckpointState* checkpoint_state,
+                    _In_ const ORTCHAR_T* checkpoint_path, const bool include_optimizer_state) {
   API_IMPL_BEGIN
-  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  onnxruntime::training::api::CheckpointState chkpt_state;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CreateCheckpointState(chkpt_state, save_optimizer_state));
-  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::training::api::SaveCheckpoint(chkpt_state, checkpoint_path));
+  auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      onnxruntime::training::api::SaveCheckpoint(*chkpt_state, checkpoint_path, include_optimizer_state));
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::LoadCheckpointFromBuffer, _In_ const void* checkpoint_buffer,
+                    _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state) {
+  API_IMPL_BEGIN
+
+  *checkpoint_state = nullptr;
+  auto chkpt_state = std::make_unique<onnxruntime::training::api::CheckpointState>();
+  const auto* checkpoint_bytes = reinterpret_cast<const uint8_t*>(checkpoint_buffer);
+  gsl::span checkpoint_span(checkpoint_bytes, num_bytes);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      onnxruntime::training::api::LoadCheckpointFromBuffer(checkpoint_span, *chkpt_state));
+  *checkpoint_state = reinterpret_cast<OrtCheckpointState*>(chkpt_state.release());
 
   return nullptr;
   API_IMPL_END
@@ -344,6 +350,9 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
                     _In_reads_(graph_outputs_len) const char* const* graph_output_names) {
   API_IMPL_BEGIN
 
+  OrtStatus* status = nullptr;
+
+#if !defined(ORT_MINIMAL_BUILD)
   if (graph_outputs_len == 0U) {
     return OrtApis::CreateStatus(
         ORT_INVALID_ARGUMENT,
@@ -365,8 +374,145 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(
       session->ExportModelForInferencing(onnxruntime::ToUTF8String(inference_model_path), output_names));
+#else
+  ORT_UNUSED_PARAMETER(sess);
+  ORT_UNUSED_PARAMETER(inference_model_path);
+  ORT_UNUSED_PARAMETER(graph_outputs_len);
+  ORT_UNUSED_PARAMETER(graph_output_names);
+  status = OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "Inference model cannot be exported in a minimal training build.");
+#endif
 
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::SetSeed, _In_ const int64_t seed) {
+  API_IMPL_BEGIN
+
+  onnxruntime::utils::SetRandomSeed(seed);
   return nullptr;
+
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelInputCount, _In_ const OrtTrainingSession* sess,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetTrainingModelInputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelInputCount, _In_ const OrtTrainingSession* sess,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetEvalModelInputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelInputName, _In_ const OrtTrainingSession* sess,
+                    size_t index, _In_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name = session->GetTrainingModelInputName(index);
+  *output = onnxruntime::StrDup(name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess,
+                    size_t index, _In_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name = session->GetEvalModelInputName(index);
+  *output = onnxruntime::StrDup(name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::AddProperty, _Inout_ OrtCheckpointState* checkpoint_state,
+                    _In_ const char* property_name, _In_ enum OrtPropertyType property_type,
+                    _In_ void* property_value) {
+  API_IMPL_BEGIN
+
+  OrtStatus* status = nullptr;
+
+  auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+
+  switch (property_type) {
+    case OrtPropertyType::OrtIntProperty: {
+      int64_t* value = reinterpret_cast<int64_t*>(property_value);
+      chkpt_state->property_bag.AddProperty(property_name, *value);
+      break;
+    }
+    case OrtPropertyType::OrtFloatProperty: {
+      float* value = reinterpret_cast<float*>(property_value);
+      chkpt_state->property_bag.AddProperty(property_name, *value);
+      break;
+    }
+    case OrtPropertyType::OrtStringProperty: {
+      char* value = reinterpret_cast<char*>(property_value);
+      chkpt_state->property_bag.AddProperty(property_name, value);
+      break;
+    }
+    default: {
+      std::ostringstream stream;
+      stream << "Given property type: " << property_type << " is not supported.";
+      status = OrtApis::CreateStatus(ORT_FAIL, stream.str().c_str());
+      break;
+    }
+  }
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetProperty, _In_ const OrtCheckpointState* checkpoint_state,
+                    _In_ const char* property_name, _Inout_ OrtAllocator* allocator,
+                    _Out_ enum OrtPropertyType* property_type, _Outptr_ void** property_value) {
+  API_IMPL_BEGIN
+
+  OrtStatus* status = nullptr;
+
+  auto chkpt_state = reinterpret_cast<const onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  const auto value = chkpt_state->property_bag.GetProperty<
+      onnxruntime::training::api::PropertyDataType>(property_name);
+
+  if (std::holds_alternative<int64_t>(value)) {
+    int64_t* value_p = reinterpret_cast<int64_t*>(allocator->Alloc(allocator, sizeof(int64_t)));
+    if (!value_p) {
+      return OrtApis::CreateStatus(ORT_FAIL, "Int property value buffer allocation failed.");
+    }
+    *value_p = std::get<int64_t>(value);
+    *(reinterpret_cast<int64_t**>(property_value)) = value_p;
+    *property_type = OrtPropertyType::OrtIntProperty;
+  } else if (std::holds_alternative<float>(value)) {
+    float* value_p = reinterpret_cast<float*>(allocator->Alloc(allocator, sizeof(float)));
+    if (!value_p) {
+      return OrtApis::CreateStatus(ORT_FAIL, "Float property value buffer allocation failed.");
+    }
+    *value_p = std::get<float>(value);
+    *(reinterpret_cast<float**>(property_value)) = value_p;
+    *property_type = OrtPropertyType::OrtFloatProperty;
+  } else if (std::holds_alternative<std::string>(value)) {
+    auto property_value_str = std::get<std::string>(value);
+    // property_value_str.length() + 1 for null termination of c strings
+    auto buffer = reinterpret_cast<char*>(allocator->Alloc(allocator, property_value_str.length() + 1));
+    memcpy(buffer, property_value_str.c_str(), property_value_str.length());
+    buffer[property_value_str.length()] = '\0';
+    *(reinterpret_cast<char**>(property_value)) = buffer;
+    *property_type = OrtPropertyType::OrtStringProperty;
+  } else {
+    std::ostringstream stream;
+    stream << "Unknown type for property: " << property_name;
+    status = OrtApis::CreateStatus(ORT_FAIL, stream.str().c_str());
+  }
+
+  return status;
   API_IMPL_END
 }
 
@@ -381,7 +527,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::TrainingSessionGetEvalModelOutputCount,
     &OrtTrainingApis::TrainingSessionGetTrainingModelOutputName,
     &OrtTrainingApis::TrainingSessionGetEvalModelOutputName,
-    &OrtTrainingApis::ResetGrad,
+    &OrtTrainingApis::LazyResetGrad,
     &OrtTrainingApis::TrainStep,
     &OrtTrainingApis::EvalStep,
     &OrtTrainingApis::SetLearningRate,
@@ -395,7 +541,14 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::ReleaseTrainingSession,
     &OrtTrainingApis::ReleaseCheckpointState,
     &OrtTrainingApis::ExportModelForInferencing,
-};
+    &OrtTrainingApis::SetSeed,
+    &OrtTrainingApis::TrainingSessionGetTrainingModelInputCount,
+    &OrtTrainingApis::TrainingSessionGetEvalModelInputCount,
+    &OrtTrainingApis::TrainingSessionGetTrainingModelInputName,
+    &OrtTrainingApis::TrainingSessionGetEvalModelInputName,
+    &OrtTrainingApis::AddProperty,
+    &OrtTrainingApis::GetProperty,
+    &OrtTrainingApis::LoadCheckpointFromBuffer};
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {
   // No constraints on the API version yet.

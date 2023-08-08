@@ -35,4 +35,3 @@ const TransformerOptions* TransformerOptions::GetInstance() {
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
-

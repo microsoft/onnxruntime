@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {EnvImpl} from './env-impl';
+import {env as envImpl} from './env-impl.js';
+
 export declare namespace Env {
   export type WasmPrefixOrFilePaths = string|{
+    /* eslint-disable @typescript-eslint/naming-convention */
     'ort-wasm.wasm'?: string;
     'ort-wasm-threaded.wasm'?: string;
     'ort-wasm-simd.wasm'?: string;
     'ort-wasm-simd-threaded.wasm'?: string;
+    /* eslint-enable @typescript-eslint/naming-convention */
   };
   export interface WebAssemblyFlags {
     /**
@@ -83,6 +86,10 @@ export declare namespace Env {
      */
     async?: boolean;
   }
+
+  export interface WebGpuFlags {
+    profilingMode?: 'off'|'default';
+  }
 }
 
 export interface Env {
@@ -100,6 +107,17 @@ export interface Env {
   debug?: boolean;
 
   /**
+   * Get version of the current package.
+   */
+  readonly versions: {
+    common: string;
+    web?: string;
+    node?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    'react-native'?: string;
+  };
+
+  /**
    * Represent a set of flags for WebAssembly
    */
   wasm: Env.WebAssemblyFlags;
@@ -109,10 +127,15 @@ export interface Env {
    */
   webgl: Env.WebGLFlags;
 
+  /**
+   * Represent a set of flags for WebGPU
+   */
+  webgpu: Env.WebGpuFlags;
+
   [name: string]: unknown;
 }
 
 /**
  * Represent a set of flags as a global singleton.
  */
-export const env: Env = new EnvImpl();
+export const env: Env = envImpl;

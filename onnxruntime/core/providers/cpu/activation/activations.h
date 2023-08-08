@@ -110,7 +110,7 @@ struct Relu : public ElementWiseRangedTransform<T> {
   GSL_SUPPRESS(r .11)
   ElementWiseRangedTransform<T>* Copy() const {  // replace it with a macro. why this?
     using T1 = typename std::remove_pointer<decltype(this)>::type;
-    using T2 = typename std::remove_const<T1>::type;  //redundant?
+    using T2 = typename std::remove_const<T1>::type;  // redundant?
     return new T2(*this);
   }
   float Cost() const final {

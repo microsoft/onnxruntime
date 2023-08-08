@@ -21,7 +21,7 @@ class QSplit(QuantOperatorBase):
             return super().quantize()
 
         quantized_node_name = ""
-        if node.name != "":
+        if node.name:
             quantized_node_name = node.name + "_quant"
         kwargs = {}
         for attribute in node.attribute:

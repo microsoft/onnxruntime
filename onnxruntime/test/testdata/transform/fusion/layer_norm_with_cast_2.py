@@ -1,11 +1,11 @@
-from enum import Enum
+from enum import Enum  # noqa: F401
 
-import numpy as np
+import numpy as np  # noqa: F401
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [  # LayerNormWithCast2 subgraph
         helper.make_node("ReduceMean", ["A"], ["rd1_out"], "reduce", axes=[-1]),
         helper.make_node("Sub", ["A", "rd1_out"], ["sub1_out"], "sub"),

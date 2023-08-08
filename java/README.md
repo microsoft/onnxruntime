@@ -15,12 +15,10 @@ Use the main project's [build instructions](https://www.onnxruntime.ai/docs/how-
 #### Requirements
 
 JDK version 8 or later is required.
-The [Gradle](https://gradle.org/) build system is required and used here to manage the Java project's dependency management, compilation, testing, and assembly.
-You may use your system Gradle installation installed on your PATH.
-Version 6 or newer is recommended.
-Optionally, you may use your own Gradle [wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html) which will be locked to a version specified in the `build.gradle` configuration.
-This can be done once by using system Gradle installation to invoke the wrapper task in the java project's directory: `cd REPO_ROOT/java && gradle wrapper`
-Any installed wrapper is gitignored.
+
+The [Gradle](https://gradle.org/) build system is used here to manage the Java project's dependency management, compilation, testing, and assembly.
+In particular, the Gradle [wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html) at `java/gradlew[.bat]` is used, locking the Gradle version to the one specified in the `java/gradle/wrapper/gradle-wrapper.properties` configuration.
+Using the Gradle wrapper removes the need to have the right version of Gradle installed on the system.
 
 #### Build Output
 
@@ -30,7 +28,7 @@ The build will generate output in `$REPO_ROOT/build/$OS/$CONFIGURATION/java/buil
 * `reports/` - detailed test results and other reports
 * `libs/onnxruntime-VERSION.jar` - JAR with compiled classes, platform-specific JNI shared library, and platform-specific onnxruntime shared library.
 
-#### Build System Overview 
+#### Build System Overview
 
 The main CMake build system delegates building and testing to Gradle.
 This allows the CMake system to ensure all of the C/C++ compilation is achieved prior to the Java build.

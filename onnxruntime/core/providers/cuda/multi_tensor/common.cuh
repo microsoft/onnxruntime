@@ -66,7 +66,7 @@ struct ChunkGroup {
 };
 
 template <int TensorGroupSize>
-int compute_max_tensor_size_per_launch(int element_count_per_thread) {
+constexpr int compute_max_tensor_size_per_launch(int element_count_per_thread) {
   constexpr int block_count =
       ChunkGroup<TensorGroupSize>::max_block_count;
   constexpr int thread_count_per_block =

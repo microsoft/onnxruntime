@@ -1,13 +1,15 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
-import sys
 import os
 import subprocess
-from setuptools import setup, Extension
-from setuptools.command.build_ext import build_ext
-from subprocess import CalledProcessError
-import pybind11
+import sys
+from subprocess import CalledProcessError  # noqa: F401
+
 import onnx
+import pybind11
+from setuptools import Extension, setup
+from setuptools.command.build_ext import build_ext
+
 import onnxruntime
 
 
@@ -29,12 +31,12 @@ class CMakeBuild(build_ext):
                 "-DPYBIND11_PYTHON_VERSION={}.{}.{}".format(
                     sys.version_info.major, sys.version_info.minor, sys.version_info.micro
                 ),
-                "-Dpybind11_DIR={}".format(pybind11.get_cmake_dir()),
-                "-DONNX_INCLUDE={}".format(os.path.dirname(os.path.dirname(onnx.__file__))),
+                f"-Dpybind11_DIR={pybind11.get_cmake_dir()}",
+                f"-DONNX_INCLUDE={os.path.dirname(os.path.dirname(onnx.__file__))}",
                 "-DONNXRUNTIME_EXTERNAL_INCLUDE={}".format(
                     os.path.join(os.path.join(os.path.dirname(onnxruntime.__file__), "external"), "include")
                 ),
-                "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(extdir),
+                f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
                 ext.sourcedir,
             ],
             cwd=self.build_temp,

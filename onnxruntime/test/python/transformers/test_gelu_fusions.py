@@ -47,7 +47,7 @@ class TestGeluFusions(unittest.TestCase):
             if len(bert_model.get_nodes_by_op_type(op_type)) != count:
                 print(f"Counters is not expected in test: {test_name}")
                 for op, counter in expected_node_count.items():
-                    print("{}: {} expected={}".format(op, len(bert_model.get_nodes_by_op_type(op)), counter))
+                    print(f"{op}: {len(bert_model.get_nodes_by_op_type(op))} expected={counter}")
             self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
     def test_fusions(self):

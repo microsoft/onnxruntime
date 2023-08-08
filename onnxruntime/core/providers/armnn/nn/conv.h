@@ -13,7 +13,7 @@
 #include <mutex>
 
 namespace onnxruntime {
-namespace armnn_ep{
+namespace armnn_ep {
 
 typedef std::map<OpKernel*, armnn::NetworkId>::iterator ConvLayersIterator;
 
@@ -27,13 +27,13 @@ class Conv : public onnxruntime::Conv<T> {
   }
 
   ~Conv() {
-  	Conv::convLayers.erase(this);
+    Conv::convLayers.erase(this);
   }
 
   Status Compute(OpKernelContext* context) const override;
 
-  static armnn::IRuntimePtr initRuntime(){
-    if(Conv::run)
+  static armnn::IRuntimePtr initRuntime() {
+    if (Conv::run)
       return std::move(Conv::run);
     armnn::IRuntime::CreationOptions options;
     return std::move(armnn::IRuntime::Create(options));
@@ -45,7 +45,6 @@ class Conv : public onnxruntime::Conv<T> {
   ArmNNExecutionProvider* provider_;
   static armnn::IRuntimePtr run;
   std::string activation_type;
-
 };
 
 }  // namespace armnn_ep

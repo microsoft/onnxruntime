@@ -42,20 +42,18 @@ class BatchNorm final : public OpKernel {
   }
 
   ~BatchNorm() {
-	batchNormLayers.erase(this);
+    batchNormLayers.erase(this);
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  protected:
-   float epsilon_;
+  float epsilon_;
 
  private:
   ACLExecutionProvider* provider_;
   static thread_local std::map<OpKernel*, ACLNEBatchNorm> batchNormLayers;
 };
-
-
 
 }  // namespace acl
 }  // namespace onnxruntime

@@ -11,22 +11,22 @@ from onnx.numpy_helper import from_array
 def create_external_data_tensor(value, tensor_name):  # type: (List[Any], Text) -> TensorProto
     tensor = from_array(value)
     tensor.name = tensor_name
-    tensor_filename = "{}.bin".format(tensor_name)
+    tensor_filename = f"{tensor_name}.bin"
     set_external_data(tensor, location=tensor_filename)
     tensor.ClearField("raw_data")
     tensor.data_location = onnx.TensorProto.EXTERNAL
     return tensor
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     # Create one input (ValueInfoProto)
-    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2])
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2])  # noqa: N806
 
     # Create second input (ValueInfoProto)
-    Pads = helper.make_tensor_value_info("Pads_not_on_disk", TensorProto.INT64, [4])
+    Pads = helper.make_tensor_value_info("Pads_not_on_disk", TensorProto.INT64, [4])  # noqa: N806
 
     # Create one output (ValueInfoProto)
-    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 4])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 4])  # noqa: N806
 
     # Create a node (NodeProto)
     node_def = helper.make_node(
@@ -49,9 +49,9 @@ def GenerateModel(model_name):
     # Create the model (ModelProto)
     model_def = helper.make_model(graph_def, producer_name="onnx-example")
 
-    print("The ir_version in model: {}\n".format(model_def.ir_version))
-    print("The producer_name in model: {}\n".format(model_def.producer_name))
-    print("The graph in model:\n{}".format(model_def.graph))
+    print(f"The ir_version in model: {model_def.ir_version}\n")
+    print(f"The producer_name in model: {model_def.producer_name}\n")
+    print(f"The graph in model:\n{model_def.graph}")
     with open(model_name, "wb") as model_file:
         model_file.write(model_def.SerializeToString())
 

@@ -34,11 +34,12 @@ template <>
 Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
   scan::detail::DeviceHelpers helpers;
 
-  helpers.transpose_func = [this](const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
+  helpers.transpose_func = [this](const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output, Stream* stream) {
     // TODO: We construct a Transpose kernel on each call as doing so is fairly lightweight.
     // We could potentially keep a single instance and reuse it if that isn't performant enough.
     const OpKernelInfo& info = OpKernel::Info();
-    return cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, input, output);
+    Transpose transpose_kernel = cuda::Transpose(info);
+    return cuda::Transpose::DoTranspose(transpose_kernel, stream, permutations, input, output);
   };
 
   // copy into base class
@@ -100,14 +101,25 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   Scan<9>);
 
 // Opset 16 starts to support BFloat16 type for the type constraint "V"
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  16, 18,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      // 'I' is in the ONNX spec but is not used for any inputs or outputs
+                                      // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Scan<9>);
+
+// Opset 19 starts to support float 8 types for the type constraint "V"
 ONNX_OPERATOR_KERNEL_EX(Scan,
                         kOnnxDomain,
-                        16,
+                        19,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             // 'I' is in the ONNX spec but is not used for any inputs or outputs
                             // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
                         Scan<9>);
 
 }  // namespace cuda

@@ -509,5 +509,11 @@ Return Value:
             MlasActivationKernel<MlasHardSigmoidActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
+
+        case MlasActivationKindCount:
+        {
+            MLAS_THROW_EX(std::runtime_error, "bad mlas activation kind");
+            break;
+        }
     }
 }

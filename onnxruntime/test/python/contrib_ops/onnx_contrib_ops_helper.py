@@ -38,11 +38,11 @@ def generate_data(graph, inputs, outputs, name):
     prepare_dir(data_set)
     for j, input_np in enumerate(inputs):
         tensor = numpy_helper.from_array(input_np, model.graph.input[j].name)
-        with open(os.path.join(data_set, "input_{}.pb".format(j)), "wb") as f:
+        with open(os.path.join(data_set, f"input_{j}.pb"), "wb") as f:
             f.write(tensor.SerializeToString())
     for j, output_np in enumerate(outputs):
         tensor = numpy_helper.from_array(output_np, model.graph.output[j].name)
-        with open(os.path.join(data_set, "output_{}.pb".format(j)), "wb") as f:
+        with open(os.path.join(data_set, f"output_{j}.pb"), "wb") as f:
             f.write(tensor.SerializeToString())
 
 
@@ -53,16 +53,16 @@ def expect(
     name,
     **kwargs,
 ):  # type: (...) -> None
-    present_inputs = [x for x in node.input if (x != "")]
-    present_outputs = [x for x in node.output if (x != "")]
+    present_inputs = [x for x in node.input if x]
+    present_outputs = [x for x in node.output if x]
     input_types = [None] * len(inputs)
     if "input_types" in kwargs:
-        input_types = kwargs[str("input_types")]
-        del kwargs[str("input_types")]
+        input_types = kwargs["input_types"]
+        del kwargs["input_types"]
     output_types = [None] * len(outputs)
     if "output_types" in kwargs:
-        output_types = kwargs[str("output_types")]
-        del kwargs[str("output_types")]
+        output_types = kwargs["output_types"]
+        del kwargs["output_types"]
     inputs_vi = [
         _extract_value_info(arr, arr_name, input_type)
         for arr, arr_name, input_type in zip(inputs, present_inputs, input_types)

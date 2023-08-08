@@ -24,5 +24,14 @@ class FakeQuant final : public OpKernel {
   int64_t quant_max_;
 };
 
+template <typename T>
+class FakeQuantGrad final : public OpKernel {
+ public:
+  FakeQuantGrad(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

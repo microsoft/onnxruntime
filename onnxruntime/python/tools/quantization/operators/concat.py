@@ -1,8 +1,14 @@
 import onnx
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import (  # noqa: F401
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase
-from .qdq_base_operator import QDQOperatorBase
+from .qdq_base_operator import QDQOperatorBase  # noqa: F401
 
 
 class QLinearConcat(QuantOperatorBase):
@@ -43,7 +49,7 @@ class QLinearConcat(QuantOperatorBase):
         for attribute in node.attribute:
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
-        qnode_name = node.name + "_quant" if node.name != "" else ""
+        qnode_name = node.name + "_quant" if node.name else ""
 
         qlconcat_inputs = [output_scale_name, output_zp_name]
         for i in range(0, len(q_input_names)):

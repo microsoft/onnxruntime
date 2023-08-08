@@ -1,0 +1,3 @@
+{"streams":[["model_41/conv2d_34/Conv2D__2321","model_41/conv2d_34/Conv2D","model_41/activation_27/Relu","Transpose__2331"]],"type":"DeviceBasedPartitioner",
+ "devices":["0"]
+}

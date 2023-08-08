@@ -27,7 +27,7 @@ _log = logging.getLogger("util.get_azcopy")
 
 
 def _check_version(azcopy_path):
-    proc = subprocess.run([azcopy_path, "--version"], stdout=subprocess.PIPE, universal_newlines=True)
+    proc = subprocess.run([azcopy_path, "--version"], stdout=subprocess.PIPE, text=True)
     match = re.search(r"\d+(?:\.\d+)+", proc.stdout)
 
     if not match:
@@ -41,7 +41,7 @@ def _find_azcopy(start_dir):
         for file_name in file_names:
             if file_name == "azcopy" or file_name == "azcopy.exe":
                 return os.path.join(root, file_name)
-    raise RuntimeError("Failed to azcopy in '{}'.".format(start_dir))
+    raise RuntimeError(f"Failed to azcopy in '{start_dir}'.")
 
 
 @contextlib.contextmanager
@@ -67,7 +67,7 @@ def get_azcopy(local_azcopy_path="azcopy"):
             assert len(download_basename) > 0
             downloaded_path = os.path.join(temp_dir, download_basename)
 
-            _log.info("Downloading azcopy from '{}'...".format(download_url))
+            _log.info(f"Downloading azcopy from '{download_url}'...")
             urllib.request.urlretrieve(download_url, downloaded_path)
 
             extracted_path = os.path.join(temp_dir, "azcopy")

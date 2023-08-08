@@ -44,9 +44,9 @@ namespace Dml
         gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
         gsl::span<const uint32_t> GetStrides() const;
         void SetStrides(gsl::span<const uint32_t> strides);
-  
+
         inline uint64_t GetBufferSizeInBytes() const
-        { 
+        {
             assert(m_tensorType == DML_TENSOR_TYPE_BUFFER);
             return m_bufferTensorDesc.TotalTensorSizeInBytes;
         }
@@ -167,4 +167,6 @@ namespace Dml
         uint32_t m_minDimensionCount = NchwDimensionCount;
         uint32_t m_guaranteedBaseOffsetAlignment = 0;
     };
+
+    using TensorSequenceDesc = std::vector<TensorDesc>;
 }

@@ -47,27 +47,27 @@ class TestResultStat {
 
   std::string ToString();
 
-  TestResultStat& operator += (const TestResultStat& result) {
+  TestResultStat& operator+=(const TestResultStat& result) {
     total_test_case_count += result.total_test_case_count;
-    total_model_count     += result.total_model_count;
-    succeeded             += result.succeeded;
-    not_implemented       += result.not_implemented;
-    load_model_failed     += result.load_model_failed;
-    throwed_exception     += result.throwed_exception;
-    result_differs        += result.result_differs;
-    skipped               += result.skipped;
-    invalid_graph         += result.invalid_graph;
+    total_model_count += result.total_model_count;
+    succeeded += result.succeeded;
+    not_implemented += result.not_implemented;
+    load_model_failed += result.load_model_failed;
+    throwed_exception += result.throwed_exception;
+    result_differs += result.result_differs;
+    skipped += result.skipped;
+    invalid_graph += result.invalid_graph;
 
-    for(const auto& s:result.not_implemented_kernels) {
-        AddNotImplementedKernels(s);
+    for (const auto& s : result.not_implemented_kernels) {
+      AddNotImplementedKernels(s);
     }
 
-    for(const auto& s:result.failed_kernels) {
-        AddFailedKernels(s);
+    for (const auto& s : result.failed_kernels) {
+      AddFailedKernels(s);
     }
 
-    for(const auto& p:result.failed_test_cases) {
-        AddFailedTest(p);
+    for (const auto& p : result.failed_test_cases) {
+      AddFailedTest(p);
     }
 
     return *this;
@@ -77,5 +77,5 @@ class TestResultStat {
   mutable onnxruntime::OrtMutex m_;
   std::unordered_set<std::string> not_implemented_kernels;
   std::unordered_set<std::string> failed_kernels;
-  std::set<std::pair<std::string, std::string>> failed_test_cases; // pairs of test name and version
+  std::set<std::pair<std::string, std::string>> failed_test_cases;  // pairs of test name and version
 };

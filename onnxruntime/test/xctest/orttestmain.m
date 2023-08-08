@@ -4,21 +4,21 @@
 #import <UIKit/UIKit.h>
 static const size_t kMaxStrLen = 2048;
 
-static void set_test_rootdir(const char* image_path){
-    size_t n = strnlen(image_path, kMaxStrLen);
-    for (; n >=0; n--) {
-        if (image_path[n] == '/') {
-            break;
-        }
+static void set_test_rootdir(const char* image_path) {
+  size_t n = strnlen(image_path, kMaxStrLen);
+  for (; n >= 0; n--) {
+    if (image_path[n] == '/') {
+      break;
     }
+  }
 
-    char* bundle_dir = (char*)malloc(n + 1);
-    if (bundle_dir != NULL) {
-        strncpy(bundle_dir, image_path, n);
-        bundle_dir[n] = 0;
-        chdir(bundle_dir);
-        free(bundle_dir);
-    }
+  char* bundle_dir = (char*)malloc(n + 1);
+  if (bundle_dir != NULL) {
+    strncpy(bundle_dir, image_path, n);
+    bundle_dir[n] = 0;
+    chdir(bundle_dir);
+    free(bundle_dir);
+  }
 }
 
 @interface ViewController : UIViewController
@@ -27,75 +27,63 @@ static void set_test_rootdir(const char* image_path){
 
 @implementation ViewController
 
-- (void)viewDidLoad
-{
-    [super viewDidLoad];
+- (void)viewDidLoad {
+  [super viewDidLoad];
 
-    self.view.backgroundColor = [UIColor whiteColor];
+  self.view.backgroundColor = [UIColor whiteColor];
 }
 
-- (void)didReceiveMemoryWarning
-{
-    [super didReceiveMemoryWarning];
+- (void)didReceiveMemoryWarning {
+  [super didReceiveMemoryWarning];
 }
 
 @end
 
-
-
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
 
-@property (strong, nonatomic) UIWindow *window;
+@property(strong, nonatomic) UIWindow* window;
 
-@property (nonatomic, strong) UIViewController *rootViewController;
+@property(nonatomic, strong) UIViewController* rootViewController;
 
 @end
 
 @implementation AppDelegate
 
+- (BOOL)application:(UIApplication*)application didFinishLaunchingWithOptions:(NSDictionary*)launchOptions {
+  self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+  self.window.tintAdjustmentMode = UIViewTintAdjustmentModeNormal;
+  self.window.rootViewController = [[ViewController alloc] init];
 
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
-{
-    self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    self.window.tintAdjustmentMode = UIViewTintAdjustmentModeNormal;
-    self.window.rootViewController = [[ViewController alloc] init];
+  self.window.backgroundColor = [UIColor whiteColor];
+  self.window.clipsToBounds = NO;
+  [self.window makeKeyAndVisible];
 
-    self.window.backgroundColor = [UIColor whiteColor];
-    self.window.clipsToBounds = NO;
-    [self.window makeKeyAndVisible];
-
-    return YES;
+  return YES;
 }
 
-- (void)applicationWillResignActive:(UIApplication *)application
-{
+- (void)applicationWillResignActive:(UIApplication*)application {
 }
 
-- (void)applicationDidEnterBackground:(UIApplication *)application
-{
+- (void)applicationDidEnterBackground:(UIApplication*)application {
 }
 
-- (void)applicationWillEnterForeground:(UIApplication *)application
-{
+- (void)applicationWillEnterForeground:(UIApplication*)application {
 }
 
-- (void)applicationDidBecomeActive:(UIApplication *)application
-{
+- (void)applicationDidBecomeActive:(UIApplication*)application {
 }
 
-- (void)applicationWillTerminate:(UIApplication *)application
-{
+- (void)applicationWillTerminate:(UIApplication*)application {
 }
 
 @end
 
+int main(int argc, char* argv[]) {
+  set_test_rootdir(argv[0]);
+  int ret = 0;
+  @autoreleasepool {
+    ret = UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
+  }
 
-int main(int argc, char * argv[]) {
-    set_test_rootdir(argv[0]);
-    int ret = 0;
-    @autoreleasepool {
-        ret = UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
-    }
-
-    return ret;
+  return ret;
 }

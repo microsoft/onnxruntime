@@ -89,7 +89,6 @@ def _create_encoder_export(args, config: BartConfig):
     def _prepare_encoder_decoder_kwargs_for_generation(
         self, input_ids: torch.Tensor, model_kwargs, model_input_name: Optional[str] = None
     ) -> Dict[str, Any]:
-
         # retrieve encoder hidden states
         # 1. get encoder
         encoder = self.get_encoder()
@@ -157,7 +156,7 @@ def _create_encoder_export(args, config: BartConfig):
             opset_version=args.opset_version,
             do_constant_folding=False,
             input_names=["encoder_input_ids", "encoder_attention_mask", "decoder_input_ids"],
-            output_names=["logits", "encoder_hidden_states"] + output_past_names,
+            output_names=["logits", "encoder_hidden_states", *output_past_names],
             dynamic_axes=dynamic_axes,
             export_params=True,
             verbose=True,
@@ -189,7 +188,6 @@ def export_encoder(args):
     config, tokenizer = export_helper.initialize_config(args)
 
     with torch.no_grad():
-
         model, input_data = export_helper.initialize_model(config, tokenizer, args)
         start_time = time.time()
         model._prepare_encoder_decoder_kwargs_for_generation = _create_encoder_export(args, config).__get__(

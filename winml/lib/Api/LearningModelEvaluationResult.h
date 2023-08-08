@@ -6,9 +6,8 @@
 #include "LearningModelEvaluationResult.g.h"
 
 namespace WINMLP {
-struct LearningModelEvaluationResult : LearningModelEvaluationResultT<
-                                           LearningModelEvaluationResult,
-                                           ILearningModelEvaluationResultNative> {
+struct LearningModelEvaluationResult
+  : LearningModelEvaluationResultT<LearningModelEvaluationResult, ILearningModelEvaluationResultNative> {
   LearningModelEvaluationResult() = default;
 
   hstring CorrelationId();
@@ -25,10 +24,7 @@ struct LearningModelEvaluationResult : LearningModelEvaluationResultT<
 
   // ILearningModelEvaluationResultNative
   STDMETHOD(GetOutput)
-  (
-      const wchar_t* name,
-      UINT32 cchName,
-      IUnknown** result);
+  (const wchar_t* name, UINT32 cchName, IUnknown** result);
 
   HRESULT SetOutputs(std::unordered_map<std::string, wf::IInspectable>&& outputs);
 

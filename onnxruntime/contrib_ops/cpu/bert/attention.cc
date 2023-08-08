@@ -8,14 +8,15 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
+#include "core/common/span_utils.h"
 #include "core/platform/threadpool.h"
 
-using onnxruntime::concurrency::ThreadPool;
 using onnxruntime::narrow;
+using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
-static void FreePackedWeights(BufferUniquePtr* array, size_t array_size) {
+static void FreePackedWeights(gsl::span<IAllocatorUniquePtr<void>> array, size_t array_size) {
   for (size_t i = 0; i < array_size; i++) {
     array[i].reset();
   }
@@ -41,7 +42,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
                                size_t input_hidden_size, const T* weights_data,
                                size_t weight_matrix_col_size, PrePackedWeights* prepacked_weights);
 
-  BufferUniquePtr packed_weights_[3];
+  std::array<IAllocatorUniquePtr<void>, 3> packed_weights_;
   size_t packed_weights_size_[3] = {0, 0, 0};
   bool is_prepack_ = false;
   TensorShape weight_shape_;
@@ -59,7 +60,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     Attention<float>);
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, false, true) {
+Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, false) {
 }
 
 template <typename T>
@@ -76,15 +77,14 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
   }
 
   size_t loop_len = narrow<size_t>(num_heads_);
-  size_t packed_weights_data_size = packb_size * loop_len;  // The same size would be computed by AllocArray() below
-  auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packb_size, loop_len));
-
+  size_t packed_weights_data_size = SafeInt<size_t>(packb_size) * loop_len;
+  packed_weights_[qkv_index] = IAllocator::MakeUniquePtr<void>(alloc, packed_weights_data_size, true);
+  packed_weights_size_[qkv_index] = packb_size;
+  std::byte* packed_weights_data = static_cast<std::byte*>(packed_weights_[qkv_index].get());
   // Initialize memory to 0 as there could be some padding associated with pre-packed
-  // buffer memory and we don not want it uninitialized and generate different hashes
+  // buffer memory and we do not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
-  packed_weights_[qkv_index] = BufferUniquePtr(packed_weights_data, BufferDeleter(std::move(alloc)));
-  packed_weights_size_[qkv_index] = packb_size;
 
   for (size_t i = 0; i < loop_len; i++) {
     MlasGemmPackB(CblasNoTrans, head_size, input_hidden_size, weights_data, weight_matrix_col_size, packed_weights_data);
@@ -198,22 +198,17 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* extra_add_qk = context->Input<Tensor>(5);
-
-  const Tensor* key = context->Input<Tensor>(6);
-  const Tensor* value = context->Input<Tensor>(7);
+  const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
 
   AttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  (nullptr != weights || is_prepack_) ? &weights_shape : nullptr,
+                                  weights_shape,
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  extra_add_qk,
-                                  key,
-                                  value,
+                                  relative_position_bias,
                                   &parameters));
 
   const int batch_size = parameters.batch_size;
@@ -333,10 +328,11 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q, K, V, mask_index, past, output,
-                        batch_size, sequence_length,
+  return ApplyAttention(Q, K, V, mask_index, past, nullptr /* past_key */, nullptr /* past_value */,
+                        output, nullptr /* present_key */, nullptr /* present_value */,
+                        batch_size, sequence_length, sequence_length,
                         parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
-                        extra_add_qk, context);
+                        relative_position_bias, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

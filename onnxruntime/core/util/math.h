@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #pragma once
 
@@ -53,15 +53,15 @@ enum StorageOrder {
 namespace math {
 
 template <typename T, class Provider>
-void Exp(int N, const T* x, T* y, Provider* provider);
+void Exp(ptrdiff_t N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void Log(int N, const T* x, T* y, Provider* provider);
+void Log(ptrdiff_t N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void Sqr(int N, const T* x, T* y, Provider* provider);
+void Sqr(ptrdiff_t N, const T* x, T* y, Provider* provider);
 
 #define DECLARE_BINARY_OP(name)                                                     \
   template <typename T, class Provider>                                             \
-  void name(int N, const T* a, const T* b, T* y, Provider* provider);               \
+  void name(ptrdiff_t N, const T* a, const T* b, T* y, Provider* provider);         \
   template <typename T, class Provider>                                             \
   void name##ToRow(int M, int N, const T* a, const T* b, T* y, Provider* provider); \
   template <typename T, class Provider>                                             \
@@ -90,16 +90,16 @@ void RowwiseSum(int N, int D, const T* x, T* y,
 
 // Sum of vector x, and writes the result to a single value y.
 template <typename T, class Provider>
-void Sum(int N, const T* x, T* y, Provider* provider);
+void Sum(ptrdiff_t N, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
-void Scale(int N, float alpha, const T* x, T* y, Provider* provider);
+void Scale(ptrdiff_t N, float alpha, const T* x, T* y, Provider* provider);
 
 // Different from the Scale function above, if alpha is passed in
 // as a pointer, we will assume that it lives on the correct execution provider,
 // for example on GPU.
 template <typename T, class Provider>
-void Scale(int N, const float* alpha, const T* x, T* y, Provider* provider);
+void Scale(ptrdiff_t N, const float* alpha, const T* x, T* y, Provider* provider);
 
 template <typename T>
 void MatMul(

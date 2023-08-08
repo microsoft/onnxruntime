@@ -72,6 +72,7 @@ namespace Dml
             ) const noexcept final;
 
         STDMETHOD(CopyTensor)(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept final;
+        STDMETHOD(CopyTensors)(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept final;
 
         STDMETHOD(FillTensorWithPattern)(
             IMLOperatorTensor* dst,
@@ -153,7 +154,6 @@ namespace Dml
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
-        std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
 
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
         GetInternalRegistrationInfoMap() const;
@@ -169,6 +169,7 @@ namespace Dml
         }
 
         onnxruntime::common::Status OnSessionInitializationEnd();
+        std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators();
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
@@ -179,20 +180,25 @@ namespace Dml
             uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         ) const;
 
+        void FlushUploadsIfReady() const;
+
         ComPtr<ID3D12Device> m_d3d12Device;
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
         bool m_areMetacommandsEnabled = true;
+        bool m_native16BitShaderOpsSupported = false;
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
         std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
-        std::shared_ptr<CPUAllocator> m_cpuOutputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
         bool m_closed = false;
+        mutable std::chrono::time_point<std::chrono::steady_clock> m_lastUploadFlushTime;
+        static constexpr std::chrono::milliseconds m_batchFlushInterval = std::chrono::milliseconds(10);
+        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
     };
 
     class DataTransfer : public onnxruntime::IDataTransfer
@@ -206,12 +212,6 @@ namespace Dml
 
         onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final
         {
-            return CopyTensor(src, dst, 0);
-        }
-
-        onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst, int exec_queue_id) const final
-        {
-            assert(exec_queue_id == 0);
             return m_impl->CopyTensor(src, dst);
         }
 
@@ -310,6 +310,11 @@ namespace Dml
         void MetacommandsEnabled()
         {
             m_impl->MetacommandsEnabled();
+        }
+
+        virtual std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators() override
+        {
+            return m_impl->CreatePreferredAllocators();
         }
 
     private:

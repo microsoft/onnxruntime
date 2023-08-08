@@ -7,20 +7,23 @@
 
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/execution_frame.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/parallel_executor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/run_options.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #ifdef ENABLE_TRAINING
-#include "core/framework/orttraining_partial_executor.h"
+#include "core/framework/partial_graph_execution_state.h"
 #endif
 
 #ifdef ENABLE_ATEN
@@ -63,11 +66,13 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kRknpuExecutionProvider ||
          provider_type == onnxruntime::kCoreMLExecutionProvider ||
          provider_type == onnxruntime::kSnpeExecutionProvider ||
+         provider_type == onnxruntime::kQnnExecutionProvider ||
          provider_type == onnxruntime::kXnnpackExecutionProvider ||
          provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
 }
 
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
+                                     Stream* target_stream,
                                      const OrtValue& source_mlvalue,
                                      OrtValue& target_mlvalue) {
   if (!allocator) {
@@ -76,9 +81,33 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
-    Tensor::InitOrtValue(source_tensor.DataType(),
-                         source_tensor.Shape(),
-                         allocator, target_mlvalue);
+    if (allocator->Info().alloc_type == OrtArenaAllocator) {
+      void* p_data = nullptr;
+#ifdef ORT_ENABLE_STREAM
+      BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
+      auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_ptr);
+      if (stream_aware_alloc && target_stream) {
+        size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
+        p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+      }
+#else
+      ORT_UNUSED_PARAMETER(target_stream);
+#endif  // ORT_ENABLE_STREAM
+      if (p_data == nullptr) {
+        Tensor::InitOrtValue(source_tensor.DataType(),
+                             source_tensor.Shape(),
+                             allocator, target_mlvalue);
+      } else {
+        Tensor::InitOrtValue(source_tensor.DataType(),
+                             source_tensor.Shape(),
+                             p_data,
+                             allocator, target_mlvalue);
+      }
+    } else {
+      Tensor::InitOrtValue(source_tensor.DataType(),
+                           source_tensor.Shape(),
+                           allocator, target_mlvalue);
+    }
   } else if (source_mlvalue.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
     const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
@@ -86,14 +115,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 #endif
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
-    auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
-    std::vector<Tensor> tensors;
-    for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
-      tensors.emplace_back(iter->DataType(), onnxruntime::TensorShape(iter->Shape()), allocator);
-    }
-    target_tensor_seq->SetElements(std::move(tensors));
-    auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
-    target_mlvalue.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());
+    TensorSeq::InitOrtValue(source_tensor_seq, allocator, target_mlvalue);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type.");
   }
@@ -125,6 +147,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
                                  const MLValueCopyInfo& copy_info,
                                  const OrtValue& source_mlvalue,
                                  OrtValue& target_mlvalue,
+                                 Stream* stream,
 #if !defined(DISABLE_SPARSE_TENSORS)
                                  std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr,
                                  std::vector<IDataTransfer::SparseSrcDstPair>* copy_sparse_pairs = nullptr)
@@ -141,7 +164,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
   auto allocator = session_state.GetAllocator(copy_info.target_device);
   if (!target_mlvalue.IsAllocated()) {
     ORT_ENFORCE(allocator != nullptr, "Failed to find allocator for device ", copy_info.target_device.ToString());
-    ORT_RETURN_IF_ERROR(utils::AllocateHelper(allocator, source_mlvalue, target_mlvalue));
+    ORT_RETURN_IF_ERROR(utils::AllocateHelper(allocator, stream, source_mlvalue, target_mlvalue));
   }
 
   if (source_mlvalue.IsTensor()) {
@@ -149,9 +172,9 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
     if (copy_tensor_pairs != nullptr) {
-      copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, 0});
+      copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, stream});
     } else {
-      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
+      ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, *stream) : session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
   } else if (source_mlvalue.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -175,14 +198,19 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
       target_tensor_seq.Add(std::move(*target_tensor));
     }
+    const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
     auto source_iter = source_tensor_seq.begin();
     auto target_iter = target_tensor_seq.begin();
+
     while (source_iter != source_tensor_seq.end() &&
            target_iter != target_tensor_seq.end()) {
       if (copy_tensor_pairs != nullptr) {
-        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), 0});
+        copy_tensor_pairs->push_back({source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), stream});
       } else {
-        ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
+        if (stream)
+          ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensorAsync(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), *stream));
+        else
+          ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>()));
       }
       ++source_iter;
       ++target_iter;
@@ -204,9 +232,9 @@ static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_pr
   return true;
 }
 
-static const OrtMemoryInfo& FindMemoryInfoForValue(const OrtValueNameIdxMap& map,
-                                                   const SequentialExecutionPlan& plan,
-                                                   std::string_view name) {
+static const OrtDevice& FindDeviceForValue(const OrtValueNameIdxMap& map,
+                                           const SequentialExecutionPlan& plan,
+                                           std::string_view name) {
   int idx = -1;
   auto status = map.GetIdx(name, idx);
   ORT_THROW_IF_ERROR(status);
@@ -215,12 +243,11 @@ static const OrtMemoryInfo& FindMemoryInfoForValue(const OrtValueNameIdxMap& map
   return location;
 }
 
-const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
-                                            std::string_view name) {
+const OrtDevice& FindDeviceForValue(const SessionState& session_state, std::string_view name) {
   const auto* exec_plan_ptr = session_state.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr);
 
-  return FindMemoryInfoForValue(session_state.GetOrtValueNameIdxMap(), *exec_plan_ptr, name);
+  return FindDeviceForValue(session_state.GetOrtValueNameIdxMap(), *exec_plan_ptr, name);
 }
 
 // get the target device info for the node consuming each input provided in the feeds.
@@ -250,7 +277,7 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
     const auto& name_to_id = session_state.GetOrtValueNameIdxMap();
     int index;
     ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_name, index));
-    const auto& device = exec_plan->GetLocation(index).device;
+    const auto& device = exec_plan->GetLocation(index);
     copy_info.target_device = device;
   }
 #endif
@@ -276,22 +303,8 @@ static common::Status CalculateStaticCopyInfoForFetches(const SessionState& sess
   for (size_t idx = 0, end = fetch_names.size(); idx < end; ++idx) {
     const std::string& output_name = fetch_names[idx];
 
-    const auto& info = FindMemoryInfoForValue(session_state, output_name);
-    copy_info[idx].source_device = info.device;
-
-    // If for some reason using just the device from the allocation plan isn't enough, the following
-    // would use the NodeInfo from the node producing the output
-    //
-    // std::vector<SessionState::NodeInfo> node_info_vec;
-    // auto status = session_state.GetOutputNodeInfo(output_name, node_info_vec);
-    // if (status.IsOK()) {
-    //  const auto& node_info = node_info_vec.front();  // only one entry as only one node can produce a given output
-    //  copy_info[idx].source_device = *node_info.device;
-    //} else {
-    //  // edge case where an initializer directly provides output so no NodeInfo involved
-    //  const auto& info = FindMemoryInfoForValue(session_state, output_name);
-    //  copy_info[idx].source_device = info.device;
-    //}
+    const auto& info = FindDeviceForValue(session_state, output_name);
+    copy_info[idx].source_device = info;
   }
 
   return Status::OK();
@@ -333,17 +346,17 @@ static bool FinalizeCopyInfoForFeeds(gsl::span<const OrtDevice> feed_locations,
   return copy_needed;
 }
 
-static bool FinalizeCopyInfoForFetches(gsl::span<const OrtMemoryInfo* const>& fetch_alloc_info,
+static bool FinalizeCopyInfoForFetches(gsl::span<const OrtDevice* const>& fetch_alloc_info,
                                        std::vector<MLValueCopyInfo>& copy_info) {
   ORT_ENFORCE(fetch_alloc_info.size() == copy_info.size());
   bool copy_needed = false;
 
   auto num_outputs = fetch_alloc_info.size();
   for (size_t i = 0; i < num_outputs; ++i) {
-    const OrtMemoryInfo* alloc_info = fetch_alloc_info[i];
+    const OrtDevice* alloc_info = fetch_alloc_info[i];
 
     if (alloc_info != nullptr) {
-      copy_info[i].target_device = alloc_info->device;
+      copy_info[i].target_device = *alloc_info;
     }
 
     if (copy_info[i].source_device != copy_info[i].target_device) {
@@ -358,7 +371,7 @@ static bool FinalizeCopyInfoForFetches(gsl::span<const OrtMemoryInfo* const>& fe
 // This can be used by control flow nodes prior to the execution of the overall graph.
 void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtDevice> feed_locations,
-                               gsl::span<const OrtMemoryInfo* const> fetch_alloc_info) {
+                               gsl::span<const OrtDevice* const> fetch_alloc_info) {
   if (feeds_fetches_manager.GetDeviceCopyChecks().status == DeviceCopyCheck::NoCopy)
     return;
 
@@ -382,7 +395,7 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
   auto num_outputs = feeds_fetches_manager.GetFeedsFetchesInfo().output_names.size();
 
   std::vector<OrtDevice> feed_locations(num_inputs);
-  std::vector<const OrtMemoryInfo*> fetch_alloc_info(num_outputs, nullptr);
+  std::vector<const OrtDevice*> fetch_alloc_info(num_outputs, nullptr);
 
   for (size_t i = 0; i < num_inputs; ++i) {
     const auto& feed = feeds[i];
@@ -407,15 +420,15 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
     const auto& fetch = fetches[i];
     if (fetch.IsAllocated()) {
       if (fetch.IsTensor()) {
-        fetch_alloc_info[i] = &fetch.Get<Tensor>().Location();
+        fetch_alloc_info[i] = &fetch.Get<Tensor>().Location().device;
       } else if (fetch.IsTensorSequence()) {
         const auto& tensor_seq = fetch.Get<TensorSeq>();
         if (tensor_seq.Size() != std::size_t{0}) {
-          fetch_alloc_info[i] = &tensor_seq.Get(0).Location();
+          fetch_alloc_info[i] = &tensor_seq.Get(0).Location().device;
         }
       } else if (fetch.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-        fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location();
+        fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location().device;
 #endif
       }
     }
@@ -427,9 +440,11 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
 static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
                                               gsl::span<const OrtValue> orig_feeds,
                                               std::vector<OrtValue>& new_feeds,
-                                              gsl::span<const MLValueCopyInfo> copy_info) {
+                                              gsl::span<const MLValueCopyInfo> copy_info,
+                                              gsl::span<Stream* const> feed_streams) {
   size_t num_feeds = orig_feeds.size();
   ORT_ENFORCE(copy_info.size() == num_feeds);
+  ORT_ENFORCE(feed_streams.size() == num_feeds);
 
   new_feeds.resize(num_feeds);
   std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
@@ -440,9 +455,11 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   for (size_t idx = 0; idx < num_feeds; ++idx) {
 #if !defined(DISABLE_SPARSE_TENSORS)
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           feed_streams[idx],
                                            &batched_data_transfers, &batched_sparse_data_transfers));
 #else
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           feed_streams[idx],
                                            &batched_data_transfers));
 #endif
   }
@@ -457,8 +474,42 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   }
 #endif
 
+  // flush the stream to make sure the inputs are ready before launch the inference.
+  // TODO: this sync is because the graph inputs can be consumed by multiple stream,
+  // but we can only place the MemCpyAsync on one of the stream. Ideally we should make
+  // other stream wait on the event of the memory copy stream, instead of host sync stream.
+  for (auto* stream : feed_streams) {
+    if (stream)
+      stream->Flush();
+  }
   return Status::OK();
 }
+
+#ifdef ORT_ENABLE_STREAM
+static void UpdateWithParentStream(DeviceStreamCollection& device_stream_collection,
+                                   Stream* parent_stream) {
+  if (parent_stream) {
+    // TODO: in theory, we should make current subgraph's stream depends on parent stream.
+    // but in current code structure, it causing issues with the resource sharing and stream
+    // lifetime. it also may cause additional cost of stream sync for single stream case.
+    // In first phase, let's just put all the subgraph execution on the parent stream.
+    for (size_t i = 0; i < device_stream_collection.NumStreams(); ++i) {
+      auto* stream = device_stream_collection.GetStream(i);
+      if (stream) {
+        // if current logic stream is not on the same EP instance as parent stream
+        // and the EP instance does have async streams (not EP like CPU)
+        // throw error as we don't have the code to setup the dependency at this moment.
+        if (stream->GetDevice() != parent_stream->GetDevice()) {
+          ORT_THROW("Subgraph has nodes running on device: ", stream->GetDevice().Type(),
+                    " while parent graph node running on device: ", parent_stream->GetDevice().Type(),
+                    ", this is not supported yet.");
+        }
+        device_stream_collection.SetDeviceStream(i, parent_stream);
+      }
+    }
+  }
+}
+#endif
 
 // public method to do a single copy. used by external partners
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
@@ -479,14 +530,31 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
 #endif
 
+  Stream* device_stream = nullptr;
+#ifdef ORT_ENABLE_STREAM
+  DeviceStreamCollectionHolder device_stream_collection_holder(&session_state);
+  if (device_stream_collection_holder.p_ != nullptr) {
+    DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
+    size_t num_streams = device_stream_collection->NumStreams();
+    for (size_t i = 0; i < num_streams; i++) {
+      Stream* stream = device_stream_collection->GetStream(i);
+      if (stream && stream->GetDevice().Type() != OrtDevice::CPU) {
+        device_stream = stream;
+        break;
+      }
+    }
+  }
+#endif
+
   // copy_info.target_device is not set leaving to be equal to CPU.
-  return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue);
+  return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue, device_stream);
 }
 
 static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
-                                               const std::vector<OrtValue>& fetches,
+                                               gsl::span<const OrtValue> fetches,
                                                std::vector<OrtValue>& user_fetches,
-                                               const std::vector<MLValueCopyInfo>& copy_info) {
+                                               gsl::span<const MLValueCopyInfo> copy_info,
+                                               gsl::span<Stream* const> fetch_streams) {
   auto num_outputs = fetches.size();
   user_fetches.resize(num_outputs);
 
@@ -497,10 +565,10 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
 
   for (size_t idx = 0; idx < num_outputs; ++idx) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
                                            &batched_data_transfers, &batched_sparse_data_transfers));
 #else
-    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
                                            &batched_data_transfers));
 #endif
   }
@@ -518,41 +586,51 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   return Status::OK();
 }
 
-static common::Status ExecuteGraphImpl(const SessionState& session_state,
-                                       const FeedsFetchesManager& feeds_fetches_manager,
-                                       gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                                       const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       ExecutionMode execution_mode, const bool& terminate_flag,
-                                       const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
-  // avoid memory allocations
-  std::optional<SequentialExecutor> seq_executor;
-  std::optional<ParallelExecutor> par_executor;
-  IExecutor* p_exec = nullptr;
-  if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
-    seq_executor.emplace(terminate_flag, only_execute_path_to_fetches);
-    p_exec = &seq_executor.value();
-  } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
-    auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
-    if (!p_inter_op_thread_pool) {
-      LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
-      seq_executor.emplace(terminate_flag, only_execute_path_to_fetches);
-      p_exec = &seq_executor.value();
-    } else {
-      par_executor.emplace(session_state, terminate_flag);
-      p_exec = &par_executor.value();
-    }
-  }
-
+static common::Status
+ExecuteGraphImpl(const SessionState& session_state,
+                 const FeedsFetchesManager& feeds_fetches_manager,
+                 gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                 const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                 ExecutionMode execution_mode, const bool& terminate_flag,
+                 const logging::Logger& logger,
+#ifdef ORT_ENABLE_STREAM
+                 DeviceStreamCollection* device_stream_collection,
+#endif
+                 const bool only_execute_path_to_fetches = false,
+                 Stream* parent_stream = nullptr) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
+#ifdef ORT_ENABLE_STREAM
+  auto* execution_plan = session_state.GetExecutionPlan();
+  if (device_stream_collection)
+    UpdateWithParentStream(*device_stream_collection, parent_stream);
+#else
+  ORT_UNUSED_PARAMETER(parent_stream);
+#endif
+
+  bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
+  // in following two cases, we execute the workload in main thread:
+  // 1. execution mode is sequential.
+  // 2. execute a subgraph. Because in current implementation, the execute of subgraph is launched through parent kernel.
+  //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause
+  //    deadlock when we reach the limitation of thread pool.
+  bool single_thread_mode = execution_mode == ExecutionMode::ORT_SEQUENTIAL || is_subgraph;
 
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
-    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
-                                        feeds_fetches_info.feeds_mlvalue_idxs, feeds,
-                                        feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
-                                        logger));
+    auto status = (ExecuteThePlan(session_state,
+                                  feeds_fetches_info.feeds_mlvalue_idxs, feeds,
+                                  feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
+                                  logger,
+#ifdef ORT_ENABLE_STREAM
+                                  device_stream_collection,
+#endif
+                                  terminate_flag,
+                                  only_execute_path_to_fetches,
+                                  // single thread mode
+                                  single_thread_mode));
+    ORT_RETURN_IF_ERROR(status);
   } else {
     auto feeds_to_use = feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
@@ -561,7 +639,33 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info));
+      InlinedVector<Stream*> feed_streams;
+      feed_streams.reserve(feed_copy_info.size());
+      // TODO: we can pre-calculate the stream index for graph inputs in execution plan
+#ifdef ORT_ENABLE_STREAM
+      for (auto& copy_info : feed_copy_info) {
+        auto& device = copy_info.target_device;
+        bool found = false;
+        if (device_stream_collection) {
+          size_t num_streams = device_stream_collection->NumStreams();
+          for (size_t i = 0; i < num_streams; i++) {
+            Stream* stream = device_stream_collection->GetStream(i);
+            if (stream && stream->GetDevice().Type() == device.Type()) {
+              feed_streams.push_back(stream);
+              found = true;
+              break;
+            }
+          }
+        }
+        if (!found)
+          feed_streams.push_back(nullptr);
+      }
+#else
+      for (size_t i = 0; i < feed_copy_info.size(); ++i) {
+        feed_streams.push_back(nullptr);
+      }
+#endif
+      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info, feed_streams));
       feeds_to_use = device_feeds;
     }
 
@@ -584,16 +688,42 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       p_fetches = &device_fetches;
     }
 
-    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
-                                        feeds_fetches_info.feeds_mlvalue_idxs, feeds_to_use,
-                                        feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
-                                        logger));
+    // no device copies are needed so simple execute
+    auto status = (ExecuteThePlan(session_state,
+                                  feeds_fetches_info.feeds_mlvalue_idxs, feeds_to_use,
+                                  feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
+                                  logger,
+#ifdef ORT_ENABLE_STREAM
+                                  device_stream_collection,
+#endif
+                                  terminate_flag,
+                                  only_execute_path_to_fetches,
+                                  single_thread_mode));
+    ORT_RETURN_IF_ERROR(status);
+    InlinedVector<Stream*> fetches_streams;
+    fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
+#ifdef ORT_ENABLE_STREAM
+    auto& value_to_stream_map = execution_plan->value_to_stream_map;
+    for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
+      auto it = value_to_stream_map.find(fetch_idx);
+      if (it != value_to_stream_map.end()) {
+        fetches_streams.push_back(device_stream_collection ? device_stream_collection->GetStream(it->second) : nullptr);
+      } else {
+        // for subgraph, it is possible the graph is empty,
+        // the fetches are come from parent graph.
+        fetches_streams.push_back(parent_stream);
+      }
+    }
+#else
+    for (size_t i = 0; i < feeds_fetches_info.fetches_mlvalue_idxs.size(); ++i) {
+      fetches_streams.push_back(nullptr);
+    }
+#endif
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
-      ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
+      ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info, fetches_streams));
     }
   }
-
   return Status::OK();
 }
 
@@ -601,37 +731,85 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger, bool only_execute_path_to_fetches) {
+                            const logging::Logger& logger,
+#ifdef ORT_ENABLE_STREAM
+                            DeviceStreamCollectionHolder& device_stream_collection_holder,
+#endif
+                            bool only_execute_path_to_fetches,
+                            Stream* parent_stream) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
+#ifdef ORT_ENABLE_STREAM
+  DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
+  auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
+                                 execution_mode, terminate_flag, logger,
+                                 device_stream_collection,
+                                 only_execute_path_to_fetches,
+                                 parent_stream);
+  return retval;
+#else
+  return ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
+                          execution_mode, terminate_flag, logger,
+                          only_execute_path_to_fetches,
+                          parent_stream);
+#endif
+}
 
-  auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
-
-  return status;
+common::Status ExecuteGraph(const SessionState& session_state,
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                            ExecutionMode execution_mode, const RunOptions& run_options,
+#ifdef ORT_ENABLE_STREAM
+                            DeviceStreamCollectionHolder& device_stream_collection_holder,
+#endif
+                            const logging::Logger& logger) {
+  return ExecuteGraph(session_state,
+                      feeds_fetches_manager,
+                      feeds, fetches,
+                      execution_mode,
+                      run_options.terminate,
+                      logger,
+#ifdef ORT_ENABLE_STREAM
+                      device_stream_collection_holder,
+#endif
+                      run_options.only_execute_path_to_fetches);
 }
 
 #ifdef ENABLE_TRAINING
-common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                                   gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                                   const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache,
-                                   int32_t partial_graph_index) {
+common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
+                                       gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                                       const logging::Logger& logger, PartialGraphExecutionState& state,
+                                       const OrtValueCachePtr& cache, const bool& terminate_flag,
+                                       DeviceStreamCollection* device_stream_collection,
+                                       int32_t partial_graph_index,
+                                       Stream* parent_stream) {
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-  PartialExecutor executor{state, cache, partial_graph_index};
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
+  // always use single_stream mode for training, to have a stable execution order
+  bool single_thread_mode = true;
+
+  auto* execution_plan = session_state.GetExecutionPlan();
+  if (device_stream_collection)
+    UpdateWithParentStream(*device_stream_collection, parent_stream);
 
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
-    ORT_RETURN_IF_ERROR(executor.Execute(session_state,
-                                         feeds_fetches_info.feeds_mlvalue_idxs, feeds,
-                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
-                                         logger));
+    ORT_RETURN_IF_ERROR(PartialExecuteThePlan(session_state,
+                                              feeds_fetches_info.feeds_mlvalue_idxs, feeds,
+                                              feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
+                                              logger,
+                                              device_stream_collection,
+                                              terminate_flag,
+                                              // single thread mode
+                                              single_thread_mode,
+                                              state,
+                                              cache,
+                                              partial_graph_index));
   } else {
     auto p_feeds = feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
@@ -640,7 +818,27 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info));
+      InlinedVector<Stream*> feed_streams;
+      feed_streams.reserve(feed_copy_info.size());
+      // TODO: we can pre-calculate the stream index for graph inputs in execution plan
+      for (auto& copy_info : feed_copy_info) {
+        auto& device = copy_info.target_device;
+        bool found = false;
+        if (device_stream_collection) {
+          size_t num_streams = device_stream_collection->NumStreams();
+          for (size_t i = 0; i < num_streams; i++) {
+            Stream* stream = device_stream_collection->GetStream(i);
+            if (stream && stream->GetDevice().Type() == device.Type()) {
+              feed_streams.push_back(stream);
+              found = true;
+              break;
+            }
+          }
+        }
+        if (!found)
+          feed_streams.push_back(nullptr);
+      }
+      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info, feed_streams));
       p_feeds = device_feeds;
     }
 
@@ -663,27 +861,79 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
       p_fetches = &device_fetches;
     }
 
-    ORT_RETURN_IF_ERROR(executor.Execute(session_state,
-                                         feeds_fetches_info.feeds_mlvalue_idxs, p_feeds,
-                                         feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
-                                         logger));
+    ORT_RETURN_IF_ERROR(PartialExecuteThePlan(session_state,
+                                              feeds_fetches_info.feeds_mlvalue_idxs, p_feeds,
+                                              feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
+                                              logger,
+                                              device_stream_collection,
+                                              terminate_flag,
+                                              // single thread mode
+                                              single_thread_mode,
+                                              state,
+                                              cache,
+                                              partial_graph_index));
+
+    InlinedVector<Stream*> fetches_streams;
+    fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
+    auto& value_to_stream_map = execution_plan->value_to_stream_map;
+    for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
+      auto it = value_to_stream_map.find(fetch_idx);
+      if (it != value_to_stream_map.end()) {
+        fetches_streams.push_back(device_stream_collection ? device_stream_collection->GetStream(it->second) : nullptr);
+      } else {
+        // for subgraph, it is possible the graph is empty,
+        // the fetches are come from parent graph.
+        fetches_streams.push_back(parent_stream);
+      }
+    }
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
-      ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
+      ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info, fetches_streams));
     }
+    // training don't want to flush the stream
   }
 
   return Status::OK();
+}
+
+common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
+                                   gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                                   const logging::Logger& logger, PartialGraphExecutionState& state,
+                                   const OrtValueCachePtr& cache, const bool& terminate_flag,
+                                   int32_t partial_graph_index,
+                                   Stream* parent_stream) {
+  DeviceStreamCollection* device_stream_collection = state.GetDeviceStreamCollection(session_state);
+  auto retval = ExecutePartialGraphImpl(session_state, feeds_fetches_manager, feeds, fetches,
+                                        logger, state, cache, terminate_flag, device_stream_collection,
+                                        partial_graph_index, parent_stream);
+  if (device_stream_collection)
+    ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
+  return retval;
 }
 #endif
 
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger) {
-  auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger);
-  return status;
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                               Stream* parent_stream,
+                               bool sync_subgraph_fetches) {
+#ifdef ORT_ENABLE_STREAM
+  DeviceStreamCollectionHolder device_stream_collection_holder(&session_state);
+  DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
+
+  auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
+                                 execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream);
+  if (device_stream_collection)
+    ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
+#else
+  auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
+                                 execution_mode, terminate_flag, logger, false, parent_stream);
+#endif
+  if (retval.IsOK() && sync_subgraph_fetches && parent_stream) {
+    parent_stream->Flush();
+  }
+  return retval;
 }
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onnx_enum) {
@@ -728,6 +978,7 @@ int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onn
 }
 
 #ifdef ENABLE_TRAINING
+// Needed only when NCCL kernels are enabled.
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context) {
   const Tensor* prev_input = context->Input<Tensor>(0);
   for (int i = 1; i < context->InputCount(); i++) {

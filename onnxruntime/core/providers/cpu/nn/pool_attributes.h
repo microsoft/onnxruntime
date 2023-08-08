@@ -93,12 +93,12 @@ struct PoolAttributes {
   TensorShapeVector strides;
   TensorShapeVector dilations;  // Introduced in MaxPool_10
   // default_dilations is true if dilations is not set or all dilations are 1
-  bool default_dilations;
-  AutoPadType auto_pad;
+  bool default_dilations{false};
+  AutoPadType auto_pad{AutoPadType::NOTSET};
 
   TensorShapeVector SetOutputSize(const TensorShape& input_shape,
-                                     int64_t output_channel,
-                                     TensorShapeVector* actual_pads) const {
+                                  int64_t output_channel,
+                                  TensorShapeVector* actual_pads) const {
     ORT_ENFORCE(input_shape.Size() > 0 || input_shape[0] == 0,
                 "Invalid input shape. Only N can be zero. Got:", input_shape);
     TensorShapeVector output_dims;

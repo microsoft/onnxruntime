@@ -16,7 +16,7 @@ class Flatten final : public CannKernel {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK());
   }
 
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
   int64_t axis_;

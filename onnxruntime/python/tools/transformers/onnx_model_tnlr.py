@@ -5,6 +5,7 @@
 import logging
 from typing import Union
 
+import numpy as np
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_utils import NumpyHelper
 from onnx import NodeProto, TensorProto, helper, numpy_helper
@@ -40,7 +41,6 @@ class FusionTnlrAttention(FusionAttention):
         output: str,
         add_qk_str: str,
     ) -> Union[NodeProto, None]:
-
         assert num_heads > 0
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
             logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
@@ -123,7 +123,7 @@ class FusionTnlrAttention(FusionAttention):
             return
 
         other_inputs = []
-        for i, input in enumerate(start_node.input):
+        for _i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
                 continue
 
@@ -172,8 +172,8 @@ class FusionTnlrAttention(FusionAttention):
         add = k_nodes[-2]
         matmul = k_nodes[-1]
 
-        extra_add_qk_nodes = self.model.match_parent_path(add_qk, ["Reshape", "Where"], [1, 0])
-        if extra_add_qk_nodes is None:
+        relative_position_bias_nodes = self.model.match_parent_path(add_qk, ["Reshape", "Where"], [1, 0])
+        if relative_position_bias_nodes is None:
             return
 
         if matmul.input[0] == root_input:
@@ -189,7 +189,7 @@ class FusionTnlrAttention(FusionAttention):
                 self.hidden_size,
                 root_input,
                 attention_last_node.output[0],
-                extra_add_qk_nodes[0].input[0],
+                relative_position_bias_nodes[0].input[0],
             )
             if new_node is None:
                 return

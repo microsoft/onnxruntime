@@ -317,7 +317,7 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool B_is_i
   Eigen::MatrixXi matrix_a = Eigen::MatrixXi::Random(K, M)
                                  .unaryExpr([](int) { return n_unsigned(e); });
   std::vector<uint8_t> matrix_a_data = ToVector<uint8_t>(matrix_a.data(), M * K);
-  uint8_t a_zero_point =  0;
+  uint8_t a_zero_point = 0;
   Eigen::MatrixXi matrix_a_offset = matrix_a - a_zero_point * Eigen::MatrixXi::Ones(K, M);
 
   Eigen::MatrixXi matrix_b = Eigen::MatrixXi::Random(N, K)
@@ -368,7 +368,8 @@ TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
   RunMatMulIntegerU8X8TestBatch(4, 8, 68);
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
   OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {1, 1}, {11});

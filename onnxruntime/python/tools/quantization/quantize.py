@@ -10,8 +10,14 @@ from pathlib import Path
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, model_has_pre_process_metadata
-from .registry import IntegerOpsRegistry, QLinearOpsRegistry
+from .quant_utils import (
+    QuantFormat,
+    QuantizationMode,
+    QuantType,
+    load_model_with_shape_infer,
+    model_has_pre_process_metadata,
+)
+from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry
 
 
 class QuantConfig:
@@ -24,7 +30,6 @@ class QuantConfig:
         nodes_to_exclude=None,
         per_channel=False,
         reduce_range=False,
-        optimize_model=True,
         use_external_data_format=False,
     ):
         """
@@ -54,8 +59,6 @@ class QuantConfig:
             reduce_range:
                 quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine,
                 especially for per-channel mode
-            optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
-                change the computation graph, making debugging of quantization loss difficult.
             use_external_data_format: option used for large size (>2GB) model. Set to False by default.
         """
 
@@ -69,7 +72,6 @@ class QuantConfig:
         self.activation_type = activation_type
         self.nodes_to_quantize = nodes_to_quantize
         self.nodes_to_exclude = nodes_to_exclude
-        self.optimize_model = optimize_model
         self.use_external_data_format = use_external_data_format
 
 
@@ -86,7 +88,6 @@ class StaticQuantConfig(QuantConfig):
         nodes_to_exclude=None,
         per_channel=False,
         reduce_range=False,
-        optimize_model=True,
         use_external_data_format=False,
         extra_options=None,
     ):
@@ -139,6 +140,21 @@ class StaticQuantConfig(QuantConfig):
                         Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                         minimum and maximum values. Effective only when the calibration method selected is MinMax and
                         when CalibMovingAverage is set to True.
+                    QuantizeBias = True/False :
+                        Default is True which quantizes floating-point biases and it solely inserts
+                        a DeQuantizeLinear node. If False, it remains floating-point bias and does not insert
+                        any quantization nodes associated with biases.
+                        This extra option is only effective when quant_format is QuantFormat.QDQ.
+                    SmoothQuant = True/False :
+                        Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
+                        fake input channel quantization.
+                    SmoothQuantAlpha = float :
+                        Default is 0.5. It only works if SmoothQuant is True. It controls the difficulty of weight
+                        and activation quantization. A larger alpha value could be used on models with more significant
+                        activation outliers to migrate more quantization difficulty to weights.
+                    SmoothQuantFolding = True/False :
+                        Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
+                        SmoothQuant will be folded into the previous op if the previous op is foldable.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -152,7 +168,6 @@ class StaticQuantConfig(QuantConfig):
             nodes_to_exclude=nodes_to_exclude,
             per_channel=per_channel,
             reduce_range=reduce_range,
-            optimize_model=optimize_model,
             use_external_data_format=use_external_data_format,
         )
         self.calibration_data_reader = calibration_data_reader
@@ -170,7 +185,6 @@ class DynamicQuantConfig(QuantConfig):
         nodes_to_exclude=None,
         per_channel=False,
         reduce_range=False,
-        optimize_model=True,
         use_external_data_format=False,
         extra_options=None,
     ):
@@ -203,7 +217,6 @@ class DynamicQuantConfig(QuantConfig):
             weight_type=weight_type,
             nodes_to_quantize=nodes_to_quantize,
             nodes_to_exclude=nodes_to_exclude,
-            optimize_model=optimize_model,
             use_external_data_format=use_external_data_format,
         )
         self.extra_options = extra_options or {}
@@ -235,7 +248,6 @@ def quantize_static(
     weight_type=QuantType.QInt8,
     nodes_to_quantize=None,
     nodes_to_exclude=None,
-    optimize_model=True,
     use_external_data_format=False,
     calibrate_method=CalibrationMethod.MinMax,
     extra_options=None,
@@ -284,8 +296,6 @@ def quantize_static(
         nodes_to_exclude:
             List of nodes names to exclude. The nodes in this list will be excluded from quantization
             when it is not None.
-        optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
-            change the computation graph, making debugging of quantization loss difficult.
         use_external_data_format: option used for large size (>2GB) model. Set to False by default.
         extra_options:
             key value pair dictionary for various options in different case. Current used:
@@ -325,6 +335,16 @@ def quantize_static(
                     Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
+                SmoothQuant = True/False :
+                    Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
+                    fake input channel quantization.
+                SmoothQuantAlpha = float :
+                    Default is 0.5. It only works if SmoothQuant is True. It controls the difficulty of weight
+                    and activation quantization. A larger alpha value could be used on models with more significant
+                    activation outliers to migrate more quantization difficulty to weights.
+                SmoothQuantFolding = True/False :
+                    Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
+                    SmoothQuant will be folded into the previous op if the previous op is foldable.
     """
 
     extra_options = extra_options or {}
@@ -334,14 +354,16 @@ def quantize_static(
     mode = QuantizationMode.QLinearOps
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
-        op_types_to_quantize = list(QLinearOpsRegistry.keys())
+        q_linear_ops = list(QLinearOpsRegistry.keys())
+        qdq_ops = list(QDQRegistry.keys())
+        op_types_to_quantize = list(set(q_linear_ops + qdq_ops))
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model_with_shape_infer(Path(model_input))
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
         logging.warning(
-            "Please consider pre-processing before quantization. See "
+            "Please consider to run pre-processing before quantization. Refer to example: "
             "https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification"
             "/cpu/ReadMe.md "
         )
@@ -355,9 +377,41 @@ def quantize_static(
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
     }
 
+    if extra_options.get("SmoothQuant", False):
+        import importlib
+
+        try:
+            importlib.import_module("neural_compressor.adaptor.ox_utils.smooth_quant")
+        except Exception as e:
+            logging.error(f"{e}.")
+            raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.") from e
+
+        import copy
+
+        import onnx
+        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
+
+        def inc_dataloader():
+            data_reader = copy.deepcopy(calibration_data_reader)
+            for data in data_reader:
+                yield data, None
+
+        orig_nodes = [i.name for i in model.graph.node]
+        dataloader = inc_dataloader()
+        sq = ORTSmoothQuant(model_input, dataloader, reduce_range)
+        del dataloader
+        model = sq.transform(
+            extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True)
+        ).model
+        nodes_to_exclude.extend([i.name for i in model.graph.node if i.name not in orig_nodes])
+        sq_path = tempfile.TemporaryDirectory(prefix="ort.quant.")
+        model_input = Path(sq_path.name).joinpath("sq_model.onnx").as_posix()
+        onnx.save_model(model, model_input, save_as_external_data=True)
+        model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
+
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         calibrator = create_calibrator(
-            model,
+            Path(model_input),
             op_types_to_quantize,
             augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
             calibrate_method=calibrate_method,
@@ -410,6 +464,9 @@ def quantize_static(
             "/cpu/ReadMe.md "
         )
 
+    if extra_options.get("SmoothQuant", False):
+        sq_path.cleanup()
+
 
 def quantize_dynamic(
     model_input: Path,
@@ -420,7 +477,6 @@ def quantize_dynamic(
     weight_type=QuantType.QInt8,
     nodes_to_quantize=None,
     nodes_to_exclude=None,
-    optimize_model=True,
     use_external_data_format=False,
     extra_options=None,
 ):
@@ -450,8 +506,6 @@ def quantize_dynamic(
         nodes_to_exclude:
             List of nodes names to exclude. The nodes in this list will be excluded from quantization
             when it is not None.
-        optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
-            change the computation graph, making debugging of quantization loss difficult.
         use_external_data_format: option used for large size (>2GB) model. Set to False by default.
         extra_options:
             key value pair dictionary for various options in different case. Current used:
@@ -478,7 +532,15 @@ def quantize_dynamic(
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model_with_shape_infer(Path(model_input))
+
+    pre_processed: bool = model_has_pre_process_metadata(model)
+    if not pre_processed:
+        logging.warning(
+            "Please consider to run pre-processing before quantization. Refer to example: "
+            "https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification"
+            "/cpu/ReadMe.md "
+        )
 
     if "MatMulConstBOnly" not in extra_options:
         extra_options["MatMulConstBOnly"] = True
@@ -529,7 +591,6 @@ def quantize(
             nodes_to_exclude=quant_config.nodes_to_exclude,
             per_channel=quant_config.per_channel,
             reduce_range=quant_config.reduce_range,
-            optimize_model=quant_config.optimize_model,
             use_external_data_format=quant_config.use_external_data_format,
             extra_options=quant_config.extra_options,
         )
@@ -544,7 +605,6 @@ def quantize(
             nodes_to_exclude=quant_config.nodes_to_exclude,
             per_channel=quant_config.per_channel,
             reduce_range=quant_config.reduce_range,
-            optimize_model=quant_config.optimize_model,
             use_external_data_format=quant_config.use_external_data_format,
             extra_options=quant_config.extra_options,
         )

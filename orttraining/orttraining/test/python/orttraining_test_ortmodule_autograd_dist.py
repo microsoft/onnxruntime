@@ -3,18 +3,19 @@
 
 
 import copy
-import onnxruntime
 import os
 import sys
+
+import _test_helpers
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
 from torch.nn.parameter import Parameter
 
-import _test_helpers
+import onnxruntime
+from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory  # noqa: F401
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
@@ -44,7 +45,7 @@ class ReduceWithMarkDirtyFunction(torch.autograd.Function):
 
 class ReduceWithMarkDirtyModel(torch.nn.Module):
     def __init__(self, dim):
-        super(ReduceWithMarkDirtyModel, self).__init__()
+        super().__init__()
         self.reduce_op_ = ReduceWithMarkDirtyFunction.apply
         self.bias = Parameter(torch.empty(dim, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -123,8 +124,8 @@ if __name__ == "__main__":
     size = 2
     try:
         mp.spawn(test_Distributed_ReduceWithMarkDirtyModel, nprocs=size, args=(size,))
-    except:
-        import sys
+    except Exception:
+        import sys  # noqa: F811
 
         sys.stdout.flush()
         sys.stderr.flush()

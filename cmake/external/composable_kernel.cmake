@@ -1,5 +1,5 @@
 set(composable_kernel_URL https://github.com/ROCmSoftwarePlatform/composable_kernel.git)
-set(composable_kernel_TAG 8ee36118be9b19b15c2471bffeeeb624afb14044) # 2022-11-01 00:24:25 +0800
+set(composable_kernel_TAG ed3a2e52265e11daa366f47b082141a652b67c58) # 2023-04-10 21:02:17 +0800
 
 set(PATCH ${PROJECT_SOURCE_DIR}/patches/composable_kernel/Fix_Clang_Build.patch)
 

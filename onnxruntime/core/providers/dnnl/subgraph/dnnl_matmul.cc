@@ -51,8 +51,8 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   bool transBatchB = false;
   float alpha = 1.0;
   if (node.OpType() == "FusedMatMul") {
-  // Fused matmul is matmul modified to behave like numpy:
-  // https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
+    // Fused matmul is matmul modified to behave like numpy:
+    // https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
     is_fusedmatmul = true;
     transA = GetTransA(node);
     transBatchA = GetTransBatchA(node);
@@ -61,20 +61,18 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     alpha = GetAlpha(node);
   }
 
-  auto src_dims = sp.GetMemory(node.Input(IN_A)).get_desc().dims();
-  auto weights_dims = sp.GetMemory(node.Input(IN_B)).get_desc().dims();
-
+  auto src_dims = sp.GetMemory(node.Input(IN_A)).get_desc().get_dims();
+  auto weights_dims = sp.GetMemory(node.Input(IN_B)).get_desc().get_dims();
 
   // If this is required for transposed inputs, then this will be done later on in the code.
   if (src_dims.size() != weights_dims.size()) {
-      while (src_dims.size() < weights_dims.size() && (!transA && !transBatchA)) {
-        src_dims.insert(src_dims.begin(), 1);
-      }
-      while (src_dims.size() > weights_dims.size() && (!transB && !transBatchB)) {
-        weights_dims.insert(weights_dims.begin(), 1);
-      }
+    while (src_dims.size() < weights_dims.size() && (!transA && !transBatchA)) {
+      src_dims.insert(src_dims.begin(), 1);
+    }
+    while (src_dims.size() > weights_dims.size() && (!transB && !transBatchB)) {
+      weights_dims.insert(weights_dims.begin(), 1);
+    }
   }
-
 
   auto dataA_dims = src_dims;
   auto ndataA_dims = src_dims.size();
@@ -87,7 +85,6 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dataA_mem = sp.GetMemory(node.Input(IN_A));
   auto dataB_mem = sp.GetMemory(node.Input(IN_B));
 
-
   // Holds transposed matrices A and B. ToDo: Eliminate its usage if in place transpose is possbile for FusedMatmul
   dnnl::memory::desc transposedA_md;
   dnnl::memory transposedA_mem;
@@ -95,8 +92,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   dnnl::memory::desc transposedB_md;
   dnnl::memory transposedB_mem;
 
-  if (is_fusedmatmul)
-  {
+  if (is_fusedmatmul) {
     if (transA || transBatchA) {
       dnnl::memory::dims strides = GetStrides(dataA_dims, transA, transBatchA, transposedA_dims);
 
@@ -117,7 +113,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       void* handle = intermediateA_mem.get_data_handle();
       transposedA_mem.set_data_handle(handle);
     }
-    if (transB || transBatchB) {                // Exact same logic for matrix B as used for matrix A
+    if (transB || transBatchB) {  // Exact same logic for matrix B as used for matrix A
       dnnl::memory::dims strides = GetStrides(dataB_dims, transB, transBatchB, transposedB_dims);
 
       dnnl::memory::desc intermediateB_md = dnnl::memory::desc(dataB_dims, node.Input(IN_B).Type(), strides);
@@ -190,7 +186,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       // Handle Binary post ops including the input memory
       if (binary_ops.count(post_ops[i]) != 0) {
         auto ori_binary_md = sp.GetMemory(node.Input(IN_BINARY_0 + binary_count).Name()).get_desc();
-        auto ori_binary_dims = ori_binary_md.dims();
+        auto ori_binary_dims = ori_binary_md.get_dims();
         auto binary_mem_dims = ori_binary_dims;
         if (ori_binary_dims.size() != output_shape.size()) {
           if (ori_binary_dims.size() > output_shape.size()) {
@@ -225,25 +221,29 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
             post_op_alpha = GetFloatAttr(node, "alpha", /*default_alpha*/ 1.0f);
             break;
           }
+          case dnnl::algorithm::eltwise_soft_relu: {
+            if (post_ops[i] == "Softplus") {
+              post_op_alpha = 1.0f;
+            }
+            break;
+          }
           default:
             post_op_alpha = 0.0;
         }
-        ops.append_eltwise(1.0f, algo, post_op_alpha, 0.0f);
+        ops.append_eltwise(algo, post_op_alpha, 0.0f);
       }
     }
     attr.set_post_ops(ops);
   }
 
   if (is_fusedmatmul) {
-    // Set the scaling of output as a post op in the primitive attribute, taking the value from alpha attribute
-    std::vector<float> alphaScale({alpha});
-    attr.set_output_scales(0, alphaScale);
+    // Set the value to scale DNNL_ARG_SRC with mask 0
+    attr.set_scales_mask(DNNL_ARG_SRC, 0);
   }
 
   auto dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
 
-  auto matmul_d = dnnl::matmul::desc(src_md, weights_md, dst_md);
-  auto matmul_pd = dnnl::matmul::primitive_desc(matmul_d, attr, eng);
+  auto matmul_pd = dnnl::matmul::primitive_desc(eng, src_md, weights_md, dst_md, attr);
 
   dnnl::memory matmul_src_mem, matmul_weights_mem;
   auto matmul_dst_mem = dnnl::memory(matmul_pd.dst_desc(), eng);
@@ -264,6 +264,15 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   std::unordered_map<int, dnnl::memory> mem_map({{DNNL_ARG_SRC, matmul_src_mem},
                                                  {DNNL_ARG_WEIGHTS, matmul_weights_mem},
                                                  {DNNL_ARG_DST, matmul_dst_mem}});
+
+  if (is_fusedmatmul) {
+    // Create the memory object related to the scale
+    auto alpha_mem = dnnl::memory({{1}, dnnl::memory::data_type::f32, {1}}, eng);
+    // Write the alpha value into the memory object
+    sp.WriteToDnnlMemory<float>(alpha_mem, {alpha});
+    // Set alpha_mem to scale the output
+    mem_map.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_mem});
+  }
 
   // add to memory map with extra third input if fused with add
   if (has_postop_fusion) {
@@ -296,7 +305,7 @@ dnnl::memory::dims DnnlMatMul::GetStrides(dnnl::memory::dims& data_dims,
   // Temp vector to hold indices of the dims, will be used to track transposes required
   for (uint32_t i = 0; i < ndata_dims; i++)
     permA.push_back(i);
-  Batch = permA[0];              // Batch Dimension
+  Batch = permA[0];             // Batch Dimension
   M_A = permA[ndata_dims - 1];  // M Dimension
   if (ndata_dims == 4)          // This will only be used if transBatch is true
     N_A.push_back(permA[ndata_dims - 3]);

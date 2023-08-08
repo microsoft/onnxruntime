@@ -12,10 +12,14 @@ limitations under the License.
 /* Modifications Copyright (c) Microsoft. */
 
 #include "non_max_suppression.h"
-#include "non_max_suppression_helper.h"
+
 #include <queue>
 #include <utility>
-//TODO:fix the warnings
+
+#include "core/common/narrow.h"
+#include "non_max_suppression_helper.h"
+
+// TODO:fix the warnings
 #ifdef _MSC_VER
 #pragma warning(disable : 4244)
 #endif
@@ -89,7 +93,7 @@ Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContex
 
   pc.num_batches_ = boxes_dims[0];
   pc.num_classes_ = scores_dims[1];
-  pc.num_boxes_ = boxes_dims[1];
+  pc.num_boxes_ = narrow<int>(boxes_dims[1]);
 
   return Status::OK();
 }
@@ -190,9 +194,9 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
           selected_indices.emplace_back(batch_index, class_index, next_top_score.index_);
         }
         sorted_boxes.pop();
-      }  //while
-    }    //for class_index
-  }      //for batch_index
+      }  // while
+    }    // for class_index
+  }      // for batch_index
 
   constexpr auto last_dim = 3;
   const auto num_selected = selected_indices.size();

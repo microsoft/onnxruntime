@@ -14,7 +14,6 @@ void TestShapeInference(
     const std::vector<ONNX_NAMESPACE::ValueInfoProto>& inputs,
     const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
     ONNX_NAMESPACE::ValueInfoProto& output) {
-
 #ifndef DISABLE_CONTRIB_OPS
   // test trilu contrib op for maintaining backward compatibility
   TestShapeInference(op_type, kMSDomain, 1, 6, inputs, attributes, output);

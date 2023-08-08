@@ -71,7 +71,7 @@ Status RestorePadding<T>::ComputeInternal(OpKernelContext* context) const {
       static_cast<int>(hidden_size),
       static_cast<int>(batch_size),
       static_cast<int>(sequence_length),
-      Stream());
+      Stream(context));
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();

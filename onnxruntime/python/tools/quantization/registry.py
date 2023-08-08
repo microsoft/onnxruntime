@@ -10,6 +10,7 @@ from .operators.embed_layernorm import EmbedLayerNormalizationQuant
 from .operators.gather import GatherQuant, QDQGather
 from .operators.gavgpool import QGlobalAveragePool
 from .operators.gemm import QDQGemm, QLinearGemm
+from .operators.instnorm import QDQInstanceNormalization
 from .operators.lstm import LSTMQuant
 from .operators.matmul import MatMulInteger, QDQMatMul, QLinearMatMul
 from .operators.maxpool import QDQMaxPool, QMaxPool
@@ -19,6 +20,7 @@ from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.resize import QDQResize, QResize
 from .operators.softmax import QDQSoftmax, QLinearSoftmax
 from .operators.split import QDQSplit, QSplit
+from .operators.where import QDQWhere, QLinearWhere
 from .quant_utils import QuantizationMode
 
 CommonOpsRegistry = {
@@ -57,11 +59,13 @@ QLinearOpsRegistry = {
     "AveragePool": QLinearPool,
     "Concat": QLinearConcat,
     "Softmax": QLinearSoftmax,
+    "Where": QLinearWhere,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
 QDQRegistry = {
     "Conv": QDQConv,
+    "ConvTranspose": QDQConv,
     "Gemm": QDQGemm,
     "Clip": QDQRemovableActivation,
     "Relu": QDQRemovableActivation,
@@ -76,23 +80,25 @@ QDQRegistry = {
     "Split": QDQSplit,
     "Gather": QDQGather,
     "Softmax": QDQSoftmax,
+    "Where": QDQWhere,
+    "InstanceNormalization": QDQInstanceNormalization,
 }
 
 
-def CreateDefaultOpQuantizer(onnx_quantizer, node):
+def CreateDefaultOpQuantizer(onnx_quantizer, node):  # noqa: N802
     return QuantOperatorBase(onnx_quantizer, node)
 
 
-def CreateOpQuantizer(onnx_quantizer, node):
+def CreateOpQuantizer(onnx_quantizer, node):  # noqa: N802
     registry = IntegerOpsRegistry if onnx_quantizer.mode == QuantizationMode.IntegerOps else QLinearOpsRegistry
-    if node.op_type in registry.keys():
+    if node.op_type in registry:
         op_quantizer = registry[node.op_type](onnx_quantizer, node)
         if op_quantizer.should_quantize():
             return op_quantizer
     return QuantOperatorBase(onnx_quantizer, node)
 
 
-def CreateQDQQuantizer(onnx_quantizer, node):
-    if node.op_type in QDQRegistry.keys():
+def CreateQDQQuantizer(onnx_quantizer, node):  # noqa: N802
+    if node.op_type in QDQRegistry:
         return QDQRegistry[node.op_type](onnx_quantizer, node)
     return QDQOperatorBase(onnx_quantizer, node)

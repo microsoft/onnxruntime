@@ -13,7 +13,7 @@ def rename_folder(root):
     Returns the list of renamed folders.
     """
     found = []
-    for r, dirs, files in os.walk(root):
+    for r, dirs, _files in os.walk(root):
         for name in dirs:
             if name.startswith("_"):
                 found.append((r, name))
@@ -33,14 +33,14 @@ def rename_folder(root):
 
 def replace_files(root, renamed):
     subs = {r[1]: r[2] for r in renamed}
-    reg = re.compile('(\\"[a-zA-Z0-9\\.\\/\\?\\:@\\-_=#]+\\.([a-zA-Z]){2,6}' '([a-zA-Z0-9\\.\\&\\/\\?\\:@\\-_=#])*\\")')
+    reg = re.compile('(\\"[a-zA-Z0-9\\.\\/\\?\\:@\\-_=#]+\\.([a-zA-Z]){2,6}([a-zA-Z0-9\\.\\&\\/\\?\\:@\\-_=#])*\\")')
 
-    for r, dirs, files in os.walk(root):
+    for r, _dirs, files in os.walk(root):
         for name in files:
             if os.path.splitext(name)[-1] != ".html":
                 continue
             full = os.path.join(r, name)
-            with open(full, "r", encoding="utf-8") as f:
+            with open(full, encoding="utf-8") as f:
                 content = f.read()
             find = reg.findall(content)
             repl = []
@@ -49,7 +49,7 @@ def replace_files(root, renamed):
                     continue
                 for k, v in subs.items():
                     if k == v:
-                        raise ValueError("%r == %r" % (k, v))
+                        raise ValueError(f"{k!r} == {v!r}")
                     if ('"%s' % k) in f[0]:
                         repl.append((f[0], f[0].replace('"%s' % k, '"%s' % v)))
                     if ("/%s" % k) in f[0]:

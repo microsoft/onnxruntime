@@ -123,8 +123,6 @@ constexpr size_t MAX_CACHED_ALGO_PERF_RESULTS = 10000;
 
 template <typename AlgoPerfType>
 struct CudnnConvState {
-  cudnnHandle_t handle;
-
   // if x/w dims changed, update algo and cudnnTensors
   TensorShape last_x_dims;
   TensorShape last_w_dims;
@@ -179,7 +177,9 @@ enum : size_t {
   AlgoSearchWorkspaceSize = 32 * 1024 * 1024,
 };
 
-template <typename T>
+// ONNX Conv operator uses NCHW format for input, weights and output.
+// NhwcConv contrib ops uses NHWC format: last dimension of input, weights and output are channels.
+template <typename T, bool NHWC>
 class Conv : public CudaKernel {
  public:
   using CudaT = typename ToCudaType<T>::MappedType;
@@ -187,14 +187,13 @@ class Conv : public CudaKernel {
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
-    s_.handle = CudnnHandle();
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  inline IAllocatorUniquePtr<void> GetWorkSpace() const {
-    return GetScratchBuffer<void>(s_.workspace_bytes);
+  inline IAllocatorUniquePtr<void> GetWorkSpace(onnxruntime::Stream* stream) const {
+    return GetScratchBuffer<void>(s_.workspace_bytes, stream);
   }
 
   Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;

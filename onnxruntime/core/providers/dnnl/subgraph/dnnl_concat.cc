@@ -31,7 +31,7 @@ void DnnlConcat::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto axis = GetAxis(node, input_rank != -1 ? input_rank : 0);
 
   // Create primitive descriptor
-  auto concat_pd = dnnl::concat::primitive_desc(static_cast<int>(axis), src_mds, dnnl_engine);
+  auto concat_pd = dnnl::concat::primitive_desc(dnnl_engine, static_cast<int>(axis), src_mds);
 
   // Create primitive memory objects
   std::vector<dnnl::memory> concat_src_mems;

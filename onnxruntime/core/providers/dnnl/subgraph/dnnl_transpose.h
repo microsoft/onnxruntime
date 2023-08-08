@@ -25,6 +25,5 @@ class DnnlTranspose {
   std::vector<int64_t> GetPerm(DnnlNode& node);
 };
 
-
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

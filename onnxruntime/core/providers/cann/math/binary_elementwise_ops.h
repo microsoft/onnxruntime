@@ -24,28 +24,28 @@ template <typename T>
 class Add final : public BinaryElementwise {
  public:
   Add(const OpKernelInfo& info) : BinaryElementwise(info) {}
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
 template <typename T>
 class Sub final : public BinaryElementwise {
  public:
   Sub(const OpKernelInfo& info) : BinaryElementwise(info) {}
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
 template <typename T>
 class Mul final : public BinaryElementwise {
  public:
   Mul(const OpKernelInfo& info) : BinaryElementwise(info) {}
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
 template <typename T>
 class Div final : public BinaryElementwise {
  public:
   Div(const OpKernelInfo& info) : BinaryElementwise(info) {}
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
 }  // namespace cann

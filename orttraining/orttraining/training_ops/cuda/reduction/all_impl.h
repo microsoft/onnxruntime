@@ -11,4 +11,3 @@ template <typename T>
 void LaunchAllKernel(cudaStream_t stream, const T* data, const int size, bool* output);
 }
 }  // namespace onnxruntime
-

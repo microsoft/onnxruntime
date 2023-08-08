@@ -51,7 +51,7 @@ from transformers import LongformerModel
 import onnxruntime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-import benchmark_helper
+import benchmark_helper  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -80,7 +80,7 @@ def test_torch_latency(
                 input_list = inputs.to_list()
 
                 _ = model(*input_list)
-                runtimes = timeit.repeat(lambda: model(*input_list), repeat=test_times, number=1)
+                runtimes = timeit.repeat(lambda: model(*input_list), repeat=test_times, number=1)  # noqa: B023
                 result = {
                     "engine": "torch",  # TODO: test torchscript
                     "version": torch.__version__,
@@ -404,7 +404,7 @@ def test_torch(args, device) -> List[Dict[str, Any]]:
 
 
 def test_latency(args, device) -> List[Dict[str, Any]]:
-    if "onnxruntime" == args.engine:
+    if args.engine == "onnxruntime":
         return test_ort(args, device)
 
     return test_torch(args, device)
@@ -647,7 +647,7 @@ def run_tests(
                         latency_results = launch_test(args)
                     except KeyboardInterrupt as exc:
                         raise RuntimeError("Keyboard Interrupted") from exc
-                    except:
+                    except Exception:
                         traceback.print_exc()
                         continue
 
@@ -675,13 +675,13 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
             "description",
         ]
 
-        description_list = list(set([result["description"] for result in results]))
+        description_list = list({result["description"] for result in results})
         description_list.sort()
 
-        batch_sizes = list(set([result["batch_size"] for result in results]))
+        batch_sizes = list({result["batch_size"] for result in results})
         batch_sizes.sort()
 
-        sequence_lengths = list(set([result["sequence_length"] for result in results]))
+        sequence_lengths = list({result["sequence_length"] for result in results})
         sequence_lengths.sort()
 
         data_names = []

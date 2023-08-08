@@ -19,7 +19,6 @@ class ROCMAllocator : public IAllocator {
                           device_id, OrtMemTypeDefault)) {}
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  FencePtr CreateFence(const SessionState* session_state) override;
 
  private:
   void CheckDevice(bool throw_when_fail) const;
@@ -51,17 +50,16 @@ class ROCMExternalAllocator : public ROCMAllocator {
   InlinedHashSet<void*> reserved_;
 };
 
-//TODO: add a default constructor
+// TODO: add a default constructor
 class ROCMPinnedAllocator : public IAllocator {
  public:
-  ROCMPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
+  ROCMPinnedAllocator(const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id),
-                          device_id, OrtMemTypeCPUOutput)) {}
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0),
+                          0, OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  FencePtr CreateFence(const SessionState* session_state) override;
 };
 }  // namespace onnxruntime

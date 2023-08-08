@@ -25,6 +25,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain = kOnnxDomain);
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       std::string_view op_type,
+                                       gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions,
+                                       std::string_view domain = kOnnxDomain);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -104,7 +108,6 @@ struct GraphEdge {
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD)
 /** Checks if the node has the same operator since version as the given one. */
 bool MatchesOpSinceVersion(const Node& node, std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions);
 bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions);
@@ -112,6 +115,7 @@ bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::Ope
 /** Checks if the node has the same op set domain as the given one. */
 bool MatchesOpSetDomain(const Node& node, std::string_view domain);
 
+#if !defined(ORT_MINIMAL_BUILD)
 /** Returns true if the execution provider assigned to current node is present in the compatible providers list
     or if the compatible_providers list is empty. */
 bool IsSupportedProvider(const Node& node,

@@ -88,7 +88,7 @@ def convert_model(args):
     ]
     outputs = ["sequences"]
 
-    node = helper.make_node("BeamSearch", inputs=inputs, outputs=outputs, name=f"BeamSearch_zcode")
+    node = helper.make_node("BeamSearch", inputs=inputs, outputs=outputs, name="BeamSearch_zcode")
     node.domain = "com.microsoft"
     # NOTE: take value from args or config
     node.attribute.extend(

@@ -70,7 +70,7 @@ Status SoftmaxDropoutGrad::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* dX = ctx->Output(0, input_shape);
   utils::MLTypeCallDispatcher<SOFTMAX_DROPOUT_GRAD_TYPES> t_disp(dY->GetElementType());
-  return t_disp.InvokeRet<Status, DispatchSoftmaxDropoutGradImpl>(Stream(), CudnnHandle(), dX, dY, mask, softmax_Y,
+  return t_disp.InvokeRet<Status, DispatchSoftmaxDropoutGradImpl>(Stream(ctx), GetCudnnHandle(ctx), dX, dY, mask, softmax_Y,
                                                                   element_count, batch_count, ratio_data);
 }
 

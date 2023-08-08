@@ -17,8 +17,8 @@
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
 
-//Seems this workaround can be dropped when we drop support for VS2017 toolchains
-//https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
+// Seems this workaround can be dropped when we drop support for VS2017 toolchains
+// https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
 #ifdef _TlgPragmaUtf8Begin
 #undef _TlgPragmaUtf8Begin
 #define _TlgPragmaUtf8Begin
@@ -58,7 +58,6 @@ OrtMutex WindowsTelemetry::mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
 bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
-
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<OrtMutex> lock(mutex_);

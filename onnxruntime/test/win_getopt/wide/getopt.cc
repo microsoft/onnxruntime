@@ -35,10 +35,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-int opterr = 1,  /* if error message should be printed */
-    optind = 1,  /* index into parent argv vector */
-    optopt,      /* character checked for validity */
-    optreset;    /* reset getopt */
+int opterr = 1,        /* if error message should be printed */
+    optind = 1,        /* index into parent argv vector */
+    optopt,            /* character checked for validity */
+    optreset;          /* reset getopt */
 const wchar_t* optarg; /* argument associated with option */
 
 #define BADCH (int)L'?'
@@ -51,7 +51,7 @@ const wchar_t* optarg; /* argument associated with option */
  */
 int getopt(int nargc, wchar_t* const nargv[], const wchar_t* ostr) {
   static const wchar_t* place = EMSG; /* option letter processing */
-  wchar_t* oli;                 /* option letter list index */
+  wchar_t* oli;                       /* option letter list index */
 
   if (optreset || *place == 0) { /* update scanning pointer */
     optreset = 0;

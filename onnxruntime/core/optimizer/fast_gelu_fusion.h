@@ -8,10 +8,10 @@
 namespace onnxruntime {
 
 struct MatchResult {
-  public:
-    bool matched;
-    NodeArg* gelu_without_bias_input_arg; // The Gelu input arg if not considering bias node.
-    Node* tanh_input_node;
+ public:
+  bool matched;
+  NodeArg* gelu_without_bias_input_arg;  // The Gelu input arg if not considering bias node.
+  Node* tanh_input_node;
 };
 
 /**
@@ -31,7 +31,7 @@ class FastGeluFusion : public GraphTransformer {
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
-private:
+ private:
   MatchResult CheckFirstFormula(Graph& graph, Node& node, InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const;
 
   MatchResult CheckSecondFormula(Graph& graph, Node& nodes, InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const;

@@ -12,7 +12,7 @@ namespace test {
 
 namespace {
 
-template<typename WeightT>
+template <typename WeightT>
 static void RunTest(const embedlayernorm::OpData& data,
                     float accuracy_threshold = 0.25f) {
   ASSERT_TRUE(data.word_embedding_data.size() % data.hidden_size == 0);
@@ -49,7 +49,7 @@ static void RunTest(const embedlayernorm::OpData& data,
   std::vector<WeightT> segment_embedding_data_quant;
   if (data.has_segment) {
     segment_embedding_data_quant = QuantizeLinearTestVector<WeightT>(
-      data.segment_embedding_data, segment_embedding_params);
+        data.segment_embedding_data, segment_embedding_params);
   }
 
   quantization::Params<WeightT> gamma_params;

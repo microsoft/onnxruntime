@@ -15,26 +15,28 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- stage: Python_Packaging
+- stage: Python_Packaging_Linux_Trainin_CPU
 
   jobs:
     - job: Linux_Training_CPU_Wheels
       timeoutInMinutes: 120
       workspace:
         clean: all
-      pool: Linux-CPU
+      pool: onnxruntime-Ubuntu2004-AMD-CPU
 
       strategy:
         matrix:
-          Python37:
-            PythonVersion: '3.7'
           Python38:
             PythonVersion: '3.8'
           Python39:
             PythonVersion: '3.9'
+          Python310:
+            PythonVersion: '3.10'
+          Python311:
+            PythonVersion: '3.11'
 
       steps:
       - task: CmdLine@2
@@ -83,7 +85,7 @@ stages:
                   --parallel \
                   --build_wheel \
                   --enable_onnx_tests \
-                  --enable_pybind --build_java --build_nodejs --enable_training
+                  --enable_pybind --enable_training
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -114,3 +116,15 @@ stages:
           condition: 'succeeded'
 
       - template: templates/clean-agent-build-directory-step.yml
+
+- template: templates/py-packaging-stage.yml
+  parameters:
+    build_py_parameters: --enable_training
+    enable_linux_gpu: false
+    enable_ubuntu_cpu: false
+    enable_linux_cpu: false
+    enable_windows_cpu: true
+    enable_windows_gpu: false
+    enable_mac_cpu: true
+    enable_mac_silicon: true
+    enable_linux_arm: false

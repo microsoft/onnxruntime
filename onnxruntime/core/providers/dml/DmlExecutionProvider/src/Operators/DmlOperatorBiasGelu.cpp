@@ -23,9 +23,6 @@ public:
         ML_CHECK_VALID_ARGUMENT(inputDescs.size() == 2);
         ML_CHECK_VALID_ARGUMENT(outputDescs.size() == 1);
 
-        TensorDesc biasInputTensorDesc(m_inputTensorDescs[0].GetDmlDataType(), m_inputTensorDescs[0].GetSizes());
-        DML_TENSOR_DESC biasInputDmlTensorDesc = biasInputTensorDesc.GetDmlDesc();
-
         DML_ACTIVATION_GELU_OPERATOR_DESC geluDesc = {};
         DML_OPERATOR_DESC geluOpDesc = { DML_OPERATOR_ACTIVATION_GELU, &geluDesc };
 

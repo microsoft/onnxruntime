@@ -32,17 +32,17 @@ class DnnlConv {
 
  private:
   /*
-  * Return the infered padding.
-  *
-  * The padding will be based on the specified padding or will infered based on the
-  * Onnx 'auto_pad' attributes.
-  *
-  * This will return the padding in the format specified in the Onnx specification.
-  * > Format should be as follows [x1_begin, x2_begin...x1_end, x2_end,...],
-  * > where xi_begin the number of pixels added at the beginning of axis `i`
-  * > and xi_end, the number of pixels added at the end of axis `i`.
-  */
-  std::vector<int64_t> GetInferedPads(DnnlNode& node, 
+   * Return the infered padding.
+   *
+   * The padding will be based on the specified padding or will infered based on the
+   * Onnx 'auto_pad' attributes.
+   *
+   * This will return the padding in the format specified in the Onnx specification.
+   * > Format should be as follows [x1_begin, x2_begin...x1_end, x2_end,...],
+   * > where xi_begin the number of pixels added at the beginning of axis `i`
+   * > and xi_end, the number of pixels added at the end of axis `i`.
+   */
+  std::vector<int64_t> GetInferedPads(DnnlNode& node,
                                       const dnnl::memory::dims& src_dims,
                                       const dnnl::memory::dims& dilations,
                                       const std::vector<int64_t>& kernel_shape,
@@ -53,24 +53,24 @@ class DnnlConv {
   dnnl::memory::dims GetPaddingRight(const std::vector<int64_t>& onnx_padding, ConvShape shape);
 
   /*
-  * Collection of functions to get OnnxRuntime attributes. Note, if the attribute is used directly by
-  * OneDNN the return type is converted to the format expected by OneDNN not the type expected by
-  * OnnxRuntime. Typically this means returning `dnnl::memory::dims` instead of `vector<int64_t>`.
-  */
+   * Collection of functions to get OnnxRuntime attributes. Note, if the attribute is used directly by
+   * OneDNN the return type is converted to the format expected by OneDNN not the type expected by
+   * OnnxRuntime. Typically this means returning `dnnl::memory::dims` instead of `vector<int64_t>`.
+   */
   /* Get the 'auto_pad' attribute */
   AutoPadType GetAutoPad(DnnlNode& node);
 
   /*
-  * Get the 'dilations' attribute.
-  *  Note dilations in OneDNN and Onnx differ:
-  *    - For Onnx a non-dilated kernel would be all 1s
-  *    - For OneDNN a non-dilated kernel would be all 0s
-  *
-  * The memory dimentions returned is in the form expected for OneDNN each dilation dimention
-  * will be 1 less than the dilated dimention expected by Onnx specification. Be aware of this
-  * fact as 'dilations' are used in any calcuations since this could result in an off-by-one
-  * error.
-  */
+   * Get the 'dilations' attribute.
+   *  Note dilations in OneDNN and Onnx differ:
+   *    - For Onnx a non-dilated kernel would be all 1s
+   *    - For OneDNN a non-dilated kernel would be all 0s
+   *
+   * The memory dimentions returned is in the form expected for OneDNN each dilation dimention
+   * will be 1 less than the dilated dimention expected by Onnx specification. Be aware of this
+   * fact as 'dilations' are used in any calcuations since this could result in an off-by-one
+   * error.
+   */
   dnnl::memory::dims GetDilations(DnnlNode& node, ConvShape shape);
 
   /* Get the 'group' attributes */
@@ -86,12 +86,12 @@ class DnnlConv {
   dnnl::memory::dims GetStrides(DnnlNode& node, ConvShape shape);
 
   /*
-  * ComputePad is copy/paste of a the ComputePad found in core/providers/common.h
-  * With some minor modifications. i.e. return bool instead of status.
-  * ComputePad is not exposed to the shared library so this copy is used instead.
-  *
-  * Returns true if pads successfully computed.
-  */
+   * ComputePad is copy/paste of a the ComputePad found in core/providers/common.h
+   * With some minor modifications. i.e. return bool instead of status.
+   * ComputePad is not exposed to the shared library so this copy is used instead.
+   *
+   * Returns true if pads successfully computed.
+   */
   bool ComputePad(const int64_t in_dim,
                   const int64_t stride,
                   const int64_t kernel,
@@ -102,9 +102,9 @@ class DnnlConv {
                   bool force_symmetric_auto_padding = false);
 
   /*
-  * Use input shapes and attributes to figure out the output shape that will
-  * result from the convolution.
-  */
+   * Use input shapes and attributes to figure out the output shape that will
+   * result from the convolution.
+   */
   dnnl::memory::dims InferOutputShape(DnnlNode& node,
                                       const dnnl::memory::dims& x_shape,
                                       const dnnl::memory::dims& w_shape,

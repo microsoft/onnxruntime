@@ -60,6 +60,17 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   // Disable TensorRT because weight as input is not supported
   excluded_providers.insert(kTensorrtExecutionProvider);
 
+  // QNN SDK 2.10.0 has a bug that breaks support for dynamic bias inputs.
+  excluded_providers.insert(kQnnExecutionProvider);
+
+  // TODO: Enable QNN EP when bug with QNN SDK 2.10.0 is fixed:
+  /*
+  // QNN have issue with dynamic weight, auto pad with SAME_UPPER, SAME_LOWER
+  if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" || attributes.auto_pad == "SAME_LOWER") {
+    excluded_providers.insert(kQnnExecutionProvider);
+  }
+  */
+
   test.Run(expect_result, err_str, excluded_providers);
 }
 
@@ -113,7 +124,7 @@ TEST(ConvTest, Conv1D_1_DefaultStridesAndDilations) {
                         -0.012766072526574135f, 0.07113571465015411f, 0.061429332941770554f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-  
+
   // CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
@@ -150,7 +161,7 @@ TEST(ConvTest, Conv1D_2) {
                         -0.18779152631759644f, -0.11083387583494186f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-  
+
   // CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }

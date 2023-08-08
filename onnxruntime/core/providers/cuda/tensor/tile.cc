@@ -42,24 +42,24 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #define CASE_TILE(type)                                                                                            \
   case sizeof(type): {                                                                                             \
-    TileImpl(Stream(), rank, fdm_input_shape, input_strides,                                                       \
+    TileImpl(Stream(ctx), rank, fdm_input_shape, input_strides,                                                    \
              reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), fdm_output_strides,       \
              reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), output_tensor.Shape().Size()); \
   } break
 
 #define CASE_TILE_MEMCPY(type)                                                                                \
   case sizeof(type): {                                                                                        \
-    TileMemcpyImpl(Stream(), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data),      \
+    TileMemcpyImpl(Stream(ctx), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data),   \
                    reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), input_shape.Size(), \
                    num_of_copies_per_batch);                                                                  \
   } break
 
-#define CASE_TILE_BATCHED_MEMCPY(type)                                                                          \
-  case sizeof(type): {                                                                                          \
-    TileBatchedMemcpyImpl(Stream(), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), \
-                          reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data),                \
-                          num_of_elements_per_batch, input_shape.Size(), num_of_batch_copies,                   \
-                          num_of_copies_per_batch);                                                             \
+#define CASE_TILE_BATCHED_MEMCPY(type)                                                                             \
+  case sizeof(type): {                                                                                             \
+    TileBatchedMemcpyImpl(Stream(ctx), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), \
+                          reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data),                   \
+                          num_of_elements_per_batch, input_shape.Size(), num_of_batch_copies,                      \
+                          num_of_copies_per_batch);                                                                \
   } break
 
 Status Tile::ComputeInternal(OpKernelContext* ctx) const {
@@ -95,7 +95,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
 
   // Repeat tensor has all 1s in it
   if (output_shape == input_shape) {
-    return CUDA_CALL(cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+    return CUDA_CALL(cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(ctx)));
   }
 
   bool is_batched_memcpy = false;

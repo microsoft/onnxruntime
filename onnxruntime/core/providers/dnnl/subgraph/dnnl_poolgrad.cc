@@ -59,7 +59,7 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto dy_mem = sp.GetMemory(node.Input(IN_DY));
   auto dy_md = dy_mem.get_desc();
-  auto dy_dims = dy_mem.get_desc().dims();
+  auto dy_dims = dy_mem.get_desc().get_dims();
 
   dnnl::memory indices_mem;
   dnnl::memory::desc indices_md;
@@ -69,14 +69,14 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   if (maxpoolgrad_optype) {
     indices_mem = sp.GetMemory(node.Input(IN_INDICES));
     indices_md = indices_mem.get_desc();
-    indices_dims = indices_mem.get_desc().dims();
+    indices_dims = indices_mem.get_desc().get_dims();
   }
 
   auto dx_dims = node.Output(OUT_DX).Dim();
   dnnl::memory::desc dx_md(dx_dims, node.Input(IN_DY).Type(), dnnl::memory::format_tag::any);
   dnnl::memory::desc fwd_dx_md(dx_dims, node.Input(IN_DY).Type(), sp.GetDnnlFormat(dx_dims.size()));
 
-  //Read the attributes
+  // Read the attributes
   auto kernel_shape = GetKernelShape(node);
   PoolShape shape = static_cast<PoolShape>(kernel_shape.size());
   auto strides = GetStrides(node, shape);
@@ -92,15 +92,14 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     }
   }
 
-  dnnl::pooling_forward::desc pool_forward_desc(dnnl::prop_kind::forward, algo,
-                                                fwd_dx_md, dy_md,
-                                                strides, kernel_shape,
-                                                padding_left, padding_right);
-  dnnl::pooling_forward::primitive_desc pool_forward_pd(pool_forward_desc, dnnl_engine);
+  // Default dilatation to 0
+  auto dilatation = dnnl::memory::dims(kernel_shape.size(), 0);
 
-  dnnl::pooling_backward::desc pool_backword_desc(algo, dx_md, dy_md,
-                                                  strides, kernel_shape, padding_left, padding_right);
-  dnnl::pooling_backward::primitive_desc pool_backward_pd(pool_backword_desc, dnnl_engine, pool_forward_pd);
+  dnnl::pooling_forward::primitive_desc pool_forward_pd(dnnl_engine, dnnl::prop_kind::forward, algo, fwd_dx_md, dy_md,
+                                                        strides, kernel_shape, dilatation, padding_left, padding_right);
+
+  dnnl::pooling_backward::primitive_desc pool_backward_pd(dnnl_engine, algo, dx_md, dy_md, strides, kernel_shape,
+                                                          dilatation, padding_left, padding_right, pool_forward_pd);
 
   dnnl::pooling_backward pool_backward_op(pool_backward_pd);
 

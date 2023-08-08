@@ -14,6 +14,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "xnnpack_init.h"
 
@@ -123,53 +124,48 @@ using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
-  if (info.xnn_thread_pool_size > 1) {
-    // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
-    // otherwise, the pthreadpool will be starved and harm performance a lot.
-    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
+  int xnn_thread_pool_size = info.xnn_thread_pool_size;
+  int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 1;
+  bool allow_intra_op_spinning = (info.session_options == nullptr) ||
+                                 (info.session_options &&
+                                  info.session_options->config_options.GetConfigOrDefault(
+                                      kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1");
+  if (xnn_thread_pool_size > 1 && allow_intra_op_spinning && ort_thread_pool_size > 1) {
+    LOGS_DEFAULT(WARNING)
+        << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
+           "If ORT's thread pool size is > 1 and spinning is enabled, "
+           "there will be contention between the two thread pools, and performance will suffer."
+           "Please set either intra_op_param.allow_spinning to 0 in the SessionOption config params,"
+           "or the ORT intra-op threadpool size to 1.";
+  }
+
+  if (xnn_thread_pool_size == 0) {
+    xnn_thread_pool_size = ort_thread_pool_size;
+  }
+
+  if (xnn_thread_pool_size > 1) {
+    // pthreadpool is independent of ort-threadpoool, so we had better disable cpu spinning for ort-threadpool.
+    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(xnn_thread_pool_size));
   }
 }
 
-// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
-void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  const OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-
-  // for one reason, we have to store allocator and keep it alive among the whole life cycle of process.
-  // 1. xnn_initialize only take effect at the first call,it means the first allocator is shared
-  // by all following xnnpack EP sessions. A static allocator is used to extend its life cycle.
+std::vector<AllocatorPtr> XnnpackExecutionProvider::CreatePreferredAllocators() {
   const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
-  if (!cpu_alloc) {
-    // use shared allocator if available
-    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-
-    if (!cpu_alloc) {
-      // create our allocator
-      const AllocatorCreationInfo allocator_info(
-          [](int) {
-            // lazy create the allocator
-            return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
-                                                                OrtAllocatorType::OrtDeviceAllocator));
-          });
-      // only the first time we create the allocator do we pass in the xnn_allocator
-      cpu_alloc = stored_allocator ? stored_allocator : CreateAllocator(allocator_info);
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(cpu_alloc);
-    }
-
-    InsertAllocator(cpu_alloc);
-  }
-
   if (!stored_allocator) {
-    stored_allocator = cpu_alloc;
+    const AllocatorCreationInfo allocator_info(
+        [](int) {
+          // lazy create the allocator
+          return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
+                                                              OrtAllocatorType::OrtDeviceAllocator));
+        });
+    stored_allocator = CreateAllocator(allocator_info);
   }
-
-  xnn_allocator->context = cpu_alloc.get();
+  xnn_allocator->context = stored_allocator.get();
   const xnn_status st = xnn_initialize(xnn_allocator);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
+  return std::vector<AllocatorPtr>{stored_allocator};
 }
 
 // For ops are not lay-out sensitive and does not defined in

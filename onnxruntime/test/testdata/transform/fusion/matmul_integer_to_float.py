@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import Enum  # noqa: F401
 
 import onnx
 from onnx import TensorProto, helper
 
 
-def MakeSubGraph(suffix, has_bias):
+def MakeSubGraph(suffix, has_bias):  # noqa: N802
     mul_bottom_output = "mul_output" + suffix if has_bias else "output" + suffix
     nodes = [
         helper.make_node(
@@ -49,7 +49,7 @@ def MakeSubGraph(suffix, has_bias):
     return nodes
 
 
-def MakeInitializer(suffix):
+def MakeInitializer(suffix):  # noqa: N802
     return [
         helper.make_tensor("b_quantized" + suffix, TensorProto.UINT8, [2, 3], [2, 4, 5, 6, 7, 8]),
         helper.make_tensor("b_zp" + suffix, TensorProto.UINT8, [], [128]),
@@ -57,7 +57,7 @@ def MakeInitializer(suffix):
     ]
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [
         helper.make_node(
             "DynamicQuantizeLinear",

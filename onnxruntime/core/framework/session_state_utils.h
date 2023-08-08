@@ -45,7 +45,7 @@ common::Status SaveInitializedTensors(
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func);
-    
+
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,
                                                  SessionState& session_state,
                                                  gsl::span<const NodeArg* const> implicit_inputs);

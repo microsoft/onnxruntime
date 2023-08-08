@@ -42,5 +42,4 @@ bool SetDenormalAsZero(bool on) {
   return false;
 }
 
-
 }  // namespace onnxruntime

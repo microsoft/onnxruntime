@@ -14,5 +14,5 @@ struct IsAllFiniteFunctor {
   void operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, const bool isinf_only, const bool isnan_only);
 };
 
-}
+}  // namespace cuda
 }  // namespace onnxruntime

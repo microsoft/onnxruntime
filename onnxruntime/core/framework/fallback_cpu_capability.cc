@@ -107,17 +107,32 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     if (!p.second)
       continue;
 
-    if (provider_nodes.find(cur) == provider_nodes.end())
-      continue;
-
     auto* node = graph.GetNode(cur);
+    if (provider_nodes.find(cur) == provider_nodes.end()) {
+      // Nodes not in provider_nodes are either have EP assigned or no kernel found on target EP.
+      // we assume these nodes will fallback to CPU, so add all direct consumers of all outputs to candidates.
+      if (node->GetExecutionProviderType().empty() || node->GetExecutionProviderType() == kCpuExecutionProvider) {
+        for (auto* output : node->OutputDefs()) {
+          cpu_output_args.insert(output);
+        }
+        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          candidates.push((*it).Index());
+        }
+      }
+      continue;
+    }
+
     bool place_in_cpu = true;
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
 
-      // skip placing on CPU if the data typs is float16 or bfloat16
+      // skip placing on CPU if the data typs is float16 or bfloat16 or float8e4m3fn, float8e4m3fnuz, floate5m2, floate5m2fnuz
       if (input->Type() == DataTypeUtils::ToType("float16") ||
-          input->Type() == DataTypeUtils::ToType("bfloat16")) {
+          input->Type() == DataTypeUtils::ToType("bfloat16") ||
+          input->Type() == DataTypeUtils::ToType("float8e4m3fn") ||
+          input->Type() == DataTypeUtils::ToType("float8e4m3fnuz") ||
+          input->Type() == DataTypeUtils::ToType("float8e5m2") ||
+          input->Type() == DataTypeUtils::ToType("float8e5m2fnuz")) {
         place_in_cpu = false;
         break;
       }

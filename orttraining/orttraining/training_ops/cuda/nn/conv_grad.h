@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace cuda {
 
 // cuDNN only takes 4D or 5D x tensor.
-constexpr int MAX_DIM = 3;
+static constexpr int MAX_DIM = 3;
 
 struct ConvParams {
   int8_t device_id;
@@ -50,7 +50,7 @@ class ConvGrad final : public CudaKernel {
   using CudaT = typename ToCudaType<T>::MappedType;
 
   ConvGrad(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
-#if (defined(CUDA_VERSION) && (CUDA_VERSION < 10000) || (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 700)))
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 700)
     ORT_THROW("ConvGrad CUDA kernel is not yet tested on __CUDA_ARCH__ lower than 700");
 #endif
     auto pads_size = conv_attrs_.pads.size();
@@ -60,13 +60,13 @@ class ConvGrad final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW) const;
+  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW, cudnnHandle_t cudnn_handle) const;
   mutable ConvArgs args_;
   ConvAttributes conv_attrs_;
 
  private:
-  Status ComputeWeightGradient() const;
-  Status ComputeInputGradient() const;
+  Status ComputeWeightGradient(onnxruntime::Stream* stream) const;
+  Status ComputeInputGradient(onnxruntime::Stream* stream) const;
   Status ComputeBiasGradient() const;
 };
 

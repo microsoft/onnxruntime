@@ -18,7 +18,6 @@ class MyEPAllocator : public IAllocator {
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
-
 };
 
 }  // namespace onnxruntime

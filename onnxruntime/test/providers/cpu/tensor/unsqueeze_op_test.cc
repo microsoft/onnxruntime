@@ -123,7 +123,7 @@ TEST(TensorOpTest, Unsqueeze_Duplicate) {
     test.AddInput<int64_t>("axes", {4}, std::vector<int64_t>{2, 1, 0, 2}, true);  // set as initializer to enable shape inference
     test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.Run(OpTester::ExpectResult::kExpectFailure,
-             "[ShapeInferenceError] 'axes' attribute must not contain any duplicates",
+             "[ShapeInferenceError] Axis 2 is referred to more than once",
              {kTensorrtExecutionProvider});  // TensorRT failed
   }
 }
@@ -144,7 +144,7 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
     test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     // TensorRT does not support negative axis.
     test.Run(OpTester::ExpectResult::kExpectFailure,
-             "[ShapeInferenceError] values in 'axes' are beyond the bounds of the computed output shape",
+             "[ShapeInferenceError] Unexpected axis value",
              {kTensorrtExecutionProvider});  // TensorRT expects 'axes' attribute
   }
 }
@@ -202,7 +202,7 @@ TEST(TensorOpTest, Unsqueeze_3_axes_input) {
 #if defined(USE_DNNL)
 TEST(TensorOpTest, Unsqueeze_3_axes_input_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -220,7 +220,7 @@ TEST(TensorOpTest, Unsqueeze_3_axes_input_bfloat16) {
 
 TEST(TensorOpTest, UnsqueezeNegAxis_3_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }

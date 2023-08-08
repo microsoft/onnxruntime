@@ -3,9 +3,8 @@
 
 #include "core/common/common.h"
 
-#include "hasher.h"  // NOLINT(build/include_subdir)
+#include "hasher.h"       // NOLINT(build/include_subdir)
 #include "hasher_impl.h"  // NOLINT(build/include_subdir)
-
 
 namespace onnxruntime {
 namespace tvm {
@@ -27,5 +26,5 @@ std::shared_ptr<HasherImpl> Hasher::getHasherImpl(const std::string& hash_type) 
   return nullptr;
 }
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime

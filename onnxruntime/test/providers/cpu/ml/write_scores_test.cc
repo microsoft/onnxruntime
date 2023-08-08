@@ -29,18 +29,18 @@ TEST_F(WriteScores, multiple_scores_transform_none) {
     auto alloc = std::make_shared<test::DummyAllocator>();
     Tensor t(DataTypeImpl::GetType<float>(), {static_cast<int64_t>(v1.size())}, alloc);
     if (tran == POST_EVAL_TRANSFORM::SOFTMAX_ZERO) {
-      //random set one number as zero
+      // random set one number as zero
       v1[3] = 0;
     }
     write_scores<float>(v1, tran, 0, &t, -1);
     const float* output_data = t.Data<float>();
-    //verify the result
+    // verify the result
     if (tran == POST_EVAL_TRANSFORM::NONE) {
       for (size_t i = 0; i != v2.size(); ++i) {
         EXPECT_FLOAT_EQ(v1[i], output_data[i]);
       }
     } else if (tran == POST_EVAL_TRANSFORM::SOFTMAX || tran == POST_EVAL_TRANSFORM::SOFTMAX_ZERO) {
-      //sum of the output values should be near to 1
+      // sum of the output values should be near to 1
       double sum = 0;
       for (size_t i = 0; i != v1.size(); ++i) {
         sum += output_data[i];
@@ -78,7 +78,7 @@ TEST_F(WriteScores, single_score_transform_none_add_second_class) {
     Tensor t(DataTypeImpl::GetType<float>(), {2}, alloc);
     write_scores<float>(v1, POST_EVAL_TRANSFORM::NONE, 0, &t, i);
     const float* output_data = t.Data<float>();
-	EXPECT_NEAR(output_data[1] + output_data[0], i == 0 || i == 1 ? 1 : 0, 1e-5);
+    EXPECT_NEAR(output_data[1] + output_data[0], i == 0 || i == 1 ? 1 : 0, 1e-5);
     if (i == 0 || i == 1) {
       EXPECT_FLOAT_EQ(v2[0], output_data[1]);
       EXPECT_FLOAT_EQ(1 - v2[0], output_data[0]);

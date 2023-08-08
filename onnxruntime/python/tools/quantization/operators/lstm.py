@@ -2,7 +2,7 @@ import numpy
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantType, attribute_to_kwarg, ms_domain
+from ..quant_utils import QuantType, attribute_to_kwarg, ms_domain  # noqa: F401
 from .base_operator import QuantOperatorBase
 
 """
@@ -30,15 +30,15 @@ class LSTMQuant(QuantOperatorBase):
             return
 
         model = self.quantizer.model
-        W = model.get_initializer(node.input[1])
-        R = model.get_initializer(node.input[2])
+        W = model.get_initializer(node.input[1])  # noqa: N806
+        R = model.get_initializer(node.input[2])  # noqa: N806
 
         if len(W.dims) != 3 or len(R.dims) != 3:
             super().quantize()
             return
 
-        [W_num_dir, W_4_hidden_size, W_input_size] = W.dims
-        [R_num_dir, R_4_hidden_size, R_hidden_size] = R.dims
+        [W_num_dir, W_4_hidden_size, W_input_size] = W.dims  # noqa: N806
+        [R_num_dir, R_4_hidden_size, R_hidden_size] = R.dims  # noqa: N806
 
         if self.quantizer.is_per_channel():
             del W.dims[0]
@@ -53,29 +53,29 @@ class LSTMQuant(QuantOperatorBase):
             node.input[2], onnx_proto.TensorProto.INT8, 0
         )
 
-        W_quant_weight = model.get_initializer(quant_input_weight_tuple[0])
-        R_quant_weight = model.get_initializer(quant_recurrent_weight_tuple[0])
+        W_quant_weight = model.get_initializer(quant_input_weight_tuple[0])  # noqa: N806
+        R_quant_weight = model.get_initializer(quant_recurrent_weight_tuple[0])  # noqa: N806
 
-        W_quant_array = onnx.numpy_helper.to_array(W_quant_weight)
-        R_quant_array = onnx.numpy_helper.to_array(R_quant_weight)
+        W_quant_array = onnx.numpy_helper.to_array(W_quant_weight)  # noqa: N806
+        R_quant_array = onnx.numpy_helper.to_array(R_quant_weight)  # noqa: N806
 
-        W_quant_array = numpy.reshape(W_quant_array, (W_num_dir, W_4_hidden_size, W_input_size))
-        R_quant_array = numpy.reshape(R_quant_array, (R_num_dir, R_4_hidden_size, R_hidden_size))
+        W_quant_array = numpy.reshape(W_quant_array, (W_num_dir, W_4_hidden_size, W_input_size))  # noqa: N806
+        R_quant_array = numpy.reshape(R_quant_array, (R_num_dir, R_4_hidden_size, R_hidden_size))  # noqa: N806
 
-        W_quant_array = numpy.transpose(W_quant_array, (0, 2, 1))
-        R_quant_array = numpy.transpose(R_quant_array, (0, 2, 1))
+        W_quant_array = numpy.transpose(W_quant_array, (0, 2, 1))  # noqa: N806
+        R_quant_array = numpy.transpose(R_quant_array, (0, 2, 1))  # noqa: N806
 
-        W_quant_tranposed = onnx.numpy_helper.from_array(W_quant_array, quant_input_weight_tuple[0])
-        R_quant_tranposed = onnx.numpy_helper.from_array(R_quant_array, quant_recurrent_weight_tuple[0])
+        W_quant_tranposed = onnx.numpy_helper.from_array(W_quant_array, quant_input_weight_tuple[0])  # noqa: N806
+        R_quant_tranposed = onnx.numpy_helper.from_array(R_quant_array, quant_recurrent_weight_tuple[0])  # noqa: N806
 
         model.remove_initializers([W_quant_weight, R_quant_weight])
         model.add_initializer(W_quant_tranposed)
         model.add_initializer(R_quant_tranposed)
 
-        W_quant_zp = model.get_initializer(quant_input_weight_tuple[1])
-        R_quant_zp = model.get_initializer(quant_recurrent_weight_tuple[1])
-        W_quant_scale = model.get_initializer(quant_input_weight_tuple[2])
-        R_quant_scale = model.get_initializer(quant_recurrent_weight_tuple[2])
+        W_quant_zp = model.get_initializer(quant_input_weight_tuple[1])  # noqa: N806
+        R_quant_zp = model.get_initializer(quant_recurrent_weight_tuple[1])  # noqa: N806
+        W_quant_scale = model.get_initializer(quant_input_weight_tuple[2])  # noqa: N806
+        R_quant_scale = model.get_initializer(quant_recurrent_weight_tuple[2])  # noqa: N806
 
         if self.quantizer.is_per_channel():
             W_quant_zp.dims[:] = [W_num_dir, W_4_hidden_size]
@@ -106,7 +106,7 @@ class LSTMQuant(QuantOperatorBase):
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
 
-        quant_lstm_name = "" if node.name == "" else node.name + "_quant"
+        quant_lstm_name = "" if not node.name else node.name + "_quant"
         quant_lstm_node = onnx.helper.make_node("DynamicQuantizeLSTM", inputs, node.output, quant_lstm_name, **kwargs)
         self.quantizer.new_nodes.append(quant_lstm_node)
 

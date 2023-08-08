@@ -29,15 +29,15 @@ class ZeROOptimizerGraphBuilder : public OptimizerGraphBuilder {
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) override;
 };
 
- /**
-   * Partitions the initial states according to the offset and 
-   * size provided when the optimizer state for a weight is to be 
-   * partitioned in Zero stage 1.
-   *
-   * @param partition_offset The offset for start of partition
-   * @param partition_size The size(number of elements) of the partition
-   * @param[out] initial_states The optimizer initial states modified in-place.
-   */
+/**
+ * Partitions the initial states according to the offset and
+ * size provided when the optimizer state for a weight is to be
+ * partitioned in Zero stage 1.
+ *
+ * @param partition_offset The offset for start of partition
+ * @param partition_size The size(number of elements) of the partition
+ * @param[out] initial_states The optimizer initial states modified in-place.
+ */
 void PartitionOptimizerState(
     const int64_t partition_offset,
     const int64_t partition_size,

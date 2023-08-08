@@ -1100,7 +1100,6 @@ TEST(QLinearConvTest, Conv2D_S8S8_Sym_M64_C64) {
   test.Run();
 }
 
-
 TEST(QLinearConvTest, Conv2D_S8S8_Sym_M16_C4_Bias) {
   QLinearConvOpTester<int8_t, int8_t> test;
   test.GenerateRandomInput({1, 4, 3, 3}, .05f, 4);
@@ -1521,7 +1520,8 @@ TEST(QLinearConvTest, Conv2D_S8S8_Depthwise_Kernelsize_PerChannel) {
   TestQLinearConv2dDepthwiseKernelsizePerChannel<int8_t, int8_t>();
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(QLinearConvTest, SharedPrepackedWeights) {
   QuantizedTensor X({0.45246148109436035f, 0.15498268604278564f, 0.11199361085891724f, -0.39421093463897705f,
                      0.2626858949661255f, 0.13414543867111206f, -0.27184486389160156f, -0.43028733134269714f,

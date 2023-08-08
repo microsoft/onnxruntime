@@ -163,7 +163,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   if (std::all_of(compute_metadata.steps_.cbegin(),
                   compute_metadata.steps_.cend(),
                   [](int64_t i) { return i == 1; }) &&
-      model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+      model_builder.GetEffectiveFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     op_code = ANEURALNETWORKS_SLICE;
     // the nnapi size of the slice in this case is the output shape
     ORT_RETURN_IF_ERROR(AddOperand("sizes", param_dimen, compute_metadata.output_dims_));  // nnapi_sizes

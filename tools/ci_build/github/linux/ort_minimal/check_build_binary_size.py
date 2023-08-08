@@ -11,8 +11,7 @@ import readelf_utils
 
 
 def _check_binary_size(path, readelf, threshold, os_str, arch, build_config):
-
-    print("Checking binary size of {} using {}".format(path, readelf))
+    print(f"Checking binary size of {path} using {readelf}")
     ondisk_size = os.path.getsize(path)
 
     print("Section:size in bytes")
@@ -20,17 +19,15 @@ def _check_binary_size(path, readelf, threshold, os_str, arch, build_config):
     sections = readelf_utils.get_section_sizes(path, readelf, sys.stdout)
     sections_total = sum(sections.values())
 
-    print("Sections total={} bytes".format(sections_total))
-    print("File size={} bytes".format(ondisk_size))
+    print(f"Sections total={sections_total} bytes")
+    print(f"File size={ondisk_size} bytes")
 
     # Write the binary size to a file for uploading later
     # On-disk binary size jumps in 4KB increments so we use the total of the sections as it has finer granularity.
     # Note that the sum of the section is slightly larger than the on-disk size
     # due to packing and/or alignment adjustments.
     with open(os.path.join(os.path.dirname(path), "binary_size_data.txt"), "w") as file:
-        file.writelines(
-            ["os,arch,build_config,size\n", "{},{},{},{}\n".format(os_str, arch, build_config, sections_total)]
-        )
+        file.writelines(["os,arch,build_config,size\n", f"{os_str},{arch},{build_config},{sections_total}\n"])
 
     if threshold is not None and sections_total > threshold:
         raise RuntimeError(

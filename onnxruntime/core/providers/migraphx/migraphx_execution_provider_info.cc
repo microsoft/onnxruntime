@@ -45,18 +45,15 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const MIGraphXE
   const ProviderOptions options{
       {migraphx::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {migraphx::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.fp16_enable)},
-      {migraphx::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.int8_enable)}
-  };
+      {migraphx::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.int8_enable)}};
   return options;
 }
 
 ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const OrtMIGraphXProviderOptions& info) {
-
   const ProviderOptions options{
       {migraphx::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {migraphx::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.migraphx_fp16_enable)},
-      {migraphx::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.migraphx_int8_enable)}
-  };
+      {migraphx::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.migraphx_int8_enable)}};
   return options;
 }
 }  // namespace onnxruntime

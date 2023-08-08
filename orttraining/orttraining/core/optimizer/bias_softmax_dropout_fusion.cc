@@ -71,9 +71,9 @@ Status BiasSoftmaxDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     Node& dropout_grad_node = *p_dropout_grad;
 
     InlinedVector<NodeArg*> bias_softmax_dropout_inputs{node.MutableInputDefs()[0], node.MutableInputDefs()[1],
-                                                        dropout_node.MutableInputDefs()[1]};  // [input, bias, ratio]
-    InlinedVector<NodeArg*> bias_softmax_dropout_outputs;  // [y, dropout_mask, softmax_y]
-    InlinedVector<NodeArg*> softmax_dropout_grad_inputs;   // [dy, dropout_mask, softmax_y, ratio]
+                                                        dropout_node.MutableInputDefs()[1]};         // [input, bias, ratio]
+    InlinedVector<NodeArg*> bias_softmax_dropout_outputs;                                            // [y, dropout_mask, softmax_y]
+    InlinedVector<NodeArg*> softmax_dropout_grad_inputs;                                             // [dy, dropout_mask, softmax_y, ratio]
     InlinedVector<NodeArg*> softmax_dropout_grad_outputs{softmax_grad_node.MutableOutputDefs()[0]};  // [dx]
     bias_softmax_dropout_outputs.emplace_back(dropout_node.MutableOutputDefs()[0]);                  // y
     softmax_dropout_grad_inputs.emplace_back(dropout_grad_node.MutableInputDefs()[0]);               // dy
@@ -92,7 +92,7 @@ Status BiasSoftmaxDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     bias_softmax_dropout_outputs.emplace_back(node.MutableOutputDefs()[0]);             // softmax_y
     softmax_dropout_grad_inputs.emplace_back(softmax_grad_node.MutableInputDefs()[1]);  // softmax_y
     softmax_dropout_grad_inputs.emplace_back(dropout_grad_node.MutableInputDefs()[2]);  // ratio
-    NodeAttributes bias_softmax_dropout_attrs;  // {axis, is_inner_broadcast, seed}
+    NodeAttributes bias_softmax_dropout_attrs;                                          // {axis, is_inner_broadcast, seed}
     for (const auto& pair : node.GetAttributes()) {
       bias_softmax_dropout_attrs[pair.first] = pair.second;
     }

@@ -20,7 +20,7 @@ class ClipOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+                               const logging::Logger& logger) const override;
 #endif
 
   // Operator support related

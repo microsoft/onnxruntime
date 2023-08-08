@@ -20,7 +20,7 @@ class GatherToSplitFusion : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
  private:
-  bool IsSupportedGather(const Graph& graph, const Node& node, int64_t& index, int64_t& axis) const;
+  bool IsSupportedGather(const Graph& graph, const Node& node, int64_t& index, int64_t& axis, int64_t& indices_n_dims) const;
 };
 
 /**

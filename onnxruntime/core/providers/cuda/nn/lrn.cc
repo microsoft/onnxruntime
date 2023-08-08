@@ -77,7 +77,7 @@ Status LRN<T>::ComputeInternal(OpKernelContext* context) const {
   const auto zero = Consts<CudaT>::Zero;
 
   CUDNN_RETURN_IF_ERROR(LRNCrossChannelForwardHelper(
-      CudnnHandle(),
+      GetCudnnHandle(context),
       norm_desc_,
       CUDNN_LRN_CROSS_CHANNEL_DIM1,
       &one,

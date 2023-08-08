@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum  # noqa: F401
 
 import onnx
 from onnx import TensorProto, helper
@@ -12,7 +12,7 @@ else:
     raise RuntimeError("Please pip install onnx==1.8.0 or 1.6.0 before running this script")
 
 
-def GenerateNodes(model_name, has_cast, suffix=""):
+def GenerateNodes(model_name, has_cast, suffix=""):  # noqa: N802
     nodes = [  # LayerNorm subgraph
         helper.make_node("Shape", ["input_ids" + suffix], ["shape1_out" + suffix], "shape1" + suffix),
         helper.make_node(
@@ -199,7 +199,7 @@ def GenerateNodes(model_name, has_cast, suffix=""):
     return nodes
 
 
-def GenerateInitializers():
+def GenerateInitializers():  # noqa: N802
     # hidden_size=4, num_heads=2
     initializers = [  # initializers
         helper.make_tensor("indices_0", TensorProto.INT64, [], [0]),
@@ -281,7 +281,7 @@ def GenerateInitializers():
     return initializers
 
 
-def GenerateMultipleEmbedModel(model_name):
+def GenerateMultipleEmbedModel(model_name):  # noqa: N802
     nodes_1 = GenerateNodes(model_name, False, "_1")
     nodes_2 = GenerateNodes(model_name, False, "_2")
     nodes = nodes_1 + nodes_2
@@ -311,7 +311,7 @@ def GenerateMultipleEmbedModel(model_name):
     onnx.save(model, model_name)
 
 
-def GenerateModel3(model_name, has_cast):
+def GenerateModel3(model_name, has_cast):  # noqa: N802
     nodes = GenerateNodes(model_name, has_cast)
 
     # hidden_size=4, num_heads=2, max_seq_length=3
@@ -335,7 +335,7 @@ def GenerateModel3(model_name, has_cast):
     onnx.save(model, model_name)
 
 
-def GenerateModel5(model_name):
+def GenerateModel5(model_name):  # noqa: N802
     batch_size = 2
     hidden_size = 4
     attention_heads = 2
@@ -510,7 +510,7 @@ def GenerateModel5(model_name):
     onnx.save(model, model_name)
 
 
-def GenerateModel6(model_name):
+def GenerateModel6(model_name):  # noqa: N802
     nodes = [  # LayerNorm subgraph
         helper.make_node("Shape", ["input_ids"], ["shape1_out"], "shape1"),
         helper.make_node("Gather", ["shape1_out", "indices_0"], ["gather0_out"], "gather0"),
@@ -679,7 +679,7 @@ def GenerateModel6(model_name):
     onnx.save(model, model_name)
 
 
-def GenerateInitializers2(hidden_size):
+def GenerateInitializers2(hidden_size):  # noqa: N802
     qkv_weights = [1.0] * hidden_size * (3 * hidden_size)
 
     initializers = [  # initializers
@@ -744,7 +744,7 @@ def GenerateInitializers2(hidden_size):
     return initializers
 
 
-def GenerateNodes2(attention_heads):
+def GenerateNodes2(attention_heads):  # noqa: N802
     nodes = [
         helper.make_node(
             "Gather",
@@ -810,7 +810,7 @@ def GenerateNodes2(attention_heads):
     return nodes
 
 
-def GenerateModel7(model_name):
+def GenerateModel7(model_name):  # noqa: N802
     batch_size = 2
     hidden_size = 4
     attention_heads = 2
@@ -841,7 +841,7 @@ def GenerateModel7(model_name):
     onnx.save(model, model_name)
 
 
-def GenerateModel8(model_name):
+def GenerateModel8(model_name):  # noqa: N802
     batch_size = -1
     hidden_size = 4
     attention_heads = 2
@@ -881,7 +881,7 @@ def GenerateModel8(model_name):
     onnx.save(model, model_name)
 
 
-def GenerateModel9(model_name):
+def GenerateModel9(model_name):  # noqa: N802
     batch_size = -1
     hidden_size = 4
     attention_heads = 2

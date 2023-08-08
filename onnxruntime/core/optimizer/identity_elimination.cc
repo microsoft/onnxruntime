@@ -11,26 +11,26 @@
 namespace onnxruntime {
 
 /**
-  Case to eliminate Identity node when 
+  Case to eliminate Identity node when
   - the input nodearg has only one consumer, which is the Identity itself
   - the input def is not a graph output
-  
-  For examples: 
+
+  For examples:
 
   OK to eliminate:
-  
+
     Identity output is another node, and the Identity is the only consumer of X
       X ---> Identity ---> Y where Y could be graph output
 
     Identity input arg is not shared with other output arg of X
-      + (arg0) ---> Identity0 ---> Z 
+      + (arg0) ---> Identity0 ---> Z
       |
       X (arg1) ---> Identity1 ---> Y
 
   Not OK to eliminate:
 
     Identity input arg, i.e., arg0, is also an input arg of other Identity
-      + (arg0) ---> Identity0 ---> Z 
+      + (arg0) ---> Identity0 ---> Z
       |
       X (arg0) ---> Identity1 ---> Y
 

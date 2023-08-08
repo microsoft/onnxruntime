@@ -19,9 +19,8 @@ class TfIdfVectorizer final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
-
   void ComputeImpl(OpKernelContext* ctx, ptrdiff_t row_num, size_t row_size,
-                     std::vector<uint32_t>& frequencies) const;
+                   std::vector<uint32_t>& frequencies) const;
 
   // Apply weighing criteria and output
   void OutputResult(OpKernelContext* ctx, size_t b_dim, const std::vector<uint32_t>& frequences) const;

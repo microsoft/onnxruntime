@@ -7,7 +7,7 @@ bool MyEPDataTransfer::CanCopy(const OrtDevice& /*src_device*/, const OrtDevice&
   return false;
 }
 
-common::Status MyEPDataTransfer::CopyTensor(const Tensor& /*src*/, Tensor& /*dst*/, int /*exec_queue_id*/) const {
+common::Status MyEPDataTransfer::CopyTensor(const Tensor& /*src*/, Tensor& /*dst*/) const {
   return Status::OK();
 }
 

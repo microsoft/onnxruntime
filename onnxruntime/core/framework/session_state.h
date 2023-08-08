@@ -18,6 +18,7 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -35,6 +36,11 @@
 #include "core/platform/threadpool.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
+#endif
+
+#include "core/framework/stream_handles.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/program_region.h"
 #endif
 
 namespace flatbuffers {
@@ -55,6 +61,7 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+class DeviceStreamCollection;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
 #endif
@@ -86,28 +93,14 @@ class SessionState {
  public:
   SessionState(Graph& graph,
                const ExecutionProviders& execution_providers,
-               bool enable_mem_pattern,
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
-               bool use_deterministic_compute = false,
-               bool enable_mem_reuse = true,
-               PrepackedWeightsContainer* prepacked_weights_container = nullptr)
-      : graph_(graph),
-        execution_providers_(execution_providers),
-        logger_(logger),
-        profiler_(profiler),
-        enable_mem_pattern_(enable_mem_pattern),
-        thread_pool_(thread_pool),
-        inter_op_thread_pool_(inter_op_thread_pool),
-        data_transfer_mgr_(data_transfer_mgr),
-        use_deterministic_compute_(use_deterministic_compute),
-        enable_mem_reuse_(enable_mem_reuse),
-        prepacked_weights_container_(prepacked_weights_container) {
-    SetupAllocators();
-  }
+               const SessionOptions& sess_options,
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr,
+               AllocatorMap* parent_allocators = nullptr);
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -137,7 +130,14 @@ class SessionState {
   AllocatorPtr GetAllocator(const OrtMemoryInfo& location) const noexcept;
 
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
-  AllocatorPtr GetAllocator(OrtDevice device) const noexcept;
+  AllocatorPtr GetAllocator(const OrtDevice& device) const noexcept;
+
+  /*
+   * Get allocators.
+   */
+  const AllocatorMap& GetAllocators() const { return *allocators_; }
+
+  void UpdateAllocatorsWithEnvAllocators(const std::vector<AllocatorPtr>&);
 
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
@@ -170,6 +170,7 @@ class SessionState {
 #endif
 
 #ifdef ENABLE_TRAINING
+  // This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
@@ -191,6 +192,9 @@ class SessionState {
 
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
+
+  const std::vector<AllocPlanPerValue>& GetPerValueAllocPlan() const;
+
   /**
   Get the logger for this session.
   Falls back to returning Logging::LoggingManager::DefaultLogger if SetLogger has not been called.
@@ -233,7 +237,7 @@ class SessionState {
   Status UpdateMemoryPatternGroupCache(gsl::span<const OrtValue> tensor_inputs,
                                        MemoryPatternGroup mem_patterns) const;
 
-  bool GetUseDeterministicCompute() const { return use_deterministic_compute_; }
+  bool GetUseDeterministicCompute() const { return sess_options_.use_deterministic_compute; }
 
   /**
   Get enable memory pattern flag
@@ -297,21 +301,23 @@ class SessionState {
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  void UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs);
-  const InlinedHashSet<NodeIndex>* GetToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) const;
+#ifdef ENABLE_TRAINING
+  void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
+  const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
-                              const SessionOptions& session_options = {},
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 
   SessionState* Parent() {
     return parent_;
   }
+
+  // Clear all removable attributes if they exists.
+  // The function logs the list of removable attributes for every node.
+  void PruneRemovableAttributes();
 
   size_t GetNumberOfPrepacksCounter() const {
     return number_of_prepacks_counter_;
@@ -329,8 +335,19 @@ class SessionState {
     return subgraph_session_states_;
   }
 
+#ifdef ORT_ENABLE_STREAM
+  std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
+
+  void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
+
+  IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() const {
+    return *stream_handles_registry_;
+  }
+#endif
+
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  void IncrementGraphExecutionCounter() {
+  void
+  IncrementGraphExecutionCounter() {
     ++graph_executions_counter_;
   }
 
@@ -339,10 +356,10 @@ class SessionState {
   }
 #endif
 
+  const SessionOptions& GetSessionOptions() const { return sess_options_; }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
-
-  void SetupAllocators();
 
   // Populate OrtValueNameIdxMap and create the graph viewer.
   void CreateGraphInfo();
@@ -377,7 +394,7 @@ class SessionState {
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                  const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
+                                  const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING
@@ -427,22 +444,17 @@ class SessionState {
     }
   };
 
-  // using std::map as OrtMemoryInfo would need a custom hash function to be used with std::unordered_map,
+  // using std::map as OrtDevice would need a custom hash function to be used with std::unordered_map,
   // and as this isn't considered performance critical currently it's not worth the maintenance overhead of adding one.
   // We do get an allocator from ExecutionFrame so this is looked up frequently, however there most likely aren't many
   // entries in the map
-  //
-  // NOTE: We store a delegate to get the allocator to support scenarios such as the CUDA EP where a thread_local
-  // allocator is returned.
-  //
-  // TODO: The CUDA EP may not need to use the per-thread allocator for allocations that would use this map
-  // (e.g. primarily from ExecutionFrame and utils::Copy{Inputs|Outputs}AcrossDevices). It does need it
-  // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
-  // directly instead of going through CUDAExecutionProvider::GetAllocator.
-  // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-  std::map<OrtMemoryInfo, std::function<AllocatorPtr(int id, OrtMemType mem_type)>,
-           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
-      allocators_;
+  // SessionState will contain other SessionState objects for subgraph. The unique ptr will be initialized only the
+  // SessionState object is in the parent graph, the raw pointer will be initialized when session state is in parent
+  // graph (from the unique ptr) or in the subgraph (from the raw pointer from parent session state). The raw pointer
+  // will be used all the way to access std::map<OrtDevice, AllocatorPtr>, unique pointer is only releasing the resource
+  // when the parent session state is releasing.
+  std::unique_ptr<AllocatorMap> allocators_unique_ptr_;
+  AllocatorMap* allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
@@ -499,8 +511,8 @@ class SessionState {
 
   const DataTransferManager& data_transfer_mgr_;
 
-  bool use_deterministic_compute_;
-  bool enable_mem_reuse_;
+  const SessionOptions& sess_options_;
+
   std::optional<NodeIndexInfo> node_index_info_;
 
   // Container to store pre-packed weights to share between sessions.
@@ -509,7 +521,8 @@ class SessionState {
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
-#if !defined(ORT_MINIMAL_BUILD)
+#ifdef ENABLE_TRAINING
+// Needed for ORTTrainer. Should be removed along with ORTTrainer code
 #ifndef DISABLE_ABSEIL
   InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #else
@@ -541,6 +554,16 @@ class SessionState {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
+#endif
+
+#ifdef ORT_ENABLE_STREAM
+  std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
+
+  // lock for the device stream pool
+  mutable OrtMutex device_stream_pool_mutex_;
+  mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
+  // flag to indicate whether current session using any EP that create device stream dynamically.
+  bool has_device_stream_enabled_ep_ = false;
 #endif
 };
 

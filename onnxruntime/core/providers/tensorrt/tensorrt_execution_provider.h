@@ -3,9 +3,12 @@
 
 #pragma once
 #include <ctime>
+#include <cudnn.h>
+#include <cublas_v2.h>
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
+#include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
 
 namespace onnxruntime {
@@ -25,9 +28,22 @@ static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE"
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
-static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
-static const std::string kContextMemorySharingEnable= "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
-static const std::string kLayerNormFP32Fallback= "ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK";
+static const std::string kForceSequentialEngineBuild = "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
+static const std::string kContextMemorySharingEnable = "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
+static const std::string kLayerNormFP32Fallback = "ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK";
+static const std::string kTimingCacheEnable = "ORT_TENSORRT_TIMING_CACHE_ENABLE";
+static const std::string kForceTimingCache = "ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE";
+static const std::string kDetailedBuildLog = "ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE";
+static const std::string kBuildHeuristics = "ORT_TENSORRT_BUILD_HEURISTICS_ENABLE";
+static const std::string kSparsityEnable = "ORT_TENSORRT_SPARSITY_ENABLE";
+static const std::string kBuilderOptimizationLevel = "ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL";
+static const std::string kAuxiliaryStreams = "ORT_TENSORRT_AUXILIARY_STREAMS";
+static const std::string kTacticSources = "ORT_TENSORRT_TACTIC_SOURCES";
+static const std::string kExtraPluginLibPaths = "ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS";
+static const std::string kProfilesMinShapes = "ORT_TENSORRT_PROFILE_MIN_SHAPES";
+static const std::string kProfilesMaxShapes = "ORT_TENSORRT_PROFILE_MAX_SHAPES";
+static const std::string kProfilesOptShapes = "ORT_TENSORRT_PROFILE_OPT_SHAPES";
+static const std::string kCudaGraphEnable = "ORT_TENSORRT_CUDA_GRAPH_ENABLE";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -85,34 +101,51 @@ struct TensorrtFuncState {
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
   tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>* engine = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>* context = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>* builder = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>* network = nullptr;
+  std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
+  std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
+  std::unique_ptr<nvinfer1::IBuilder>* builder = nullptr;
+  std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
-  std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
+  std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
-  bool fp16_enable;
-  bool int8_enable;
-  bool int8_calibration_cache_available;
-  bool dla_enable;
-  int dla_core;
+  bool fp16_enable = false;
+  bool int8_enable = false;
+  bool int8_calibration_cache_available = false;
+  bool dla_enable = false;
+  int dla_core = 0;
   size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
-  bool engine_cache_enable;
+  bool engine_cache_enable = false;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
-  nvinfer1::IOptimizationProfile* trt_profile = nullptr;
-  AllocatorPtr scratch_allocator;
-  bool context_memory_sharing_enable;
+  std::vector<nvinfer1::IOptimizationProfile*> profiles;
+  bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
-  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
-  bool engine_decryption_enable;
-  int (*engine_decryption)(const char*, char*, size_t*);
-  int (*engine_encryption)(const char*, char*, size_t);
+  bool engine_decryption_enable = false;
+  int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
+  int (*engine_encryption)(const char*, char*, size_t) = nullptr;
+  bool timing_cache_enable = true;
+  bool force_timing_cache = false;
+  bool detailed_build_log = false;
+  bool build_heuristics_enable = false;
+  bool sparsity_enable = false;
+  int builder_optimization_level = 3;
+  int auxiliary_streams = -1;
+  bool filter_tactic_sources = false;
+  nvinfer1::TacticSources tactic_sources;
+  bool cuda_graph_enable = 0;
 };
+
+// Holds important information for building valid ORT graph.
+struct SubGraphContext {
+  std::unordered_set<std::string> output_args;
+  std::unordered_map<std::string, const NodeArg*> inputs_and_initializers;
+  std::unordered_map<std::string, const NodeArg*> manually_added_graph_inputs;
+};
+
+using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>;
 
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
@@ -132,19 +165,24 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
-
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
-
+  Status OnRunStart() override;
   Status OnRunEnd(bool sync_stream) override;
-
-  Status SetComputeStream(void* stream) override;
-
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
 
   ProviderOptions GetProviderOptions() const override {
     return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
   }
+
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
+
+  void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override;
+
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
+  bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured() const override;
+  Status ReplayGraph() override;
 
  private:
   TensorrtExecutionProviderInfo info_;
@@ -163,33 +201,59 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
+  bool build_heuristics_enable_ = false;
+  bool sparsity_enable_ = false;
+  int builder_optimization_level_ = 3;
+  int auxiliary_streams_ = -1;
+  std::string tactic_sources_;
   std::string cache_path_, engine_decryption_lib_path_;
-  tensorrt_ptr::unique_pointer<nvinfer1::IRuntime> runtime_ = nullptr;
+  std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
-  AllocatorPtr allocator_;
   bool context_memory_sharing_enable_ = false;
   bool layer_norm_fp32_fallback_ = false;
   size_t max_ctx_mem_size_ = 0;
   IAllocatorUniquePtr<void> context_memory_ = nullptr;
-  mutable char model_path_[4096];  // Reserved for max path length
+  mutable char model_path_[4096] = {};  // Reserved for max path length
   bool engine_decryption_enable_ = false;
-  int (*engine_decryption_)(const char*, char*, size_t*);
-  int (*engine_encryption_)(const char*, char*, size_t);
+  int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
+  int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
+  bool timing_cache_enable_ = false;
+  bool force_timing_cache_match_ = false;
+  bool detailed_build_log_ = false;
+  bool cuda_graph_enable_ = false;
+
+  // The OrtAllocator object will be get during ep compute time
+  // and should be kept for the lifetime of TRT EP object.
+  OrtAllocator* alloc_ = nullptr;
+
+  std::unique_ptr<CUDAGraph> cuda_graph_;  // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
+  bool is_graph_captured_ = false;
+  int regular_run_count_before_graph_capture_ = 0;
+  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
+  mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
-  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
-  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>> contexts_;
-  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>> builders_;
-  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>> networks_;
+  std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
+  std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
+  std::unordered_map<std::string, std::unique_ptr<nvinfer1::IBuilder>> builders_;
+  std::unordered_map<std::string, std::unique_ptr<nvinfer1::INetworkDefinition>> networks_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes_;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>> input_shape_ranges_;
+  std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
+
+  // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
+  cudnnHandle_t external_cudnn_handle_ = nullptr;
+  cublasHandle_t external_cublas_handle_ = nullptr;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
-                                               const GraphViewer& graph) const;
+                                               const GraphViewer& graph, const HashValue& model_hash, int subgraph_index) const;
 
   /**
   Get TensorRT supported node lists by calling Onnx-TensorRT parser recursively. Since each time the parser
@@ -201,7 +265,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                         const GraphViewer& graph, bool* early_termination) const;
 
-  bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
+  bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, const HashValue& model_hash, bool remove_cycles = true) const;
 
   /**
   Get a unique_lock object to control the concurrency behavior.
@@ -219,5 +283,45 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
 
+  /**
+   * Set inputs, initializers and outputs for all subgraphs during TensorrtExecutionProvider::GetSupportedList()
+   * and save those information in subgraph context data structure. It's useful for building a valid graph and
+   * make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
+   */
+  void BuildSubGraphContext(const Graph& build_graph) const;
+
+  /**
+   * Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
+   */
+  void SetGraphOuterScopeValuesAndInputs(Graph& build_graph, const Graph& graph) const;
+
+  /**
+   * If ORT TRT manually sets graph input in TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(),
+   * we have to manully set all the graph inputs in order to pass Graph::Resolve().
+   */
+  void SetAllGraphInputs(Graph& graph) const;
+
+  /**
+   * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
+   * Graph::ResolveContext::IsInputInitializerOrOutput(). We have to implement this fuction again.
+   */
+  bool IsInputInitializerOrOutput(const Graph& graph, const std::string& name, bool check_ancestors) const;
+
+  /**
+   * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
+   * Graph::ResolveContext::IsOuterScopeValue(). We have to implement this fuction again.
+   */
+  bool IsOuterScopeValue(const Graph& graph, const std::string& name) const;
+
+  /**
+   * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
+   * Graph::ResolveContext::IsLocalValue(). We have to implement this fuction again.
+   */
+  bool IsLocalValue(const Graph& graph, const std::string& name) const;
+
+  bool IsGraphCaptureAllowed() const;
+  void CaptureBegin();
+  void CaptureEnd();
+  void IncrementRegularRunCountBeforeGraphCapture();
 };
 }  // namespace onnxruntime

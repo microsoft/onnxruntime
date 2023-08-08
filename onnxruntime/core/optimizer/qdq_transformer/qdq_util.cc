@@ -102,13 +102,13 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 bool MatchQNode(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {10, 13});
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {10, 13, 19});
 }
 
 bool MatchDQNode(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {10, 13});
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {10, 13, 19});
 }
 
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace onnxruntime::QDQ

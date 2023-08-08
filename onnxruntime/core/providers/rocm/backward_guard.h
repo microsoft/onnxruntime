@@ -8,7 +8,8 @@ struct BackwardPassGuard {
   BackwardPassGuard();
   ~BackwardPassGuard();
   static bool is_backward_pass();
-private:
+
+ private:
   static thread_local bool is_backward_pass_;
 };
 

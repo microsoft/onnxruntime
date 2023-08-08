@@ -20,7 +20,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(LayerNormTest, BERTLayerNorm) {
-  OpTester tester("LayerNormalization", 1 /*opset_version*/);
+  OpTester tester("LayerNormalization", 17 /*opset_version*/);
   tester.AddAttribute<int64_t>("axis", -1);
   tester.AddAttribute<float>("epsilon", 1e-12f);
 
@@ -40,12 +40,11 @@ TEST(LayerNormTest, BERTLayerNorm) {
   tester.AddInput<float>("B", B_dims, B_data);
 
   tester.AddReferenceOutputs("testdata/layernorm.onnx");
-
   tester.Run();
 }
 
 TEST(LayerNormTest, BERTLayerNorm_NoBias) {
-  OpTester tester("LayerNormalization", 1 /*opset_version*/);
+  OpTester tester("LayerNormalization", 17 /*opset_version*/);
   tester.AddAttribute<int64_t>("axis", -1);
   tester.AddAttribute<float>("epsilon", 1e-12f);
 
@@ -59,8 +58,6 @@ TEST(LayerNormTest, BERTLayerNorm_NoBias) {
   std::vector<int64_t> scale_dims{128};
   std::vector<float> scale_data = random.Uniform<float>(scale_dims, 0.0f, 1.0f);
   tester.AddInput<float>("Scale", scale_dims, scale_data);
-
-  tester.AddOptionalInputEdge<float>();
 
   tester.AddReferenceOutputs("testdata/layernorm_no_bias.onnx");
 
@@ -99,7 +96,8 @@ TEST(LayerNormTest, LayerNorm_Scale_Float16Input) {
   test.AddOutput<float>("output", dims, {0.6953f, 5.1824f, -0.6953f, -5.1824f, 0.6953f, 5.1824f, -0.6953f, -5.1824f});
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider, kNnapiExecutionProvider, kCoreMLExecutionProvider});
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Float16ScaleOutput) {
@@ -112,7 +110,8 @@ TEST(LayerNormTest, LayerNorm_Scale_Float16ScaleOutput) {
   test.AddOutput<MLFloat16>("output", dims, ToFloat16({0.6953f, 5.1824f, -0.6953f, -5.1824f, 0.6953f, 5.1824f, -0.6953f, -5.1824f}));
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider, kNnapiExecutionProvider, kCoreMLExecutionProvider});
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Float16InputScaleOutput) {
@@ -125,7 +124,8 @@ TEST(LayerNormTest, LayerNorm_Scale_Float16InputScaleOutput) {
   test.AddOutput<MLFloat16>("output", dims, ToFloat16({0.6953f, 5.1824f, -0.6953f, -5.1824f, 0.6953f, 5.1824f, -0.6953f, -5.1824f}));
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider, kNnapiExecutionProvider, kCoreMLExecutionProvider});
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Bias) {
@@ -151,7 +151,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16Input) {
   test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f});
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kDnnlExecutionProvider,
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
             kOpenVINOExecutionProvider, kNnapiExecutionProvider, kCoreMLExecutionProvider});
 }
 
@@ -166,7 +166,8 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16ScaleBiasOutput) {
   test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider, kNnapiExecutionProvider, kCoreMLExecutionProvider});
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
@@ -180,7 +181,8 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
   test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider, kNnapiExecutionProvider, kCoreMLExecutionProvider});
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 // LayerNormalization became an ONNX operator in opset 17. It uses the same implementation so this is a sanity check.
@@ -222,7 +224,7 @@ TEST(LayerNormTest, LayerNorm_InvalidScaleBias) {
   // implementation for which we don't control the check or error message.
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Size of X.shape()[axis:] == 6. Size of scale and bias (if provided) must match this",
-           {kDnnlExecutionProvider, kDmlExecutionProvider});
+           {kDnnlExecutionProvider, kDmlExecutionProvider, kTensorrtExecutionProvider});
 }
 
 #if defined(USE_DNNL)

@@ -29,13 +29,13 @@ class Relu : public OpKernel {
   }
 
   ~Relu() {
-  	Relu::reluLayers.erase(this);
+    Relu::reluLayers.erase(this);
   }
 
   Status Compute(OpKernelContext* context) const override;
 
-  static armnn::IRuntimePtr initRuntime(){
-    if(Relu::run)
+  static armnn::IRuntimePtr initRuntime() {
+    if (Relu::run)
       return std::move(Relu::run);
     armnn::IRuntime::CreationOptions options;
     return std::move(armnn::IRuntime::Create(options));

@@ -16,7 +16,12 @@ if (onnxruntime_USE_CUDA)
 elseif(onnxruntime_USE_ROCM)
   check_language(HIP)
   set(LANGUAGE HIP)
-  include(composable_kernel)
+  if (onnxruntime_USE_COMPOSABLE_KERNEL)
+    include(composable_kernel)
+  endif()
+  if (onnxruntime_USE_HIPBLASLT)
+    find_package(hipblaslt REQUIRED)
+  endif()
   set(BERT_DIR ${ONNXRUNTIME_ROOT}/contrib_ops/rocm/bert)
 endif()
 
@@ -49,6 +54,7 @@ if (onnxruntime_USE_CUDA)
     "${KERNEL_EXPLORER_ROOT}/kernels/cuda/*.cuh"
   )
   target_sources(kernel_explorer PRIVATE ${kernel_explorer_cuda_kernel_srcs})
+  target_include_directories(kernel_explorer PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 elseif (onnxruntime_USE_ROCM)
   file(GLOB kernel_explorer_rocm_kernel_srcs CONFIGURE_DEPENDS
     "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.cc"
@@ -59,12 +65,21 @@ elseif (onnxruntime_USE_ROCM)
   auto_set_source_files_hip_language(${kernel_explorer_kernel_srcs} ${kernel_explorer_rocm_kernel_srcs})
   target_sources(kernel_explorer PRIVATE ${kernel_explorer_rocm_kernel_srcs})
   target_compile_definitions(kernel_explorer PRIVATE __HIP_PLATFORM_AMD__=1 __HIP_PLATFORM_HCC__=1)
-  target_link_libraries(kernel_explorer PRIVATE
-    onnxruntime_composable_kernel_includes
-    # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
-    # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
-    # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
-    device_gemm_instance)
+  if (onnxruntime_USE_COMPOSABLE_KERNEL)
+    target_compile_definitions(kernel_explorer PRIVATE USE_COMPOSABLE_KERNEL)
+    target_link_libraries(kernel_explorer PRIVATE onnxruntime_composable_kernel_includes)
+  endif()
+  if (onnxruntime_USE_TRITON_KERNEL)
+    target_compile_definitions(kernel_explorer PRIVATE USE_TRITON_KERNEL)
+  endif()
+  if (onnxruntime_USE_HIPBLASLT)
+    target_compile_definitions(kernel_explorer PRIVATE USE_HIPBLASLT)
+  endif()
+  if (onnxruntime_USE_ROCBLAS_EXTENSION_API)
+    target_compile_definitions(kernel_explorer PRIVATE USE_ROCBLAS_EXTENSION_API)
+    target_compile_definitions(kernel_explorer PRIVATE ROCBLAS_NO_DEPRECATED_WARNINGS)
+    target_compile_definitions(kernel_explorer PRIVATE ROCBLAS_BETA_FEATURES_API)
+  endif()
 endif()
 
 add_dependencies(kernel_explorer onnxruntime_pybind11_state)

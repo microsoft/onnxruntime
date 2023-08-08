@@ -65,8 +65,8 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   auto* output_data = reinterpret_cast<CudaT_Out*>(output->MutableData<out_type>());
 
   if (values_data[0] == CudaT_Out(0.f)) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output->MutableDataRaw(), 0, output->SizeInBytes(), Stream()));
-    OneHotWithZeroOffValueImpl(Stream(),
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output->MutableDataRaw(), 0, output->SizeInBytes(), Stream(ctx)));
+    OneHotWithZeroOffValueImpl(Stream(ctx),
                                indices_data,
                                fdm_suffix,
                                depth_val,
@@ -77,7 +77,7 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   }
 
   const fast_divmod fdm_depth_suffix(gsl::narrow_cast<int>(depth_val * suffix_dim_size));
-  OneHotImpl(Stream(),
+  OneHotImpl(Stream(ctx),
              indices_data, fdm_depth_suffix, fdm_suffix, depth_val,
              values_data[1],
              values_data[0],

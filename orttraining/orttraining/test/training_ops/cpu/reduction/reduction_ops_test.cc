@@ -195,7 +195,7 @@ TEST_P(ReductionOpTest, ReduceAllL2_BFloat16_BFloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -228,7 +228,7 @@ TEST_P(ReductionOpTest, ReduceAllL2_BFloat16_Float) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -259,7 +259,7 @@ TEST_P(ReductionOpTest, ReduceAllL2_Float_BFloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
@@ -295,7 +295,7 @@ void TestMultiTensorReduce(
     ws[i] = std::vector<float>(sizes[i]);
 
     for (int64_t j = 0; j < sizes[i]; ++j) {
-      ws[i][j] = 1.f;  //dist(random_engine);
+      ws[i][j] = 1.f;  // dist(random_engine);
       result += ws[i][j] * ws[i][j];
     }
 

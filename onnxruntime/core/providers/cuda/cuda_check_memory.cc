@@ -15,4 +15,4 @@ void CheckIfMemoryOnCurrentGpuDevice(const void* ptr) {
               " but the memory of pointer ", ptr,
               " is allocated on device ", attrs.device);
 }
-}  // onnxruntime
+}  // namespace onnxruntime

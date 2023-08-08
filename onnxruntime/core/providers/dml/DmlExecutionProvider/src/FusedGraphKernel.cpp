@@ -302,7 +302,8 @@ namespace Dml
                     }
                     else
                     {
-                        const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(i);
+                        assert(kernelContext->InputType(gsl::narrow_cast<int>(i))->IsTensorType());
+                        const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(i));
 
                         uint64_t allocId;
                         DmlGraphFusionHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &inputBindings[i].Buffer, &allocId);

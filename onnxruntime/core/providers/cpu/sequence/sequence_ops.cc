@@ -98,7 +98,8 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
   const Tensor& indexed_tensor = X->Get(onnxruntime::narrow<size_t>(input_seq_idx));
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
 
-  CopyCpuTensor(&indexed_tensor, Y);
+  // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
+  ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(indexed_tensor, *Y));
 
   return Status::OK();
 }
@@ -164,6 +165,20 @@ Status SequenceEmpty::Compute(OpKernelContext* context) const {
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       seq_dtype = DataTypeImpl::GetType<BFloat16>();
       break;
+#if !defined(DISABLE_FLOAT8_TYPES)
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
+      seq_dtype = DataTypeImpl::GetType<Float8E4M3FN>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:
+      seq_dtype = DataTypeImpl::GetType<Float8E4M3FNUZ>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
+      seq_dtype = DataTypeImpl::GetType<Float8E5M2>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:
+      seq_dtype = DataTypeImpl::GetType<Float8E5M2FNUZ>();
+      break;
+#endif
     default:
       ORT_THROW("Unsupported 'dtype' value: ", dtype_);
   }
@@ -183,13 +198,13 @@ ONNX_CPU_OPERATOR_KERNEL(
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
-Status CreateCopyAndAppendCpuTensor(const Tensor& in_tensor, OpKernelContext* context, std::vector<Tensor>& tensors) {
+// Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
+static Tensor CloneTensor(const Tensor& in_tensor, OpKernelContext* context, const DataTransferManager& dtm) {
   AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   Tensor tmp(in_tensor.DataType(), onnxruntime::TensorShape(in_tensor.Shape()), alloc);
-  CopyCpuTensor(&in_tensor, &tmp);
-  tensors.push_back(std::move(tmp));
-  return Status::OK();
+  ORT_THROW_IF_ERROR(dtm.CopyTensor(in_tensor, tmp));
+  return tmp;
 }
 
 Status SequenceInsert::Compute(OpKernelContext* context) const {
@@ -219,23 +234,22 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   }
 
   auto* Y = context->Output<TensorSeq>(0);
+  Y->SetType(S->DataType());
+  Y->Reserve(SafeInt<size_t>(num_tensors_input_seq) + 1);
 
-  std::vector<Tensor> tensors;
-  tensors.reserve(SafeInt<size_t>(num_tensors_input_seq) + 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
-      ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
-      ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors));
+      // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
+      Y->Add(CloneTensor(*X, context, Info().GetDataTransferManager()));
+      Y->Add(S->GetAt(i));
     } else {
-      ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors));
+      Y->Add(S->GetAt(i));
     }
   }
   if (input_seq_idx == num_tensors_input_seq) {
-    ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
+    // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
+    Y->Add(CloneTensor(*X, context, Info().GetDataTransferManager()));
   }
-
-  Y->SetType(S->DataType());
-  Y->SetElements(std::move(tensors));
 
   return Status::OK();
 }
@@ -271,16 +285,14 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
 
   auto* Y = context->Output<TensorSeq>(0);
   Y->SetType(S->DataType());
+  Y->Reserve(SafeInt<size_t>(num_tensors_input_seq) - 1);
 
-  std::vector<Tensor> tensors;
-  tensors.reserve(SafeInt<size_t>(num_tensors_input_seq) - 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
       continue;
     }
-    ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors));
+    Y->Add(S->GetAt(i));
   }
-  Y->SetElements(std::move(tensors));
   return Status::OK();
 }
 
@@ -311,13 +323,12 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 
   // now copy the tensors to the output sequence
   Y->SetType(first_dtype);
-  std::vector<Tensor> tensors;
-  tensors.reserve(num_inputs);
+  Y->Reserve(SafeInt<size_t>(num_inputs));
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
     const auto* X = context->Input<Tensor>(input_idx);
-    ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
+    // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
+    Y->Add(CloneTensor(*X, context, Info().GetDataTransferManager()));
   }
-  Y->SetElements(std::move(tensors));
   return Status::OK();
 }
 
@@ -503,10 +514,12 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
                                         is_uneven_split,
                                         num_remaining_splits,
                                         split_sizes));
+  auto tseq = context.Output<TensorSeq>(0);
+  tseq->SetType(input.DataType());
+  tseq->Reserve(static_cast<size_t>(num_outputs));
 
   // copy dimensions so we can update the selected axis in place
   auto output_dimensions = input_shape.AsShapeVector();
-  std::vector<Tensor> tensors;
   int64_t input_offset = 0;
   const T* input_data = input.Data<T>();
   for (int i = 0; i < num_outputs; ++i) {
@@ -550,12 +563,8 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     }
 
     // finally move the resulting tensor to the output sequence
-    tensors.push_back(std::move(output_tensor));
+    tseq->Add(std::move(output_tensor));
   }
-
-  auto& tseq = *context.Output<TensorSeq>(0);
-  tseq.SetType(input.DataType());
-  tseq.SetElements(std::move(tensors));
 
   return Status::OK();
 }

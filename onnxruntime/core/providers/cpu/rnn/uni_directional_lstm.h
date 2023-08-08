@@ -30,12 +30,22 @@ class UniDirectionalLstm {
                      const gsl::span<const T>& bias, const gsl::span<const T>& peephole_weights,
                      const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state,
                      const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
-                     const ActivationFuncs::Entry& activation_func_h, float clip, concurrency::ThreadPool* thread_pool);
+                     const ActivationFuncs::Entry& activation_func_h, float clip, concurrency::ThreadPool* thread_pool,
+                     const bool training_mode = false);
 
   template <typename WeightT>
   void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
                const GemmWeights<WeightT>& input_weights, const GemmWeights<WeightT>& recurrent_weights, gsl::span<T>& outputs,
                gsl::span<T>& final_hidden_state, gsl::span<T>& final_cell_state);
+
+  // This function overloads the above one by adding two additional reference inputs that are computed in this kernel:
+  //   - all_cell_states: cell states over the entire sequence length.
+  //   - iofc: intermediate gate computations
+  // These extra outputs are needed for training for gradient computation.
+  void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
+               const GemmWeights<T>& input_weights, const GemmWeights<T>& recurrent_weights, gsl::span<T>& outputs,
+               gsl::span<T>& final_hidden_state, gsl::span<T>& final_cell_state, gsl::span<T>& all_cell_states,
+               gsl::span<T>& iofc);
 
   ~UniDirectionalLstm() = default;
 
@@ -48,7 +58,8 @@ class UniDirectionalLstm {
                         const span_T_iter& C_prev_end,  // Ct-1 value not 'ct'. using 'C' for clarity
                         span_T_iter& C_prev_clipped, const span_T_iter& C_prev_clipped_end, span_T_iter& batched_output,
                         span_T_iter& batched_output_end, const gsl::span<const int>& seq_lengths,
-                        int min_sequence_length, int step, int row, int local_fused_hidden_rows, bool output_sequence);
+                        int min_sequence_length, int step, int row, int local_fused_hidden_rows, bool output_sequence,
+                        span_T_iter& batched_cell_states, span_T_iter& batched_cell_states_end);
 
   void AllocateBuffers();
 
@@ -56,6 +67,12 @@ class UniDirectionalLstm {
 
   void LoadPeepholeWeights(const gsl::span<const T>& peephole_weights);
   void LoadBias(const gsl::span<const T>& WbRb_values);
+
+  template <typename WeightT>
+  void ComputeImpl(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
+                   const GemmWeights<WeightT>& input_weights, const GemmWeights<WeightT>& recurrent_weights, gsl::span<T>& outputs,
+                   gsl::span<T>& final_hidden_state, gsl::span<T>& final_cell_state, gsl::span<T>& all_cell_states,
+                   gsl::span<T>& output_iofc);
 
   AllocatorPtr allocator_;
   const logging::Logger& logger_;
@@ -76,6 +93,9 @@ class UniDirectionalLstm {
 
   int num_threads_ = -1;
 
+  // output_iofc_ptr_ and output_iofc_ are not used when training_mode_ is true.
+  // It is expected that the caller of Compute provide the iofc span to be populated post computation
+  // in training mode.
   IAllocatorUniquePtr<T> output_iofc_ptr_;
   IAllocatorUniquePtr<T> hidden0_ptr_, batched_hidden0_ptr_;
   gsl::span<T> output_iofc_;
@@ -119,6 +139,8 @@ class UniDirectionalLstm {
 
   IAllocatorUniquePtr<int32_t> quantized_C_buffer_ptr_;
   gsl::span<int32_t> quantized_C_buffer_;
+
+  const bool training_mode_ = false;
 };
 
 }  // namespace lstm

@@ -8,16 +8,11 @@ import pathlib
 
 import onnx
 
-from .qdq_model_utils import fix_dq_nodes_with_multiple_consumers
-
 
 def optimize_qdq_model():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
-        description="""
-                                     Update a QDQ format ONNX model to ensure optimal performance when executed using
-                                     ONNX Runtime.
-                                     """,
+        description="Update a QDQ format ONNX model to ensure optimal performance when executed using ONNX Runtime.",
     )
 
     parser.add_argument("input_model", type=pathlib.Path, help="Provide path to ONNX model to update.")
@@ -27,8 +22,13 @@ def optimize_qdq_model():
 
     model = onnx.load(str(args.input_model.resolve(strict=True)))
 
-    # there's just one utility to run currently but we expect that will grow
-    fix_dq_nodes_with_multiple_consumers(model)
+    # run QDQ model optimizations here
+
+    # Originally, the fixing up of DQ nodes with multiple consumers was implemented as one such optimization.
+    # That was moved to an ORT graph transformer.
+    print("As of ORT 1.15, the fixing up of DQ nodes with multiple consumers is done by an ORT graph transformer.")
+
+    # There are no optimizations being run currently but we expect that there may be in the future.
 
     onnx.save(model, str(args.output_model.resolve()))
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -19,7 +18,7 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, q
 class TestOpGemm(unittest.TestCase):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
@@ -110,12 +109,12 @@ class TestOpGemm(unittest.TestCase):
         data_reader,
         activation_type,
         weight_type,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "gemm_fp32.quant_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = f"gemm_fp32.quant_{activation_type_str}{weight_type_str}.onnx"
 
         data_reader.rewind()
         quantize_static(
@@ -149,12 +148,12 @@ class TestOpGemm(unittest.TestCase):
         data_reader,
         activation_type,
         weight_type,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "gemm_fp32.quant_dqd_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = f"gemm_fp32.quant_dqd_{activation_type_str}{weight_type_str}.onnx"
 
         data_reader.rewind()
         quantize_static(
@@ -188,12 +187,12 @@ class TestOpGemm(unittest.TestCase):
         data_reader,
         activation_type,
         weight_type,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "gemm_fp32.quant_dynamic_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = f"gemm_fp32.quant_dynamic_{activation_type_str}{weight_type_str}.onnx"
 
         quantize_dynamic(
             model_fp32_path,

@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright (c) 2019 NVIDIA CORPORATION. All rights reserved.
 # Copyright 2018 The Google AI Language Team Authors and The HugginFace Inc. team.
 
@@ -15,42 +14,34 @@
 # limitations under the License.
 """BERT finetuning runner."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+
+import argparse
 
 # ==================
-import csv
-import os
-import time
 import logging
-import argparse
-import random
-import h5py
-from tqdm import tqdm, trange
 import os
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Dataset
-from torch.utils.data.distributed import DistributedSampler
-import math
-from apex import amp
-import multiprocessing
+import random
+import time
+from concurrent.futures import ProcessPoolExecutor
 
-from tokenization import BertTokenizer
-from modeling import BertForPreTraining, BertConfig
-from optimization import BertLAMB
-
-from file_utils import PYTORCH_PRETRAINED_BERT_CACHE
-from utils import is_main_process
-from apex.parallel import DistributedDataParallel as DDP
-from schedulers import LinearWarmUpScheduler
-from apex.parallel.distributed import flat_dist_call
 import amp_C
 import apex_C
+import h5py
+import numpy as np
+import torch
+from apex import amp
 from apex.amp import _amp_state
-
-from concurrent.futures import ProcessPoolExecutor
+from apex.parallel import DistributedDataParallel as DDP  # noqa: N817
+from apex.parallel.distributed import flat_dist_call
+from file_utils import PYTORCH_PRETRAINED_BERT_CACHE  # noqa: F401
+from modeling import BertConfig, BertForPreTraining
+from optimization import BertLAMB
+from schedulers import LinearWarmUpScheduler  # noqa: F401
+from tokenization import BertTokenizer  # noqa: F401
+from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler  # noqa: F401
+from torch.utils.data.distributed import DistributedSampler  # noqa: F401
+from tqdm import tqdm, trange  # noqa: F401
+from utils import is_main_process
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO
@@ -59,7 +50,6 @@ logger = logging.getLogger(__name__)
 
 
 def create_pretraining_dataset(input_file, max_pred_length, shared_list, args):
-
     train_data = pretraining_dataset(input_file=input_file, max_pred_length=max_pred_length)
     train_sampler = RandomSampler(train_data)
     train_dataloader = DataLoader(
@@ -69,7 +59,7 @@ def create_pretraining_dataset(input_file, max_pred_length, shared_list, args):
     return train_dataloader, input_file
 
 
-class pretraining_dataset(Dataset):
+class pretraining_dataset(Dataset):  # noqa: N801
     def __init__(self, input_file, max_pred_length):
         self.input_file = input_file
         self.max_pred_length = max_pred_length
@@ -90,7 +80,6 @@ class pretraining_dataset(Dataset):
         return len(self.inputs[0])
 
     def __getitem__(self, index):
-
         [input_ids, input_mask, segment_ids, masked_lm_positions, masked_lm_ids, next_sentence_labels] = [
             torch.from_numpy(input[index].astype(np.int64))
             if indice < 5
@@ -110,7 +99,6 @@ class pretraining_dataset(Dataset):
 
 
 def parse_arguments():
-
     parser = argparse.ArgumentParser()
 
     ## Required parameters
@@ -162,7 +150,7 @@ def parse_arguments():
         "--warmup_proportion",
         default=0.01,
         type=float,
-        help="Proportion of training to perform linear learning rate warmup for. " "E.g., 0.1 = 10%% of training.",
+        help="Proportion of training to perform linear learning rate warmup for. E.g., 0.1 = 10%% of training.",
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
@@ -223,7 +211,6 @@ def parse_arguments():
 
 
 def setup_training(args):
-
     assert torch.cuda.is_available()
 
     if args.local_rank == -1:
@@ -240,7 +227,7 @@ def setup_training(args):
 
     if args.gradient_accumulation_steps < 1:
         raise ValueError(
-            "Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(args.gradient_accumulation_steps)
+            f"Invalid gradient_accumulation_steps parameter: {args.gradient_accumulation_steps}, should be >= 1"
         )
     if args.train_batch_size % args.gradient_accumulation_steps != 0:
         raise ValueError(
@@ -259,7 +246,7 @@ def setup_training(args):
         and os.path.exists(args.output_dir)
         and (os.listdir(args.output_dir) and os.listdir(args.output_dir) != ["logfile.txt"])
     ):
-        raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
+        raise ValueError(f"Output directory ({args.output_dir}) already exists and is not empty.")
 
     if not args.resume_from_checkpoint:
         os.makedirs(args.output_dir, exist_ok=True)
@@ -268,7 +255,6 @@ def setup_training(args):
 
 
 def prepare_model_and_optimizer(args, device):
-
     # Prepare model
     config = BertConfig.from_json_file(args.config_file)
 
@@ -286,7 +272,7 @@ def prepare_model_and_optimizer(args, device):
             args.resume_step = max([int(x.split(".pt")[0].split("_")[1].strip()) for x in model_names])
         global_step = args.resume_step
 
-        checkpoint = torch.load(os.path.join(args.output_dir, "ckpt_{}.pt".format(global_step)), map_location="cpu")
+        checkpoint = torch.load(os.path.join(args.output_dir, f"ckpt_{global_step}.pt"), map_location="cpu")
         model.load_state_dict(checkpoint["model"], strict=False)
         if args.phase2:
             global_step -= args.phase1_end_step
@@ -314,7 +300,6 @@ def prepare_model_and_optimizer(args, device):
         optimizer_grouped_parameters, lr=args.learning_rate, warmup=args.warmup_proportion, t_total=args.max_steps
     )
     if args.fp16:
-
         if args.loss_scale == 0:
             # optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
             model, optimizer = amp.initialize(
@@ -322,7 +307,7 @@ def prepare_model_and_optimizer(args, device):
                 optimizer,
                 opt_level="O2",
                 loss_scale="dynamic",
-                master_weights=False if args.accumulate_into_fp16 else True,
+                master_weights=not args.accumulate_into_fp16,
             )
         else:
             # optimizer = FP16_Optimizer(optimizer, static_loss_scale=args.loss_scale)
@@ -331,7 +316,7 @@ def prepare_model_and_optimizer(args, device):
                 optimizer,
                 opt_level="O2",
                 loss_scale=args.loss_scale,
-                master_weights=False if args.accumulate_into_fp16 else True,
+                master_weights=not args.accumulate_into_fp16,
             )
         amp._amp_state.loss_scalers[0]._loss_scale = 2**20
 
@@ -341,7 +326,7 @@ def prepare_model_and_optimizer(args, device):
             # Override hyperparameters from Phase 1
             for key in keys:
                 checkpoint["optimizer"]["state"][key]["step"] = global_step
-            for iter, item in enumerate(checkpoint["optimizer"]["param_groups"]):
+            for iter, _item in enumerate(checkpoint["optimizer"]["param_groups"]):
                 checkpoint["optimizer"]["param_groups"][iter]["t_total"] = args.max_steps
                 checkpoint["optimizer"]["param_groups"][iter]["warmup"] = args.warmup_proportion
                 checkpoint["optimizer"]["param_groups"][iter]["lr"] = args.learning_rate
@@ -367,7 +352,6 @@ def prepare_model_and_optimizer(args, device):
 
 
 def take_optimizer_step(args, optimizer, model, overflow_buf, global_step):
-
     if args.allreduce_post_accumulation:
         # manually allreduce gradients after all accumulation steps
         # check for Inf/NaN
@@ -405,9 +389,7 @@ def take_optimizer_step(args, optimizer, model, overflow_buf, global_step):
             # Overflow detected, print message and clear gradients
             if is_main_process():
                 print(
-                    ("Rank {} :: Gradient overflow.  Skipping step, " + "reducing loss scale to {}").format(
-                        torch.distributed.get_rank(), scaler.loss_scale()
-                    )
+                    f"Rank {torch.distributed.get_rank()} :: Gradient overflow.  Skipping step, reducing loss scale to {scaler.loss_scale()}"
                 )
             if _amp_state.opt_properties.master_weights:
                 for param in optimizer._amp_stash.all_fp32_from_fp16_params:
@@ -425,7 +407,6 @@ def take_optimizer_step(args, optimizer, model, overflow_buf, global_step):
 
 
 def main():
-
     args = parse_arguments()
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -439,7 +420,7 @@ def main():
     is_model_exported = False
 
     if is_main_process():
-        print("SEED {}".format(args.seed))
+        print(f"SEED {args.seed}")
 
     if args.do_train:
         if is_main_process():
@@ -459,7 +440,6 @@ def main():
 
         # Note: We loop infinitely over epochs, termination is handled via iteration count
         while True:
-            thread = None
             if not args.resume_from_checkpoint or epoch > 0 or args.phase2:
                 files = [
                     os.path.join(args.input_dir, f)
@@ -494,7 +474,7 @@ def main():
 
             previous_file = data_file
 
-            print("Create pretraining_dataset with file {}...".format(data_file))
+            print(f"Create pretraining_dataset with file {data_file}...")
             train_data = pretraining_dataset(data_file, args.max_predictions_per_seq)
             train_sampler = RandomSampler(train_data)
             train_dataloader = DataLoader(
@@ -511,7 +491,6 @@ def main():
                 overflow_buf = torch.cuda.IntTensor([0])
 
             for f_id in range(f_start_id + 1, len(files)):
-
                 # torch.cuda.synchronize()
                 # f_start = time.time()
                 if torch.distributed.is_initialized() and torch.distributed.get_world_size() > num_files:
@@ -522,7 +501,7 @@ def main():
                 else:
                     data_file = files[f_id % num_files]
 
-                logger.info("file no %s file %s" % (f_id, previous_file))
+                logger.info(f"file no {f_id} file {previous_file}")
 
                 previous_file = data_file
 
@@ -534,7 +513,7 @@ def main():
                 #     args=(data_file, args.max_predictions_per_seq, shared_file_list, args, n_gpu)
                 # )
                 # thread.start()
-                print("Submit new data file {0} for the next iteration...".format(data_file))
+                print(f"Submit new data file {data_file} for the next iteration...")
                 dataset_future = pool.submit(
                     create_pretraining_dataset, data_file, args.max_predictions_per_seq, shared_file_list, args
                 )
@@ -543,12 +522,12 @@ def main():
                 # print('[{}] : shard overhead {}'.format(torch.distributed.get_rank(), f_end - f_start))
 
                 train_iter = tqdm(train_dataloader, desc="Iteration") if is_main_process() else train_dataloader
-                for step, batch in enumerate(train_iter):
+                for _step, batch in enumerate(train_iter):
                     # torch.cuda.synchronize()
                     # iter_start = time.time()
 
                     training_steps += 1
-                    batch = [t.to(device) for t in batch]
+                    batch = [t.to(device) for t in batch]  # noqa: PLW2901
                     input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels = batch
                     if not is_model_exported:
                         onnx_path = os.path.join(
@@ -639,7 +618,7 @@ def main():
                             average_loss /= torch.distributed.get_world_size()
                             torch.distributed.all_reduce(average_loss)
                         if is_main_process():
-                            logger.info("Total Steps:{} Final Loss = {}".format(training_steps, average_loss.item()))
+                            logger.info(f"Total Steps:{training_steps} Final Loss = {average_loss.item()}")
                     elif training_steps % (args.log_freq * args.gradient_accumulation_steps) == 0:
                         if is_main_process():
                             print(
@@ -663,10 +642,10 @@ def main():
                                 model.module if hasattr(model, "module") else model
                             )  # Only save the model it-self
                             if args.resume_step < 0 or not args.phase2:
-                                output_save_file = os.path.join(args.output_dir, "ckpt_{}.pt".format(global_step))
+                                output_save_file = os.path.join(args.output_dir, f"ckpt_{global_step}.pt")
                             else:
                                 output_save_file = os.path.join(
-                                    args.output_dir, "ckpt_{}.pt".format(global_step + args.phase1_end_step)
+                                    args.output_dir, f"ckpt_{global_step + args.phase1_end_step}.pt"
                                 )
                             if args.do_train:
                                 torch.save(
@@ -674,7 +653,7 @@ def main():
                                         "model": model_to_save.state_dict(),
                                         "optimizer": optimizer.state_dict(),
                                         "master params": list(amp.master_params(optimizer)),
-                                        "files": [f_id] + files,
+                                        "files": [f_id, *files],
                                     },
                                     output_save_file,
                                 )
@@ -708,4 +687,4 @@ if __name__ == "__main__":
     now = time.time()
     args = main()
     if is_main_process():
-        print("Total time taken {}".format(time.time() - now))
+        print(f"Total time taken {time.time() - now}")

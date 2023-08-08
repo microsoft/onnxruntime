@@ -130,7 +130,6 @@ RUN git clone -b wezhan/tnlrv4 --recursive https://github.com/microsoft/onnxrunt
     --mpi_home $OPENMPI_DIR \
     --nccl_home /opt/rocm \
     --enable_training \
-    --enable_training_torch_interop \
   && test -f $ORT_DIR/build/Release/onnxruntime_training_bert \
   && pip install $ORT_DIR/build/Release/dist/*.whl \
   && ldconfig

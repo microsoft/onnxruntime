@@ -1,4 +1,4 @@
-﻿/*All contributions by Facebook :
+/*All contributions by Facebook :
 Copyright(c) 2016 Facebook Inc.
 ==============================================================================*/
 /* Modifications Copyright (c) Microsoft. */

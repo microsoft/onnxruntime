@@ -63,7 +63,7 @@ struct Value : Ort::Value {
   static Ort::Value CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
 };
 
-}
-}
+}  // namespace Experimental
+}  // namespace Ort
 
 #include "experimental_onnxruntime_cxx_inline.h"

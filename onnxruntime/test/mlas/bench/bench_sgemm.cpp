@@ -3,6 +3,7 @@
 
 #include "mlas.h"
 #include "bench_util.h"
+#include "core/util/thread_utils.h"
 
 #include <stdexcept>
 #include <numeric>
@@ -17,10 +18,16 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
   const size_t N = static_cast<size_t>(state.range(1));
   const size_t K = static_cast<size_t>(state.range(2));
 
-
   auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
   auto B = RandomVectorUniform(static_cast<size_t>(N * K), -1.0f, 1.0f);
   std::vector<float> C(static_cast<size_t>(M * N));
+
+  OrtThreadPoolParams tpo;
+  tpo.thread_pool_size = 8;
+  tpo.auto_set_affinity = true;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
+      onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   if (pack_b) {
     size_t pack_b_size = MlasGemmPackBSize(N, K);
@@ -39,7 +46,7 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
         beta,
         C.data(),
         N,
-        nullptr);
+        tp.get());
 
     for (auto _ : state) {
       MlasGemm(
@@ -54,7 +61,7 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
           beta,
           C.data(),
           N,
-          nullptr);
+          tp.get());
     }
 
   } else {
@@ -72,7 +79,7 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
         beta,
         C.data(),
         N,
-        nullptr);
+        tp.get());
 
     for (auto _ : state) {
       MlasGemm(
@@ -89,7 +96,7 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
           beta,
           C.data(),
           N,
-          nullptr);
+          tp.get());
     }
   }
 }
@@ -118,3 +125,10 @@ BENCHMARK_CAPTURE(SGEMM, GEMV_ABTrans, false, true, true)->Apply(GemmSizeWithOne
 
 BENCHMARK_CAPTURE(SGEMM, PACKB_NoTransA, true, false, false)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(SGEMM, PACKB_TransA, true, true, false)->Apply(GemmSizeProducts)->UseRealTime();
+
+static void GemmLLMSizeProducts(benchmark::internal::Benchmark* b) {
+  b->ArgNames(sgemm_bench_arg_names);
+  ArgsProduct(b, {{1, 1024, 2048}, {4096}, {4096}});
+}
+
+BENCHMARK_CAPTURE(SGEMM, LLM, false, false, true)->Apply(GemmLLMSizeProducts)->UseRealTime();

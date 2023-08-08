@@ -6,7 +6,7 @@ import ort_flatbuffers_py.fbs as fbs
 
 class FbsTypeInfo:
     "Class to provide conversion between ORT flatbuffers schema values and C++ types"
-    tensordatatype_to_string = {
+    tensordatatype_to_string = {  # noqa: RUF012
         fbs.TensorDataType.TensorDataType.FLOAT: "float",
         fbs.TensorDataType.TensorDataType.UINT8: "uint8_t",
         fbs.TensorDataType.TensorDataType.INT8: "int8_t",
@@ -23,6 +23,10 @@ class FbsTypeInfo:
         # fbs.TensorDataType.TensorDataType.COMPLEX64: 'complex64 is not supported',
         # fbs.TensorDataType.TensorDataType.COMPLEX128: 'complex128 is not supported',
         fbs.TensorDataType.TensorDataType.BFLOAT16: "BFloat16",
+        fbs.TensorDataType.TensorDataType.FLOAT8E4M3FN: "Float8E4M3FN",
+        fbs.TensorDataType.TensorDataType.FLOAT8E4M3FNUZ: "Float8E4M3FNUZ",
+        fbs.TensorDataType.TensorDataType.FLOAT8E5M2: "Float8E5M2",
+        fbs.TensorDataType.TensorDataType.FLOAT8E5M2FNUZ: "Float8E5M2FNUZ",
     }
 
     @staticmethod
@@ -44,7 +48,7 @@ class FbsTypeInfo:
             key_type_str = FbsTypeInfo.tensordatatype_to_string[key_type]
             value_type = map_type.ValueType()  # TypeInfo
             value_type_str = FbsTypeInfo.typeinfo_to_str(value_type)
-            type_str = "std::map<{},{}>".format(key_type_str, value_type_str)
+            type_str = f"std::map<{key_type_str},{value_type_str}>"
 
         elif value_type == fbs.TypeInfoValue.TypeInfoValue.sequence_type:
             sequence_type = fbs.SequenceType.SequenceType()
@@ -60,7 +64,7 @@ class FbsTypeInfo:
             # due to this).
             type_str = elem_type_str
         else:
-            raise ValueError("Unknown or missing value type of {}".format(value_type))
+            raise ValueError(f"Unknown or missing value type of {value_type}")
 
         return type_str
 

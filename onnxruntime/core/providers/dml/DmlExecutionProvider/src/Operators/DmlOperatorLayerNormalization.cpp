@@ -25,12 +25,33 @@ public:
             std::nullopt,
             kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0));
 
-        const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
+        constexpr static uint32_t minimumDimensionCount = 4;
 
+        // Pad the input and the output with trailing 1's until they are at least 4D
+        for (uint32_t i = 0; i < kernelCreationContext.GetInputCount(); ++i)
+        {
+            auto sizes = m_inputTensorDescs[i].GetSizes();
+            std::vector<uint32_t> tensorShape(sizes.begin(), sizes.end());
+            tensorShape.resize(std::max<size_t>(tensorShape.size(), minimumDimensionCount), 1);
+
+            if (m_inputTensorDescs[i].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+            {
+                m_inputTensorDescs[i] = TensorDesc(
+                    m_inputTensorDescs[i].GetDmlDataType(),
+                    tensorShape);
+            }
+        }
+
+        m_outputTensorDescs[0] = TensorDesc(
+            m_outputTensorDescs[0].GetDmlDataType(),
+            m_inputTensorDescs[0].GetSizes());
+
+        const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
         int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
-        uint32_t inputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
-        onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
-        std::vector<uint32_t> onnxAxes(inputDimCount - onnxAxis);
+        uint32_t onnxDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
+        uint32_t dmlDimCount = m_inputTensorDescs[0].GetDimensionCount();
+        onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, onnxDimCount);
+        std::vector<uint32_t> onnxAxes(static_cast<size_t>(dmlDimCount) - static_cast<size_t>(onnxAxis));
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
 
         assert(m_inputTensorDescs.size() == 3);

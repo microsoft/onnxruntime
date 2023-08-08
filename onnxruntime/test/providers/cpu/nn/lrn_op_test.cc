@@ -107,7 +107,7 @@ TEST(LRNTest, LRN_2) {
 #if defined(USE_DNNL)
 TEST(LRNTest, LRN_bfloat16_1) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -145,7 +145,7 @@ TEST(LRNTest, LRN_bfloat16_1) {
 }
 TEST(LRNTest, LRN_bfloat16_2) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -205,7 +205,6 @@ TEST(LRNTest, LRN_bfloat16_2) {
                           0.99867165f, 0.08305217f, 0.25943288f, 0.58913094f,
                           0.19776636f, 0.29519933f, 0.21649165f, 0.46785861f,
                           0.93277973f, 0.87322289f, 0.63762808f, 0.58810645f};
-
 
   test.AddInput<BFloat16>("X", shape, FloatsToBFloat16s(X));
   test.AddOutput<BFloat16>("Y", shape, FloatsToBFloat16s(expected_output));

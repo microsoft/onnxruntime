@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace training {
 
 typedef GenericRegistry<GraphTransformer,
-                        const InlinedHashSet<std::string_view>&> // supported EP list
+                        const InlinedHashSet<std::string_view>&>  // supported EP list
     GraphTransformerRegistryType;
 
 typedef std::function<std::unique_ptr<GraphTransformer>(const InlinedHashSet<std::string_view>&)> GraphTransformerCreator;
@@ -26,7 +26,6 @@ struct GraphTransformerMeta {
 
 class GraphTransformerRegistry {
  public:
-  
   static GraphTransformerRegistry& GetInstance() {
     static GraphTransformerRegistry instance;
     return instance;
@@ -66,22 +65,24 @@ class GraphTransformerRegisterOnce final {
 #define ONNX_REGISTER_EXTERNAL_GRAPH_TRANSFORMER(name, level, flag) \
   ONNX_REGISTER_EXTERNAL_GRAPH_TRANSFORMER_UNIQ(__COUNTER__, name, level, flag)
 #define ONNX_REGISTER_EXTERNAL_GRAPH_TRANSFORMER_UNIQ(Counter, name, level, flag) \
-  static ONNX_UNUSED onnxruntime::training::GraphTransformerRegisterOnce \
-      graph_transformer_register_once##name##Counter(       \
-      #name, [](const InlinedHashSet<std::string_view>& eps) { \
-        return std::make_unique<name>(eps);   \
-      }, TransformerLevel::level, flag); 
+  static ONNX_UNUSED onnxruntime::training::GraphTransformerRegisterOnce          \
+      graph_transformer_register_once##name##Counter(                             \
+          #name, [](const InlinedHashSet<std::string_view>& eps) {                \
+            return std::make_unique<name>(eps);                                   \
+          },                                                                      \
+          TransformerLevel::level, flag);
 
 #define ONNX_REGISTER_EXTERNAL_REWRITE_RULE(name, level, flag) \
   ONNX_REGISTER_EXTERNAL_REWRITE_RULE_UNIQ(__COUNTER__, name, level, flag)
-#define ONNX_REGISTER_EXTERNAL_REWRITE_RULE_UNIQ(Counter, name, level, flag) \
-  static ONNX_UNUSED onnxruntime::training::GraphTransformerRegisterOnce \
-      graph_transformer_register_once##name##Counter(       \
-      #name, [](const InlinedHashSet<std::string_view>& eps) { \
-        auto rule_base_transformer = std::make_unique<RuleBasedGraphTransformer>(#name, eps); \
-        ORT_THROW_IF_ERROR(rule_base_transformer->Register(std::make_unique<name>())); \
-        return rule_base_transformer;   \
-      }, TransformerLevel::level, flag);  
+#define ONNX_REGISTER_EXTERNAL_REWRITE_RULE_UNIQ(Counter, name, level, flag)                      \
+  static ONNX_UNUSED onnxruntime::training::GraphTransformerRegisterOnce                          \
+      graph_transformer_register_once##name##Counter(                                             \
+          #name, [](const InlinedHashSet<std::string_view>& eps) {                                \
+            auto rule_base_transformer = std::make_unique<RuleBasedGraphTransformer>(#name, eps); \
+            ORT_THROW_IF_ERROR(rule_base_transformer->Register(std::make_unique<name>()));        \
+            return rule_base_transformer;                                                         \
+          },                                                                                      \
+          TransformerLevel::level, flag);
 
 void GenerateExternalTransformers(
     TransformerLevel level,

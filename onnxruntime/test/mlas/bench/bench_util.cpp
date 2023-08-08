@@ -15,7 +15,6 @@ std::vector<int64_t> BenchArgsVector(benchmark::State& state, size_t& start, siz
   return shape;
 }
 
-
 std::vector<float> RandomVectorUniform(std::vector<int64_t> shape, float min_value, float max_value) {
   int64_t sz = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
   if (sz <= 0) {

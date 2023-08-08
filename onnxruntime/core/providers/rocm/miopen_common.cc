@@ -9,6 +9,53 @@
 namespace onnxruntime {
 namespace rocm {
 
+namespace {
+std::string layoutTypeToString(miopenTensorLayout_t layout) {
+  if (layout == MIOPEN_NCHW_LAYOUT) {
+    return "NCHW";
+  } else if (layout == MIOPEN_NHWC_LAYOUT) {
+    return "NHWC";
+  } else {
+    ORT_THROW("Currently, ORT only supports two MIOpen layout: MIOPEN_NCHW_LAYOUT and MIOPEN_NHWC_LAYOUT.");
+  }
+}
+
+// This functions was modified from https://github.com/ROCmSoftwarePlatform/MIOpen/src/include/miopen/tensor_layout.hpp
+template <typename T>
+void tensorLayoutToStrides(const InlinedVector<T>& len,
+                           miopenTensorLayout_t len_tensor_layout,
+                           miopenTensorLayout_t tensor_layout,
+                           InlinedVector<T>& strides) {
+  std::string len_layout = layoutTypeToString(len_tensor_layout);
+  std::string layout = layoutTypeToString(tensor_layout);
+  // Bind the layout and the dimension lengths together into a map.
+  std::map<char, T> dim_to_len;
+  std::transform(len.begin(),
+                 len.end(),
+                 len_layout.begin(),
+                 std::inserter(dim_to_len, dim_to_len.end()),
+                 [](T l, char dim) { return std::make_pair(dim, l); });
+
+  // Now construct the strides according to layout by multiply the
+  // dimension lengths together.
+  std::transform(len_layout.begin(),
+                 len_layout.end(),
+                 strides.begin(),
+                 [&layout, &dim_to_len](char cur_layout_char) {
+                   auto pos = layout.find(cur_layout_char);
+                   if (pos == std::string::npos) {
+                     ORT_THROW(std::string("mismatched layout string - ").append(layout));
+                   }
+                   return std::accumulate(layout.begin() + pos + 1,
+                                          layout.end(),
+                                          1,
+                                          [&dim_to_len](T accumulator, char l) {
+                                            return accumulator * dim_to_len[l];
+                                          });
+                 });
+}
+}  // namespace
+
 MiopenTensor::MiopenTensor()
     : tensor_(nullptr) {
 }
@@ -38,6 +85,22 @@ Status MiopenTensor::Set(gsl::span<const int64_t> input_dims, miopenDataType_t d
     strides[i] = gsl::narrow_cast<int>(pitches[i]);
   }
   MIOPEN_RETURN_IF_ERROR(miopenSetTensorDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
+  return Status::OK();
+}
+
+Status MiopenTensor::Set(miopenDataType_t dataType, miopenTensorLayout_t tensor_layout, int n, int c, int h, int w) {
+  ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
+
+  // miopenSetNdTensorDescriptorWithLayout doesn't support NHWC layout now.
+  // We use miopenSetTensorDescriptor with dims = [N, C, H, W], strides = [N*W*C, 1, W*C, C] for NHWC layout.
+  const int num_lens = 4;
+  InlinedVector<int> dims = {n, c, h, w};
+  InlinedVector<int> strides(num_lens);
+
+  miopenTensorLayout_t len_layout = MIOPEN_NCHW_LAYOUT;
+  tensorLayoutToStrides(dims, len_layout, tensor_layout, strides);
+
+  MIOPEN_RETURN_IF_ERROR(miopenSetTensorDescriptor(tensor_, dataType, static_cast<int>(num_lens), dims.data(), strides.data()));
   return Status::OK();
 }
 
@@ -72,7 +135,24 @@ Status MiopenTensorDescriptor::Set(gsl::span<const int64_t> filter_dims, miopenD
                                                    data_type,
                                                    rank,
                                                    w_dims.data(),
-						   nullptr));
+                                                   nullptr));
+  return Status::OK();
+}
+
+Status MiopenTensorDescriptor::Set(miopenDataType_t data_type, miopenTensorLayout_t tensor_layout, int k, int c, int h, int w) {
+  if (!desc_)
+    MIOPEN_RETURN_IF_ERROR(miopenCreateTensorDescriptor(&desc_));
+
+  // miopenSetNdTensorDescriptorWithLayout doesn't support NHWC layout now.
+  // We use miopenSetTensorDescriptor with dims = [N, C, H, W], strides = [N*W*C, 1, W*C, C] for NHWC layout.
+  const int num_lens = 4;
+  InlinedVector<int> dims = {k, c, h, w};
+  InlinedVector<int> strides(num_lens);
+
+  miopenTensorLayout_t len_layout = MIOPEN_NCHW_LAYOUT;
+  tensorLayoutToStrides(dims, len_layout, tensor_layout, strides);
+
+  MIOPEN_RETURN_IF_ERROR(miopenSetTensorDescriptor(desc_, data_type, static_cast<int>(num_lens), dims.data(), strides.data()));
   return Status::OK();
 }
 
@@ -82,13 +162,13 @@ miopenDataType_t MiopenTensor::GetDataType() {
 }
 
 #if ROCM_VERSION >= 50000
-template<>
+template <>
 miopenDataType_t MiopenTensor::GetDataType<double>() {
   return miopenDouble;
 }
 #endif
 
-template<>
+template <>
 miopenDataType_t MiopenTensor::GetDataType<float>() {
   return miopenFloat;
 }

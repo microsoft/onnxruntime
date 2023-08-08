@@ -9,8 +9,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.request
-import zipfile
+import urllib.request  # noqa: F401
+import zipfile  # noqa: F401
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
@@ -43,7 +43,7 @@ def _check_file_sha256_digest(path, expected_digest):
     match = actual_digest.lower() == expected_digest.lower()
     if not match:
         raise RuntimeError(
-            "SHA256 digest mismatch, expected: {}, actual: {}".format(expected_digest.lower(), actual_digest.lower())
+            f"SHA256 digest mismatch, expected: {expected_digest.lower()}, actual: {actual_digest.lower()}"
         )
 
 
@@ -56,17 +56,17 @@ def main():
 
     with tempfile.TemporaryDirectory() as temp_dir, get_azcopy() as azcopy_path:
         archive_path = os.path.join(temp_dir, "archive.zip")
-        print("Downloading archive from '{}'...".format(args.azure_blob_url))
+        print(f"Downloading archive from '{args.azure_blob_url}'...")
 
         azure_blob_url = args.azure_blob_url
         azure_blob_sas_token = os.getenv("AZURE_BLOB_SAS_TOKEN", None)
-        if azure_blob_sas_token and azure_blob_sas_token != "":
+        if azure_blob_sas_token:
             azure_blob_url = azure_blob_url + "?" + azure_blob_sas_token
 
         _download(azcopy_path, azure_blob_url, archive_path)
         if args.archive_sha256_digest:
             _check_file_sha256_digest(archive_path, args.archive_sha256_digest)
-        print("Extracting to '{}'...".format(args.target_dir))
+        print(f"Extracting to '{args.target_dir}'...")
         shutil.unpack_archive(archive_path, args.target_dir)
         print("Done.")
 

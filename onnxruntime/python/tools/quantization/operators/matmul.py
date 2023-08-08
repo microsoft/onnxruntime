@@ -24,7 +24,7 @@ class QOpMatMul(QuantOperatorBase):
         # do not quantize non-constant B matrices for matmul
         if self.quantizer.q_matmul_const_b_only:
             if not self.quantizer.find_initializer_in_path(self.node.input[1]):
-                print("Ignore MatMul due to non constant B: {}[{}]".format(self.quantizer.graph_scope, self.node.name))
+                print(f"Ignore MatMul due to non constant B: {self.quantizer.graph_scope}[{self.node.name}]")
                 return False
         return True
 
@@ -61,7 +61,7 @@ class MatMulInteger(QOpMatMul):
         nodes.extend(nodes_weight)
 
         matmul_integer_output = node.output[0] + "_output_quantized"
-        matmul_integer_name = node.name + "_quant" if node.name != "" else ""
+        matmul_integer_name = node.name + "_quant" if node.name else ""
         matmul_integer_node = onnx.helper.make_node(
             "MatMulInteger",
             quantized_input_names + zero_point_names,
@@ -85,7 +85,7 @@ class MatMulInteger(QOpMatMul):
         assert len(scale_names) == 2
         scales_mul_op = (
             matmul_integer_name + "_scales_mul"
-            if matmul_integer_name != ""
+            if matmul_integer_name
             else scale_names[0] + "_" + scale_names[1] + "_mul"
         )
 
@@ -99,7 +99,7 @@ class MatMulInteger(QOpMatMul):
         # Add mul operation to multiply mul_scales_op result with output of MatMulInteger
         # and make the output of this node the same as output of original matmul node.
         output_scale_mul_op = ""
-        if matmul_integer_name != "":
+        if matmul_integer_name:
             output_scale_mul_op = matmul_integer_name + "_output_scale_mul"
         nodes.append(
             get_mul_node(
@@ -153,7 +153,7 @@ class QLinearMatMul(QOpMatMul):
             return super().quantize()
 
         qlinear_matmul_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_matmul_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_matmul_name = node.name + "_quant" if node.name else ""
 
         qlinear_matmul_inputs = []
         # Input 0

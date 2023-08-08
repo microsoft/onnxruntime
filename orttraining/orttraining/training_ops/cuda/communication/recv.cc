@@ -22,6 +22,7 @@ void Recv::ReceiveData(
     std::vector<Tensor*> received_tensors,
     const int src,
     const size_t aggregated_aligned_tensor_bytes,
+    OpKernelContext* context,
     IAllocatorUniquePtr<char>& buffer) const {
 #ifdef ENABLE_NVTX_PROFILE
   auto& profile_context = profile::Context::GetInstance();
@@ -38,7 +39,7 @@ void Recv::ReceiveData(
 #endif
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+  buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes, context->GetComputeStream());
 #else
   buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
 #endif
@@ -90,10 +91,10 @@ void Recv::ReceiveData(
     // Copy data out from buffer.
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
     CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                              tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+                                    tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
 #else
     CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                              tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream()));
+                                    tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream(context)));
 #endif
 
 #ifndef NDEBUG
@@ -107,7 +108,7 @@ void Recv::ReceiveData(
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #else
-  AddDeferredReleaseCPUPtr(buffer.release());
+  AddDeferredReleaseCPUPtr(buffer.release(), context->GetComputeStream());
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -249,7 +250,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   // required to receive tensors are ready.
   // Create buffer and receive data.
   IAllocatorUniquePtr<char> buffer;
-  ReceiveData(num_tensors, received_tensors, src, aggregated_aligned_tensor_bytes, buffer);
+  ReceiveData(num_tensors, received_tensors, src, aggregated_aligned_tensor_bytes, ctx, buffer);
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator postRange(

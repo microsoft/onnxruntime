@@ -66,7 +66,7 @@ TEST(TransposeOpTest, TwoDimNoAttr) {
       2.0f, 5.0f,
       3.0f, 6.0f};
 
-  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals, false);  //TensorRT: SegFault error
+  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals, false);  // TensorRT: SegFault error
 }
 
 TEST(TransposeOpTest, TwoDimNoAttrStr) {
@@ -147,14 +147,14 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
   std::vector<int64_t> input_shape({2, 3});
   std::vector<MLFloat16> input_vals;
   for (uint16_t i = 0; i < 6; ++i)
-    input_vals.push_back(MLFloat16(i));
+    input_vals.push_back(MLFloat16::FromBits(static_cast<uint16_t>(i)));
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
   std::initializer_list<MLFloat16> expected_vals =
-      {MLFloat16{static_cast<uint16_t>(1)}, MLFloat16{static_cast<uint16_t>(4)},
-       MLFloat16{static_cast<uint16_t>(2)}, MLFloat16{static_cast<uint16_t>(5)},
-       MLFloat16{static_cast<uint16_t>(3)}, MLFloat16{static_cast<uint16_t>(6)}};
+      {MLFloat16::FromBits(static_cast<uint16_t>(1)), MLFloat16::FromBits(static_cast<uint16_t>(4)),
+       MLFloat16::FromBits(static_cast<uint16_t>(2)), MLFloat16::FromBits(static_cast<uint16_t>(5)),
+       MLFloat16::FromBits(static_cast<uint16_t>(3)), MLFloat16::FromBits(static_cast<uint16_t>(6))};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
@@ -162,7 +162,7 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
 #if defined(USE_DNNL)
 TEST(TransposeOpTest, TwoDim_opset13_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -180,7 +180,7 @@ TEST(TransposeOpTest, TwoDim_opset13_bfloat16) {
 
 TEST(TransposeOpTest, TwoDimNoAttr_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -197,7 +197,7 @@ TEST(TransposeOpTest, TwoDimNoAttr_bfloat16) {
 
 TEST(TransposeOpTest, Transpose021_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -311,7 +311,7 @@ TEST(TransposeOpTest, Transpose021) {
       2.3f, 5.3f,
       3.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, Transpose120) {
@@ -338,10 +338,9 @@ TEST(TransposeOpTest, Transpose120) {
 
       4.0f, 4.1f, 4.2f, 4.3f,
       5.0f, 5.1f, 5.2f, 5.3f,
-      6.0f, 6.1f, 6.2f, 6.3f
-     };
+      6.0f, 6.1f, 6.2f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
 }
 
 // test when the suffix size is > 1 (last dimension is not moved)
@@ -373,7 +372,7 @@ TEST(TransposeOpTest, Transpose102) {
       4.2f, 5.2f, 6.2f,
       4.3f, 5.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, TransposeReshape) {
@@ -406,7 +405,7 @@ TEST(TransposeOpTest, TransposeReshape) {
       1.3f, 2.3f, 3.3f,
       4.3f, 5.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, ThreeDimStr) {
@@ -756,6 +755,32 @@ TEST(TransposeOpTest, Transpose3DImpl) {
   }
 }
 
+static void TestTransposeMLFloat16(
+    const std::vector<int64_t>& perm,
+    const std::vector<int64_t>& x_dims,
+    const std::vector<int64_t>& y_dims,
+    double error_tolerance = 1e-4) {
+  CompareOpTester test{"Transpose"};
+
+  RandomValueGenerator random{};
+  const auto X_data = random.Uniform<float>(x_dims, -10.0, 10.0);
+  std::vector<MLFloat16> X_data_f16 = FloatsToMLFloat16s(X_data);
+  const auto Y_data = FillZeros<float>(y_dims);
+  std::vector<MLFloat16> Y_data_f16 = FloatsToMLFloat16s(Y_data);
+
+  test.AddAttribute("perm", perm);
+  test.AddInput("X", x_dims, X_data_f16);
+  test.AddOutput("Y", y_dims, Y_data_f16);
+
+  test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
+}
+
+TEST(TransposeOpTest, TransposeBigMLFloat16) {  // Exercises CanUse_cublasTransposeHelper_MLFloat16 (cuda 65535 grid dimension limit)
+  const std::vector<int64_t> X_dims{1, 1449, 1449, 3};
+  const std::vector<int64_t> perm{0, 3, 1, 2};
+  const std::vector<int64_t> Y_dims{1, 1449, 1449, 3};
+  TestTransposeMLFloat16(perm, X_dims, Y_dims);
+}
 #endif
 
 }  // namespace test

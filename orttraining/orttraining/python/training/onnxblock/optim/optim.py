@@ -1,30 +1,24 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# optim.py
 
-import typing
+from typing import Optional, Tuple
 
 import onnx
 
-import onnxruntime.training.onnxblock._graph_utils as graph_utils
-import onnxruntime.training.onnxblock.building_blocks as building_blocks
-import onnxruntime.training.onnxblock.model as model
-import onnxruntime.training.onnxblock.model_accessor as accessor
-
-# TODO: Find a better place for these constants
-_PRODUCER_NAME = "onnxblock offline tooling"
-_OPSET_IMPORTS = (onnx.helper.make_opsetid("com.microsoft", 1), onnx.helper.make_opsetid("", 14))
+import onnxruntime.training.onnxblock._graph_utils as _graph_utils
+import onnxruntime.training.onnxblock.blocks as blocks
+import onnxruntime.training.onnxblock.onnxblock as onnxblock_module
 
 
-class AdamWOptimizer(building_blocks.Block):
+class AdamWOptimizer(blocks.Block):
     """Adds an AdamWOptimizer node to the onnx model."""
 
     def __init__(
         self,
-        bias_correction: typing.Optional[bool] = True,
-        betas: typing.Tuple[float, float] = (0.9, 0.999),
-        eps: typing.Optional[float] = 1e-6,
-        weight_decay: typing.Optional[float] = 0.0,
+        bias_correction: Optional[bool] = True,
+        betas: Tuple[float, float] = (0.9, 0.999),
+        eps: Optional[float] = 1e-6,
+        weight_decay: Optional[float] = 0.0,
     ):
         super().__init__()
 
@@ -45,7 +39,7 @@ class AdamWOptimizer(building_blocks.Block):
         """Adds the AdamWOptimizer node to the model."""
 
         # get the model to manipulate
-        onnx_model = accessor.global_accessor.model
+        onnx_model = self.base
 
         # define the node attributes
         node_attributes = {
@@ -66,13 +60,13 @@ class AdamWOptimizer(building_blocks.Block):
             first_order_moment_sequence_name,  # first order moment for this param
             second_order_moment_sequence_name,  # second order moment for this param
         ]
-        adamw_output_name = graph_utils.generate_random_graph_name("adamw.updated_flag")
+        adamw_output_name = _graph_utils.generate_graph_name("adamw.updated_flag")
         adamw_output_names = [adamw_output_name]
         adamw_node = onnx.helper.make_node(
             "AdamWOptimizer",
             adamw_input_names,
             adamw_output_names,
-            name=graph_utils.generate_random_graph_name("AdamWOptimizer"),
+            name=_graph_utils.generate_graph_name("AdamWOptimizer"),
             domain="com.microsoft",
             **node_attributes,
         )
@@ -81,7 +75,7 @@ class AdamWOptimizer(building_blocks.Block):
         return adamw_output_name
 
 
-class ClipGradNorm(building_blocks.Block):
+class ClipGradNorm(blocks.Block):
     """Builds a gradient clipping by norm sub graph for the onnx model.
 
     Creates a block that performs gradient clipping by l2 norm for the calculated
@@ -103,7 +97,7 @@ class ClipGradNorm(building_blocks.Block):
         """Adds a clip grad norm sub graph to the onnx model."""
 
         # get the model to manipulate
-        onnx_model = accessor.global_accessor.model
+        onnx_model = self.base
 
         node_attributes = {
             "max_norm": self._max_norm,
@@ -111,13 +105,13 @@ class ClipGradNorm(building_blocks.Block):
 
         # create the graph node for InplaceClipGradNorm
         cgn_node_input_names = [gradients_name]
-        cgn_node_output_name = graph_utils.generate_random_graph_name("clip_grad_norm_output")
+        cgn_node_output_name = _graph_utils.generate_graph_name("clip_grad_norm_output")
         cgn_node_output_names = [cgn_node_output_name]
         cgn_node = onnx.helper.make_node(
             "InplaceClipGradNorm",
             cgn_node_input_names,
             cgn_node_output_names,
-            name=graph_utils.generate_random_graph_name("InplaceClipGradNorm"),
+            name=_graph_utils.generate_graph_name("InplaceClipGradNorm"),
             domain="com.microsoft",
             **node_attributes,
         )
@@ -131,7 +125,7 @@ class ClipGradNorm(building_blocks.Block):
         return cgn_node_output_name
 
 
-class AdamW(model.Model):
+class AdamW(onnxblock_module.ForwardBlock):
     """Builds AdamW optimizer onnxblock for the given training parameters.
 
     Creates a block that updates the model parameters based on the calculated
@@ -151,10 +145,10 @@ class AdamW(model.Model):
 
     def __init__(
         self,
-        bias_correction: typing.Optional[bool] = True,
-        betas: typing.Tuple[float, float] = (0.9, 0.999),
-        eps: typing.Optional[float] = 1e-6,
-        weight_decay: typing.Optional[float] = 0.0,
+        bias_correction: Optional[bool] = True,
+        betas: Tuple[float, float] = (0.9, 0.999),
+        eps: Optional[float] = 1e-6,
+        weight_decay: Optional[float] = 0.0,
         clip_grad=None,
     ):  # pylint: disable=too-many-arguments
         super().__init__()
@@ -166,17 +160,12 @@ class AdamW(model.Model):
             weight_decay=weight_decay,
         )
         self._clip_grad = clip_grad
-        self._sc = building_blocks.SequenceConstruct()
 
     def build(self, parameters):
         """Returns an AdamW optimizer model based on the input parameters."""
 
         # get the model to manipulate and update its namespace
-        onnx_model = accessor.global_accessor.model
-        onnx_model.graph.name = "AdamW Optimizer Model"
-        onnx_model.producer_name = _PRODUCER_NAME
-        onnx_model.opset_import.extend(_OPSET_IMPORTS)
-        onnx_model.ir_version = onnx.IR_VERSION
+        onnx_model = self.base
 
         # TODO: Avoid hard coded input/output strings
         learning_rate_name = "learning_rate"

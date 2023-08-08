@@ -71,4 +71,4 @@ class SplitToSequence final : public OpKernel {
   int64_t keepdims_{1};
   const int64_t DEFAULT_LENGTH_EACH_OUTPUT_ = 1;
 };
-}  //namespace onnxruntime
+}  // namespace onnxruntime

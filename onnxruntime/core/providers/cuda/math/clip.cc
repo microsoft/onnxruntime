@@ -54,7 +54,7 @@ Status Clip_6<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (count > 0) {
     auto* y_data = Y->MutableData<T>();
     const auto* x_data = X.Data<T>();
-    ClipImpl<T>(Stream(), x_data, y_data, nullptr, nullptr, this->min_, this->max_, count);
+    ClipImpl<T>(Stream(ctx), x_data, y_data, nullptr, nullptr, this->min_, this->max_, count);
   }
   return Status::OK();
 }
@@ -73,10 +73,10 @@ struct LowMax {
 template <>
 struct LowMax<MLFloat16> {
   static MLFloat16 low() {
-    return MLFloat16(math::floatToHalf(std::numeric_limits<float>::lowest()));
+    return MLFloat16::FromBits(math::floatToHalf(std::numeric_limits<float>::lowest()));
   }
   static MLFloat16 max() {
-    return MLFloat16(math::floatToHalf(std::numeric_limits<float>::max()));
+    return MLFloat16::FromBits(math::floatToHalf(std::numeric_limits<float>::max()));
   }
 };
 }  // namespace clip_internal
@@ -118,7 +118,7 @@ Status Clip::ComputeInternal(OpKernelContext* ctx) const {
   utils::MLTypeCallDispatcher<float, double, MLFloat16, int8_t, uint8_t, int64_t, uint64_t>
       t_disp(X->GetElementType());
 
-  t_disp.Invoke<ComputeImpl>(Stream(), X, min, max, Y);
+  t_disp.Invoke<ComputeImpl>(Stream(ctx), X, min, max, Y);
 
   return Status::OK();
 }

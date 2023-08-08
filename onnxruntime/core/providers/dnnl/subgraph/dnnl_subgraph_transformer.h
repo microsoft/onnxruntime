@@ -9,7 +9,7 @@ namespace ort_dnnl {
 
 class DnnlGraphTransformer {
  public:
-  // The passed in onnx subgraph viewer is only valid during "Compile" phase, 
+  // The passed in onnx subgraph viewer is only valid during "Compile" phase,
   // so keep a reference to that onnx subgraph in DnnlSubgraph is risky.
   // passed in the onnx subgraph viewer explicitly to make sure we manage the lifetime correctly.
   void Apply(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer_);
@@ -46,12 +46,12 @@ class DnnlGraphTransformer {
   //   - The output of the node is only consumed by a one other node
   //   - the output tensor from the node is going to another node within the subgraph
   // If all of the above is true this will return true. It will return false otherwise.
-  // 
+  //
   // It is possible for a node to fail one or more of the checks above and still be fusable.
   //
   // The name of the function was chosen because this check is required for most of the node fusions
   // found in the code.
-  // 
+  //
   // The last node in a fusion does not need to pass this check.
   bool IsNodeFusable(DnnlSubgraph& subgraph, DnnlNode* node) const;
   void ResolveFusion(DnnlSubgraph& subgraph, std::vector<size_t> old_indices, std::unique_ptr<DnnlNode> new_node);

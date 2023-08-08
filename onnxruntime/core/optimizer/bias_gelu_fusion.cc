@@ -41,11 +41,7 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    int last_dim_shape1 = input1_shape->dim_size() - 1;
-    int last_dim_shape2 = input2_shape->dim_size() - 1;
-    if (!utils::HasDimValue(input1_shape->dim(last_dim_shape1)) ||
-        !utils::HasDimValue(input2_shape->dim(last_dim_shape2)) ||
-        input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) {
+    if (input1_shape->dim(input1_shape->dim_size() - 1) != input2_shape->dim(input2_shape->dim_size() - 1)) {
       continue;
     }
 
@@ -97,7 +93,7 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     gelu_add_fusion_node.SetExecutionProviderType(gelu_node.GetExecutionProviderType());
 
     // move output definitions and edges from gelu_node to gelu_add_fusion_node
-    //delete add_node and gelu_node.
+    // delete add_node and gelu_node.
     graph_utils::FinalizeNodeFusion(graph, {add_node, gelu_node}, gelu_add_fusion_node);
 
     modified = true;

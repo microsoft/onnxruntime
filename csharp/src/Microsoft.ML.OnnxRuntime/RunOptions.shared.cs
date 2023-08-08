@@ -79,11 +79,8 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                var logIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(value), GCHandleType.Pinned);
-                using (var pinnedlogIdName = new PinnedGCHandle(logIdPinned))
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunTag(handle, pinnedlogIdName.Pointer));
-                }
+                var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(value);
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunTag(handle, utf8));
 
                 _logId = value;
             }
@@ -119,6 +116,18 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private bool _terminate = false; //value set to default value of the C++ RunOptions
 
+        /// <summary>
+        /// Set a single run configuration entry as a pair of strings
+        /// If a configuration with same key exists, this will overwrite the configuration with the given configValue.
+        /// </summary>
+        /// <param name="configKey">config key name</param>
+        /// <param name="configValue">config key value</param>
+        public void AddRunConfigEntry(string configKey, string configValue)
+        {
+            var utf8Key = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey);
+            var utf8Value = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddRunConfigEntry(handle, utf8Key, utf8Value));
+        }
 
         #region SafeHandle
         /// <summary>

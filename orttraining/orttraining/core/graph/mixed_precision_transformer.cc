@@ -461,7 +461,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                        ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
                                        std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_mixed_precision_node_arg,
                                        bool layernorm_stash_as_fp32) {
-  //Only fp16 and bfloat16 supported for now.
+  // Only fp16 and bfloat16 supported for now.
   ORT_ENFORCE(mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
               mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
 
@@ -534,7 +534,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
     graph.AddInitializedTensor(weight_tensor_proto);
   }
 
-  //set layernorm stash type
+  // set layernorm stash type
   for (auto& node : graph.Nodes()) {
     if (!node.OpType().compare("LayerNormalization")) {
       node.AddAttribute("stash_type", static_cast<int64_t>(layernorm_stash_as_fp32 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT : mixed_precision_type));

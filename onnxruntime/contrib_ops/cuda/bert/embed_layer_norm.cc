@@ -64,25 +64,25 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const bool broadcast_position_ids = (nullptr != position_ids && position_ids->Shape()[0] == 1);
 
   return LaunchEmbedLayerNormKernel(
-          Stream(),
-          output->MutableData<T>(),
-          mask_index->MutableData<int32_t>(),
-          input_ids->Data<int32_t>(),
-          nullptr == segment_ids ? nullptr : segment_ids->Data<int32_t>(),
-          nullptr == mask ? nullptr : mask->Data<int32_t>(),
-          gamma->Data<T>(),
-          beta->Data<T>(),
-          word_embedding->Data<T>(),
-          position_embedding->Data<T>(),
-          nullptr == segment_embedding ? nullptr : segment_embedding->Data<T>(),
-          epsilon_,
-          static_cast<int>(hidden_size),
-          batch_size,
-          sequence_length,
-          element_size,
-          embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
-          position_ids == nullptr ? nullptr : position_ids->Data<int32_t>(),
-          broadcast_position_ids);
+      Stream(context),
+      output->MutableData<T>(),
+      nullptr == mask_index ? nullptr : mask_index->MutableData<int32_t>(),
+      input_ids->Data<int32_t>(),
+      nullptr == segment_ids ? nullptr : segment_ids->Data<int32_t>(),
+      nullptr == mask ? nullptr : mask->Data<int32_t>(),
+      gamma->Data<T>(),
+      beta->Data<T>(),
+      word_embedding->Data<T>(),
+      position_embedding->Data<T>(),
+      nullptr == segment_embedding ? nullptr : segment_embedding->Data<T>(),
+      epsilon_,
+      static_cast<int>(hidden_size),
+      batch_size,
+      sequence_length,
+      element_size,
+      embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
+      position_ids == nullptr ? nullptr : position_ids->Data<int32_t>(),
+      broadcast_position_ids);
 }
 
 }  // namespace cuda

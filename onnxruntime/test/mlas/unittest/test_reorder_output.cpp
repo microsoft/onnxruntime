@@ -27,7 +27,7 @@ class MlasReorderOutputTest : public MlasTestBase {
     std::fill_n(Output, OutputBufferElements, -0.5f);
     std::fill_n(OutputReference, OutputBufferElements, -0.5f);
 
-    MlasReorderOutputNchw(NchwOutputShape, Input, Output);
+    MlasReorderOutputNchw(NchwOutputShape, Input, Output, GetMlasThreadPool());
     ReferenceReorderOutput(BatchCount, Channels, Height, Width, Input, OutputReference, false);
     ASSERT_EQ(memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)), 0)
         << " [Nchw] batch=" << BatchCount << ", channels=" << Channels
@@ -88,7 +88,8 @@ class MlasReorderOutputTest : public MlasTestBase {
   }
 };
 
-template <> MlasReorderOutputTest* MlasTestFixture<MlasReorderOutputTest>::mlas_tester(nullptr);
+template <>
+MlasReorderOutputTest* MlasTestFixture<MlasReorderOutputTest>::mlas_tester(nullptr);
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return (MlasNchwcGetBlockSize() > 1 && is_short_execute)

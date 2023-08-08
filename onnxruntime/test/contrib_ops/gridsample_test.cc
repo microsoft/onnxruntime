@@ -130,4 +130,3 @@ TEST(GridsampleContribOpTest, gridsample_mode_bicubic) {
 
 }  // namespace test
 }  // namespace onnxruntime
-

@@ -72,10 +72,10 @@ std::optional<T> ParseTestOnlyEnvironmentVariable(const std::string& name,
     std::ostringstream oss;
     auto it = valid_values.cbegin();
     oss << *it++;
-    while(it != valid_values.cend()) {
+    while (it != valid_values.cend()) {
       oss << ", " << *it++;
     }
-    ORT_THROW("Value of environment variable ", name," must be ", oss.str(), ", but got ", raw_env);
+    ORT_THROW("Value of environment variable ", name, " must be ", oss.str(), ", but got ", raw_env);
   }
 
   auto env = onnxruntime::ParseEnvironmentVariable<T>(name);
@@ -83,7 +83,7 @@ std::optional<T> ParseTestOnlyEnvironmentVariable(const std::string& name,
   std::string default_hint = "End users should opt for provider options or session options.";
   const std::string& logged_hint = hint.empty() ? default_hint : hint;
 
-  LOGS_DEFAULT(WARNING) << "Environment variable " << name << " is used. It is reserved for internal testing prupose. "
+  LOGS_DEFAULT(WARNING) << "Environment variable " << name << " is used. It is reserved for internal testing purpose. "
                         << logged_hint;
 
   return env;

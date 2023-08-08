@@ -79,7 +79,7 @@ Status BiasSoftmaxDropout::ComputeInternal(OpKernelContext* ctx) const {
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
   utils::MLTypeCallDispatcher<BIAS_SOFTMAX_DROPOUT_TYPES> t_disp(X->GetElementType());
   return t_disp.InvokeRet<Status, DispatchBiasSoftmaxDropoutImpl>(
-      Stream(), GetDeviceProp(), CudnnHandle(), dropout_Y, mask, softmax_Y, X, B, element_count, batch_count,
+      Stream(ctx), GetDeviceProp(), GetCudnnHandle(ctx), dropout_Y, mask, softmax_Y, X, B, element_count, batch_count,
       is_inner_broadcast_, bias_broadcast_size, ratio_data, generator);
 }
 

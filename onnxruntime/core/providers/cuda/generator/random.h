@@ -28,7 +28,6 @@ class RandomBase {
   }
 
  protected:
-
   void SetDTypeIfUndefined(ONNX_NAMESPACE::TensorProto::DataType dtype) noexcept {
     if (dtype_ == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
       dtype_ = dtype;
@@ -42,7 +41,6 @@ class RandomBase {
   }
 
  private:
-
   ONNX_NAMESPACE::TensorProto::DataType dtype_ =
       ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;  // optional and may be inferred
 

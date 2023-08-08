@@ -95,7 +95,7 @@ def gen_unfusable(model_path, unfusable_type):
     elif unfusable_type == UNFUSABLE_SCALE_NOT_CONSTANT:
         scale_node = helper.make_node("Mul", ["input_0", "input_0"], ["scaled_input_0"], "scale input_0")
     else:
-        raise ValueError("Invalid unfusable_type: {}".format(unfusable_type))
+        raise ValueError(f"Invalid unfusable_type: {unfusable_type}")
 
     nodes = [
         scale_node,
@@ -191,7 +191,6 @@ gen_int32("matmul_scale_int32.onnx")
 
 
 def gen_scale_input(model_path):
-
     nodes = [
         helper.make_node("Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"),
         helper.make_node(

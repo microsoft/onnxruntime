@@ -10,11 +10,11 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename TAcc, typename Tin>
+template <typename T, typename TAcc, typename TLabel>
 void SoftmaxCrossEntropyLossImpl(
     cudaStream_t stream,
     const T* log_prob,
-    const Tin* label,
+    const TLabel* label,
     const T* weight,
     const TAcc* normalize_factor,
     size_t count,
@@ -22,31 +22,31 @@ void SoftmaxCrossEntropyLossImpl(
     int64_t ignore_index,
     T* output_data);
 
-template <typename T, typename TAcc, typename Tin>
+template <typename T, typename TAcc, typename TLabel, typename TOut>
 void SoftmaxCrossEntropyLossGradImpl(
     cudaStream_t stream,
     const T* dY,
     const T* log_prob,
-    const Tin* label,
+    const TLabel* label,
     const T* weight,
     const TAcc* normalize_factor,
-    const T* bias_data,
+    const TOut* bias_data,
     size_t count,
     size_t label_depth,
     bool reduction_none,
-    T* output_data);
+    TOut* output_data);
 
-template <typename T, typename Tin>
+template <typename T, typename TLabel, typename TOut>
 void ComputeSoftmaxCrossEntropyWeightsImpl(
     cudaStream_t stream,
-    const Tin* label,
+    const TLabel* label,
     const T* weight,
     size_t count,
     size_t label_depth,
     int64_t ignore_index,
-    T* weight_data_nd);
+    TOut* weight_data_nd);
 
-template <typename T, typename Tin>
+template <typename T, typename TLabel, typename TOut>
 class SoftmaxCrossEntropyLoss final : public LossBase {
  public:
   SoftmaxCrossEntropyLoss(const OpKernelInfo& info) : LossBase(info) {
@@ -60,7 +60,7 @@ class SoftmaxCrossEntropyLoss final : public LossBase {
   int64_t ignore_index_;
 };
 
-template <typename T, typename Tin>
+template <typename T, typename TLabel, typename TOut>
 class SoftmaxCrossEntropyLossGrad final : public LossBase {
  public:
   SoftmaxCrossEntropyLossGrad(const OpKernelInfo& info) : LossBase(info) {

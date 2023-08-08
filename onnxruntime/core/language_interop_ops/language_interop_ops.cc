@@ -56,10 +56,10 @@ void LoadInterOp(const ONNX_NAMESPACE::GraphProto& graph_proto, InterOpDomains& 
       for (int j = 0, limit = node_proto.attribute_size(); j < limit; ++j) {
         const auto& attr = node_proto.attribute(j);
         if (utils::HasGraph(attr)) {
-          LoadInterOp(attr.g(), domains, log_func);  //load pyop in subgraph
+          LoadInterOp(attr.g(), domains, log_func);  // load pyop in subgraph
         }
-      }  //for
-    }    //else
-  }      //for
+      }  // for
+    }    // else
+  }      // for
 }
 }  // namespace onnxruntime

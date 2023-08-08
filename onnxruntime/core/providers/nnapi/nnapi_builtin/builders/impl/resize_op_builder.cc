@@ -77,7 +77,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node_unit);
   const auto& inputs = node_unit.Inputs();
-  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
+  const auto android_feature_level = model_builder.GetEffectiveFeatureLevel();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
   auto input = inputs[0].node_arg.Name();

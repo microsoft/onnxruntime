@@ -22,7 +22,7 @@
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
 
-//See: https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
+// See: https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
 #ifdef _TlgPragmaUtf8Begin
 #undef _TlgPragmaUtf8Begin
 #define _TlgPragmaUtf8Begin

@@ -3,12 +3,16 @@
 
 #pragma once
 
-#include "core/framework/framework_common.h"
-#include "core/framework/execution_provider.h"
-
 #include <memory>
+#include <string_view>
 #include <string>
 #include <vector>
+
+#include "core/common/gsl.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/framework_common.h"
+#include "core/framework/ort_value.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 
 namespace onnxruntime {
 class Graph;
@@ -36,20 +40,26 @@ struct EPVerificationParams {
   const std::function<void(const Graph&)>* graph_verifier{nullptr};
 };
 
+// Verify equality of two output tensors.
+void VerifyOutput(const std::string& output_name,
+                  const Tensor& expected_tensor,
+                  const Tensor& tensor,
+                  float fp32_abs_err);
+
 // Return number of nodes in the Graph and any subgraphs that are assigned to the specified execution provider
 int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type);
 
 // Run the model using the CPU EP to get expected output, comparing to the output when the 'execution_provider'
 // is enabled. requires that at least one node is assigned to 'execution_provider'
 void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path,
-                               const char* log_id,
+                               std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params = EPVerificationParams());
 
 // A helper function that takes in model_data
 void RunAndVerifyOutputsWithEP(const std::string& model_data,
-                               const char* log_id,
+                               std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params = EPVerificationParams());
@@ -61,6 +71,31 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data,
 // 3. if one dimension is symbolic and the other is not, they are not equal.
 void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
                         const ONNX_NAMESPACE::TensorShapeProto* shape2);
+
+// Create OrtValue on CPU copying from provided inputs.
+template <typename T>
+OrtValue CreateInputOrtValueOnCPU(gsl::span<const int64_t> dims, gsl::span<const T> value,
+                                  AllocatorPtr alloc = nullptr) {
+  static CPUExecutionProviderInfo info;
+  static CPUExecutionProvider cpu_provider(info);
+  static AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
+
+  TensorShape shape(dims);
+  assert(shape.Size() == static_cast<int64_t>(value.size()));
+  auto element_type = DataTypeImpl::GetType<T>();
+  auto allocator = alloc ? alloc : cpu_allocator;
+  auto p_tensor = std::make_unique<Tensor>(element_type, shape, allocator);
+
+  if (value.size() > 0 && !alloc) {  // using CPU allocator
+    memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());
+  }
+
+  OrtValue ort_value;
+  ort_value.Init(p_tensor.release(),
+                 DataTypeImpl::GetType<Tensor>(),
+                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  return ort_value;
+}
 
 }  // namespace test
 }  // namespace onnxruntime

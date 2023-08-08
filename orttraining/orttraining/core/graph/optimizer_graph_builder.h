@@ -44,7 +44,7 @@ class OptimizerGraphBuilder {
    * @param opt_graph_config The overall optimizer configuration values.
    * @param weight_names_to_opt_configs Mapping from weight name to per optimizer
    *        configuration values.
-   * @param updated_weight_names_map Mapping from original weight name to 
+   * @param updated_weight_names_map Mapping from original weight name to
    *        updated weight name.
    * @param weight_partition_info Mapping of (parititioned) weight name to partition info.
    */

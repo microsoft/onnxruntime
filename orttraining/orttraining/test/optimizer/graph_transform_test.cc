@@ -27,6 +27,11 @@
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/lstm_replacement.h"
+#ifdef ENABLE_TRITON
+#include "orttraining/core/optimizer/triton_fusion.h"
+#endif
 
 #include <random>
 
@@ -82,7 +87,6 @@ TEST_F(GraphTransformationTests, BatchNormReplacement) {
   ASSERT_TRUE(graph.Nodes().begin()->OpType().compare("BatchNormInternal") == 0);
 }
 
-
 TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOpset14) {
   Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}},
               {}, *logger_);
@@ -113,7 +117,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   auto& output_running_mean = graph.GetOrCreateNodeArg("running_mean", &scale_tensor_type);
   auto& output_running_var = graph.GetOrCreateNodeArg("running_var", &scale_tensor_type);
   auto& bn_node = graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var},
-                                                {&output_Y, &output_running_mean, &output_running_var});
+                                {&output_Y, &output_running_mean, &output_running_var});
   bn_node.AddAttribute("training_mode", static_cast<int64_t>(1));
 
   auto status = graph.Resolve();
@@ -130,7 +134,6 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   ASSERT_TRUE(graph.Nodes().begin()->MutableOutputDefs().size() == 5);
   ASSERT_TRUE(graph.Nodes().begin()->OpType().compare("BatchNormInternal") == 0);
 }
-
 
 TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOpset9) {
   Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 9}, {"com.microsoft", 1}},
@@ -164,7 +167,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   auto& saved_mean = graph.GetOrCreateNodeArg("saved_mean", &scale_tensor_type);
   auto& saved_var = graph.GetOrCreateNodeArg("saved_var", &scale_tensor_type);
   graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var},
-                                                {&output_Y, &output_running_mean, &output_running_var, &saved_mean, &saved_var});
+                {&output_Y, &output_running_mean, &output_running_var, &saved_mean, &saved_var});
 
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());
@@ -952,6 +955,133 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
   ASSERT_TRUE(op_to_count["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
 }
 
+class LSTMReplacementTestsParameterized : public GraphTransformationTests,
+                                          public ::testing::WithParamInterface<std::tuple<int, bool, bool, bool>> {
+};
+
+TEST_P(LSTMReplacementTestsParameterized, CheckLSTMReplacement) {
+  Model model("LSTMReplacement", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}}, {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor;
+  tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  onnxruntime::NodeArg X("X", &tensor);
+  onnxruntime::NodeArg W("W", &tensor);
+  onnxruntime::NodeArg R("R", &tensor);
+  onnxruntime::NodeArg B("B", &tensor);
+  onnxruntime::NodeArg SL("", nullptr);
+  onnxruntime::NodeArg H0("H0", &tensor);
+  onnxruntime::NodeArg C0("C0", &tensor);
+  onnxruntime::NodeArg P("P", &tensor);
+
+  onnxruntime::NodeArg HAll("HAll", &tensor);
+  onnxruntime::NodeArg HAllDummy("", nullptr);
+  onnxruntime::NodeArg Ht("Ht", &tensor);
+  onnxruntime::NodeArg HtDummy("", nullptr);
+  onnxruntime::NodeArg Ct("Ct", &tensor);
+  onnxruntime::NodeArg CtDummy("", nullptr);
+
+  InlinedVector<onnxruntime::NodeArg*> outputs;
+  const int num_outputs = std::get<0>(GetParam());
+  outputs.reserve(num_outputs);
+  const bool output_hall = std::get<1>(GetParam());
+  const bool output_final_h = std::get<2>(GetParam());
+  const bool output_final_c = std::get<3>(GetParam());
+
+  if (num_outputs > 0) {
+    if (output_hall) {
+      outputs.push_back(&HAll);
+    } else {
+      outputs.push_back(&HAllDummy);
+    }
+  }
+
+  if (num_outputs > 1) {
+    if (output_final_h) {
+      outputs.push_back(&Ht);
+    } else {
+      outputs.push_back(&HtDummy);
+    }
+  }
+
+  if (num_outputs > 2) {
+    if (output_final_c) {
+      outputs.push_back(&Ct);
+    } else {
+      outputs.push_back(&CtDummy);
+    }
+  }
+
+  Node& lstm_node = graph.AddNode(
+      "lstm", "LSTM", "LSTM operator",
+      {&X, &W, &R, &B, &SL, &H0, &C0, &P}, outputs, nullptr);
+  lstm_node.AddAttribute("hidden_size", static_cast<int64_t>(128));
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count1.count("LSTM") && op_to_count1["LSTM"] == 1);
+  ASSERT_FALSE(op_to_count1.count("LSTMTraining"));
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("LSTMReplacement");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<LSTMReplacement>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count2 = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count2.count("com.microsoft.LSTMTraining") && op_to_count2["com.microsoft.LSTMTraining"] == 1);
+
+  const auto nodes = graph.Nodes();
+  ASSERT_FALSE(nodes.empty());
+  const auto& lstm_outputs = nodes.begin()->OutputDefs();
+  ASSERT_EQ(lstm_outputs.size(), 5U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    LSTMReplacementTests,
+    LSTMReplacementTestsParameterized,
+    ::testing::Values(
+        std::make_tuple(0, false, false, false),
+        std::make_tuple(1, true, false, false),
+        std::make_tuple(2, false, true, false),
+        std::make_tuple(3, false, false, true),
+        std::make_tuple(3, true, true, true)));
+
+class QDQFusionTestsParameterized : public GraphTransformationTests,
+                                    public ::testing::WithParamInterface<std::tuple<PathString>> {
+};
+
+TEST_P(QDQFusionTestsParameterized, CheckModelComposition) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(std::get<0>(GetParam()), p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::map<std::string, int> op_to_count_pre_fusion = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_pre_fusion["QuantizeLinear"], 1);
+  ASSERT_EQ(op_to_count_pre_fusion["DequantizeLinear"], 1);
+  ASSERT_EQ(op_to_count_pre_fusion["com.microsoft.FakeQuant"], 0);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<QDQFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count_post_fusion = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_post_fusion["QuantizeLinear"], 0);
+  ASSERT_EQ(op_to_count_post_fusion["DequantizeLinear"], 0);
+  ASSERT_EQ(op_to_count_post_fusion["com.microsoft.FakeQuant"], 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    QDQFusionTests,
+    QDQFusionTestsParameterized,
+    ::testing::Values(
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_int8.onnx"),
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_uint8.onnx"),
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_zp_not_provided.onnx")));
+
 // We only tested on CUDA run.
 #if defined(USE_CUDA)
 static void RunPartitionCorrectnessTest(std::string model_path,
@@ -1006,7 +1136,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
                   [&generator, &distribution](float& value) { value = distribution(generator); });
 
     OrtValue ml_value;
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_X, values_X, &ml_value);
     feeds.insert(std::make_pair(input_names[i], ml_value));
   }
 
@@ -1085,10 +1215,187 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
 TEST_F(GraphTransformationTests, MegatronBARTSelfAttentionPartitionCorrectnessTest) {
   RunPartitionCorrectnessTest("testdata/transform/model_parallel/bart_self_attention_megatron_basic_test", *logger_, 2, {"input"}, {{6, 8, 4}});
 }
+
 // end of USE_CUDA
 #endif
 
 // end of DISABLE_CONTRIB_OPS
+#endif
+
+#ifdef ENABLE_TRITON
+TEST_F(GraphTransformationTests, TritonFusion) {
+  auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 17);
+  ASSERT_TRUE(op_to_count["Sub"] == 1);
+  ASSERT_TRUE(op_to_count["Mul"] == 7);
+  ASSERT_TRUE(op_to_count["Div"] == 3);
+  ASSERT_TRUE(op_to_count["Cast"] == 7);
+  ASSERT_TRUE(op_to_count["Dropout"] == 4);
+  ASSERT_TRUE(op_to_count["Softmax"] == 1);
+  ASSERT_TRUE(op_to_count["LayerNormalization"] == 4);
+
+  {
+    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    const char* config = R"(
+      {
+        "ops": {
+          "Add": { "versions": [13, 14] },
+          "Sub": { "versions": [13, 14] },
+          "Mul": { "versions": [13, 14] },
+          "Div": { "versions": [13, 14] },
+          "Cast": { "versions": [13] },
+          "Dropout": { "versions": [13] },
+          "Softmax": { "versions": [13], "conditions": { "axis": "-1" } },
+          "LayerNormalization": { "versions": [1], "conditions": { "axis": "-1" } }
+        },
+        "initializer": "scalar",
+        "min_nodes": 2
+      }
+    )";
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>(config);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Add"] == 6);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["Mul"] == 0);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Cast"] == 4);
+    ASSERT_TRUE(op_to_count["Dropout"] == 0);
+    ASSERT_TRUE(op_to_count["Softmax"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 10);
+  }
+
+  // No Dropout.
+  {
+    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    const char* config = R"(
+      {
+        "ops": {
+          "Add": { "versions": [13, 14] },
+          "Sub": { "versions": [13, 14] },
+          "Mul": { "versions": [13, 14] },
+          "Div": { "versions": [13, 14] },
+          "Cast": { "versions": [13] },
+          "Softmax": { "versions": [13], "conditions": { "axis": "-1" } },
+          "LayerNormalization": { "versions": [1], "conditions": { "axis": "-1" } }
+        },
+        "initializer": "scalar",
+        "min_nodes": 2
+      }
+    )";
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>(config);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Add"] == 8);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["Mul"] == 0);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Cast"] == 4);
+    ASSERT_TRUE(op_to_count["Dropout"] == 4);
+    ASSERT_TRUE(op_to_count["Softmax"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 10);
+  }
+
+  // Ignore min nodes.
+  {
+    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    const char* config = R"(
+      {
+        "ops": {
+          "Add": { "versions": [13, 14] },
+          "Sub": { "versions": [13, 14] },
+          "Mul": { "versions": [13, 14] },
+          "Div": { "versions": [13, 14] },
+          "Cast": { "versions": [13], "ignore_min_nodes": true },
+          "Dropout": { "versions": [13] },
+          "Softmax": { "versions": [13], "conditions": { "axis": "-1" } },
+          "LayerNormalization": { "versions": [1], "conditions": { "axis": "-1" } }
+        },
+        "initializer": "scalar",
+        "min_nodes": 2
+      }
+    )";
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>(config);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Add"] == 6);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["Mul"] == 0);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Cast"] == 0);
+    ASSERT_TRUE(op_to_count["Dropout"] == 0);
+    ASSERT_TRUE(op_to_count["Softmax"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 14);
+  }
+
+  // Exclude Softmax using axis attribute.
+  {
+    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    const char* config = R"(
+      {
+        "ops": {
+          "Add": { "versions": [13, 14] },
+          "Sub": { "versions": [13, 14] },
+          "Mul": { "versions": [13, 14] },
+          "Div": { "versions": [13, 14] },
+          "Cast": { "versions": [13]},
+          "Dropout": { "versions": [13] },
+          "Softmax": { "versions": [13], "conditions": { "axis": "1" } },
+          "LayerNormalization": { "versions": [1], "conditions": { "axis": "-1" } }
+        },
+        "initializer": "scalar",
+        "min_nodes": 2
+      }
+    )";
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>(config);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Add"] == 6);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["Mul"] == 0);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Cast"] == 4);
+    ASSERT_TRUE(op_to_count["Dropout"] == 1);
+    ASSERT_TRUE(op_to_count["Softmax"] == 1);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 10);
+  }
+}
 #endif
 
 }  // namespace test

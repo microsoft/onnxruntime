@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -17,7 +16,6 @@ from onnxruntime import quantization
 
 class TestSymmetricFlag(unittest.TestCase):
     def setUp(self):
-
         # Set up symmetrically and asymmetrically disributed values for activations
         self.symmetric_activations = [
             -1 * np.ones([1, 2, 32, 32], dtype="float32"),
@@ -45,10 +43,9 @@ class TestSymmetricFlag(unittest.TestCase):
         )
 
     def perform_quantization(self, activations, weight, act_sym, wgt_sym):
-
         # One-layer convolution model
         act = helper.make_tensor_value_info("ACT", TensorProto.FLOAT, activations[0].shape)
-        wgt = helper.make_tensor_value_info("WGT", TensorProto.FLOAT, weight.shape)
+        helper.make_tensor_value_info("WGT", TensorProto.FLOAT, weight.shape)
         res = helper.make_tensor_value_info("RES", TensorProto.FLOAT, [None, None, None, None])
         wgt_init = numpy_helper.from_array(weight, "WGT")
         conv_node = onnx.helper.make_node("Conv", ["ACT", "WGT"], ["RES"])
@@ -86,7 +83,6 @@ class TestSymmetricFlag(unittest.TestCase):
         return act_zp, act_sc, wgt_zp, wgt_sc
 
     def test_0(self):
-
         act_zp, act_sc, wgt_zp, wgt_sc = self.perform_quantization(
             self.asymmetric_activations,
             self.asymmetric_weights,
@@ -104,7 +100,6 @@ class TestSymmetricFlag(unittest.TestCase):
         self.assertEqual(wgt_zp, 0)
 
     def test_1(self):
-
         act_zp, act_sc, wgt_zp, wgt_sc = self.perform_quantization(
             self.asymmetric_activations,
             self.asymmetric_weights,
@@ -121,7 +116,6 @@ class TestSymmetricFlag(unittest.TestCase):
         self.assertNotEqual(wgt_zp, 0)
 
     def test_2(self):
-
         act_zp, act_sc, wgt_zp, wgt_sc = self.perform_quantization(
             self.symmetric_activations,
             self.symmetric_weights,
@@ -138,7 +132,6 @@ class TestSymmetricFlag(unittest.TestCase):
         self.assertEqual(wgt_zp, 0)
 
     def test_3(self):
-
         act_zp, act_sc, wgt_zp, wgt_sc = self.perform_quantization(
             self.symmetric_activations,
             self.symmetric_weights,
@@ -156,5 +149,4 @@ class TestSymmetricFlag(unittest.TestCase):
 
 
 if __name__ == "__main__":
-
     unittest.main()

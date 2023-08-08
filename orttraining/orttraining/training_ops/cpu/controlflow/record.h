@@ -13,8 +13,8 @@ namespace contrib {
 void record_event_in_tensor(const Tensor& event_id_tensor);
 
 class RecordEvent final : public OpKernel {
-public:
-  RecordEvent(const OpKernelInfo& info) : OpKernel(info) { }
+ public:
+  RecordEvent(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 };
 

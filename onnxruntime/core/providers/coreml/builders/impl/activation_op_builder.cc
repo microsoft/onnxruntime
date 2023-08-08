@@ -1,17 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/narrow.h"
+#include "core/optimizer/initializer.h"
+#include "core/providers/common.h"
+#include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/coreml/shape_utils.h"
+#include "core/providers/shared/utils/utils.h"
+
 #ifdef __APPLE__
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
-#include "core/common/narrow.h"
-#include "core/providers/common.h"
-#include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/builders/impl/base_op_builder.h"
-#include "core/providers/coreml/builders/op_builder_factory.h"
-#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -24,7 +27,7 @@ class ActivationOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+                               const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
@@ -74,7 +77,7 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
 
     auto& weight_values = *prelu.mutable_alpha()->mutable_floatvalue();
     weight_values.Clear();
-    weight_values.Resize(num_channels, value);
+    weight_values.Resize(narrow<int>(num_channels), value);
   }
   return Status::OK();
 }
@@ -95,6 +98,12 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   } else if (op_type == "PRelu") {
     auto* prelu = layer->mutable_activation()->mutable_prelu();
     ORT_RETURN_IF_ERROR(AddPReluWeight(model_builder, node, logger, *prelu));
+  } else if (op_type == "LeakyRelu") {
+    NodeAttrHelper helper(node);
+    const auto alpha = helper.Get("alpha", 0.01f);
+
+    auto* leaky_relu = layer->mutable_activation()->mutable_leakyrelu();
+    leaky_relu->set_alpha(alpha);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -128,6 +137,12 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
     return false;
   }
 
+  // ensure that the third from last dimension is not dynamic
+  if (x_shape[x_rank - 3] == -1) {
+    LOGS(logger, VERBOSE) << "PRelu 'X' input must have a known third from last dimension.";
+    return false;
+  }
+
   // slope input must be a constant initializer
   if (!input_params.graph_viewer.IsConstantInitializer(input_defs[1]->Name(), true)) {
     LOGS(logger, VERBOSE) << "PRelu 'slope' input must be a constant initializer tensor";
@@ -139,7 +154,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   // - have 1 element
   {
     std::vector<int64_t> slope_shape;
-    if (!GetShape(*input_defs[1], slope_shape, logger)) {
+    if (!GetStaticShape(*input_defs[1], slope_shape, logger)) {
       return false;
     }
     const bool has_per_channel_slopes =
@@ -187,6 +202,7 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
           "Tanh",
           "Relu",
           "PRelu",
+          "LeakyRelu",
       };
 
   op_registrations.builders.push_back(std::make_unique<ActivationOpBuilder>());

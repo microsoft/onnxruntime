@@ -1,10 +1,12 @@
-import pytest
-from unittest.mock import patch, Mock
-from _test_commons import _load_pytorch_transformer_model
-from onnxruntime.training import amp, checkpoint, optim, orttrainer, _checkpoint_storage
+from unittest.mock import Mock, patch
+
 import numpy as np
 import onnx
+import pytest
 import torch
+from _test_commons import _load_pytorch_transformer_model
+
+from onnxruntime.training import _checkpoint_storage, amp, checkpoint, optim, orttrainer  # noqa: F401
 
 # Helper functions
 
@@ -32,7 +34,7 @@ def _create_trainer(zero_enabled=False):
     return trainer
 
 
-class _training_session_mock(object):
+class _training_session_mock:  # noqa: N801
     """Mock object for the ORTTrainer _training_session member"""
 
     def __init__(self, model_states, optimizer_states, partition_info):
@@ -319,7 +321,7 @@ def test_load_state_dict_warns_when_model_optimizer_key_missing(state_dict, inpu
         with pytest.warns(UserWarning) as user_warning:
             trainer.load_state_dict(input_state_dict)
 
-    assert user_warning[0].message.args[0] == "Missing key: {} in state_dict".format(error_key)
+    assert user_warning[0].message.args[0] == f"Missing key: {error_key} in state_dict"
 
 
 @pytest.mark.parametrize("state_dict, input_state_dict, error_keys", _get_load_state_dict_strict_error_arguments())
@@ -625,7 +627,7 @@ def test_checkpoint_aggregation(load_mock):
     assert (state_dict["optimizer"]["non_sharded"]["Moment_2"] == np.array([6666, 5555, 4444])).all()
     assert (state_dict["optimizer"]["non_sharded"]["Step"] == np.array([55])).all()
 
-    assert state_dict["trainer_options"]["mixed_precision"] == False
+    assert state_dict["trainer_options"]["mixed_precision"] is False
     assert state_dict["trainer_options"]["world_rank"] == 0
     assert state_dict["trainer_options"]["world_size"] == 1
     assert state_dict["trainer_options"]["horizontal_parallel_size"] == 1
@@ -711,7 +713,7 @@ def test_checkpoint_aggregation_mixed_precision(load_mock):
     assert (state_dict["optimizer"]["non_sharded"]["Moment_2"] == np.array([6666, 5555, 4444])).all()
     assert (state_dict["optimizer"]["non_sharded"]["Step"] == np.array([55])).all()
 
-    assert state_dict["trainer_options"]["mixed_precision"] == True
+    assert state_dict["trainer_options"]["mixed_precision"] is True
     assert state_dict["trainer_options"]["world_rank"] == 0
     assert state_dict["trainer_options"]["world_size"] == 1
     assert state_dict["trainer_options"]["horizontal_parallel_size"] == 1

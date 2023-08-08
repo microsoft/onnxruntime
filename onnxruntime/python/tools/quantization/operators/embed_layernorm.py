@@ -1,7 +1,7 @@
 import logging
 
 import onnx
-from onnx import onnx_pb as onnx_proto
+from onnx import onnx_pb as onnx_proto  # noqa: F401
 
 from ..quant_utils import attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
@@ -49,7 +49,7 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
         if quantized_input_names is None:
             return super().quantize()
 
-        qembed_layer_norm_name = "" if node.name == "" else node.name + "_quant"
+        qembed_layer_norm_name = "" if not node.name else node.name + "_quant"
 
         """
         Quantized Input Tensor List
