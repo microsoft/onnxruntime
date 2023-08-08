@@ -34,7 +34,13 @@ parameters:
 - name: UseWebPoolName
   type: boolean
   default: false
-- name: WebPoolName
+- name: RunWebGpuTests
+  type: boolean
+  default: false
+- name: WebGpuPoolName
+  type: string
+  default: ''
+- name: WebCpuPoolName
   type: string
   default: ''
 
@@ -104,7 +110,7 @@ stages:
       BuildConfig: 'Debug'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       ${{ if eq(parameters.UseWebPoolName, true)}}:
-        PoolName: ${{ parameters.WebPoolName }}
+        PoolName: ${{ parameters.WebCpuPoolName }}
       ${{ else }}:
         PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
@@ -145,10 +151,14 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       ${{ if eq(parameters.UseWebPoolName, true)}}:
-        PoolName: ${{ parameters.WebPoolName }}
+        ${{ if eq(parameters.RunWebGpuTests, true)}}:
+          PoolName: ${{ parameters.WebGpuPoolName }}
+        ${{ else }}:
+          PoolName: ${{ parameters.WebCpuPoolName }}
       ${{ else }}:
         PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
+      RunWebGpuTests: ${{ parameters.RunWebGpuTests }}
 
 - ${{ if ne(parameters.IsReleasePipeline, true) }}:
   - stage: Test_web_BrowserStack
