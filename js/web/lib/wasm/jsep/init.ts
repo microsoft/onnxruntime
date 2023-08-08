@@ -56,6 +56,7 @@ class TensorViewImpl implements TensorView {
 class ComputeContextImpl implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
+  readonly outputCount: number;
   get kernelCustomData(): {[key: string]: unknown} {
     return this.backend.currentKernelCustomData;
   }
@@ -71,6 +72,7 @@ class ComputeContextImpl implements ComputeContext {
     let dataIndex = (contextDataOffset >> 2);
     this.opKernelContext = heapU32[dataIndex++];
     const inputCount = heapU32[dataIndex++];
+    this.outputCount = heapU32[dataIndex++];
     this.customDataOffset = heapU32[dataIndex++];
     this.customDataSize = heapU32[dataIndex++];
 
