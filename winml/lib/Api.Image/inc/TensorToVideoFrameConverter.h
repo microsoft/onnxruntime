@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
- // Licensed under the MIT License.
+// Licensed under the MIT License.
 
 #pragma once
 
@@ -12,10 +12,9 @@ class TensorToVideoFrameConverter : public ImageConverter {
  public:
   TensorToVideoFrameConverter() : shared_handle_(nullptr) {}
 
-    // Function takes in a tensor DX12 Resource all compute ops should be completed
-   // converts it to a VideoFrame backed by either a SoftwareBitmap or D3DSurface
+  // Function takes in a tensor DX12 Resource all compute ops should be completed
+  // converts it to a VideoFrame backed by either a SoftwareBitmap or D3DSurface
   void DX12TensorToVideoFrame(
-    _In_ uint64_t inputTensorOffset,
     _In_ UINT32 batch_index,
     _In_ winml::LearningModelSession& session,
     _In_ ID3D12Resource* input_tensor,
@@ -23,8 +22,8 @@ class TensorToVideoFrameConverter : public ImageConverter {
     _Inout_ wm::VideoFrame& destination_video_frame
   );
 
-    // Function takes in a byte pointer to a CPUTensor
-   // converts it to VideoFrame backed by either a SoftwareBitmap or D3DSurface,
+  // Function takes in a byte pointer to a CPUTensor
+  // converts it to VideoFrame backed by either a SoftwareBitmap or D3DSurface,
   void SoftwareTensorToVideoFrame(
     _In_ winml::LearningModelSession& session,
     _In_ BYTE* CPU_tensor_to_convert,
@@ -58,7 +57,6 @@ class TensorToVideoFrameConverter : public ImageConverter {
   Microsoft::WRL::ComPtr<ID3D11Texture2D> ShareD3D12Texture(ID3D12Resource* pResource, ID3D11Device* pDevice);
 
   void ConvertGPUTensorToSoftwareBitmap(
-    _In_ uint64_t inputTensorOffset,
     _In_ UINT32 batch_index,
     _In_ ID3D12Resource* input_tensor,
     _In_ _winml::D3DDeviceCache& device_cache,
@@ -67,7 +65,6 @@ class TensorToVideoFrameConverter : public ImageConverter {
   );
 
   void ConvertGPUTensorToDX12Texture(
-    _In_ uint64_t inputTensorOffset,
     _In_ UINT32 batch_index,
     _In_ ID3D12Resource* input_resource,
     _In_ _winml::D3DDeviceCache& device_cache,
@@ -76,7 +73,6 @@ class TensorToVideoFrameConverter : public ImageConverter {
   );
 
   void ConvertDX12TensorToUnsupportedVideoFrameFormat(
-    _In_ uint64_t input_tensor_offset,
     _In_ UINT32 batch_index,
     _In_ ID3D12Resource* input_tensor,
     _In_ _winml::D3DDeviceCache& device_cache,
@@ -85,10 +81,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
   );
 
   static D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(
-    uint64_t offset,
-    const UINT32 batch_index,
-    const D3D12_RESOURCE_DESC& resource_description,
-    const ImageTensorDescription& description
+    const UINT32 batch_index, const D3D12_RESOURCE_DESC& resource_description, const ImageTensorDescription& description
   );
 
   static void ConvertCPUTensorToSoftwareBitmap(

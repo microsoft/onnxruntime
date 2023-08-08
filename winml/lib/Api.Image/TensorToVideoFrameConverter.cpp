@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-  // Licensed under the MIT License.
+// Licensed under the MIT License.
 
 #include "lib/Api.Image/pch.h"
 
@@ -128,7 +128,6 @@ class ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent {
 };
 
 void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
-  _In_ uint64_t inputTensorOffset,
   _In_ UINT32 batchIdx,
   _In_ winml::LearningModelSession& session,
   _In_ ID3D12Resource* pInputTensor,
@@ -144,20 +143,16 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
   wgi::SoftwareBitmap softwareBitmap = destVideoFrame.SoftwareBitmap();
 
   if (softwareBitmap) {
-    ConvertGPUTensorToSoftwareBitmap(
-      inputTensorOffset, batchIdx, pInputTensor, *pDeviceCache, tensorDesc, softwareBitmap
-    );
+    ConvertGPUTensorToSoftwareBitmap(batchIdx, pInputTensor, *pDeviceCache, tensorDesc, softwareBitmap);
   } else if (spDestDirect3DSurface) {
     bool isUAVSupportedFormat = _winmli::FormatSupportedForUAV(
       pDeviceCache->GetD3D12Device(),
       _winmli::GetDXGIFormatFromDirectXPixelFormat(spDestDirect3DSurface.Description().Format)
     );
 
-        // UAV support for formats is device dependent
+    // UAV support for formats is device dependent
     if (!isUAVSupportedFormat) {
-      ConvertDX12TensorToUnsupportedVideoFrameFormat(
-        inputTensorOffset, batchIdx, pInputTensor, *pDeviceCache, tensorDesc, destVideoFrame
-      );
+      ConvertDX12TensorToUnsupportedVideoFrameFormat(batchIdx, pInputTensor, *pDeviceCache, tensorDesc, destVideoFrame);
     } else {
       ComPtr<ID3D11Texture2D> spVideoFrameTexture =
         _winmli::GetTextureFromDirect3DSurface(destVideoFrame.Direct3DSurface());
@@ -167,7 +162,7 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
       wgi::BitmapBounds bounds = {0, 0, videoFrameTextureDesc.Width, videoFrameTextureDesc.Height};
 
       if (_winmli::TextureIsOnDevice(spVideoFrameTexture.Get(), pDeviceCache->GetD3D11Device())) {
-          // The texture is on our device, so we can just create own texture, share it and cache it
+        // The texture is on our device, so we can just create own texture, share it and cache it
         if (!output_resource_) {
           output_resource_ = CreateShareableD3D12Texture(videoFrameTextureDesc, pDeviceCache->GetD3D12Device());
           D3D11_cached_texture_ = ShareD3D12Texture(output_resource_.Get(), pDeviceCache->GetD3D11Device());
@@ -177,24 +172,22 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
           if (cachedTextureDesc.Width != videoFrameTextureDesc.Width ||
                         cachedTextureDesc.Height != videoFrameTextureDesc.Height ||
                         cachedTextureDesc.Format != videoFrameTextureDesc.Format) {
-              // The dimensions or format don't match, so we need to re-create our texture
+            // The dimensions or format don't match, so we need to re-create our texture
             output_resource_ = CreateShareableD3D12Texture(videoFrameTextureDesc, pDeviceCache->GetD3D12Device());
             D3D11_cached_texture_ = ShareD3D12Texture(output_resource_.Get(), pDeviceCache->GetD3D11Device());
           }
         }
 
-            // Detensorize
-        ConvertGPUTensorToDX12Texture(
-          inputTensorOffset, batchIdx, pInputTensor, *pDeviceCache, tensorDesc, output_resource_.Get()
-        );
+        // Detensorize
+        ConvertGPUTensorToDX12Texture(batchIdx, pInputTensor, *pDeviceCache, tensorDesc, output_resource_.Get());
 
-            // Make sure that detensorization is done
+        // Make sure that detensorization is done
         SyncD3D12ToD3D11(*pDeviceCache, D3D11_cached_texture_.Get());
 
-            // Finally, copy the detensorized texture to the user's device
+        // Finally, copy the detensorized texture to the user's device
         CopyTextureIntoTexture(D3D11_cached_texture_.Get(), bounds, spVideoFrameTexture.Get());
       } else {
-          // We are not on the same device, so we can't rely on our own cached texture
+        // We are not on the same device, so we can't rely on our own cached texture
         ComPtr<ID3D11Device> spTextureDevice;
         spVideoFrameTexture->GetDevice(&spTextureDevice);
 
@@ -209,11 +202,11 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
                      !spSharedD3D11Texture.Get()) ||
                     (FAILED(spVideoFrameTexture->GetPrivateData(_handleGUID, &handleSize, &sharedHandle)) ||
                      sharedHandle != shared_handle_)) {
-            // Create a new shared texture that we cache on the video frame texture
+          // Create a new shared texture that we cache on the video frame texture
           output_resource_ = CreateShareableD3D12Texture(videoFrameTextureDesc, pDeviceCache->GetD3D12Device());
           spSharedD3D11Texture = ShareD3D12Texture(output_resource_.Get(), spTextureDevice.Get());
 
-              // Cache the shared texture on the video frame texture in order to tie their lifetime together
+          // Cache the shared texture on the video frame texture in order to tie their lifetime together
           WINML_THROW_IF_FAILED(
             spVideoFrameTexture->SetPrivateDataInterface(_d3d11TextureGUID, spSharedD3D11Texture.Get())
           );
@@ -222,20 +215,18 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
           );
         }
 
-            // Detensorize
-        ConvertGPUTensorToDX12Texture(
-          inputTensorOffset, batchIdx, pInputTensor, *pDeviceCache, tensorDesc, output_resource_.Get()
-        );
+        // Detensorize
+        ConvertGPUTensorToDX12Texture(batchIdx, pInputTensor, *pDeviceCache, tensorDesc, output_resource_.Get());
 
-            // Make sure that detensorization is done
+        // Make sure that detensorization is done
         SyncD3D12ToD3D11(*pDeviceCache, spSharedD3D11Texture.Get());
 
-            // Finally, copy the detensorized texture to the user's device
+        // Finally, copy the detensorized texture to the user's device
         CopyTextureIntoTexture(spSharedD3D11Texture.Get(), bounds, spVideoFrameTexture.Get());
       }
     }
   } else {
-      // Invalid video frame
+    // Invalid video frame
     WINML_THROW_HR(E_INVALIDARG);
   }
 }
@@ -266,7 +257,6 @@ ComPtr<ID3D12Resource> TensorToVideoFrameConverter::CreateShareableD3D12Texture(
 }
 
 void TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFormat(
-  _In_ uint64_t input_tensor_offset,
   _In_ UINT32 batchIdx,
   _In_ ID3D12Resource* pInputTensor,
   _In_ _winml::D3DDeviceCache& device_cache,
@@ -275,7 +265,7 @@ void TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFormat
 ) {
   assert(pInputTensor != nullptr);
 
-      // Find the first supported format and convert to it
+  // Find the first supported format and convert to it
   auto supportedFormatIter = std::find_if(
     _winmli::supportedWinMLFormats.begin(),
     _winmli::supportedWinMLFormats.end(),
@@ -321,15 +311,13 @@ void TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFormat
   ));
   converted_video_frame_ = wm::VideoFrame::CreateWithDirect3D11Surface(surface);
 
-      // Detensorize
-  ConvertGPUTensorToDX12Texture(
-    input_tensor_offset, batchIdx, pInputTensor, device_cache, tensorDesc, output_resource_.Get()
-  );
+  // Detensorize
+  ConvertGPUTensorToDX12Texture(batchIdx, pInputTensor, device_cache, tensorDesc, output_resource_.Get());
 
-      // Wait for the D3D12 work to complete before using the resource
+  // Wait for the D3D12 work to complete before using the resource
   SyncD3D12ToD3D11(device_cache, spSharedD3D11Texture.Get());
 
-      // Finally, convert and copy the texture to the destination video frame
+  // Finally, convert and copy the texture to the destination video frame
   converted_video_frame_.CopyToAsync(unsupportedVideoFrame).get();
 }
 
@@ -371,13 +359,13 @@ void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
 
   UINT32 tensorHeight = static_cast<UINT32>(tensorDesc.sizes[2]);
   UINT32 tensorWidth = static_cast<UINT32>(tensorDesc.sizes[3]);
-    // create a bitmap bounds for the whole image/tensor
+  // create a bitmap bounds for the whole image/tensor
   wgi::BitmapBounds inputBounds = {0, 0, tensorWidth, tensorHeight};
 
   wgi::SoftwareBitmap spOutputSoftwareBitmap = pDestVideoFrame.SoftwareBitmap();
   wgdx::Direct3D11::IDirect3DSurface spOutputSurface = pDestVideoFrame.Direct3DSurface();
 
-      // only one of softwarebitmap or direct3Dsurface should be non-null
+  // only one of softwarebitmap or direct3Dsurface should be non-null
   if ((spOutputSoftwareBitmap == nullptr && spOutputSurface == nullptr) || (spOutputSoftwareBitmap != nullptr && spOutputSurface != nullptr)) {
     WINML_THROW_HR(E_INVALIDARG);
   }
@@ -416,7 +404,6 @@ void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
 }
 
 void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
-  _In_ uint64_t inputTensorOffset,
   _In_ UINT32 batchIdx,
   _In_ ID3D12Resource* pInputResource,
   _In_ _winml::D3DDeviceCache& device_cache,
@@ -433,7 +420,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   CD3DX12_RECT scissorRect(0, 0, (LONG)outputDesc.Width, outputDesc.Height);
   ComPtr<ID3D12Device> spDx12Device = device_cache.GetD3D12Device();
 
-      // we're inside a lock from the caller of this function, so it's ok to use this static
+  // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
   std::optional<GPUTensorToDX12TextureTelemetryEvent> telemetryLogger;
   if (eventTimer.Start()) {
@@ -448,7 +435,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     outputDesc.Format
   );
 
-      // Validate input description
+  // Validate input description
   WINML_THROW_HR_IF_FALSE_MSG(
     E_INVALIDARG, inputDesc.Height != 0, "Invalid input image height provided. Height is set to zero."
   );
@@ -456,7 +443,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     E_INVALIDARG, inputDesc.Width != 0, "Invalid input image height provided. Height is set to zero."
   );
 
-      // Validate output description
+  // Validate output description
   WINML_THROW_HR_IF_FALSE_MSG(
     E_INVALIDARG, outputDesc.Height != 0, "Invalid input image height provided. Height is set to zero."
   );
@@ -464,7 +451,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     E_INVALIDARG, outputDesc.Width != 0, "Invalid input image height provided. Height is set to zero."
   );
 
-      // Validate Tensor description
+  // Validate Tensor description
   WINML_THROW_HR_IF_FALSE_MSG(
     E_INVALIDARG,
     tensorDesc.dataType == kImageTensorDataTypeFloat32 || tensorDesc.dataType == kImageTensorDataTypeFloat16,
@@ -504,10 +491,10 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     (UINT)outputDesc.Width
   );
 
-      // Create descriptor heaps
+  // Create descriptor heaps
   UINT srvUavDescriptorSize = spDx12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-      // Create a UAV resource for the shader
+  // Create a UAV resource for the shader
   D3D12_RESOURCE_DESC outputResourceDesc = output_resource_->GetDesc();
   outputResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
@@ -524,7 +511,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   }
 
   if (descriptor_heap_ == nullptr) {
-      // Describe and create a shader resource view (SRV) and unordered access view (UAV) descriptor heap.
+    // Describe and create a shader resource view (SRV) and unordered access view (UAV) descriptor heap.
     D3D12_DESCRIPTOR_HEAP_DESC srvUavHeapDesc = {};
     srvUavHeapDesc.NumDescriptors = DescriptorCount;
     srvUavHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -533,9 +520,9 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     descriptor_heap_->SetName(L"Detensorize Descriptor Heap");
   }
 
-      // Create SRV and UAV for input and output respectively
+  // Create SRV and UAV for input and output respectively
   {
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = CreateSRVDescriptor(inputTensorOffset, batchIdx, inputDesc, tensorDesc);
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = CreateSRVDescriptor(batchIdx, inputDesc, tensorDesc);
     CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(
       descriptor_heap_->GetCPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize
     );
@@ -550,15 +537,15 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     spDx12Device->CreateUnorderedAccessView(UAV_resource_.Get(), nullptr, &uavDesc, uavHandle);
   }
 
-      //
-    // Pipeline setup for shader operation
-    //
+  //
+  // Pipeline setup for shader operation
+  //
   PipelineStateCacheType type = PipelineStateCacheType::kFloat32;
   if (tensorDesc.dataType == kImageTensorDataTypeFloat16) {
     type = PipelineStateCacheType::kFloat16;
   }
 
-      // Set the origin format
+  // Set the origin format
   PipelineStateCacheFormat formatFrom = PipelineStateCacheFormat::kBGR8;
   if (tensorDesc.channelType == kImageTensorChannelTypeRGB8) {
     formatFrom = PipelineStateCacheFormat::kRGB8;
@@ -566,7 +553,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     formatFrom = PipelineStateCacheFormat::kGRAY8;
   }
 
-      // Set the destination format
+  // Set the destination format
   PipelineStateCacheFormat formatTo = PipelineStateCacheFormat::kBGR8;
   if (outputDesc.Format == DXGI_FORMAT_R8G8B8A8_UNORM) {
     formatTo = PipelineStateCacheFormat::kRGB8;
@@ -580,7 +567,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
 
   ResetCommandList(device_cache);
 
-      // Write compute commands into the command list and put it into the queue.
+  // Write compute commands into the command list and put it into the queue.
   {
     command_list_->SetComputeRootSignature(root_signature_.Get());
 
@@ -647,7 +634,6 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
 }
 
 void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
-  _In_ uint64_t inputTensorOffset,
   _In_ UINT32 batchIdx,
   _In_ ID3D12Resource* pInputTensor,
   _In_ _winml::D3DDeviceCache& device_cache,
@@ -664,9 +650,9 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
     telemetryLogger.emplace(tensorDesc);
   }
 
-  uint64_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
-  uint64_t singleVideoFramebufferSize =
-    tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize;
+  uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
+  uint32_t singleVideoFramebufferSize =
+    static_cast<uint32_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
 
   // TODO: Make an allocator for readback heaps
   if (!readback_heap_ || readback_heap_->GetDesc().Width < singleVideoFramebufferSize) {
@@ -691,7 +677,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
     readback_heap_.Get(),
     0,
     pInputTensor,
-    inputTensorOffset + singleVideoFramebufferSize * static_cast<uint64_t>(batchIdx),
+    static_cast<uint64_t>(singleVideoFramebufferSize) * batchIdx,
     singleVideoFramebufferSize
   );
 
@@ -766,10 +752,7 @@ void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
 }
 
 D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(
-  uint64_t offset,
-  const UINT32 batchIdx,
-  const D3D12_RESOURCE_DESC& resourceDesc,
-  const _winml::ImageTensorDescription& desc
+  const UINT32 batchIdx, const D3D12_RESOURCE_DESC& resourceDesc, const _winml::ImageTensorDescription& desc
 ) {
   UINT uiTensorElementSize = desc.dataType == kImageTensorDataTypeFloat32 ? sizeof(UINT) : sizeof(uint16_t);
 
@@ -777,7 +760,7 @@ D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor
   srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
   srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
   UINT singleImageSize = static_cast<UINT>(desc.sizes[1] * desc.sizes[2] * desc.sizes[3]);
-  srvDesc.Buffer.FirstElement = offset + batchIdx * desc.sizes[1] * desc.sizes[2] * desc.sizes[3];
+  srvDesc.Buffer.FirstElement = batchIdx * desc.sizes[1] * desc.sizes[2] * desc.sizes[3];
   srvDesc.Buffer.NumElements = singleImageSize;
   srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 

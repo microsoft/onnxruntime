@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
- // Licensed under the MIT License.
+// Licensed under the MIT License.
 #include "lib/Api.Ort/pch.h"
 
 #include "OnnxruntimeEngine.h"
@@ -108,12 +108,12 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
 }
 
 static uint64_t ShapeSize(const int64_t* shape, size_t count) {
-   // for each dim
+  // for each dim
   int64_t size = 1;
   for (size_t i = 0; i < count; i++) {
-     // find out it's total size
+    // find out it's total size
     size *= shape[i];
-     // make sure there are no invalid dimensions (-1 or any invalid shape)
+    // make sure there are no invalid dimensions (-1 or any invalid shape)
     THROW_HR_IF(E_INVALIDARG, shape[i] <= 0);
   }
   return size;
@@ -134,7 +134,7 @@ static auto GetStrings(
   }
   auto length = ShapeSize(shape.data(), shape.size());
 
-    // make a big buffer to hold all the string data
+  // make a big buffer to hold all the string data
   size_t buffer_length;
   THROW_IF_NOT_OK_MSG(ort_api->GetStringTensorDataLength(ort_value, &buffer_length), ort_api);
 
@@ -146,10 +146,10 @@ static auto GetStrings(
     ort_api->GetStringTensorContent(ort_value, buffer.get(), buffer_length, offsets.data(), offsets.size()), ort_api
   );
 
-    // now go build all the strings
+  // now go build all the strings
   for (size_t i = 0; i < length; ++i) {
     size_t str_len = 0;
-     // are we on the last one?
+    // are we on the last one?
     if (i == (length - 1)) {
       str_len = buffer_length - offsets[i];
     } else {
@@ -161,7 +161,7 @@ static auto GetStrings(
   return std::make_shared<std::pair<decltype(strings), decltype(buffer)>>(std::move(strings), std::move(buffer));
 }
 
-HRESULT OnnxruntimeValue::GetResource(uint64_t size_in_bytes, _winml::Resource& out, uint64_t& offset) {
+HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
   auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
 
   void* mutable_data = nullptr;
@@ -185,10 +185,7 @@ HRESULT OnnxruntimeValue::GetResource(uint64_t size_in_bytes, _winml::Resource& 
 
     winrt::com_ptr<ID3D12Resource> resource;
     RETURN_HR_IF_NOT_OK_MSG(
-      ort_dml_api->GetD3D12ResourceRegionFromAllocation(
-        allocator.get(), mutable_data, size_in_bytes, resource.put(), &offset
-      ),
-      ort_api
+      ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), mutable_data, resource.put()), ort_api
     );
     out = _winml::Resource(resource.get(), [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
   } else {
@@ -1406,11 +1403,10 @@ HRESULT OnnxruntimeEngine::FillFromMapValue(
   std::vector<int64_t> keys_shape;
   keys_value->GetTensorShape(keys_shape);
 
-  uint64_t offset = 0;
   _winml::Resource keys_data;
-  RETURN_IF_FAILED(keys_value->GetResource(0, keys_data, offset));
+  RETURN_IF_FAILED(keys_value->GetResource(keys_data));
   _winml::Resource values_data;
-  RETURN_IF_FAILED(values_value->GetResource(0, values_data, offset));
+  RETURN_IF_FAILED(values_value->GetResource(values_data));
 
   auto num_elements = static_cast<size_t>(ShapeSize(keys_shape.data(), keys_shape.size()));
   GetAbiMapFiller(key_kind, value_kind)(map, num_elements, keys_data.get(), values_data.get());

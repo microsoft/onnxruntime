@@ -99,18 +99,6 @@ struct OrtDmlApi {
    * This API gets the D3D12 resource when an OrtValue has been allocated by the DML EP.
    */
   ORT_API2_STATUS(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* dml_resource, _Out_ ID3D12Resource** d3d_resource);
-
-  /**
-   * GetD3D12ResourceRegionFromAllocation
-   * This API gets the region of a D3D12 resource at a given offset when an OrtValue has been allocated by the DML EP.
-   * Note: Only the subregion of the resource delimited by `offset` and `offset + size_in_bytes` should be accessed
-   */
-  ORT_API2_STATUS(GetD3D12ResourceRegionFromAllocation,
-                  _In_ OrtAllocator* provider,
-                  _In_ void* dml_resource,
-                  _In_ uint64_t size_in_bytes,
-                  _Out_ ID3D12Resource** d3d_resource,
-                  _Out_ uint64_t* offset);
 };
 
 #ifdef __cplusplus

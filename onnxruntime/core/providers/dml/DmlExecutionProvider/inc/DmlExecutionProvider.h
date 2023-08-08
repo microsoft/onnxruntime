@@ -32,7 +32,6 @@ namespace Dml
         bool enableMetacommands,
         bool enableBfcAllocator);
 
-    D3D12BufferRegion GetD3D12ResourceRegionFromAllocation(onnxruntime::IAllocator* allocator, void* opaquePointer, uint64_t sizeInBytes);
     void FlushContext(onnxruntime::IExecutionProvider* provider);
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);

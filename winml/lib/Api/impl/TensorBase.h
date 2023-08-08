@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
- // Licensed under the MIT License.
+// Licensed under the MIT License.
 
 #pragma once
 
@@ -26,27 +26,27 @@
 
 namespace _winml {
 
-  // TensorBase
- //
- // This is the base class for all data based Tensor types. It exposes array and IVectorView
- // based getter and setters.
- //
- // Look in FeatureValue.h to see where all of them actually get created with CREATE_TENSOR()
- //
- // Supported derived classes:
- //    Float, Int8, UInt8, UInt16, Int16, Int32, Int64, Boolean, Double, UInt32, UInt64
- //
- // Unsupported types
- //    Float16 and String have different access patterns and Int8, Complex64, Complex128 are unsupported
- //
+// TensorBase
+//
+// This is the base class for all data based Tensor types. It exposes array and IVectorView
+// based getter and setters.
+//
+// Look in FeatureValue.h to see where all of them actually get created with CREATE_TENSOR()
+//
+// Supported derived classes:
+//    Float, Int8, UInt8, UInt16, Int16, Int32, Int64, Boolean, Double, UInt32, UInt64
+//
+// Unsupported types
+//    Float16 and String have different access patterns and Int8, Complex64, Complex128 are unsupported
+//
 template <typename T, typename ViewT, typename TDerived, typename TInterface, typename TBase>
 struct TensorBase : TBase {
   template <typename ElementType = T, typename ElementViewType = ViewT>
   static void ASSERT_TEMPLATE_PARAMETERS() {
-     // This adds compile time checks that ensure that the API can only be called when:
-     //   1) the first template parameter matches the internal type (T),
-     //      since the api attempts copy the tensor memory of type T into a vector of type ElementType.
-     //   2) the second template parameter matches the return type
+    // This adds compile time checks that ensure that the API can only be called when:
+    //   1) the first template parameter matches the internal type (T),
+    //      since the api attempts copy the tensor memory of type T into a vector of type ElementType.
+    //   2) the second template parameter matches the return type
     static_assert(
       std::is_same<T, ElementType>::value,
       "This API can only be called with template parameters that match its internal data type T."
@@ -59,9 +59,9 @@ struct TensorBase : TBase {
 
   template <typename ElementType = T, typename ElementViewType = ViewT>
   static void ASSERT_TEMPLATE_PARAMETERS_EXACT() {
-     // This adds compile time checks that ensure that the API can only be called when:
-     //   1) the conditions of ASSERT_TEMPLATE_PARAMETERS() are met.
-     //   2) the ABI type (ViewT) matches the internal type (t).
+    // This adds compile time checks that ensure that the API can only be called when:
+    //   1) the conditions of ASSERT_TEMPLATE_PARAMETERS() are met.
+    //   2) the ABI type (ViewT) matches the internal type (t).
     ASSERT_TEMPLATE_PARAMETERS<ElementType, ElementViewType>();
 
     static_assert(
@@ -70,18 +70,18 @@ struct TensorBase : TBase {
     );
   }
 
-    /// On creation, tensors can either:
-   ///  1) act as a placeholder without any backing memory (output tensors, chained values). In this case we
-   ///     create the backing memory when the buffer is accessed. The buffer is allocated one of there scenarios:
-   ///         GPUTensorize during binding (used to create DML resources for chaining)
-   ///         UpdateSourceResourceData after eval (used for output placeholder tensors or unbound outputs)
-   ///         GetBuffer when accessed by users
-   ///    a) TensorBase()
-   ///  2) allocate backing cpu memory (when a shape is provided)
-   ///    a) TensorBase(std::vector<int64_t> const& shape)
-   ///    b) TensorBase(winrt::Windows::Foundation::Collections::IIterable<int64_t> const& shape)
-   ///  3) use provided backing gpu memory
-   ///    a) TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* pResource)
+  /// On creation, tensors can either:
+  ///  1) act as a placeholder without any backing memory (output tensors, chained values). In this case we
+  ///     create the backing memory when the buffer is accessed. The buffer is allocated one of there scenarios:
+  ///         GPUTensorize during binding (used to create DML resources for chaining)
+  ///         UpdateSourceResourceData after eval (used for output placeholder tensors or unbound outputs)
+  ///         GetBuffer when accessed by users
+  ///    a) TensorBase()
+  ///  2) allocate backing cpu memory (when a shape is provided)
+  ///    a) TensorBase(std::vector<int64_t> const& shape)
+  ///    b) TensorBase(winrt::Windows::Foundation::Collections::IIterable<int64_t> const& shape)
+  ///  3) use provided backing gpu memory
+  ///    a) TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* pResource)
   TensorBase() : resources_(std::make_shared<TensorResources<T>>()) {}
 
   TensorBase(wfc::IIterable<int64_t> const& shape)
@@ -97,7 +97,7 @@ struct TensorBase : TBase {
   TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* resource)
     : shape_(shape),
       resources_(std::make_shared<TensorResources<T>>()) {
-     // This Api is not supported for TensorString
+    // This Api is not supported for TensorString
     WINML_THROW_HR_IF_TRUE_MSG(
       E_ILLEGAL_METHOD_CALL,
       (std::is_same<T, std::string>::value),
@@ -132,7 +132,7 @@ struct TensorBase : TBase {
       return CreateTensorValueFromExternalBuffer(engine, should_sync_buffer, out);
     }
 
-      // If there is no matching cpu resource, then fallback to a gpu resource
+    // If there is no matching cpu resource, then fallback to a gpu resource
     if (GpuTensor() != nullptr) {
       return CreateGPUMLValue(GpuTensor().get(), context, out);
     }
@@ -145,18 +145,18 @@ struct TensorBase : TBase {
       return CreateGPUMLValue(GpuTensor().get(), context, out);
     }
 
-      // Get engine
+    // Get engine
     auto session = context.session.as<winmlp::LearningModelSession>();
     auto device = session->Device().as<winmlp::LearningModelDevice>();
     auto engine = session->GetEngine();
 
     auto should_sync_buffer = context.type == _winml::BindingType::kInput;
 
-      // If there is no matching gpu resource, then fallback to a cpu resource
+    // If there is no matching gpu resource, then fallback to a cpu resource
     if (CpuTensor() != nullptr) {
       auto num_backing_buffers = CpuTensor()->num_buffers();
       if (num_backing_buffers == 1) {
-         // If we have a single backing cpu buffer, there is no need to create GPU resources.
+        // If we have a single backing cpu buffer, there is no need to create GPU resources.
         // The engine will use the buffer provided, and perform the needed copies into the GPU context as needed.
         return CreateTensorValueFromExternalBuffer(engine, should_sync_buffer, out);
       } else {
@@ -374,13 +374,11 @@ struct TensorBase : TBase {
       "The tensor has been closed and its resources have been detached during evaluation!"
     );
 
+    _winml::Resource updated_resource;
+    RETURN_IF_FAILED(value->GetResource(updated_resource));
+
     // get the shape
     RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");
-    auto buffer_size_in_bytes = static_cast<size_t>(ShapeSize(shape_)) * sizeof(T);
-
-    _winml::Resource updated_resource;
-    uint64_t offset = 0;
-    RETURN_IF_FAILED(value->GetResource(buffer_size_in_bytes, updated_resource, offset));
 
     bool is_cpu;
     bool isCpuOutput = SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu;
@@ -424,6 +422,8 @@ struct TensorBase : TBase {
         );
         RETURN_IF_FAILED(engine->CopyValueAcrossDevices(value, dest.get()));
       } else {
+        auto buffer_size_in_bytes = static_cast<size_t>(ShapeSize(shape_)) * sizeof(T);
+
         _winml::ConverterResourceDescription descriptor = {};
         descriptor.pixel_format = static_cast<DWORD>(wgdx::DirectXPixelFormat::Unknown);
         descriptor.luid = device->GetD3DDevice()->GetAdapterLuid();  // Converted image on GPU
