@@ -1046,14 +1046,14 @@ stages:
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
-# - template: nuget/templates/test_linux.yml
-#   parameters:
-#     AgentPool: AMD-GPU
-#     ArtifactSuffix: 'ROCm'
-#     StageSuffix: 'ROCm'
-#     NugetPackageName : 'Microsoft.ML.OnnxRuntime.ROCm'
-#     SpecificArtifact: ${{ parameters.specificArtifact }}
-#     BuildId: ${{ parameters.BuildId }}
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool: AMD-GPU
+    ArtifactSuffix: 'ROCm'
+    StageSuffix: 'ROCm'
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime.ROCm'
+    SpecificArtifact: ${{ parameters.specificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
