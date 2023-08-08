@@ -257,15 +257,21 @@ option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for thre
 # Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
 # when using python env
 if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
   set(onnxruntime_ENABLE_TRAINING_APIS ON)
-  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
   set(onnxruntime_ENABLE_ATEN ON)
   set(onnxruntime_ENABLE_TRITON ON)
+  if (NOT APPLE)
+    set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
   set(onnxruntime_ENABLE_TRAINING_OPS ON)
+  if (onnxruntime_ENABLE_PYTHON AND NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindings! "
+    "Please use the --enable_training flag instead of the --enable_training_apis flag.")
+  endif()
 endif()
 
 if (onnxruntime_USE_CUDA)
