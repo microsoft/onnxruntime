@@ -109,23 +109,23 @@ class Tensor : public TensorBase {
     return *Data();
   }
 
+  ONNXTensorElementDataType GetTensorElementDataType() const {
+    return const_value_.GetTensorTypeAndShapeInfo().GetElementType();
+  }
+
   ONNXTensorElementDataType GetTensorElementDataType() {
-    if (is_input_) {
-      return const_value_.GetTensorTypeAndShapeInfo().GetElementType();
-    } else {
-      ctx_.GetOutput(indice_, shape_.value()).GetTensorTypeAndShapeInfo().GetElementType();
-    }
+    return ctx_.GetOutput(indice_, shape_.value()).GetTensorTypeAndShapeInfo().GetElementType();
+  }
+
+  OrtMemoryInfoDeviceType GetDeviceType() const {
+    return const_value_.GetTensorMemoryInfo().GetDeviceType();
   }
 
   OrtMemoryInfoDeviceType GetDeviceType() {
-    if (is_input_) {
-      return const_value_.GetTensorMemoryInfo().GetDeviceType();
-    } else {
-      ctx_.GetOutput(indice_, shape_.value()).GetTensorMemoryInfo().GetDeviceType();
-    }
+    return ctx_.GetOutput(indice_, shape_.value()).GetTensorMemoryInfo().GetDeviceType();
   }
 
-  const void* GetTensorRawData() {
+  const void* GetTensorRawData() const {
     return const_value_.GetTensorRawData();
   }
 
