@@ -314,6 +314,16 @@ namespace Dml
             return m_impl->CreatePreferredAllocators();
         }
 
+        virtual OrtDevice GetExternalOrtDeviceByMemType(OrtMemType mem_type) const final
+        {
+            if (mem_type == OrtMemType::OrtMemTypeDefault)
+            {
+                return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DML_EXTERNAL, 0);
+            }
+
+            return GetOrtDeviceByMemType(mem_type);
+        }
+
     private:
         ComPtr<ExecutionProviderImpl> m_impl;
     };

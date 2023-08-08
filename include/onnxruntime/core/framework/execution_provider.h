@@ -321,6 +321,13 @@ class IExecutionProvider {
   };
 
   /**
+   * Return the appropriate OrtDevice object given OrtMemType that can be used directly by external callers.
+   */
+  virtual OrtDevice GetExternalOrtDeviceByMemType(OrtMemType mem_type) const {
+    return GetOrtDeviceByMemType(mem_type);
+  };
+
+  /**
    * Create Preferred allocators for the current Execution Provider
    * This function is a stateless function which creates new instances of Allocator, without storing them in EP.
    */
