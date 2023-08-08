@@ -270,12 +270,12 @@ TEST(QuickGeluGradTest, Basic) {
 TEST(LeakyReluGradTest, Basic) {
   const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
   const std::vector<float> dY(7, 1.0f);
-  constexpr float alpha = 0.5f;
+  float alpha = 0.5f;
 
   TestElementwiseGradientOp(
       "LeakyReluGrad",
       {{"dY", dY}, {"Y", y_vals}},
-      [](const std::vector<float>& params) {
+      [alpha](const std::vector<float>& params) {
         ORT_ENFORCE(params.size() == 2);
         const auto dy = params[0], y = params[1];
 
