@@ -1137,12 +1137,6 @@ namespace Dml
         return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableBfcAllocator);
     }
 
-    D3D12BufferRegion GetD3D12ResourceRegionFromAllocation(onnxruntime::IAllocator* allocator, void* opaquePointer, uint64_t sizeInBytes)
-    {
-        Dml::DmlGpuAllocator* gpuAllocator = static_cast<Dml::DmlGpuAllocator*>(allocator);
-        return gpuAllocator->CreateBufferRegion(opaquePointer, sizeInBytes);
-    }
-
     void FlushContext(onnxruntime::IExecutionProvider* provider)
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);

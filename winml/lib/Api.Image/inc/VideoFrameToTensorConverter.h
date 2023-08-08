@@ -21,7 +21,6 @@ class VideoFrameToTensorConverter : public ImageConverter {
   // {upperleft X, upperleft Y, width, height} to be turned into a tensor.
   // If the region of interest is the entire VideoFrame, the input BitmapBounds should describe the entire image.
   void VideoFrameToDX12Tensor(
-    _In_ uint64_t output_tensor_offset,
     _In_ const UINT32 batch_index,
     _In_ winml::LearningModelSession& session,
     _In_ const wm::IVideoFrame& input_video_frame,
@@ -72,12 +71,10 @@ class VideoFrameToTensorConverter : public ImageConverter {
     _In_ _winml::D3DDeviceCache& device_cache,
     _In_ const wgi::BitmapBounds& input_bounds,
     _In_ const ImageTensorDescription& tensor_description,
-    _In_ uint64_t outputResourceOffset,
     _Inout_ ID3D12Resource* pOutputResource
   );
 
   void ConvertDX12TextureToGPUTensor(
-    _In_ uint64_t output_resource_offset,
     _In_ const UINT32 batch_index,
     _In_ ID3D12Resource* pInputResource,
     _In_ _winml::D3DDeviceCache& device_cache,
@@ -86,7 +83,7 @@ class VideoFrameToTensorConverter : public ImageConverter {
   );
 
   static D3D12_UNORDERED_ACCESS_VIEW_DESC CreateUAVDescription(
-    uint64_t offset, const UINT32 batch_index, const ImageTensorDescription& description
+    const UINT32 batch_index, const D3D12_RESOURCE_DESC& resource_description, const ImageTensorDescription& description
   );
 
   static void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(

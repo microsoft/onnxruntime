@@ -31,7 +31,7 @@ class OnnxruntimeValue
   STDMETHOD(IsCpu)
   (bool* out) override;
   STDMETHOD(GetResource)
-  (uint64_t size_in_bytes, _winml::Resource& resource, uint64_t& offset) override;
+  (_winml::Resource& resource) override;
   STDMETHOD(IsTensor)
   (bool* out) override;
   STDMETHOD(IsOfTensorType)
