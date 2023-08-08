@@ -341,6 +341,7 @@ void addOrtValueMethods(pybind11::module& m) {
             v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
           },
           "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
+#endif
       .def(
           "push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
             for (size_t i = 0; i < torch_tensors.size(); ++i) {
@@ -366,7 +367,6 @@ void addOrtValueMethods(pybind11::module& m) {
             }
           },
           "Add a batch of OrtValue's by wrapping PyTorch tensors.")
-#endif
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
