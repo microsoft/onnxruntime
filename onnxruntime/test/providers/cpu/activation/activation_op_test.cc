@@ -682,7 +682,7 @@ TEST(LeakyReluGradInferenceTest, Basic) {
   TestElementwiseGradientOp(
       "LeakyReluGrad",
       {{"dY", dY}, {"Y", y_vals}},
-      [alpha](const std::vector<float>& params) {
+      [](const std::vector<float>& params) {
         ORT_ENFORCE(params.size() == 2);
         const auto dy = params[0], y = params[1];
 
