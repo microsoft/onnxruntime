@@ -2005,25 +2005,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLeakyReluGradient) {
-  // y = alpha * x if x < 0 else x
-  // dy/dx = alpha if x < 0 else 1
-  // dL/dx = dL/dy * dy/dx = dL/dy * (alpha if x <= 0 else 1)
-  NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
-  ArgDef zero = zero_constant_node.output_args.front();
-
-  NodeDef one_constant_node = OneConstantNode(IElemType(0));
-  ArgDef one = one_constant_node.output_args.front();
-
-  NodeDef alpha_constant_node = ConstantScalarNode(SrcNodeAttributes().at("alpha").f(),
-                                                   Name("AlphaConstant"), IElemType(0));
-  ArgDef alpha = alpha_constant_node.output_args.front();
-
-  return {zero_constant_node,
-          one_constant_node,
-          alpha_constant_node,
-          NodeDef("LessOrEqual", {I(0), zero}, {IA("Less_I0")}),
-          NodeDef("Where", {IA("Less_I0"), alpha, one}, {IA("LeakyRelu_Grad")}),
-          NodeDef("Mul", {GO(0), IA("LeakyRelu_Grad")}, {GI(0)})};
+  return {NodeDef(OpDef{"LeakyReluGrad", kMSDomain, 1},
+                  {GO(0), O(0)}, {GI(0)}, SrcNodeAttributes())};
 }
 
 }  // namespace training
