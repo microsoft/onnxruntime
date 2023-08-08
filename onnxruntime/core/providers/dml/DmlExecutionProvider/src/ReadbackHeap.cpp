@@ -104,12 +104,11 @@ namespace Dml
     void ReadbackHeap::ReadbackFromGpu(
         gsl::span<void*> dst,
         gsl::span<const uint32_t > dstSizes,
-        gsl::span<ID3D12Resource*> src,
-        gsl::span<uint64_t> srcOffsets,
+        gsl::span<const D3D12BufferRegion> srcBufferRegions,
         D3D12_RESOURCE_STATES srcState)
     {
-        assert(dst.size() == src.size());
-        assert(dstSizes.size() == src.size());
+        assert(dst.size() == srcBufferRegions.size());
+        assert(dstSizes.size() == srcBufferRegions.size());
 
         if (dst.empty())
         {
@@ -132,8 +131,8 @@ namespace Dml
                 m_readbackHeap.Get(),
                 offset,
                 D3D12_RESOURCE_STATE_COPY_DEST,
-                src[i],
-                srcOffsets[i],
+                srcBufferRegions[i].GetD3D12Resource(),
+                srcBufferRegions[i].Offset(),
                 srcState,
                 dstSizes[i]);
 

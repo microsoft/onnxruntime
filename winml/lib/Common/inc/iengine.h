@@ -12,7 +12,7 @@ interface IEngineFactory;
 using Resource = std::unique_ptr<void, std::function<void(void*)>>;
 
 // clang-format off
-MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1")
+MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
 IValue : IUnknown {
   STDMETHOD(IsEmpty)
   (bool* out) PURE;

@@ -67,13 +67,6 @@ public:
                 inputTensor.GetInterface().Get()));
         }
     }
-
-private:
-    // Aliasing means that both the input and the output start at the same exact offset in the same buffer
-    bool m_aliasing = false;
-
-    // The choice of using Identity or a copy depends on whether the input and the input are located in the same buffer
-    bool m_inputSharesOutputBuffer = false;
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Copy, DmlOperatorCopy);

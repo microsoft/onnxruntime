@@ -515,8 +515,7 @@ namespace Dml
         ORT_THROW_HR_IF(E_INVALIDARG, dst.size() != src.size());
 
         // Source and destination for batched GPU -> CPU copies
-        std::vector<ID3D12Resource*> srcDatas;
-        std::vector<uint64_t> srcOffsets;
+        std::vector<D3D12BufferRegion> srcBufferRegions;
         std::vector<void*> dstDatas;
         std::vector<uint32_t> dataSizesInBytes;
 
@@ -545,19 +544,12 @@ namespace Dml
             ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes.back() != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
 
             dstDatas.push_back(dst[i]->GetData());
-
-            auto srcBufferRegion = GetBufferForTensor(src[i]);
-
-            ID3D12Resource* srcData = srcBufferRegion.GetD3D12Resource();
-            const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-
-            srcDatas.push_back(srcData);
-            srcOffsets.push_back(srcBufferRegion.Offset());
+            srcBufferRegions.push_back(GetBufferForTensor(src[i]));
         }
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcOffsets, srcState);
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcBufferRegions, srcState);
 
         return S_OK;
         }
@@ -924,11 +916,8 @@ namespace Dml
     Status ExecutionProviderImpl::CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const
     {
         // Source and destination for batched GPU -> CPU copies
-        std::vector<ID3D12Resource*> srcDatas;
-        srcDatas.reserve(src_dst_pairs.size());
-
-        std::vector<uint64_t> srcOffsets;
-        srcOffsets.reserve(src_dst_pairs.size());
+        std::vector<D3D12BufferRegion> srcBufferRegions;
+        srcBufferRegions.reserve(src_dst_pairs.size());
 
         std::vector<void*> dstDatas;
         dstDatas.reserve(src_dst_pairs.size());
@@ -973,19 +962,12 @@ namespace Dml
             ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
 
             dstDatas.push_back(dstWrapper.GetData());
-
-            auto srcBufferRegion = GetBufferForTensor(&srcWrapper);
-
-            ID3D12Resource* srcData = srcBufferRegion.GetD3D12Resource();
-            const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-
-            srcDatas.push_back(srcData);
-            srcOffsets.push_back(srcBufferRegion.Offset());
+            srcBufferRegions.push_back(GetBufferForTensor(&srcWrapper));
         }
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcOffsets, srcState);
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcBufferRegions, srcState);
 
         return onnxruntime::common::Status::OK();
     }
