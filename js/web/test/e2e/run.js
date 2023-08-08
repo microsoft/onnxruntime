@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const {spawn} = require('child_process');
 const startServer = require('./simple-http-server');
+const minimist = require('minimist');
 
 // copy whole folder to out-side of <ORT_ROOT>/js/ because we need to test in a folder that no `package.json` file
 // exists in its parent folder.
@@ -30,6 +31,9 @@ function getNextUserDataDir() {
   fs.emptyDirSync(dir);
   return dir;
 }
+
+// commandline arguments
+const BROWSER = minimist(process.argv.slice(2)).browser || 'Chrome_default';
 
 async function main() {
   // find packed package
@@ -117,7 +121,7 @@ async function testAllBrowserCases({hostInKarma}) {
   await runKarma({hostInKarma, main: './browser-test-wasm-image-tensor-image.js'});
 }
 
-async function runKarma({hostInKarma, main, browser = 'Chrome_default', ortMain = 'ort.min.js'}) {
+async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js'}) {
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   await runInShell(`npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
       ortMain} --test-main=${main} --user-data=${getNextUserDataDir()}`);
