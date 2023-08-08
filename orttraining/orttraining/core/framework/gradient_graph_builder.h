@@ -162,7 +162,7 @@ class GradientGraphBuilder {
   Performs a BFS on the graph with STOP_GRADIENT_EDGES constrain
   It will skip traversing over the edges defined in STOP_GRADIENT_EDGES map.
   The resulting node set contains all the nodes that are differentiable wrt the x_node_args
-  @param Starting nodes arg name for BFS
+  @param x_node_arg_names Starting nodes arg name for BFS
   @returns All the nodes visited during BFS
   */
   NodeSet BFSWithStopGradient(const std::unordered_set<std::string>& x_node_arg_names) const;
@@ -171,14 +171,13 @@ class GradientGraphBuilder {
   Performs a ReverseBFS on the graph with STOP_GRADIENT_EDGES constrain
   It will skip traversing over the edges defined in STOP_GRADIENT_EDGES map.
   The resulting node set contains all the nodes that are differentiable wrt the input nodes
-  @param Starting nodes for ReverseBFS
+  @param nodes Starting nodes for ReverseBFS
   @returns All the nodes visited during ReverseBFS
   */
   NodeSet ReverseBFSWithStopGradient(const NodeSet& nodes) const;
 
   /**
-  Check if 'x_node_args_' are reachable from 'y_node_args_' for computing the partial derivative
-  @param reachable_nodes All the nodes reachable from the 'y_node_args_'
+  Check if 'x_node_args_' are reachable from 'y_node_args_' for computing the partial derivative.
   @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status
   */
   Status CheckNodeArgsReachable() const;

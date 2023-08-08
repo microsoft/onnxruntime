@@ -286,6 +286,18 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       }
 
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
+
+      // Make sure node_arg as input of next_node, has the data type allowed to compute gradient.
+      const auto* type_proto = node_arg->TypeAsProto();
+      if (nullptr != type_proto && type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType) {
+        const int32_t type = type_proto->tensor_type().elem_type();
+        if (GRAD_ALLOWED_TYPES.find(type) == GRAD_ALLOWED_TYPES.end()) {
+          LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                                 << " of node: " << next_node.Name() << " because element type is: " << type;
+          continue;
+        }
+      }
+
       std::string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
 
       pending_[grad_node_arg_name] += 1;
