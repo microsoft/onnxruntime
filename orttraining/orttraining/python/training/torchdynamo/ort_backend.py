@@ -461,7 +461,7 @@ class OrtBackend:
         ep: str = "CPUExecutionProvider",
         preallocate_output: bool = False,
         session_options=None,
-        onnx_exporter_options: Optional["torch.onnx._internal.exporter.ExportOptions"] = None,
+        onnx_exporter_options: Optional["torch.onnx.ExportOptions"] = None,
     ):
         # onnx_exporter_options contains information shared between exporter and DORT.
         # For example, they should use the same decomposition table when
@@ -469,7 +469,7 @@ class OrtBackend:
         #  2. call exporter's API to convert `torch.fx.GraphModule` to ONNX model
         #     (see onnxfunction_dispatcher passed to FxOnnxInterpreter.run below).
         if onnx_exporter_options is None:
-            onnx_exporter_options = torch.onnx._internal.exporter.ExportOptions()
+            onnx_exporter_options = torch.onnx.ExportOptions()
         # Convert user-facing option to internal option used by ONNX exporter
         # to access required information.
         # Some useful fields:
@@ -592,7 +592,7 @@ class OrtBackend:
             )
             # Convert the exported result to ONNX ModelProto.
             onnx_proto = exported.to_model_proto(
-                opset_version=self.resolved_onnx_exporter_options.opset_version
+                opset_version=self.resolved_onnx_exporter_options.onnx_registry.opset_version
             ).SerializeToString()
 
             # Initialize a ORT session to execute this ONNX model.
