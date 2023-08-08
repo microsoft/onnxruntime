@@ -1089,7 +1089,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           dim = HandleNegativeAxis(dim, rank);
           auto size_attr = ctx.getAttribute("size");
           int64_t size = static_cast<int64_t>(size_attr->i());
-          int64_t step =  getAttribute(ctx, "step", 1LL);
+          int64_t step = getAttribute(ctx, "step", 1LL);
           if (dim >= rank) {
             fail_shape_inference("dim ", dim, " is not lower than rank ", rank);
           }
