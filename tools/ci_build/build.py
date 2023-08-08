@@ -1680,7 +1680,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
+                # hardcode iOS 16.4 for now. latest macOS-13 image defaults to iOS 17 (beta) which doesn't work.
+                f"platform=iOS Simulator,OS=16.4,name={simulator_device_name}",
             ],
             cwd=cwd,
         )
@@ -2266,7 +2267,7 @@ def main():
     if args.use_migraphx:
         args.use_rocm = True
 
-    if args.build_wheel or args.gen_doc or args.use_tvm:
+    if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
 
     if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
