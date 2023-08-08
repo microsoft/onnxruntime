@@ -86,7 +86,7 @@ class JsKernel : public OpKernel {
     // input_data_format:
     //    type | data_ptr | dim_size | dim[0] ... dim[N-1]
     //
-    size_t temp_data_size = sizeof(size_t) * 4;
+    size_t temp_data_size = sizeof(size_t) * 5;
     for (int i = 0; i < context->InputCount(); i++) {
       temp_data_size += sizeof(size_t) * (3 + context->Input<Tensor>(i)->Shape().NumDimensions());
     }
@@ -97,9 +97,10 @@ class JsKernel : public OpKernel {
 
     p_serialized_kernel_context[0] = reinterpret_cast<uint32_t>(context);
     p_serialized_kernel_context[1] = static_cast<uint32_t>(context->InputCount());
-    p_serialized_kernel_context[2] = reinterpret_cast<uint32_t>(custom_data_ptr);
-    p_serialized_kernel_context[3] = static_cast<uint32_t>(custom_data_size);
-    size_t index = 4;
+    p_serialized_kernel_context[2] = static_cast<uint32_t>(context->OutputCount());
+    p_serialized_kernel_context[3] = reinterpret_cast<uint32_t>(custom_data_ptr);
+    p_serialized_kernel_context[4] = static_cast<uint32_t>(custom_data_size);
+    size_t index = 5;
     for (int i = 0; i < context->InputCount(); i++) {
       p_serialized_kernel_context[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->GetElementType());
       const auto* ptr = context->Input<Tensor>(i);
