@@ -51,11 +51,6 @@ class Softmax final : public RocmKernel {
     }
 
     log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
-
-    // We need to cast away the const as PerThreadRocblasHandle() is currently a non-const method
-    // TODO: Clean up the ROCMExecutionProvider interface to avoid this
-    rocm_ep_ = const_cast<ROCMExecutionProvider*>(
-        static_cast<const ROCMExecutionProvider*>(info.GetExecutionProvider()));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -64,10 +59,6 @@ class Softmax final : public RocmKernel {
   int64_t axis_;
   bool log_softmax_;
   int opset_;
-
-  // We need to access to the ROCM EP instance to get the rocblas handle to use
-  // for transposing(if applicable)
-  ROCMExecutionProvider* rocm_ep_;
 };
 
 }  // namespace rocm
