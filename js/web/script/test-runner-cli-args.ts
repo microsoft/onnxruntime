@@ -366,10 +366,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   //       we need this for now because Chrome does not support webnn yet,
   //       and ChromeCanary is not in CI.
 
-  // TODO: web CI is still using chrome v112, where WebGPU is not available yet.
-  // re-enable webgpu after CI upgraded chrome to v113.
-  // const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
-  const defaultBrowserBackends = ['webgl' /*, 'webgpu' */, 'wasm', 'xnnpack' /*, 'webnn'*/];
+  const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
   const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :

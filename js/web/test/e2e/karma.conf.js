@@ -26,6 +26,7 @@ module.exports = function(config) {
       {pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true},
       {pattern: './model.onnx', included: false},
     ],
+    plugins: [require('@chiragrupani/karma-chromium-edge-launcher'), ...config.plugins],
     proxies: {
       '/model.onnx': '/base/model.onnx',
       '/test-wasm-path-override/ort-wasm.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
@@ -47,7 +48,8 @@ module.exports = function(config) {
         base: 'ChromeHeadless',
         chromeDataDir: USER_DATA,
         // TODO: no-thread flags
-      }
+      },
+      Edge_default: {base: 'Edge', edgeDataDir: USER_DATA}
     }
   });
 };
