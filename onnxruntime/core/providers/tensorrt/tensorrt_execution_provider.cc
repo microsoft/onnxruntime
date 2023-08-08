@@ -1898,9 +1898,23 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Set explicit profiles in TRT config if all dynamic shape inputs have associated profiles provided by user
     if (has_explicit_profile) {
       // TRT EP has a constraint here.
-      // Users need to specify all the dynamic shape inputs with associated profiles if they want to explicitly specify profiles through provider options.
+      // Users need to provide all the dynamic shape inputs with associated profiles if they want to explicitly specify profiles through provider options.
       if (has_dynamic_shape) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Users need to specify all the dynamic shape inputs with associated profiles if they want to explicitly specify profiles through provider options.");
+        std::ostringstream msg;
+        msg << "User needs to provide all the dynamic shape inputs with associated profiles if they want to explicitly set profiles through provider options.\n";
+        msg << "Please note that main graph could be partitioned into TRT/CUDA/CPU subgraphs, in this case, user also needs to provide shape profiles for the TRT subgraph's input if it's dynamic shape input.\n";
+        msg << "Following input(s) has no associated shape profiles provided: ";
+        auto begin = input_implicit_shape_ranges.begin();
+        auto end = input_implicit_shape_ranges.end();
+        auto it = begin;
+        if (it != end) {
+          msg << it->first;
+          ++it;
+        }
+        for (; it != end; ++it) {
+          msg << "," << it->first;
+        }
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, msg.str());
       } else {
         for (auto trt_profile : trt_profiles) {
           trt_config->addOptimizationProfile(trt_profile);
@@ -2258,7 +2272,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
 
-      OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+      OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id_), device_id_);
       if (alloc_ == nullptr) {
         Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
       }
