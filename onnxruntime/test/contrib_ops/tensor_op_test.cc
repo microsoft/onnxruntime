@@ -16,6 +16,10 @@ namespace test {
 using ExpectResult = OpTester::ExpectResult;
 
 TEST(UnfoldTensorOpTest, LastDim) {
+  if (DefaultCudaExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "UnfoldTensor currently only have Cuda implementation.";
+  }
+
   if (NeedSkipIfCudaArchLowerThan(530)) {
     return;
   }
@@ -42,6 +46,10 @@ TEST(UnfoldTensorOpTest, LastDim) {
 }
 
 TEST(UnfoldTensorOpTest, NormalDim) {
+  if (DefaultCudaExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "UnfoldTensor currently only have Cuda implementation.";
+  }
+
   if (NeedSkipIfCudaArchLowerThan(530)) {
     return;
   }
