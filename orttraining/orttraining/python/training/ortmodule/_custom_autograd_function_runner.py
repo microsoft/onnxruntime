@@ -16,9 +16,7 @@ from ._fallback import ORTModuleFallbackException, ORTModuleIOError, _FallbackMa
 
 
 class CustomFuncOpKernelInfo:
-    """Store the kernel specific information that cannot be retrieved and saved by PyTorch exporter.
-    For those infos that can only be retrieved with real run, we try to collect them in the first time run.
-    """
+    """Store the kernel specific information retrieved with the first-time run."""
 
     def __init__(self, kernel_invoke_id: str):
         # kernel_invoke_id is a string contains session thread id, op kernel creation time stamp in ms, a random int,
@@ -29,7 +27,7 @@ class CustomFuncOpKernelInfo:
         # For the tensors generated from ORT backend, there is special handling here:
         # 1. For the first time run for the kernel (the uniqueness of the kernel is defined by kernel_invoke_id),
         # all such tensors will be cloned in case they are saved in context (but ORT backend is not aware of the
-        # reference, may release the content of the tensor before it is really needed in backward). Once
+        # reference, may release the content of the tensor before it is needed in backward). Once
         # `autograd.Function.apply` completes, by checking the existence of the tensor in the saved_tensors,
         # `_GlobalOpKernelInfoMap` is updated to save the input indices that are saved in context.
         # 2. For the subsequent runs, if the input index is in `input_indices_to_save_in_ctx`, the tensor
@@ -41,8 +39,9 @@ class CustomFuncOpKernelInfo:
         self.materialize_grads_config: Optional[Tuple[torch.device, torch.dtype, torch.shape]] = None
 
 
-# Map for all custom autograd function op kernels.
-# key: kernel_invoke_id, value: CustomAutogradFuncOpKernelContext.
+# Store the kernel specific information that cannot be retrieved and saved by PyTorch exporter.
+# For those infos that can only be retrieved with real run, we try to collect them in the first time run.
+# key: kernel_invoke_id, value: CustomFuncOpKernelInfo.
 _GlobalOpKernelInfoMap: Dict[str, CustomFuncOpKernelInfo] = {}
 
 
@@ -101,7 +100,7 @@ def _epilogize_forward(
     1. Remove the gradient functions between current autograd.Function and its input's gradient function, because
        in ORT we don't depend on PyTorch's autograd engine.
     2. Register the current autograd.Function's gradient function into our PyNodeSharedPointerPool.
-    3. Save kernel specific information into _GlobalOpKernelInfoMap.
+    3. Save kernel specific information into _GlobalOpKernelInfoMap in the first-time kernel run.
     """
 
     # Filter out the None in the saved_tensors.
@@ -109,6 +108,7 @@ def _epilogize_forward(
 
     ctx.fw_kernel_invoke_id = kernel_invoke_id
 
+    # If this is the first time run, collect kernel specific information.
     if kernel_invoke_id not in _GlobalOpKernelInfoMap:
         kernel_info = CustomFuncOpKernelInfo(kernel_invoke_id)
         _GlobalOpKernelInfoMap[kernel_invoke_id] = kernel_info
@@ -192,13 +192,15 @@ def call_python_forward_function(
         wrapped_tensor_args = []
         for arg_index, (grad_flag, tensor_flag, arg) in enumerate(zip(requires_grad_flags, tensor_type_flags, args)):
             if tensor_flag:
-                # Assume it's a DLPack tensor# and convert it to PyTorch tensor.
+                # Assume it's a DLPack tensor and convert it to PyTorch tensor.
                 if kernel_invoke_id in _GlobalOpKernelInfoMap:
+                    # Kernel has been run before, we will clone the input tensor only if it is saved in ctx.
                     if arg_index in _GlobalOpKernelInfoMap[kernel_invoke_id].input_indices_to_save_in_ctx:
                         wrapped_arg = from_dlpack(arg).detach().clone()
                     else:
                         wrapped_arg = from_dlpack(arg)
                 else:
+                    # Kernel first-time run, we will always clone the input tensor in case it is saved in ctx.
                     wrapped_arg = from_dlpack(arg).detach().clone()
 
                 # Only requires gradient when running under training mode
