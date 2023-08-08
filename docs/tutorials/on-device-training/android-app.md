@@ -1,7 +1,9 @@
 ---
-title: On-Device Training
-nav_order: 11
-parent: Tutorials
+title: Building an Android Application
+description: Building an Android Application using ONNX Runtime's On-Device Training solution.
+parent: On-Device Training
+grand_parent: Tutorials
+nav_order: 1
 ---
 
 # On-Device Training: Building an Android Application
