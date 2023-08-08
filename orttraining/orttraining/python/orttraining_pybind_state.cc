@@ -1236,6 +1236,15 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           ort_model->ToProto().SerializeToString(&model_str);
           return py::bytes(model_str);
         });
+
+  m.def("is_ortmodule_available",
+        []() {
+#ifdef __linux__
+          return true;
+#else
+        return false;
+#endif
+        });
 #endif
 }
 

@@ -79,9 +79,10 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   const bool skip_broadcasted = (skip_dims[0] == 1 || skip_dims_size == 2) ? true : false;
   const int skip_size = static_cast<int>(skip_dims[skip_dims_size - 1] * skip_dims[skip_dims_size - 2]);
 
+  int row_count = gsl::narrow<int>(input->Shape().SizeToDimension(input_dims_size - 1));
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
   if (strict_) {
-    int row_count = gsl::narrow<int>(input->Shape().SizeToDimension(input_dims_size - 1));
-    typedef typename ToCudaType<T>::MappedType CudaT;
     HostApplyLayerNorm<CudaT, float, CudaT, Simplified>(
         GetDeviceProp(),
         Stream(ctx),
@@ -96,33 +97,23 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
         (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,  // beta
         reinterpret_cast<const CudaT*>(skip->Data<T>()),                                // skip or residual to add
         (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,  // bias to add
+        skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr);
+  } else {
+    LaunchSkipLayerNormKernel<CudaT, Simplified>(
+        Stream(ctx),
+        reinterpret_cast<CudaT*>(output->MutableData<T>()),
         skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
+        reinterpret_cast<const CudaT*>(input->Data<T>()),
+        reinterpret_cast<const CudaT*>(skip->Data<T>()),
+        reinterpret_cast<const CudaT*>(gamma->Data<T>()),
+        (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
+        (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
+        epsilon_,
+        hidden_size,
+        row_count,
         skip_broadcasted,
         skip_size);
-
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
-    return Status::OK();
   }
-
-  int sequence_length = static_cast<int>(input_dims[1]);
-  int64_t element_count = input_dims[0] * sequence_length * hidden_size;
-  size_t element_size = sizeof(T);
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  return LaunchSkipLayerNormKernel<CudaT, Simplified>(
-      Stream(ctx),
-      reinterpret_cast<CudaT*>(output->MutableData<T>()),
-      skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
-      reinterpret_cast<const CudaT*>(input->Data<T>()),
-      reinterpret_cast<const CudaT*>(skip->Data<T>()),
-      reinterpret_cast<const CudaT*>(gamma->Data<T>()),
-      (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
-      (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
-      epsilon_,
-      hidden_size,
-      static_cast<int>(element_count),
-      element_size,
-      skip_broadcasted,
-      skip_size);
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
