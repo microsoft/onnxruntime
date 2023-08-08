@@ -10,7 +10,8 @@ U
 multiplier	mul_right"Mul
 A
 matmul_output_int32matmul_output_floatcast"Cast*	
-to 
+to
+ 
 5
 matmul_output_float
 
@@ -22,26 +23,29 @@ mul_bottom"MulDynamicQuantizeMatMul_fusionZ
 M
 KZ
 B
-
+
 
 K
 NZ
 a_scale
 
-
+
+
 Z
 b_scale
-	
+	
+
 CZ
 a_zero_point
 
 
 Z
 b_zero_point
-	
+	
 Cb
 Y
-
+
+
 
 M
 NB
