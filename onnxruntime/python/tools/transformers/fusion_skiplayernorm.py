@@ -49,6 +49,10 @@ class FusionSkipLayerNormalization(Fusion):
         if len(self.model.get_parents(add)) != 2:
             return
 
+        # To avoid an Add node have two children of LayerNormalization, we shall only fuse one SkipLayerNormalization
+        if add in self.nodes_to_remove:
+            return
+
         # Root Mean Square Layer Normalization
         simplified = node.op_type == "SimplifiedLayerNormalization"
 

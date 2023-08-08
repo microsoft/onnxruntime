@@ -3,9 +3,9 @@
 
 import {Guid} from 'guid-typescript';
 import Long from 'long';
-import {onnx} from 'onnx-proto';
 
-import {onnxruntime} from './ort-schema/ort-generated';
+import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
+import {onnx} from './ort-schema/protobuf/onnx';
 import {decodeUtf8String, ProtoUtil, ShapeUtil} from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;
@@ -22,6 +22,7 @@ export declare namespace Tensor {
     uint16: Uint16Array;
     int32: Int32Array;
     uint32: Uint32Array;
+    int64: BigInt64Array;
   }
 
   export type DataType = keyof DataTypeMap;
@@ -409,6 +410,8 @@ function dataviewConstructor(type: Tensor.DataType) {
       return Int32Array;
     case 'uint32':
       return Uint32Array;
+    case 'int64':
+      return BigInt64Array;
     case 'float32':
       return Float32Array;
     case 'float64':

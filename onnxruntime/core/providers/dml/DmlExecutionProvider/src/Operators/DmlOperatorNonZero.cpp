@@ -65,10 +65,6 @@ public:
             nonzeroCoordinatesDesc.OutputCountTensor = &intermediateDescs[0];
             nonzeroCoordinatesDesc.OutputCoordinatesTensor = &intermediateDescs[1];
 
-            // TODO: Remove this hack when DML supports native int64 for NonZero
-            // We use the int64/uint32 stride hack here, so zero out the data before writing to it
-            m_zeroOperator = InitializeZeroInt64Tensor(m_intermediateTensorDescs[1].GetBufferSizeInBytes());
-
             DML_OPERATOR_DESC opDesc = { DML_OPERATOR_NONZERO_COORDINATES, &nonzeroCoordinatesDesc };
             SetDmlOperatorDesc(opDesc, kernelCreationContext);
         }
@@ -127,7 +123,12 @@ public:
         if (!m_emptyInput && nonzeroElementCount > 0)
         {
             // TODO: Remove this hack when DML supports native int64 for NonZero
-            ExecuteZeroInt64Tensor(m_zeroOperator.Get(), outputTensor.GetInterface().Get());
+            // We use the int64/uint32 stride hack here, so zero out the data before writing to it
+            uint64_t tensorSizeInBytes = uint64_t(m_rank) * uint64_t(nonzeroElementCount) * sizeof(int64_t);
+            ComPtr<IDMLCompiledOperator> zeroOperator = InitializeZeroInt64Tensor(tensorSizeInBytes);
+
+            // TODO: Remove this hack when DML supports native int64 for NonZero
+            ExecuteZeroInt64Tensor(zeroOperator.Get(), outputTensor.GetInterface().Get());
 
             ComPtr<IDMLCompiledOperator> sliceOperator = InitializeSlice(m_intermediateTensorDescs[1], nonzeroElementCount);
 
@@ -182,7 +183,6 @@ private:
     std::vector<TensorDesc> m_intermediateTensorDescs;
     onnxruntime::TensorShape m_outputCountShape;
     onnxruntime::TensorShape m_outputCoordinatesShape;
-    ComPtr<IDMLCompiledOperator> m_zeroOperator;
     bool m_emptyInput = false;
     uint32_t m_rank = 0;
 };

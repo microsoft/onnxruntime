@@ -66,7 +66,7 @@
 
   <PropertyGroup>
     <Platforms>AnyCPU;x86</Platforms>
-    <LangVersion>7.3</LangVersion>
+    <LangVersion>default</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
@@ -331,13 +331,13 @@
   </ItemGroup>
 
   <ItemGroup Condition="$(TargetFramework.StartsWith('netstandard'))">
-    <PackageReference Include="System.Memory" Version="4.5.3" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <Compile Include="**\*.netstandard.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup Condition=" $(TargetFramework.StartsWith('net')) AND !$(TargetFramework.StartsWith('netstandard')) ">
-    <PackageReference Include="System.Memory" Version="4.5.3" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <Compile Include="**\*.net.cs" Link="platform\net\%(Filename)%(Extension)" />
   </ItemGroup>

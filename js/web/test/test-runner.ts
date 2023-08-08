@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 import {expect} from 'chai';
-import {onnx} from 'onnx-proto';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
 import {inspect} from 'util';
@@ -12,6 +11,7 @@ import {InferenceHandler, resolveBackend, SessionHandler} from '../lib/onnxjs/ba
 import {createWebGLContext} from '../lib/onnxjs/backends/webgl/webgl-context-factory';
 import {Logger, Profiler} from '../lib/onnxjs/instrument';
 import {Operator} from '../lib/onnxjs/operators';
+import {onnx} from '../lib/onnxjs/ort-schema/protobuf/onnx';
 import {Tensor} from '../lib/onnxjs/tensor';
 import {ProtoUtil} from '../lib/onnxjs/util';
 import {tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
@@ -388,8 +388,9 @@ export class TensorResultValidator {
       case 'int16':
       case 'int32':
       case 'uint32':
+      case 'int64':
       case 'bool':
-        return this.integerEqual(
+        return TensorResultValidator.integerEqual(
             actual.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
                 Int32Array,
             expected.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
@@ -462,7 +463,7 @@ export class TensorResultValidator {
 
     return true;
   }
-  integerEqual(
+  static integerEqual(
       actual: number[]|Uint8Array|Int8Array|Uint16Array|Int16Array|Uint32Array|Int32Array,
       expected: number[]|Uint8Array|Int8Array|Uint16Array|Int16Array|Uint32Array|Int32Array): boolean {
     if (actual.length !== expected.length) {
@@ -550,8 +551,8 @@ export class OpTestContext {
   }
   createOperator(): Operator {
     return initializeOperator(
-        this.sessionHandler, this.opTest.operator, this.opTest.attributes,
-        this.opTest.opsets ?? [{domain: '', version: 7}]);
+        this.sessionHandler, this.opTest.operator, this.opTest.attributes || [],
+        [this.opTest.opset ?? {domain: '', version: 7}]);
   }
 
   async dispose(): Promise<void> {
@@ -574,9 +575,9 @@ export class ProtoOpTestContext {
   session: ort.InferenceSession;
   readonly backendHint: string;
   constructor(test: Test.OperatorTest) {
-    const opsetImport = test.opsets!.map(opset => onnx.OperatorSetIdProto.create(opset));
+    const opsetImport = onnx.OperatorSetIdProto.create(test.opset);
     const operator = test.operator;
-    const attribute = test.attributes!.map(attr => {
+    const attribute = (test.attributes || []).map(attr => {
       const protoAttr = onnx.AttributeProto.create({name: attr.name});
       switch (attr.type) {
         case 'float':
@@ -622,23 +623,70 @@ export class ProtoOpTestContext {
 
     const model = onnx.ModelProto.create();
     model.irVersion = onnx.Version.IR_VERSION;
-    model.opsetImport = opsetImport;
+    model.opsetImport.push(opsetImport);
     model.graph = onnx.GraphProto.create();
 
     model.graph.node = [onnx.NodeProto.create({
       input: test.cases[0].inputs!.map((_, i) => `input_${i}`),
       output: test.cases[0].outputs!.map((_, i) => `output_${i}`),
       opType: operator,
+      domain: test.opset?.domain,
       name: operator,
       attribute
     })];
 
-    model.graph.input = test.cases[0].inputs!.map((input, i) => onnx.ValueInfoProto.create({
-      name: `input_${i}`,
-      type: onnx.TypeProto.create({
-        tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(input.type)}),
-      }),
-    }));
+    // normalize input shape definitions
+    let normalizedInputShapeDefinitions: ReadonlyArray<Test.InputShapeDefinition|undefined>;
+    if (!test.inputShapeDefinitions || test.inputShapeDefinitions === 'none') {
+      // if inputShapeDefinitions is not specified, use undefined for all inputs
+      normalizedInputShapeDefinitions = new Array(inputCount).fill(undefined);
+    } else if (test.inputShapeDefinitions === 'rankOnly') {
+      // if inputShapeDefinitions is 'rankOnly', use semantic names for all inputs. This means only rank is specified.
+      normalizedInputShapeDefinitions =
+          test.cases[0].inputs!.map((input, i) => input.dims.map((_, j) => `_input_${i}_d${j}`));
+
+      // check if all test cases have the same rank for each inputs
+      if (test.cases.some(
+              testCase =>
+                  testCase.inputs!.some((input, i) => input.dims.length !== test.cases[0].inputs![i].dims.length))) {
+        throw new Error(`Test cases for test: ${test.name} [${
+            test.operator}] must have the same rank for each inputs in different test cases`);
+      }
+    } else if (test.inputShapeDefinitions === 'static') {
+      // if inputShapeDefinitions is 'static', use the shape of the first test case for all inputs.
+      normalizedInputShapeDefinitions = test.cases[0].inputs!.map(input => input.dims);
+
+      // check if all test cases have the same shape for each inputs
+      if (test.cases.some(
+              testCase => testCase.inputs!.some(
+                  (input, i) => TensorResultValidator.integerEqual(input.dims, test.cases[0].inputs![i].dims)))) {
+        throw new Error(`Test cases for test: ${test.name} [${
+            test.operator}] must have the same shape for each inputs in different test cases`);
+      }
+    } else {
+      // if inputShapeDefinitions is specified as an array, use it as is.
+      // check if inputShapeDefinitions has the same number of inputs as test cases
+      if (test.inputShapeDefinitions && test.inputShapeDefinitions.length !== inputCount) {
+        throw new Error(
+            `Input shape definitions for test: ${test.name} [${test.operator}] must have the same number of inputs`);
+      }
+      normalizedInputShapeDefinitions = test.inputShapeDefinitions;
+    }
+
+    model.graph.input = test.cases[0].inputs!.map((input, i) => {
+      const shapeDefinition = normalizedInputShapeDefinitions[i];
+      const shape = shapeDefinition ? onnx.TensorShapeProto.create({
+        dim: shapeDefinition.map(
+            dim => onnx.TensorShapeProto.Dimension.create(typeof dim === 'string' ? {dimParam: dim} : {dimValue: dim}))
+      }) :
+                                      undefined;
+      return onnx.ValueInfoProto.create({
+        name: `input_${i}`,
+        type: onnx.TypeProto.create({
+          tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(input.type), shape}),
+        }),
+      });
+    });
 
     model.graph.output = test.cases[0].outputs!.map((output, i) => onnx.ValueInfoProto.create({
       name: `output_${i}`,
@@ -651,6 +699,19 @@ export class ProtoOpTestContext {
 
     this.backendHint = test.backend!;
     this.loadedData = onnx.ModelProto.encode(model).finish();
+
+    // in debug mode, open a new tab in browser for the generated onnx model.
+    if (ort.env.debug) {
+      const modelFile =
+          new File([this.loadedData], `op_test_generated_model_${test.name}.onnx`, {type: 'application/octet-stream'});
+      const modelTempUrl = URL.createObjectURL(modelFile);
+      const a = document.createElement('a');
+      a.href = modelTempUrl;
+      a.download = modelFile.name;
+      a.target = '_blank';
+      a.click();
+      URL.revokeObjectURL(modelTempUrl);
+    }
   }
   async init(): Promise<void> {
     this.session = await ort.InferenceSession.create(this.loadedData, {executionProviders: [this.backendHint]});

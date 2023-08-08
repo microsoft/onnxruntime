@@ -8,6 +8,7 @@ import pathlib
 import tempfile
 from collections import deque
 from enum import IntEnum
+from typing import Optional
 
 import onnx
 
@@ -188,7 +189,7 @@ def check_partitioning(
     graph: onnx.GraphProto,
     supported_ops_checker: _SupportedOpsChecker,
     require_fixed_input_sizes: bool = False,
-    value_info: dict = None,
+    value_info: Optional[dict] = None,
 ):
     """
     Estimate the partitions the graph will be split into for nodes that is_node_supported_fn returns true for.
@@ -356,13 +357,13 @@ def check_partitioning(
     return info
 
 
-def _check_ep_partitioning(model, supported_ops_config, value_info: dict = None):
+def _check_ep_partitioning(model, supported_ops_config, value_info: Optional[dict] = None):
     supported_ops = _SupportedOpsChecker(supported_ops_config)
     partition_info = check_partitioning(model.graph, supported_ops, value_info is not None, value_info)
     return partition_info
 
 
-def check_nnapi_partitions(model, value_info: dict = None):
+def check_nnapi_partitions(model, value_info: Optional[dict] = None):
     # if we're running in the ORT python package the file should be local. otherwise assume we're running from the
     # ORT repo
     script_dir = pathlib.Path(__file__).parent
@@ -376,7 +377,7 @@ def check_nnapi_partitions(model, value_info: dict = None):
     return _check_ep_partitioning(model, config_path, value_info)
 
 
-def check_coreml_partitions(model, value_info: dict = None):
+def check_coreml_partitions(model, value_info: Optional[dict] = None):
     # if we're running in the ORT python package the file should be local. otherwise assume we're running from the
     # ORT repo
     script_dir = pathlib.Path(__file__).parent
@@ -390,7 +391,7 @@ def check_coreml_partitions(model, value_info: dict = None):
     return _check_ep_partitioning(model, config_path, value_info)
 
 
-def check_shapes(graph: onnx.GraphProto, logger: logging.Logger = None):
+def check_shapes(graph: onnx.GraphProto, logger: Optional[logging.Logger] = None):
     """
     Check the shapes of graph inputs, values and graph outputs to determine if they have static or dynamic sizes.
     NNAPI and CoreML do not support dynamically sized values.
@@ -522,7 +523,7 @@ def checker(model_path, logger: logging.Logger):
     return nnapi_suitability != PartitioningInfo.TryWithEP.NO or coreml_suitability != PartitioningInfo.TryWithEP.NO
 
 
-def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger: logging.Logger = None):
+def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger: Optional[logging.Logger] = None):
     """
     Analyze the provided model to determine if it's likely to work well with the NNAPI or CoreML Execution Providers
     :param model_path: Model to analyze.

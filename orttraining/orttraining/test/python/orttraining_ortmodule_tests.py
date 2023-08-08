@@ -4,6 +4,7 @@
 
 import argparse
 import logging
+import os
 import sys
 
 from _test_commons import run_subprocess
@@ -150,6 +151,14 @@ def run_hooks_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_utils_tests(cwd, log):
+    log.debug("Running: Utils tests")
+
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_utilities.py"]
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def run_pytorch_export_contrib_ops_tests(cwd, log):
     log.debug("Running: PyTorch Export Contrib Ops Tests")
 
@@ -178,15 +187,17 @@ def main():
 
     run_ortmodule_poc_net(cwd, log, no_cuda=False, data_dir=args.mnist)
 
-    run_ortmodule_poc_net(cwd, log, no_cuda=True, data_dir=args.mnist)
+    if os.getenv("ORTMODULE_DISABLE_CPU_TRAINING_TEST", "0") != "1":
+        run_ortmodule_poc_net(cwd, log, no_cuda=True, data_dir=args.mnist)
 
     run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(
         cwd, log, no_cuda=False, data_dir=args.bert_data, transformers_cache=args.transformers_cache
     )
 
-    run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(
-        cwd, log, no_cuda=True, data_dir=args.bert_data, transformers_cache=args.transformers_cache
-    )
+    if os.getenv("ORTMODULE_DISABLE_CPU_TRAINING_TEST", "0") != "1":
+        run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(
+            cwd, log, no_cuda=True, data_dir=args.bert_data, transformers_cache=args.transformers_cache
+        )
 
     run_ortmodule_torch_lightning(cwd, log, args.mnist)
 
@@ -201,6 +212,8 @@ def main():
     run_data_sampler_tests(cwd, log)
 
     run_hooks_tests(cwd, log)
+
+    run_utils_tests(cwd, log)
 
     run_experimental_gradient_graph_tests(cwd, log)
 

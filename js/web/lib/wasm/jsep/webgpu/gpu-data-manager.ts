@@ -45,6 +45,11 @@ export interface GpuDataManager {
    * actually released.
    */
   refreshPendingBuffers(): void;
+
+  /**
+   * destroy all gpu buffers. Call this when the session.release is called.
+   */
+  dispose(): void;
 }
 
 interface StorageCacheValue {
@@ -76,9 +81,13 @@ class GpuDataManagerImpl implements GpuDataManager {
   // pending buffers for computing
   private buffersPending: GPUBuffer[];
 
-  constructor(private backend: WebGpuBackend /* , private reuseBuffer: boolean */) {
+  // The reusable storage buffers for computing.
+  private freeBuffers: Map<number, GPUBuffer[]>;
+
+  constructor(private backend: WebGpuBackend) {
     this.storageCache = new Map();
     this.downloadCache = new Map();
+    this.freeBuffers = new Map();
     this.buffersForUploadingPending = [];
     this.buffersPending = [];
   }
@@ -144,15 +153,27 @@ class GpuDataManagerImpl implements GpuDataManager {
 
   // eslint-disable-next-line no-bitwise
   create(size: number, usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST): GpuData {
-    // !!!
-    // !!! IMPORTANT: TODO: whether we should keep the storage buffer every time, or always create new ones.
-    // !!!                  This need to be figured out by performance test results.
-    // !!!
-
     const bufferSize = calcNormalizedBufferSize(size);
 
-    // create gpu buffer
-    const gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+    let gpuBuffer;
+    // Currently, only storage buffers are reused.
+    // eslint-disable-next-line no-bitwise
+    if ((usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
+      let buffers = this.freeBuffers.get(bufferSize);
+      if (!buffers) {
+        buffers = [];
+        this.freeBuffers.set(bufferSize, buffers);
+      }
+      if (buffers.length > 0) {
+        gpuBuffer = buffers.pop() as GPUBuffer;
+      } else {
+        // create gpu buffer
+        gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+      }
+    } else {
+      // create gpu buffer
+      gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+    }
 
     const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
     this.storageCache.set(gpuData.id, {gpuData, originalSize: size});
@@ -223,11 +244,36 @@ class GpuDataManagerImpl implements GpuDataManager {
 
   refreshPendingBuffers(): void {
     for (const buffer of this.buffersForUploadingPending) {
+      // upload buffer is only useful in the session creation time. So we don't need to reuse them in session running.
       buffer.destroy();
     }
+    this.buffersForUploadingPending = [];
     for (const buffer of this.buffersPending) {
-      buffer.destroy();
+      // eslint-disable-next-line no-bitwise
+      if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
+        // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
+        this.freeBuffers.get(buffer.size)!.push(buffer);
+      } else {
+        buffer.destroy();
+      }
     }
+    this.buffersPending = [];
+  }
+
+  dispose() {
+    this.freeBuffers.forEach((buffers) => {
+      buffers.forEach(buffer => {
+        buffer.destroy();
+      });
+    });
+
+    this.storageCache.forEach((storage) => {
+      storage.gpuData.buffer.destroy();
+    });
+
+    this.storageCache = new Map();
+    this.downloadCache = new Map();
+    this.freeBuffers = new Map();
   }
 }
 

@@ -124,13 +124,13 @@ bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_t
 bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
                                       std::vector<int64_t>& shape_b,
                                       const logging::Logger& logger) {
-  int64_t size_a = shape_a.size();
-  int64_t size_b = shape_b.size();
-  int64_t smaller_size = std::min(size_a, size_b);
-  for (int64_t i = 0; i < smaller_size; i++) {
+  size_t size_a = shape_a.size();
+  size_t size_b = shape_b.size();
+  size_t smaller_size = std::min(size_a, size_b);
+  for (size_t i = 0; i < smaller_size; i++) {
     // right alignment
-    int64_t axis_a = size_a - i - 1;
-    int64_t axis_b = size_b - i - 1;
+    size_t axis_a = size_a - i - 1;
+    size_t axis_b = size_b - i - 1;
     // Broadcastable tensors must either have each dimension the same size or equal to one.
     if (shape_a[axis_a] != shape_b[axis_b] && shape_a[axis_a] != 1 && shape_b[axis_b] != 1) {
       return false;

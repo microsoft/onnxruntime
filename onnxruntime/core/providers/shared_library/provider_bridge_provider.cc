@@ -59,6 +59,10 @@
 
 #endif
 
+#ifdef ENABLE_TRITON
+#include "orttraining/training_ops/cpu/triton/triton_op.h"
+#endif
+
 #ifndef _Ret_notnull_
 #define _Ret_notnull_
 #endif
@@ -456,10 +460,6 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 
 }  // namespace sparse_utils
 
-float MLFloat16::ToFloat() const {
-  return math::halfToFloat(val);
-}
-
 std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
 
 void LogRuntimeError(uint32_t session_id, const common::Status& status,
@@ -708,6 +708,15 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 #endif
 
 #endif
+
+#ifdef ENABLE_TRITON
+namespace contrib {
+Status TritonOp::Compute(OpKernelContext* context) const {
+  return g_host_cpu.contrib__TritonOp__Compute(this, context);
+}
+}  // namespace contrib
+#endif
+
 #endif
 
 #if defined(USE_CANN)

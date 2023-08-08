@@ -30,6 +30,17 @@ endif()
 # Project
 project(onnxruntime C CXX ASM)
 
+# Disable fast-math for Intel oneAPI compiler
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
+    # Using icx-cl compiler driver with MSVC-like arguments
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fp:precise")
+  else()
+    # Using icpx compiler driver
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-fast-math")
+  endif()
+endif()
+
 # Needed for Java
 set(CMAKE_C_STANDARD 99)
 
@@ -217,6 +228,9 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+# Triton support
+option(onnxruntime_ENABLE_TRITON "Enable Triton" OFF)
+
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
@@ -243,14 +257,21 @@ option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for thre
 # Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
 # when using python env
 if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
   set(onnxruntime_ENABLE_TRAINING_APIS ON)
-  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
   set(onnxruntime_ENABLE_ATEN ON)
+  set(onnxruntime_ENABLE_TRITON ON)
+  if (NOT APPLE)
+    set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
   set(onnxruntime_ENABLE_TRAINING_OPS ON)
+  if (onnxruntime_ENABLE_PYTHON AND NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindings! "
+    "Please use the --enable_training flag instead of the --enable_training_apis flag.")
+  endif()
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -270,7 +291,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   if (NOT CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101")
   endif()
 
   file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
@@ -409,9 +430,27 @@ if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND 
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
 endif()
 
+if (NOT (UNIX AND onnxruntime_USE_CUDA AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
+  if (onnxruntime_ENABLE_TRITON)
+    message(WARNING "onnxruntime_ENABLE_TRITON is turned OFF because it's designed to support CUDA training on Linux only currently.")
+  endif()
+  set(onnxruntime_ENABLE_TRITON OFF)
+endif()
+
 set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
+
+  # Python::Python is required for building unit test executables.
+  if (onnxruntime_BUILD_UNIT_TESTS)
+    set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
+  endif()
+endif()
+
+if (onnxruntime_ENABLE_TRITON)
+  # Need SetOutputMLValue.
+  set(onnxruntime_ENABLE_ATEN ON)
+  add_compile_definitions(ENABLE_TRITON)
 
   # Python::Python is required for building unit test executables.
   if (onnxruntime_BUILD_UNIT_TESTS)
@@ -800,17 +839,14 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 
     if (onnxruntime_DISABLE_SPARSE_TENSORS)
-      message(STATUS "DISABLE_SPARSE_TENSORS=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_SPARSE_TENSORS)
     endif()
 
     if (onnxruntime_DISABLE_OPTIONAL_TYPE)
-      message(STATUS "DISABLE_OPTIONAL_TYPE=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_OPTIONAL_TYPE)
     endif()
 
     if (onnxruntime_DISABLE_FLOAT8_TYPES)
-      message(STATUS "DISABLE_FLOAT8_TYPES=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT8_TYPES)
     endif()
 
@@ -907,6 +943,7 @@ function(onnxruntime_set_compile_flags target_name)
 
       # float16.h:90:12: error: ‘tmp’ is used uninitialized
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
+      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-deprecated-copy)
 
       # some #pragma unroll will fail, do not treat them as error
       # #warning must not be treated as error

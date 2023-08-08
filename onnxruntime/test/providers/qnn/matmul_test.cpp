@@ -6,7 +6,6 @@
 #include <string>
 #include <unordered_map>
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
 
 #include "onnx/onnx_pb.h"
@@ -17,75 +16,47 @@ namespace onnxruntime {
 namespace test {
 
 // Returns a function that creates a graph with MatMul operator.
-static GetTestModelFn BuildMatMulOpTestCase(const std::vector<int64_t>& input1_shape,
-                                            const std::vector<int64_t>& input2_shape) {
-  return [input1_shape, input2_shape](ModelTestBuilder& builder) {
-    // Random input data
-    auto input1 = builder.MakeInput<float>(input1_shape, 0.0f, 10.0f);
-    auto input2 = builder.MakeInput<float>(input2_shape, 0.0f, 10.0f);
-
-    auto* output = builder.MakeOutput();
+static GetTestModelFn BuildMatMulOpTestCase(const TestInputDef<float>& input1_def,
+                                            const TestInputDef<float>& input2_def) {
+  return [input1_def, input2_def](ModelTestBuilder& builder) {
+    NodeArg* input1 = MakeTestInput(builder, input1_def);
+    NodeArg* input2 = MakeTestInput(builder, input2_def);
+    NodeArg* output = builder.MakeOutput();
     builder.AddNode("MatMul", {input1, input2}, {output});
   };
 }
 
-// Returns a function that creates a graph with a QDQ AveragePool operator.
+// Returns a function that creates a graph with a QDQ MatMul operator.
 template <typename QuantType>
-GetQDQTestCaseFn BuildMatMulOpQDQTestCase(const std::vector<int64_t>& input1_shape,
-                                          const std::vector<int64_t>& input2_shape) {
-  return [input1_shape, input2_shape](ModelTestBuilder& builder) {
-    float pool_output_scale = 0.0038f;
-    float q_scale = 0.0038f;
-    QuantType pool_output_zp = std::numeric_limits<QuantType>::max() / 2;
-    QuantType q_zp = std::numeric_limits<QuantType>::max() / 2;
+static GetTestQDQModelFn<QuantType> BuildMatMulOpQDQTestCase(const TestInputDef<float>& input1_def,
+                                                             const TestInputDef<float>& input2_def) {
+  return [input1_def, input2_def](ModelTestBuilder& builder,
+                                  std::vector<QuantParams<QuantType>>& output_qparams) {
+    // input1 -> Q -> DQ ->
+    NodeArg* input1 = MakeTestInput(builder, input1_def);
+    QuantParams<QuantType> input1_qparams = GetTestInputQuantParams(input1_def);
+    auto* input1_qdq = AddQDQNodePair<QuantType>(builder, input1, input1_qparams.scale, input1_qparams.zero_point);
 
-    auto* input_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
-    auto* output_arg = builder.MakeOutput();
+    // input2 -> Q -> DQ ->
+    NodeArg* input2 = MakeTestInput(builder, input2_def);
+    QuantParams<QuantType> input2_qparams = GetTestInputQuantParams(input2_def);
+    auto* input2_qdq = AddQDQNodePair<QuantType>(builder, input2, input2_qparams.scale, input2_qparams.zero_point);
 
-    using InputLimits = std::numeric_limits<QuantType>;
+    // MatMul
+    auto* op_output = builder.MakeIntermediate();
+    builder.AddNode("MatMul", {input1_qdq, input2_qdq}, {op_output});
 
-    // add QDQ input
-    auto* q1_output = builder.MakeIntermediate();
-    auto* dq1_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(input_arg,
-                                             pool_output_scale,
-                                             pool_output_zp,
-                                             q1_output);
-    builder.AddDequantizeLinearNode<QuantType>(q1_output,
-                                               q_scale,
-                                               q_zp,
-                                               dq1_output);
-
-    // add input b initializer (NNAPI only supports case of MatMul A*B - B is an initializer)
-    auto* dq_2_output = builder.MakeIntermediate();
-    auto* input_b = builder.MakeInitializer<QuantType>(input2_shape, InputLimits::min(), InputLimits::max());
-    builder.AddDequantizeLinearNode<QuantType>(input_b,
-                                               q_scale,
-                                               q_zp,
-                                               dq_2_output);
-
-    // add MatMul operator
-    auto* matmul_op_output = builder.MakeIntermediate();
-    builder.AddNode("MatMul", {dq1_output, dq_2_output}, {matmul_op_output});
-
-    // add QDQ output
-    auto* q3_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(matmul_op_output,
-                                             pool_output_scale,
-                                             pool_output_zp,
-                                             q3_output);
-    builder.AddDequantizeLinearNode<QuantType>(q3_output,
-                                               q_scale,
-                                               q_zp,
-                                               output_arg);
+    // op_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, op_output, output_qparams[0].scale,
+                                                     output_qparams[0].zero_point);
   };
 }
 
-// Runs an AveragePool model on the QNN CPU backend. Checks the graph node assignment, and that inference
+// Runs an MatMul model on the QNN CPU backend. Checks the graph node assignment, and that inference
 // outputs for QNN and CPU match.
-static void RunMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
-                              const std::vector<int64_t>& input2_shape,
-                              ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+static void RunMatMulOpOpTest(const TestInputDef<float>& input1_def,
+                              const TestInputDef<float>& input2_def,
+                              ExpectedEPNodeAssignment expected_ep_assignment,
                               int opset = 13) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -94,22 +65,20 @@ static void RunMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
-  RunQnnModelTest(BuildMatMulOpTestCase(input1_shape, input2_shape),
+  RunQnnModelTest(BuildMatMulOpTestCase(input1_def, input2_def),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+                  2e-4f);
 }
 
-// Runs a QDQ AveragePool model on the QNN HTP backend. Checks the graph node assignment, and that inference
-// outputs for QNN and CPU match.
+// Runs a QDQ MatMul model on the QNN HTP backend. Checks the graph node assignment, and that the
+// QDQ model is accurate on QNN EP (compared to CPU EP).
 template <typename QuantType>
-static void RunQDQMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
-                                 const std::vector<int64_t>& input2_shape,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                                 int opset = 18, float fp32_abs_err = 1e-5f) {
+static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
+                                 const TestInputDef<float>& input2_def,
+                                 ExpectedEPNodeAssignment expected_ep_assignment,
+                                 int opset = 18) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -117,31 +86,29 @@ static void RunQDQMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
-  RunQnnModelTest(BuildMatMulOpQDQTestCase<QuantType>(input1_shape, input2_shape),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description,
-                  fp32_abs_err);
+  TestQDQModelAccuracy(BuildMatMulOpTestCase(input1_def, input2_def),
+                       BuildMatMulOpQDQTestCase<QuantType>(input1_def, input2_def),
+                       provider_options,
+                       opset,
+                       expected_ep_assignment,
+                       1e-5f);
 }
 
 //
 // CPU tests:
 //
 
-TEST_F(QnnCPUBackendTests, TestMatMulOp) {
-  RunMatMulOpOpTest({2, 2} /* input_shape1 */,
-                    {2, 2} /* input_shape2 */,
-                    ExpectedEPNodeAssignment::All, "TestMatMulOp", 18);
+TEST_F(QnnCPUBackendTests, MatMulOp) {
+  RunMatMulOpOpTest(TestInputDef<float>({2, 3}, false, {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f}),
+                    TestInputDef<float>({3, 2}, false, {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f}),
+                    ExpectedEPNodeAssignment::All, 18);
 }
 
-// QNN broadcast issue
-TEST_F(QnnCPUBackendTests, DISABLED_TestMatMulOp2) {
-  RunMatMulOpOpTest({28, 1, 64} /* input_shape1 */,
-                    {64, 32} /* input_shape2 */,
-                    ExpectedEPNodeAssignment::All, "TestMatMulOp2", 18);
+// Test MatMul broadcasting
+TEST_F(QnnCPUBackendTests, MatMulOp_Broadcast) {
+  RunMatMulOpOpTest(TestInputDef<float>({28, 1, 64}, false, -10.0f, 10.0f),
+                    TestInputDef<float>({64, 32}, false, -10.0f, 10.0f),
+                    ExpectedEPNodeAssignment::All, 18);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -149,27 +116,17 @@ TEST_F(QnnCPUBackendTests, DISABLED_TestMatMulOp2) {
 // HTP tests:
 //
 
-TEST_F(QnnHTPBackendTests, TestMatMulOp_HTP_u8) {
-  RunQDQMatMulOpOpTest<uint8_t>({2, 2} /* input_shape1 */,
-                                {2, 2} /* input_shape2 */,
-                                ExpectedEPNodeAssignment::All, "TestMatMulOp_HTP_u8",
-                                18, 0.00381f);
+TEST_F(QnnHTPBackendTests, MatMulOp_HTP_u8) {
+  RunQDQMatMulOpOpTest<uint8_t>(TestInputDef<float>({2, 3}, false, {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f}),
+                                TestInputDef<float>({3, 2}, false, {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f}),
+                                ExpectedEPNodeAssignment::All, 18);
 }
 
-// QNN broadcast issue
-TEST_F(QnnHTPBackendTests, DISABLED_TestMatMulOp2_HTP_u8) {
-  RunQDQMatMulOpOpTest<uint8_t>({28, 1, 64} /* input_shape1 */,
-                                {64, 32} /* input_shape2 */,
-                                ExpectedEPNodeAssignment::All, "TestMatMulOp2_HTP_u8",
-                                18, 0.00381f);
-}
-
-// QNN broadcast issue
-TEST_F(QnnHTPBackendTests, DISABLED_TestMatMulOp3_HTP_u8) {
-  RunQDQMatMulOpOpTest<uint8_t>({28, 1, 32} /* input_shape1 */,
-                                {32, 2} /* input_shape2 */,
-                                ExpectedEPNodeAssignment::All, "TestMatMulOp3_HTP_u8",
-                                18, 0.00381f);
+// Test MatMul broadcasting
+TEST_F(QnnHTPBackendTests, MatMulOp_Broadcast) {
+  RunQDQMatMulOpOpTest<uint8_t>(TestInputDef<float>({28, 1, 64}, false, -10.0f, 10.0f),
+                                TestInputDef<float>({64, 32}, false, -10.0f, 10.0f),
+                                ExpectedEPNodeAssignment::All, 18);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
