@@ -58,7 +58,7 @@ namespace DmlGraphFusionHelper
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOperators);
+        _Inout_ std::vector<ComPtr<IDMLOperator>>& dmlOperators);
 
     void CreateIDmlCompiledOperatorAndRegisterKernel(
         const uint32_t partitionIndex,

@@ -433,7 +433,7 @@ namespace DmlGraphFusionHelper
         std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges;
         std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(serializedDmlGraphDesc.OutputEdges.size());
         std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges;
-        ConvertGraphDesc(
+        ConvertGraphDesc<1024>(
             serializedDmlGraphDesc,
             dmlGraphDesc,
             fusedNodeInputCount,
