@@ -4,6 +4,7 @@
 
 import argparse
 import contextlib
+import json
 import os
 import platform
 import re
@@ -1653,10 +1654,16 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    simulator_device_name = subprocess.check_output(
-        ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
+    simulator_device_info = subprocess.check_output(
+        [
+            sys.executable,
+            os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_info.py"),
+        ],
         text=True,
     ).strip()
+    log.debug(f"Simulator device info:\n{simulator_device_info}")
+
+    simulator_device_info = json.loads(simulator_device_info)
 
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
@@ -1680,8 +1687,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                # hardcode iOS 16.4 for now. latest macOS-13 image defaults to iOS 17 (beta) which doesn't work.
-                f"platform=iOS Simulator,OS=16.4,name={simulator_device_name}",
+                f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
             ],
             cwd=cwd,
         )
