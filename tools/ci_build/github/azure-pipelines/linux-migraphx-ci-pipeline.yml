@@ -32,9 +32,6 @@ jobs:
     submodules: recursive
 
 
-  - script: cp $(Build.SourcesDirectory)/cmake/deps.txt $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/
-    displayName: Copy deps.txt
-
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile

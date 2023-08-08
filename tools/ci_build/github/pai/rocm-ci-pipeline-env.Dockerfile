@@ -9,9 +9,7 @@ RUN update-locale LANG=en_US.UTF-8
 ENV LC_ALL C.UTF-8
 ENV LANG C.UTF-8
 
-
 ARG ROCM_VERSION
-
 
 WORKDIR /stage
 
@@ -39,11 +37,17 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
 # Create rocm-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/rocm-ci
 ENV CONDA_DEFAULT_ENV rocm-ci
-RUN conda create -y -n $CONDA_DEFAULT_ENV python=3.8
-ENV PATH $CONDA_ENVIRONMENT_PATH/bin:${PATH}
+RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.8
+ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
+
+# Conda base patch
+RUN pip install cryptography==41.0.0
 
 # Enable rocm-ci environment
 SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
+
+# ln -sf is needed to make sure that version `GLIBCXX_3.4.30' is found
+RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
 
 # Install Pytorch
 RUN pip install install torch==2.0.1 torchvision==0.15.2 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_VERSION}/ && \
@@ -93,12 +97,11 @@ RUN  pip install \
      scikit-learn \
      tokenizers \
      sentencepiece \
+     wget \
      dill==0.3.4 \
      pytorch_lightning==1.6.0 \
      pytest-xdist \
      pytest-rerunfailures
-
-ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/:$LD_LIBRARY_PATH
 
 ENV ORTMODULE_ONNX_OPSET_VERSION=15
 
