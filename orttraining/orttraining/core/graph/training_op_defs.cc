@@ -3924,8 +3924,7 @@ Return true if all elements are true and false otherwise.
 
         std::string func_name = getAttribute(ctx, "func_name", "");
         // TODO(pengwa): allow custom PythonOp shape inference.
-        if (func_name == kInspectActivationFuncName ||
-            func_name == kIncrementStepFuncName) {
+        if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
           // PythonOp with the name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly the
           // same as a normal PythonOp when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;
