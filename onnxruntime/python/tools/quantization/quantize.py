@@ -7,7 +7,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
+from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
@@ -226,7 +226,18 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QUInt8:
         raise ValueError(
             "ONNXRuntime quantization doesn't support data format:"
-            "activation_type=QuantType.QInt8, weight_type = QuantType.QUInt8"
+            "activation_type=QuantType.QInt8, weight_type=QuantType.QUInt8"
+        )
+    if activation_type != QuantType.QFLOAT8E4M3FN and weight_type == QuantType.QFLOAT8E4M3FN:
+        raise ValueError(
+            f"ONNXRuntime quantization doesn't support data format: activation_type={activation_type} "
+            f"!=QuantType.QFLOAT8E4M3FN, weight_type=QuantType.QFLOAT8E4M3FN."
+        )
+
+    if activation_type == QuantType.QFLOAT8E4M3FN and weight_type != QuantType.QFLOAT8E4M3FN:
+        raise ValueError(
+            "ONNXRuntime quantization doesn't support data format: activation_type=QuantType.QFLOAT8E4M3FN, "
+            f"weight_type={weight_type}!=QuantType.QFLOAT8E4M3FN"
         )
 
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QInt8 and quant_format != QuantFormat.QDQ:
@@ -346,6 +357,9 @@ def quantize_static(
                     Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
                     SmoothQuant will be folded into the previous op if the previous op is foldable.
     """
+    if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
+        if calibrate_method != CalibrationMethod.Distribution:
+            raise ValueError("Only Distribution calibration method is supported for float quantization.")
 
     extra_options = extra_options or {}
     nodes_to_exclude = nodes_to_exclude or []
@@ -419,7 +433,11 @@ def quantize_static(
             extra_options=calib_extra_options,
         )
         calibrator.collect_data(calibration_data_reader)
-        tensors_range = calibrator.compute_range()
+        tensors_range = calibrator.compute_data()
+        if not isinstance(tensors_range, TensorsData):
+            raise TypeError(
+                f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
+            )
         del calibrator
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
