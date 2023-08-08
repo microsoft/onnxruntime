@@ -31,14 +31,6 @@ from onnx_model import OnnxModel
 logger = getLogger(__name__)
 
 
-class BertOptimizationOptions(FusionOptions):
-    """This class is deprecated"""
-
-    def __init__(self, model_type):
-        logger.warning("BertOptimizationOptions is depreciated. Please use FusionOptions instead.")
-        super().__init__(model_type)
-
-
 class BertOnnxModel(OnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, hidden_size: int = 0):
         """Initialize BERT ONNX Model.

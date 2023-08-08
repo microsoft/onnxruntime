@@ -66,7 +66,7 @@ Status RelPosAttnBias<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t key_len = *key_length->Data<int64_t>();
 
   if (query_len != key_len) {
-    ORT_THROW("Relatvie position bias currently only support query length equal to key length in Self Attention.");
+    ORT_THROW("Relative position bias currently only support query length equal to key length in Self Attention.");
   }
 
   Tensor* output = context->Output(0, {1, num_heads, query_len, key_len});
