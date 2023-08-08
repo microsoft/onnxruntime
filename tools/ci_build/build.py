@@ -1680,7 +1680,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
+                # hardcode iOS 16.4 for now. latest macOS-13 image defaults to iOS 17 (beta) which doesn't work.
+                f"platform=iOS Simulator,OS=16.4,name={simulator_device_name}",
             ],
             cwd=cwd,
         )

@@ -3,7 +3,7 @@
     "name": "Pow with no attributes - big number",
     "operator": "Pow",
     "attributes": [],
-    "condition": "^((?!iOS).)*$", // does NOT contains 'iOS': large number cannot be handled in a half_float environment
+    "platformCondition": "^((?!iOS).)*$", // does NOT contains 'iOS': large number cannot be handled in a half_float environment
     "cases": [
       {
         "name": "T[2,4] T[3,2,4]",
