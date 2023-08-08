@@ -26,7 +26,15 @@
 #include "core/framework/provider_options_utils.h"
 
 #ifdef USE_DML
-#include "core/providers/dml/DmlExecutionProvider/src/DmlExternalBufferAllocator.h"
+using Microsoft::WRL::ComPtr;
+
+#include <wil/wrl.h>
+#include "core/providers/dml/DmlExecutionProvider/src/External/D3DX12/d3dx12.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DescriptorPool.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlCommittedResourceAllocator.h"
+#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/BucketizedBufferAllocator.h"
 #endif
 
 namespace onnxruntime {
@@ -196,7 +204,30 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
 
   auto hit = id_to_allocator_map->find(id);
   if (hit == id_to_allocator_map->end()) {
-    auto dml_allocator = std::make_shared<Dml::DmlExternalBufferAllocator>(id);
+    constexpr uint32_t device_id = 0;
+    auto d3d12_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);
+    auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device.Get());
+
+    D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
+    cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
+
+    ComPtr<ID3D12CommandQueue> cmd_queue;
+    ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+
+    auto context = std::make_shared<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get());
+
+    auto dml_allocator = std::make_shared<Dml::BucketizedBufferAllocator>(
+        d3d12_device.Get(),
+        context,
+        CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        std::make_unique<Dml::DmlCommittedResourceAllocator>(d3d12_device.Get()));
+    dml_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
+    context->SetAllocator(dml_allocator);
+
     hit = id_to_allocator_map->emplace(id, std::move(dml_allocator)).first;
   }
 
