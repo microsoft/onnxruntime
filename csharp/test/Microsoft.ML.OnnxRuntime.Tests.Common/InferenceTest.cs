@@ -2102,7 +2102,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
-    }
 
 #if USE_AZURE
         [Fact(DisplayName = "TestLoadAzureEP")]
