@@ -64,7 +64,7 @@ Note: In the below examples, `PyTorch` refers to running in PyTorch without `tor
 
 ### E2E variants
 
-1) PyTorch (without `torch.compile`), FP32, Hugging Face `pipeline` API
+1. PyTorch (without `torch.compile`), FP32, Hugging Face `pipeline` API
 ```
 python3 benchmark.py \
     --benchmark-type "HF + PT" \
@@ -76,7 +76,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-2) PyTorch (without `torch.compile`), FP32, Hugging Face `generate()` and `decode()` API
+2. PyTorch (without `torch.compile`), FP32, Hugging Face `generate()` and `decode()` API
 ```
 python3 benchmark.py \
     --benchmark-type "HF + PT" \
@@ -88,7 +88,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-3) PyTorch 2.0 (with `torch.compile`), FP32, Hugging Face `pipeline` API
+3. PyTorch 2.0 (with `torch.compile`), FP32, Hugging Face `pipeline` API
 ```
 python3 benchmark.py \
     --benchmark-type "HF + PT2" \
@@ -100,7 +100,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-4) PyTorch 2.0 (with `torch.compile`), FP32, Hugging Face `generate()` and `decode()` API
+4. PyTorch 2.0 (with `torch.compile`), FP32, Hugging Face `generate()` and `decode()` API
 ```
 python3 benchmark.py \
     --benchmark-type "HF + PT2" \
@@ -112,7 +112,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-5) ONNX Runtime, FP32, Hugging Face `pipeline` API
+5. ONNX Runtime, FP32, Hugging Face `pipeline` API
 ```
 python3 benchmark.py \
     --benchmark-type "HF + ORT" \
@@ -124,7 +124,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-6) ONNX Runtime, FP32, Hugging Face `generate()` and `decode()` API
+6. ONNX Runtime, FP32, Hugging Face `generate()` and `decode()` API
 ```
 python3 benchmark.py \
     --benchmark-type "HF + ORT" \
@@ -136,7 +136,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-7) ONNX Runtime, FP32
+7. ONNX Runtime, FP32
 
 Note: This benchmark example can work for the ONNX model produced by `convert_to_onnx.py` or the E2E model produced by [Olive](https://github.com/microsoft/Olive).
 ```
@@ -154,7 +154,7 @@ python3 benchmark.py \
 
 You can also benchmark individual model components in Whisper.
 
-1) "Whisper encoder" from Hugging Face Optimum export, FP32
+1. "Whisper encoder" from Hugging Face Optimum export, FP32
 ```
 python3 benchmark.py \
     --benchmark-type "ORT" \
@@ -165,7 +165,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-2) "Whisper decoder" from Hugging Face Optimum export, FP32
+2. "Whisper decoder" from Hugging Face Optimum export, FP32
 ```
 python3 benchmark.py \
     --benchmark-type "ORT" \
@@ -176,7 +176,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-3) "Whisper decoder-with-past" from Hugging Face Optimum export, FP32
+3. "Whisper decoder-with-past" from Hugging Face Optimum export, FP32
 ```
 python3 benchmark.py \
     --benchmark-type "ORT" \
@@ -187,7 +187,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-4) "Whisper encoder-decoder-init" from ONNX Runtime's custom export, FP32
+4. "Whisper encoder-decoder-init" from ONNX Runtime's custom export, FP32
 ```
 python3 benchmark.py \
     --benchmark-type "ORT" \
@@ -198,7 +198,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-5) "Whisper decoder-with-past" from ONNX Runtime's custom export, FP32
+5. "Whisper decoder-with-past" from ONNX Runtime's custom export, FP32
 ```
 python3 benchmark.py \
     --benchmark-type "ORT" \
@@ -209,7 +209,7 @@ python3 benchmark.py \
     --device cpu
 ```
 
-6) "Whisper with beam search op" from ONNX Runtime's export, FP32
+6. "Whisper with beam search op" from ONNX Runtime's export, FP32
 ```
 python3 benchmark.py \
     --benchmark-type "ORT" \
