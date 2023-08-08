@@ -274,7 +274,7 @@ ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(cons
                                                                             size_t optimizer_size);
 
 /**
- * Resets the gradients of all trainable parameters to zero for the TrainingSession in the given training_handle
+ * Resets the gradients of all trainable parameters to zero for the specified TrainingSession
  * @param training_handle handle of the training session
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
