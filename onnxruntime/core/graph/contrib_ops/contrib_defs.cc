@@ -1079,7 +1079,41 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Allow inputs and outputs to be any kind of tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          // TODO: add shape inference code here
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+
+          auto& input_shape = getInputShape(ctx, 0);
+          auto rank = input_shape.dim_size();
+          int64_t dim = getAttribute(ctx, "dim", -1LL);
+          dim = HandleNegativeAxis(dim, rank);
+          auto size_attr = ctx.getAttribute("size");
+          int64_t size = static_cast<int64_t>(size_attr->i());
+          int64_t step =  getAttribute(ctx, "step", 1LL);
+          if (dim >= rank) {
+            fail_shape_inference("dim ", dim, " is not lower than rank ", rank);
+          }
+
+          TensorShapeProto outputs_shape;
+          for (int32_t i = 0; i < rank; i++) {
+            Dim input_dim_i = input_shape.dim(i);
+            if (i == dim) {
+              if (input_dim_i.has_dim_value()) {
+                auto dim_value = input_dim_i.dim_value();
+                if (size > dim_value) {
+                  fail_shape_inference("size ", size, " is not lower or equal than dim value ", dim_value, " at input dim ", dim);
+                }
+                auto output_dim_value = 1LL + (dim_value - size) / step;
+                outputs_shape.add_dim()->set_dim_value(output_dim_value);
+              } else {
+                outputs_shape.add_dim();
+              }
+            } else {
+              *outputs_shape.add_dim() = input_dim_i;
+            }
+          }
+          outputs_shape.add_dim()->set_dim_value(size);
+          updateOutputShape(ctx, 0, outputs_shape);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1089,7 +1123,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0, "input", "input tensor, it must be 2D tensor of shape M x N", "F")
         .Output(0, "output", "Output tensor.", "I")
         .TypeConstraint("F", {"tensor(float)"}, "Constrain to float tensors.")
-        .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types"));
+        .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          auto output_type = ctx.getOutputType(0);
+          output_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT32);
+          TensorShapeProto outputs_shape;
+          outputs_shape.add_dim()->set_dim_value(2);
+          outputs_shape.add_dim();
+          updateOutputShape(ctx, 0, outputs_shape);
+        }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                             OpSchema()
