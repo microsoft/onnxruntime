@@ -5,6 +5,10 @@ parameters:
 - name: machine_pool
   type: string
 
+- name: extra_build_arg
+  type: string
+  default: ''
+
 jobs:
 - job: Linux_py_GPU_Wheels_${{ parameters.arch }}
   timeoutInMinutes: 240
@@ -35,7 +39,7 @@ jobs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
         # please check ONNXRUNTIME_CUDA_VERSION in tools/ci_build/github/linux/build_linux_arm64_python_package.sh
-        arguments: -i onnxruntimecuda118xtrt86build${{ parameters.arch }} -x "-d GPU"
+        arguments: -i onnxruntimecuda118xtrt86build${{ parameters.arch }} -d "GPU" -x "${{ parameters.extra_build_arg }}"
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'

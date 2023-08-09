@@ -5,7 +5,9 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
+
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -2100,6 +2102,32 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
-    }
 
+#if USE_AZURE
+        [Fact(DisplayName = "TestLoadAzureEP")]
+        private void TestLoadAzureEP()
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("mul_1.onnx");
+
+            using (var memInfo = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
+                                                   OrtAllocatorType.ArenaAllocator, 0, OrtMemType.Default))
+            using (var arenaCfg = new OrtArenaCfg(0, -1, -1, -1))
+            {
+                using (var sessionOptions = new SessionOptions())
+                {
+                    sessionOptions.AppendExecutionProvider("AZURE");
+                    try {
+                        using (var session1 = new InferenceSession(model, sessionOptions))
+                        {
+
+                        }
+                    }
+                    catch (Exception) {
+                        Assert.True(false);
+                    } 
+                }
+            }
+        }
+#endif
+    }
 }
