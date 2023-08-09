@@ -1200,51 +1200,6 @@ def test_checkpoint_function():
     run()
 
 
-def test_skipped_autograd_function():
-    class TestSkippedFunction(torch.autograd.Function):
-        @staticmethod
-        # bias is an optional argument
-        def forward(ctx, x):
-            ctx.save_for_backward(x)
-            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
-
-        @staticmethod
-        def backward(ctx, grad_output):
-            return None
-
-    class TestSkippedModel(torch.nn.Module):
-        def __init__(self, output_size):
-            super().__init__()
-            self.custom_fn = TestSkippedFunction.apply
-            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
-
-            with torch.no_grad():
-                self.bias.uniform_()
-
-        def forward(self, model_input):
-            # model_input did not require_grad
-            out = self.custom_fn(model_input)
-            return out + self.bias
-
-    output_size = 1024
-
-    os.environ[  # noqa: F405
-        "ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"
-    ] = "orttraining_test_ortmodule_autograd.test_skipped_autograd_function.<locals>.TestSkippedFunction"
-
-    m = ORTModule(TestSkippedModel(output_size).to("cuda"))
-    can_run = True
-    try:
-        m(torch.randn(output_size, dtype=torch.float, device="cuda"))
-    except RuntimeError as e:
-        assert "No forward registered for TestSkippedFunction" in str(e)
-        can_run = False
-
-    assert not can_run
-
-    del os.environ["ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"]  # noqa: F405
-
-
 def test_pythonop_training_mode():
     def check_pythonop_training_mode(model, is_eval_mode):
         ## make sure the ort's PythonOp's training_mode is correct
@@ -1367,3 +1322,61 @@ def test_python_op_save_input_for_backward():
 
     label_input = torch.ones([output_size])
     run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
+
+
+class DupNamedFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, bias):
+        ctx.save_for_backward(input, bias)
+        assert False  # should not be called # noqa: B011
+        return bias + input
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        assert False  # should not be called # noqa: B011
+        return grad_output, grad_output
+
+
+def test_duplicate_named_functions():
+    triggered = [False, False]
+
+    class DupNamedFunction(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, input, bias):
+            ctx.save_for_backward(input, bias)
+            triggered[0] = True
+            return bias - input
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            triggered[1] = True
+            return -grad_output, grad_output
+
+    class DpNamedModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super().__init__()
+            self.relu = DupNamedFunction.apply
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
+
+            with torch.no_grad():
+                self.bias.uniform_()
+
+        def forward(self, model_input):
+            out = self.relu(model_input, self.bias)
+            return out
+
+    output_size = 1024
+
+    def model_builder():
+        return DpNamedModel(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
+
+    assert triggered[0]
+    assert triggered[1]

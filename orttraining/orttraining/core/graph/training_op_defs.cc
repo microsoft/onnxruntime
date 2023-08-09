@@ -18,6 +18,11 @@ namespace training {
 using namespace ONNX_NAMESPACE;
 
 namespace {
+
+// TODO(pengwa): remove this once customized PythonOp shape inference is supported.
+constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
+
 std::array<TensorShapeProto::Dimension, 6> GetLSTMDimensions(InferenceContext& ctx) {
   TensorShapeProto::Dimension num_directions, sequence_length, batch_size, hidden_size, hidden_size_x4, input_size;
 
@@ -3918,7 +3923,8 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
         std::string func_name = getAttribute(ctx, "func_name", "");
-        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+        // TODO(pengwa): allow custom PythonOp shape inference.
+        if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
           // PythonOp with the name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly the
           // same as a normal PythonOp when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;
@@ -4063,7 +4069,8 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
 
         std::string func_name = getAttribute(ctx, "func_name", "");
-        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+        // TODO(pengwa): allow custom PythonOp shape inference.
+        if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
           // PythonOpGrad with name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly
           // the same as a normal PythonOpGrad when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;
