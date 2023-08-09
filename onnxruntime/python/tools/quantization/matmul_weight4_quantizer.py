@@ -57,7 +57,6 @@ def int4_block_quant(quant_type: int, fp32weight: npt.ArrayLike) -> np.ndarray:
     pad_len = padded_rows - rows
     if pad_len > 0:
         fp32weight = np.pad(fp32weight, ((0, pad_len), (0, 0)), "constant")
-        rows = padded_rows
 
     # block wise quantization, each block comes from a single column
     blob_idx = 0
