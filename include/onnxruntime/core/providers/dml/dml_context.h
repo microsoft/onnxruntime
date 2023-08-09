@@ -4,7 +4,7 @@
 #define ORT_DML_CTX
 
 #include "dml_resource.h"
-#include "core/providers/context.h"
+#include "core/providers/custom_op_context.h"
 #include <DirectML.h>
 #include <d3d12.h>
 
@@ -12,7 +12,7 @@ namespace Ort {
 
 namespace Custom {
 
-struct DmlContext : public Context {
+struct DmlContext : public CustomOpContext {
   IDMLDevice* dml_device = {};
   ID3D12Device* d3d12_device = {};
   ID3D12GraphicsCommandList* cmd_list = {};

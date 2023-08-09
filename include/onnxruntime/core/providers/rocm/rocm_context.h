@@ -4,7 +4,7 @@
 #define ORT_ROCM_CTX
 
 #include "rocm_resource.h"
-#include "core/providers/context.h"
+#include "core/providers/custom_op_context.h"
 #include <hip/hip_runtime.h>
 #include <miopen/miopen.h>
 #include <rocblas/rocblas.h>
@@ -13,7 +13,7 @@ namespace Ort {
 
 namespace Custom {
 
-struct RocmContext : public Context {
+struct RocmContext : public CustomOpContext {
   hipStream_t hip_stream = {};
   miopenHandle_t miopen_handle = {};
   rocblas_handle rblas_handle = {};

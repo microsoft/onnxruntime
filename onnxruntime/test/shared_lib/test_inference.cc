@@ -125,15 +125,12 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     dnnl_options.use_arena = 1;
     dnnl_options.threadpool_args = nullptr;
     session_options.AppendExecutionProvider_Dnnl(dnnl_options);
-    std::cout << "Running simple inference with dnnl provider" << std::endl;
 #else
     return;
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_ROCM
-    std::cout << "Running simple inference with rocm provider" << std::endl;
     OrtROCMProviderOptions rocm_options;
-    // rocm_options.do_copy_in_default_stream = true;
     session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     return;
@@ -1410,6 +1407,7 @@ TEST(CApiTest, test_custom_op_library) {
 #elif USE_ROCM
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 3, nullptr, lib_name.c_str());
+// elif USE_DML // todo - enable test on DML EP
 #else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 0, nullptr, lib_name.c_str());
@@ -3374,43 +3372,6 @@ TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
 }
 
 #endif
-
-// todo - enable the case to test dml custom op when ready
-// #ifdef USE_DML
-// TEST(LiteCustomOpTest, IdentityDML) {
-//   Ort::SessionOptions session_options;
-//   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
-//
-// #if defined(_WIN32)
-//   session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
-// #elif defined(__APPLE__)
-//   session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
-// #else
-//   session_options.RegisterCustomOpsLibrary(ORT_TSTR("./libcustom_op_library.so"));
-// #endif
-//
-//   Ort::Session session(*ort_env, CUSTOM_OP_IDENTITY_DML, session_options);
-//
-//   const char* input_names[] = {"X", "Y"};
-//   const char* output_names[] = {"Z"};
-//   float x_value[] = {0.f, 1.f, 2.f};
-//   float y_value[] = {3.f, 4.f, 5.f};
-//
-//   int64_t x_dim[] = {3};
-//   int64_t y_dim[] = {3};
-//
-//   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-//
-//   Ort::Value input_tensors[2] = {
-//       Ort::Value::CreateTensor<float>(memory_info, x_value, 3, x_dim, 1),
-//       Ort::Value::CreateTensor<float>(memory_info, y_value, 3, y_dim, 1)
-//   };
-//
-//   Ort::RunOptions run_optoins;
-//   auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 2, output_names, 1);
-//   ASSERT_TRUE(*output_tensors[0].GetTensorData<float>() == 3.f);
-// }
-// #endif
 
 static std::thread::id caller_tid = std::this_thread::get_id();
 static std::atomic_bool atomic_wait{false};

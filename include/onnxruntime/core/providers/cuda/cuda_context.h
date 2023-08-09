@@ -2,19 +2,20 @@
 // Licensed under the MIT License.
 #pragma once
 
+#define ORT_CUDA_CTX
+
 #include "cuda_resource.h"
-#include "core/providers/context.h"
+#include "core/providers/custom_op_context.h"
+#include <cuda.h>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <cudnn.h>
-
-#define ORT_CUDA_CTX
 
 namespace Ort {
 
 namespace Custom {
 
-struct CudaContext : public Context {
+struct CudaContext : public CustomOpContext {
   cudaStream_t cuda_stream = {};
   cudnnHandle_t cudnn_handle = {};
   cublasHandle_t cublas_handle = {};
