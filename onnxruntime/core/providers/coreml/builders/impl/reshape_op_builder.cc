@@ -120,8 +120,8 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   if (allow_zero) {
     if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
       LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0 as dimension when allowzero is enabled. "
-                               "New shape: "
-                            << Shape2String(new_shape);
+                               "Input shape: "
+                            << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
       return false;
     }
   }
