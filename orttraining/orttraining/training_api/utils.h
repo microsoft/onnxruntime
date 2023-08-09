@@ -13,26 +13,37 @@ namespace api {
 
 struct ModelIdentifiers {
   // ModelIdentifiers struct enables an easy way to store and identify the models used for training, evaluation
-  // and optimization.
-  // The model can be specified by a path to the model file or by a span of bytes containing the model data. However,
-  // only one of these two options can be used at a time.
-  // Training Session creation api enforces this by allowing the user to specify only one of the two options.
-  const std::optional<std::string> train_model_path, eval_model, optim_model = std::nullopt;
-  gsl::span<const uint8_t> train_model_data;
-  gsl::span<const uint8_t> eval_model_data;
-  gsl::span<const uint8_t> optim_model_data;
+  // and model updates(optimizer model).
+  // The model can be specified by a path to the model file or by a span of bytes containing the model data.
+  // Training model is required, evaluation and optimizer models are optional.
+  std::variant<std::string, gsl::span<const uint8_t>> train_model;
+  std::variant<std::optional<std::string>, gsl::span<const uint8_t>> eval_model;
+  std::variant<std::optional<std::string>, gsl::span<const uint8_t>> optim_model;
 
-  ModelIdentifiers(const std::string& train_model_uri,
-                   const std::optional<std::string>& eval_model_uri,
-                   const std::optional<std::string>& optim_model_uri)
-      : train_model_path(std::optional<std::string>(train_model_uri)),
-        eval_model(eval_model_uri),
-        optim_model(optim_model_uri) {}
+  ModelIdentifiers(std::variant<std::string, gsl::span<const uint8_t>> training_model,
+                   std::variant<std::optional<std::string>, gsl::span<const uint8_t>> evaluation_model,
+                   std::variant<std::optional<std::string>, gsl::span<const uint8_t>> optimzer_model)
+      : train_model(training_model), eval_model(evaluation_model), optim_model(optimzer_model) {}
 
-  ModelIdentifiers(gsl::span<const uint8_t> train_data,
-                   gsl::span<const uint8_t> eval_data,
-                   gsl::span<const uint8_t> optim_data)
-      : train_model_data(train_data), eval_model_data(eval_data), optim_model_data(optim_data) {}
+  bool IsOptimizerModelAvailable() const {
+    if (std::holds_alternative<std::optional<std::string>>(optim_model) &&
+            std::get<std::optional<std::string>>(optim_model).has_value() ||
+        std::holds_alternative<gsl::span<const uint8_t>>(optim_model) &&
+            std::get<gsl::span<const uint8_t>>(optim_model).size() > 0) {
+      return true;
+    }
+    return false;
+  }
+
+  bool IsEvalModelAvailable() const {
+    if ((std::holds_alternative<std::optional<std::string>>(eval_model) &&
+         std::get<std::optional<std::string>>(eval_model).has_value()) ||
+        (std::holds_alternative<gsl::span<const uint8_t>>(eval_model) &&
+         std::get<gsl::span<const uint8_t>>(eval_model).size() > 0)) {
+      return true;
+    }
+    return false;
+  }
 };
 
 namespace utils {

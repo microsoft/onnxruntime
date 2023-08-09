@@ -92,8 +92,9 @@ std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
   ORT_ENFORCE(opt_type_to_freq_map.size() == 1U, "Only support one type of optimizer algorithm, but got: " +
                                                      std::to_string(opt_type_to_freq_map.size()));
   auto opt_it = opt_type_to_freq_map.begin();
-  group_count = opt_it->second;
   auto& op_type = opt_it->first.second;
+  group_count = opt_it->second;
+  ORT_ENFORCE(group_count == 1, "Group count can only be 1, but got: " + std::to_string(group_count));
 
   // TODO: to support multiple groups, need to create a mapping between each group to its parameter list.
   if (op_type == "AdamWOptimizer") {
@@ -109,7 +110,6 @@ std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
     const PathString& optim_path, int32_t& group_count) {
   std::shared_ptr<Model> model = nullptr;
 #if !defined(ORT_MINIMAL_BUILD)
-  // const auto optim_model_path = ToWideString(optim_path);
   if (!fbs::utils::IsOrtFormatModel(optim_path)) {
     ORT_ENFORCE(Model::Load(optim_path, model, nullptr,
                             logging::LoggingManager::DefaultLogger())
@@ -266,10 +266,21 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }
 
-  ORT_THROW_IF_ERROR(model_identifiers.optim_model.has_value()
-                         ? optim_sess_->Load(model_identifiers.optim_model.value())
-                         : optim_sess_->Load(model_identifiers.optim_model_data.data(),
-                                             static_cast<int>(model_identifiers.optim_model_data.size())));
+  ORT_ENFORCE(model_identifiers.IsOptimizerModelAvailable(), "Optimizer model is not available.");
+
+  if (std::holds_alternative<std::optional<std::string>>(model_identifiers.optim_model)) {
+    auto optimizer_model = std::get<std::optional<std::string>>(model_identifiers.optim_model);
+    // The above call to IsOptimizerModelAvailable() ensures that optimizer_model is not nullopt
+    ORT_THROW_IF_ERROR(optim_sess_->Load(optimizer_model.value()));
+    optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(ToWideString(optimizer_model.value()), group_count_);
+  } else {
+    auto optimizer_model = std::get<gsl::span<const uint8_t>>(model_identifiers.optim_model);
+    ORT_THROW_IF_ERROR(optim_sess_->Load(optimizer_model.data(),
+                                         static_cast<int>(optimizer_model.size())));
+    optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(optimizer_model.data(),
+                                                                   optimizer_model.size(),
+                                                                   group_count_);
+  }
 
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
 
@@ -277,16 +288,6 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
   state_->optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &optim_sess_->GetDataTransferManager();
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
-
-  if (model_identifiers.optim_model.has_value()) {
-    optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(ToWideString(model_identifiers.optim_model.value()), group_count_);
-  } else {
-    optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(model_identifiers.optim_model_data.data(),
-                                                                   model_identifiers.optim_model_data.size(),
-                                                                   group_count_);
-  }
-  ORT_ENFORCE(group_count_ == 1, "Group count can only be 1, but got: " + std::to_string(group_count_));
-  ORT_ENFORCE(optimizer_algo_ptr_, "optimizer_algo_ptr_ should not be nullptr.");
 
   InlinedVector<std::string> all_input_names;
   all_input_names.reserve(CommonOptimizerInputs.size() + optimizer_algo_ptr_->optimizer_states_inputs.size());

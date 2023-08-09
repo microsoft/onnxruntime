@@ -174,13 +174,11 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   }
 #endif
 
-  ORT_ENFORCE(model_identifiers.train_model_path.has_value() || model_identifiers.train_model_data.size() != 0,
-              "Training Session Creation failed. Either the train model path or train model data should be specified.");
-
-  ORT_THROW_IF_ERROR(model_identifiers.train_model_path.has_value()
-                         ? train_sess_->Load(model_identifiers.train_model_path.value())
-                         : train_sess_->Load(model_identifiers.train_model_data.data(),
-                                             static_cast<int>(model_identifiers.train_model_data.size())));
+  // Load the training model
+  ORT_THROW_IF_ERROR(std::holds_alternative<std::string>(model_identifiers.train_model)
+                         ? train_sess_->Load(std::get<std::string>(model_identifiers.train_model))
+                         : train_sess_->Load(std::get<gsl::span<const uint8_t>>(model_identifiers.train_model).data(),
+                                             static_cast<int>(std::get<gsl::span<const uint8_t>>(model_identifiers.train_model).size())));
 
   for (const auto& provider : providers) {
     ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(provider));
@@ -244,7 +242,6 @@ Module::Module(const ModelIdentifiers& model_identifiers,
 
     // Copy ortvalue buffer from CPU to target_device for this "param_name" (based on graph partitioning)
     // Only copies data if the target device is not the same as the current device the buffer is placed on
-
     OrtValue& param_data = params_iter->second->Data();
     ORT_ENFORCE(param_data.IsTensor());
     const Tensor& param_data_tensor = param_data.Get<Tensor>();
@@ -283,16 +280,18 @@ Module::Module(const ModelIdentifiers& model_identifiers,
     }
   }
 
-  if (model_identifiers.eval_model.has_value()) {
+  if (model_identifiers.IsEvalModelAvailable()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
-    ORT_THROW_IF_ERROR(eval_sess_->Load(model_identifiers.eval_model.value()));
-  } else if (model_identifiers.eval_model_data.size() != 0) {
-    eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
-    ORT_THROW_IF_ERROR(eval_sess_->Load(model_identifiers.eval_model_data.data(),
-                                        static_cast<int>(model_identifiers.eval_model_data.size())));
+    if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
+      ORT_THROW_IF_ERROR(eval_sess_->Load(std::get<std::optional<std::string>>(model_identifiers.eval_model).value()));
+    } else {
+      auto model_data = std::get<gsl::span<const uint8_t>>(model_identifiers.eval_model);
+      ORT_THROW_IF_ERROR(eval_sess_->Load(model_data.data(), static_cast<int>(model_data.size())));
+    }
   } else {
     return;
   }
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   if (!op_domains.empty()) {
     ORT_THROW_IF_ERROR(eval_sess_->AddCustomOpDomains(op_domains));
@@ -330,8 +329,8 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   // Keep a copy of the eval model path to be able to later export the model for inferencing.
   // The inference model will be reconstructed from the eval model.
   // TODO [Ashwini]: Find a fix to export model for inference when the eval model is loaded from a buffer.
-  if (model_identifiers.eval_model.has_value()) {
-    eval_model_path_ = model_identifiers.eval_model.value();
+  if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
+    eval_model_path_ = std::get<std::optional<std::string>>(model_identifiers.eval_model);
   }
 }
 
@@ -499,14 +498,14 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
 #if !defined(ORT_MINIMAL_BUILD)
 // TODO (baijumeswani): ExportModelForInferencing should work irrespective of whether
 //                      the build is minimal or not. This will require to read the ort_format eval model,
-//                      trainsform it to an inference model and save it in ort_format.
+//                      transform it to an inference model and save it in ort_format.
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
                                          gsl::span<const std::string> graph_output_names) const {
-  ORT_RETURN_IF(!eval_sess_ || eval_model_path_.empty(),
+  ORT_RETURN_IF(!eval_sess_ || !eval_model_path_.has_value(),
                 "Eval model was not provided. Cannot export a model for inferencing.");
 
   ONNX_NAMESPACE::ModelProto eval_model;
-  ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_), eval_model));
+  ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_.value()), eval_model));
 
   // Clone the eval mode into an inference onnxruntime::Model.
   std::shared_ptr<Model> inference_model;
