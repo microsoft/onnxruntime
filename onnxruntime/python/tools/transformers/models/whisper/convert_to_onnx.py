@@ -183,21 +183,21 @@ def parse_arguments(argv=None):
         "--quantize_embedding_layer",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder",
+        help="Produce beam search model with chained encdecinit and decoder.",
     )
 
     parser.add_argument(
         "--quantize_per_channel",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder",
+        help="Produce beam search model with chained encdecinit and decoder.",
     )
 
     parser.add_argument(
         "--quantize_reduce_range",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder",
+        help="Produce beam search model with chained encdecinit and decoder.",
     )
 
     parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
