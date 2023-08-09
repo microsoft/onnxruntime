@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 namespace internal_nhwc_onnx {
