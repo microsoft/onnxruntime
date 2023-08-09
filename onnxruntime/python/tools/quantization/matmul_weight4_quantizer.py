@@ -15,7 +15,6 @@ import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
 from .onnx_model import ONNXModel
-from .q4dq_wrapper import Q4dqWrapper
 from .quant_utils import attribute_to_kwarg, load_model_with_shape_infer
 
 
@@ -33,7 +32,7 @@ def __q4_blob_size(quant_type: int) -> int:
         # 4b each value, with one fp32 scale and one uint8 zero point
         blob_size = 32 // 2 + 4 + 1
     else:
-        raise ValueError("Unsupported quantization type: {}".format(quant_type))
+        raise ValueError(f'Unsupported quantization type: {quant_type}')
     return blob_size
 
 
@@ -256,9 +255,8 @@ if __name__ == "__main__":
     output_model_path = args.output_model
     q4dq_bin_path = args.quant_bin_path
 
-    q4dq = Q4dqWrapper(q4dq_bin_path)
 
     model = load_model_with_shape_infer(Path(input_model_path))
-    quant = MatMulWeight4Quantizer(model, q4dq, 0)
+    quant = MatMulWeight4Quantizer(model, 0)
     quant.process()
     quant.model.save_model_to_file(output_model_path, False)

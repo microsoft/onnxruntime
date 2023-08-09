@@ -113,7 +113,7 @@ class TestOpMatMulFpQ4(unittest.TestCase):
     ):
 
         qtype_str = "BlkQ4Sym" if (quantization_type == 0) else "BlkQ4Zp8"
-        model_int4_path = Path(self._tmp_model_dir.name).joinpath(f"matmulfpq4_{qtype_str}.onnx").absolute()
+        model_int4_path = str(Path(self._tmp_model_dir.name).joinpath(f"matmulfpq4_{qtype_str}.onnx").absolute())
 
         # Quantize fp32 model to int4 model
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
@@ -130,7 +130,7 @@ class TestOpMatMulFpQ4(unittest.TestCase):
     def test_quantize_matmul_int4_symmetric(self):
         np.random.seed(13)
 
-        model_fp32_path = Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute()
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
         self.construct_model_matmul(model_fp32_path, symmetric= True)
         data_reader = self.input_feeds(1, {"input": [100, 52]})
         self.quant_test(
@@ -140,7 +140,7 @@ class TestOpMatMulFpQ4(unittest.TestCase):
         )
 
     def test_quantize_matmul_int4_offsets(self):
-        model_fp32_path = Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute()
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": [100, 52]})
         self.quant_test(
