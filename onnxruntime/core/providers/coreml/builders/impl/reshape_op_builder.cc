@@ -91,13 +91,6 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
-  // CoreML reshape doesn't support new shape with more than 5 dimensions
-  if (new_shape.size() > 5) {
-    LOGS(logger, VERBOSE) << "New shape of reshape cannot have rank greater than 5. New shape: "
-                          << Shape2String(new_shape);
-    return false;
-  }
-
   std::vector<int64_t> input_shape;
   if (!GetStaticShape(*input_defs[0], input_shape, logger))
     return false;
@@ -107,10 +100,17 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
+  // CoreML reshape doesn't support new shape with more than 5 dimensions
+  if (new_shape.size() > 5) {
+    LOGS(logger, VERBOSE) << "Reshape does not support new shape with rank greater than 5. Input shape: "
+                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
+    return false;
+  }
+
   // CoreML reshape doesn't support input shape with more than 5 dimensions
   if (input_shape.size() > 5) {
     LOGS(logger, VERBOSE) << "Reshape does not support input shape with rank greater than 5. Input shape: "
-                          << Shape2String(input_shape);
+                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
     return false;
   }
 
