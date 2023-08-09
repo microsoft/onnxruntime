@@ -9,9 +9,9 @@ FROM ubuntu:20.04
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
-ARG ROCM_VERSION=5.4
+ARG ROCM_VERSION=5.6
 # MIGraphX version should be the same as ROCm version
-ARG MIGRAPHX_VERSION=rocm-5.4.0
+ARG MIGRAPHX_VERSION=rocm-5.6.0
 ENV DEBIAN_FRONTEND noninteractive
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
 

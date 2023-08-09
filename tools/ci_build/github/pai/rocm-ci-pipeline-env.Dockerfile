@@ -1,4 +1,4 @@
-FROM rocm/cupy:rocm5.5.0_ubuntu20.04_py3.8_pytorch2.0.0_cupy13.0.0
+FROM rocm/cupy:rocm5.6.0_ubuntu20.04_py3.8_pytorch2.0.0_cupy13.0.0
 
 
 RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y libprotobuf\* protobuf-compiler\* && \

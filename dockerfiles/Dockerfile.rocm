@@ -5,7 +5,7 @@
 # Dockerfile to run ONNXRuntime with ROCm integration
 #--------------------------------------------------------------------------
 
-FROM rocm/pytorch:rocm5.4_ubuntu20.04_py3.7_pytorch_1.12.1
+FROM rocm/pytorch:rocm5.6_ubuntu20.04_py3.8_pytorch_1.12.1
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
