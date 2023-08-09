@@ -2713,6 +2713,8 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::RunAsync,
     &OrtApis::UpdateTensorRTProviderOptionsWithValue,
     &OrtApis::GetTensorRTProviderOptionsByName,
+    &OrtApis::UpdateCUDAProviderOptionsWithValue,
+    &OrtApis::GetCUDAProviderOptionsByName,
     &OrtApis::KernelContext_GetResource,
 };
 
