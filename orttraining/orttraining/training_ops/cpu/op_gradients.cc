@@ -267,30 +267,15 @@ ONNX_OPERATOR_KERNEL_EX(LeakyReluGrad, kMSDomain, 1, kCpuExecutionProvider,
 template <typename T>
 Status LeakyReluGrad<T>::Compute(OpKernelContext* context) const {
   auto& dY = *context->Input<Tensor>(0);
-  const T* dY_data = dY.template Data<T>();
   auto& Y = *context->Input<Tensor>(1);
-  const T* Y_data = Y.template Data<T>();
   auto& dX = *context->Output(0, dY.Shape());
-  T* dX_data = dX.template MutableData<T>();
-
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  int64_t elem_count = dY.Shape().Size();
-  constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
-  int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
-
-  concurrency::ThreadPool::TryBatchParallelFor(
-      tp, static_cast<int32_t>(task_count),
-      [&](ptrdiff_t task_idx) {
-        const auto start = task_idx * length_per_task;
-        const T* p_dy = dY_data + start;
-        const T* p_y = Y_data + start;
-        T* p_dx = dX_data + start;
-        int64_t count = std::min(length_per_task, elem_count - start);
-        for (int64_t i = 0; i < count; i++) {
-          p_dx[i] = p_dy[i] * (p_y[i] > 0.0f ? 1.0f : alpha_);
-        }
-      },
-      0);
+  EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(),
+                                                             narrow<Eigen::Index>(dX.Shape().Size()));
+  ConstEigenVectorArrayMap<float> y = ConstEigenVectorArrayMap<float>(Y.template Data<T>(),
+                                                                      narrow<Eigen::Index>(Y.Shape().Size()));
+  ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(),
+                                                                       narrow<Eigen::Index>(dY.Shape().Size()));
+  dx = (y > 0.0f).select(dy, alpha_ * dy);
   return Status::OK();
 }
 
