@@ -14,8 +14,8 @@ namespace utils {
 
 // Get names of graph inputs and outputs
 void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
-                              std::vector<std::string>& input_names,
-                              std::vector<std::string>& output_names);
+                              InlinedVector<std::string>& input_names,
+                              InlinedVector<std::string>& output_names);
 // Fetch the parameter name from suffix: name = param_name+suffix,
 // returns True if suffix is present in name else False
 bool GetParamNameFromSuffix(const std::string& name, const std::string& suffix, std::string& param_name);
@@ -34,7 +34,7 @@ void WrapInOrtValue(T value,
                     AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
+  static AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
 
   TensorShape shape({1});
   auto element_type = DataTypeImpl::GetType<T>();

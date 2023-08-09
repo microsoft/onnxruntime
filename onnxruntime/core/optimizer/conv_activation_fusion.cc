@@ -71,9 +71,9 @@ bool ConvFusionDataTypeCheck(const Node& conv_node) {
   return true;
 }
 
-class ConvActivation : public NodeSelector {
+class ConvActivationSelector : public NodeSelector {
  public:
-  ConvActivation() = default;
+  ConvActivationSelector() = default;
 
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
@@ -172,7 +172,7 @@ class ConvAddRelu : public NodeSelector {
 namespace actions {
 using NTO = NodesToOptimize;
 
-class FuseConvActivation : public ReplaceWithNew {
+class FuseConvActivationAction : public ReplaceWithNew {
  private:
   std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
 
@@ -258,9 +258,9 @@ class FuseConvAddRelu : public ReplaceWithNew {
 
 void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAct";
-  auto action = std::make_unique<actions::FuseConvActivation>();
+  auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
-  auto selector = std::make_unique<selectors::ConvActivation>();
+  auto selector = std::make_unique<selectors::ConvActivationSelector>();
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 #else

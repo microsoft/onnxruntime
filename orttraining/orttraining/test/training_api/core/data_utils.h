@@ -29,7 +29,7 @@ void CudaOrtValueToCpuVec(const OrtValue& src_cuda_ortvalue, std::vector<T>& out
 
   const Tensor& src_tensor = src_cuda_ortvalue.Get<Tensor>();
 
-  auto allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);
+  auto allocator = cpu_provider->CreatePreferredAllocators()[0];
   ORT_ENFORCE(allocator, "Cpu allocator is a nullptr.");
   auto dst_tensor = std::make_unique<Tensor>(src_tensor.DataType(), src_tensor.Shape(), allocator);
 
@@ -57,7 +57,7 @@ inline void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) 
   TensorShape shape(dims);
   std::vector<float> data(shape.Size());
   GenerateRandomData(data);
-  onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data, &input);
+  input = onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data);
 }
 
 }  // namespace onnxruntime::training::test

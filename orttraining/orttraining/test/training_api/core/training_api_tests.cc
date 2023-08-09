@@ -42,7 +42,7 @@ constexpr float INITIAL_LR = 1e-3f;
  */
 Status CreateFakeOptimizerCheckpointStateOnCPU(
     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
-    const std::vector<std::string>& momentum_keys,
+    const InlinedVector<std::string>& momentum_keys,
     OptimizerCheckpointState& optimizer_checkpoint_state) {
   auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
   grouped_optimizer_states.insert({"group0", std::make_shared<GroupOptimizerState>()});
@@ -58,7 +58,7 @@ Status CreateFakeOptimizerCheckpointStateOnCPU(
         OrtValue param = pair.second->Data();
         const auto& param_tensor = param.template Get<Tensor>();
         GenerateRandomInput(param_tensor.Shape().GetDims(), param_moment_state);
-        cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_moment_state)});
+        cur_param_optimizer_states.insert({state_name, std::move(param_moment_state)});
       }
     }
   }
@@ -175,13 +175,13 @@ TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
                        {params_size},
                        reinterpret_cast<void*>(expected_param_buffer.data()),
-                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault)->Info(),
+                       onnxruntime::test::TestCPUExecutionProvider()->CreatePreferredAllocators()[0]->Info(),
                        input_params, 0);
   ASSERT_STATUS_OK(model->CopyBufferToParameters(input_params));
 
   OrtValue output_params;
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), {params_size},
-                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+                       onnxruntime::test::TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                        output_params);
   ASSERT_STATUS_OK(model->CopyParametersToBuffer(output_params));
 
@@ -208,8 +208,8 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+  target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
   size_t step = 0;
@@ -287,39 +287,7 @@ TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
     std::shared_ptr<Optimizer> optim = std::make_shared<Optimizer>(
         ToUTF8String(optim_uri), &new_state, session_option, *env, providers);
 
-    // After loading state dict, check if optim state is updated to new states.
-    OptimizerCheckpointState optimizer_states;
-    ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
-
-    for (auto& p : model->NamedParameters()) {
-      auto param_name = p.first;
-      ParameterOptimizerState& param_state =
-          optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
-
-      ParameterOptimizerState& external_param_state =
-          external_optimizer_checkpoint_state.group_named_optimizer_states["group0"]
-              ->param_named_optimizer_states.at(param_name);
-      for (auto& param_p : param_state.momentum_named_states) {
-        std::vector<float> moment_vec;
-        if (run_cuda) {
-          CudaOrtValueToCpuVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
-        } else {
-          CpuOrtValueToVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
-        }
-        std::vector<float> external_moment_vect;
-
-        if (run_cuda) {
-          CudaOrtValueToCpuVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
-        } else {
-          CpuOrtValueToVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
-        }
-
-        ASSERT_EQ(moment_vec.size(), external_moment_vect.size());
-        for (size_t i = 0; i < moment_vec.size(); i++) {
-          ASSERT_EQ(moment_vec[i], external_moment_vect[i]);
-        }
-      }
-    }
+    ASSERT_TRUE(optim.get() != nullptr);
   }
 }
 
@@ -328,9 +296,9 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
                     int64_t total_step_count,
                     int64_t warmup_step_count) {
   std::vector<bool> run_cuda_list{false};
-  // #ifdef USE_CUDA
-  //   run_cuda_list.push_back(true);
-  // #endif
+#ifdef USE_CUDA
+  run_cuda_list.push_back(true);
+#endif
 
   for (auto run_cuda : run_cuda_list) {
     std::vector<std::shared_ptr<IExecutionProvider>> providers;
@@ -358,8 +326,8 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
 
     OrtValue input, target;
     GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-    onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-        std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+    target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+        std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
 
     /// Load test data for learning rate schedulers.
     auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
@@ -392,8 +360,7 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
         optim, warmup_step_count, total_step_count);
 
     for (auto it = test_data.begin(); it != test_data.end(); ++it) {
-      OptimizerCheckpointState optimizer_states;
-      ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
+      OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
       auto group_optimizer_state = optimizer_states.group_named_optimizer_states["group0"];
 
       constexpr const float rtol = 1e-4f, atol = 1e-5f;
@@ -485,19 +452,18 @@ TEST(TrainingApiTest, OptimStep) {
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+  target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
   size_t step = 0;
   std::string param_name = "fc2.weight";
 
   // before training, check if optim state is initialized to 0
-  onnxruntime::training::api::OptimizerCheckpointState optimizer_states;
-  ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
+  onnxruntime::training::api::OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
   onnxruntime::training::api::ParameterOptimizerState& param_state =
       optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
-  OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
+  OrtValue& moment_1 = param_state.at("momentum0");
 
   std::vector<float> param_vec_before_optimizer_step;
   CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);

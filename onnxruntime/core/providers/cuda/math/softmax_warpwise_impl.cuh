@@ -163,5 +163,74 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   }
 }
 
+
+// softmax_warp_forward uses register to store data in fp32 even when data is fp16, which will cause register resource oversubscription when data is large,
+// and will lead to low CUDA warp occupancy and thus a poor kernel performance.
+// softmax_warp_forward_resource_efficient is implemented to solve the issue, it caches data in original data type, and casts it into fp32 when needed,
+// the idea is like we use recomputation to save resource usage.
+template <typename input_t, typename output_t, typename acc_t, int log2_elements, bool is_log_softmax>
+__global__ void softmax_warp_forward_resource_efficient(output_t* dst, const input_t* src, int batch_size, int stride, int element_count) {
+  // 1 cuda block only processes one row and contains 1 cuda warp only.
+  constexpr int next_power_of_two = 1 << log2_elements;
+  constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
+  constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
+
+  int local_idx = threadIdx.x;
+  src +=  blockIdx.x * stride + local_idx;
+  dst +=  blockIdx.x * stride + local_idx;
+  extern __shared__ unsigned char smem[];
+  input_t (&elements)[WARP_ITERATIONS][WARP_SIZE] = *reinterpret_cast<input_t (*)[WARP_ITERATIONS][WARP_SIZE]>(smem);
+#pragma unroll
+  for (int it = 0; it < WARP_ITERATIONS; ++it) {
+    int element_index = local_idx + it * WARP_SIZE;
+    if (element_index < element_count) {
+      elements[it][local_idx] = src[it * WARP_SIZE];
+    } else {
+      elements[it][local_idx] = -std::numeric_limits<input_t>::infinity();
+    }
+  }
+  // compute max_value
+  input_t max_value = elements[0][local_idx];
+#pragma unroll
+  for (int it = 1; it < WARP_ITERATIONS; ++it) {
+    max_value = (max_value > elements[it][local_idx]) ? max_value : elements[it][local_idx];
+  }
+  warp_reduce<input_t, 1, WARP_SIZE, Max>(&max_value);
+  // compute sum
+  acc_t sum{0.0f};
+  // #pragma unroll
+  // "exp" contains many instructions, if we unroll the loop then cuda warp will be stalled because of icache miss and thus lower the perf.
+  for (int it = 0; it < WARP_ITERATIONS; ++it) {
+    int element_index = local_idx + it * WARP_SIZE;
+    if (element_index >= element_count)
+      break;
+    if (is_log_softmax) {
+      sum += std::exp((float)(elements[it][local_idx] - max_value));
+    } else {
+      acc_t tmp = std::exp((float)(elements[it][local_idx] - max_value));
+      elements[it][local_idx] = tmp;
+      sum += tmp;
+    }
+  }
+  warp_reduce<acc_t, 1, WARP_SIZE, Add>(&sum);
+  // store result
+  if (is_log_softmax) sum = static_cast<acc_t>(max_value) + std::log((float)(sum));
+  // do the reciprocal once, so the div operation can be replaced by mul.
+  acc_t invsum = static_cast<acc_t>(1.0f / sum);
+#pragma unroll
+  for (int it = 0; it < WARP_ITERATIONS; ++it) {
+    int element_index = local_idx + it * WARP_SIZE;
+    if (element_index < element_count) {
+      if (is_log_softmax) {
+        dst[it * WARP_SIZE] = (float)elements[it][local_idx] - sum;
+      } else {
+        dst[it * WARP_SIZE] = (float)elements[it][local_idx] * invsum;
+      }
+    } else {
+      break;
+    }
+  }
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime

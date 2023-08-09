@@ -6,6 +6,7 @@
 #include "core/framework/allocator.h"
 #include "ExecutionContext.h"
 #include "DmlResourceWrapper.h"
+#include "AllocationInfo.h"
 
 namespace Dml
 {
@@ -18,67 +19,6 @@ namespace Dml
 
         void* Alloc(size_t size) override;
         void Free(void* p) override;
-    };
-
-    class BucketizedBufferAllocator;
-
-    class AllocationInfo : public Microsoft::WRL::RuntimeClass<
-        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IUnknown>
-    {
-    public:
-        AllocationInfo(
-            BucketizedBufferAllocator* owner,
-            size_t id,
-            uint64_t pooledResourceId,
-            DmlResourceWrapper* resourceWrapper,
-            size_t requestedSize)
-            : m_owner(owner)
-            , m_allocationId(id)
-            , m_pooledResourceId(pooledResourceId)
-            , m_resourceWrapper(resourceWrapper)
-            , m_requestedSize(requestedSize)
-        {}
-
-        ~AllocationInfo();
-
-        BucketizedBufferAllocator* GetOwner() const
-        {
-            return m_owner;
-        }
-
-        ID3D12Resource* GetResource() const
-        {
-            return m_resourceWrapper->GetD3D12Resource();
-        }
-
-        ComPtr<DmlResourceWrapper> DetachResourceWrapper() const
-        {
-            return std::move(m_resourceWrapper);
-        }
-
-        size_t GetRequestedSize() const
-        {
-            return m_requestedSize;
-        }
-
-        size_t GetId() const
-        {
-            return m_allocationId;
-        }
-
-        uint64_t GetPooledResourceId() const
-        {
-            return m_pooledResourceId;
-        }
-
-    private:
-        BucketizedBufferAllocator* m_owner;
-        size_t m_allocationId; // For debugging purposes
-        uint64_t m_pooledResourceId = 0;
-        ComPtr<DmlResourceWrapper> m_resourceWrapper;
-
-        // The size requested during Alloc(), which may be smaller than the physical resource size
-        size_t m_requestedSize;
     };
 
     // Implements a Lotus allocator for D3D12 heap buffers, using a bucket allocation strategy. The allocator
@@ -107,7 +47,6 @@ namespace Dml
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
     public: // onnxruntime::IAllocator
-        void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size) final;
         void Free(void* p) final;
 
@@ -130,12 +69,6 @@ namespace Dml
 
         static gsl::index GetBucketIndexFromSize(uint64_t size);
         static uint64_t GetBucketSizeFromIndex(gsl::index index);
-
-        AllocationInfo* DecodeDataHandleInternal(void* opaqueHandle)
-        {
-            // Implement in terms of const version
-            return const_cast<AllocationInfo*>(DecodeDataHandle(static_cast<const void*>(opaqueHandle)));
-        }
 
         friend class AllocationInfo;
         void FreeResource(void* p, uint64_t resourceId);

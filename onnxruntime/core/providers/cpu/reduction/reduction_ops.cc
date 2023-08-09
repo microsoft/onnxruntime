@@ -595,10 +595,14 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
                                           TensorShapeVector& fast_axes,
                                           bool keep_dims, bool noop_with_empty_axes) {
   if (input_shape.empty()) {
-    fast_shape.assign(input_shape.begin(), input_shape.end());
-    fast_output_shape = fast_shape;
-    fast_axes.assign(reduced_axes.begin(), reduced_axes.end());
-    return FastReduceKind::kNone;
+    fast_shape.clear();
+    fast_output_shape.clear();
+    // XXX: Should we enforce the absence of the axes in the scalar input case?
+    // The operator spec refers to Numpy which returns error because axes can not possibly contain any valid
+    // value in scalar case, but pytorch simply ignores it.
+    // ORT_ENFORCE(reduced_axes.empty(), "With scalar input shape, axis can not contain valid values");
+    fast_axes.clear();
+    return FastReduceKind::kEmpty;
   }
 
   InlinedHashSet<int64_t> axes;

@@ -41,7 +41,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
   set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
   get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
-  set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.1.10.1)
+  set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.1.12.0)
 
   # Restore nuget packages, which will pull down the DirectML redist package.
   add_custom_command(
@@ -72,12 +72,12 @@ else()
   if (dml_EXTERNAL_PROJECT)
     set(dml_preset_config $<IF:$<CONFIG:Debug>,debug,release>)
     set(dml_preset_name ${onnxruntime_target_platform}-win-redist-${dml_preset_config})
-
+    target_compile_definitions(DirectML INTERFACE DML_TARGET_VERSION_USE_LATEST=1)
     include(ExternalProject)
     ExternalProject_Add(
         directml_repo
         GIT_REPOSITORY https://dev.azure.com/microsoft/WindowsAI/_git/DirectML
-        GIT_TAG 2290bd6495fdf8c35822816213516d13f3742cc9
+        GIT_TAG d460f0f46967bea878786f1bed69487692c779bf
         GIT_SHALLOW OFF # not allowed when GIT_TAG is a commit SHA, which is preferred (it's stable, unlike branches)
         GIT_PROGRESS ON
         BUILD_IN_SOURCE ON
@@ -95,6 +95,7 @@ else()
     add_dependencies(DirectML directml_repo-install)
     include_directories(BEFORE ${directml_install_path}/include)
   else()
-    include_directories(${dml_INCLUDE_DIR})
+    include_directories(BEFORE ${dml_INCLUDE_DIR})
+    set(DML_PACKAGE_DIR ${dml_INCLUDE_DIR}/..)
   endif()
 endif()

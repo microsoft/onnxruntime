@@ -164,6 +164,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
   constexpr bool use_memory_efficient_attention = false;
+  ORT_UNUSED_PARAMETER(is_mask_1d_key_seq_len_start);
 #endif
 
   cublasHandle_t cublas = GetCublasHandle(context);
@@ -227,7 +228,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.cumulated_sequence_length_q_cache = nullptr;
   data.cumulated_sequence_length_kv_cache = nullptr;
 
-  return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
+  return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda

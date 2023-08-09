@@ -381,6 +381,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_LessOrEqual = 16;
         static const int sc_sinceVer_ScatterND = 16;
         static const int sc_sinceVer_ScatterElements = 16;
+        static const int sc_sinceVer_RoiAlign = 16;
     } // namespace OnnxOperatorSet16
 
     namespace OnnxOperatorSet17
@@ -399,6 +400,12 @@ namespace OperatorHelper
         static const int sc_sinceVer_ReduceMin = 18;
         static const int sc_sinceVer_ReduceProd = 18;
         static const int sc_sinceVer_ReduceSumSquare = 18;
+        static const int sc_sinceVer_BitwiseAnd = 18;
+        static const int sc_sinceVer_BitwiseOr = 18;
+        static const int sc_sinceVer_BitwiseXor = 18;
+        static const int sc_sinceVer_BitwiseNot = 18;
+        static const int sc_sinceVer_Pad = 18;
+        static const int sc_sinceVer_Split = 18;
     }
 
     namespace MsftOperatorSet1
@@ -422,6 +429,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_FusedMatMulActivation = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
         static const int sc_sinceVer_Attention = 1;
+        static const int sc_sinceVer_MultiHeadAttention = 1;
         static const int sc_sinceVer_SkipLayerNormalization = 1;
         static const int sc_sinceVer_EmbedLayerNormalization = 1;
         static const int sc_sinceVer_BiasSplitGelu = 1;

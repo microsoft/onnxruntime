@@ -82,16 +82,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
-          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
-        },
-        "comments": "git submodule at cmake/external/eigen"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "b113f24842c6e97fe3e352084db09a6e278593ae",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
@@ -112,7 +102,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "9b7bca2a723ff94edcd007d93b5d0cf1838591dc",
+          "commitHash": "a0d77f18516d2da7468a96b0de3b737266f23176",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -292,17 +282,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "3b58938e025c41d2fcd89fa22028eefaa81a18ad",
-          "repositoryUrl": "https://github.com/onnx/onnx.git"
-        },
-        "comments": "onnx"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "ba6a4fb34fdeaa3613bf981610c657e7b663a699",
+          "commitHash": "6ba67d3428e05f690145373ca87fb8d32f98df45",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -396,56 +376,6 @@
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "19cc035b6c6f2283573d29c7ea7f7d675cf750ce",
-          "repositoryUrl": "https://github.com/openssl/openssl.git"
-        },
-        "comments": "openssl"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "f54b0e47a08782a6131cc3d60f94d038fa6e0a51",
-          "repositoryUrl": "https://github.com/Tencent/rapidjson.git"
-        },
-        "comments": "rapidjson"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "da041154c6bac1a4aa98254a7d6819059e8ac0b0",
-          "repositoryUrl": "https://github.com/boostorg/boost.git"
-        },
-        "comments": "boost"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "9a6546658657dbeb23245117b57f4e6cf6cdc3e6",
-          "repositoryUrl": "https://github.com/libb64/libb64.git"
-        },
-        "comments": "b64"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "75a84807a019bf4961faf713df9d748f0fc83b47",
-          "repositoryUrl": "https://github.com/triton-inference-server/server.git"
-        },
-        "comments": "triton"
       }
     },
     {

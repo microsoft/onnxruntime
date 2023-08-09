@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_api/optimizer.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -60,23 +61,39 @@ Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
 }  // namespace
 
 std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
-    const std::string& optim_path_or_bytes, int32_t& group_count) {
-  std::shared_ptr<Model> model;
-  ORT_ENFORCE(Model::Load(ToWideString(optim_path_or_bytes), model, nullptr,
-                          logging::LoggingManager::DefaultLogger())
-                  .IsOK());
-  Graph& graph = model->MainGraph();
+    const std::string& optim_path, int32_t& group_count) {
   std::map<std::pair<std::string, std::string>, int32_t> opt_type_to_freq_map;
-  for (auto& node : graph.Nodes()) {
-    if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
-      auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
-      if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
-        opt_type_to_freq_map[domain_type_pair] = 0;
-      }
+#if !defined(ORT_MINIMAL_BUILD)
+  if (const auto optim_path_str = ToPathString(optim_path);
+      fbs::utils::IsOrtFormatModel(optim_path_str)) {
+    // TODO (baijumeswani): Figure out the best way to extract the optimizer type
+    //                      from an ort format model.
+    opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
+  } else {
+    std::shared_ptr<Model> model;
+    ORT_ENFORCE(Model::Load(optim_path_str, model, nullptr,
+                            logging::LoggingManager::DefaultLogger())
+                    .IsOK());
+    Graph& graph = model->MainGraph();
+    for (auto& node : graph.Nodes()) {
+      if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
+        auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
+        if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
+          opt_type_to_freq_map[domain_type_pair] = 0;
+        }
 
-      opt_type_to_freq_map[domain_type_pair] += 1;
+        opt_type_to_freq_map[domain_type_pair] += 1;
+      }
     }
   }
+#else
+  // TODO (baijumeswani): Figure out the best way to extract the optimizer type
+  // from the model (either onnx model or ort format model) or from the checkpoint.
+  // For now, assume that the optimizer type is AdamWOptimizer in a minimal build.
+  ORT_UNUSED_PARAMETER(optim_path);
+
+  opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
+#endif
 
   ORT_ENFORCE(opt_type_to_freq_map.size() == 1U, "Only support one type of optimizer algorithm, but got: " +
                                                      std::to_string(opt_type_to_freq_map.size()));
@@ -113,7 +130,7 @@ Status Optimizer::GenerateMomentumNamedStates(OptimizerCheckpointState& optimize
         OrtValue param_state;
         ORT_ENFORCE(utils::CreateZeroValuedOrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(),
                     "Error generating moment state for ", pair.first);
-        cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_state)});
+        cur_param_optimizer_states.insert({state_name, std::move(param_state)});
       }
     }
   }
@@ -127,8 +144,8 @@ Status Optimizer::ConstructInputs() {
 
   auto& param_named_optimizer_states = optimizer_state_->param_named_optimizer_states;
 
-  std::vector<Tensor> params, grads;
-  std::vector<std::vector<Tensor>> list_of_momentums;
+  InlinedVector<Tensor> params, grads;
+  InlinedVector<InlinedVector<Tensor>> list_of_momentums;
   list_of_momentums.resize(optimizer_algo_ptr_->momentum_keys.size());
 
   // Collect all the non-user-defined inputs from the named_parameters_.
@@ -150,7 +167,7 @@ Status Optimizer::ConstructInputs() {
       for (size_t m_index = 0; m_index < optimizer_algo_ptr_->momentum_keys.size(); ++m_index) {
         auto* moment_tensor =
             param_named_optimizer_states.at(parameter_name)
-                .momentum_named_states.at(optimizer_algo_ptr_->momentum_keys[m_index])
+                .at(optimizer_algo_ptr_->momentum_keys[m_index])
                 .GetMutable<Tensor>();
         list_of_momentums[m_index].emplace_back(
             Tensor(moment_tensor->DataType(), moment_tensor->Shape(),
@@ -187,9 +204,10 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
                      CheckpointState* state,
                      const onnxruntime::SessionOptions& session_options,
                      const Environment& env,
-                     const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
+                     const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+                     gsl::span<OrtCustomOpDomain* const> op_domains)
     : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), state_(state) {
-  Initialize(optim_path_or_bytes, session_options, env, providers);
+  Initialize(optim_path_or_bytes, providers, op_domains);
 
   ORT_ENFORCE(state != nullptr, "Checkpoint state cannot be null.");
   auto g_it = state_->optimizer_checkpoint_state.group_named_optimizer_states.find(GROUP_ZERO_NAME);
@@ -206,10 +224,13 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 }
 
 void Optimizer::Initialize(const std::string& optim_path_or_bytes,
-                           const onnxruntime::SessionOptions& session_options,
-                           const Environment& env,
-                           const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
-  optim_sess_ = std::make_unique<InferenceSession>(session_options, env);
+                           const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+                           [[maybe_unused]] gsl::span<OrtCustomOpDomain* const> op_domains) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  if (!op_domains.empty()) {
+    ORT_THROW_IF_ERROR(optim_sess_->AddCustomOpDomains(op_domains));
+  }
+#endif
 
   for (const auto& execution_provider : providers) {
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
@@ -258,20 +279,6 @@ Status Optimizer::Step() {
   return Status::OK();
 }
 
-Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_state) {
-  auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
-
-  // To support multiple groups, the Optimizer constructor needs to accept information for grouping.
-  grouped_optimizer_states.insert({GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>(*optimizer_state_)});
-
-  // Pass the optimizer session data transfer manager for data copying when saving.
-  // An alternative is, we can do copy at this stage.
-  ORT_RETURN_IF_NOT(optim_sess_, "optimizer session not initialized");
-  const DataTransferManager& sess_data_transfer_manager = optim_sess_->GetDataTransferManager();
-  optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &sess_data_transfer_manager;
-  return Status::OK();
-}
-
 Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states) {
   auto group_optimizer_state_it =
       optimizer_checkpoint_states.group_named_optimizer_states.find(GROUP_ZERO_NAME);
@@ -293,8 +300,8 @@ Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_s
       ORT_ENFORCE(src_exist || !strict_match, "Parameter ", params_iter.first,
                   " not found in the source optimizer checkpoint states.");
 
-      std::unordered_map<std::string, OrtValue>& momentum_named_states =
-          param_named_optimizer_states.at(params_iter.first).momentum_named_states;
+      InlinedHashMap<std::string, OrtValue>& momentum_named_states =
+          param_named_optimizer_states.at(params_iter.first);
 
       OrtValue& param_data = params_iter.second->Data();
       ORT_ENFORCE(param_data.IsTensor());

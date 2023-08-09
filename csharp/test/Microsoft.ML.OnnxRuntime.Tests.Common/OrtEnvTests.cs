@@ -80,7 +80,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 logLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL
             };
 
-            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
+            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(ref envOptions);
             Assert.True(OrtEnv.IsCreated);
             Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL, ortEnvInstance.EnvLogLevel);
 
@@ -92,7 +92,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 logId = "CSharpOnnxRuntimeTestLogid"
             };
 
-            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
+            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(ref envOptions);
             Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, ortEnvInstance.EnvLogLevel);
 
             // Change and see if this takes effect
@@ -118,7 +118,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 };
 
                 // Make sure we start anew
-                var env = OrtEnv.CreateInstanceWithOptions(envOptions);
+                var env = OrtEnv.CreateInstanceWithOptions(ref envOptions);
                 Assert.True(OrtEnv.IsCreated);
             }
         }
@@ -164,7 +164,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             LoggingInvokes = 0;
 
-            var env = OrtEnv.CreateInstanceWithOptions(envOptions);
+            var env = OrtEnv.CreateInstanceWithOptions(ref envOptions);
             Assert.True(OrtEnv.IsCreated);
 
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
@@ -199,7 +199,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 LoggingInvokes = 0;
 
-                var env = OrtEnv.CreateInstanceWithOptions(envOptions);
+                var env = OrtEnv.CreateInstanceWithOptions(ref envOptions);
                 Assert.True(OrtEnv.IsCreated);
 
                 var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");

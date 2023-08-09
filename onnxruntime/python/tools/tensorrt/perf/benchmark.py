@@ -1194,7 +1194,7 @@ def read_success_from_file(success_file):
     with open(success_file) as success:
         csv_reader = csv.DictReader(success)
         for row in csv_reader:
-            success_results.append(row)
+            success_results.append(row)  # noqa: PERF402
 
     success_json = json.loads(json.dumps(success_results, indent=4))
     return success_json

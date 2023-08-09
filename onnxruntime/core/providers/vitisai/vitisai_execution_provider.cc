@@ -58,12 +58,6 @@ struct MyCustomOpKernel : OpKernel {
 VitisAIExecutionProvider::VitisAIExecutionProvider(
     const VitisAIExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
-  AllocatorCreationInfo default_memory_info{[](int) {
-    return std::make_unique<CPUAllocator>(
-        OrtMemoryInfo(VITISAI, OrtAllocatorType::OrtDeviceAllocator));
-  }};
-
-  InsertAllocator(CreateAllocator(default_memory_info));
   custom_op_domains_ = initialize_vitisai_ep();
   registry_ = std::make_shared<KernelRegistry>();
   CreateKernelRegistry();

@@ -14,6 +14,7 @@ namespace onnxruntime {
 namespace cuda {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
+constexpr const char* kHasUserComputeStream = "has_user_compute_stream";
 constexpr const char* kMemLimit = "gpu_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kCudnnConvAlgoSearch = "cudnn_conv_algo_search";
@@ -26,6 +27,7 @@ constexpr const char* kEnableCudaGraph = "enable_cuda_graph";
 constexpr const char* kCudnnConv1dPadToNc1d = "cudnn_conv1d_pad_to_nc1d";
 constexpr const char* kTunableOpEnable = "tunable_op_enable";
 constexpr const char* kTunableOpTuningEnable = "tunable_op_tuning_enable";
+constexpr const char* kTunableOpMaxTuningDurationMs = "tunable_op_max_tuning_duration_ms";
 constexpr const char* kEnableSkipLayerNormStrictMode = "enable_skip_layer_norm_strict_mode";
 }  // namespace provider_option_names
 }  // namespace cuda
@@ -60,6 +62,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                     ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
                 return Status::OK();
               })
+          .AddAssignmentToReference(cuda::provider_option_names::kHasUserComputeStream, info.has_user_compute_stream)
           .AddValueParser(
               cuda::provider_option_names::kGpuExternalAlloc,
               [&alloc](const std::string& value_str) -> Status {
@@ -108,6 +111,12 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.tuning_enable));
                 return Status::OK();
               })
+          .AddValueParser(
+              cuda::provider_option_names::kTunableOpMaxTuningDurationMs,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.max_tuning_duration_ms));
+                return Status::OK();
+              })
           .Parse(options));
 
   CUDAExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
@@ -118,6 +127,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
 ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecutionProviderInfo& info) {
   const ProviderOptions options{
       {cuda::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {cuda::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
       {cuda::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
       {cuda::provider_option_names::kGpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
       {cuda::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
@@ -132,6 +142,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)},
       {cuda::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op.enable)},
       {cuda::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op.tuning_enable)},
+      {cuda::provider_option_names::kTunableOpMaxTuningDurationMs, MakeStringWithClassicLocale(info.tunable_op.max_tuning_duration_ms)},
       {cuda::provider_option_names::kEnableSkipLayerNormStrictMode, MakeStringWithClassicLocale(info.enable_skip_layer_norm_strict_mode)},
   };
 
@@ -141,6 +152,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
 ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProviderOptionsV2& info) {
   const ProviderOptions options{
       {cuda::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {cuda::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
       {cuda::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
       {cuda::provider_option_names::kArenaExtendStrategy, EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cuda::provider_option_names::kCudnnConvAlgoSearch, EnumToName(ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
@@ -149,6 +161,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)},
       {cuda::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op_enable)},
       {cuda::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op_tuning_enable)},
+      {cuda::provider_option_names::kTunableOpMaxTuningDurationMs, MakeStringWithClassicLocale(info.tunable_op_max_tuning_duration_ms)},
   };
 
   return options;

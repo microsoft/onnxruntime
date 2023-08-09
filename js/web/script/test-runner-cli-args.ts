@@ -171,7 +171,7 @@ export interface TestRunnerCliArgs {
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-  globalEnvFlags?: Env;
+  globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
 }
 
@@ -327,7 +327,7 @@ function parseWebgpuFlags(args: minimist.ParsedArgs): Env.WebGpuFlags {
   return {profilingMode};
 }
 
-function parseGlobalEnvFlags(args: minimist.ParsedArgs): Env {
+function parseGlobalEnvFlags(args: minimist.ParsedArgs): NonNullable<TestRunnerCliArgs['globalEnvFlags']> {
   const wasm = parseWasmFlags(args);
   const webgl = parseWebglFlags(args);
   const webgpu = parseWebgpuFlags(args);
@@ -362,10 +362,11 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // Option: -b=<...>, --backend=<...>
   const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack', 'webnn'];
 
-  // TODO: remove this when Chrome support WebGPU or WebNN.
-  //       we need this for now because Chrome does not support webgpu and webnn yet,
+  // TODO: remove this when Chrome support WebNN.
+  //       we need this for now because Chrome does not support webnn yet,
   //       and ChromeCanary is not in CI.
-  const defaultBrowserBackends = ['webgl', /* 'webgpu', */ 'wasm', 'xnnpack' /*, 'webnn'*/];
+
+  const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
   const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :
@@ -378,9 +379,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   const globalEnvFlags = parseGlobalEnvFlags(args);
 
-  if (backend.includes('webnn') && !globalEnvFlags.wasm.proxy) {
+  if (backend.includes('webnn') && !globalEnvFlags.wasm!.proxy) {
     // Backend webnn is restricted in the dedicated worker.
-    globalEnvFlags.wasm.proxy = true;
+    globalEnvFlags.wasm!.proxy = true;
   }
 
   // Options:
