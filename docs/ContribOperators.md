@@ -2067,13 +2067,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>beta</tt> : float</dt>
 <dd>Scalar multiplier for the product of input bias C.</dd>
 <dt><tt>computeType</tt> : string</dt>
-<dd>See documentation of cublasLtMatMul. This parameter contains one of the possible value as a string.</dd>
+<dd>See documentation of cublasLtMatMul. This parameter contains one of the possible value as a string, default is CUBLAS_COMPUTE_32F_FAST_TF32.</dd>
 <dt><tt>dtype</tt> : int</dt>
-<dd>Output Type. Same definition as attribute to from operator Cast.</dd>
+<dd>Output Type. Same definition as attribute 'to' for operator Cast.</dd>
 <dt><tt>fastAccumulationMode</tt> : int</dt>
 <dd>See documentation of cublasLtMatMul.</dd>
 <dt><tt>rowMajor</tt> : int</dt>
-<dd>Storage order used to run the computation (inputs are always row moajor). Float 8 types only supports column major.</dd>
+<dd>Storage order used to run the computation (inputs are always row major). Float 8 types only supports column major.</dd>
 <dt><tt>smCount</tt> : int</dt>
 <dd>See documentation of cublasLtMatMul.</dd>
 <dt><tt>transA</tt> : int</dt>
@@ -2110,15 +2110,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>TA</tt> : tensor(float8e4m3fn), tensor(float8e5m2), tensor(float16), tensor(bfloat16), tensor(float)</dt>
-<dd>Constrain input type to input A.</dd>
+<dd>Constrain type to input A.</dd>
 <dt><tt>TB</tt> : tensor(float8e4m3fn), tensor(float8e5m2), tensor(float16), tensor(bfloat16), tensor(float)</dt>
-<dd>Constrain input type to input B.</dd>
+<dd>Constrain type to input B.</dd>
 <dt><tt>TC</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
-<dd>Constrain input type to input C.</dd>
+<dd>Constrain type to input C.</dd>
 <dt><tt>TR</tt> : tensor(float8e4m3fn), tensor(float8e5m2), tensor(float16), tensor(bfloat16), tensor(float)</dt>
-<dd>Constrain input type to input result type.</dd>
+<dd>Constrain type to result type.</dd>
 <dt><tt>TS</tt> : tensor(float)</dt>
-<dd>Constrain input type for all input scales (scaleA, scaleB, scaleY).</dd>
+<dd>Constrain type for all input scales (scaleA, scaleB, scaleY).</dd>
 </dl>
 
 

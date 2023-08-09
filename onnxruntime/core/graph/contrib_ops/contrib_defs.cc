@@ -2438,18 +2438,18 @@ for beta != 0.)DOC")
                                 .Attr(
                                     "computeType",
                                     "See documentation of cublasLtMatMul. This parameter contains "
-                                    "one of the possible value as a string.",
+                                    "one of the possible value as a string, default is CUBLAS_COMPUTE_32F_FAST_TF32.",
                                     AttributeProto::STRING,
                                     OPTIONAL_VALUE)
                                 .Attr(
                                     "rowMajor",
-                                    "Storage order used to run the computation (inputs are always row moajor). "
+                                    "Storage order used to run the computation (inputs are always row major). "
                                     "Float 8 types only supports column major.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
                                 .Attr(
                                     "dtype",
-                                    "Output Type. Same definition as attribute to from operator Cast.",
+                                    "Output Type. Same definition as attribute 'to' for operator Cast.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(1))
                                 .Attr(
@@ -2499,20 +2499,20 @@ for beta != 0.)DOC")
                                 .TypeConstraint(
                                     "TA",
                                     GEMM_FLOAT8_TYPES,
-                                    "Constrain input type to input A.")
+                                    "Constrain type to input A.")
                                 .TypeConstraint(
                                     "TB",
                                     GEMM_FLOAT8_TYPES,
-                                    "Constrain input type to input B.")
+                                    "Constrain type to input B.")
                                 .TypeConstraint(
                                     "TC",
                                     {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-                                    "Constrain input type to input C.")
+                                    "Constrain type to input C.")
                                 .TypeConstraint(
                                     "TR",
                                     GEMM_FLOAT8_TYPES,
-                                    "Constrain input type to input result type.")
-                                .TypeConstraint("TS", {"tensor(float)"}, "Constrain input type for all input scales (scaleA, scaleB, scaleY).")
+                                    "Constrain type to result type.")
+                                .TypeConstraint("TS", {"tensor(float)"}, "Constrain type for all input scales (scaleA, scaleB, scaleY).")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0, TensorProto::FLOAT);
                                   if (!hasNInputShapes(ctx, 2)) {
