@@ -698,8 +698,7 @@ if (onnxruntime_USE_TENSORRT)
   # We enforce following workaround for now until the real fix.
   if (WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(onnxruntime_USE_TENSORRT_BUILTIN_PARSER OFF)
-    MESSAGE(STATUS "There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows.")
-    MESSAGE(STATUS "This build will use tensorrt oss parser instead.")
+    MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
   endif()
 
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
