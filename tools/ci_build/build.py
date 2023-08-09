@@ -896,16 +896,6 @@ def generate_build_tree(
     # enable/disable float 8 types
     disable_float8_types = args.use_rocm or args.android or args.minimal_build
 
-    # There is an issue when running "Debug build" TRT EP with "Release build" TRT builtin parser on Windows.
-    # We enforce following workaround for now until the real fix.
-    if args.use_tensorrt and is_windows() and args.config == "Debug" and arg.use_tensorrt_builtin_parser:
-        print(
-            f'There is an issue when running "Debug build" TRT EP with "Release build" TRT built-in parser on Windows.\n'
-        )
-        print(f"Force to use tensorrt oss parser instead.")
-        arg.use_tensorrt_oss_parser = True
-        arg.use_tensorrt_builtin_parser = False
-
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
