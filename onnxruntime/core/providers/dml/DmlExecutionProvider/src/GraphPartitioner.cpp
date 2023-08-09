@@ -459,7 +459,7 @@ namespace Dml
             // anyhow due to CPU/GPU copies.
             if (modelUsesSubgraph || !isDmlGraphNode)
             {
-                partitions.push_back(CreatePartitionAndFinalizeInputs(node, isDmlNode, isDmlGraphNode, nodeNameToPartitionMap));
+                partitions.push_back(CreatePartitionAndFinalizeInputs(node, isDmlNode, false, nodeNameToPartitionMap));
                 continue;
             }
 
