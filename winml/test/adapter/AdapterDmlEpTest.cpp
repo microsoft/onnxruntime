@@ -208,9 +208,9 @@ void DmlGetD3D12ResourceFromAllocation() {
     );
     // Ensure resource is the same
     WINML_EXPECT_EQUAL(d3d12_resource, d3d12_resource_from_allocation);
-
-    THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(gpu_allocation), ort_api);
   }
+
+  THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(gpu_allocation), ort_api);
 }
 
 UniqueOrtValue CreateTensorFromMemoryInfo(const OrtMemoryInfo* memory_info) {
