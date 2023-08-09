@@ -160,7 +160,7 @@ class Module:
             self._device_type,
             self._device.device_id(),
         )._ortvalue
-        self._model.copy_parameters_to_buffer(parameters)
+        self._model.copy_parameters_to_buffer(parameters, trainable_only)
 
         return parameters
 
@@ -175,13 +175,13 @@ class Module:
         """
         return self._model.get_parameters_size(trainable_only)
 
-    def copy_buffer_to_parameters(self, buffer: OrtValue) -> None:
+    def copy_buffer_to_parameters(self, buffer: OrtValue, trainable_only: bool = False) -> None:
         """Copies the OrtValue buffer to the training session parameters.
 
         Args:
             buffer: The OrtValue buffer to copy to the training session parameters.
         """
-        self._model.copy_buffer_to_parameters(buffer)
+        self._model.copy_buffer_to_parameters(buffer, trainable_only)
 
     def export_model_for_inferencing(
         self, inference_model_uri: str | os.PathLike, graph_output_names: list[str]
