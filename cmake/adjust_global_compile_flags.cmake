@@ -220,9 +220,9 @@ endmacro()
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
 if (MSVC)
-  if (CMAKE_GENERATOR_PLATFORM)
+  if (CMAKE_VS_PLATFORM_NAME)
     # Multi-platform generator
-    set(onnxruntime_target_platform ${CMAKE_GENERATOR_PLATFORM})
+    set(onnxruntime_target_platform ${CMAKE_VS_PLATFORM_NAME})
   else()
     set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
   endif()
