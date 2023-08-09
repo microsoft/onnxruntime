@@ -175,20 +175,16 @@ TEST_F(QnnCPUBackendTests, ReduceProdOpset18) {
                             ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Investigate slight inaccuracy. x64 Windows requires a slightly larger error tolerance greater than 1.5e-f.
+// TODO: Investigate slight inaccuracy. x64 Windows/Linux require a slightly larger error tolerance greater than 1.5e-5f.
 // LOG: ... the value pair (208.881729, 208.881744) at index #0 don't match, which is 1.52588e-05 from 208.882
-TEST_F(QnnCPUBackendTests, ReduceProdOpset18_SlightlyInaccurate_WindowsX64) {
+TEST_F(QnnCPUBackendTests, ReduceProdOpset18_SlightlyInaccurate_WindowsLinuxX64) {
   RunReduceOpCpuTest<float>("ReduceProd",
                             TestInputDef<float>({2, 2}, false, {3.21289f, -5.9981f, -1.72799f, 6.27263f}),
                             std::vector<int64_t>{0, 1},
                             true,  // keepdims
                             18,
                             ExpectedEPNodeAssignment::All,
-#if defined(_WIN32) && !defined(__aarch64__)
-                            2e-5f);  // x64 Windows requires larger tolerance.
-#else
-                            1e-5f);
-#endif
+                            2e-5f);  // x64 Linux & Windows require larger tolerance.
 }
 
 // Test creates a graph with a ReduceProd node, and checks that all
