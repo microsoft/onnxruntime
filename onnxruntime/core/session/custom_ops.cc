@@ -135,6 +135,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
   *resource = {};
   const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
   auto* stream = reinterpret_cast<onnxruntime::Stream*>(ctx->GetComputeStream());
+  if (!stream) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
+  }
   *resource = stream->GetResource(resource_version, resource_id);
   if (!(*resource)) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Requested resource does not exist");

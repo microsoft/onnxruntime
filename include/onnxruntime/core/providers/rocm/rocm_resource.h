@@ -10,4 +10,3 @@ enum RocmResource : int {
   miopen_handle_t,
   rocblas_handle_t
 };
-
