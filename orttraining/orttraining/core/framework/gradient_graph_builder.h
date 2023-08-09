@@ -150,12 +150,6 @@ class GradientGraphBuilder {
   //   The 1st and 3rd inputs are not differentiable.
   std::unordered_map<std::string, std::vector<int64_t>> python_op_input_require_grad_info_;
 
-  const std::unordered_set<int64_t> GRAD_ALLOWED_TYPES{
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
-      ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
-  };
   const std::unordered_set<size_t>* GetStopGradientEdges(const Node& node) const;
 
   /**

@@ -18,6 +18,30 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace training {
 
+namespace {
+
+const std::unordered_set<int64_t> GRAD_ALLOWED_TYPES{
+    ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+    ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+    ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
+    ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
+};
+
+std::tuple<bool, bool, int> IsAllowedForGradient(const NodeArg* node_arg) {
+  bool is_tensor_type = false;
+  bool is_allowed_type_for_grad = false;
+  const auto* type_proto = node_arg->TypeAsProto();
+  int32_t type = -1;
+  if (nullptr != type_proto && type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType) {
+    type = type_proto->tensor_type().elem_type();
+    is_allowed_type_for_grad = GRAD_ALLOWED_TYPES.find(type) != GRAD_ALLOWED_TYPES.end();
+    is_tensor_type = true;
+  }
+
+  return {is_tensor_type, is_allowed_type_for_grad, type};
+}
+}  // namespace
+
 using namespace common;
 
 GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
@@ -57,10 +81,13 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
 
     const Node* node = graph_->GetProducerNode(name);
     if (node) {
-      if (forward_reachable_nodes.find(node) == forward_reachable_nodes.end()) {
+      const auto rets = IsAllowedForGradient(node_arg);
+      bool is_allowed_type_for_grad = std::get<1>(rets);
+      if (forward_reachable_nodes.find(node) == forward_reachable_nodes.end() || !is_allowed_type_for_grad) {
         non_differentiable_y_node_arg_names_.insert(name);
         LOGS(logger_, INFO) << "The model weights and inputs are non-differentiable from " << name << ". "
-                            << "ORT will assume no gradient will be provided for " << name << ".";
+                            << "ORT will assume no gradient will be provided for " << name
+                            << ", is_allowed_type_for_grad: " << is_allowed_type_for_grad;
       } else {
         y_node_args_.insert(node_arg);
         y_nodes_.insert(node);
@@ -169,10 +196,9 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
         continue;
       }
       const NodeArg* node_arg = n->InputDefs()[edge_it->GetDstArgIndex()];
-      const auto* type_proto = node_arg->TypeAsProto();
-      if (nullptr != type_proto && type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType) {
-        const int32_t type = type_proto->tensor_type().elem_type();
-        if (GRAD_ALLOWED_TYPES.find(type) == GRAD_ALLOWED_TYPES.end()) {
+      const auto [is_tensor_type, is_allowed_type_for_grad, type] = IsAllowedForGradient(node_arg);
+      if (is_tensor_type) {
+        if (!is_allowed_type_for_grad) {
           LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                                  << " of node: " << n->Name() << " because element type is: " << type;
           continue;
@@ -288,14 +314,17 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
 
       // Make sure node_arg as input of next_node, has the data type allowed to compute gradient.
-      const auto* type_proto = node_arg->TypeAsProto();
-      if (nullptr != type_proto && type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType) {
-        const int32_t type = type_proto->tensor_type().elem_type();
-        if (GRAD_ALLOWED_TYPES.find(type) == GRAD_ALLOWED_TYPES.end()) {
+      const auto [is_tensor_type, is_allowed_type_for_grad, type] = IsAllowedForGradient(node_arg);
+      if (is_tensor_type) {
+        if (!is_allowed_type_for_grad) {
           LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                                  << " of node: " << next_node.Name() << " because element type is: " << type;
           continue;
         }
+      } else {
+        LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << next_node.Name() << " because it is not a Tensor type";
+        continue;
       }
 
       std::string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
