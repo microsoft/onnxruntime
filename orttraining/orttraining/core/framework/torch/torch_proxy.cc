@@ -223,7 +223,7 @@ PythonObjectPtr CreatePythonCallArguments(
 
   // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
-    if (tensor_args[i] == std::nullopt) {
+    if (!tensor_args[i].has_value()) {
       Ort_PyTuple_SetItem_Incref(args.get(), num_control_args + tensor_indices[i], Py_None,
                                  "non_tensor_args");
       continue;

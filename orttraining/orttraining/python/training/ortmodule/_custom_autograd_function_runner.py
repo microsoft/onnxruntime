@@ -5,7 +5,8 @@
 
 import sys
 import warnings
-from typing import Callable, Dict, List, Optional, Tuple
+from collections import OrderedDict
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
@@ -37,8 +38,10 @@ class CustomFuncOpKernelInfo:
         self.input_indices_to_save_in_ctx: List[int] = []
 
         # To align with PyTorch `ctx.set_materialize_grads(False|True)``
+        # materialize_grads_config is a map from output index to (device, dtype, shape) of the output tensor, used
+        # for materializing the gradient of the output tensor in backward.
         self.materialize_grads: bool = False
-        self.materialize_grads_config: Optional[Tuple[torch.device, torch.dtype, torch.shape]] = None
+        self.materialize_grads_config: Optional[OrderedDict[int, Tuple[torch.device, torch.dtype, torch.shape]]] = None
 
 
 # Map for all custom autograd function op kernels.
@@ -89,20 +92,31 @@ def _get_context(forward_tensor_outputs: List[torch.Tensor]) -> Tuple[any, Optio
     return (ctx, first_tensor_output)
 
 
-def _epilogize_forward(
+def _finalize_traing_mode_forward(
     kernel_invoke_id: str,
-    tensors_generated_by_ort: List[Tuple[int, torch.Tensor]],
-    ctx: any,
-    tensor_owning_ctx: Optional[torch.Tensor],
+    input_tensors_from_ort: OrderedDict[int, torch.Tensor],
+    forward_output_tensors: List[Union[torch.Tensor, None]],
 ):
-    """Complete the epilogue of forward runner.
+    """Complete the epilogue of forward runner for training mode.
+
+    Args:
+        kernel_invoke_id: kernel_invoke_id of the PythonOp kernel unique id.
+        input_tensors_from_ort: input tensors generated from ORT backend.
+        forward_output_tensors: output tensors of the autograd.Function.
 
     Things to do:
-    1. Remove the gradient functions between current autograd.Function and its input's gradient function, because
+    1. Try to get context from forward output tensors.
+    2. Remove the gradient functions between current autograd.Function and its input's gradient function, because
        in ORT we don't depend on PyTorch's autograd engine.
-    2. Register the current autograd.Function's gradient function into our PyNodeSharedPointerPool.
-    3. Save kernel specific information into _GlobalOpKernelInfoMap.
+    3. Register the current autograd.Function's gradient function into our PyNodeSharedPointerPool.
+    4. Save kernel specific information into _GlobalOpKernelInfoMap.
     """
+
+    ctx, tensor_owning_ctx = _get_context(forward_output_tensors)
+
+    # ctx being None in training mode means the forward function is not differentiable, so backward is not needed.
+    if ctx is None:
+        return None
 
     # Filter out the None in the saved_tensors.
     saved_tensors = [t for t in ctx.saved_tensors if t is not None]
@@ -117,14 +131,15 @@ def _epilogize_forward(
             # If yes, save the input index of the tensor in the _GlobalOpKernelInfoMap.
             kernel_info.input_indices_to_save_in_ctx = [
                 arg_index
-                for arg_index, tensor in tensors_generated_by_ort
+                for arg_index, tensor in input_tensors_from_ort.items()
                 if any(tensor is saved_tensor for saved_tensor in saved_tensors)
             ]
             warnings.warn("Add input index to _GlobalOpKernelInfoMap, to avoid extra copy in every iteration.")
         kernel_info.materialize_grads = torch_interop_utils.get_materialize_grads(tensor_owning_ctx)
-        for _, tensor in tensors_generated_by_ort:
-            if tensor.requires_grad is False:
-                kernel_info.materialize_grads_config = (
+        kernel_info.materialize_grads_config = OrderedDict()
+        for output_index, tensor in enumerate(forward_output_tensors):
+            if isinstance(tensor, torch.Tensor) and tensor.requires_grad is False:
+                kernel_info.materialize_grads_config[output_index] = (
                     tensor.device,
                     tensor.dtype,
                     tensor.shape,
@@ -148,6 +163,8 @@ def _epilogize_forward(
 
     # This is mainly to hold grad_fn references by registering it into our PyNodeSharedPointerPool.
     torch_interop_utils.register_grad_fn_and_remove_from_autograd(id(ctx), tensor_owning_ctx)
+
+    return ctx
 
 
 def call_python_forward_function(
@@ -189,24 +206,38 @@ def call_python_forward_function(
 
     try:
         wrapped_args = []
-        wrapped_tensor_args = []
+        tensor_input_args_map = OrderedDict()
+
+        # Be noted: in inference mode, we won't insert any information into _GlobalOpKernelInfoMap, because ctx
+        # will always be None in the first time run.
+        input_indices_to_save_in_ctx = None  # Uninitialized
+        if kernel_invoke_id in _GlobalOpKernelInfoMap:
+            input_indices_to_save_in_ctx = _GlobalOpKernelInfoMap[kernel_invoke_id].input_indices_to_save_in_ctx
+
         for arg_index, (grad_flag, tensor_flag, arg) in enumerate(zip(requires_grad_flags, tensor_type_flags, args)):
             if tensor_flag:
                 # Assume it's a DLPack tensor# and convert it to PyTorch tensor.
-                if kernel_invoke_id in _GlobalOpKernelInfoMap:
-                    if arg_index in _GlobalOpKernelInfoMap[kernel_invoke_id].input_indices_to_save_in_ctx:
-                        wrapped_arg = from_dlpack(arg).detach().clone()
-                    else:
-                        wrapped_arg = from_dlpack(arg)
-                else:
+                # Note1:
+                #   If it's first-time kernel invocation, input_indices_to_save_in_ctx is None, we do the
+                #   copy for all tensor. Otherwise, we only copy the tensors whose indices are in
+                #   input_indices_to_save_in_ctx.
+                #
+                # Note2:
+                #   For inference mode, we don't need do the copy because ctx will be None,
+                #   so nothing will be saved for ctx.
+                if is_training_mode and (
+                    input_indices_to_save_in_ctx is None or arg_index in input_indices_to_save_in_ctx
+                ):
                     wrapped_arg = from_dlpack(arg).detach().clone()
+                else:
+                    wrapped_arg = from_dlpack(arg)
 
                 # Only requires gradient when running under training mode
                 # and the associated tensor has grad_flag=True (i.e.,
                 # "requires_grad=True" in the original PyTorch script).
                 wrapped_arg.requires_grad = is_training_mode and grad_flag
                 wrapped_args.append(wrapped_arg)
-                wrapped_tensor_args.append((arg_index, wrapped_arg))
+                tensor_input_args_map[arg_index] = wrapped_arg
 
             else:
                 # Use non-tensor as is. It's a PyObject*.
@@ -220,18 +251,21 @@ def call_python_forward_function(
             )
 
             # Run autograd.Function.apply(...).
+            # TODO(pengwa): looks we are assuming all outputs will be either Tensor or None.
+            # We should revisit if it is possible to support other types of output, for example int, or, etc.
+            # But that might also requires some work in backend.
             result = forward_function(*new_wrapped_args)
 
             # Extract results as DLPack tensors plus autograd context. Also skips all None values.
             if isinstance(result, torch.Tensor):
-                ctx, tensor_owning_ctx = _get_context([result])
-                if is_training_mode and ctx:
-                    _epilogize_forward(kernel_invoke_id, wrapped_tensor_args, ctx, tensor_owning_ctx)
+                ctx = None
+                if is_training_mode:
+                    ctx = _finalize_traing_mode_forward(kernel_invoke_id, tensor_input_args_map, [result])
                 unwrapped_values = [ctx, to_dlpack(result)]
             elif isinstance(result, (tuple, list)):
-                ctx, tensor_owning_ctx = _get_context(result)
-                if is_training_mode and ctx:
-                    _epilogize_forward(kernel_invoke_id, wrapped_tensor_args, ctx, tensor_owning_ctx)
+                ctx = None
+                if is_training_mode:
+                    ctx = _finalize_traing_mode_forward(kernel_invoke_id, tensor_input_args_map, result)
                 wrapped = [ctx]
                 wrapped.extend(list(to_dlpack(value) if value is not None else None for value in result))
                 # Inside the returned list, first element is context and the rest
@@ -295,13 +329,16 @@ def call_python_backward_function(
             ctx = args[0]
             fw_kernel_invoke_id = ctx.fw_kernel_invoke_id
             wrapped_args = []
-            for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
+            for grad_input_index, (grad_flag, tensor_flag, arg) in enumerate(
+                zip(requires_grad_flags, tensor_type_flags, args)
+            ):
                 # If an input is a tensor, it is possible we get a None also when it is optional as grad input.
                 if tensor_flag:
                     if arg is None:
                         if _GlobalOpKernelInfoMap[fw_kernel_invoke_id].materialize_grads:
                             config = _GlobalOpKernelInfoMap[fw_kernel_invoke_id].materialize_grads_config
-                            wrapped_arg = torch.zeros(config[2], device=config[0], dtype=config[1])
+                            device, dtype, shape = config[grad_input_index]
+                            wrapped_arg = torch.zeros(shape, device=device, dtype=dtype)
                         else:
                             wrapped_arg = arg
                     else:
