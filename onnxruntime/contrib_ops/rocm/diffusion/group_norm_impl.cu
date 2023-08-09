@@ -15,7 +15,7 @@ namespace rocm {
 template <typename T>
 Status LaunchGroupNormKernel(
     RocmTuningContext* tuning_ctx,
-    hipStream_t stream,
+    Stream* stream,
     T* output,
     const T* input,
     const float* gamma,
@@ -49,12 +49,12 @@ Status LaunchGroupNormKernel(
   return GroupNormNHWCStaticSelection(&params);
 }
 
-template Status LaunchGroupNormKernel<half>(RocmTuningContext* tuning_ctx, hipStream_t stream, half* output,
+template Status LaunchGroupNormKernel<half>(RocmTuningContext* tuning_ctx, Stream* stream, half* output,
                                             const half* input, const float* gamma, const float* beta, void* workspace,
                                             float epsilon, int batch_size, int num_channels,
                                             int height, int width, int num_groups, bool swish);
 
-template Status LaunchGroupNormKernel<float>(RocmTuningContext* tuning_ctx, hipStream_t stream, float* output,
+template Status LaunchGroupNormKernel<float>(RocmTuningContext* tuning_ctx, Stream* stream, float* output,
                                              const float* input, const float* gamma, const float* beta, void* workspace,
                                              float epsilon, int batch_size, int num_channels,
                                              int height, int width, int num_groups, bool swish);

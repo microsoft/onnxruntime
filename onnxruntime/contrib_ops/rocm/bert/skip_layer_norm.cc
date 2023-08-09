@@ -104,7 +104,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   return LaunchSkipLayerNormKernel<HipT, float, HipT>(
       GetTuningContext(),
-      Stream(ctx),
+      ctx->GetComputeStream(),
       reinterpret_cast<HipT*>(output->MutableData<T>()),
       skip_input_bias_add_output != nullptr ? reinterpret_cast<HipT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
       reinterpret_cast<const HipT*>(input->Data<T>()),

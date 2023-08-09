@@ -52,7 +52,7 @@ struct VectorAddParams :
 template <typename T, int TPB, int Vec>
 Status VectorAddOp(const VectorAddParams<T>* params) {
   return LaunchVectorAdd<T, TPB, Vec>(
-      params->stream,
+      params->StreamHandle(),
       params->x,
       params->y,
       params->z,

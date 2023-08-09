@@ -13,7 +13,7 @@ namespace rocm {
 template <typename T, typename U, typename V>
 Status LaunchSkipLayerNormKernel(
     RocmTuningContext* tuning,
-    hipStream_t stream,
+    Stream* stream,
     V* output,                      // output tensor
     T* skip_input_bias_add_output,  // optional output tensor
     const T* input,                 // input tensor

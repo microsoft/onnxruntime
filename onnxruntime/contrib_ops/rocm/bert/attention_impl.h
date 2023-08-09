@@ -31,7 +31,7 @@ size_t GetAttentionWorkspaceSize(
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
     RocmTuningContext* tuning_ctx,    // context for tuning
-    hipStream_t stream,               // Hip stream
+    Stream* stream,                   // ORT Stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor
     const int batch_size,             // Batch size (B)

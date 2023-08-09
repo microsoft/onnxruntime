@@ -1475,6 +1475,13 @@ common::Status InferenceSession::Initialize() {
       session_state_->UpdateAllocatorsWithEnvAllocators(environment_.GetRegisteredSharedAllocators());
     }
 
+    for (auto& ep : execution_providers_) {
+      auto tuning_ctx = ep->GetTuningContext();
+      if (nullptr != tuning_ctx) {
+        tuning_ctx->RegisterAllocatorsView(&session_state_->GetAllocators());
+      }
+    }
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
     session_state_->SetMemoryProfiler(&memory_profiler_);

@@ -21,7 +21,7 @@ namespace {
 template <typename T>
 struct DispatchGroupNorm {
   Status operator()(RocmTuningContext* tuning_ctx,
-                    hipStream_t stream,
+                    Stream* stream,
                     Tensor* output,
                     const Tensor* input,
                     const Tensor* gamma,
@@ -130,7 +130,7 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
   auto workspace = GetScratchBuffer<void>(GetGroupNormWorkspaceSizeInBytes(), context->GetComputeStream());
 
   utils::MLTypeCallDispatcher<GROUP_NORM_TYPES> dispatcher(input->GetElementType());
-  return dispatcher.InvokeRet<Status, DispatchGroupNorm>(GetTuningContext(), Stream(context),
+  return dispatcher.InvokeRet<Status, DispatchGroupNorm>(GetTuningContext(), context->GetComputeStream(),
                                                          output, input, gamma, beta, workspace.get(),
                                                          epsilon_,
                                                          batch_size,

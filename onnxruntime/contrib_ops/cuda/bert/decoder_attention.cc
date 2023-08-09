@@ -369,7 +369,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
 #ifdef USE_ROCM
       GetTuningContext(),
 #endif
-      stream,
+      context->GetComputeStream(),
       cublas,
       element_size,
       batch_size,

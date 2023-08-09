@@ -313,7 +313,7 @@ auto GetRocBlasStridedBatchedGemmTypeStringAndOps() {
 
 template <typename T>
 Status RocBlasGemmOp(const GemmParams<T>* params) {
-  RocblasHandleStreamGuard guard(params->handle, params->stream);
+  RocblasHandleStreamGuard guard(params->handle, params->StreamHandle());
   // NOTE: rocblas assumes the storage is column-majored, swapping A and B makes it have the same interface
   // as those with row-majored convention. That is, if you treat the storage as row-majored but view the matrices as
   // transposed, then by using the property Transpose(A*B) = Tranpose(B)*Transpose(A), the correctness is obvious.
@@ -331,7 +331,7 @@ Status RocBlasGemmOp(const GemmParams<T>* params) {
 
 template <typename T>
 Status RocBlasBatchedGemmOp(const BatchedGemmParams<T>* params) {
-  RocblasHandleStreamGuard guard(params->handle, params->stream);
+  RocblasHandleStreamGuard guard(params->handle, params->StreamHandle());
   return ROCBLAS_CALL(rocblasGemmBatchedHelper(
       params->handle,
       params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
@@ -347,7 +347,7 @@ Status RocBlasBatchedGemmOp(const BatchedGemmParams<T>* params) {
 
 template <typename T>
 Status RocBlasStridedBatchedGemmOp(const StridedBatchedGemmParams<T>* params) {
-  RocblasHandleStreamGuard guard(params->handle, params->stream);
+  RocblasHandleStreamGuard guard(params->handle, params->StreamHandle());
   return ROCBLAS_CALL(rocblasGemmStridedBatchedHelper(
       params->handle,
       params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,

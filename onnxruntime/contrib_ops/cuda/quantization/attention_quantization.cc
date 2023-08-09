@@ -215,7 +215,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   data.cumulated_sequence_length_q_cache = nullptr;
   data.cumulated_sequence_length_kv_cache = nullptr;
 
-  return QkvToContext<CudaT>(GetDeviceProp(), cublas, Stream(context), parameters, data);
+  return QkvToContext<CudaT>(GetDeviceProp(), cublas, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda
