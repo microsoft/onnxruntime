@@ -1263,7 +1263,29 @@ static ProviderLibrary s_library_rocm(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provi
 );
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_dnnl") LIBRARY_EXTENSION);
 static ProviderLibrary s_library_openvino(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_openvino") LIBRARY_EXTENSION);
-static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_tensorrt") LIBRARY_EXTENSION);
+static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_tensorrt") LIBRARY_EXTENSION
+#ifndef _WIN32
+                                          ,
+                                          /*
+                                           * unload - On CentOS if we unload the TensorRT shared provider we crash.
+                                           *
+                                           * The reason is TensorRT EP holds a thread local data which won't be destroyed
+                                           * until thread exits which happens after TRT EP destruction. Upon thread exits,
+                                           * the destructor of thread local data will be called but the address of destructor
+                                           * is invalid since the destructor is defined in TRT EP which is already been
+                                           * removed from the address space. Therefore, we will hit a segmentation fault.
+                                           * So, here we won't unload the TensorRT shared provider and leave the library around.
+                                           * This way the OS/CRT/etc doesn't ever clean up until the process exits.
+                                           *
+                                           * Interestingly, TensorRT shared library won't crash on Ubuntu and Windows when being unloaded.
+                                           * The destructor of thread local data can be successfully called upon thread exits.
+                                           * One thing worth attention is, on Unix, the function to unload a library is allowed to do nothing.
+                                           * Please see here: https://pubs.opengroup.org/onlinepubs/007904975/functions/dlclose.html
+                                           *
+                                           */
+                                          false
+#endif
+);
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
