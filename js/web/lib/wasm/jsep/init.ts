@@ -69,7 +69,7 @@ class ComputeContextImpl implements ComputeContext {
     const heap = module.PTR_SIZE === 4 ? module.HEAPU32 : module.HEAPU64;
 
     // extract context data
-    let dataIndex = module.PTR_SIZE === 4 ? (contextDataOffset / 2**3) : (contextDataOffset >> 2);
+    let dataIndex = module.PTR_SIZE === 8 ? (contextDataOffset / 2**3) : (contextDataOffset >> 2);
     this.opKernelContext = Number(heap[dataIndex++]);
     const inputCount = Number(heap[dataIndex++]);
     this.outputCount = Number(heap[dataIndex++]);

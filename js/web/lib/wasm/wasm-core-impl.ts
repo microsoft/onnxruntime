@@ -239,11 +239,11 @@ export const run = async(
         wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), dataOffset);
       }
 
+      console.log("PTR_SIZE", ptrSize);
       const stack = wasm.stackSave();
       const dimsOffset = wasm.stackAlloc(ptrSize * dims.length);
       try {
-        let dimIndex = 0;
-        dims.forEach(d => wasm.setValue(dataOffset * (dimIndex++ * ptrSize), d, '*'));
+        dims.forEach((d, index) => wasm.setValue(dimsOffset + (index * ptrSize), d, '*'));
         const tensor = wasm._OrtCreateTensor(
             tensorDataTypeStringToEnum(dataType), dataOffset, dataByteLength, dimsOffset, dims.length);
         if (tensor === 0) {

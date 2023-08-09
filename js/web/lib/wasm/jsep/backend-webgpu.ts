@@ -356,6 +356,7 @@ export class WebGpuBackend {
       return 0;  // ORT_OK
     } catch (e) {
       LOG_DEBUG('warning', `[WebGPU] Kernel "${name}" failed. Error: ${e}`);
+      console.error(e);
       return 1;  // ORT_FAIL
     } finally {
       for (const data of this.temporaryData) {
