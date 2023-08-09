@@ -294,7 +294,7 @@ dependencies {
      <td>
        <ul>
         <li>
-          In your CocoaPods <code>Podfile</code>, add the <code>onnxruntime-training-objc`</code> pod:
+          In your CocoaPods <code>Podfile</code>, add the <code>onnxruntime-training-objc</code> pod:
             <pre>
               use_frameworks!
               pod 'onnxruntime-training-objc' 
