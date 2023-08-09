@@ -55,7 +55,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, tokenizer: Llam
 
     # Run inference with ORT
     ort_model = create_onnxruntime_session(
-        args.onnxruntime,  # onnx_model_path
+        args.onnx_model_path,
         args.execution_provider != "cpu",  # use_gpu
         provider=args.execution_provider,
         verbose=args.verbose,
@@ -77,7 +77,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, tokenizer: Llam
     ort_outputs = ort_model.run(None, inputs)[0][0]
 
     # Compare PyTorch and ONNX Runtime accuracy
-    tol = 1e-3 if "fp32" in args.onnxruntime else 1e-2 if "fp16" in args.onnxruntime else 1e2
+    tol = 1e-3 if "fp32" in args.onnx_model_path else 1e-2 if "fp16" in args.onnx_model_path else 1e2
     parity = np.allclose(pt_outputs, ort_outputs, rtol=tol, atol=tol)
     logger.warning(f"Are PyTorch and ONNX Runtime results close? {parity}")
     if not parity:
@@ -95,19 +95,19 @@ def get_args(argv: List[str]):
     )
 
     parser.add_argument(
-        "-p",
-        "--pytorch",
+        "-t",
+        "--torch_model_directory",
         required=False,
         default=os.path.join("."),
-        help="Directory to PyTorch model and associated files if saved on disk",
+        help="Path to folder containing PyTorch model and associated files if saved on disk",
     )
 
     parser.add_argument(
         "-o",
-        "--onnxruntime",
+        "--onnx_model_path",
         required=True,
         default=os.path.join("."),
-        help="Directory to ONNX Runtime model and associated files saved on disk",
+        help="Path to ONNX Runtime model (with external data files saved in the same folder as the model)",
     )
 
     parser.add_argument(
@@ -128,7 +128,7 @@ def get_args(argv: List[str]):
     parser.set_defaults(verbose=False)
 
     parser.add_argument(
-        "-kv",
+        "-p",
         "--use_past_kv",
         action="store_true",
         help="Use past key and past value as inputs to the model. Necessary for decoder_with_past_model.onnx models.",
@@ -145,16 +145,12 @@ def main(argv: List[str] = []):  # noqa: B006
     logger.info(f"Arguments: {args}")
 
     # Load model, tokenizer, and config
-    use_auth_token = args.pytorch == os.path.join(".")
-    config = LlamaConfig.from_pretrained(
-        args.model_name if use_auth_token else args.pytorch, use_auth_token=use_auth_token
-    )
-    tokenizer = LlamaTokenizer.from_pretrained(
-        args.model_name if use_auth_token else args.pytorch, use_auth_token=use_auth_token
-    )
-    llama = LlamaForCausalLM.from_pretrained(
-        args.model_name if use_auth_token else args.pytorch, use_auth_token=use_auth_token, use_cache=True
-    )
+    use_auth_token = args.torch_model_directory == os.path.join(".")
+    location = args.model_name if use_auth_token else args.torch_model_directory
+
+    config = LlamaConfig.from_pretrained(location, use_auth_token=use_auth_token)
+    tokenizer = LlamaTokenizer.from_pretrained(location, use_auth_token=use_auth_token)
+    llama = LlamaForCausalLM.from_pretrained(location, use_auth_token=use_auth_token, use_cache=True)
 
     verify_parity(args, config, tokenizer, llama)
 

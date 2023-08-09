@@ -183,25 +183,22 @@ def parse_arguments(argv=None):
         "--quantize_embedding_layer",
         required=False,
         action="store_true",
-        help="Quantize MatMul, GEMM, and Gather.",
+        help="Produce beam search model with chained encdecinit and decoder",
     )
-    parser.set_defaults(quantize_embedding_layer=False)
 
     parser.add_argument(
         "--quantize_per_channel",
         required=False,
         action="store_true",
-        help="Quantize weights per each channel.",
+        help="Produce beam search model with chained encdecinit and decoder",
     )
-    parser.set_defaults(quantize_per_channel=False)
 
     parser.add_argument(
         "--quantize_reduce_range",
         required=False,
         action="store_true",
-        help="Quantize weights with 7 bits.",
+        help="Produce beam search model with chained encdecinit and decoder",
     )
-    parser.set_defaults(quantize_reduce_range=False)
 
     parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
 
@@ -322,6 +319,7 @@ def export_onnx_models(
                         use_external_data_format=use_external_data_format,
                         per_channel=quantize_per_channel,
                         reduce_range=quantize_reduce_range,
+                        optimize_model=False,
                         extra_options={"MatMulConstBOnly": True},
                     )
             else:

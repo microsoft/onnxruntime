@@ -20,10 +20,10 @@ from onnxruntime import quantization  # noqa: E402
 logger = logging.getLogger("")
 
 
-def get_model_inputs(config: LlamaConfig):
+def get_sample_inputs(config: LlamaConfig):
     batch_size, seq_len = 2, 8
     input_ids = torch.randint(low=0, high=config.vocab_size, size=(batch_size, seq_len), dtype=torch.int64)
-    attn_mask = torch.randint(low=0, high=2, size=(batch_size, seq_len), dtype=torch.int64)
+    attn_mask = torch.ones(batch_size, seq_len, dtype=torch.int64)
     # pos_ids is of shape (batch_size, seq_len)
     pos_ids = attn_mask.long().cumsum(-1) - 1
     pos_ids.masked_fill_(attn_mask == 0, 1)
@@ -35,7 +35,7 @@ def get_model_with_past_kv_inputs(config: LlamaConfig):
     batch_size, past_seq_len = 2, 8
     num_heads, head_size = config.num_attention_heads, int(config.hidden_size / config.num_attention_heads)
     input_ids = torch.randint(low=0, high=config.vocab_size, size=(batch_size, 1), dtype=torch.int64)
-    attn_mask = torch.randint(low=0, high=2, size=(batch_size, past_seq_len + 1), dtype=torch.int64)
+    attn_mask = torch.ones(batch_size, past_seq_len + 1, dtype=torch.int64)
     # pos_ids is of shape (batch_size, 1)
     pos_ids = attn_mask.long().cumsum(-1) - 1
     pos_ids.masked_fill_(attn_mask == 0, 1)
@@ -131,16 +131,13 @@ def save_onnx_model(onnx_model: onnx.ModelProto, output_path: str, data_path: st
 # del onnx_model
 # temp_dir.cleanup()
 #
-#
-# 3) Once exported, you will need to manually remove the external data that is saved to individual files. Do NOT delete the
-# file with the ".onnx.data" extension.
 def run_dynamo_export(args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM):
     from torch._dynamo import config
 
     config.capture_scalar_outputs = True
 
     # Export decoder_model.onnx
-    input_ids, attn_mask, pos_ids = get_model_inputs(l_config)
+    input_ids, attn_mask, pos_ids = get_sample_inputs(l_config)
     temp_dir = args.output  # tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir, "temp.onnx")  # os.path.join(temp_dir.name, "temp.onnx")
     torch.onnx.dynamo_export(
@@ -184,7 +181,7 @@ def run_dynamo_export(args: argparse.Namespace, l_config: LlamaConfig, llama: Ll
 
 def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM):
     # Export decoder_model.onnx
-    decoder_inputs = get_model_inputs(l_config)
+    decoder_inputs = get_sample_inputs(l_config)
 
     input_names = ["input_ids", "attention_mask", "position_ids"]
     output_names = [
