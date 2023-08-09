@@ -1,5 +1,5 @@
-// // Copyright (c) Microsoft Corporation. All rights reserved.
- // // Licensed under the MIT License.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "testPch.h"
 
@@ -96,8 +96,7 @@ UniqueOrtSession CreateCpuSession() {
 
 void DmlExecutionProviderSetDefaultRoundingMode() {
   GPUTEST;
-  for (bool bfc_allocator_enabled : {false, true})
-  {
+  for (bool bfc_allocator_enabled : {false, true}) {
     auto session = CreateDmlSession(bfc_allocator_enabled);
     OrtExecutionProvider* ort_provider;
     THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -107,8 +106,7 @@ void DmlExecutionProviderSetDefaultRoundingMode() {
 
 void DmlExecutionProviderFlushContext() {
   GPUTEST;
-  for (bool bfc_allocator_enabled : {false, true})
-  {
+  for (bool bfc_allocator_enabled : {false, true}) {
     auto session = CreateDmlSession(bfc_allocator_enabled);
     OrtExecutionProvider* ort_provider;
     THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -118,8 +116,7 @@ void DmlExecutionProviderFlushContext() {
 
 void DmlExecutionProviderReleaseCompletedReferences() {
   GPUTEST;
-  for (bool bfc_allocator_enabled : {false, true})
-  {
+  for (bool bfc_allocator_enabled : {false, true}) {
     auto session = CreateDmlSession(bfc_allocator_enabled);
     OrtExecutionProvider* ort_provider;
     THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -185,8 +182,7 @@ void DmlGetD3D12ResourceFromAllocation() {
   void* gpu_allocation;
   THROW_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d12_resource.get(), &gpu_allocation), ort_api);
 
-  for (bool bfc_allocator_enabled : {false, true})
-  {
+  for (bool bfc_allocator_enabled : {false, true}) {
     auto session = CreateDmlSession(bfc_allocator_enabled);
 
     OrtMemoryInfo* ort_memory_info;
@@ -203,7 +199,9 @@ void DmlGetD3D12ResourceFromAllocation() {
 
     winrt::com_ptr<ID3D12Resource> d3d12_resource_from_allocation;
     THROW_IF_NOT_OK_MSG(
-      ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), gpu_allocation, d3d12_resource_from_allocation.put()),
+      ort_dml_api->GetD3D12ResourceFromAllocation(
+        allocator.get(), gpu_allocation, d3d12_resource_from_allocation.put()
+      ),
       ort_api
     );
     // Ensure resource is the same
@@ -232,8 +230,7 @@ UniqueOrtValue CreateTensorFromMemoryInfo(const OrtMemoryInfo* memory_info) {
 
 void GetTensorMemoryInfo() {
   GPUTEST;
-  for (bool bfc_allocator_enabled : {false, true})
-  {
+  for (bool bfc_allocator_enabled : {false, true}) {
     auto session = CreateDmlSession(bfc_allocator_enabled);
 
     OrtMemoryInfo* ort_memory_info;
@@ -253,8 +250,7 @@ void GetTensorMemoryInfo() {
 
 void ExecutionProviderSync() {
   GPUTEST;
-  for (bool bfc_allocator_enabled : {false, true})
-  {
+  for (bool bfc_allocator_enabled : {false, true}) {
     auto session = CreateDmlSession(bfc_allocator_enabled);
     OrtExecutionProvider* ort_provider;
     THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -290,7 +286,7 @@ void DmlCopyTensor() {
   OrtExecutionProvider* dml_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &dml_provider), ort_api);
 
-    // CPU to CPU is not supported
+  // CPU to CPU is not supported
   OrtMemoryInfo* cpu_memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
   auto cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
@@ -299,7 +295,7 @@ void DmlCopyTensor() {
     nullptr, winml_adapter_api->DmlCopyTensor(dml_provider, cpu_tensor.get(), dst_cpu_tensor.get())
   );
 
-    // GPU to CPU
+  // GPU to CPU
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
@@ -343,8 +339,7 @@ void CreateCustomRegistry() {
 
 void ValueGetDeviceId() {
   GPUTEST;
-  for (bool bfc_allocator_enabled : {false, true})
-  {
+  for (bool bfc_allocator_enabled : {false, true}) {
     auto session = CreateDmlSession(bfc_allocator_enabled);
 
     OrtMemoryInfo* ort_memory_info;
@@ -370,8 +365,7 @@ void ValueGetDeviceId() {
 
 void SessionGetInputRequiredDeviceId() {
   GPUTEST;
-  for (bool bfc_allocator_enabled : {false, true})
-  {
+  for (bool bfc_allocator_enabled : {false, true}) {
     auto session = CreateDmlSession(bfc_allocator_enabled);
     int16_t device_id;
     THROW_IF_NOT_OK_MSG(
