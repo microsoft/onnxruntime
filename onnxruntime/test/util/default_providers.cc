@@ -86,10 +86,19 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params) {
+#ifdef USE_OPENVINO
+  return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(params);
+#endif
+  return nullptr;
+}
+
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
-  OrtOpenVINOProviderOptions params;
-  return OpenVINOProviderFactoryCreator::Create(&params)->CreateProvider();
+  ProviderOptions provider_options_map;
+  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
 #else
   return nullptr;
 #endif

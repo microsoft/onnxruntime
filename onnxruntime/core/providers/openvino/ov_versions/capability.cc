@@ -33,13 +33,20 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
     data_ops_ = new DataOps(graph_viewer_, V_2022_3, device_type_);
   } else if (version_param == "V_2023_0") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_);
+  } else if (version_param == "V_2023_1") {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
   }
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  // Check if it is a subgraph
+  if (graph_viewer_.IsSubgraph() && graph_viewer_.Name() == "tf2onnx") {
+    return result;
+  }
 
   // Check if it is a subgraph
   if (graph_viewer_.IsSubgraph() && graph_viewer_.Name() == "tf2onnx") {
