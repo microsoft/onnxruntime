@@ -50,8 +50,11 @@ include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
 
-set(CMAKE_CXX_STANDARD 17)
-
+if(MSVC)
+  set(CMAKE_CXX_STANDARD 20)
+else()
+  set(CMAKE_CXX_STANDARD 17)
+endif()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
