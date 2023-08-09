@@ -137,6 +137,8 @@ class BaseOpBuilder : public IOpBuilder {
         {"Gelu", QNN_OP_GELU},
 
         {"HardSwish", QNN_OP_HARD_SWISH},
+        {"DepthToSpace", QNN_OP_DEPTH_TO_SPACE},
+        {"SpaceToDepth", QNN_OP_SPACE_TO_DEPTH},
 
         {"Conv", QNN_OP_CONV_2D},
         {"ConvTranspose", QNN_OP_TRANSPOSE_CONV_2D},

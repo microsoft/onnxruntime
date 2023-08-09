@@ -312,6 +312,53 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
                     13, ExpectedEPNodeAssignment::All);
 }
 
+// Test QDQ DepthToSpace.
+TEST_F(QnnHTPBackendTests, DepthToSpaceOp_CRD) {
+  const std::vector<float> X = {0., 1., 2.,
+                                3., 4., 5.,
+                                9., 10., 11.,
+                                12., 13., 14.,
+                                18., 19., 20.,
+                                21., 22., 23.,
+                                27., 28., 29.,
+                                30., 31., 32.};
+  RunQDQUnaryOpTest(TestInputDef<float>({1, 4, 2, 3}, false, X),
+                    "DepthToSpace",
+                    {utils::MakeAttribute("blocksize", static_cast<int64_t>(2)),
+                     utils::MakeAttribute("mode", "CRD")},
+                    11, ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ DepthToSpace.
+TEST_F(QnnHTPBackendTests, DepthToSpaceOp_DCR) {
+  const std::vector<float> X = {0., 1., 2.,
+                                3., 4., 5.,
+                                9., 10., 11.,
+                                12., 13., 14.,
+                                18., 19., 20.,
+                                21., 22., 23.,
+                                27., 28., 29.,
+                                30., 31., 32.};
+  RunQDQUnaryOpTest(TestInputDef<float>({1, 4, 2, 3}, false, X),
+                    "DepthToSpace",
+                    {utils::MakeAttribute("blocksize", static_cast<int64_t>(2)),
+                     utils::MakeAttribute("mode", "DCR")},
+                    11, ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ SpaceToDepth.
+TEST_F(QnnHTPBackendTests, SpaceToDepthOp) {
+  const std::vector<float> X = {0.0f, 0.1f, 0.2f, 0.3f,
+                                1.0f, 1.1f, 1.2f, 1.3f,
+
+                                2.0f, 2.1f, 2.2f, 2.3f,
+                                3.0f, 3.1f, 3.2f, 3.3f};
+  RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 2, 4}, false, X),
+                    "SpaceToDepth",
+                    {utils::MakeAttribute("blocksize", static_cast<int64_t>(2))},
+                    11, ExpectedEPNodeAssignment::All);
+}
+
 // Run QDQ model on HTP twice
 // 1st run will generate the Qnn context cache binary file
 // 2nd run will load and run from Qnn context cache binary file
