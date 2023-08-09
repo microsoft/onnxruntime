@@ -749,8 +749,7 @@ TEST(GroupNormTest, GroupNorm_128) {
       }
 
       // Don't run the test if no providers are supported
-      if (execution_providers.empty())
-      {
+      if (execution_providers.empty()) {
         continue;
       }
 
@@ -798,8 +797,7 @@ TEST(GroupNormTest, GroupNorm_128) {
       }
 
       // Don't run the test if no providers are supported
-      if (execution_providers.empty())
-      {
+      if (execution_providers.empty()) {
         continue;
       }
 
