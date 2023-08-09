@@ -279,8 +279,8 @@ dependencies {
       <ul>
         <li>In your CocoaPods <code>Podfile</code>, add the <code>onnxruntime-training-c</code> pod:
           <pre>
-            use_frameworks!
-            pod 'onnxruntime-training-c' 
+use_frameworks!
+pod 'onnxruntime-training-c' 
           </pre>
         </li>
         <li>Run <code>pod install</code>.</li>
@@ -296,8 +296,8 @@ dependencies {
         <li>
           In your CocoaPods <code>Podfile</code>, add the <code>onnxruntime-training-objc</code> pod:
             <pre>
-              use_frameworks!
-              pod 'onnxruntime-training-objc' 
+use_frameworks!
+pod 'onnxruntime-training-objc' 
             </pre>
         </li>
         <li>
