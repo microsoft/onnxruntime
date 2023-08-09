@@ -32,7 +32,7 @@ def __q4_blob_size(quant_type: int) -> int:
         # 4b each value, with one fp32 scale and one uint8 zero point
         blob_size = 32 // 2 + 4 + 1
     else:
-        raise ValueError(f'Unsupported quantization type: {quant_type}')
+        raise ValueError(f"Unsupported quantization type: {quant_type}")
     return blob_size
 
 
@@ -254,7 +254,6 @@ if __name__ == "__main__":
     input_model_path = args.input_model
     output_model_path = args.output_model
     q4dq_bin_path = args.quant_bin_path
-
 
     model = load_model_with_shape_infer(Path(input_model_path))
     quant = MatMulWeight4Quantizer(model, 0)

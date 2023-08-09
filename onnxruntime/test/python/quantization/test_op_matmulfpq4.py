@@ -7,9 +7,9 @@
 
 import tempfile
 import unittest
-
 from pathlib import Path
 from typing import Dict, Tuple, Union
+
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
@@ -27,7 +27,7 @@ class TestOpMatMulFpQ4(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def fill_int4_data(self, shape: Union[int,Tuple[int,...]], symmetric: bool) -> np.ndarray:
+    def fill_int4_data(self, shape: Union[int, Tuple[int, ...]], symmetric: bool) -> np.ndarray:
         line = np.zeros(shape)
         line = line.reshape(-1)
 
@@ -38,7 +38,7 @@ class TestOpMatMulFpQ4(unittest.TestCase):
                     v += 1
                 line[i] = v
                 v += 1
-                if v >= 8 :
+                if v >= 8:
                     v = -8
         else:
             v = 0.0
@@ -46,11 +46,11 @@ class TestOpMatMulFpQ4(unittest.TestCase):
                 line[i] = v
                 v += 1
                 if v >= 16:
-                   v = 0
+                    v = 0
 
         return line.reshape(shape)
 
-    def input_feeds(self, n: int, name2shape: Dict[str, Union[int,Tuple[int,...]]]) -> TestDataFeeds:
+    def input_feeds(self, n: int, name2shape: Dict[str, Union[int, Tuple[int, ...]]]) -> TestDataFeeds:
         input_data_list = []
         for _i in range(n):
             inputs = {}
@@ -70,7 +70,7 @@ class TestOpMatMulFpQ4(unittest.TestCase):
         output_name = "output"
         initializers = []
 
-        def make_gemm(input_name, weight_shape: Union[int,Tuple[int,...]], weight_name: str, output_name: str):
+        def make_gemm(input_name, weight_shape: Union[int, Tuple[int, ...]], weight_name: str, output_name: str):
             weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
             return onnx.helper.make_node(
@@ -109,9 +109,8 @@ class TestOpMatMulFpQ4(unittest.TestCase):
         self,
         model_fp32_path: str,
         data_reader: TestDataFeeds,
-        quantization_type: int, # 0: BlkQ4Sym, 1: BlkQ4Zp8
+        quantization_type: int,  # 0: BlkQ4Sym, 1: BlkQ4Zp8
     ):
-
         qtype_str = "BlkQ4Sym" if (quantization_type == 0) else "BlkQ4Zp8"
         model_int4_path = str(Path(self._tmp_model_dir.name).joinpath(f"matmulfpq4_{qtype_str}.onnx").absolute())
 
@@ -119,7 +118,7 @@ class TestOpMatMulFpQ4(unittest.TestCase):
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         quant = MatMulWeight4Quantizer(model, quantization_type)
         quant.process()
-        quant.model.save_model_to_file(model_int4_path, False)        
+        quant.model.save_model_to_file(model_int4_path, False)
 
         quant_nodes = {"MatMulFpQ4": 1}
         check_op_type_count(self, model_int4_path, **quant_nodes)
@@ -131,23 +130,16 @@ class TestOpMatMulFpQ4(unittest.TestCase):
         np.random.seed(13)
 
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
-        self.construct_model_matmul(model_fp32_path, symmetric= True)
+        self.construct_model_matmul(model_fp32_path, symmetric=True)
         data_reader = self.input_feeds(1, {"input": [100, 52]})
-        self.quant_test(
-            model_fp32_path,
-            data_reader,
-            quantization_type=MatMulWeight4Quantizer.BlkQ4Sym
-        )
+        self.quant_test(model_fp32_path, data_reader, quantization_type=MatMulWeight4Quantizer.BlkQ4Sym)
 
     def test_quantize_matmul_int4_offsets(self):
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": [100, 52]})
-        self.quant_test(
-            model_fp32_path,
-            data_reader,
-            quantization_type=MatMulWeight4Quantizer.BlkQ4Zp8
-        )
+        self.quant_test(model_fp32_path, data_reader, quantization_type=MatMulWeight4Quantizer.BlkQ4Zp8)
+
 
 if __name__ == "__main__":
     unittest.main()
