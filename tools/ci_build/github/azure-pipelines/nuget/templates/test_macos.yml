@@ -51,7 +51,7 @@ stages:
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
 
-    - template: ../../templates/component-governance-component-detection.yml
+    - template: ../../templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'always'
 

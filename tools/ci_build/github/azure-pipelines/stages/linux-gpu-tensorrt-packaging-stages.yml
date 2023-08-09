@@ -67,7 +67,7 @@ stages:
             libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
 
-      - template: ../templates/component-governance-component-detection.yml
+      - template: ../templates/component-governance-component-detection-steps.yml
         parameters :
           condition : 'succeeded'
       - template: jobs/steps/clean-agent-build-directory-steps.yml

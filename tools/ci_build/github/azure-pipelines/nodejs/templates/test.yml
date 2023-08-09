@@ -33,7 +33,7 @@ steps:
     node -p "require('onnxruntime-node')"
   workingDirectory: '$(Build.BinariesDirectory)/e2e_test'
 
-- template: ../../templates/component-governance-component-detection.yml
+- template: ../../templates/component-governance-component-detection-steps.yml
   parameters :
     condition : 'always'
 

@@ -23,6 +23,6 @@ jobs:
     displayName: 'Run ORTModule Tests'
     condition: succeededOrFailed()
     timeoutInMinutes: 120
-  - template: templates/component-governance-component-detection.yml
+  - template: templates/component-governance-component-detection-steps.yml
     parameters:
       condition: 'succeeded'

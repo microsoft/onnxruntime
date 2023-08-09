@@ -106,7 +106,7 @@ stages:
         inputs:
           ArtifactName: onnxruntime
 
-      - template: ../templates/component-governance-component-detection.yml
+      - template: ../templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 
@@ -279,7 +279,7 @@ stages:
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
         continueOnError: true
 
-      - template: ../templates/component-governance-component-detection.yml
+      - template: ../templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 
@@ -377,7 +377,7 @@ stages:
         inputs:
           ArtifactName: onnxruntime_gpu
 
-      - template: ../templates/component-governance-component-detection.yml
+      - template: ../templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 
@@ -547,7 +547,7 @@ stages:
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
         continueOnError: true
 
-      - template: ../templates/component-governance-component-detection.yml
+      - template: ../templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 

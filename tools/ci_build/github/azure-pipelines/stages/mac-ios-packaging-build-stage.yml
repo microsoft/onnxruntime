@@ -157,6 +157,6 @@ stages:
       artifact: "ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}"
       displayName: "Publish artifacts"
 
-    - template: ../templates/component-governance-component-detection.yml
+    - template: ../templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'

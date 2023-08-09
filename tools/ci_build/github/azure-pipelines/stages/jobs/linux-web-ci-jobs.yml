@@ -142,6 +142,6 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: 'Publish Pipeline Artifact'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
-  - template: ../../templates/component-governance-component-detection.yml
+  - template: ../../templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
