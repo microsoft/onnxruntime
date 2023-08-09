@@ -76,7 +76,8 @@ static void RunReduceOpCpuTest(const std::string& op_type,
                                const std::vector<int64_t>& axes,
                                bool keepdims,
                                int opset,
-                               ExpectedEPNodeAssignment expected_ep_assignment) {
+                               ExpectedEPNodeAssignment expected_ep_assignment,
+                               float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";
@@ -92,7 +93,8 @@ static void RunReduceOpCpuTest(const std::string& op_type,
                                                   false),  // noop_with_empty_axes
                   provider_options,
                   opset,
-                  expected_ep_assignment);
+                  expected_ep_assignment,
+                  fp32_abs_err);
 }
 
 //
@@ -170,7 +172,12 @@ TEST_F(QnnCPUBackendTests, ReduceProdOpset18) {
                             std::vector<int64_t>{0, 1},
                             true,  // keepdims
                             18,
-                            ExpectedEPNodeAssignment::All);
+                            ExpectedEPNodeAssignment::All,
+#if defined(_WIN32) && !defined(__aarch64__)
+                            2e-5f);  // x64 Windows requires a tolerance > 1.5e-5f
+#else
+                            1e-5f);
+#endif
 }
 
 // Test creates a graph with a ReduceProd node, and checks that all
@@ -184,7 +191,12 @@ TEST_F(QnnCPUBackendTests, ReduceProdOpset13) {
                             std::vector<int64_t>{0, 1},
                             true,  // keepdims
                             13,
-                            ExpectedEPNodeAssignment::All);
+                            ExpectedEPNodeAssignment::All,
+#if defined(_WIN32) && !defined(__aarch64__)
+                            2e-5f);  // x64 Windows requires a tolerance > 1.5e-5f
+#else
+                            1e-5f);
+#endif
 }
 
 //
