@@ -308,7 +308,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xNearestAsymmetricFloor) {
 // QNN's own Resize operator (instead of ResizeNearestNeighbor), but it doesn't support the "asymmetric" coordinate
 // transform mode.
 //
-//QNN v2.13: Inaccuracy detected for output 'output', element 189.
+// QNN v2.13: Inaccuracy detected for output 'output', element 189.
 // Output quant params: scale=0.078431375324726105, zero_point=127.
 // Expected val: -2.663428783416748
 // QNN QDQ val: 7.4509806632995605 (err 10.114409446716309)
