@@ -4,6 +4,11 @@
 #pragma once
 #include "onnxruntime_config.h"
 
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 4244)
+#endif
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 
@@ -24,4 +29,8 @@
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
+#endif
+
+#ifdef _WIN32
+#pragma warning(pop)
 #endif
