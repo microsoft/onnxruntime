@@ -212,47 +212,81 @@ class AdamW(onnxblock_module.ForwardBlock):
 
         return updated_flag_name
 
+
 class SGDOptimizer(blocks.Block):
-    """Adds an SGDOptimizer node to the onnx model."""
+    """Adds a SGDOptimizer node to the onnx model."""
 
     def __init__(self, learning_rate: float):
         super().__init__()
-
         self._learning_rate = learning_rate
 
-    def build(
-        self,
-        parameter_sequence_name: str,
-        gradient_sequence_name: str,
-        learning_rate_name: str = "learning_rate",
-    ):
-        """Adds the SGDOptimizer node to the model."""
-
+    def build(self, learning_rate_name, weights_name, gradients_name):
         # get the model to manipulate
         onnx_model = self.base
 
-        # define the node attributes
-        node_attributes = {
-            "alpha": self._learning_rate,  # learning rate
-            "momentum": 0.0,  # momentum (SGD has no momentum, it's set to 0)
-        }
+        # add the sgd node to the onnx model
+        sgd_input_names = [learning_rate_name, weights_name, gradients_name]
+        sgd_output_name = _graph_utils.generate_graph_name("update_completed")
+        sgd_output_names = [sgd_output_name]
 
         # add the sgd node to the onnx model
-        sgd_input_names = [
-            learning_rate_name,  # learning rate
-            parameter_sequence_name,  # param to be updated
-            gradient_sequence_name,  # gradient of the param to be used for update
-        ]
-        sgd_output_name = _graph_utils.generate_graph_name("sgd.updated_flag")
-        sgd_output_names = [sgd_output_name]
         sgd_node = onnx.helper.make_node(
-            "SGDOptimizer",
+            "SGDOptimizerV2",
             sgd_input_names,
             sgd_output_names,
-            name=_graph_utils.generate_graph_name("SGDOptimizer"),
+            name=_graph_utils.generate_graph_name("SGDOptimizerV2"),
             domain="com.microsoft",
-            **node_attributes,
         )
         onnx_model.graph.node.append(sgd_node)
 
         return sgd_output_name
+
+
+class SGD(onnxblock_module.ForwardBlock):
+    """Builds SGD optimizer onnxblock for the given training parameters.
+
+    Creates a block that updates the model parameters based on the calculated
+    gradient following the SGD algorithm.
+
+    Args:
+        learning_rate: float indicating the learning rate.
+    Returns:
+        Returns a string of the output names from this optimizer node.
+    """
+
+    def __init__(self, learning_rate: float):
+        super().__init__()
+        self._sgd = SGDOptimizer(learning_rate)
+
+    def build(self, parameters):
+        """Returns an SGD optimizer model based on the input parameters."""
+
+        # get the model to manipulate and update its namespace
+        onnx_model = self.base
+
+        # TODO: Avoid hard coded input/output strings
+        learning_rate_name = "lr"
+        weights_name = "weights"
+        gradients_name = "gradients"
+
+        trainable_parameters, _ = parameters
+
+        # create the graph inputs for the learning rate.
+        onnx_model.graph.input.extend(
+            [onnx.helper.make_tensor_value_info(learning_rate_name, onnx.TensorProto.FLOAT, [1])]
+        )
+
+        # Prepare the tensor sequence inputs for gradients_name and weights_name
+        for input_name in [gradients_name, weights_name]:
+            onnx_model.graph.input.append(
+                onnx.helper.make_tensor_sequence_value_info(input_name, trainable_parameters[0].data_type, None)
+            )
+        # Run multi tensor SGDOptimizer
+        updated_flag_name = self._sgd(learning_rate_name, weights_name, gradients_name)
+
+        # Create the graph outputs
+        onnx_model.graph.output.append(
+            onnx.helper.make_tensor_value_info(updated_flag_name, onnx.TensorProto.BOOL, [1])
+        )
+
+        return updated_flag_name

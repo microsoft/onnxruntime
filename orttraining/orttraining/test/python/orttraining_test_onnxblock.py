@@ -554,11 +554,40 @@ def test_adamw_optimizer_execution():
         _ = ort_session.run(ort_output_names, ort_inputs)
 
 
-def test_sgd_optimizer_execution():
+@pytest.mark.parametrize(
+    "block",
+    [SimpleTrainingBlockWithMSELoss, SimpleTrainingBlockWithCrossEntropyLoss, SimpleTrainingBlockWithBCEWithLogitsLoss],
+)
+def test_sgd_optimizer_composition(block):
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
     pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    learning_rate = 0.001
+
+    # When / Then no error occurs
+    simple_block = block()
+    for name, _ in pt_model.named_parameters():
+        simple_block.requires_grad(name)
+
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    optimizer = onnxblock.optim.SGD(learning_rate)
+    with onnxblock.empty_base() as accessor:
+        _ = optimizer(simple_block.parameters())
+        optimizer_model = accessor.model
+        assert optimizer_model
+
+
+# TODO: Add a test for correctness when creation of ortvalues of
+# tensor seq is possible on cuda
+def test_sgd_optimizer_execution():
+    # Given
+    device = "cuda"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)  # Define this function
+    learning_rate = 0.001
 
     x = torch.randn(batch_size, input_size, device=device)
     target = torch.randn(batch_size, output_size, device=device)
@@ -570,12 +599,11 @@ def test_sgd_optimizer_execution():
     with onnxblock.base(base_model):
         _ = simple_block(base_model.graph.output[0].name)
 
-    optimizer = onnxblock.optim.SGDOptimizer(learning_rate=0.001)
+    optimizer = onnxblock.optim.SGD(learning_rate)
     with onnxblock.empty_base() as accessor:
         output_name = optimizer(simple_block.parameters())
         optimizer_model = accessor.model
 
-    step = 1
     ort_output_names = [output_name]
 
     def mse_loss(prediction, target):
@@ -590,18 +618,18 @@ def test_sgd_optimizer_execution():
         loss.backward()
 
         ort_inputs = {
-            "learning_rate": np.full(1, 0.001, dtype=np.float32),
-            "step": np.full(1, step, dtype=np.int64),
-            "params": [],
+            "lr": np.full(1, learning_rate, dtype=np.float32),
+            "weights": [],
             "gradients": [],
         }
         for _, param in pt_model.named_parameters():
-            ort_inputs["params"].append(_to_numpy(copy.deepcopy(param)))
+            ort_inputs["weights"].append(_to_numpy(copy.deepcopy(param)))
             ort_inputs["gradients"].append(_to_numpy(copy.deepcopy(param.grad)))
 
         # Then no error occurs when executing the model
         ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
         _ = ort_session.run(ort_output_names, ort_inputs)
+
 
 def test_retrieve_parameters():
     # Given
