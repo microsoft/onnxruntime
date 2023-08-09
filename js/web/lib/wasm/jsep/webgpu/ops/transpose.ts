@@ -23,8 +23,9 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('Transpose requires 1 input.');
   }
 
-  if (inputs[0].dataType !== DataType.float) {
-    throw new Error('input should be float tensor');
+  if (inputs[0].dataType !== DataType.float && inputs[0].dataType !== DataType.int32 &&
+      inputs[0].dataType !== DataType.uint32) {
+    throw new Error('Transpose only support float, int32, and uint32 data types');
   }
 };
 
@@ -45,7 +46,9 @@ const permFunctionBody = (perm: number[], rank: number): string => {
 };
 
 export const createTransposeProgramInfo = (input: TensorView, permAttr: number[]): ProgramInfo => {
-  const dataType = 'f32';  // TODO: support other data type
+  // We currently only support 4-byte element tensors, so using f32 here is safe
+  // TODO: support other data types for Transpose
+  const dataType = 'f32';
   const inputShape = input.dims;
   const perm = getAdjustedPerm(inputShape, permAttr);
   const outputShape = getOutputShape(inputShape, perm);

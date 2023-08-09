@@ -90,9 +90,12 @@ export class WebGpuBackend {
   computePassEncoder: GPUComputePassEncoder|null = null;
   pendingDispatchNumber = 0;
 
-  profilingEnabled = false;
+  supportTimestampQuery = false;
   profilingQuerySet: GPUQuerySet;
+  profilingQueryData: GpuData;
   profilingTimeBase?: bigint;
+
+  env: Env;
 
   async initialize(env: Env): Promise<void> {
     if (!navigator.gpu) {
@@ -105,13 +108,13 @@ export class WebGpuBackend {
       throw new Error('WebGpuBackend: Failed to get GPU adapter.');
     }
 
+    this.env = env;
     const deviceDescriptor: GPUDeviceDescriptor = {
       requiredLimits: {
         maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
         maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
         maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
         maxBufferSize: adapter.limits.maxBufferSize,
-        maxStorageBuffersPerShaderStage: adapter.limits.maxStorageBuffersPerShaderStage,
         maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
         maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
         maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
@@ -120,8 +123,8 @@ export class WebGpuBackend {
     };
     // WebGPU Spec: Timestamp Queries Inside Passes
     // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
-    if (adapter.features.has('timestamp-query-inside-passes') && env.webgpu.profilingMode === 'default') {
-      this.profilingEnabled = true;
+    if (adapter.features.has('timestamp-query-inside-passes')) {
+      this.supportTimestampQuery = true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       deviceDescriptor.requiredFeatures = ['timestamp-query-inside-passes' as any];
     }
@@ -145,7 +148,7 @@ export class WebGpuBackend {
       }
     };
 
-    if (this.profilingEnabled) {
+    if (this.supportTimestampQuery) {
       this.profilingQuerySet = this.device.createQuerySet({
         type: 'timestamp',
         count: 2,
@@ -353,7 +356,6 @@ export class WebGpuBackend {
       return 0;  // ORT_OK
     } catch (e) {
       LOG_DEBUG('warning', `[WebGPU] Kernel "${name}" failed. Error: ${e}`);
-      console.error(e)
       return 1;  // ORT_FAIL
     } finally {
       for (const data of this.temporaryData) {
