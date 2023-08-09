@@ -36,7 +36,7 @@ namespace onnxruntime {
     class ExternalExecutionProvider : public IExecutionProvider{
     public:
         ExternalExecutionProvider(CustomExecutionProvider* external_ep)
-            : IExecutionProvider(external_ep->GetType()), external_ep_impl_(external_ep){
+            : IExecutionProvider(external_ep->GetType(), external_ep->GetDevice()), external_ep_impl_(external_ep){
                 kernel_registry_ = std::make_shared<KernelRegistry>();
                 size_t kernelsCount = external_ep_impl_->GetKernelDefinitionCount();
                 for (size_t i = 0; i < kernelsCount; i++) {

@@ -38,7 +38,7 @@ ExternalKernelDef* CreateExternalKernelDef(const char* op_name, const char* exec
 namespace onnxruntime{
     class CustomExecutionProvider{
         public:
-        CustomExecutionProvider() {};
+        CustomExecutionProvider() { default_device_ = OrtDevice(); };
         virtual ~CustomExecutionProvider() = default;
 
         std::vector<OrtAllocator*>& GetAllocators() { return allocators_; }
@@ -49,6 +49,7 @@ namespace onnxruntime{
             return kernel_definitions_[index].get();
         }
         std::string& GetType() { return type_; }
+        OrtDevice& GetDevice() { return default_device_; }
 
         virtual bool CanCopy(const OrtDevice&, const OrtDevice&) { return false; }
         //virtual void MemoryCpy(OrtValue&, const OrtValue&) {}
@@ -59,5 +60,6 @@ namespace onnxruntime{
         //std::vector<std::unique_ptr<Ort::Custom::OrtLiteCustomOp>> kernel_definitions_;
         std::vector<std::unique_ptr<Ort::Custom::ExternalKernelDef>> kernel_definitions_;
         std::string type_;
+        OrtDevice default_device_;
     };
 }
