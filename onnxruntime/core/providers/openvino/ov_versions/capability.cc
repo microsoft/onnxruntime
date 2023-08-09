@@ -48,11 +48,6 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     return result;
   }
 
-  // Check if it is a subgraph
-  if (graph_viewer_.IsSubgraph() && graph_viewer_.Name() == "tf2onnx") {
-    return result;
-  }
-
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
 
@@ -83,14 +78,13 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     const auto& nodes = graph_viewer_.GetNodesInTopologicalOrder();
 
-    // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
-    // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
-    const auto& node = graph_viewer_.GetNode(nodes[0]);
-    if (data_ops_->IsOpSupportedOnlyInModel(node->OpType()))
-      return result;
-
     // Nodes that work well in models but not as a single node
     if (nodes.size() == 1) {
+      // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
+      // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
+      const auto& node = graph_viewer_.GetNode(nodes[0]);
+      if (data_ops_->IsOpSupportedOnlyInModel(node->OpType()))
+        return result;
       // If reshape is not an intermediate node, shape needs to be an initializer
       if (data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
         return result;
@@ -107,6 +101,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);
+
 
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported by OpenVINO";
     // Enable CI Logs
