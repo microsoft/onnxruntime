@@ -33,7 +33,7 @@ void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
   rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), rocm_ctx.hip_stream);
 }
 
-const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "ROCMExecutionProvider", KernelOne)};
+static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "ROCMExecutionProvider", KernelOne)};
 
 void RegisterOps(Ort::CustomOpDomain& domain) {
   domain.Add(c_CustomOpOne.get());

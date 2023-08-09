@@ -4374,7 +4374,7 @@ struct OrtApi {
   /**
    * Get a EP resoure. 
    * E.g. a cuda stream or a cublas handle
-   *   
+   *
    * \param context - Kernel context
    * \param resouce_version - Version of the resource
    * \param resource_id - Type of resource

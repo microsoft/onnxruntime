@@ -36,7 +36,7 @@ void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
   cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream);
 }
 
-const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CUDAExecutionProvider", KernelOne)};
+static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CUDAExecutionProvider", KernelOne)};
 
 void RegisterOps(Ort::CustomOpDomain& domain) {
   domain.Add(c_CustomOpOne.get());
