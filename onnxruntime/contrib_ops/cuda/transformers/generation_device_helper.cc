@@ -417,7 +417,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const CudaT* X_data = is_reuse_logits_buffer ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
   ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
-      cuda_stream, Y_data, X_data, vocab_size,
+      ort_stream, Y_data, X_data, vocab_size,
       is_reuse_logits_buffer ? padded_vocab_size : vocab_size,
       vocab_size,
       batch_size * num_beams)));
@@ -865,7 +865,7 @@ Status GreedySearchProcessLogits(
 
   if (do_sampling) {
     ORT_RETURN_IF_ERROR(SamplingCudaHelper::Sample(allocator,
-                                                   cuda_stream,
+                                                   stream,
                                                    next_token_scores,
                                                    sampling_state,
                                                    greedy_state,
