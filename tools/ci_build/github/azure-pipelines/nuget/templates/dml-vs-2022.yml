@@ -271,7 +271,7 @@ stages:
           parameters :
             msbuildPlatform: ${{ parameters.sln_platform }}
 
-      - template: ../../templates/component-governance-component-detection-steps.yml
+      - template: ../../templates/component-governance-component-detection.yml
         parameters :
           condition : 'succeeded'
 

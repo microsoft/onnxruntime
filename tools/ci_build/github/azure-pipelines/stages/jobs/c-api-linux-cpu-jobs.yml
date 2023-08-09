@@ -103,7 +103,7 @@ jobs:
           artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'
 
     - ${{ if not(eq(parameters.OnnxruntimeNodejsBindingArch, 'arm64')) }}:
-      - template: steps/component-governance-component-detection-steps.yml
+      - template: ../../templates/component-governance-component-detection.yml
         parameters:
           condition: 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3

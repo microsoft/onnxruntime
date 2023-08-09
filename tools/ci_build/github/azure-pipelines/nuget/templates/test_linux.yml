@@ -64,7 +64,7 @@ stages:
         IsReleaseBuild: $(IsReleaseBuild)
         PACKAGENAME: ${{ parameters.NugetPackageName }}
 
-    - template: ../../templates/component-governance-component-detection-steps.yml
+    - template: ../../templates/component-governance-component-detection.yml
       parameters:
         condition: 'always'
 

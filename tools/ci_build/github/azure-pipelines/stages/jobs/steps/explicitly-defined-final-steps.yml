@@ -12,7 +12,7 @@ steps:
     testRunTitle: 'Unit Test Run'
   condition: succeededOrFailed()
 
-- template: component-governance-component-detection-steps.yml
+- template: ../../../templates/component-governance-component-detection.yml
   parameters :
     condition : 'succeeded'
 

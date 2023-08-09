@@ -193,6 +193,6 @@ jobs:
               GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
             continueOnError: true
 
-      - template: steps/component-governance-component-detection-steps.yml
+      - template: ../../templates/component-governance-component-detection.yml
         parameters:
           condition: 'succeeded'

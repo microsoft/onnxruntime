@@ -137,6 +137,6 @@ stages:
           targetPath: '$(Build.ArtifactStagingDirectory)'
           artifact: 'onnxruntime-osx'
           condition: 'succeededOrFailed()'
-      - template: jobs/steps/component-governance-component-detection-steps.yml
+      - template: ../templates/component-governance-component-detection.yml
         parameters:
           condition: 'succeeded'

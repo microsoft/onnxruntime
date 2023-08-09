@@ -92,7 +92,7 @@ jobs:
     displayName: Stop Android emulator
     condition: always()
 
-  - template: steps/component-governance-component-detection-steps.yml
+  - template: ../../templates/component-governance-component-detection.yml
     parameters :
       condition : 'succeeded'
 

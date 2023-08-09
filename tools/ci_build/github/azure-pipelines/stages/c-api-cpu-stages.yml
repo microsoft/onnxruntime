@@ -144,7 +144,7 @@ stages:
         pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
-    - template: jobs/steps/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection.yml
       parameters:
         condition: 'succeeded'
 
@@ -281,7 +281,7 @@ stages:
         targetPath: '$(Build.ArtifactStagingDirectory)'
         artifact: 'onnxruntime-java'
 
-    - template: jobs/steps/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection.yml
       parameters :
         condition : 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -521,7 +521,7 @@ stages:
         msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
-    - template: jobs/steps/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection.yml
       parameters :
         condition : 'succeeded'
 
@@ -769,7 +769,7 @@ stages:
         artifactName: 'NPM_packages'
         targetPath: '$(Build.ArtifactStagingDirectory)'
 
-    - template: jobs/steps/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection.yml
       parameters :
         condition : 'succeeded'
 
@@ -845,7 +845,7 @@ stages:
           java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
-    - template: jobs/steps/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection.yml
       parameters :
         condition : 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -888,7 +888,7 @@ stages:
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
-    - template: jobs/steps/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection.yml
       parameters :
         condition : 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -934,7 +934,7 @@ stages:
             java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
           workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
-    - template: jobs/steps/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection.yml
       parameters :
         condition : 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3

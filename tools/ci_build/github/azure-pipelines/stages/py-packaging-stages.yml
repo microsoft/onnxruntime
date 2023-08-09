@@ -260,7 +260,7 @@ stages:
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
         continueOnError: true
 
-      - template: jobs/steps/component-governance-component-detection-steps.yml
+      - template: ../templates/component-governance-component-detection.yml
         parameters:
           condition: 'succeeded'
 
@@ -392,7 +392,7 @@ stages:
         inputs:
           ArtifactName: onnxruntime
 
-      - template: jobs/steps/component-governance-component-detection-steps.yml
+      - template: ../templates/component-governance-component-detection.yml
         parameters:
           condition: 'succeeded'
 
@@ -482,7 +482,7 @@ stages:
         inputs:
           ArtifactName: onnxruntime
 
-      - template: jobs/steps/component-governance-component-detection-steps.yml
+      - template: ../templates/component-governance-component-detection.yml
         parameters:
           condition: 'succeeded'
 

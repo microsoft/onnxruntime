@@ -223,7 +223,7 @@ stages:
             python3 tools/ci_build/upload_python_package_to_azure_storage.py \
                 --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}
 
-      - template: jobs/steps/component-governance-component-detection-steps.yml
+      - template: ../templates/component-governance-component-detection.yml
         parameters:
           condition: 'succeeded'
 

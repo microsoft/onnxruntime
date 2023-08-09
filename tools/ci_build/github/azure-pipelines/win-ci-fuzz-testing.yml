@@ -73,7 +73,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
       createLogFile: true
 
-  - template: stages/jobs/steps/component-governance-component-detection-steps.yml
+  - template: templates/component-governance-component-detection.yml
     parameters :
       condition : 'succeeded'
 

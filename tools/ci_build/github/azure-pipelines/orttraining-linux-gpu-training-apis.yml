@@ -42,7 +42,7 @@ jobs:
     displayName: 'Run ORT Training APIs Tests'
     condition: succeededOrFailed()
     timeoutInMinutes: 120
-  - template: stages/jobs/steps/component-governance-component-detection-steps.yml
+  - template: templates/component-governance-component-detection.yml
     parameters:
       condition: 'succeeded'
 
