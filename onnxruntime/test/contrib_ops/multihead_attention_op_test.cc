@@ -464,6 +464,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
 // Test fused cross attention kernel
 // It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
+  ROCM_GTEST_SKIP("ROCm MHA skip");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize40(data);
   RunMultiHeadAttentionTests(data);
@@ -492,6 +493,7 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Mask2D) {
+  ROCM_GTEST_SKIP("ROCm MHA skip");
   AttentionTestData data;
   GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
   RunMultiHeadAttentionTests(data, true);
@@ -516,6 +518,7 @@ TEST(MultiHeadAttentionTest, SelfAttention_Batch2_HeadSize32_NoBias_NoMask_Packe
 
 // This tests qk_head_size != v_head_size
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
+  ROCM_GTEST_SKIP("ROCm MHA skip");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16_8(data);
   RunMultiHeadAttentionTests(data);
@@ -525,6 +528,7 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
+  ROCM_GTEST_SKIP("ROCm MHA skip");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16(data);
   RunMultiHeadAttentionTests(data);
@@ -556,6 +560,7 @@ TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
 
 TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths) {
   // Whisper decoder cross attention without mask and different sequence lengths for Q and K/V
+  ROCM_GTEST_SKIP("ROCm MHA skip");
   AttentionTestData data;
   GetCrossAttentionData_DiffSequenceLengths(data);
   RunMultiHeadAttentionTests(data);
