@@ -205,8 +205,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                        "T1")
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
-                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"},
-                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.")
+                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int32)"},
+                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors or 32-bit signed "
+                                                "integer tensors.")
                                 .TypeConstraint("T2", {"tensor(float16)", "tensor(float)"},
                                                 "Constrain 'y', 'x_scale' to float tensors.")
                                 .SetDoc(DequantizeLinear_ver1_doc)
