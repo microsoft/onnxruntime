@@ -290,7 +290,7 @@ dependencies {
   <tr>
     <td></td>
     <td> Objective-C</td>
-     <td><b> CocoaPods: onnxruntime-training-objc </b> </td>
+     <td><b>CocoaPods: onnxruntime-training-objc</b> </td>
      <td>
        <ul>
         <li>
