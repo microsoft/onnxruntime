@@ -24,11 +24,11 @@ class Slice : public JsKernel, public SliceBase {
                                         "ends" : $3 ? Array.from(HEAP32.subarray(Number($4), Number($4) + $3)) : [],
                                         "axes" : $5 ? Array.from(HEAP32.subarray(Number($6), Number($6) + $5)) : []}),
                                gsl::narrow_cast<int32_t>(starts.size()),
-                               reinterpret_cast<int64_t>((starts.size() > 0) ? starts.data() : nullptr) >> 2,
+                               reinterpret_cast<uintptr_t>((starts.size() > 0) ? starts.data() : nullptr) >> 2,
                                gsl::narrow_cast<int32_t>(ends.size()),
-                               reinterpret_cast<int64_t>((ends.size() > 0) ? ends.data() : nullptr) >> 2,
+                               reinterpret_cast<uintptr_t>((ends.size() > 0) ? ends.data() : nullptr) >> 2,
                                gsl::narrow_cast<int32_t>(axes.size()),
-                               reinterpret_cast<int64_t>((axes.size() > 0) ? axes.data() : nullptr) >> 2);
+                               reinterpret_cast<uintptr_t>((axes.size() > 0) ? axes.data() : nullptr) >> 2);
   }
 };
 

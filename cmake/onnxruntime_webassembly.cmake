@@ -93,39 +93,7 @@ if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   set_property(TARGET re2 PROPERTY COMPILE_OPTIONS )
 endif()
 
-set(MEMORY_FLAG "MEMORY64")
-set(SMEMORY_FLAG "-s${MEMORY_FLAG}")
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SMEMORY_FLAG}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SMEMORY_FLAG}")
-
-target_compile_options(onnx PRIVATE ${SMEMORY_FLAG} -Wno-unused-parameter -Wno-unused-variable)
-target_compile_options(onnxruntime_common PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnxruntime_session PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnxruntime_framework PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(nsync_cpp PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(nsync_cpp PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnx_proto PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(protoc PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(libprotobuf-lite PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnxruntime_providers PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnxruntime_optimizer PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnxruntime_mlas PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnxruntime_optimizer PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnxruntime_graph PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnxruntime_flatbuffers PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(onnxruntime_util PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(re2 PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(absl_base PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(absl_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(absl_raw_hash_set PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(absl_throw_delegate PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(absl_city PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-target_compile_options(absl_low_level_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-
-if(onnxruntime_USE_JSEP)
-  target_compile_options(onnxruntime_providers_js PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-endif()
+target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
@@ -194,8 +162,6 @@ else()
     ${onnxruntime_webassembly_src}
   )
 
-#  target_compile_options(onnxruntime_webassembly PRIVATE ${SMEMORY_FLAG})
-
   if (onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING)
     # we catch exceptions at the api level
     file(GLOB_RECURSE onnxruntime_webassembly_src_exc CONFIGURE_DEPENDS
@@ -245,22 +211,27 @@ else()
     set(EXPORTED_FUNCTIONS "_malloc,_free")
   endif()
 
+  if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
+    set(MAXIMUM_MEMORY "17179869184")
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s MEMORY64=1"
+    )
+  else ()
+    set(MAXIMUM_MEMORY "4294967296")
+  endif ()
+
   target_link_options(onnxruntime_webassembly PRIVATE
     "SHELL:-s EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}"
     "SHELL:-s EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}"
-    "SHELL:-s INITIAL_MEMORY=12884901888"
-    "SHELL:-s MAXIMUM_MEMORY=17179869184"
+    "SHELL:-s MAXIMUM_MEMORY=${MAXIMUM_MEMORY}"
     "SHELL:-s EXIT_RUNTIME=0"
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s MODULARIZE=1"
     "SHELL:-s EXPORT_ALL=0"
     "SHELL:-s VERBOSE=0"
     "SHELL:-s FILESYSTEM=1"
-    "SHELL:-s ${MEMORY_FLAG}"
-#    "SHELL:-s MAIN_MODULE=0"
     "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0"
     "SHELL:-s SIGNATURE_CONVERSIONS=OrtRun:_pppppppp,OrtGetTensorData:_ppppp,OrtCreateTensor:p_pppp,OrtCreateSession:pppp,OrtReleaseSession:_p,OrtGetInputOutputCount:pppp,OrtCreateSessionOptions:pp__p_ppppp,OrtAddSessionConfigEntry:pppp,OrtReleaseSessionOptions:_p,OrtAppendExecutionProvider:ppp,OrtAddSessionConfigEntry:pppp,OrtGetInputName:ppp,OrtGetOutputName:ppp,OrtCreateRunOptions:ppp_p,OrtReleaseRunOptions:pp,OrtReleaseTensor:_p,OrtFree:_p,OrtGetLastError:_pp,JsepOutput:pp_p"
-#    "SHELL:-s BINARYEN_EXTRA_PASSES=traps-never-happen,precompute"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
   )
@@ -276,7 +247,6 @@ else()
       "SHELL:-s ASYNCIFY=2"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
       "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun']"
-      "SHELL:-s ${MEMORY_FLAG}"
     )
   endif()
 
@@ -292,7 +262,6 @@ else()
       "SHELL:-s SAFE_HEAP=1"
       "SHELL:-s STACK_OVERFLOW_CHECK=2"
       "SHELL:-s DEMANGLE_SUPPORT=1"
-      "SHELL:-s ${MEMORY_FLAG}"
     )
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
@@ -300,8 +269,7 @@ else()
       "SHELL:-s SAFE_HEAP=0"
       "SHELL:-s STACK_OVERFLOW_CHECK=0"
       "SHELL:-s DEMANGLE_SUPPORT=0"
-      "SHELL:-s ${MEMORY_FLAG}"
-#      --closure 1
+      --closure 1
     )
   endif()
 
@@ -329,7 +297,6 @@ else()
     endif()
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:-s ${MEMORY_FLAG}"
       "SHELL:-s EXPORT_NAME=ortWasm"
     )
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)

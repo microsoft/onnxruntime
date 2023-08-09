@@ -90,16 +90,16 @@ class JsKernel : public OpKernel {
     for (int i = 0; i < context->InputCount(); i++) {
       temp_data_size += sizeof(size_t) * (3 + context->Input<Tensor>(i)->Shape().NumDimensions());
     }
-    size_t *p_serialized_kernel_context = reinterpret_cast<size_t*>(alloc->Alloc(temp_data_size));
+    uintptr_t *p_serialized_kernel_context = reinterpret_cast<uintptr_t*>(alloc->Alloc(temp_data_size));
     if (p_serialized_kernel_context == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate memory for serialized kernel context.");
     }
 
-    p_serialized_kernel_context[0] = reinterpret_cast<size_t>(context);
-    p_serialized_kernel_context[1] = static_cast<size_t>(context->InputCount());
-    p_serialized_kernel_context[2] = static_cast<size_t>(context->OutputCount());
-    p_serialized_kernel_context[3] = reinterpret_cast<size_t>(custom_data_ptr);
-    p_serialized_kernel_context[4] = static_cast<size_t>(custom_data_size);
+    p_serialized_kernel_context[0] = reinterpret_cast<uintptr_t>(context);
+    p_serialized_kernel_context[1] = static_cast<uintptr_t>(context->InputCount());
+    p_serialized_kernel_context[2] = static_cast<uintptr_t>(context->OutputCount());
+    p_serialized_kernel_context[3] = reinterpret_cast<uintptr_t>(custom_data_ptr);
+    p_serialized_kernel_context[4] = static_cast<uintptr_t>(custom_data_size);
     size_t index = 5;
     for (int i = 0; i < context->InputCount(); i++) {
       p_serialized_kernel_context[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->GetElementType());
@@ -110,10 +110,10 @@ class JsKernel : public OpKernel {
         p_serialized_kernel_context[index++] = 0;
         continue;
       }
-      p_serialized_kernel_context[index++] = reinterpret_cast<size_t>(ptr->DataRaw());
-      p_serialized_kernel_context[index++] = static_cast<size_t>(context->Input<Tensor>(i)->Shape().NumDimensions());
+      p_serialized_kernel_context[index++] = reinterpret_cast<uintptr_t>(ptr->DataRaw());
+      p_serialized_kernel_context[index++] = static_cast<uintptr_t>(context->Input<Tensor>(i)->Shape().NumDimensions());
       for (size_t d = 0; d < context->Input<Tensor>(i)->Shape().NumDimensions(); d++) {
-        p_serialized_kernel_context[index++] = static_cast<size_t>(context->Input<Tensor>(i)->Shape()[d]);
+        p_serialized_kernel_context[index++] = static_cast<uintptr_t>(context->Input<Tensor>(i)->Shape()[d]);
       }
     }
 
@@ -178,7 +178,7 @@ class JsKernel : public OpKernel {
       return status;
     }
 
-    int64_t status_code = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, reinterpret_cast<size_t>(p_serialized_kernel_context));
+    intptr_t status_code = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, reinterpret_cast<intptr_t>(p_serialized_kernel_context));
 
     LOGS_DEFAULT(VERBOSE) << "outputs = " << context->OutputCount() << ". Y.data="
                           << (size_t)(context->Output<Tensor>(0)->DataRaw()) << ".";
