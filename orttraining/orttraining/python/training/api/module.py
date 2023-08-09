@@ -164,7 +164,7 @@ class Module:
 
         return parameters
 
-    def get_parameters_size(self, trainable_only: bool = False) -> int:
+    def get_parameters_size(self, trainable_only: bool = True) -> int:
         """Returns the size of the parameters.
 
         Args:
@@ -175,7 +175,7 @@ class Module:
         """
         return self._model.get_parameters_size(trainable_only)
 
-    def copy_buffer_to_parameters(self, buffer: OrtValue, trainable_only: bool = False) -> None:
+    def copy_buffer_to_parameters(self, buffer: OrtValue, trainable_only: bool = True) -> None:
         """Copies the OrtValue buffer to the training session parameters.
 
         Args:

@@ -29,7 +29,7 @@ class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingBlock):
 
 
 def _create_training_artifacts(
-    artifact_directory: str | os.PathLike, requires_grad: list[str] = None, frozen_params: list[str] = None
+    artifact_directory: str | os.PathLike, requires_grad: list[str] | None = None, frozen_params: list[str] | None = None
 ):
     device = "cpu"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
