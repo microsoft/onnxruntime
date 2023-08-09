@@ -5,7 +5,10 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
@@ -476,7 +479,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     TensorElementType.Float, expectedShape))
                 {
                     // Run inference
-                    var inputValues = new List<OrtValue>{ inputOrtValue }.AsReadOnly();
+                    var inputValues = new List<OrtValue> { inputOrtValue }.AsReadOnly();
                     var outputValues = new List<OrtValue> { outputOrtValue }.AsReadOnly();
                     session.Run(runOptions, inputNames, inputValues,
                         expectedOutputNames, outputValues);
@@ -1342,7 +1345,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "TestModelInputBFLOAT16")]
         private void TestModelInputBFLOAT16()
         {
-            BFloat16[] modelInput = { new BFloat16(16256), new BFloat16(16384), 
+            BFloat16[] modelInput = { new BFloat16(16256), new BFloat16(16384),
                 new BFloat16(16448), new BFloat16(16512), new BFloat16(16544) };
             int[] inputShape = { 1, 5 };
             // model takes 1x5 input of fixed type, echoes back
@@ -2022,6 +2025,78 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 if (skipNonPackageTests != null && skipNonPackageTests.Equals("ON"))
                 {
                     Skip = "Test skipped while testing the package as it is not within the scope";
+                }
+            }
+        }
+
+        [Fact(DisplayName = "TestModelRunAsyncTask")]
+        private async void TestModelRunAsyncTask()
+        {
+            Float16[] inputData = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
+            long[] shape = { 1, 5 };
+
+            var inputNames = new List<string> { "input" };
+            var inputValues = new List<OrtValue> { OrtValue.CreateTensorValueFromMemory(inputData, shape) };
+
+            var outputNames = new List<string> { "output" };
+            var outputValues = new List<OrtValue> { OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance,
+                    TensorElementType.Float16, shape) };
+
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_FLOAT16.onnx");
+            using (SessionOptions opt = new SessionOptions())
+            {
+                opt.IntraOpNumThreads = 2;
+                using (var session = new InferenceSession(model, opt))
+                {
+                    try
+                    {
+                        var task = session.RunAsync(null, inputNames, inputValues, outputNames, outputValues);
+                        var outputs = await task;
+                        var valueOut = outputs.ElementAt<OrtValue>(0);
+                        var float16s = valueOut.GetTensorDataAsSpan<Float16>().ToArray();
+                        Assert.Equal(new Float16(16896), float16s[2]);
+                    }
+                    catch
+                    {
+                        Assert.True(false);
+                    }
+                }
+            }
+        }
+
+        [Fact(DisplayName = "TestModelRunAsyncTaskFail")]
+        private async void TestModelRunAsyncTaskFail()
+        {
+            Float16[] inputData = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
+            long[] shape = { 1, 5 };
+
+            var inputNames = new List<string> { "input" };
+            var inputValues = new List<OrtValue> { OrtValue.CreateTensorValueFromMemory(inputData, shape) };
+
+            var outputNames = new List<string> { "output" };
+            var outputValues = new List<OrtValue> { OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance,
+                    TensorElementType.Float16, shape) };
+
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_FLOAT16.onnx");
+            using (SessionOptions opt = new SessionOptions())
+            {
+                opt.IntraOpNumThreads = 1;  // this will make RunAsync fail
+                string err = "";
+                using (var session = new InferenceSession(model, opt))
+                {
+                    try
+                    {
+                        var task = session.RunAsync(null, inputNames, inputValues, outputNames, outputValues);
+                        var outputs = await task;
+                    }
+                    catch (Exception ex)
+                    {
+                        err = ex.Message;
+                    }
+                    finally
+                    {
+                        Assert.Contains("intra op thread pool must have at least one thread for RunAsync", err);
+                    }
                 }
             }
         }

@@ -9,6 +9,8 @@ import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose'
 import {expand} from './ops/expand';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gemm, parseGemmAttributes} from './ops/gemm';
+import {instanceNorm, parseInstanceNormAttributes} from './ops/instance-norm';
+import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
@@ -56,6 +58,8 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],
   ['GlobalMaxPool', [pool.globalMaxPool, pool.parseGlobalMaxPoolAttributes]],
+  ['InstanceNormalization', [instanceNorm, parseInstanceNormAttributes]],
+  ['LayerNormalization', [layerNorm, parseLayerNormAttributes]],
   ['LeakyRelu', [unaryOps.leakyRelu, unaryOps.parseAlphaAttributes]],
   ['MatMul', [matMul]],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
