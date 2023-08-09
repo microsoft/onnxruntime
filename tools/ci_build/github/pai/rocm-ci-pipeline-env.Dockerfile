@@ -82,26 +82,26 @@ RUN git clone https://github.com/microsoft/huggingface-transformers.git &&\
     git checkout rocm-ci &&\
     pip install -e .
 
-RUN  pip install \
-     flatbuffers==2.0 \
-     numpy==1.24.1 \
-     onnx \
-     cerberus \
-     sympy \
-     h5py \
-     datasets==1.9.0 \
-     requests \
-     sacrebleu==1.5.1 \
-     sacremoses \
-     scipy==1.10.0 \
-     scikit-learn \
-     tokenizers \
-     sentencepiece \
-     wget \
-     dill==0.3.4 \
-     pytorch_lightning==1.6.0 \
-     pytest-xdist \
-     pytest-rerunfailures
+RUN pip install \
+    flatbuffers==2.0 \
+    numpy==1.24.1 \
+    onnx \
+    cerberus \
+    sympy \
+    h5py \
+    datasets==1.9.0 \
+    requests \
+    sacrebleu==1.5.1 \
+    sacremoses \
+    scipy==1.10.0 \
+    scikit-learn \
+    tokenizers \
+    sentencepiece \
+    wget \
+    dill==0.3.4 \
+    pytorch_lightning==1.6.0 \
+    pytest-xdist \
+    pytest-rerunfailures
 
 ENV ORTMODULE_ONNX_OPSET_VERSION=15
 
