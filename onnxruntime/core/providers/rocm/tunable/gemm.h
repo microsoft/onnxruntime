@@ -42,11 +42,11 @@ namespace blas {
       ScalarT beta,                                                             \
       T* c, std::int64_t ldc, std::int64_t stride_c, std::int64_t batch)
 
-#define GROUPED_GEMM(T, ScalarT)                                                         \
-  common::Status GroupedGemm(                                                           \
-      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle,  \
-      BlasOp opa, BlasOp opb,                                                    \
-      std::int64_t m, std::int64_t n, std::int64_t k, std::int64_t num_matrix,   \
+#define GROUPED_GEMM(T, ScalarT)                                                                             \
+  common::Status GroupedGemm(                                                                                \
+      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle,                              \
+      BlasOp opa, BlasOp opb,                                                                                \
+      std::int64_t m, std::int64_t n, std::int64_t k, std::int64_t num_matrix,                               \
       ScalarT alpha, const T* a, std::int64_t lda, const std::int64_t* msizes, const T* b, std::int64_t ldb, \
       ScalarT beta, T* c, std::int64_t ldc)
 

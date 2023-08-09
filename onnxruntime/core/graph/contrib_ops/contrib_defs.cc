@@ -2389,52 +2389,52 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
 
 ONNX_MS_OPERATOR_SET_SCHEMA(GroupedGemm, 1,
                             OpSchema()
-			        .Attr("transA", "Whether A should be transposed", AttributeProto::INT, static_cast<int64_t>(0))
-			        .Attr("transB", "Whether B should be transposed", AttributeProto::INT, static_cast<int64_t>(0))
-				.Attr("alpha", "Scalar multiplier for the product of input tensors A * B.", AttributeProto::FLOAT, 1.0f)
-				.Attr("beta", "Scalar multiplier for the input tensor C.", AttributeProto::FLOAT, 0.0f)
+                                .Attr("transA", "Whether A should be transposed", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transB", "Whether B should be transposed", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("alpha", "Scalar multiplier for the product of input tensors A * B.", AttributeProto::FLOAT, 1.0f)
+                                .Attr("beta", "Scalar multiplier for the input tensor C.", AttributeProto::FLOAT, 0.0f)
                                 .Input(
-		                   0,
-		                   "A",
-		                   "Input tensor A. It is a packed tensor at axis of M. The real size of M is described in Input msize."
-		                   "The shape of A should be (M, K) if transA is 0, "
-		                   "or (K, M) if transA is non-zero.",
-		                   "T",
-		                   OpSchema::Single,
-		                   true,
-		                   1,
-		                   OpSchema::Differentiable)
-                               .Input(
-                                  1,
-                                  "msizes",
-                                  "Specified size of M for each tensor in A.",
-                                  "tensor(int64)",
-                                  OpSchema::Single,
-                                  true,
-                                  1,
-                                  OpSchema::NonDifferentiable)
-		               .Input(
-		                   2,
-		                   "B",
-		                   "Input tensor B. "
-		                   "The shape of B should be (mK, N) if transB is 0, "
-		                   "or (N, mK) if transB is non-zero. mK means m*K where m is the number of tensors in A, and K is same as A's K dim.",
-		                   "T",
-		                   OpSchema::Single,
-		                   true,
-		                   1,
-		                   OpSchema::Differentiable)
-		               .Input(
-		                   3,
-		                   "C",
-		                   "Optional input tensor C. "
-		                   "If not specified, the computation is done as if C is a scalar 0. "
-		                   "The shape of C should be unidirectional broadcastable to (M, N).",
-		                   "T",
-		                   OpSchema::Optional,
-		                   true,
-		                   1,
-		                   OpSchema::Differentiable)
+                                    0,
+                                    "A",
+                                    "Input tensor A. It is a packed tensor at axis of M. The real size of M is described in Input msize."
+                                    "The shape of A should be (M, K) if transA is 0, "
+                                    "or (K, M) if transA is non-zero.",
+                                    "T",
+                                    OpSchema::Single,
+                                    true,
+                                    1,
+                                    OpSchema::Differentiable)
+                                .Input(
+                                    1,
+                                    "msizes",
+                                    "Specified size of M for each tensor in A.",
+                                    "tensor(int64)",
+                                    OpSchema::Single,
+                                    true,
+                                    1,
+                                    OpSchema::NonDifferentiable)
+                                .Input(
+                                    2,
+                                    "B",
+                                    "Input tensor B. "
+                                    "The shape of B should be (mK, N) if transB is 0, "
+                                    "or (N, mK) if transB is non-zero. mK means m*K where m is the number of tensors in A, and K is same as A's K dim.",
+                                    "T",
+                                    OpSchema::Single,
+                                    true,
+                                    1,
+                                    OpSchema::Differentiable)
+                                .Input(
+                                    3,
+                                    "C",
+                                    "Optional input tensor C. "
+                                    "If not specified, the computation is done as if C is a scalar 0. "
+                                    "The shape of C should be unidirectional broadcastable to (M, N).",
+                                    "T",
+                                    OpSchema::Optional,
+                                    true,
+                                    1,
+                                    OpSchema::Differentiable)
                                 .Output(
                                     0,
                                     "Y",
@@ -2462,7 +2462,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GroupedGemm, 1,
                                   updateOutputShape(ctx, 0, {A_shape.dim(transA ? 1 : 0), B_shape.dim(transB ? 0 : 1)});
                                 })
                                 .SetDoc(R"DOC(used for grouped_gemm.)DOC"));
-
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);

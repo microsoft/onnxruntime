@@ -13,7 +13,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       GroupedGemm,                                                \
@@ -25,14 +24,12 @@ namespace rocm {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       GroupedGemm<T>);
 
-
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 using namespace ONNX_NAMESPACE;
 
-
-template<typename T>
+template <typename T>
 Status GroupedGemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
@@ -41,7 +38,7 @@ Status GroupedGemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* B = ctx->Input<Tensor>(2);
   const Tensor* C = ctx->Input<Tensor>(3);
 
-  GroupedGemmHelper helper(A->Shape(), trans_A_, B->Shape(), trans_B_, C != nullptr ? C->Shape(): TensorShape({}), msizes->Shape());
+  GroupedGemmHelper helper(A->Shape(), trans_A_, B->Shape(), trans_B_, C != nullptr ? C->Shape() : TensorShape({}), msizes->Shape());
 
   if (!helper.State().IsOK()) {
     return helper.State();

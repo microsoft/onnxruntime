@@ -78,7 +78,7 @@ class GroupedGemmHelper {
 
     // valid shape is (M, N) or (m, N) where m is number of elements in msizes
     return (bias_shape[0] == M_ && bias_shape[1] == N_) ||
-	    (bias_shape[0] == msizes_shape[0] && bias_shape[1] == N_);
+           (bias_shape[0] == msizes_shape[0] && bias_shape[1] == N_);
   }
 
   GroupedGemmHelper() = default;
@@ -89,7 +89,7 @@ class GroupedGemmHelper {
   Status status_;
 };
 
-template<typename T>
+template <typename T>
 class GroupedGemm final : public RocmKernel {
  public:
   GroupedGemm(const OpKernelInfo& info) : RocmKernel(info) {
@@ -101,10 +101,11 @@ class GroupedGemm final : public RocmKernel {
     trans_B_ = (temp != 0);
 
     ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
-    ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK()); 
+    ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override;
+
  private:
   float alpha_;
   float beta_;
