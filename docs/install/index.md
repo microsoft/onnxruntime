@@ -274,7 +274,7 @@ dependencies {
   <tr>
     <td>iOS</td>
     <td>C, C++</td>
-    <td><b> CocoaPods: onnxruntime-training-c </b></td>
+    <td><b>CocoaPods: onnxruntime-training-c</b></td>
     <td> 
       <ul>
         <li> In your CocoaPods <code>Podfile</code>, add the <code>onnxruntime-training-c</code> pod:
