@@ -104,16 +104,6 @@ export interface ShaderHelper {
   guardAgainstOutOfBoundsWorkgroupSizes(size: unknown): string;
 }
 
-export const getMaxWorkgroupLimits = (unitsOfWork: number): [{ x: number }, [number, number, number]] => {
-  if (unitsOfWork < 256) {
-    return [{ x: 1 }, [Math.ceil(unitsOfWork), 1, 1]];
-  }
-  if (unitsOfWork < 1024) {
-    return [{ x: 1} , [256, Math.ceil(unitsOfWork / 256), 1]];
-  }
-  return [{ x: Math.ceil(unitsOfWork / 1024) }, [256, 4, 1]];
-};
-
 class ShaderHelperImpl implements ShaderHelper {
   constructor(private normalizedDispatchGroup: [number, number, number]) {}
   guardAgainstOutOfBoundsWorkgroupSizes(size: number|string): string {

@@ -58,10 +58,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 
   # Build WebAssembly with 64bit support.
-  if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-    string(APPEND CMAKE_C_FLAGS " -sMEMORY64 -Wno-experimental")
-    string(APPEND CMAKE_CXX_FLAGS " -sMEMORY64 -Wno-experimental")
-  endif()
+#  if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
+#    string(APPEND CMAKE_C_FLAGS " -sMEMORY64 -Wno-experimental")
+#    string(APPEND CMAKE_CXX_FLAGS " -sMEMORY64 -Wno-experimental")
+#  endif()
 endif()
 
 if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)

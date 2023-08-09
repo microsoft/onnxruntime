@@ -216,8 +216,42 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s MEMORY64=1"
     )
+    string(APPEND CMAKE_C_FLAGS " -sMEMORY64 -Wno-experimental")
+    string(APPEND CMAKE_CXX_FLAGS " -sMEMORY64 -Wno-experimental")
+    set(SMEMORY_FLAG "-sMEMORY64")
+
+    target_compile_options(onnx PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_common PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_session PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_framework PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(nsync_cpp PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(nsync_cpp PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnx_proto PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(protoc PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(libprotobuf-lite PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_providers PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_optimizer PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_mlas PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_optimizer PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_graph PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_flatbuffers PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_util PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(re2 PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_base PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_raw_hash_set PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_throw_delegate PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_city PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_low_level_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+
+    target_link_options(onnxruntime_webassembly PRIVATE
+      --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js"
+    )
   else ()
     set(MAXIMUM_MEMORY "4294967296")
+    target_link_options(onnxruntime_webassembly PRIVATE
+      --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js"
+    )
   endif ()
 
   target_link_options(onnxruntime_webassembly PRIVATE

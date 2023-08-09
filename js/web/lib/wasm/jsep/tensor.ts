@@ -4,7 +4,6 @@
 export declare namespace Tensor {
   export interface DataTypeMap {
     bool: Uint8Array;
-    float16: Uint16Array;
     float32: Float32Array;
     float64: Float64Array;
     string: string[];
@@ -39,7 +38,6 @@ export const sizeof = (type: Tensor.DataType): number => {
       return 1;
     case 'int16':
     case 'uint16':
-    case 'float16':
       return 2;
     case 'int32':
     case 'uint32':
@@ -63,7 +61,6 @@ const dataviewConstructor = (type: Tensor.DataType) => {
       return Int8Array;
     case 'int16':
       return Int16Array;
-    case 'float16':
     case 'uint16':
       return Uint16Array;
     case 'int32':

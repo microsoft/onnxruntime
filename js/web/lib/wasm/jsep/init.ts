@@ -66,24 +66,24 @@ class ComputeContextImpl implements ComputeContext {
   private customDataOffset = 0;
   private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
-    const heapU32 = module.HEAPU64;
+    const heap = module.PTR_SIZE === 4 ? module.HEAPU32 : module.HEAPU64;
 
     // extract context data
-    let dataIndex = (contextDataOffset / 2**3);
-    this.opKernelContext = Number(heapU32[dataIndex++]);
-    const inputCount = Number(heapU32[dataIndex++]);
-    this.outputCount = Number(heapU32[dataIndex++]);
-    this.customDataOffset = Number(heapU32[dataIndex++]);
-    this.customDataSize = Number(heapU32[dataIndex++]);
+    let dataIndex = module.PTR_SIZE === 4 ? (contextDataOffset / 2**3) : (contextDataOffset >> 2);
+    this.opKernelContext = Number(heap[dataIndex++]);
+    const inputCount = Number(heap[dataIndex++]);
+    this.outputCount = Number(heap[dataIndex++]);
+    this.customDataOffset = Number(heap[dataIndex++]);
+    this.customDataSize = Number(heap[dataIndex++]);
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const dataType = Number(heapU32[dataIndex++]);
-      const data = Number(heapU32[dataIndex++]);
-      const dim = Number(heapU32[dataIndex++]);
+      const dataType = Number(heap[dataIndex++]);
+      const data = Number(heap[dataIndex++]);
+      const dim = Number(heap[dataIndex++]);
       const dims: number[] = [];
       for (let d = 0; d < dim; d++) {
-        dims.push(Number(heapU32[dataIndex++]));
+        dims.push(Number(heap[dataIndex++]));
       }
       inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }
@@ -113,7 +113,7 @@ class ComputeContextImpl implements ComputeContext {
   output(index: number, dims: readonly number[]): number {
     const stack = this.module.stackSave();
     try {
-      const ptrSize = 8;
+      const ptrSize = this.module.PTR_SIZE;
       const data = this.module.stackAlloc((1 + dims.length) * ptrSize /* sizeof(size_t) */);
       this.module.setValue(data, dims.length, '*');
       for (let i = 0; i < dims.length; i++) {

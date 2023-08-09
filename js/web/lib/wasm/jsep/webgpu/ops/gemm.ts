@@ -91,7 +91,6 @@ const createGemmProgramInfo =
       if (inputs.length === 3) {
         inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> c : array<${dataType}>;`);
       }
-      console.log('GEMM')
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   const M: u32 = ${M}u;
   const N: u32 = ${N}u;

@@ -19,7 +19,7 @@ const getSessionInputOutputCount = (sessionHandle: number): [number, number] => 
   const wasm = getInstance();
   const stack = wasm.stackSave();
   try {
-    const ptrSize = 8;
+    const ptrSize = wasm.PTR_SIZE;
     const dataOffset = wasm.stackAlloc(2 * ptrSize);
     const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + ptrSize);
     if (errorCode !== 0) {
@@ -49,7 +49,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
  */
 export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
-  await initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
+  initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
 
   if (!BUILD_DEFS.DISABLE_WEBGPU) {
     // init JSEP if available
@@ -116,16 +116,7 @@ export const createSessionFinalize =
       try {
         [sessionOptionsHandle, allocs] = setSessionOptions(options);
 
-        if (typeof modelData === 'string') {
-          // @ts-ignore
-          const str = allocWasmString(modelData, allocs);
-          // @ts-ignore
-          sessionHandle = wasm._OrtCreateSessionFromFile(BigInt(str), BigInt(sessionOptionsHandle));
-          // @ts-ignore
-          // wasm.FS.unlink(modelData);
-        } else {
-          sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
-        }
+        sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
         if (sessionHandle === 0) {
           checkLastError('Can\'t create a session.');
         }
@@ -162,9 +153,7 @@ export const createSessionFinalize =
         }
         throw e;
       } finally {
-        if (typeof modelData !== 'string') {
-          wasm._free(modelData[0]);
-        }
+        wasm._free(modelData[0]);
         if (sessionOptionsHandle !== 0) {
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
@@ -221,7 +210,7 @@ export const run = async(
 
   try {
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
-
+    const ptrSize = wasm.PTR_SIZE;
     // create input tensors
     for (let i = 0; i < inputCount; i++) {
       const dataType = inputs[i][0];
@@ -251,10 +240,10 @@ export const run = async(
       }
 
       const stack = wasm.stackSave();
-      const dimsOffset = wasm.stackAlloc(8 * dims.length);
+      const dimsOffset = wasm.stackAlloc(ptrSize * dims.length);
       try {
-        let dimIndex = dimsOffset / 8;
-        dims.forEach(d => wasm.HEAPU64[dimIndex++] = BigInt(d));
+        let dimIndex = 0;
+        dims.forEach(d => wasm.setValue(dataOffset * (dimIndex++ * ptrSize), d, '*'));
         const tensor = wasm._OrtCreateTensor(
             tensorDataTypeStringToEnum(dataType), dataOffset, dataByteLength, dimsOffset, dims.length);
         if (tensor === 0) {
@@ -267,10 +256,10 @@ export const run = async(
     }
 
     const beforeRunStack = wasm.stackSave();
-    const inputValuesOffset = wasm.stackAlloc(inputCount * 8);
-    const inputNamesOffset = wasm.stackAlloc(inputCount * 8);
-    const outputValuesOffset = wasm.stackAlloc(outputCount * 8);
-    const outputNamesOffset = wasm.stackAlloc(outputCount * 8);
+    const inputValuesOffset = wasm.stackAlloc(inputCount * ptrSize);
+    const inputNamesOffset = wasm.stackAlloc(inputCount * ptrSize);
+    const outputValuesOffset = wasm.stackAlloc(outputCount * ptrSize);
+    const outputNamesOffset = wasm.stackAlloc(outputCount * ptrSize);
 
     try {
       let inputValuesIndex = inputValuesOffset / 8;

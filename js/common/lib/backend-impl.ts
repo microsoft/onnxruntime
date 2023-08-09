@@ -69,7 +69,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
  */
 export const resolveBackend = async(backendHints: readonly string[]): Promise<Backend> => {
   const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
-  // const errors = [];
+  const errors = [];
   for (const backendName of backendNames) {
     const backendInfo = backends[backendName];
     if (backendInfo) {
@@ -80,23 +80,23 @@ export const resolveBackend = async(backendHints: readonly string[]): Promise<Ba
       }
 
       const isInitializing = !!backendInfo.initPromise;
-      // try {
+      try {
         if (!isInitializing) {
           backendInfo.initPromise = backendInfo.backend.init();
         }
         await backendInfo.initPromise;
         backendInfo.initialized = true;
         return backendInfo.backend;
-      // } catch (e) {
-      //   if (!isInitializing) {
-      //     errors.push({name: backendName, err: e});
-      //   }
-      //   backendInfo.aborted = true;
-      // } finally {
-      //   delete backendInfo.initPromise;
-      // }
+      } catch (e) {
+        if (!isInitializing) {
+          errors.push({name: backendName, err: e});
+        }
+        backendInfo.aborted = true;
+      } finally {
+        delete backendInfo.initPromise;
+      }
     }
   }
-  // throw errors[0];
-  throw new Error('no available backend found. ERR: ');
+
+  throw new Error(`no available backend found. ERR: ${errors.map(e => `[${e.name}] ${e.err}`).join(', ')}`);
 };
