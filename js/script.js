@@ -636,13 +636,13 @@ var ot_validCombos = {
     "pip install onnxruntime-training<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
     "ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU":
-        "Add 'onnxruntime-training-c' or 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "ot_ios,ot_on_device,ot_c,ot_X64,ot_CPU":
-        "Add 'onnxruntime-training-c' or 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add 'onnxruntime-training-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
-        "Add 'onnxruntime-training-c' or 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add 'onnxruntime-training-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
 };
 
