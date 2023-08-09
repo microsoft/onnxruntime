@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2019'
+  default: 'onnxruntime-Win-CPU-2022'
 
 - name: SkipPublish
   type: boolean
@@ -23,6 +23,15 @@ parameters:
   default: 180
 
 - name: BuildJsep
+  type: boolean
+  default: false
+
+# In fact, it's only used on Linux for compiler cache.
+- name: BuildStaticLib
+  type: boolean
+  default: false
+
+- name: WithCache
   type: boolean
   default: false
 

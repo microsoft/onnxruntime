@@ -17,7 +17,11 @@ parameters:
   default: 0
 
 stages:
-- stage: BUILD_STAGE
+# Separate stage for building CPU vs NNAPI as we only want CodeQL to run on one of them so we don't get duplicate
+# issues for code that is built in both. We pick NNAPI as that includes the NNAPI EP code.
+- stage: BUILD_CPU_STAGE
+  variables:
+    Codeql.Enabled: false
   jobs:
   - job: Build_CPU_EP
     pool: onnxruntime-Linux-CPU-For-Android-CI
@@ -104,9 +108,20 @@ stages:
 
     - template: stages/jobs/steps/clean-agent-build-directory-steps.yml
 
+- stage: BUILD_NNAPI_STAGE
+  variables:
+    Codeql.ProjectConfigPath: .github/workflows
+    Codeql.Enabled: true
+    Codeql.Language: cpp
+    ${{ if variables['Codeql.Enabled'] }}:
+      JobsTimeout: 120
+    ${{ else }}:
+      JobsTimeout: 60
+
+  jobs:
   - job: Build_NNAPI_EP
     pool: onnxruntime-Linux-CPU-For-Android-CI
-    timeoutInMinutes: 60
+    timeoutInMinutes: ${{ variables.JobsTimeout }}
     workspace:
       clean: all
     condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
@@ -188,10 +203,12 @@ stages:
     - template: stages/jobs/steps/clean-agent-build-directory-steps.yml
 
 - stage: TEST_STAGE
-  dependsOn: BUILD_STAGE
+  dependsOn: [BUILD_CPU_STAGE, BUILD_NNAPI_STAGE]
   jobs:
   - job: Test_CPU_EP
     pool:
+      # We need macOS-12 to run the Android emulator for now.
+      # https://github.com/actions/runner-images/issues/7671
       vmImage: 'macOS-12'
     workspace:
       clean: all
@@ -261,6 +278,8 @@ stages:
 
   - job: Test_NNAPI_EP
     pool:
+      # We need macOS-12 to run the Android emulator for now.
+      # https://github.com/actions/runner-images/issues/7671
       vmImage: 'macOS-12'
     timeoutInMinutes: 90
     workspace:
@@ -354,6 +373,8 @@ stages:
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
+      # We need macOS-12 to run the Android emulator for now.
+      # https://github.com/actions/runner-images/issues/7671
       vmImage: 'macOS-12'
     timeoutInMinutes: 180
     workspace:
