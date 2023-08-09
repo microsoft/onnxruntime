@@ -90,8 +90,9 @@ std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const O
 #ifdef USE_OPENVINO
   return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
 #else
-  return nullptr;
+  ORT_UNUSED_PARAMETER(params);
 #endif
+  return nullptr;
 }
 
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
