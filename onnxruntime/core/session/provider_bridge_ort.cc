@@ -1407,14 +1407,25 @@ std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Creat
 // Adapter to convert the legacy OrtOpenVINOProviderOptions to ProviderOptions
 ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const OrtOpenVINOProviderOptions* legacy_ov_options) {
   ProviderOptions ov_options_converted_map;
-  ov_options_converted_map["device_type"] = legacy_ov_options->device_type;
+  if (legacy_ov_options->device_type != nullptr)
+    ov_options_converted_map["device_type"] = legacy_ov_options->device_type;
+
   ov_options_converted_map["enable_vpu_fast_compile"] = legacy_ov_options->enable_vpu_fast_compile;
-  ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
+
+  if (legacy_ov_options->device_id != nullptr)
+    ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
+
   ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
-  ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
+
+  if (legacy_ov_options->cache_dir != nullptr)
+    ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
+
   std::stringstream context_string;
-  context_string << legacy_ov_options->context;
+
+  if (legacy_ov_options->context != nullptr)
+    context_string << legacy_ov_options->context;
   ov_options_converted_map["context"] = context_string.str();
+
   ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
   ov_options_converted_map["enable_dynamic_shapes"] = legacy_ov_options->enable_dynamic_shapes;
 
