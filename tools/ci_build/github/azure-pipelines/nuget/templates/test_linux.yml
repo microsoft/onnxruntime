@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'aiinfra-Linux-CPU'
+  AgentPool: 'onnxruntime-Ubuntu2004-AMD-CPU'
   ArtifactSuffix: ''
   NugetPackageName : ''
   StageSuffix: 'CPU'
@@ -24,7 +24,7 @@ stages:
       value: '$(Build.BinariesDirectory)'
 
     steps:
-    - template: ../../stages/jobs/steps/flex-downloadPipelineArtifact-steps.yml
+    - template: ../../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Signed NuGet'
         ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
@@ -32,7 +32,7 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - template: ../../stages/jobs/steps/flex-downloadPipelineArtifact-steps.yml
+    - template: ../../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Linux CustomOp TestData'
         ArtifactName: 'onnxruntime-linux-x64'
@@ -64,8 +64,8 @@ stages:
         IsReleaseBuild: $(IsReleaseBuild)
         PACKAGENAME: ${{ parameters.NugetPackageName }}
 
-    - template: ../../stages/jobs/steps/component-governance-component-detection-steps.yml
+    - template: ../../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'always'
 
-    - template: ../../stages/jobs/steps/clean-agent-build-directory-steps.yml
+    - template: ../../templates/clean-agent-build-directory-step.yml

@@ -12,7 +12,7 @@ parameters:
   BuildArch: 'x64' # Optional. Options: x86, x64
   sln_platform: 'x64' # Options: Win32, x64, arm, arm64
   EnvSetupScript: 'setup_env.bat'
-  AgentPool: 'Win-CPU-2021'
+  AgentPool: 'onnxruntime-Win-CPU-2022'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
@@ -70,7 +70,13 @@ stages:
 
       - task: NodeTool@0
         inputs:
-          versionSpec: '16.x'
+          versionSpec: '18.x'
+
+      - task: onebranch.pipeline.tsaoptions@1
+        displayName: 'OneBranch TSAOptions'
+        inputs:
+          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
+          appendSourceBranchName: false
 
       - task: UsePythonVersion@0
         inputs:
@@ -185,20 +191,20 @@ stages:
       # Nuget packaging if needed
       - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
         - task: BatchScript@1
-          displayName: 'Setup VS2019 env vars'
+          displayName: 'Setup VS2022 env vars'
           inputs:
-            filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+            filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
             arguments: ${{ parameters.BuildArch }}
             modifyEnvironment: true
         # Esrp signing
-        - template: ../../stages/jobs/steps/win-esrp-dll-steps.yml
+        - template: ../../templates/win-esrp-dll.yml
           parameters:
             FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
             DisplayName: 'ESRP - Sign Native dlls'
             DoEsrp: ${{ parameters.DoEsrp }}
             Pattern: 'onnx_test_runner.exe, onnxruntime_perf_test.exe,*.dll' #keep sync with src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj
 
-        - template: ../../stages/jobs/steps/win-esrp-dll-steps.yml
+        - template: ../../templates/win-esrp-dll.yml
           parameters:
             FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\$(BuildConfig)'
             DisplayName: 'ESRP - Sign C# dlls'
@@ -227,12 +233,12 @@ stages:
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
         - task: BatchScript@1
-          displayName: 'Setup VS2019 env vars'
+          displayName: 'Setup VS env vars'
           inputs:
-            filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+            filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
             arguments: ${{ parameters.BuildArch }}
             modifyEnvironment: true
-        - template: ../../stages/jobs/steps/win-esrp-dll-steps.yml
+        - template: ../../templates/win-esrp-dll.yml
           parameters:
             FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
             DisplayName: 'ESRP - Sign Node.js binding binaries'
@@ -261,11 +267,11 @@ stages:
           workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-        - template: compliance.yml
+        - template: ../../templates/compliance.yml
           parameters :
             msbuildPlatform: ${{ parameters.sln_platform }}
 
-      - template: ../../stages/jobs/steps/component-governance-component-detection-steps.yml
+      - template: ../../templates/component-governance-component-detection-steps.yml
         parameters :
           condition : 'succeeded'
 

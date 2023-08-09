@@ -11,7 +11,7 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
 
     variables:
     - name: OnnxRuntimeBuildDirectory
@@ -51,8 +51,8 @@ stages:
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
 
-    - template: ../../stages/jobs/steps/component-governance-component-detection-steps.yml
+    - template: ../../templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'always'
 
-    - template: ../../stages/jobs/steps/clean-agent-build-directory-steps.yml
+    - template: ../../templates/clean-agent-build-directory-step.yml
