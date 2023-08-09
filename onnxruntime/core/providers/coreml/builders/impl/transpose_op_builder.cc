@@ -31,18 +31,18 @@ class TransposeOpBuilder : public BaseOpBuilder {
 // Operator support related
 bool TransposeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
                                            const logging::Logger& logger) const {
-    std::vector<int64_t> input_shape;
-    if (!GetShape(*node.InputDefs()[0], input_shape, logger)) {
-      return false;
-    }
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*node.InputDefs()[0], input_shape, logger)) {
+    return false;
+  }
 
-    // CoreML transpose doesn't support input with more than 5 dimensions
-    if (input_shape.size() > 5) {
-      LOGS(logger, VERBOSE) << "Input with rank greater than 5 is not supported. Shape: " << Shape2String(input_shape);
-      return false;
-    }
+  // CoreML transpose doesn't support input with more than 5 dimensions
+  if (input_shape.size() > 5) {
+    LOGS(logger, VERBOSE) << "Input with rank greater than 5 is not supported. Shape: " << Shape2String(input_shape);
+    return false;
+  }
 
-    return true;
+  return true;
 }
 
 // Add operator related
