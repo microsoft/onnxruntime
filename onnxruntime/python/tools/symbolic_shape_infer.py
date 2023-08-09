@@ -2389,7 +2389,11 @@ class SymbolicShapeInference:
         # The first output is autograd's context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-        if get_attribute(node, "func_name").decode() in ["_InspectActivation", "_IncrementStep"]:
+        # TODO(pengwa): allow custom PythonOp shape inference.
+        if get_attribute(node, "func_name").decode() in [
+            "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation",
+            "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep",
+        ]:
             # PythonOp with func_name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
             # PythonOp when execution. The only difference is that
             # 1). those ops having same number of tensor inputs and tensor outputs;
