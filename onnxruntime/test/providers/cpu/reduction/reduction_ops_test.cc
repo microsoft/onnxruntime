@@ -3215,6 +3215,24 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
   ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithScalarInputAxesPresent) {
+  FastReduceKind fast_kind;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // R - keep_dims=1 - noop=false
+  fast_kind = OptimizeShapeForFastReduce(
+      EmptySpan<int64_t>(), AsSpan<int64_t>({1, 2, 3}),
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = {};
+  expected_fast_axes = {};
+  expected_fast_output_shape = {};
+  ASSERT_EQ(fast_kind, FastReduceKind::kEmpty);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+}
+
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1b) {
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape, fast_output_shape, fast_axes;
