@@ -17,9 +17,7 @@ from ._fallback import ORTModuleFallbackException, ORTModuleIOError, _FallbackMa
 
 
 class CustomFuncOpKernelInfo:
-    """Store the kernel specific information that cannot be retrieved and saved by PyTorch exporter.
-    For those infos that can only be retrieved with real run, we try to collect them in the first time run.
-    """
+    """Store the kernel specific information retrieved with the first-time run."""
 
     def __init__(self, kernel_invoke_id: str):
         # kernel_invoke_id is a string contains session thread id, op kernel creation time stamp in ms, a random int,
@@ -30,7 +28,7 @@ class CustomFuncOpKernelInfo:
         # For the tensors generated from ORT backend, there is special handling here:
         # 1. For the first time run for the kernel (the uniqueness of the kernel is defined by kernel_invoke_id),
         # all such tensors will be cloned in case they are saved in context (but ORT backend is not aware of the
-        # reference, may release the content of the tensor before it is really needed in backward). Once
+        # reference, may release the content of the tensor before it is needed in backward). Once
         # `autograd.Function.apply` completes, by checking the existence of the tensor in the saved_tensors,
         # `_GlobalOpKernelInfoMap` is updated to save the input indices that are saved in context.
         # 2. For the subsequent runs, if the input index is in `input_indices_to_save_in_ctx`, the tensor
@@ -44,8 +42,9 @@ class CustomFuncOpKernelInfo:
         self.materialize_grads_config: Optional[OrderedDict[int, Tuple[torch.device, torch.dtype, torch.shape]]] = None
 
 
-# Map for all custom autograd function op kernels.
-# key: kernel_invoke_id, value: CustomAutogradFuncOpKernelContext.
+# Store the kernel specific information that cannot be retrieved and saved by PyTorch exporter.
+# For those infos that can only be retrieved with real run, we try to collect them in the first time run.
+# key: kernel_invoke_id, value: CustomFuncOpKernelInfo.
 _GlobalOpKernelInfoMap: Dict[str, CustomFuncOpKernelInfo] = {}
 
 
@@ -109,7 +108,7 @@ def _finalize_traing_mode_forward(
     2. Remove the gradient functions between current autograd.Function and its input's gradient function, because
        in ORT we don't depend on PyTorch's autograd engine.
     3. Register the current autograd.Function's gradient function into our PyNodeSharedPointerPool.
-    4. Save kernel specific information into _GlobalOpKernelInfoMap.
+    4. Save kernel specific information into _GlobalOpKernelInfoMap in the first-time kernel run.
     """
 
     ctx, tensor_owning_ctx = _get_context(forward_output_tensors)
@@ -123,6 +122,7 @@ def _finalize_traing_mode_forward(
 
     ctx.fw_kernel_invoke_id = kernel_invoke_id
 
+    # If this is the first time run, collect kernel specific information.
     if kernel_invoke_id not in _GlobalOpKernelInfoMap:
         kernel_info = CustomFuncOpKernelInfo(kernel_invoke_id)
         _GlobalOpKernelInfoMap[kernel_invoke_id] = kernel_info
