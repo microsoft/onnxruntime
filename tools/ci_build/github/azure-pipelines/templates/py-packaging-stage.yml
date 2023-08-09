@@ -495,8 +495,7 @@ stages:
           devtoolset_rootpath: /opt/rh/devtoolset-10/root
           ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
 
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
       - template: py-linux.yml
@@ -507,8 +506,7 @@ stages:
           devtoolset_rootpath: /opt/rh/devtoolset-11/root
           ld_library_path_arg: /opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-11/root/usr/bin:'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
 
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
@@ -516,5 +514,4 @@ stages:
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
