@@ -119,9 +119,9 @@ Status SimpleOpBuilder::ProcessBlockSizeAttribute(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>& param_tensor_names) const {
   NodeAttrHelper node_helper(node_unit);
-  int64_t block_size = node_helper.Get("blocksize", static_cast<int64_t>(0));
+  uint32_t block_size = node_helper.Get("blocksize", static_cast<uint32_t>(0));
   std::vector<uint32_t> block_size_shape{2};
-  std::vector<uint32_t> block_size_data(2, static_cast<uint32_t>(block_size));
+  std::vector<uint32_t> block_size_data(2, block_size);
   QnnParamWrapper block_size_param(node_unit.Index(), node_unit.Name(), QNN_OP_DEPTH_TO_SPACE_PARAM_BLOCK_SIZE,
                                    std::move(block_size_shape), std::move(block_size_data));
   param_tensor_names.push_back(block_size_param.GetParamTensorName());
