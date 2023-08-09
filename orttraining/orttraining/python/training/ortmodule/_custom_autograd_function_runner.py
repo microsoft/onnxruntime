@@ -39,7 +39,7 @@ class CustomFuncOpKernelInfo:
         # materialize_grads_config is a map from output index to (device, dtype, shape) of the output tensor, used
         # for materializing the gradient of the output tensor in backward.
         self.materialize_grads: bool = False
-        self.materialize_grads_config: Optional[OrderedDict[int, Tuple[torch.device, torch.dtype, torch.shape]]] = None
+        self.materialize_grads_config: Optional[Dict[int, Tuple[torch.device, torch.dtype, torch.shape]]] = None
 
 
 # Store the kernel specific information that cannot be retrieved and saved by PyTorch exporter.
@@ -93,7 +93,7 @@ def _get_context(forward_tensor_outputs: List[torch.Tensor]) -> Tuple[any, Optio
 
 def _finalize_traing_mode_forward(
     kernel_invoke_id: str,
-    input_tensors_from_ort: OrderedDict[int, torch.Tensor],
+    input_tensors_from_ort: Dict[int, torch.Tensor],
     forward_output_tensors: List[Union[torch.Tensor, None]],
 ):
     """Complete the epilogue of forward runner for training mode.
@@ -138,7 +138,7 @@ def _finalize_traing_mode_forward(
         kernel_info.materialize_grads = torch_interop_utils.get_materialize_grads(tensor_owning_ctx)
         kernel_info.materialize_grads_config = OrderedDict()
         for output_index, tensor in enumerate(forward_output_tensors):
-            if isinstance(tensor, torch.Tensor) and tensor.requires_grad is False:
+            if isinstance(tensor, torch.Tensor):
                 kernel_info.materialize_grads_config[output_index] = (
                     tensor.device,
                     tensor.dtype,

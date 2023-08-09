@@ -842,12 +842,14 @@ class TwoOutputsFunctionWithNoGradOutput(torch.autograd.Function):
         z = x * y
         ctx.set_materialize_grads(test_config_materialize_grad)
         ctx.test_config_materialize_grad = test_config_materialize_grad
+
+        # The requires_grad attribute values for w and z are both True, but in backward run, only z_grad will be needed.
+        # w_grad will be None/all zero.
         return w, z
 
     @staticmethod
     def backward(ctx, dw, dz):
         x, y = ctx.saved_tensors
-        print(dw, dz)
         if ctx.test_config_materialize_grad:
             assert dw is not None
             assert dz is not None
@@ -877,6 +879,7 @@ def test_two_outputs_function_with_no_grad_output(materialize_grad: bool):
         def forward(self, x):
             # Be noted, the first output is not used in backward, so it should not require grad.
             _, b = self.fun(x, self.bias, materialize_grad)
+
             return b
 
     output_size = 2
