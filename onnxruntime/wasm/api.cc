@@ -481,8 +481,8 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_t
 }
 
 ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_session_handle_t training_handle,
-                                                                           ort_tensor_handle_t parameters_buffer,
-                                                                           bool trainable_only) {
+                                                                             ort_tensor_handle_t parameters_buffer,
+                                                                             bool trainable_only) {
   return (CHECK_TRAINING_STATUS(CopyBufferToParameters, training_handle,
                                 parameters_buffer, trainable_only) == ORT_OK)
              ? parameters_buffer

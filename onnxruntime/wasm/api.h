@@ -347,8 +347,8 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_t
  * @param trainable_only whether to skip non-trainable parameters
  */
 ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_session_handle_t training_handle,
-                                                                           ort_tensor_handle_t parameters_buffer,
-                                                                           bool trainable_only);
+                                                                             ort_tensor_handle_t parameters_buffer,
+                                                                             bool trainable_only);
 
 /**
  * @brief Release the specified ORT training session.
