@@ -26,10 +26,10 @@ struct ModelIdentifiers {
       : train_model(training_model), eval_model(evaluation_model), optim_model(optimzer_model) {}
 
   bool IsOptimizerModelAvailable() const {
-    if (std::holds_alternative<std::optional<std::string>>(optim_model) &&
-            std::get<std::optional<std::string>>(optim_model).has_value() ||
-        std::holds_alternative<gsl::span<const uint8_t>>(optim_model) &&
-            std::get<gsl::span<const uint8_t>>(optim_model).size() > 0) {
+    if ((std::holds_alternative<std::optional<std::string>>(optim_model) &&
+         std::get<std::optional<std::string>>(optim_model).has_value()) ||
+        (std::holds_alternative<gsl::span<const uint8_t>>(optim_model) &&
+         std::get<gsl::span<const uint8_t>>(optim_model).size() > 0)) {
       return true;
     }
     return false;
