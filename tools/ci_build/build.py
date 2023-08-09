@@ -4,6 +4,7 @@
 
 import argparse
 import contextlib
+import json
 import os
 import platform
 import re
@@ -12,13 +13,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-
-try:
-    from packaging.version import Version as LooseVersion
-except ImportError:
-    # This is deprecated and will be removed in Python 3.12.
-    # See https://docs.python.org/3/library/distutils.html.
-    from distutils.version import LooseVersion  # pylint: disable=W4901
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -53,13 +47,12 @@ class UsageError(BaseError):
 
 
 def _check_python_version():
-    # According to the BUILD.md, python 3.5+ is required:
-    # Python 2 is definitely not supported and it should be safer to consider
-    # it won't run with python 4:
-    if sys.version_info[0] != 3:  # noqa: YTT201
-        raise BuildError(f"Bad python major version: expecting python 3, found version '{sys.version}'")
-    if sys.version_info[1] < 6:  # noqa: YTT203
-        raise BuildError(f"Bad python minor version: expecting python 3.6+, found version '{sys.version}'")
+    required_minor_version = 7
+    if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
+        raise UsageError(
+            f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
+            f"Actual Python version: {sys.version}"
+        )
 
 
 def _str_to_bool(s):
@@ -273,6 +266,14 @@ def parse_arguments():
         "Currently only Windows and Linux platforms are supported.",
     )
 
+    parser.add_argument(
+        "--msbuild_extra_options",
+        nargs="+",
+        action="append",
+        help="Extra properties to pass to msbuild during build. "
+        "These are just msbuild /p: options without the leading /p:.",
+    )
+
     # Java bindings
     parser.add_argument("--build_java", action="store_true", help="Build Java bindings.")
 
@@ -375,7 +376,11 @@ def parse_arguments():
         "--xcode_code_signing_identity", default="", help="The development identity used for code signing in Xcode"
     )
     parser.add_argument(
-        "--use_xcode", action="store_true", help="Use Xcode as cmake generator, this is only supported on MacOS."
+        "--use_xcode",
+        action="store_const",
+        const="Xcode",
+        dest="cmake_generator",
+        help="Use Xcode as cmake generator, this is only supported on MacOS. Equivalent to '--cmake_generator Xcode'.",
     )
     parser.add_argument(
         "--osx_arch",
@@ -535,15 +540,15 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_generator",
         choices=[
-            "Visual Studio 16 2019",
-            "Visual Studio 17 2022",
-            "Ninja",
             "MinGW Makefiles",
+            "Ninja",
             "NMake Makefiles",
+            "Unix Makefiles",
+            "Visual Studio 17 2022",
             "Xcode",
         ],
         default=None,
-        help="Specify the generator that CMake invokes. ",
+        help="Specify the generator that CMake invokes.",
     )
     parser.add_argument(
         "--enable_multi_device_test",
@@ -679,6 +684,9 @@ def parse_arguments():
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
+    parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
+    parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
+
     if not is_windows():
         parser.add_argument(
             "--allow_running_as_root",
@@ -700,7 +708,7 @@ def parse_arguments():
         args.enable_wasm_exception_throwing_override = True
 
     if args.cmake_generator is None and is_windows():
-        args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 16 2019"
+        args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 17 2022"
 
     return args
 
@@ -886,6 +894,9 @@ def generate_build_tree(
     if not use_dev_mode(args):
         cmake_args += ["--compile-no-warning-as-error"]
 
+    # enable/disable float 8 types
+    disable_float8_types = args.use_rocm or args.android or args.minimal_build
+
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
@@ -963,7 +974,6 @@ def generate_build_tree(
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
-        "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING="
         + ("OFF" if args.disable_wasm_exception_catching else "ON"),
@@ -983,6 +993,8 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
+        "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
+        "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
@@ -1168,19 +1180,6 @@ def generate_build_tree(
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
-        if args.use_xcode:
-            cmake_ver = LooseVersion(subprocess.check_output(["cmake", "--version"]).decode("utf-8").split()[2])
-            xcode_ver = LooseVersion(
-                subprocess.check_output(["xcrun", "xcodebuild", "-version"]).decode("utf-8").split()[1]
-            )
-            # Requires Cmake 3.21.1+ for XCode 13+
-            # The legacy build system is not longer supported on XCode 13+
-            if xcode_ver >= LooseVersion("13") and cmake_ver < LooseVersion("3.21.1"):
-                raise BuildError("CMake 3.21.1+ required to use XCode 13+")
-            # Use legacy build system for old CMake [3.19, 3.21.1) which uses new build system by default
-            # CMake 3.18- use the legacy build system by default
-            if cmake_ver >= LooseVersion("3.19.0") and cmake_ver < LooseVersion("3.21.1"):
-                cmake_args += ["-T", "buildsystem=1"]
         if args.apple_deploy_target:
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
         # Code sign the binaries, if the code signing development identity and/or team id are provided
@@ -1210,13 +1209,14 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
     if args.ios:
+        if not args.cmake_generator == "Xcode":
+            raise BuildError("iOS build requires use of the Xcode CMake generator ('--cmake_generator Xcode').")
+
         needed_args = [
-            args.use_xcode,
             args.ios_sysroot,
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--use_xcode            " + "<need use xcode to cross build iOS on MacOS>",  # noqa: ISC003
             "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",  # noqa: ISC003
             "--apple_deploy_target  " + "<the minimum version of the target platform>",  # noqa: ISC003
         ]
@@ -1296,7 +1296,7 @@ def generate_build_tree(
         if not (
             args.build_shared_lib
             and is_windows()
-            and args.cmake_generator == "Visual Studio 16 2019"
+            and args.cmake_generator == "Visual Studio 17 2022"
             and args.use_full_protobuf
         ):
             raise BuildError("Fuzz test has only be tested with build shared libs option using MSVC on windows")
@@ -1314,6 +1314,9 @@ def generate_build_tree(
 
     if args.use_azure:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
+
+    if args.use_lock_free_queue:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
 
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
@@ -1419,7 +1422,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
                     "/nodeReuse:False",
                     f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
-            elif is_macOS() and args.use_xcode:
+            elif args.cmake_generator == "Xcode":
                 # CMake will generate correct build tool args for Xcode
                 cmd_args += ["--parallel", str(num_parallel_jobs)]
             else:
@@ -1652,6 +1655,17 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
+    simulator_device_info = subprocess.check_output(
+        [
+            sys.executable,
+            os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_info.py"),
+        ],
+        text=True,
+    ).strip()
+    log.debug(f"Simulator device info:\n{simulator_device_info}")
+
+    simulator_device_info = json.loads(simulator_device_info)
+
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
     ]
@@ -1674,7 +1688,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
+                f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
             ],
             cwd=cwd,
         )
@@ -1735,11 +1749,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.build_shared_lib:
                 executables.append("onnxruntime_shared_lib_test")
                 executables.append("onnxruntime_global_thread_pools_test")
-                executables.append("onnxruntime_api_tests_without_env")
                 executables.append("onnxruntime_customopregistration_test")
             for exe in executables:
-                run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
-
+                test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
+                run_subprocess([os.path.join(cwd, exe), test_output], cwd=cwd, dll_path=dll_path)
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.test_all_timeout]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
@@ -1781,6 +1794,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
+
+            if args.use_tensorrt:
+                run_subprocess(
+                    [sys.executable, "onnxruntime_test_python_nested_control_flow_op.py"], cwd=cwd, dll_path=dll_path
+                )
 
             try:
                 import onnx  # noqa: F401
@@ -1962,10 +1980,12 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
+    cmake_path,
     source_dir,
     build_dir,
     configs,
     use_cuda,
+    use_rocm,
     use_openvino,
     use_tensorrt,
     use_dnnl,
@@ -1974,6 +1994,7 @@ def build_nuget_package(
     use_snpe,
     use_qnn,
     enable_training_apis,
+    msbuild_extra_options,
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2013,6 +2034,8 @@ def build_nuget_package(
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.DNNL"'
     elif use_cuda:
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
+    elif use_rocm:
+        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
     elif use_tvm:
         execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
@@ -2022,6 +2045,8 @@ def build_nuget_package(
     elif use_qnn:
         execution_provider = '/p:ExecutionProvider="qnn"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.QNN"'
+    elif any(map(lambda x: "OrtPackageId=" in x, msbuild_extra_options)):
+        pass
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2031,14 +2056,14 @@ def build_nuget_package(
     ort_build_dir = '/p:OnnxRuntimeBuildDirectory="' + native_dir + '"'
 
     # dotnet restore
-    cmd_args = ["dotnet", "restore", sln, "--configfile", "Nuget.CSharp.config"]
+    cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config"]
     run_subprocess(cmd_args, cwd=csharp_build_dir)
 
     # build csharp bindings and create nuget package for each config
     for config in configs:
         if is_linux():
             native_build_dir = os.path.join(native_dir, config)
-            cmd_args = ["make", "install", "DESTDIR=.//nuget-staging"]
+            cmd_args = [cmake_path, "-DCMAKE_INSTALL_PREFIX=./nuget-staging/usr/local", "-Pcmake_install.cmake"]
             run_subprocess(cmd_args, cwd=native_build_dir)
 
         configuration = '/p:Configuration="' + config + '"'
@@ -2095,6 +2120,7 @@ def build_nuget_package(
             ort_build_dir,
             nuget_exe_arg,
         ]
+        cmd_args.extend(msbuild_extra_options)
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
@@ -2248,7 +2274,7 @@ def main():
     if args.use_migraphx:
         args.use_rocm = True
 
-    if args.build_wheel or args.gen_doc or args.use_tvm:
+    if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
 
     if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
@@ -2427,17 +2453,20 @@ def main():
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
-        elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
+        elif args.cmake_generator is not None:
             cmake_extra_args += ["-G", args.cmake_generator]
-        elif is_macOS():
-            if args.use_xcode:
-                cmake_extra_args += ["-G", "Xcode"]
+
+        if is_macOS():
             if not args.ios and not args.android and args.osx_arch == "arm64" and platform.machine() == "x86_64":
                 if args.test:
                     log.warning("Cannot test ARM64 build on X86_64. Will skip test running after build.")
                     args.test = False
 
         if args.build_wasm:
+            if is_windows() and platform.architecture()[0] == "32bit":
+                raise BuildError("Please use a 64-bit python to run this script")
+            if args.build_wheel or args.enable_pybind:
+                raise BuildError("WASM does not support pybind")
             emsdk_version = args.emsdk_version
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
@@ -2554,10 +2583,12 @@ def main():
             )
         if args.build_nuget:
             build_nuget_package(
+                cmake_path,
                 source_dir,
                 build_dir,
                 configs,
                 args.use_cuda,
+                args.use_rocm,
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,
@@ -2566,6 +2597,7 @@ def main():
                 args.use_snpe,
                 args.use_qnn,
                 args.enable_training_apis,
+                normalize_arg_list(args.msbuild_extra_options),
             )
 
     if args.test and args.build_nuget:
