@@ -343,12 +343,12 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
     // Reshape rP from (nrow=(2, MMA_M), ncol=(2, MMA_N)) to ((2, 2, 2), MMA_M, MMA_N / 2)
     // if using m16n8k16 or ((2, 2, 1), MMA_M, MMA_N) if using m16n8k8.
     cute::Tensor tOrP = make_tensor(rP.data(), flash::convert_layout_rowcol_Aregs<Kernel_traits::TiledMma>(rP.layout()));
-    if (Return_softmax) {
-      cute::Tensor tOrP_copy = make_fragment_like(tOrP);
-      copy(tOrP, tOrP_copy);
-      flash::write_softmax_to_gmem(tOrP_copy, tPgP, gmem_thr_copy_P);
-      tPgP.data() = tPgP.data() + (-kBlockN);
-    }
+    // if (Return_softmax) {
+    //   cute::Tensor tOrP_copy = make_fragment_like(tOrP);
+    //   copy(tOrP, tOrP_copy);
+    //   flash::write_softmax_to_gmem(tOrP_copy, tPgP, gmem_thr_copy_P);
+    //   tPgP.data() = tPgP.data() + (-kBlockN);
+    // }
 
     flash::gemm_A_in_regs(acc_o, tOrP, tOrVt, tOsVt, tiled_mma, smem_thr_copy_V);
 
@@ -392,12 +392,12 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
     // Reshape rP from (nrow=(2, MMA_M), ncol=(2, MMA_N)) to ((2, 2, 2), MMA_M, MMA_N / 2)
     // if using m16n8k16 or ((2, 2, 1), MMA_M, MMA_N) if using m16n8k8.
     cute::Tensor tOrP = make_tensor(rP.data(), flash::convert_layout_rowcol_Aregs<Kernel_traits::TiledMma>(rP.layout()));
-    if (Return_softmax) {
-      cute::Tensor tOrP_copy = make_fragment_like(tOrP);
-      copy(tOrP, tOrP_copy);
-      flash::write_softmax_to_gmem(tOrP_copy, tPgP, gmem_thr_copy_P);
-      tPgP.data() = tPgP.data() + (-kBlockN);
-    }
+    // if (Return_softmax) {
+    //   cute::Tensor tOrP_copy = make_fragment_like(tOrP);
+    //   copy(tOrP, tOrP_copy);
+    //   flash::write_softmax_to_gmem(tOrP_copy, tPgP, gmem_thr_copy_P);
+    //   tPgP.data() = tPgP.data() + (-kBlockN);
+    // }
 
     flash::gemm_A_in_regs(acc_o, tOrP, tOrVt, tOsVt, tiled_mma, smem_thr_copy_V);
   }

@@ -27,28 +27,25 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
   // for cu_seqlens_q as well.
   const bool is_even_N = params.cu_seqlens_q == nullptr && params.cu_seqlens_k == nullptr && params.seqlen_k % Kernel_traits::kBlockN == 0;
   const bool is_even_K = params.d == Kernel_traits::kHeadDim;
-  const bool return_softmax = params.p_ptr != nullptr;
   BOOL_SWITCH(is_even_N, IsEvenNConst, [&] {
     BOOL_SWITCH(is_even_K, IsEvenKConst, [&] {
-      BOOL_SWITCH(return_softmax, ReturnSoftmaxConst, [&] {
-        // Will only return softmax if dropout, to reduce compilation time.
-        auto kernel = &flash_fwd_kernel < Kernel_traits, Is_causal, IsEvenNConst, IsEvenKConst, ReturnSoftmaxConst > ;
-        // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenNConst, true, ReturnSoftmaxConst>;
-        if (smem_size >= 48 * 1024) {
-          cudaFuncSetAttribute(
-              kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
-          //ORT_ENFORCE(cudaFuncSetAttribute(
-          //    kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
-        }
-        int ctas_per_sm;
-        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-            &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
-        //cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-        //    &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
-        // printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);
-        kernel<<<grid, Kernel_traits::kNThreads, smem_size, stream>>>(params);
-        //C10_CUDA_KERNEL_LAUNCH_CHECK();
-      });
+      // Will only return softmax if dropout, to reduce compilation time.
+      auto kernel = &flash_fwd_kernel < Kernel_traits, Is_causal, IsEvenNConst, IsEvenKConst, false > ;
+      // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenNConst, true, ReturnSoftmaxConst>;
+      if (smem_size >= 48 * 1024) {
+        cudaFuncSetAttribute(
+            kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+        //ORT_ENFORCE(cudaFuncSetAttribute(
+        //    kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+      }
+      int ctas_per_sm;
+      cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+          &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
+      //cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+      //    &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
+      // printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);
+      kernel<<<grid, Kernel_traits::kNThreads, smem_size, stream>>>(params);
+      //C10_CUDA_KERNEL_LAUNCH_CHECK();
     });
   });
 }
