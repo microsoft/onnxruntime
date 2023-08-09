@@ -40,7 +40,7 @@ GRUGradImpl<T>::GRUGradImpl(int sequence_length, int batch_size, int hidden_size
 }
 
 template <typename T>
-void GRUGradImpl<T>::ComputeGradient([[maybe_unused]] const GRUGradInputs<T>& inputs, [[maybe_unused]] GRUGradOutputs<T>& outputs) {
+void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutputs<T>& outputs) {
   using namespace rnn::detail;
 
   // A note on the memory layout of buffers used in this function:

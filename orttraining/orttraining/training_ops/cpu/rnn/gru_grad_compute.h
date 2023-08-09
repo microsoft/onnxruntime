@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "orttraining/training_ops/cpu/rnn/gru_io_utils.h"
 
 namespace onnxruntime::gru {
@@ -24,7 +23,7 @@ class GRUGradImpl {
   const int input_size_;
   const bool linear_before_reset_;
   concurrency::ThreadPool* thread_pool_;
-  AllocatorPtr allocator_;
+  const AllocatorPtr allocator_;
   IAllocatorUniquePtr<T> grad_a_ptr_;
   gsl::span<T> grad_a_span_;
   IAllocatorUniquePtr<T> rt_factor_ptr_;
