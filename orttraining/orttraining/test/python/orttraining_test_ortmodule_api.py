@@ -4208,21 +4208,14 @@ def test_hf_save_pretrained():
             assert p1.data.ne(p2.data).sum() == 0
 
 
-def test_ortmodule_string_inputs_are_ignored(caplog):
+def test_ortmodule_string_inputs_are_ignored():
     pt_model = MyStrNet()
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
-    x = torch.randn(1, 2)
-
-    out = ort_model(x, "hello")
-
     target_str = "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
-    found_target_str = False
-    for record in caplog.records:
-        if target_str in record.message:
-            found_target_str = True
-
-    assert found_target_str
-    _test_helpers.assert_values_are_close(out, x + 1)
+    with pytest.warns(UserWarning, match=target_str):
+        ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
+        x = torch.randn(1, 2)
+        out = ort_model(x, "hello")
+        _test_helpers.assert_values_are_close(out, x + 1)
 
 
 def test_ortmodule_list_input():
@@ -5232,7 +5225,7 @@ def test_sigmoid_grad_opset13():
         pt_prediction, pt_loss = run_step(pt_model, pt_x)
         if step == 0:
             model_onx = ort_model._torch_module._execution_manager._training_manager._onnx_models
-            for name in ["exported_model", "optimized_model", "optimized_pre_grad_model"]:
+            for name in ["exported_model", "optimized_model"]:
                 onx = getattr(model_onx, name)
                 opv = None
                 for op in onx.opset_import:
@@ -6061,3 +6054,120 @@ def test_e2e_padding_elimination():
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
+
+
+@pytest.mark.skipif(
+    Version(torch.__version__) >= Version("1.13.0"),
+    reason="PyTorch since 1.13 don't output expected warning messages any more",
+)
+@pytest.mark.parametrize("log_level", [LogLevel.VERBOSE, LogLevel.INFO, LogLevel.WARNING])
+def test_ortmodule_log_level_control(log_level, caplog):
+    class NeuralNetCrossEntropyLoss(torch.nn.Module):
+        def __init__(self, num_embeddings, embedding_dim):
+            super().__init__()
+            self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=1)
+
+        def forward(self, input, positions):
+            output = torch.transpose(self.embedding(input), 0, 1)
+            ignored_index = output.size(1)
+            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=ignored_index)
+            return loss_fct(output, positions)
+
+    device = "cuda"
+    num_embeddings, embedding_dim = 32, 128
+    pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
+
+    ort_model = ORTModule(pt_model, DebugOptions(log_level=log_level))
+    use_fp16 = True
+
+    def run_step(model, input, positions):
+        with amp.autocast(use_fp16):
+            loss = model(input, positions)
+        loss.backward()
+        return loss
+
+    N = random.randint(16, 32)  # noqa: N806
+    input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
+    positions = torch.randint(high=N, size=(embedding_dim,), dtype=torch.int64, device=device)
+    _ = run_step(ort_model, input, positions)
+
+    found_missing_inference_log = False
+    for record in caplog.records:
+        msg = record.getMessage()
+        print(msg)
+        if "The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing" in msg:
+            found_missing_inference_log = True
+            break
+
+    if log_level == LogLevel.VERBOSE:
+        assert found_missing_inference_log
+    else:
+        assert not found_missing_inference_log
+
+
+def test_cache_exported_model():
+    class Net(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = torch.nn.Linear(10, 1)
+
+        def forward(self, x):
+            x = x.view(x.shape[0], -1)
+            x = torch.nn.functional.relu(self.fc(x))
+            return x
+
+    data = torch.randn(1, 10)
+
+    with tempfile.TemporaryDirectory() as temporary_dir:
+        os.environ["ORTMODULE_CACHE_DIR"] = temporary_dir
+
+        # first time seeing the model, architecture should be cached under ORTMODULE_CACHE_DIR
+        model_pre_cache = Net()
+        model_pre_cache = ORTModule(model_pre_cache, DebugOptions(log_level=LogLevel.INFO))
+
+        torch.onnx.export = unittest.mock.MagicMock(side_effect=torch.onnx.export)
+        _ = model_pre_cache(data)
+        torch.onnx.export.assert_called()
+        torch.onnx.export.reset_mock()
+
+        # second time seeing the model, architecture should be loaded from ORTMODULE_CACHE_DIR
+        model_post_cache = Net()
+        model_post_cache = ORTModule(model_post_cache, DebugOptions(log_level=LogLevel.INFO))
+
+        torch.onnx.export = unittest.mock.MagicMock(side_effect=torch.onnx.export)
+        _ = model_post_cache(data)
+        torch.onnx.export.assert_not_called()
+        torch.onnx.export.reset_mock()
+
+        del os.environ["ORTMODULE_CACHE_DIR"]
+
+
+def test_reciprocal_gradient():
+    class ReciprocalModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, x):
+            return 1 / x
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = "cuda"
+    pt_model = ReciprocalModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.zeros(3, 224, 224, requires_grad=True, device=device)
+    with torch.no_grad():
+        pt_x[pt_x <= 0] -= 0.2
+        pt_x[pt_x > 0] += 0.2
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)

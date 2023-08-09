@@ -4,6 +4,7 @@
 
 import argparse
 import contextlib
+import json
 import os
 import platform
 import re
@@ -542,7 +543,6 @@ def parse_arguments():
             "Ninja",
             "NMake Makefiles",
             "Unix Makefiles",
-            "Visual Studio 16 2019",
             "Visual Studio 17 2022",
             "Xcode",
         ],
@@ -1654,10 +1654,16 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    simulator_device_name = subprocess.check_output(
-        ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
+    simulator_device_info = subprocess.check_output(
+        [
+            sys.executable,
+            os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_info.py"),
+        ],
         text=True,
     ).strip()
+    log.debug(f"Simulator device info:\n{simulator_device_info}")
+
+    simulator_device_info = json.loads(simulator_device_info)
 
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
@@ -1681,7 +1687,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
+                f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
             ],
             cwd=cwd,
         )
@@ -1787,6 +1793,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
+
+            if args.use_tensorrt:
+                run_subprocess(
+                    [sys.executable, "onnxruntime_test_python_nested_control_flow_op.py"], cwd=cwd, dll_path=dll_path
+                )
 
             try:
                 import onnx  # noqa: F401
@@ -2262,7 +2273,7 @@ def main():
     if args.use_migraphx:
         args.use_rocm = True
 
-    if args.build_wheel or args.gen_doc or args.use_tvm:
+    if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
 
     if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:

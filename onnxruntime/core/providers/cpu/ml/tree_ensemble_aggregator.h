@@ -23,9 +23,7 @@ struct TreeNodeElementId {
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
-      std::size_t h1 = std::hash<int64_t>()(key.tree_id);
-      std::size_t h2 = std::hash<int64_t>()(key.node_id);
-      return h1 ^ h2;
+      return static_cast<std::size_t>(static_cast<uint64_t>(key.tree_id) << 32 | static_cast<uint64_t>(key.node_id));
     }
   };
 };

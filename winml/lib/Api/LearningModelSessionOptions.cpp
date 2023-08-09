@@ -5,8 +5,10 @@
 #include "LearningModelSessionOptions.h"
 
 namespace WINMLP {
-LearningModelSessionOptions::LearningModelSessionOptions(const LearningModelSessionOptions& options) : batch_size_override_(options.batch_size_override_),
-                                                                                                       close_model_on_session_creation_(options.close_model_on_session_creation_) {}
+LearningModelSessionOptions::LearningModelSessionOptions(const LearningModelSessionOptions& options)
+  : batch_size_override_(options.batch_size_override_),
+    close_model_on_session_creation_(options.close_model_on_session_creation_) {
+}
 
 uint32_t LearningModelSessionOptions::BatchSizeOverride() {
   return batch_size_override_;
@@ -60,6 +62,5 @@ const gsl::span<const winrt::hstring> LearningModelSessionOptions::GetCustomOpLi
 void LearningModelSessionOptions::RegisterCustomOpsLibrary(const winrt::hstring& path) noexcept {
   custom_ops_lib_paths_.push_back(path);
 }
-
 
 }  // namespace WINMLP

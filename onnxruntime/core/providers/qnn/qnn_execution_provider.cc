@@ -145,57 +145,55 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
   if (it != node_unit_supported_result.cend()) {
     return it->second;
   } else {
-    // quantized required, filter out the non-quantized nodes, filter in the QDQ nodes
-    auto IsQdqNode = [](const NodeUnit& node_unit) {
-      if ("QuantizeLinear" == node_unit.OpType() || "DequantizeLinear" == node_unit.OpType()) {
-        return true;
-      } else {
-        return false;
-      }
-    };
+    const std::string& op_type = node_unit.OpType();
+    const bool is_qdq_node = op_type == "QuantizeLinear" || op_type == "DequantizeLinear";
 
     // Is NPU backend, is single node, case by case
     // Q/DQ nodes -- supported
     // Transpose nodes -- supported
     // Cast nodes -- need to call CastOpBuilder::IsOpSupported
     if (is_npu_backend && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
-      if (IsQdqNode(node_unit)) {  // Qnn has Quantize & Dequantize Op
+      if (is_qdq_node) {  // Qnn has Quantize & Dequantize Op
         LOGS(logger, VERBOSE) << "Single Q/DQ node is supported for NPU backend. Node name: " << node_unit.Name();
         return true;
       }
 
       // Tranpose only changes the data layout. NPU still supports it.
-      if ("Transpose" == node_unit.OpType()) {
+      if ("Transpose" == op_type) {
         LOGS(logger, VERBOSE) << "Single Transpose node is supported for NPU backend. Node name: " << node_unit.Name();
         return true;
       }
 
-      // For Cast, need to call IsOpSupported (below) to validate input and output types.
+      // For Cast, And, and Or, we need to call IsOpSupported (below) to validate input and output types.
       // For other single non-qdq nodes, immediately return not supported.
-      if (node_unit.OpType() != "Cast") {
-        LOGS(logger, VERBOSE) << "Non-QDQ single node is not supported for NPU backend. Node name: " << node_unit.Name()
-                              << " Op type: " << node_unit.OpType();
+      if (op_type != "Cast" && op_type != "And" && op_type != "Or") {
+        LOGS(logger, WARNING) << "Non-QDQ " << node_unit.OpType()
+                              << " operators are not supported on HTP or DSP backends. " << node_unit.OpType()
+                              << " node `" << node_unit.Name() << " will not be assigned to QNN EP.";
         return false;
       }
     }
 
     // Non-NPU backend, quantized model not supported, but a QDQ node encountered
-    if (!is_npu_backend && IsQdqNode(node_unit)) {
-      LOGS(logger, ERROR) << "There's no reason to run a QDQ model on non HTP/DSP backend!";
+    if (!is_npu_backend && is_qdq_node) {
+      LOGS(logger, ERROR) << "QDQ models are only supported on HTP or DSP backends. "
+                          << node_unit.OpType() << " node `" << node_unit.Name() << "` will not be assigned to QNN EP.";
       return false;
     }
 
     bool supported = false;
-    const auto* op_builder = qnn::GetOpBuilder(node_unit.OpType());
+    const auto* op_builder = qnn::GetOpBuilder(op_type);
     if (op_builder == nullptr) {
-      LOGS(logger, VERBOSE) << "Op not implemented in QNN EP. Op type: " << node_unit.OpType();
+      LOGS(logger, WARNING) << "Operators of type `" << node_unit.OpType() << "` are not supported by QNN EP."
+                            << node_unit.OpType() << " node `" << node_unit.Name()
+                            << "` will not be assigned to QNN EP.";
     } else {
       auto status = op_builder->IsOpSupported(qnn_model_wrapper,
                                               node_unit, logger,
                                               is_npu_backend);
       if (Status::OK() != status) {
-        LOGS(logger, VERBOSE) << "Op type: " << node_unit.OpType()
-                              << ", not supported: " << status.ErrorMessage();
+        LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
+                              << "` is not supported: " << status.ErrorMessage();
       }
       supported = (Status::OK() == status);
     }
@@ -231,10 +229,21 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     initializer_input_lookup.emplace(graph_ini.first);
   }
 
+  // Util function that initializes a table that maps a graph input or output name to its index.
+  auto init_input_output_index_map = [](std::unordered_map<std::string, size_t>& index_map,
+                                        const std::vector<const NodeArg*>& node_args) {
+    const size_t num_args = node_args.size();
+    for (size_t i = 0; i < num_args; i++) {
+      index_map.emplace(node_args[i]->Name(), i);
+    }
+  };
+
   std::unordered_map<std::string, size_t> model_input_index_map;
+  init_input_output_index_map(model_input_index_map, graph_viewer.GetInputs());  // GetInputs excludes initializers.
+
   std::unordered_map<std::string, size_t> model_output_index_map;
-  std::unordered_map<std::string, qnn::OnnxTensorInfo> inputs_info;
-  std::unordered_map<std::string, qnn::OnnxTensorInfo> outputs_info;
+  init_input_output_index_map(model_output_index_map, graph_viewer.GetOutputs());
+
   auto qnn_model_wrapper = qnn::QnnModelWrapper(graph_viewer, logger,
                                                 qnn_backend_manager_->GetQnnInterface(),
                                                 qnn_backend_manager_->GetQnnBackendHandle(),

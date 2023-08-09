@@ -3,7 +3,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.10.0.230425122932_54038
+  default: qnn-v2.12.0.230626
 
 jobs:
   - job: Build_QNN_EP
@@ -57,7 +57,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/lib/x86_64-linux-clang/libQnnCpu.so" \
               cmake/external/onnx/onnx/backend/test/data/node
 
       - task: CmdLine@2
@@ -65,7 +65,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/lib/x86_64-linux-clang/libQnnCpu.so" \
               /data/float32_models
 
       - task: CmdLine@2
@@ -73,7 +73,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/target/x86_64-linux-clang/lib/libQnnHtp.so" \
+              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/lib/x86_64-linux-clang/libQnnHtp.so" \
               /data/qdq_models
 
       - task: CmdLine@2
@@ -81,7 +81,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/target/x86_64-linux-clang/lib/libQnnHtp.so qnn_context_cache_enable|1 qnn_context_cache_path|./build/Release/mobilenet_qdq.bin" \
+              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/lib/x86_64-linux-clang/libQnnHtp.so qnn_context_cache_enable|1 qnn_context_cache_path|./build/Release/mobilenet_qdq.bin" \
               /data/qdq_models/mobilenetv2-1.0_add_transpose_quant
 
       - task: CmdLine@2
@@ -89,5 +89,5 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/target/x86_64-linux-clang/lib/libQnnHtp.so qnn_context_cache_enable|1 qnn_context_cache_path|./build/Release/mobilenet_qdq.bin" \
+              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/lib/x86_64-linux-clang/libQnnHtp.so qnn_context_cache_enable|1 qnn_context_cache_path|./build/Release/mobilenet_qdq.bin" \
               /data/qdq_models/mobilenetv2-1.0_add_transpose_quant

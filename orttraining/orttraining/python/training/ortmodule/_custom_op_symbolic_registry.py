@@ -88,7 +88,7 @@ def wrap_custom_export_function(original_func: Callable) -> Callable:
 
 
 class CustomOpSymbolicRegistry:
-    _SYMBOLICS = {}
+    _SYMBOLICS = {}  # noqa: RUF012
 
     @classmethod
     def register(cls, name, domain, fn):

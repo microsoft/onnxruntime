@@ -50,6 +50,13 @@ NS_ASSUME_NONNULL_BEGIN
   return path;
 }
 
++ (NSString*)getStringModelPath {
+  NSBundle* bundle = [NSBundle bundleForClass:[ORTSessionTest class]];
+  NSString* path = [bundle pathForResource:@"identity_string"
+                                    ofType:@"ort"];
+  return path;
+}
+
 + (NSMutableData*)dataWithScalarFloat:(float)value {
   NSMutableData* data = [[NSMutableData alloc] initWithBytes:&value length:sizeof(value)];
   return data;
@@ -257,6 +264,35 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
   ORTAssertBoolResultSuccessful(registerResult, err);
 
   XCTAssertEqual(gDummyRegisterCustomOpsFnCalled, true);
+}
+
+- (void)testStringInputs {
+  NSError* err = nil;
+  NSArray<NSString*>* stringData = @[ @"ONNX Runtime", @"is the", @"best", @"AI Framework" ];
+  ORTValue* stringValue = [[ORTValue alloc] initWithTensorStringData:stringData shape:@[ @2, @2 ] error:&err];
+  ORTAssertNullableResultSuccessful(stringValue, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getStringModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  NSDictionary<NSString*, ORTValue*>* outputs =
+      [session runWithInputs:@{@"input:0" : stringValue}
+                 outputNames:[NSSet setWithArray:@[ @"output:0" ]]
+                  runOptions:[ORTSessionTest makeRunOptions]
+                       error:&err];
+  ORTAssertNullableResultSuccessful(outputs, err);
+
+  ORTValue* outputStringValue = outputs[@"output:0"];
+  XCTAssertNotNil(outputStringValue);
+
+  NSArray<NSString*>* outputStringData = [outputStringValue tensorStringDataWithError:&err];
+  ORTAssertNullableResultSuccessful(outputStringData, err);
+
+  XCTAssertEqual([stringData count], [outputStringData count]);
+  XCTAssertTrue([stringData isEqualToArray:outputStringData]);
 }
 
 @end

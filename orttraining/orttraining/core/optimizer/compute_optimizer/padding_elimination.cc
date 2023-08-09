@@ -16,6 +16,10 @@ namespace onnxruntime {
 
 namespace {
 
+// TODO(pengwa): remove this once customized PythonOp shape inference is supported.
+constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
+
 void PushAllOutputNode(Graph& graph, std::queue<Node*>& q, Node* node, std::unordered_set<Node*>& visited) {
   for (auto iter = node->OutputNodesBegin(); iter != node->OutputNodesEnd(); ++iter) {
     Node* output_node = graph.GetNode(iter->Index());
@@ -309,7 +313,7 @@ void IterateSubgraphFromNode(Graph& graph,
         continue;
       }
       auto func_name = static_cast<std::string>(cur->GetAttributes().at("name").s());
-      if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+      if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
         subgraph.insert(cur->MutableOutputDefs()[1]);
         PushAllOutputNode(graph, to_visit, cur, visited);
       } else {
