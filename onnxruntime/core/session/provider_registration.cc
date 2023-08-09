@@ -220,6 +220,26 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAP
   return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptionsWithValue,
+                    _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateNotEnabledStatus("CUDA");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
+                    _In_ const OrtCUDAProviderOptionsV2* cuda_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateNotEnabledStatus("CUDA");
+}
+
 ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
 }
