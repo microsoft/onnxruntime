@@ -168,13 +168,24 @@ TEST_F(QnnCPUBackendTests, ReduceSumOpset11_Float) {
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, ReduceProdOpset18) {
   RunReduceOpCpuTest<float>("ReduceProd",
-                            TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                            TestInputDef<float>({2, 2}, false, {-10.0f, -8.2f, 0.0f, 10.0f}),
+                            std::vector<int64_t>{0, 1},
+                            true,  // keepdims
+                            18,
+                            ExpectedEPNodeAssignment::All);
+}
+
+// TODO: Investigate slight inaccuracy. x64 Windows requires a slightly larger error tolerance greater than 1.5e-f.
+// LOG: ... the value pair (208.881729, 208.881744) at index #0 don't match, which is 1.52588e-05 from 208.882
+TEST_F(QnnCPUBackendTests, ReduceProdOpset18_SlightlyInaccurate_WindowsX64) {
+  RunReduceOpCpuTest<float>("ReduceProd",
+                            TestInputDef<float>({2, 2}, false, {3.21289f, -5.9981f, -1.72799f, 6.27263f}),
                             std::vector<int64_t>{0, 1},
                             true,  // keepdims
                             18,
                             ExpectedEPNodeAssignment::All,
 #if defined(_WIN32) && !defined(__aarch64__)
-                            2e-5f);  // x64 Windows requires a tolerance > 1.5e-5f
+                            2e-5f);  // x64 Windows requires larger tolerance.
 #else
                             1e-5f);
 #endif
@@ -187,16 +198,11 @@ TEST_F(QnnCPUBackendTests, ReduceProdOpset18) {
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, ReduceProdOpset13) {
   RunReduceOpCpuTest<float>("ReduceProd",
-                            TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                            TestInputDef<float>({2, 2}, false, {-10.0f, -8.2f, 0.0f, 10.0f}),
                             std::vector<int64_t>{0, 1},
                             true,  // keepdims
                             13,
-                            ExpectedEPNodeAssignment::All,
-#if defined(_WIN32) && !defined(__aarch64__)
-                            2e-5f);  // x64 Windows requires a tolerance > 1.5e-5f
-#else
-                            1e-5f);
-#endif
+                            ExpectedEPNodeAssignment::All);
 }
 
 //
