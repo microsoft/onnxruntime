@@ -74,23 +74,20 @@ NodeArg* InsertExpandForNodeInput(Graph& graph,
                                   uint32_t in_index,
                                   NodeArg* first_two_dims_arg,
                                   const logging::Logger& logger) {
-  auto input_shape = node.InputDefs()[1 - in_index]->Shape();
-  ORT_ENFORCE(input_shape->dim_size() >= 2);
+  auto full_sized_input_shape = node.InputDefs()[1 - in_index]->Shape();
+  ORT_ENFORCE(full_sized_input_shape->dim_size() >= 2);
   NodeArg* expand_shape_arg = nullptr;
-  if (input_shape->dim_size() == 2) {
+  if (full_sized_input_shape->dim_size() == 2) {
     expand_shape_arg = first_two_dims_arg;
   } else {
-    std::vector<int64_t> other_indices(static_cast<int64_t>(input_shape->dim_size()) - 2, 1);
-    ONNX_NAMESPACE::TensorProto other_indices_const_tensor;
-    other_indices_const_tensor.set_name(graph.GenerateNodeArgName("other_shape"));
-    other_indices_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    other_indices_const_tensor.add_dims(other_indices.size());
-    other_indices_const_tensor.set_raw_data(other_indices.data(), other_indices.size() * sizeof(int64_t));
-    NodeArg* other_indices_arg = &graph_utils::AddInitializer(graph, other_indices_const_tensor);
-
+    InlinedVector<int64_t> other_indices(static_cast<int64_t>(full_sized_input_shape->dim_size()) - 2, 1);
     InlinedVector<NodeArg*> concat_input_args;
     concat_input_args.push_back(first_two_dims_arg);
-    concat_input_args.push_back(other_indices_arg);
+    concat_input_args.push_back(
+        CreateInitializerFromVector(graph,
+                                    {static_cast<int64_t>(other_indices.size())},
+                                    other_indices,
+                                    graph.GenerateNodeArgName("other_shape")));
 
     InlinedVector<NodeArg*> concat_output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("concat_shape_result"),
                                                                          nullptr)};
@@ -299,7 +296,7 @@ void IterateSubgraphFromNode(Graph& graph,
         PushAllOutputNode(graph, to_visit, cur, visited);
         candidate_inputs.insert(cur);
       } else {
-        LOG_DEBUG_INFO(logger, "PaddingElimination::Input shapes of node:" + cur->Name() + " are not compatible.");
+        LOG_DEBUG_INFO(logger, "PaddingElimination::Input of node:" + cur->Name() + " have no shape.");
         candidate_outputs.insert(cur);
         continue;
       }
@@ -441,10 +438,17 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
     return Status::OK();
   }
 
+  if (!input_ids_arg->Shape()) {
+    LOG_DEBUG_INFO(logger, "Exit PaddingElimination optimization for not finding shape of input_ids.");
+    return Status::OK();
+  }
   auto input_ids_shape = input_ids_arg->Shape();
   // For now, we only support all the dims of input_ids_shape besides the first two has dim_value.
   for (int k = 2; k < input_ids_shape->dim_size(); k++) {
-    ORT_ENFORCE(input_ids_shape->dim(k).has_dim_value());
+    if (!input_ids_shape->dim(k).has_dim_value()) {
+      LOG_DEBUG_INFO(logger, "Exit PaddingElimination optimization for shape dims of input_ids has no value.");
+      return Status::OK();
+    }
   }
 
   IterateSubgraphFromNode(graph, embedding_node, subgraph, candidate_inputs, candidate_outputs, logger);
@@ -460,7 +464,10 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
     new_input_ids_shape.push_back(input_ids_shape->dim(k).dim_value());
   }
   reshape_input_args.push_back(
-      CreateInitializerFromVector(graph, {static_cast<int64_t>(new_input_ids_shape.size())}, new_input_ids_shape, "flattened_shape"));
+      CreateInitializerFromVector(graph,
+                                  {static_cast<int64_t>(new_input_ids_shape.size())},
+                                  new_input_ids_shape,
+                                  graph.GenerateNodeArgName("flattened_shape")));
 
   InlinedVector<NodeArg*> reshape_output_args;
   reshape_output_args.push_back(
@@ -482,7 +489,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   // Get the first two dims value of input_ids which is [batch_size, seq_len]
   NodeArg* first_two_dims_arg = GetDimsValue(graph,
                                              input_ids_arg,
-                                             CreateInitializerFromVector(graph, {2}, {0, 1}, "first_two_indices"),
+                                             CreateInitializerFromVector(graph, {2}, {0, 1}, graph.GenerateNodeArgName("first_two_indices")),
                                              *embedding_node);
 
   // Add flatten pattern to each input node of the subgraph
@@ -553,7 +560,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   if (handled_input_count > 0 || handled_output_count > 0) {
     LOGS(logger, INFO) << "PaddingElimination::Total handled input node count:  " << handled_input_count
                        << " output node count: " << handled_output_count
-                       << " expanded shape count: " << expanded_input_count;
+                       << " expanded input count: " << expanded_input_count;
   }
   return Status::OK();
 }
