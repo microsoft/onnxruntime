@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/js/js_kernel.h"
-#include "expand.h"
+#include "tile.h"
 
 namespace onnxruntime {
 namespace js {
