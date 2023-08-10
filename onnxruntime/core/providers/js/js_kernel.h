@@ -85,16 +85,22 @@ class JsKernel : public OpKernel {
     // so that the JS kernel can know the input count.
     //
     // temp_data_format (every item is (u)int32_t):
-    //    context_ptr | input_count | custom_data_ptr | custom_data_size | [input_data_0] ... [input_data_N-1]
+    //    context_ptr | input_count | custom_data_ptr | custom_data_size | [input_data_or_placeholder_0] ... [input_data_or_placeholder_N-1]
+    //
+    // input_data_or_placeholder_format:
+    //    input_data OR placeholder
     //
     // input_data_format:
     //    type | data_ptr | dim_size | dim[0] ... dim[N-1]
+    //
+    // placeholder_format:
     //     0   |    0     |    0
+    //
     size_t temp_data_size = sizeof(size_t) * 5;
     for (int i = 0; i < context->InputCount(); i++) {
-      const auto* ptr = context->Input<Tensor>(i);
-      if (nullptr != ptr) {
-        temp_data_size += sizeof(size_t) * (3 + context->Input<Tensor>(i)->Shape().NumDimensions());
+      const auto* inputPtr = context->Input<Tensor>(i);
+      if (nullptr != inputPtr) {
+        temp_data_size += sizeof(size_t) * (3 + inputPtr->Shape().NumDimensions());
       } else {
         temp_data_size += sizeof(size_t) * 3;
       }
@@ -111,19 +117,19 @@ class JsKernel : public OpKernel {
     p_serialized_kernel_context[4] = static_cast<uint32_t>(custom_data_size);
     size_t index = 5;
     for (int i = 0; i < context->InputCount(); i++) {
-      const auto* ptr = context->Input<Tensor>(i);
+      const auto* inputPtr = context->Input<Tensor>(i);
       // Skip if the input is only a placeholder.
-      if (ptr == nullptr) {
+      if (inputPtr == nullptr) {
         p_serialized_kernel_context[index++] = 0;
         p_serialized_kernel_context[index++] = 0;
         p_serialized_kernel_context[index++] = 0;
         continue;
       }
-      p_serialized_kernel_context[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->GetElementType());
-      p_serialized_kernel_context[index++] = reinterpret_cast<uint32_t>(ptr->DataRaw());
-      p_serialized_kernel_context[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->Shape().NumDimensions());
-      for (size_t d = 0; d < context->Input<Tensor>(i)->Shape().NumDimensions(); d++) {
-        p_serialized_kernel_context[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->Shape()[d]);
+      p_serialized_kernel_context[index++] = static_cast<uint32_t>(inputPtr->GetElementType());
+      p_serialized_kernel_context[index++] = reinterpret_cast<uint32_t>(inputPtr->DataRaw());
+      p_serialized_kernel_context[index++] = static_cast<uint32_t>(inputPtr->Shape().NumDimensions());
+      for (size_t d = 0; d < inputPtr->Shape().NumDimensions(); d++) {
+        p_serialized_kernel_context[index++] = static_cast<uint32_t>(inputPtr->Shape()[d]);
       }
     }
 
