@@ -166,7 +166,7 @@ auto GetRocBlasGemmTypeStringAndOps() {
           status == rocblas_status_invalid_size, "Solution ", solution, " not supported: INVALID VALUE.");
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status != rocblas_status_success, "Solution ", solution, " failed.");
+          status != rocblas_status_success, "Solution ", solution, " failed: ", rocblas_status_to_string(status));
 
       return Status::OK();
     };
@@ -232,7 +232,7 @@ auto GetRocBlasBatchedGemmTypeStringAndOps() {
           status == rocblas_status_invalid_size, "Solution ", solution, " not supported: INVALID VALUE.");
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status != rocblas_status_success, "Solution ", solution, " failed.");
+          status != rocblas_status_success, "Solution ", solution, " failed: ", rocblas_status_to_string(status));
 
       return Status::OK();
     };
@@ -299,7 +299,7 @@ auto GetRocBlasStridedBatchedGemmTypeStringAndOps() {
           status == rocblas_status_invalid_size, "Solution ", solution, " not supported: INVALID VALUE.");
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status != rocblas_status_success, "Solution ", solution, " failed.");
+          status != rocblas_status_success, "Solution ", solution, " failed: ", rocblas_status_to_string(status));
 
       return Status::OK();
     };
