@@ -132,7 +132,8 @@ ${shaderHelper.mainStart()}
   ${hasMeanOutput ? 'meanOutput[global_idx] = mean;' : ''}
   ${hasInvStdDevOutput ? 'invStdOutput[global_idx] = 1.0 / variance;' : ''}
   for (var i: u32 = 0; i < hiddenSize; i++) {
-    output[offset + i] = gamma[i] * (output[offset + i] - mean) / variance + ${hasBetaInput ? 'beta[offset+i]' : '0.0'};
+    output[offset + i] = gamma[i] * (output[offset + i] - mean) / variance + ${
+          hasBetaInput ? 'beta[offset+i]' : '0.0'};
   }
 }`;
       const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
