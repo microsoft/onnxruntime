@@ -1525,5 +1525,35 @@ output_shape can also be explicitly specified in which case pads values are auto
           // convTransposeShapeInference(ctx, input_remap);
         }));
 
+static const char* BlockQuantize_ver1_doc = R"DOC(
+Block quantization operator. It consumes a half precision x, for given block_size, quantized the tensor block by block.
+    orig_shape = x.size()
+    x = x.reshape(-1, block_size)
+    s = x.abs().amax(dim=-1, keepdim=True) / INT8_MAX
+    y = (x / s).to(torch.int8).view(orig_shape)
+    return y, s)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    BlockQuantize, 1,
+    OpSchema()
+        .Input(0, "x", "N-D half precision Input tensor to be block quantized.", "F")
+        .Input(1, "block_size", "Int32 tensor for block size, its shape is [1] or [].", "B")
+        .Output(0, "y", "N-D quantized output tensor. It has same shape as input 'x'.", "Q")
+        .Output(1, "s", "Block Scale tensor with shape of [*, block_size], same type as x.", "F")
+        .TypeConstraint("F", {"tensor(float16), tensor(float)"}, "Constrain 'x' to half tensors.")
+        .TypeConstraint("B", {"tensor(int32)"}, "Constrain block size to 32-bit integer tensors.")
+        .TypeConstraint("Q", {"tensor(int8)"}, "Constrain 'y' to 8-bit integer tensors.")
+        .SetDoc(BlockQuantize_ver1_doc)
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto::INT8, 0);
+            propagateShapeFromInputToOutput(ctx, 0, 0);
+
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+            ONNX_NAMESPACE::TensorShapeProto scale_shape;
+            scale_shape.add_dim();
+            scale_shape.add_dim();
+            updateOutputShape(ctx, 1, scale_shape);
+        }));
+
 }  // namespace contrib
 }  // namespace onnxruntime
