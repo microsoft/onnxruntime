@@ -271,6 +271,41 @@ dependencies {
       </ol>
     </td>
   </tr>
+  <tr>
+    <td>iOS</td>
+    <td>C, C++</td>
+    <td><b>CocoaPods: onnxruntime-training-c</b></td>
+    <td> 
+      <ul>
+        <li>In your CocoaPods <code>Podfile</code>, add the <code>onnxruntime-training-c</code> pod:
+          <pre>
+use_frameworks!
+pod 'onnxruntime-training-c' 
+          </pre>
+        </li>
+        <li>Run <code>pod install</code>.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td></td>
+    <td> Objective-C</td>
+     <td><b>CocoaPods: onnxruntime-training-objc</b> </td>
+     <td>
+       <ul>
+        <li>
+          In your CocoaPods <code>Podfile</code>, add the <code>onnxruntime-training-objc</code> pod:
+            <pre>
+use_frameworks!
+pod 'onnxruntime-training-objc' 
+            </pre>
+        </li>
+        <li>
+          Run <code>pod install</code>.
+        </li>
+      </ul>
+    </td>
+  </tr>
 </table>
 
 ## Large Model Training
