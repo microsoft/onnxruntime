@@ -133,6 +133,15 @@ static bool HandleContribQuantizeDequantizeLinear(HandlerArgs& args) {
 
 constexpr HandlerInfo contrib_quantize_dequantize_linear_handler = {&FirstInput, &HandleContribQuantizeDequantizeLinear};
 
+const HandlerMap& OrtHandlers() {
+  static const HandlerMap extended_handler_map{
+      {"com.microsoft.QuantizeLinear", contrib_quantize_dequantize_linear_handler},
+      {"com.microsoft.DequantizeLinear", contrib_quantize_dequantize_linear_handler},
+  };
+
+  return extended_handler_map;
+}
+
 // ORT contrib ops and special cased ONNX ops where we have EP specific handling
 const HandlerMap& OrtExtendedHandlers() {
   static const HandlerMap extended_handler_map = []() {
@@ -146,9 +155,10 @@ const HandlerMap& OrtExtendedHandlers() {
         {"com.microsoft.QLinearMul", q_linear_binary_op_handler},
         {"com.microsoft.QLinearReduceMean", reduce_op_handler},
         {"com.microsoft.QLinearSigmoid", node_1_inp_handler},
-        {"com.microsoft.QuantizeLinear", contrib_quantize_dequantize_linear_handler},
-        {"com.microsoft.DequantizeLinear", contrib_quantize_dequantize_linear_handler},
     };
+
+    const auto& base_handlers = OrtHandlers();
+    std::for_each(base_handlers.begin(), base_handlers.end(), [&map](const auto& entry) { map.insert(entry); });
 
     return map;
   }();
