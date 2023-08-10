@@ -110,6 +110,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateReductionOpBuilder("ReduceSum", op_registrations);
   }
 
+  {  // Shape
+    CreateShapeOpBuilder("Shape", op_registrations);
+  }
+
   return op_registrations;
 }
 
