@@ -166,11 +166,6 @@ void OrtReleaseSessionOptions(OrtSessionOptions* session_options) {
 }
 
 OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* session_options) {
-  // OrtSessionOptions must not be nullptr.
-  if (session_options == nullptr) {
-    return nullptr;
-  }
-
 #if defined(__EMSCRIPTEN_PTHREADS__)
   RETURN_NULLPTR_IF_ERROR(DisablePerSessionThreads, session_options);
 #else
@@ -434,16 +429,13 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t 
   return CHECK_TRAINING_STATUS(LazyResetGrad, training_handle);
 }
 
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingRunTrainStep(ort_training_session_handle_t training_handle,
-                                                                 const ort_run_options_handle_t options,
-                                                                 const size_t inputs_len,
-                                                                 const ort_tensor_handle_t* inputs,
-                                                                 const size_t outputs_len,
-                                                                 ort_tensor_handle_t* outputs) {
-  return (CHECK_TRAINING_STATUS(TrainStep, training_handle,
-                                options, inputs_len, inputs, outputs_len, outputs) == ORT_OK)
-             ? *outputs
-             : nullptr;
+int EMSCRIPTEN_KEEPALIVE OrtTrainingRunTrainStep(ort_training_session_handle_t training_handle,
+                                                 size_t input_count,
+                                                 ort_tensor_handle_t* inputs,
+                                                 size_t output_count,
+                                                 ort_tensor_handle_t* outputs,
+                                                 ort_run_options_handle_t options) {
+  return CHECK_TRAINING_STATUS(TrainStep, training_handle, options, input_count, inputs, output_count, outputs);
 }
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t training_handle,
@@ -451,42 +443,34 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t 
   return CHECK_TRAINING_STATUS(OptimizerStep, training_handle, run_options);
 }
 
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
-                                                             const ort_run_options_handle_t options,
-                                                             size_t inputs_len,
-                                                             const ort_tensor_handle_t* inputs,
-                                                             size_t outputs_len,
-                                                             ort_tensor_handle_t* outputs) {
-  return (CHECK_TRAINING_STATUS(EvalStep, training_handle,
-                                options, inputs_len, inputs, outputs_len, outputs) == ORT_OK)
-             ? *outputs
-             : nullptr;
+int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
+                                             const ort_run_options_handle_t options,
+                                             const ort_tensor_handle_t* inputs,
+                                             size_t input_count,
+                                             ort_tensor_handle_t* outputs,
+                                             size_t output_count) {
+  return CHECK_TRAINING_STATUS(EvalStep, training_handle,
+                               options, input_count, inputs, output_count, outputs);
 }
 
-size_t* EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(ort_training_session_handle_t training_handle,
-                                                          bool trainable_only) {
-  size_t* param_size = nullptr;
-  return (CHECK_TRAINING_STATUS(GetParametersSize, training_handle, param_size, trainable_only) == ORT_OK)
-             ? param_size
-             : nullptr;
+int EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(ort_training_session_handle_t training_handle,
+                                                      size_t* param_size,
+                                                      bool trainable_only) {
+  return CHECK_TRAINING_STATUS(GetParametersSize, training_handle, param_size, trainable_only);
 }
 
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_training_session_handle_t training_handle,
-                                                                           ort_tensor_handle_t parameters_buffer,
-                                                                           bool trainable_only) {
-  return (CHECK_TRAINING_STATUS(CopyParametersToBuffer, training_handle,
-                                parameters_buffer, trainable_only) == ORT_OK)
-             ? parameters_buffer
-             : nullptr;
+int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_training_session_handle_t training_handle,
+                                                           ort_tensor_handle_t parameters_buffer,
+                                                           size_t parameter_count,
+                                                           bool trainable_only) {
+  return CHECK_TRAINING_STATUS(CopyParametersToBuffer, training_handle, parameters_buffer, trainable_only);
 }
 
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_session_handle_t training_handle,
-                                                                             ort_tensor_handle_t parameters_buffer,
-                                                                             bool trainable_only) {
-  return (CHECK_TRAINING_STATUS(CopyBufferToParameters, training_handle,
-                                parameters_buffer, trainable_only) == ORT_OK)
-             ? parameters_buffer
-             : nullptr;
+int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_session_handle_t training_handle,
+                                                             ort_tensor_handle_t parameters_buffer,
+                                                             size_t parameter_count,
+                                                             bool trainable_only) {
+  return CHECK_TRAINING_STATUS(CopyBufferToParameters, training_handle, parameters_buffer, trainable_only);
 }
 
 void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_handle) {
