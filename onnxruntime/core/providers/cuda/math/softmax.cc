@@ -152,7 +152,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
     auto temp_input = Tensor::Create(X->DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(GetDeviceProp(),
                                                Stream(ctx),
                                                GetCublasHandle(ctx),
                                                permutation, *X, *temp_input));
@@ -192,7 +192,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(GetDeviceProp(),
                                                Stream(ctx),
                                                GetCublasHandle(ctx),
                                                permutation, *intermediate_output, *Y));
