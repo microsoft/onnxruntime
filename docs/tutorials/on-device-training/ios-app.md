@@ -39,7 +39,7 @@ In the tutorial, we will:
 
 - [Building the iOS application](#building-the-ios-application)
  - [Xcode Setup](#xcode-setup)
- - [Application Structure](#application-structure)
+ - [Application Overview](#application-overview)
  - [Training the model](#training-the-model)
  - [Exporting the model](#exporting-the-model)
  - [Inference with the trained model](#inference-with-the-trained-model)
@@ -130,14 +130,15 @@ To follow along with this tutorial, you should have a basic understanding of mac
 
     ```
     That's all! The training artifacts have been generated in the `artifacts` directory. The artifacts are ready to be deployed to the iOS device for training.
-## Building the iOS application
 
+
+## Building the iOS application
 ### Xcode Setup
-Open Xcode, and create a new project. Select `iOS` as the platform and `App` as the template. Click `Next`.
+Open Xcode, and create a new project. Select `iOS` as the platform and `App` as the template. Click Next.
 
 ![Xcode Setup New Project](../../../images/iOS_speaker_identification_screenshot_1.png)
 
-Enter the project name. Here, we will name the project 'MyVoice', but you can name it anything you prefer. Make sure to select `SwiftUI` as the interface, and `Swift` as the language. Then, click `Next`.
+Enter the project name. Here, we will name the project 'MyVoice', but you can name it anything you prefer. Make sure to select `SwiftUI` as the interface, and `Swift` as the language. Then, click Next.
 
 ![Xcode Setup Project Name](../../../images/iOS_speaker_identification_screenshot_2.png)
 
@@ -170,9 +171,33 @@ pod install
 
 This will create a `MyVoice.xcworkspace` file in the project directory. Open the `xcworkspace` file in Xcode. This will open the project in Xcode with the dependencies installed.
 
-### Application Structure
+Now, create a new group in the project and name it `artifacts`. Drag and drop the artifacts generated in the previous section into the `artifacts` group. Make sure to select `Create folder references` and `Copy items if needed` options. This will add the artifacts to the project.
+
+Next, create a new group in the project and name it `recrodings`. This group will contain the audio recordings that will be used for training. You can generate the recordings by running the [`recording_gen.py`](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/recording_gen.py) script at the root of the project. Alternatively, you can also any other recordings of length 10 seconds in .wav format.
+The project structure should look like this:
+
+![Xcode Project Structure](../../../images/iOS_speaker_identification_screenshot_3.png)
+
+
+### Application Overview
+
+The application will consitst of two main UI Views: `TrainingView` and `InferenceView`. The `TrainingView` is used to train the model on-device, and the `InferenceView` is used to perform inference with the trained model. Addtionally, there is `ContentView` which is the home view of the application and contains buttons to navigate to the `TrainingView` and `InferenceView`.
+
+Additionally, we will also create `AudioRecorder` class to handle the recording of audio through the microphone. It will record 10 seconds of audio and output the audio data as a `Data` object, which can be used for training and inference purposes.
+
+We will have `Trainer` class which will handle the training and exporting of the model.
+
+Laslty, we will also create `VoiceIdentifier` class that will handle the inference with the trained model. 
 
 ### Training the model
+
+First, we will create a `Trainer` class that will handle the training and exporting of the model. It will load the training artifacts, train the model on given audio, and export the trained model using onnnxruntime on device training APIs. The detailed documentation for the API can be found [here](../../../docs/api/objectivec/index.html).
+
+```swift
+```
+
+
+
 
 ### Exporting the model
 
@@ -187,7 +212,7 @@ This will create a `MyVoice.xcworkspace` file in the project directory. Open the
 ## Running the iOS application
 
 ## Conclusion
-
+Congratulations! You have successfully built an iOS application that can train a simple audio classification model using on-device training techniques. You can now use the application to train a model on your own voice and perform inference with the trained model. The application is also available on GitHub at  [`onnxruntime-training-examples`](https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/ios)
 
 
 
