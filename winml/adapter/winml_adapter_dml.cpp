@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+ // Licensed under the MIT License.
 
 #pragma once
 #include "adapter/pch.h"
@@ -87,7 +87,7 @@ ORT_API_STATUS_IMPL(
     return status;
   }
   auto factory = options->provider_factories.back().get();
-  
+
   onnxruntime::DmlConfigureProviderFactoryMetacommandsEnabled(factory, metacommands_enabled);
 #endif  // USE_DML
   return nullptr;
