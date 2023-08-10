@@ -48,6 +48,19 @@ void gather_cached_kv(
     const T* value_cache,
     const int* slot_mapping);
 
+void rotary_embedding_neox(
+    const cudaStream_t stream,
+    const int64_t* positions,  // [num_tokens]
+    void* query,               // [num_tokens, num_heads * head_size]
+    void* key,                 // [num_tokens, num_kv_heads * head_size]
+    int head_size,
+    const void* cos_sin_cache,  // [max_position, rot_dim]
+    int num_tokens,
+    int rot_dim,
+    int num_heads,
+    int num_kv_heads,
+    int dtype);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

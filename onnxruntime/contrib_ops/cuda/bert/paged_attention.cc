@@ -79,6 +79,7 @@ PagedAttention<T>::PagedAttention(const OpKernelInfo& info) : CudaKernel(info) {
   num_heads_ = static_cast<int32_t>(num_heads);
   head_size_ = static_cast<int32_t>(head_size);
   ORT_ENFORCE(info.GetAttr("scale", &scale_).IsOK() && scale_ > 0);
+  ORT_ENFORCE(info.GetAttr("mask_type", &mask_type_).IsOK() && (mask_type_ == "normal" || mask_type_ == "alibi" || mask_type_ == "RoPE"));
 }
 
 template <typename T>
@@ -134,6 +135,7 @@ Status PagedAttention<T>::CheckInputs(
   return Status::OK();
 }
 
+
 template <typename T>
 Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* query = context->Input<Tensor>(0);
@@ -142,6 +144,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* key_cache = context->Input<Tensor>(3);
   const Tensor* value_cache = context->Input<Tensor>(4);
   const Tensor* t_input_metadata = context->Input<Tensor>(5);
+  const Tensor* positions = context->Input<Tensor>(6);
+  const Tensor* cos_sin_cache = context->Input<Tensor>(7);
 
   InputMetadata* input_metadata = reinterpret_cast<InputMetadata*>(t_input_metadata->Data<int64_t>()[0]);
 
@@ -149,9 +153,20 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   ORT_ENFORCE(output_shape[1] == num_heads_ * head_size_, "invlaid query shape");
+
   const auto& device_prop = GetDeviceProp();
   PackedAttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(query, key, value, input_metadata, parameters));
+
+  if (mask_type_ == "RoPE") {
+    ORT_ENFORCE(positions != nullptr, "RoPE mask requires position input");
+    ORT_ENFORCE(cos_sin_cache != nullptr, "RoPE mask requires position input");
+    int64_t rot_dim = cos_sin_cache->Shape()[1];
+    ORT_ENFORCE(rot_dim == head_size_, "RoPE mask requires position input with shape [seq_len, head_size]");
+    rotary_embedding_neox(Stream(context), positions->Data<int64_t>(), const_cast<void*>(query->DataRaw()),
+                          const_cast<void*>(key->DataRaw()), head_size_, cos_sin_cache->DataRaw(), output_shape[0],
+                          rot_dim, num_heads_, num_heads_, 1);
+  }
 
   int64_t num_prompt_tokens = std::min(query->Shape()[0], input_metadata->num_prompt_tokens);
   if (num_prompt_tokens > 0) {
