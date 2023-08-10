@@ -1,6 +1,33 @@
-ARG ROCM_VERSION=5.6
+# Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
+FROM ubuntu:22.04
 
-FROM rocm/dev-ubuntu-22.04:${ROCM_VERSION}-complete
+ARG ROCM_VERSION=5.6
+ARG AMDGPU_VERSION=${ROCM_VERSION}
+ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
+
+CMD ["/bin/bash"]
+
+RUN echo "$APT_PREF" > /etc/apt/preferences.d/rocm-pin-600
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg && \
+    curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -   &&\
+    printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
+    printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
+    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends  \
+    sudo   \
+    libelf1   \
+    kmod   \
+    file   \
+    python3   \
+    python3-pip   \
+    rocm-dev   \
+    rocm-libs   \
+    build-essential && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 109 render
 
 RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y libprotobuf\* protobuf-compiler\* && \
     rm -f /usr/local/bin/protoc && apt-get install -y locales unzip wget git && apt-get clean -y
@@ -8,8 +35,6 @@ RUN locale-gen en_US.UTF-8
 RUN update-locale LANG=en_US.UTF-8
 ENV LC_ALL C.UTF-8
 ENV LANG C.UTF-8
-
-ARG ROCM_VERSION
 
 WORKDIR /stage
 
