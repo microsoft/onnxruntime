@@ -180,9 +180,7 @@ inline wchar_t GetPathSep<wchar_t>() {
 
 inline std::basic_string<PATH_CHAR_TYPE> ConcatPathComponent(std::basic_string_view<PATH_CHAR_TYPE> left,
                                                              std::basic_string_view<PATH_CHAR_TYPE> right) {
-  std::basic_string<PATH_CHAR_TYPE> ret(left);
-  ret.append(1, GetPathSep<PATH_CHAR_TYPE>()).append(right);
-  return ret;
+  return std::filesystem::path(left) / std::filesystem::path(right);
 }
 
 #if defined(_WIN32)
@@ -353,12 +351,5 @@ void LoopDir(const std::string& dir_name, T func) {
   closedir(dir);
 }
 #endif
-template <typename T>
-inline T ReplaceFilename(const T& input, const T& new_value) {
-  T ret;
-  auto status = GetDirNameFromFilePath(input, ret);
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-  return ConcatPathComponent(ret, new_value);
-}
 
 }  // namespace onnxruntime
