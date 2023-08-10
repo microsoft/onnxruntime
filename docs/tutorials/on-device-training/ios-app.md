@@ -58,7 +58,7 @@ To follow along with this tutorial, you should have a basic understanding of mac
 - [Xcode](https://developer.apple.com/xcode/)
 - [CocoaPods](https://cocoapods.org/)
 
-> **Note:**  The entire iOS application is also made available on the [`onnxruntime-training-examples`]() GitHub repository. You can clone the repository and follow along with the tutorial.
+> **Note:**  The entire iOS application is also made available on the [`onnxruntime-training-examples`](https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/ios) GitHub repository. You can clone the repository and follow along with the tutorial.
 
 ## Generating the training artifacts
 
@@ -94,9 +94,9 @@ To follow along with this tutorial, you should have a basic understanding of mac
     # those that don't (frozen/non-trainable parameters)
     requires_grad = ["classifier.weight", "classifier.bias"]
     frozen_params = [
-    param.name
-    for param in onnx_model.graph.initializer
-    if param.name not in requires_grad
+        param.name
+        for param in onnx_model.graph.initializer
+        if param.name not in requires_grad
     ]
     ```
 3. ### Generate the training artifacts. 
