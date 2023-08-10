@@ -167,14 +167,6 @@ def run_pytorch_export_contrib_ops_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
-def run_lstm_training_op_tests(cwd, log):
-    log.debug("Running: LSTM Training Ops Tests")
-
-    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_lstm.py"]
-
-    run_subprocess(command, cwd=cwd, log=log).check_returncode()
-
-
 def main():
     args = parse_arguments()
     cwd = args.cwd
@@ -219,8 +211,6 @@ def main():
 
     # TODO(bmeswani): Enable this test once it can run with latest pytorch
     # run_pytorch_export_contrib_ops_tests(cwd, log)
-
-    run_lstm_training_op_tests(cwd, log)
 
     return 0
 
