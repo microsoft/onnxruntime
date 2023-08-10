@@ -1,6 +1,6 @@
 [
   {
-    "name": "Pow with no attributes",
+    "name": "Pow int32 with no attributes",
     "operator": "Pow",
     "attributes": [],
     "cases": [
@@ -23,6 +23,35 @@
             "data": [1, 2, 1, 64, 4, 1728, 9, 16],
             "dims": [2, 4],
             "type": "int32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Pow float32 with no attributes",
+    "operator": "Pow",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[2,4] T[2,4] (float32)",
+        "inputs": [
+          {
+            "data": [1, 2, 1, 8, 2, 12, 9, 2],
+            "dims": [2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [2, 1, 1, 2, 2, 3, 1, 4],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 1, 64, 4, 1728, 9, 16],
+            "dims": [2, 4],
+            "type": "float32"
           }
         ]
       }
