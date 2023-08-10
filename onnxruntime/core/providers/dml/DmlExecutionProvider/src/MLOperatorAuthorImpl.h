@@ -125,6 +125,11 @@ public:
         return (m_shapes != other.m_shapes);
     }
 
+    bool operator<(const EdgeShapes& other) const noexcept
+    {
+        return (m_shapes < other.m_shapes);
+    }
+
  private:
     std::vector<std::vector<uint32_t>> m_shapes;
 };
@@ -555,8 +560,7 @@ class AbiOpKernel : public onnxruntime::OpKernel
     onnxruntime::Status Compute(onnxruntime::OpKernelContext* context) const override;
 
  protected:
-    bool RequiresLazyInitialization() const { return (m_operatorFactory != nullptr) && !m_lazyInitialized; };
-    void SetLazyInitialized() const { m_lazyInitialized = true; };
+    bool RequiresDynamicKernelCreation() const { return (m_operatorFactory != nullptr); };
 
     EdgeShapes GetInputShapes(onnxruntime::OpKernelContext* context) const;
 
@@ -565,28 +569,59 @@ class AbiOpKernel : public onnxruntime::OpKernel
     void InferAndVerifyOutputSizes(gsl::span<const uint32_t> requiredConstantCpuInputs, MLOperatorTensorGetter& constantInputGetter, const EdgeShapes* inputShapes, EdgeShapes& outputShapes) const;
     bool m_requiresInputShapesAtCreation = false;
     bool m_requiresOutputShapesAtCreation = false;
-
-    mutable Microsoft::WRL::ComPtr<IMLOperatorKernel> m_kernel;
-
-    // This is null unless the kernel requires lazy initialization
-    ComPtr<IMLOperatorKernelFactory> m_operatorFactory;
-    mutable volatile bool m_lazyInitialized = false;
-
-    ComPtr<IMLOperatorShapeInferrer> m_shapeInferrer;
-
-    // Used to determine whether anything has changed since creation when shapes or
-    // inputs treated as constant by the operator are not inferred / constant.
-    mutable EdgeShapes m_inputShapesOfKernelInference;
-
+    
     struct TensorContent
     {
         bool isValid;
         std::vector<uint32_t> shape;
         MLOperatorTensorDataType type;
         std::vector<std::byte> data;
+        
+        bool operator<(const TensorContent& other) const noexcept
+        {
+            if (isValid != other.isValid)
+            {
+                return isValid < other.isValid;
+            }
+
+            if (shape != other.shape)
+            {
+                return shape < other.shape;
+            }
+
+            if (type != other.type)
+            {
+                return type < other.type;
+            }
+
+            if (data != other.data)
+            {
+                return data < other.data;
+            }
+
+            return false;
+        }
+    };
+    
+    using ConstantInputSet = std::vector<std::variant<TensorContent, std::vector<TensorContent>>>;
+    
+    mutable Microsoft::WRL::ComPtr<IMLOperatorKernel> m_kernel;
+
+    struct CachedKernel
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
+        std::shared_ptr<EdgeShapes> inferredOutputShapes;
+        uint64_t lastUsedTick = 0;
     };
 
-    mutable std::vector<std::variant<TensorContent, std::vector<TensorContent>>> m_constantInputTensorContentsOfKernel;
+    using KernelMap = std::map<std::pair<EdgeShapes, ConstantInputSet>, CachedKernel>;
+    mutable KernelMap m_kernelMap;
+    mutable uint64_t m_kernelCacheTick = 0;
+
+    // This is null unless the kernel requires lazy initialization
+    ComPtr<IMLOperatorKernelFactory> m_operatorFactory;
+
+    ComPtr<IMLOperatorShapeInferrer> m_shapeInferrer;
 
     mutable std::mutex m_mutex;
     mutable EdgeShapes m_inferredOutputShapes;
@@ -603,10 +638,8 @@ class AbiOpKernel : public onnxruntime::OpKernel
     const AttributeMap* m_defaultAttributes = nullptr;
 
 private:
-    bool RequiredCpuInputChanged(const ComPtr<IMLOperatorTensor>& constantTensor, uint32_t index) const;
-    bool RequiredCpuInputChanged(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensorSequence, uint32_t index) const;
-    void FillConstantInputs(const ComPtr<IMLOperatorTensor>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const;
-    void FillConstantInputs(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const;
+    TensorContent GetConstantInputs(const ComPtr<IMLOperatorTensor>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const;
+    std::vector<TensorContent> GetConstantInputs(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const;
 };
 
 class MLSchemaInferenceContext final : public OpNodeInfoWrapper<
