@@ -86,7 +86,7 @@ interface IndicesHelperTypes {
  * - `type`: access readonly type information, including: `indices`(the type of indices), `value`(the type of value at
  * runtime), `storage`(the type of value at storage) and `tensor`(the tensor type as represented in TensorView).
  * - generate WGSL code for getting indices from offset. Use `offsetToIndices()` for WGSL code snippet to calculate
- * incides from offset, and use `indicesToOffset()` for WGSL code snippet to calculate offset from indices.
+ * indices from offset, and use `indicesToOffset()` for WGSL code snippet to calculate offset from indices.
  * - to manipulate an instance of indices, use `setIndices()` and `getIndices()` to set and get the indices on an
  * indices variable.
  * - to manipulate data, use `set()`/`get()` to access data at the given indices from parameter list, use
@@ -333,8 +333,7 @@ const createIndicesHelper =
           return `${name}[${offset}]=vec2<u32>(u32(${value}), 0u);`;
         } else if (type.storage === 'u32' && type.value === 'vec4<bool>') {
           // bool, components === 4
-          return `${name}[${offset}]=u32(select(0u,0x1u,${value}.x)|select(0u,0x100u,${value}.y)|select(0u,0x10000u,${
-              value}.z)|select(0u,0x1000000u,${value}.w));`;
+          return `${name}[${offset}]=dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(${value}));`;
         } else {
           throw new Error(`not supported combination of storage type ${type.storage} and value type ${type.value} yet`);
         }
