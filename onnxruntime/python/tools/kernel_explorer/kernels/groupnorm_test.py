@@ -131,7 +131,7 @@ class GroupNormNHWCMetric(ke.BandwidthMetric):
             f"num_channels={self.num_channels:<6} groups={self.groups:<4} {self.name}"
         )
         if self.duration > 0:
-            return f"{self.duration:.2f} us, {self.gbps:.2f} GB/s  " + common
+            return f"{self.duration:>6.2f} us, {self.gbps:>5.2f} GB/s  " + common
         return "not supported          " + common
 
 
