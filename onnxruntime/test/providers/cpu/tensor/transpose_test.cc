@@ -49,24 +49,14 @@ void TransposeTest(const std::vector<int64_t>& input_shape,
                    const std::vector<int64_t>* p_perm,
                    const std::vector<int64_t>& expected_shape,
                    const std::vector<T>& expected_vals,
-                   bool is_tensorrt_supported = true,
-                   bool is_openvino_supported = true) {
+                   const std::unordered_set<std::string>& excluded_provider_types = {}) {
   OpTester test("Transpose");
   if (nullptr != p_perm)
     test.AddAttribute("perm", *p_perm);
   test.AddInput<T>("X", input_shape, input_vals);
   test.AddOutput<T>("Y", expected_shape, expected_vals);
 
-  // Disable TensorRT on unsupported tests
-  std::unordered_set<std::string> excluded_providers;
-  if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);
-  }
-  if (!is_openvino_supported) {
-    excluded_providers.insert(kOpenVINOExecutionProvider);
-  }
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
 // Test 2 dimensional transpose, with no permutation attribute specified
@@ -82,7 +72,8 @@ TEST(TransposeOpTest, TwoDimNoAttr) {
       2.0f, 5.0f,
       3.0f, 6.0f};
 
-  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals, false);  // TensorRT: SegFault error
+  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: SegFault error
 }
 
 TEST(TransposeOpTest, TwoDimNoAttrStr) {
@@ -156,7 +147,7 @@ TEST(TransposeOpTest, TwoDim_int16) {
       2, 5,
       3, 6};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kOpenVINOExecutionProvider});
 }
 
 TEST(TransposeOpTest, TwoDim_mlfloat16) {
@@ -172,7 +163,7 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
        MLFloat16::FromBits(static_cast<uint16_t>(2)), MLFloat16::FromBits(static_cast<uint16_t>(5)),
        MLFloat16::FromBits(static_cast<uint16_t>(3)), MLFloat16::FromBits(static_cast<uint16_t>(6))};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 #if defined(USE_DNNL)
@@ -273,7 +264,7 @@ TEST(TransposeOpTest, TwoDim_int8) {
                                        2, 5,
                                        3, 6};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 TEST(TransposeOpTest, TwoDimStr) {
@@ -327,7 +318,8 @@ TEST(TransposeOpTest, Transpose021) {
       2.3f, 5.3f,
       3.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, Transpose120) {
@@ -356,7 +348,8 @@ TEST(TransposeOpTest, Transpose120) {
       5.0f, 5.1f, 5.2f, 5.3f,
       6.0f, 6.1f, 6.2f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: illegal error
 }
 
 // test when the suffix size is > 1 (last dimension is not moved)
@@ -388,7 +381,8 @@ TEST(TransposeOpTest, Transpose102) {
       4.2f, 5.2f, 6.2f,
       4.3f, 5.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, TransposeReshape) {
@@ -421,7 +415,8 @@ TEST(TransposeOpTest, TransposeReshape) {
       1.3f, 2.3f, 3.3f,
       4.3f, 5.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, ThreeDimStr) {
@@ -482,7 +477,8 @@ TEST(TransposeOpTest, SixDim) {
     return v;
   }();
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kQnnExecutionProvider});  // Error: Failed to finalize QNN graph.
 }
 
 template <typename T>
@@ -501,7 +497,8 @@ static void NumericNCHW2NHWC() {
       3, 7, 11,
       4, 8, 12};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 TEST(TransposeOpTest, NCHW2NHWC) {
   NumericNCHW2NHWC<int8_t>();
@@ -525,7 +522,7 @@ TEST(TransposeOpTest, NCHW2NHWCStr) {
       "3", "7", "11",
       "4", "8", "12"};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 template <typename T>
@@ -559,7 +556,8 @@ static void NumericNHWC2NCHW() {
       10, 12,
       14, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(TransposeOpTest, NHWC2NCHW) {
@@ -584,7 +582,7 @@ TEST(TransposeOpTest, NHWC2NCHW_String) {
       "2", "5", "8", "11",
       "3", "6", "9", "12"};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 // test to cover memcpy from single axis moving inwards path
@@ -618,7 +616,7 @@ TEST(TransposeOpTest, SingleAxisMovingInwardsBlockCopy) {
       7, 8,
       15, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 TEST(TransposeOpTest, NDim) {
