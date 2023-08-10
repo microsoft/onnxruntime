@@ -49,7 +49,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
  */
 export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
-  initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
+  initOrt(10, logLevelStringToEnum(env.logLevel));
 
   if (!BUILD_DEFS.DISABLE_WEBGPU) {
     // init JSEP if available
@@ -158,6 +158,12 @@ export const createSessionFinalize =
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
         allocs.forEach(alloc => wasm._free(alloc));
+        try {
+          // @ts-ignore
+          wasm.FS.unlink('/home/web_user/weights.pb');
+        } catch (e) {
+          // do nothing
+        }
       }
     };
 

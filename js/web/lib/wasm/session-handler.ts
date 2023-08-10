@@ -36,13 +36,13 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
         const reader = weightsResponse.body!.getReader();
 
         let offset = 0;
-        const weightsOffset = wasm._malloc(weightsSize);
+        const weightsMemory = new WebAssembly.Memory({ initial: Math.ceil(weightsSize / 65536) });
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
             break;
           }
-          const memory = new Uint8Array(wasm.HEAPU8.buffer, Number(weightsOffset) + offset, value.byteLength);
+          const memory = new Uint8Array(weightsMemory.buffer, offset, value.byteLength);
           memory.set(new Uint8Array(value.buffer));
           offset += value.byteLength;
         }
@@ -50,7 +50,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
         const file = wasm.FS.create('/home/web_user/weights.pb');
 
         // @ts-ignore
-        file.contents = new Uint8Array(wasm.HEAPU8.buffer, weightsOffset, weightsSize);
+        file.contents = new Uint8Array(weightsMemory.buffer);
         // @ts-ignore
         file.usedBytes = weightsSize;
 
