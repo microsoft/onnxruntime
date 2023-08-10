@@ -186,7 +186,7 @@ static void RunQDQResizeOpTest(const TestInputDef<float>& input_def,
 
 // Upsample that uses "round_prefer_floor" as the "nearest_mode".
 // coordinate_transformation_mode: "half_pixel"
-TEST_F(QnnCPUBackendTests, ResizeUpsampleNearestHalfPixel_rpf) {
+TEST_F(QnnCPUBackendTests, DISABLED_ResizeUpsampleNearestHalfPixel_rpf) {
   RunCPUResizeOpTest(TestInputDef<float>({1, 2, 7, 5}, false, -10.0f, 10.0f),  // Random input w/ range [-10, 10]
                      {1, 2, 21, 10},                                           // Sizes
                      "nearest",

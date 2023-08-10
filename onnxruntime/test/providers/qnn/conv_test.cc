@@ -575,7 +575,6 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadLower) {
                             13);
 }
 
-// TODO: re-enable tests once HTP issues are resolved
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input1_padding_bias_initializer) {
   RunHTPConvOpTest<uint8_t>("Conv",
                             TestInputDef<float>({1, 3, 60, 452}, false, 0.f, 10.f),        // Dynamic input
@@ -600,7 +599,6 @@ TEST_F(QnnHTPBackendTests, ConvU8S32_large_input2_bias_initializer) {
                             ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {
   RunHTPConvOpTest<uint8_t>("Conv",
                             TestInputDef<float>({1, 3, 768, 1152}, false, 0.f, 10.f),  // Dynamic input

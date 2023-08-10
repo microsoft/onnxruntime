@@ -211,6 +211,27 @@ Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const Nod
                 "QNN EP: coordinate transformation mode '", coordinate_mode.c_str(), "' not supported for Resize op.",
                 "Only 'align_corners' and 'half_pixel' are supported.");
 
+  // Check for a valid "nearest_mode" if the mode is "nearest".
+  if (resize_mode == "nearest") {
+    // NOTE: QNN's ResizeNearestNeighbor operator does not have a way to specify rounding (i.e., "nearest_mode").
+    // The output of the QNN ResizeNearestNeighbor operator is not always equivalent to ONNX's Resize
+    // operator with any single specific "nearest_mode".
+    //
+    // For some input/output shapes, QNN's ResizeNearestNeighbor is equivalent to ONNX's Resize with "round_prefer_floor".
+    // For other shapes, QNN's ResizeNearestNeighbor is equivalent to ONNX Resize with "round_prefer_ceil".
+    //
+    // From unit tests, I've found a relationship between input/output shapes and the equivalent ONNX "nearest_mode".
+    // If the new and old spatial dimensions are evenly divisible, the "nearest_mode" is "round_prefer_floor".
+    // Otherwise, the "nearest_mode" is "round_prefer_ceil".
+    //
+    // This relationship is probably incomplete/wrong.
+    //
+    // TODO: Ask Qualcomm what the correct "nearest_mode" should be,
+    // OR use QNN's own Resize operator once it works on QnnCpu.
+    const std::string& nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
+    ORT_RETURN_IF_NOT("floor" == nearest_mode, "QNN Resize only supports nearest_mode: floor!");  // This is wrong!
+  }
+
   auto& input_0 = node_unit.Inputs()[0];
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
