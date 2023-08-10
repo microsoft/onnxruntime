@@ -209,14 +209,15 @@ namespace Dml
 
     // Creates a partition for a node which is not a DML graph node, and finalizes partitions
     // which are inputs of the new partition.
-    std::unique_ptr<GraphPartition> CreateNonGraphNodePartitionAndFinalizeInputs(
+    std::unique_ptr<GraphPartition> CreatePartitionAndFinalizeInputs(
         const onnxruntime::Node& node,
         bool isDmlNode,
+        bool isDmlGraphPartitionNode,
         std::unordered_map<std::string, GraphPartition*>& nodeNameToPartitionMap
     )
     {
         std::unique_ptr<GraphPartition> partition = std::make_unique<GraphPartition>();
-        partition->SetIsDmlGraphPartition(false);
+        partition->SetIsDmlGraphPartition(isDmlGraphPartitionNode);
         partition->SetIsDmlPartition(isDmlNode);
         partition->AddNodeIndex(node.Index());
 
@@ -383,7 +384,7 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
-        std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph)
+        gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes)
     {
         // Nodes are uniquely identified by the name of their first output argument
         std::vector<std::unique_ptr<GraphPartition>> partitions;
@@ -419,6 +420,8 @@ namespace Dml
 
         // Check whether this graph is a subgraph, or contains any node with a subgraph.
         bool modelUsesSubgraph = ModelUsesSubgraph(graph);
+
+        uint32_t splittingNodeIndex = 0;
 
         // Build up partitions while traversing the graph.
         for (size_t nodeIndex : toplogicalOrder)
@@ -456,12 +459,14 @@ namespace Dml
             // anyhow due to CPU/GPU copies.
             if (modelUsesSubgraph || !isDmlGraphNode)
             {
-                if (onNodeUnsupportedInGraph)
-                {
-                    onNodeUnsupportedInGraph(node);
-                }
+                partitions.push_back(CreatePartitionAndFinalizeInputs(node, isDmlNode, false, nodeNameToPartitionMap));
+                continue;
+            }
 
-                partitions.push_back(CreateNonGraphNodePartitionAndFinalizeInputs(node, isDmlNode, nodeNameToPartitionMap));
+            if (splittingNodeIndex < additionalSplittingNodes.size() && additionalSplittingNodes[splittingNodeIndex] == nodeIndex)
+            {
+                partitions.push_back(CreatePartitionAndFinalizeInputs(node, isDmlNode, isDmlGraphNode, nodeNameToPartitionMap));
+                ++splittingNodeIndex;
                 continue;
             }
 
