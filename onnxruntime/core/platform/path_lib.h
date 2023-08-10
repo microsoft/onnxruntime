@@ -7,6 +7,7 @@
 #include <sstream>
 #include <assert.h>
 #include <stdexcept>
+#include <filesystem>
 #if defined(_AIX)
 #include <sys/stat.h>
 #include <iostream>
