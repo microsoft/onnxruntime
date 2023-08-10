@@ -151,8 +151,10 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
     VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
     *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
   }
+
   VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
   *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
+
 
   VecT* output_val = reinterpret_cast<VecT*>(&output_v);
 
@@ -168,6 +170,11 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
   if (ILP * threadIdx.x < ld) {
 #pragma unroll
     for (int i = 0; i < ILP; i++) {
+      gamma_v[i] = static_cast<T>(gamma[threadIdx.x * ILP]);
+
+      if (beta != nullptr){
+      beta_v[i] = static_cast<T>(beta[threadIdx.x * ILP]);
+      }
       output_v[i] = (beta != nullptr)
                         ? (gamma_v[i]) * (input_v[i] - mu) * rsigma + beta_v[i]
                         : gamma_v[i] * (input_v[i] - mu) * rsigma;

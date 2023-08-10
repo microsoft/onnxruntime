@@ -139,9 +139,11 @@ Status SkipLayerNorm<T, V>::Compute(OpKernelContext* p_ctx) const {
             value_cast += static_cast<float>(bias_data[h]);
           }
 
+
+
           if (nullptr != p_skip_input_bias_add_output_data) {
-            float p_skip_input_bias_add_output_data_cast __attribute__((unused)) = static_cast<float>(p_skip_input_bias_add_output_data[h]);
-            p_skip_input_bias_add_output_data_cast = value_cast;
+            float p_skip_input_bias_add_output_data_cast[h] __attribute__((unused)) = {static_cast<float>(p_skip_input_bias_add_output_data[h])};
+            p_skip_input_bias_add_output_data_cast[h] = value_cast;
           }
 
           p_output[h] = value_cast;
@@ -154,9 +156,10 @@ Status SkipLayerNorm<T, V>::Compute(OpKernelContext* p_ctx) const {
 
         for (int64_t h = 0; h < hidden_size; h++) {
           if (nullptr == beta_data) {
-            p_output[h] = (p_output[h] - mean_cast) / mean_square * static_cast<float>(gamma_data[h]);
+            p_output[h] = (p_output[h] - mean_cast) / mean_square_cast * static_cast<float>(gamma_data[h]);
           } else {
-            p_output[h] = (p_output[h] - mean_cast) / mean_square_cast * static_cast<float>(gamma_data[h]) + static_cast<float>(beta_data[h]) ;
+            p_output[h] = (p_output[h] - mean_cast) / mean_square_cast * static_cast<float>(gamma_data[h]) + static_cast<float>(beta_data[h]);
+            printf("output: %f\n", (float)p_output[h]);
           }
         }
       },
