@@ -330,6 +330,7 @@ def parse_arguments():
         "CMake setup. Delete CMakeCache.txt if needed",
     )
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
     parser.add_argument(
         "--android_abi",
@@ -401,7 +402,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.37", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.44", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -2447,6 +2448,8 @@ def main():
                     toolset += ",cuda=" + args.cuda_version
                 elif args.cuda_home:
                     toolset += ",cuda=" + args.cuda_home
+                if args.windows_sdk_version:
+                    target_arch += ",version=" + args.windows_sdk_version
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")

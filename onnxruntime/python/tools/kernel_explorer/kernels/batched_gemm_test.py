@@ -138,14 +138,14 @@ class BatchedGemmMetric(ke.ComputeMetric):
     batch: int
 
     def report(self):
-        prefix = (
-            f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} batch={self.batch:<3} "
+        common = (
+            f"{self.dtype} {transab_to_suffix((self.transa, self.transb))} "
+            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} batch={self.batch:<3} {self.name}"
         )
         if self.duration <= 0:
-            return prefix + "not supported"
+            return "not supported          " + common
 
-        return prefix + f"{self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
+        return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):
@@ -173,8 +173,8 @@ def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int,
         duration_ms = -1
         if my_gemm.SelectOp(impl):
             duration_ms = my_gemm.Profile()
-        FLOPs = batch * m * k * n * 2  # noqa: N806
-        ke.report(BatchedGemmMetric(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k, batch))
+        flops = batch * m * k * n * 2
+        ke.report(BatchedGemmMetric(impl, dtype, duration_ms, flops, transa, transb, m, n, k, batch))
 
 
 def profile_with_args(dtype, transa, transb, m, n, k, batch, sort):
