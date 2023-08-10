@@ -50,8 +50,9 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
     return false;
   }
 
-  // Type is either "tensor(uint8)" or  "tensor(int8)"
-  const auto self_zp_type = *self->InputDefs()[InputIndex::ZERO_POINT_ID]->Type();
+  // Only support either "tensor(uint8)" or "tensor(int8)"
+  const std::string& self_zp_type = *self->InputDefs()[InputIndex::ZERO_POINT_ID]->Type();
+
   // child should be a Q, and have only one child, have the same type as self, and cannot be a graph output
   child_index = self->OutputEdgesBegin()->GetNode().Index();
   const Node* child = graph.GetNode(child_index);
@@ -88,34 +89,16 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
       !QDQ::IsQDQPairSupported(*child, *grandchild, get_constant_initializer, graph.ModelPath())) {
     return false;
   }
-  bool skip_reset = false;
-  float new_scale = 0.0f;
+
   if (self_zp_type == "tensor(uint8)") {
-    uint8_t new_zero_point = 0;
-    if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point, skip_reset)) {
-      return false;
-    }
-    if (skip_reset) {
-      return true;
-    }
-    ApplyNewInputValue(graph, *grandchild, InputIndex::SCALE_ID, new_scale);
-    ApplyNewInputValue(graph, *parent, InputIndex::SCALE_ID, new_scale);
-    ApplyNewInputValue(graph, *grandchild, InputIndex::ZERO_POINT_ID, new_zero_point);
-    ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, new_zero_point);
-  } else {
-    int8_t new_zero_point = 0;
-    if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point, skip_reset)) {
-      return false;
-    }
-    if (skip_reset) {
-      return true;
-    }
-    ApplyNewInputValue(graph, *grandchild, InputIndex::SCALE_ID, new_scale);
-    ApplyNewInputValue(graph, *parent, InputIndex::SCALE_ID, new_scale);
-    ApplyNewInputValue(graph, *grandchild, InputIndex::ZERO_POINT_ID, new_zero_point);
-    ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, new_zero_point);
+    return ResetParentAndGrandchildZeroPointAndScale<uint8_t>(graph, *self, *child, *parent, *grandchild);
   }
-  return true;
+
+  if (self_zp_type == "tensor(int8)") {
+    return ResetParentAndGrandchildZeroPointAndScale<int8_t>(graph, *self, *child, *parent, *grandchild);
+  }
+
+  return false;  // Unsupported zero-point type
 }
 
 template <typename T>
@@ -186,5 +169,26 @@ void DoubleQDQPairsRemover::ApplyNewInputValue(Graph& graph, Node& node, const I
   new_input_tensor.set_name(new_name);
   NodeArg& new_input = graph_utils::AddInitializer(graph, new_input_tensor);
   graph_utils::ReplaceNodeInput(node, index, new_input);
+}
+
+template <typename ZeroPointType>
+bool DoubleQDQPairsRemover::ResetParentAndGrandchildZeroPointAndScale(Graph& graph, const Node& self,
+                                                                      const Node& child, Node& parent,
+                                                                      Node& grandchild) {
+  bool skip_reset = false;
+  float new_scale = 0.0f;
+  ZeroPointType new_zero_point = 0;
+  if (!FindNewZeroPointAndScale(graph, self, child, new_scale, new_zero_point, skip_reset)) {
+    return false;
+  }
+  if (skip_reset) {
+    return true;
+  }
+  ApplyNewInputValue(graph, grandchild, InputIndex::SCALE_ID, new_scale);
+  ApplyNewInputValue(graph, parent, InputIndex::SCALE_ID, new_scale);
+  ApplyNewInputValue(graph, grandchild, InputIndex::ZERO_POINT_ID, new_zero_point);
+  ApplyNewInputValue(graph, parent, InputIndex::ZERO_POINT_ID, new_zero_point);
+
+  return true;
 }
 }  // namespace onnxruntime

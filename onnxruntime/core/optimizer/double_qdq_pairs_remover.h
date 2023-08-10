@@ -50,5 +50,10 @@ class DoubleQDQPairsRemover : public GraphTransformer {
       Node& node,
       const InputIndex& index,
       T value);
+
+  template <typename ZeroPointType>
+  static bool ResetParentAndGrandchildZeroPointAndScale(Graph& graph, const Node& self,
+                                                        const Node& child, Node& parent,
+                                                        Node& grandchild);
 };
 }  // namespace onnxruntime
