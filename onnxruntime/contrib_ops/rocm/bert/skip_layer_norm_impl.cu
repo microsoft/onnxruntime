@@ -41,7 +41,7 @@ namespace rocm {
 
 template <typename T, typename U, typename V>
 Status LaunchSkipLayerNormKernel(
-    RocmTuningContext* tuning_ctx, hipStream_t stream, V* output, T* skip_input_bias_add_output, const T* input,
+    RocmTuningContext* tuning_ctx, Stream* stream, V* output, T* skip_input_bias_add_output, const T* input,
     const T* skip, const V* gamma, const V* beta, const T* bias, float epsilon, int ld, int element_count) {
   // this must be true because element_count is the total size of the tensor
   assert(element_count % ld == 0);
@@ -58,13 +58,13 @@ Status LaunchSkipLayerNormKernel(
 }
 
 template Status LaunchSkipLayerNormKernel<float, float, float>(
-    RocmTuningContext* tuning_ctx, hipStream_t stream, float* output, float* skip_input_bias_add_output, const float* input,
+    RocmTuningContext* tuning_ctx, Stream* stream, float* output, float* skip_input_bias_add_output, const float* input,
     const float* skip, const float* gamma, const float* beta,
     const float* bias, float epsilon, int ld,
     int element_count);
 
 template Status LaunchSkipLayerNormKernel<half, float, half>(
-    RocmTuningContext* tuning_ctx, hipStream_t stream, half* output, half* skip_input_bias_add_output, const half* input,
+    RocmTuningContext* tuning_ctx, Stream* stream, half* output, half* skip_input_bias_add_output, const half* input,
     const half* skip, const half* gamma, const half* beta,
     const half* bias, float epsilon, int ld,
     int element_count);

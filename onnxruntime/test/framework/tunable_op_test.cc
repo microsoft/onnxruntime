@@ -117,7 +117,7 @@ class TestTimer : public ITimer<StreamT> {
   TimePoint end_;
 };
 
-using OpParams = OpParams<TestTuningContext, StreamT>;
+using OpParams = OpParams<TestTuningContext, void*>;
 
 template <typename ParamsT>
 using Op = Op<ParamsT>;
@@ -129,7 +129,7 @@ using TunableOp = TunableOp<ParamsT, TestTimer>;
 
 struct VecAddParams : OpParams {
   VecAddParams(const int* a_buf, const int* b_buf, int* c_buf, int num_elem, int beta)
-      : OpParams(nullptr, StreamT{}),
+      : OpParams(nullptr, nullptr),
         a(a_buf),
         b(b_buf),
         c(c_buf),

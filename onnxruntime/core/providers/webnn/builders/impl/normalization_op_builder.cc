@@ -187,7 +187,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
 }
 
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   constexpr static std::string_view op_types[] =

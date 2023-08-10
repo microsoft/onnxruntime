@@ -64,10 +64,15 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Atan", {}},
           {"Asin", {}},
           {"Sin", {}},
+          {"Cos", {}},
           {"Sign", {}},
           {"Tanh", {}},
           {"Exp", {}},
-          {"LRN", {}}};
+          {"LRN", {}},
+          {"Ceil", {}},
+          {"Abs", {}},
+          {"DepthToSpace", {}},
+          {"SpaceToDepth", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},

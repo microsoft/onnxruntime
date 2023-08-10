@@ -22,14 +22,16 @@ Status SoftmaxBlockwiseOp(const SoftmaxParams<InputT, OutputT>* params) {
   dim3 block = SoftMax_getBlockSize(VecSize, params->softmax_elements);
   if (params->is_log_softmax) {
     softmax_block_forward<VecSize, InputT, AccT, OutputT, LogSoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(AccT), params->stream>>>(params->output, const_cast<InputT*>(params->input),
-                                                                  params->softmax_elements, params->input_stride,
-                                                                  params->output_stride);
+        <<<grid, block, block.x * sizeof(AccT), params->StreamHandle()>>>(
+            params->output, const_cast<InputT*>(params->input),
+            params->softmax_elements, params->input_stride,
+            params->output_stride);
   } else {
     softmax_block_forward<VecSize, InputT, AccT, OutputT, SoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(AccT), params->stream>>>(params->output, const_cast<InputT*>(params->input),
-                                                                  params->softmax_elements, params->input_stride,
-                                                                  params->output_stride);
+        <<<grid, block, block.x * sizeof(AccT), params->StreamHandle()>>>(
+            params->output, const_cast<InputT*>(params->input),
+            params->softmax_elements, params->input_stride,
+            params->output_stride);
   }
   return HIP_CALL(hipGetLastError());
 }
@@ -58,12 +60,13 @@ Status SoftmaxWarpwiseStaticSelection(const SoftmaxParams<InputT, OutputT>* para
     dim3 threads(warp_size, warps_per_block, 1);
     // Launch code would be more elegant if C++ supported FOR CONSTEXPR
     switch (log2_elements) {
-#define LAUNCH_SOFTMAX_WARP_FORWARD(L2E)                                                                         \
-  case L2E:                                                                                                      \
-    softmax_warp_forward<InputT, OutputT, AccT, L2E>                                                             \
-        <<<dim3(blocks), dim3(threads), 0, params->stream>>>(params->output, params->input, params->batch_count, \
-                                                             params->input_stride, params->softmax_elements,     \
-                                                             params->is_log_softmax);                            \
+#define LAUNCH_SOFTMAX_WARP_FORWARD(L2E)                              \
+  case L2E:                                                           \
+    softmax_warp_forward<InputT, OutputT, AccT, L2E>                  \
+        <<<dim3(blocks), dim3(threads), 0, params->StreamHandle()>>>( \
+            params->output, params->input, params->batch_count,       \
+            params->input_stride, params->softmax_elements,           \
+            params->is_log_softmax);                                  \
     break;
       LAUNCH_SOFTMAX_WARP_FORWARD(0);   // 1
       LAUNCH_SOFTMAX_WARP_FORWARD(1);   // 2
@@ -90,14 +93,16 @@ Status SoftmaxBlockwiseStaticSelection(const SoftmaxParams<InputT, OutputT>* par
   dim3 block = SoftMax_getBlockSize(ILP, params->softmax_elements);
   if (params->is_log_softmax) {
     softmax_block_forward<ILP, InputT, AccT, OutputT, LogSoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(AccT), params->stream>>>(params->output, const_cast<InputT*>(params->input),
-                                                                  params->softmax_elements, params->input_stride,
-                                                                  params->output_stride);
+        <<<grid, block, block.x * sizeof(AccT), params->StreamHandle()>>>(
+            params->output, const_cast<InputT*>(params->input),
+            params->softmax_elements, params->input_stride,
+            params->output_stride);
   } else {
     softmax_block_forward<ILP, InputT, AccT, OutputT, SoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(AccT), params->stream>>>(params->output, const_cast<InputT*>(params->input),
-                                                                  params->softmax_elements, params->input_stride,
-                                                                  params->output_stride);
+        <<<grid, block, block.x * sizeof(AccT), params->StreamHandle()>>>(
+            params->output, const_cast<InputT*>(params->input),
+            params->softmax_elements, params->input_stride,
+            params->output_stride);
   }
   return HIP_CALL(hipGetLastError());
 }

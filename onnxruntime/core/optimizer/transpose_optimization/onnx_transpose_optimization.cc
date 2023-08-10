@@ -927,7 +927,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
 }
 
 static bool HandleResize([[maybe_unused]] HandlerArgs& args) {
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN) || defined(USE_WEBNN)
   // The CUDA Resize kernel requires that the input is NCHW, so we can't push a Transpose through a Resize
   // in ORT builds with CUDA enabled.
   // The ROCm EP is generated from the CUDA EP kernel so the same applies to builds with ROCm enabled.

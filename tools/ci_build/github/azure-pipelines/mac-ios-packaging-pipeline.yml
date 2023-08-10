@@ -15,7 +15,7 @@ name: "$(Date:yyyyMMdd)$(Rev:rrr)"  # build number format
 stages:
 - stage: IosPackaging_SetCommonVariables
   dependsOn: []
-  
+
   variables:
     skipComponentGovernanceDetection: true
 
@@ -110,8 +110,11 @@ stages:
     # once that's done cleanup the copy of the pod zip file
     - script: |
         set -e -x
+
+        SIMULATOR_DEVICE_ID=$(set -o pipefail; python3 tools/ci_build/github/apple/get_simulator_device_info.py | jq --raw-output '.device_udid')
+
         cp "$(Pipeline.Workspace)/ios_packaging_artifacts_full/pod-archive-onnxruntime-c-$(ortPodVersion).zip" swift/
         export ORT_IOS_POD_LOCAL_PATH="swift/pod-archive-onnxruntime-c-$(ortPodVersion).zip"
-        xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator,name=iPhone 14'
+        xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator,id=${SIMULATOR_DEVICE_ID}'
         rm swift/pod-archive-onnxruntime-c-$(ortPodVersion).zip
       displayName: "Test Package.swift usage"
