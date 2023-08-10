@@ -846,7 +846,7 @@ TEST(BatchNormTest, BatchNorm2d_bfloat16) {
 #endif  //  USE_DNNL
 
 // TODO fix flaky test for CUDA
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING_OPS
 TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
@@ -936,7 +936,7 @@ TEST(BatchNormTest, ForwardTrainingTestOpset15) {
            {kCudaExecutionProvider, kRocmExecutionProvider,
             kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
-#endif  // ENABLE_TRAINING_CORE
+#endif  // ENABLE_TRAINING_OPS
 
 }  // namespace test
 }  // namespace onnxruntime
