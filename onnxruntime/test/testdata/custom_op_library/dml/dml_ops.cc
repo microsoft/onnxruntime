@@ -33,9 +33,8 @@ void KernelOne(const Ort::Custom::DmlContext& dml_ctx,
   // todo - implement element-wise add for DML
 }
 
-static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "DMLExecutionProvider", KernelOne)};
-
 void RegisterOps(Ort::CustomOpDomain& domain) {
+  static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "DMLExecutionProvider", KernelOne)};
   domain.Add(c_CustomOpOne.get());
 }
 
