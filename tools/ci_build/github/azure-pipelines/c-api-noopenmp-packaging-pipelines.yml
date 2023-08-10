@@ -243,6 +243,13 @@ stages:
         filePath: tools/ci_build/github/linux/build_rocm_c_api_package.sh
         arguments: -S $(Build.SourcesDirectory) -B $(Build.BinariesDirectory) -V $(RocmVersion)
 
+    - script: |
+       set -e -x
+       mkdir $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts for CustomOp'  # libcustom_op_library.so from cpu build is built with fp8, ROCm does not support it.
+
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
@@ -1053,6 +1060,7 @@ stages:
     StageSuffix: 'ROCm'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.ROCm'
     SpecificArtifact: ${{ parameters.specificArtifact }}
+    CustomOpArtifactName: 'onnxruntime-linux-x64-rocm'
     BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/dml-vs-2022.yml
