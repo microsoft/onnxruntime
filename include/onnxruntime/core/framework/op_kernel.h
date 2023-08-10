@@ -24,14 +24,8 @@
 #include "core/framework/tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/gsl.h"
-#include "onnx/onnx-operators_pb.h"
-#include "onnx/onnx_pb.h"
 namespace onnxruntime {
 class OpKernelContext;
 }

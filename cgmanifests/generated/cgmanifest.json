@@ -82,7 +82,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "b113f24842c6e97fe3e352084db09a6e278593ae",
+          "commitHash": "a896e3d066448b3530dbcaa48869fafefd738f57",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"

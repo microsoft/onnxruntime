@@ -9,6 +9,8 @@
 #include "core/graph/contrib_ops/nhwc_inference_context.h"
 #include "core/graph/contrib_ops/ms_schema.h"  // contrib::GetOpSchema
 
+#ifndef ORT_MINIMAL_BUILD
+
 namespace onnxruntime {
 namespace contrib {
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearAveragePool);
@@ -157,3 +159,5 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
 
 }  // namespace internal_nhwc_onnx
 }  // namespace onnxruntime
+
+#endif  // !ORT_MINIMAL_BUILD
