@@ -92,6 +92,10 @@ std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() co
 std::vector<std::unique_ptr<ComputeCapability>>
 VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                         const IKernelLookup& /*kernel_lookup*/) const {
+  if (graph.IsSubgraph()) {
+    // VITIS AI EP not support sungraph. Assigned to CPU.
+    return {};
+  }
   auto opt_str = info_.get_json_config_str();  // String
   execution_providers_ =
       std::make_unique<my_ep_t>(compile_onnx_model(graph, *GetLogger(), opt_str));
