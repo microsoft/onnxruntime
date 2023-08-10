@@ -54,20 +54,18 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     ORT_RETURN_IF_NOT(scale_size == 1, "The scale size should be one.");
   }
 
-  if (input_defs.size() >= 3) {
-    // Inputs contain bias, bias input's shape should be the same as scale input.
+  if (input_defs.size() >= 3 && !input_defs[2]->Name().empty()) {
+    // Bias input exists, and bias's shape should be the same as scale's shape.
     std::vector<int64_t> bias_shape;
     ORT_RETURN_IF_NOT(GetShape(*input_defs[2], bias_shape, logger), "Cannot get bias shape");
     ORT_RETURN_IF_NOT(bias_shape == scale_shape, "The bias' shape should be equal to scale's shape.");
   }
 
-  std::vector<size_t> new_scale_shape;
+  std::vector<uint32_t> new_scale_shape;
   if (scale_size < rank) {
     if (op_type == "BatchNormalization") {
       scale_shape.insert(scale_shape.begin(), 1);
-      for (size_t i = 2; i < rank; i++) {
-        scale_shape.insert(scale_shape.begin() + i, 1);
-      }
+      scale_shape.insert(scale_shape.end(), rank - 2, 1);
     } else if (op_type == "LayerNormalization") {
       // Align right with leading ones.
       scale_shape.insert(scale_shape.begin(), rank - scale_size, 1);
@@ -87,14 +85,14 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
 
     std::transform(scale_shape.cbegin(), scale_shape.cend(),
                    std::back_inserter(new_scale_shape),
-                   [](int64_t dim) -> size_t { return narrow<size_t>(dim); });
+                   [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
     emscripten::val reshape_scale = model_builder.GetOperand(input_defs[1]->Name());
     emscripten::val reshape_output_scale =
         model_builder.GetBuilder().call<emscripten::val>("reshape", reshape_scale, emscripten::val::array(new_scale_shape));
     options.set("scale", reshape_output_scale);
 
-    if (input_defs.size() >= 3) {
-      // Inputs contain bias, bias' shape is equal to scale's shape.
+    if (input_defs.size() >= 3 && !input_defs[2]->Name().empty()) {
+      // Bias input exists, and bias's shape is the same as scale's shape.
       emscripten::val reshape_bias = model_builder.GetOperand(input_defs[2]->Name());
       emscripten::val reshape_output_bias =
           model_builder.GetBuilder().call<emscripten::val>("reshape", reshape_bias, emscripten::val::array(new_scale_shape));
@@ -102,8 +100,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     }
   } else {
     options.set("scale", model_builder.GetOperand(input_defs[1]->Name()));
-    if (input_defs.size() >= 3) {
-      // Inputs contain bias, bias' shape is equal to scale's shape.
+    if (input_defs.size() >= 3 && !input_defs[2]->Name().empty()) {
+      // Bias input exists, and bias's shape is the same as scale's shape.
       options.set("bias", model_builder.GetOperand(input_defs[2]->Name()));
     }
   }
@@ -122,8 +120,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     emscripten::val reshape_variance =
         model_builder.GetBuilder().call<emscripten::val>("reshape", variance, emscripten::val::array(new_scale_shape));
 
-    std::vector<size_t> axes = {0};
-    for (size_t i = 2; i < rank; i++) {
+    std::vector<uint32_t> axes = {0};
+    for (uint32_t i = 2; i < rank; i++) {
       axes.push_back(i);
     }
 
@@ -134,13 +132,13 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   } else if (op_type == "LayerNormalization") {
     int64_t axis = helper.Get("axis", -1);
     axis = HandleNegativeAxis(axis, rank);
-    std::vector<size_t> axes(rank - narrow<size_t>(axis));
+    std::vector<uint32_t> axes(rank - SafeInt<uint32_t>(axis));
     std::iota(axes.begin(), axes.end(), axis);
     options.set("axes", emscripten::val::array(axes));
     output = model_builder.GetBuilder().call<emscripten::val>("meanVarianceNormalization", input, options);
   } else if (op_type == "InstanceNormalization") {
-    std::vector<size_t> axes;
-    for (size_t i = 2; i < rank; i++) {
+    std::vector<uint32_t> axes;
+    for (uint32_t i = 2; i < rank; i++) {
       axes.emplace_back(i);
     }
     options.set("axes", emscripten::val::array(axes));
@@ -148,21 +146,21 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   } else if (op_type == "GroupNormalization") {
     ORT_RETURN_IF_NOT(helper.HasAttr("num_groups"), "GroupNormalization num_group must be provided.");
     int32_t group_count = helper.Get("num_groups", -1);
-    std::vector<size_t> orig_shape, new_shape;
+    std::vector<uint32_t> orig_shape, new_shape;
     std::transform(input_shape.cbegin(), input_shape.cend(),
                    std::back_inserter(orig_shape),
-                   [](int64_t dim) -> size_t { return narrow<size_t>(dim); });
+                   [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
     // Add N and Group.
     ORT_RETURN_IF_NOT(rank >= 2, "Input for GroupNormalization cannot be a scalar or 1D");
-    new_shape.emplace_back(narrow<size_t>(input_shape[0]));
-    new_shape.emplace_back(narrow<size_t>(group_count));
+    new_shape.emplace_back(SafeInt<uint32_t>(input_shape[0]));
+    new_shape.emplace_back(SafeInt<uint32_t>(group_count));
 
     ORT_RETURN_IF_NOT(group_count > 0 && input_shape[1] % group_count == 0,
                       "GroupNormalization num_group must be divisible by group.");
-    new_shape.emplace_back(narrow<size_t>(std::reduce(input_shape.begin() + 2, input_shape.end(),
+    new_shape.emplace_back(SafeInt<uint32_t>(std::reduce(input_shape.begin() + 2, input_shape.end(),
                                                         input_shape[1] / group_count, std::multiplies<int64_t>())));
     // Input will be reshaped to (N, group count, channels per group x D1 x D2 ... Dn) and recovered after normalization.
-    options.set("axes", emscripten::val::array(std::vector<size_t>{2}));
+    options.set("axes", emscripten::val::array(std::vector<uint32_t>{2}));
     output = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
     output = model_builder.GetBuilder().call<emscripten::val>("meanVarianceNormalization", output, options);
     output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array(orig_shape));
