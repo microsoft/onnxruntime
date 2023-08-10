@@ -113,13 +113,11 @@ class GemmFastGeluMetric(ke.ComputeMetric):
     k: int
 
     def report(self):
-        prefix = f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-        if self.duration > 0:
-            return (
-                prefix
-                + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} {self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
-            )
-        return prefix + "not supported"
+        transab = transab_to_suffix((self.transa, self.transb))
+        common = f"{self.dtype} m={self.m:<4} n={self.n:<4} k={self.k:<4} {transab}, {self.name}"
+        if self.duration <= 0:
+            return "not supported          " + common
+        return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
 def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, transa: bool, transb: bool):
