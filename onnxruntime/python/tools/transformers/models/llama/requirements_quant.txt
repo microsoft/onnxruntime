@@ -1,0 +1,6 @@
+torch
+transformers
+onnx
+onnxruntime
+datasets
+neural-compressor

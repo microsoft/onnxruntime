@@ -43,11 +43,13 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 INT8:
 ```
 # From source:
-$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b --precision int8 --quantize_embedding_layer
+$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b --precision int8 --smooth_quant
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b --precision int8 --quantize_embedding_layer
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b --precision int8 --smooth_quant
 ```
+
+Note: [Intel's Neural Compressor](https://github.com/intel/neural-compressor) takes time to run the SmoothQuant quantization algorithm on LLMs. On an [Azure Standard_NC24s_v3 VM](https://learn.microsoft.com/en-us/azure/virtual-machines/ncv3-series), it takes about ~30-45 min for each of the exported ONNX models.
 
 ## Benchmark LLaMA
 
