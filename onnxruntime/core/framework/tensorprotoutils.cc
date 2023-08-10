@@ -140,8 +140,8 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
     external_file_path = location;
   } else {
     if (tensor_proto_dir != nullptr) {
-      external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir,
-                                                                       external_data_info->GetRelPath());
+      external_file_path = onnxruntime::ConcatPathComponent(tensor_proto_dir,
+                                                            external_data_info->GetRelPath());
     } else {
       external_file_path = external_data_info->GetRelPath();
     }
