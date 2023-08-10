@@ -9,12 +9,14 @@ CMD ["/bin/bash"]
 
 RUN echo "$APT_PREF" > /etc/apt/preferences.d/rocm-pin-600
 
+ENV DEBIAN_FRONTEND noninteractive
+
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg && \
+    apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg && \
     curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -   &&\
     printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
     printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
-    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends  \
+    apt-get update && apt-get install -y --no-install-recommends  \
     sudo   \
     libelf1   \
     kmod   \
@@ -34,7 +36,6 @@ RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
     apt-get install  -y locales cifs-utils wget half libnuma-dev lsb-release && \
     apt-get clean -y
 
-ENV DEBIAN_FRONTEND noninteractive
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
 RUN locale-gen en_US.UTF-8
 RUN update-locale LANG=en_US.UTF-8
