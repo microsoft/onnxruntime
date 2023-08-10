@@ -8,11 +8,11 @@
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(const char* device_type, bool enable_vpu_fast_compile,
+  OpenVINOProviderFactory(const char* device_type, bool enable_npu_fast_compile,
                           const char* device_id, size_t num_of_threads,
                           const char* cache_dir, int num_streams, void* context,
                           bool enable_opencl_throttling, bool enable_dynamic_shapes)
-      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), num_streams_(num_streams), context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
+      : enable_npu_fast_compile_(enable_npu_fast_compile), num_of_threads_(num_of_threads), num_streams_(num_streams), context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     device_id_ = (device_id == nullptr) ? "" : device_id;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
@@ -24,7 +24,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 
  private:
   std::string device_type_;
-  bool enable_vpu_fast_compile_;
+  bool enable_npu_fast_compile_;
   std::string device_id_;
   size_t num_of_threads_;
   std::string cache_dir_;
@@ -35,7 +35,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_,
+  OpenVINOExecutionProviderInfo info(device_type_, enable_npu_fast_compile_, device_id_, num_of_threads_,
                                      cache_dir_, num_streams_, context_, enable_opencl_throttling_,
                                      enable_dynamic_shapes_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
@@ -59,8 +59,8 @@ struct OpenVINO_Provider : Provider {
 
     std::string device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision
                                             //   with these values at runtime.
-    bool enable_vpu_fast_compile = false;   // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to
-                                            // speeds up the model's compilation to VPU device specific format.
+    bool enable_npu_fast_compile = false;   // [enable_npu_fast_compile]: Fast-compile may be optionally enabled to
+                                            // speeds up the model's compilation to NPU device specific format.
     const char* device_id = "";             // [device_id]: Selects a particular hardware device for inference.
     size_t num_of_threads = 8;              // [num_of_threads]: Overrides the accelerator default value of number of
                                             //  threads with this value at runtime.
@@ -81,13 +81,13 @@ struct OpenVINO_Provider : Provider {
       std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
                                                          "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                          "GPU.0_FP16", "GPU.1_FP16",
-                                                         "VPUX_FP16", "VPUX_U8"};
+                                                         "NPU_FP16", "NPU_U8"};
       if (!((ov_supported_device_types.find(device_type) != ov_supported_device_types.end()) ||
             (device_type.find("HETERO:") == 0) || (device_type.find("MULTI:") == 0) || (device_type.find("AUTO:") == 0))) {
         ORT_THROW(
             "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
             "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-            "'GPU.0_FP16', 'GPU.1_FP16', 'VPUX_FP16', 'VPUX_U8' or from"
+            "'GPU.0_FP16', 'GPU.1_FP16', 'NPU_FP16', 'NPU_U8' or from"
             " HETERO/MULTI/AUTO options available. \n");
       }
     }
@@ -115,12 +115,12 @@ struct OpenVINO_Provider : Provider {
       }
     }
     std::string bool_flag = "";
-    if (provider_options_map.find("enable_vpu_fast_compile") != provider_options_map.end()) {
-      bool_flag = provider_options_map.at("enable_vpu_fast_compile");
+    if (provider_options_map.find("enable_npu_fast_compile") != provider_options_map.end()) {
+      bool_flag = provider_options_map.at("enable_npu_fast_compile");
       if (bool_flag == "true" || bool_flag == "True")
-        enable_vpu_fast_compile = true;
+        enable_npu_fast_compile = true;
       else if (bool_flag == "false" || bool_flag == "False")
-        enable_vpu_fast_compile = false;
+        enable_npu_fast_compile = false;
       bool_flag = "";
     }
 
@@ -141,7 +141,7 @@ struct OpenVINO_Provider : Provider {
         enable_dynamic_shapes = false;
     }
     return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
-                                                     enable_vpu_fast_compile,
+                                                     enable_npu_fast_compile,
                                                      device_id,
                                                      num_of_threads,
                                                      cache_dir,
