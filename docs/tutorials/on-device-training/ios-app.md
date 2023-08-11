@@ -38,14 +38,17 @@ In the tutorial, we will:
     - [Generate the training artifacts](#generate-the-training-artifacts)
 
 - [Building the iOS application](#building-the-ios-application)
- - [Xcode Setup](#xcode-setup)
- - [Application Overview](#application-overview)
- - [Training the model](#training-the-model)
- - [Exporting the model](#exporting-the-model)
- - [Inference with the trained model](#inference-with-the-trained-model)
- - [Recording Audio](#recording-audio)
- - [Training View](#training-view)
- - [Inference View](#inference-view)
+    - [Xcode Setup](#xcode-setup)
+    - [Application Overview](#application-overview)
+    - [Training the model](#training-the-model)
+        - [Loading the training artifacts and initializing training session](#loading-the-training-artifacts-and-initializing-training-session)
+        - [Training the model](#training-the-model-1)
+        - [Exporting the trained model](#exporting-the-trained-model)
+        
+    - [Inference with the trained model](#inference-with-the-trained-model)
+    - [Recording Audio](#recording-audio)
+    - [Training View](#training-view)
+    - [Inference View](#inference-view)
 - [Running the iOS application](#running-the-ios-application)
 - [Conclusion](#conclusion)
 
@@ -193,13 +196,176 @@ Laslty, we will also create `VoiceIdentifier` class that will handle the inferen
 
 First, we will create a `Trainer` class that will handle the training and exporting of the model. It will load the training artifacts, train the model on given audio, and export the trained model using onnnxruntime on device training APIs. The detailed documentation for the API can be found [here](../../../docs/api/objectivec/index.html).
 
-```swift
-```
+The `Trainer` class will have the following public methods:
+- `init()` - Initializes the training session and loads the training artifacts
+- `train(_ trainingData: [Data])` - Trains the model on the given user audio data. It will take in an array of `Data` objects, where each `Data` object represents the audio data of the user and use it along with some pre-recorded audio data to train the model.
+- `exportModelForInference()` - Exports the trained model for inference purposes
 
 
+1. #### Loading the training artifacts and initializing training session
+
+    To train a model, we first need to load the artifacts, create `ORTEnv`, `ORTTrainingSession`, and `ORTCheckpoint`. These objects will be used to train the model. We will create this objects in the `init` method of the `Trainer` class.
 
 
-### Exporting the model
+    ```swift
+    import Foundation
+    import onnxruntime_training_objc
+
+    class Trainer {
+        private let ortEnv: ORTEnv
+        private let trainingSession: ORTTrainingSession
+        private let checkpoint: ORTCheckpoint
+        
+        enum TrainerError: Error {
+            case Error(_ message: String)
+        }
+        
+        init() throws {
+            ortEnv = try ORTEnv(loggingLevel: ORTLoggingLevel.warning)
+            
+            // get path for artifacts
+            guard let trainingModelPath = Bundle.main.path(forResource: "training_model", ofType: "onnx") else {
+                throw TrainerError.Error("Failed to find training model file.")
+            }
+            
+            guard let evalModelPath = Bundle.main.path(forResource: "eval_model",ofType: "onnx") else {
+                throw TrainerError.Error("Failed to find eval model file.")
+            }
+            
+            guard let optimizerPath = Bundle.main.path(forResource: "optimizer_model", ofType: "onnx") else {
+                throw TrainerError.Error("Failed to find optimizer model file.")
+            }
+            
+            guard let checkpointPath = Bundle.main.path(forResource: "checkpoint", ofType: nil) else {
+                throw TrainerError.Error("Failed to find checkpoint file.")
+            }
+            
+            checkpoint = try ORTCheckpoint(path: checkpointPath)
+            
+            trainingSession = try ORTTrainingSession(env: ortEnv, sessionOptions: ORTSessionOptions(), checkpoint: checkpoint, trainModelPath: trainingModelPath, evalModelPath: evalModelPath, optimizerModelPath: optimizerPath)
+        }
+    }
+    ```
+
+2.  #### Training the model
+
+    a. Before training the model, we first need to extrat the data from the wav files that we created in earlier section. Here is the simple function that will extract the data from the wav file.
+    ```swift
+    private func getDataFromWavFile(fileName: String) throws -> (AVAudioBuffer, Data) {
+        guard let fileUrl = Bundle.main.url(forResource: fileName, withExtension:"wav") else {
+            throw TrainerError.Error("Failed to find wav file: \(fileName).")
+        }
+        
+        let audioFile = try AVAudioFile(forReading: fileUrl)
+        
+        let format = audioFile.processingFormat
+        
+        let totalFrames = AVAudioFrameCount(audioFile.length)
+        
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: totalFrames) else {
+            throw TrainerError.Error("Failed to create audio buffer.")
+        }
+        
+        try audioFile.read(into: buffer)
+        
+        guard let floatChannelData = buffer.floatChannelData else {
+            throw TrainerError.Error("Failed to get float channel data.")
+        }
+        
+        let data = Data(
+            bytesNoCopy: floatChannelData[0],
+            count: Int(buffer.frameLength) * MemoryLayout<Float>.size,
+            deallocator: .none
+        )
+        
+        return (buffer, data)
+    }
+    ```
+
+       
+
+    b. The `TrainingSession.trainStep` is responsible for training the model. It takes in the input data and the labels and returns the loss. The input audio data are passed as `ORTValue`. Thus, we need to convert the input audio `Data` objects and labels to `ORTValue`.
+
+    ```swift
+    private func getORTValue(dataList: [Data]) throws -> ORTValue {
+        let tensorData = NSMutableData()
+        dataList.forEach {data in tensorData.append(data)}
+        let inputShape: [NSNumber] = [dataList.count as NSNumber, dataList[0].count / MemoryLayout<Float>.stride as NSNumber]
+        
+        return try ORTValue(
+            tensorData: tensorData, elementType: ORTTensorElementDataType.float, shape: inputShape
+        )
+    }
+    
+    private func getORTValue(labels: [Int64]) throws -> ORTValue {
+        let tensorData = NSMutableData(bytes: labels, length: labels.count * MemoryLayout<Int64>.stride)
+        let inputShape: [NSNumber] = [labels.count as NSNumber]
+        
+        return try ORTValue (
+            tensorData: tensorData, elementType: ORTTensorElementDataType.int64, shape: inputShape
+        )
+    ```
+
+    c. Now we are ready to write `trainStep` function, which takes batch of input data and labels and performs one training step on given batch.
+
+    ```swift
+    func trainStep(inputData: [Data], labels: [Int64]) throws  {
+        
+        let inputs = [try getORTValue(dataList: inputData), try getORTValue(labels: labels)]
+        try trainingSession.trainStep(withInputValues: inputs)
+        
+        // update the model params
+        try trainingSession.optimizerStep()
+        
+        // reset the gradients
+        try trainingSession.lazyResetGrad()
+    }
+    ```
+
+    d. Finally, we have everything we need to write training loop. Here, `kNumOtherRecordings` reperesent how many recordings we have in `recordings` directory that we created earlier. `kNumEpochs` represents how many epochs we want to train the model on given data. `kUserIndex` and `kOtherIndex` represent the labels for user and other recordings respectively.
+
+    ```swift
+    private let kNumOtherRecordings: Int = 20
+    private let kNumEpochs: Int = 3
+    
+    let kUserIndex: Int64 = 1
+    let kOtherIndex: Int64 = 0
+
+    func train(_ trainingData: [Data]) throws {
+        let numRecordings = trainingData.count
+        var otherRecordings = Array(0..<kNumOtherRecordings)
+        for e in 0..<kNumEpochs {
+            otherRecordings.shuffle()
+            let otherData = otherRecordings.prefix(numRecordings)
+            
+            for i in 0..<numRecordings {
+                let (buffer, wavFileData) = try getDataFromWavFile(fileName: "other_\(otherData[i])")
+                try trainStep(inputData: [trainingData[i], wavFileData], labels: [kUserIndex, kOtherIndex])
+            }
+        }
+        
+    }
+    ```
+
+3.  #### Exporting the trained model
+
+    We can use the `exportModelForInference` method of the `ORTTrainingSession` class to export the trained model. The method takes in the path where the model should be exported and the output names of the model.
+    
+    Here we will export the model to the `Library` directory of the application. The exported model will be used for inference purposes.
+
+    ```swift
+    func exportModelForInference() throws {
+        guard let libraryDirectory = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else {
+            throw TrainerError.Error("Failed to find library directory ")
+        }
+        
+        let modelPath = libraryDirectory.appendingPathComponent("inference_model.onnx").path
+        try trainingSession.exportModelForInference(withOutputPath: modelPath, graphOutputNames: ["output"])
+    }
+    ```
+
+You can find the complete implementation of the `Trainer` class [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/Trainer.swift)
+
 
 ### Inference with the trained model
 
