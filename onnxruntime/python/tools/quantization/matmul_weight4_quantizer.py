@@ -5,16 +5,103 @@
 # --------------------------------------------------------------------------
 
 import argparse
+import struct
 from pathlib import Path
 from typing import List, Tuple
 
 import numpy as np
+import numpy.typing as npt
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
 from .onnx_model import ONNXModel
-from .q4dq_wrapper import Q4dqWrapper
 from .quant_utils import attribute_to_kwarg, load_model_with_shape_infer
+
+
+def __q4_block_size(quant_type: int) -> int:
+    # happens to be 32 for now, but future quantization types
+    # may have bigger block size
+    return 32
+
+
+def __q4_blob_size(quant_type: int) -> int:
+    if quant_type == MatMulWeight4Quantizer.BlkQ4Sym:
+        # 4b each value, with one fp32 scale
+        blob_size = 32 // 2 + 4
+    elif quant_type == MatMulWeight4Quantizer.BlkQ4Zp8:
+        # 4b each value, with one fp32 scale and one uint8 zero point
+        blob_size = 32 // 2 + 4 + 1
+    else:
+        raise ValueError(f"Unsupported quantization type: {quant_type}")
+    return blob_size
+
+
+def __q4_buf_size(quant_type: int, rows: int, cols: int) -> int:
+    block_size = __q4_block_size(quant_type)
+    blob_size = __q4_blob_size(quant_type)
+    k_blocks = (rows + block_size - 1) // block_size
+    return k_blocks * cols * blob_size
+
+
+def int4_block_quant(quant_type: int, fp32weight: npt.ArrayLike) -> np.ndarray:
+    """4b quantize fp32 weight to a blob"""
+
+    if len(fp32weight.shape) != 2:
+        raise ValueError("Current int4 block quantization only supports 2D tensors!")
+    rows, cols = fp32weight.shape
+
+    block_size = __q4_block_size(quant_type)
+    blob_size = __q4_blob_size(quant_type)
+    k_blocks = (rows + block_size - 1) // block_size
+    padded_rows = k_blocks * block_size
+    pad_len = padded_rows - rows
+    if pad_len > 0:
+        fp32weight = np.pad(fp32weight, ((0, pad_len), (0, 0)), "constant")
+
+    # block wise quantization, each block comes from a single column
+    blob_idx = 0
+    packed = np.zeros((cols * k_blocks, blob_size), dtype="uint8")
+    for n in range(cols):
+        ncol = fp32weight[:, n]
+        blks = np.split(ncol, k_blocks)
+        for blk in blks:
+            packed_blob = packed[blob_idx]
+            blob_idx += 1
+
+            if quant_type == MatMulWeight4Quantizer.BlkQ4Sym:
+                amax_idx = np.argmax(np.abs(blk))
+                bmax = blk[amax_idx]
+                scale = bmax / (-8)
+                zp = 8
+            else:
+                vmin = np.min(blk)
+                vmax = np.max(blk)
+                vmin = min(vmin, 0.0)
+                vmax = max(vmax, 0.0)
+                scale = (vmax - vmin) / ((1 << 4) - 1)
+                zero_point_fp = vmin
+                if scale != 0.0:
+                    zero_point_fp = 0.0 - vmin / scale
+                zp = min(15, max(0, round(zero_point_fp)))
+
+            reciprocal_scale = 1.0 / scale if scale != 0 else 0.0
+            bf = struct.pack("f", scale)
+            packed_blob[0] = bf[0]
+            packed_blob[1] = bf[1]
+            packed_blob[2] = bf[2]
+            packed_blob[3] = bf[3]
+            blob_offset = 4
+            if quant_type == MatMulWeight4Quantizer.BlkQ4Zp8:
+                packed_blob[4] = zp
+                blob_offset = 5
+
+            num_segs = block_size // 32
+            blk_int = np.clip(np.rint(blk * reciprocal_scale + zp), 0, 15).astype("uint8")
+            segs = np.split(blk_int, num_segs)
+            for seg in segs:
+                packed_blob[blob_offset : (blob_offset + 16)] = np.bitwise_or(seg[0:16], np.left_shift(seg[16:32], 4))
+                blob_offset += 16
+    return packed.reshape(-1)
 
 
 class MatMulWeight4Quantizer:
@@ -30,9 +117,8 @@ class MatMulWeight4Quantizer:
     # 32 number block, quantization, with one fp32 as scale, one uint8 zero point
     BlkQ4Zp8 = 1
 
-    def __init__(self, model: ModelProto, q4dq: Q4dqWrapper, quant_type: int):
+    def __init__(self, model: ModelProto, quant_type: int):
         self.model = ONNXModel(model)
-        self.q4dq = q4dq
         self.quant_type = quant_type
 
     @staticmethod
@@ -61,8 +147,7 @@ class MatMulWeight4Quantizer:
             return node  # can only process 2-D matrix
 
         rows, cols = B_array.shape
-        packed = self.q4dq.quantize(B_array, self.quant_type)
-
+        packed = int4_block_quant(self.quant_type, B_array)
         B_quant = onnx.numpy_helper.from_array(packed)  # noqa: N806
         B_quant.name = B.name + "_Q4"
         Bs_graph.initializer.remove(B)
@@ -169,9 +254,7 @@ if __name__ == "__main__":
     output_model_path = args.output_model
     q4dq_bin_path = args.quant_bin_path
 
-    q4dq = Q4dqWrapper(q4dq_bin_path)
-
     model = load_model_with_shape_infer(Path(input_model_path))
-    quant = MatMulWeight4Quantizer(model, q4dq, 0)
+    quant = MatMulWeight4Quantizer(model, 0)
     quant.process()
     quant.model.save_model_to_file(output_model_path, False)
