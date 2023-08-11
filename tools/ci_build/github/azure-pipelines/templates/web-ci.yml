@@ -67,11 +67,6 @@ stages:
     - checkout: self
       fetchDepth: 1
       submodules: false
-    - script: |
-       git submodule sync -- cmake/external/onnx
-       git submodule update --init -- cmake/external/onnx
-      workingDirectory: '$(Build.SourcesDirectory)'
-      displayName: 'Checkout submodule onnx'
     - task: NodeTool@0
       inputs:
         versionSpec: '16.x'
