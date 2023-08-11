@@ -13,6 +13,14 @@ export const tileProgramMetadata = {
   inputTypes: [GpuDataType.default]
 };
 
+const getRepeats = (repeatsTensorView: TensorView): readonly number[] => {
+  const repeats: number[] = [];
+  if (repeatsTensorView.dims[0] > 0) {
+    repeatsTensorView.getBigInt64Array().forEach(v => repeats.push(Number(v)));
+  }
+  return repeats;
+};
+
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 2) {
     throw new Error('Tile requires 2 inputs.');
@@ -31,10 +39,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('Tile `repeats` input should be 1-D');
   }
 
-  const repeats: number[] = [];
-  if (inputs[1].dims[0] > 0) {
-    inputs[1].getBigInt64Array().forEach(v => repeats.push(Number(v)));
-  }
+  const repeats: readonly number[] = getRepeats(inputs[1]);
 
   if (repeats.length !== inputs[0].dims.length) {
     throw new Error('Tile `repeats` input should have same number of elements as rank of input data tensor');
@@ -58,10 +63,7 @@ export const createTileProgramInfo =
       const dataType = 'f32';
       const inputShape = inputs[0].dims;
 
-      const repeats: number[] = [];
-      if (inputs[1].dims[0] > 0) {
-        inputs[1].getBigInt64Array().forEach(v => repeats.push(Number(v)));
-      }
+      const repeats: readonly number[] = getRepeats(inputs[1]);
 
       const outputShape = getOutputShape(inputShape, repeats);
       const outputSize = ShapeUtil.size(outputShape);
@@ -71,33 +73,36 @@ export const createTileProgramInfo =
 
       const isl = inputShape.length;
       const calculateInputIndexImpl = (): string => `
-      fn calculateInputIndex(inputIndices: ${inputIndicesHelper.iType}, outputIndices: ${
-          outputIndicesHelper.iType}) -> void {
+      fn calculateInputIndex(outputIndices: ${outputIndicesHelper.iType}) -> ${inputIndicesHelper.iType} {
+        ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
+
         for (var i = 0; i < ${isl}; i++) {
           // TODO: IndicesHelper should offer uniform way to get/set indices for all ranks
           inputIndices${isl >= 2 ? '[i]' : ''} = (outputIndices${isl >= 2 ? '[i]' : ''} % inputShape[i]);
         }
-    }`;
+
+        return inputIndices;
+      }`;
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
 
-  const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
-  ${calculateInputIndexImpl()};
-  @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
-  @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+      const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
+      ${calculateInputIndexImpl()};
+      @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
+      @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
-  ${outputIndicesHelper.o2iImpl}
-  ${inputIndicesHelper.i2oImpl}
+      ${outputIndicesHelper.o2iImpl}
+      ${inputIndicesHelper.i2oImpl}
 
-  ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+      ${shaderHelper.mainStart()}
+      ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-    ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-    ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
-    ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
-    calculateInputIndexImpl(inputIndices, outputIndices);
-    output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
-  }`;
+      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
+      ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
+      ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
+      inputIndices = calculateInputIndex(outputIndices);
+      output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+      }`;
 
       return {
         ...tileProgramMetadata,
@@ -109,7 +114,11 @@ export const createTileProgramInfo =
 
 export const tile = (context: ComputeContext): void => {
   validateInputs(context.inputs);
-  const cacheHint = context.inputs.map(x => x.dims.toString()).join('_');
+  // const cacheHint = context.inputs[0].dims.toString();
+
+  const repeats: readonly number[] = getRepeats(context.inputs[1]);
+
+  const cacheHint = context.inputs[0].dims.toString().concat(repeats.toString());
   context.compute(
       {...tileProgramMetadata, cacheHint, get: () => createTileProgramInfo(tileProgramMetadata, context.inputs)},
       {inputs: [0]});
