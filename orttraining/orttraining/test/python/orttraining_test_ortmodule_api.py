@@ -6162,7 +6162,39 @@ def test_reciprocal_gradient():
     pt_model = ReciprocalModel().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
-    pt_x = torch.zeros(3, 224, 224, requires_grad=True, device=device)
+    pt_x = torch.randn(3, 224, 224, requires_grad=True, device=device)
+    with torch.no_grad():
+        pt_x[pt_x <= 0] -= 0.2
+        pt_x[pt_x > 0] += 0.2
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+def test_leakyrelu_gradient():
+    class LeakyReluModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.leakyrelu = nn.LeakyReLU(0.5)
+
+        def forward(self, x):
+            return self.leakyrelu(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = "cuda"
+    pt_model = LeakyReluModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(3, 224, 224, requires_grad=True, device=device)
     with torch.no_grad():
         pt_x[pt_x <= 0] -= 0.2
         pt_x[pt_x > 0] += 0.2
