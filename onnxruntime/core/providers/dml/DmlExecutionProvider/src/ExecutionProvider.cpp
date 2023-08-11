@@ -134,7 +134,7 @@ namespace Dml
     };
 
     void ExecutionProviderImpl::RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& stream_handle_registry) const {
-        stream_handle_registry.RegisterCreateStreamFn(OrtDevice::GPU, [this](const OrtDevice& device) {
+        stream_handle_registry.RegisterCreateStreamFn(OrtDevice::CPU, [this](const OrtDevice& device) {
             return std::make_unique<DmlStream>(const_cast<ExecutionProviderImpl&>(*this), *this->m_context, device);});
     }
 
