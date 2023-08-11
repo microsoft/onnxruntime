@@ -37,6 +37,14 @@ class TensorViewImpl implements TensorView {
                                 new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
+  getInt32Array(): Int32Array {
+    if (this.dataType !== DataType.int32) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Int32Array() : new Int32Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
+
   reshape(newDims: readonly number[]): TensorView {
     if (ShapeUtil.size(newDims) !== ShapeUtil.size(this.dims)) {
       throw new Error('Invalid new shape');
@@ -48,6 +56,7 @@ class TensorViewImpl implements TensorView {
 class ComputeContextImpl implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
+  readonly outputCount: number;
   get kernelCustomData(): {[key: string]: unknown} {
     return this.backend.currentKernelCustomData;
   }
@@ -63,6 +72,7 @@ class ComputeContextImpl implements ComputeContext {
     let dataIndex = (contextDataOffset >> 2);
     this.opKernelContext = heapU32[dataIndex++];
     const inputCount = heapU32[dataIndex++];
+    this.outputCount = heapU32[dataIndex++];
     this.customDataOffset = heapU32[dataIndex++];
     this.customDataSize = heapU32[dataIndex++];
 

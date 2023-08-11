@@ -159,7 +159,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   std::vector<std::string> param_tensor_names;
   QnnParamWrapper filter_size_param(node_unit.Index(),
                                     node_unit.Name(),
-                                    qnn_def::filter_size,
+                                    QNN_OP_POOL_MAX_2D_PARAM_FILTER_SIZE,
                                     std::move(filter_size_dim),
                                     std::move(filter_size));
   param_tensor_names.push_back(filter_size_param.GetParamTensorName());
@@ -167,7 +167,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
   QnnParamWrapper pad_amount_param(node_unit.Index(),
                                    node_unit.Name(),
-                                   qnn_def::pad_amount,
+                                   QNN_OP_POOL_MAX_2D_PARAM_PAD_AMOUNT,
                                    std::move(pad_amount_dim),
                                    std::move(pad_amount));
   param_tensor_names.push_back(pad_amount_param.GetParamTensorName());
@@ -175,7 +175,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
   QnnParamWrapper stride_param(node_unit.Index(),
                                node_unit.Name(),
-                               qnn_def::stride,
+                               QNN_OP_POOL_MAX_2D_PARAM_STRIDE,
                                std::move(stride_dim),
                                std::move(stride));
   param_tensor_names.push_back(stride_param.GetParamTensorName());
@@ -186,7 +186,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     rounding_mode_param.int32Value = ceil_mode;
     QnnParamWrapper rounding_mode_param_wrapper(node_unit.Index(),
                                                 node_unit.Name(),
-                                                qnn_def::rounding_mode,
+                                                QNN_OP_POOL_MAX_2D_PARAM_ROUNDING_MODE,
                                                 rounding_mode_param);
     param_tensor_names.push_back(rounding_mode_param_wrapper.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(rounding_mode_param_wrapper));
@@ -197,7 +197,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     scalar_param.bool8Value = 1;
     QnnParamWrapper count_pad_for_edges_param(node_unit.Index(),
                                               node_unit.Name(),
-                                              qnn_def::count_pad_for_edges,
+                                              QNN_OP_POOL_AVG_2D_PARAM_COUNT_PAD_FOR_EDGES,
                                               scalar_param);
     param_tensor_names.push_back(count_pad_for_edges_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param));
@@ -207,7 +207,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     scalar_param.bool8Value = static_cast<uint8_t>(node_helper.Get("count_include_pad", static_cast<int64_t>(0)) != 0);
     QnnParamWrapper count_pad_for_edges_param(node_unit.Index(),
                                               node_unit.Name(),
-                                              qnn_def::count_pad_for_edges,
+                                              QNN_OP_POOL_AVG_2D_PARAM_COUNT_PAD_FOR_EDGES,
                                               scalar_param);
     param_tensor_names.push_back(count_pad_for_edges_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param));

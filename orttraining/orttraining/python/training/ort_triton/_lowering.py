@@ -295,7 +295,7 @@ class GraphLowering:
             for input in node.input:
                 if input in producers:
                     precessors[node.name].append(producers[input])
-        for _, value in precessors.items():
+        for value in precessors.values():
             value.sort(key=sorted_nodes.index, reverse=True)
         for idx in range(len(sorted_nodes) - 1, -1, -1):
             node = sorted_nodes[idx]

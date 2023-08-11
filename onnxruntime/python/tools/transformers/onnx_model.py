@@ -79,7 +79,7 @@ class OnnxModel:
         all_nodes = []
         for graph in self.graphs():
             for node in graph.node:
-                all_nodes.append(node)
+                all_nodes.append(node)  # noqa: PERF402
         return all_nodes
 
     def graph(self):
@@ -228,7 +228,7 @@ class OnnxModel:
         for output in node.output:
             if output in input_name_to_nodes:
                 for node in input_name_to_nodes[output]:
-                    children.append(node)
+                    children.append(node)  # noqa: PERF402
         return children
 
     def get_parents(self, node, output_name_to_node=None):
@@ -627,6 +627,8 @@ class OnnxModel:
                                            Default to false.
             min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
             max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+            force_fp16_inputs(Dict[str, List[int]]): Force the conversion of the inputs of some operators to float16, even if
+                                                     this script's preference it to keep them in float32.
         """
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True
@@ -659,8 +661,8 @@ class OnnxModel:
                     for vi in model.graph.value_info:
                         if vi.name in name_vi:
                             del name_vi[vi.name]
-                    for _, vi in name_vi.items():
-                        model.graph.value_info.append(vi)
+                    for vi in name_vi.values():
+                        model.graph.value_info.append(vi)  # noqa: PERF402
             except Exception:
                 logger.warning(
                     "Failed to run symbolic shape inference. Please file an issue in https://github.com/microsoft/onnxruntime."
@@ -677,6 +679,7 @@ class OnnxModel:
                     "op_block_list",
                     "node_block_list",
                     "force_fp16_initializers",
+                    "force_fp16_inputs",
                 ]
                 if key in kwargs
             }
@@ -829,10 +832,7 @@ class OnnxModel:
                 all_nodes.append(last_node)
                 all_nodes.extend(nodes)
 
-        nodes_to_remove = []
-        for node in self.model.graph.node:
-            if node not in all_nodes:
-                nodes_to_remove.append(node)
+        nodes_to_remove = [node for node in self.model.graph.node if node not in all_nodes]
 
         self.remove_nodes(nodes_to_remove)
 
@@ -848,9 +848,7 @@ class OnnxModel:
         input_to_remove = []
         if allow_remove_graph_inputs:
             input_name_to_nodes = self.input_name_to_nodes()
-            for input in self.model.graph.input:
-                if input.name not in input_name_to_nodes:
-                    input_to_remove.append(input)
+            input_to_remove = [input for input in self.model.graph.input if input.name not in input_name_to_nodes]
             for input in input_to_remove:
                 self.model.graph.input.remove(input)
 
@@ -1021,13 +1019,13 @@ class OnnxModel:
             location = Path(external_data_path).name if all_tensors_to_one_file else None
 
             if os.path.exists(output_path):
-                logger.info(f"Delete the existed onnx file: {output_path}")
+                logger.info(f"Delete the existing onnx file: {output_path}")
                 os.remove(output_path)
 
             if all_tensors_to_one_file:
                 if os.path.exists(external_data_path):
                     # Delete the external data file. Otherwise, data will be appended to existing file.
-                    logger.info(f"Delete the existed external data file: {external_data_path}")
+                    logger.info(f"Delete the existing external data file: {external_data_path}")
                     os.remove(external_data_path)
             else:
                 if os.listdir(output_dir):
@@ -1217,7 +1215,7 @@ class OnnxModel:
                             sub_graphs.append(attr.g)
 
                         for g in attr.graphs:
-                            sub_graphs.append(g)
+                            sub_graphs.append(g)  # noqa: PERF402
 
                         if isinstance(attr.t, TensorProto) and attr.t.data_type == TensorProto.FLOAT16:
                             return True

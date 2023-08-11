@@ -113,7 +113,7 @@ def _infer_dropout(node: NodeProto, input_infos: List[TensorInfo], graph: GraphP
 
 
 class TypeAndShapeInfer:
-    _INFER_FUNC_MAP = {
+    _INFER_FUNC_MAP = {  # noqa: RUF012
         "Add": _infer_elementwise,
         "Sub": _infer_elementwise,
         "Mul": _infer_elementwise,

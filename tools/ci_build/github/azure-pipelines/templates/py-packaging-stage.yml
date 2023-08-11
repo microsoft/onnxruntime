@@ -303,7 +303,7 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-Win2019-GPU-dml-A10'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: '3.8'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
@@ -311,7 +311,7 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-Win2019-GPU-dml-A10'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: '3.9'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
@@ -319,7 +319,7 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-Win2019-GPU-dml-A10'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: '3.10'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
@@ -327,7 +327,7 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-Win2019-GPU-dml-A10'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: '3.11'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
@@ -495,8 +495,7 @@ stages:
           devtoolset_rootpath: /opt/rh/devtoolset-10/root
           ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
 
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
       - template: py-linux.yml
@@ -507,8 +506,7 @@ stages:
           devtoolset_rootpath: /opt/rh/devtoolset-11/root
           ld_library_path_arg: /opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-11/root/usr/bin:'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
 
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
@@ -516,5 +514,4 @@ stages:
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          extra_build_arg: ${{ parameters.build_py_parameters }}

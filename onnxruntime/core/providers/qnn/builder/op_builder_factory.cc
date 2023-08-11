@@ -15,12 +15,14 @@ namespace qnn {
 OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateSimpleOpBuilder("Add", *this);
+    CreateSimpleOpBuilder("Asin", *this);
     CreateSimpleOpBuilder("Atan", *this);
     CreateSimpleOpBuilder("Mul", *this);
     CreateSimpleOpBuilder("Abs", *this);
     CreateSimpleOpBuilder("And", *this);
     CreateSimpleOpBuilder("Ceil", *this);
     CreateSimpleOpBuilder("Cos", *this);
+    CreateSimpleOpBuilder("Sign", *this);
     CreateSimpleOpBuilder("Div", *this);
     CreateSimpleOpBuilder("Equal", *this);
     CreateSimpleOpBuilder("Exp", *this);
@@ -59,6 +61,9 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("DequantizeLinear", *this);
 
     CreateSimpleOpBuilder("HardSwish", *this);
+
+    CreateSimpleOpBuilder("DepthToSpace", *this);
+    CreateSimpleOpBuilder("SpaceToDepth", *this);
   }
 
   {
@@ -134,6 +139,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateBatchNormOpBuilder("BatchNormalization", *this);
+  }
+
+  {
+    CreateLayerNormOpBuilder("LayerNormalization", *this);
   }
 
   {
