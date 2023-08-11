@@ -44,7 +44,7 @@ In the tutorial, we will:
         - [Loading the training artifacts and initializing training session](#loading-the-training-artifacts-and-initializing-training-session)
         - [Training the model](#training-the-model-1)
         - [Exporting the trained model](#exporting-the-trained-model)
-        
+
     - [Inference with the trained model](#inference-with-the-trained-model)
     - [Recording Audio](#recording-audio)
     - [Training View](#training-view)
@@ -241,7 +241,6 @@ The `Trainer` class will have the following public methods:
             }
             
             checkpoint = try ORTCheckpoint(path: checkpointPath)
-            
             trainingSession = try ORTTrainingSession(env: ortEnv, sessionOptions: ORTSessionOptions(), checkpoint: checkpoint, trainModelPath: trainingModelPath, evalModelPath: evalModelPath, optimizerModelPath: optimizerPath)
         }
     }
@@ -257,11 +256,9 @@ The `Trainer` class will have the following public methods:
         }
         
         let audioFile = try AVAudioFile(forReading: fileUrl)
-        
         let format = audioFile.processingFormat
-        
         let totalFrames = AVAudioFrameCount(audioFile.length)
-        
+
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: totalFrames) else {
             throw TrainerError.Error("Failed to create audio buffer.")
         }
@@ -277,7 +274,6 @@ The `Trainer` class will have the following public methods:
             count: Int(buffer.frameLength) * MemoryLayout<Float>.size,
             deallocator: .none
         )
-        
         return (buffer, data)
     }
     ```
@@ -310,7 +306,6 @@ The `Trainer` class will have the following public methods:
 
     ```swift
     func trainStep(inputData: [Data], labels: [Int64]) throws  {
-        
         let inputs = [try getORTValue(dataList: inputData), try getORTValue(labels: labels)]
         try trainingSession.trainStep(withInputValues: inputs)
         
@@ -368,6 +363,82 @@ You can find the complete implementation of the `Trainer` class [here](https://g
 
 
 ### Inference with the trained model
+The `VoiceIdentifier` class will handle the inference with the trained model. It will load the trained model and perform inference on the given audio data. The class will have the `evaluate(inputData: Data) -> Result<(Bool, Float), Error>` method that will take in the audio data and return the result of the inference. The result will be a tuple of `(Bool, Float)`, where the first element represents whether the audio belongs to the user or not, and the second element represents the confidence score of the prediction.
+
+First, we load the trained model using `ORTSession` object. The `ORTSession` object will be used to perform inference with the model. 
+
+```swift
+class VoiceIdentifier {
+    
+    private let ortEnv : ORTEnv
+    private let ortSession: ORTSession
+    private let kThresholdProbability: Float = 0.80
+    
+    enum VoiceIdentifierError: Error {
+        case Error(_ message: String)
+    }
+    
+    init() throws {
+        ortEnv = try ORTEnv(loggingLevel: ORTLoggingLevel.warning)
+
+        guard let libraryDirectory = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else {
+            throw VoiceIdentifierError.Error("Failed to find library directory ")
+        }
+        let modelPath = libraryDirectory.appendingPathComponent("inference_model.onnx").path
+
+        if !FileManager.default.fileExists(atPath: modelPath) {
+            throw VoiceIdentifierError.Error("Failed to find inference model file.")
+        }
+        ortSession = try ORTSession(env: ortEnv, modelPath: modelPath, sessionOptions: nil)
+    }
+}
+```
+
+Next, we will write the `evaluate` method that will take in the audio data, convert it to `ORTValue`, and perform inference with the model. Then, take the output of the model and extract probabilites.
+
+
+```swift
+    private func isUser(logits: [Float]) -> Float {
+        // apply softMax
+        let maxInput = logits.max() ?? 0.0
+        let expValues = logits.map { exp($0 - maxInput) } // Calculate e^(x - maxInput) for each element
+        let expSum = expValues.reduce(0, +) // Sum of all e^(x - maxInput) values
+        
+        return expValues.map { $0 / expSum }[1] // Calculate the softmax probabilities
+    }
+    
+    func evaluate(inputData: Data) -> Result<(Bool, Float), Error> {
+        
+        return Result<(Bool, Float), Error> { () -> (Bool, Float) in
+            
+            // convert input data to ORTValue
+            let inputShape: [NSNumber] = [1, inputData.count / MemoryLayout<Float>.stride as NSNumber]
+            
+            let input = try ORTValue(
+                tensorData: NSMutableData(data: inputData),
+                elementType: ORTTensorElementDataType.float,
+                shape: inputShape)
+            
+            let outputs = try ortSession.run(
+                withInputs: ["input": input],
+                outputNames: ["output"],
+                runOptions: nil)
+            
+            guard let output = outputs["output"] else {
+                throw VoiceIdentifierError.Error("Failed to get model output from inference.")
+            }
+            
+            let outputData = try output.tensorData() as Data
+            let probUser = outputData.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) -> Float in
+                let floatBuffer = buffer.bindMemory(to: Float.self)
+                let logits = Array(UnsafeBufferPointer(start: floatBuffer.baseAddress, count: outputData.count/MemoryLayout<Float>.stride))
+                return isUser(logits: logits)
+            }
+            
+            return (probUser >= kThresholdProbability, probUser)
+        }
+    }
+```
 
 ### Recording Audio
 
