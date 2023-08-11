@@ -1,3 +1,4 @@
+##### trigger Don't modified it manully ####
 trigger:
   branches:
     include:
@@ -20,6 +21,7 @@ pr:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
+#### end trigger ####
 
 parameters:
 - name: RunOnnxRuntimeTests
@@ -69,7 +71,7 @@ stages:
 - stage: dml
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -82,7 +84,7 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: DML
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-dml-A10
+        MachinePool: onnxruntime-Win2022-GPU-dml-A10
 
 - stage: kernelDocumentation
   dependsOn: []

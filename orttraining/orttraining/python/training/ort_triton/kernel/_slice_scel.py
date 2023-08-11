@@ -360,7 +360,7 @@ def transform_slice_scel(graph):
             all_nodes.append(node)
 
     for node in triton_nodes:
-        all_nodes.append(node)
+        all_nodes.append(node)  # noqa: PERF402
 
     graph.ClearField("node")
     graph.node.extend(all_nodes)

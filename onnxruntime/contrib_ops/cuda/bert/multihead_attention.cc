@@ -251,7 +251,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   cublasHandle_t cublas = GetCublasHandle(context);
 
   return QkvToContext<CudaT>(
-      device_prop, cublas, Stream(context), parameters, data);
+      device_prop, cublas, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda

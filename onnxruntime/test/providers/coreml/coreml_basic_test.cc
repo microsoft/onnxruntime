@@ -21,7 +21,6 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 

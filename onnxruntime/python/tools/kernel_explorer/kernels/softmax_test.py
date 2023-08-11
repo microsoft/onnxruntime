@@ -76,10 +76,10 @@ class SoftmaxMetric(ke.BandwidthMetric):
     is_log_softmax: bool
 
     def report(self):
-        prefix = f"{self.name:<110} {self.dtype} batch_count={self.batch_count:<4} softmax_elements={self.softmax_elements:<4} is_log_softmax={self.is_log_softmax:<4}"
+        common = f"{self.dtype} batch_count={self.batch_count:<4} softmax_elements={self.softmax_elements:<4} is_log_softmax={self.is_log_softmax:<4} {self.name}"
         if self.duration > 0:
-            return prefix + f"{self.duration:.2f} us, {self.gbps:.2f} GB/s"
-        return prefix + "not supported"
+            return f"{self.duration:6.2f} us {self.gbps:5.2f} GB/s " + common
+        return "not supported        " + common
 
 
 def profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, func):

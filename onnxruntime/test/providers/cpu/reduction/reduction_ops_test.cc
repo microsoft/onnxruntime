@@ -3215,6 +3215,24 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
   ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithScalarInputAxesPresent) {
+  FastReduceKind fast_kind;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // R - keep_dims=1 - noop=false
+  fast_kind = OptimizeShapeForFastReduce(
+      EmptySpan<int64_t>(), AsSpan<int64_t>({1, 2, 3}),
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = {};
+  expected_fast_axes = {};
+  expected_fast_output_shape = {};
+  ASSERT_EQ(fast_kind, FastReduceKind::kEmpty);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+}
+
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1b) {
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape, fast_output_shape, fast_axes;
@@ -3244,8 +3262,14 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
-    // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+    tester.Run(expect, error_msg,
+               // exclude EPs that don't handle this
+               {
+                   kCoreMLExecutionProvider,
+                   kOpenVINOExecutionProvider,
+                   kQnnExecutionProvider,
+                   kTensorrtExecutionProvider,
+               });
   };
 
   // reduce on all axes keeping dims. should allow the 0 to be the reduced value
@@ -3285,8 +3309,14 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
-    // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+    tester.Run(expect, error_msg,
+               // exclude EPs that don't handle this
+               {
+                   kOpenVINOExecutionProvider,
+                   kQnnExecutionProvider,
+                   kTensorrtExecutionProvider,
+                   kCoreMLExecutionProvider,
+               });
   };
 
   // reduction without keeping dims on all axes. can't reduce on an axis with value of 0
@@ -3323,8 +3353,14 @@ TEST(ReductionOpTest, ReduceSum_ReduceDimWithZero3) {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
-    // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+    tester.Run(expect, error_msg,
+               // exclude EPs that don't handle this
+               {
+                   kCoreMLExecutionProvider,
+                   kTensorrtExecutionProvider,
+                   kOpenVINOExecutionProvider,
+                   kQnnExecutionProvider,
+               });
   };
 
   // reduction is possible without keeping dims if we only reduce on non-zero dims

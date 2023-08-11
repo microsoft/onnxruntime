@@ -385,7 +385,7 @@ def layer_norm_transform(model):
             all_nodes.append(node)
 
     for node in layer_norm_nodes:
-        all_nodes.append(node)
+        all_nodes.append(node)  # noqa: PERF402
 
     graph.ClearField("node")
     graph.node.extend(all_nodes)
