@@ -48,7 +48,6 @@ constexpr QDQOpKeys GetQDQOpKeys(bool use_ms_domain_qdq_ops) {
   if (use_ms_domain_qdq_ops) {
     return {"com.microsoft.QuantizeLinear", "com.microsoft.DequantizeLinear"};
   }
-
   return {"QuantizeLinear", "DequantizeLinear"};
 }
 
