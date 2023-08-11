@@ -80,6 +80,7 @@ class FusionBartAttention(FusionAttention):
             ["Add", "MatMul", "Reshape", "Transpose", "Reshape", "MatMul"],
             [1, 1, 0, 0, 0, 0],
         )
+
         if qkv_nodes is not None:
             (
                 add_out,
@@ -142,6 +143,7 @@ class FusionBartAttention(FusionAttention):
             ["Reshape", "Concat", "Transpose", "Reshape", "Add", "MatMul"],
             [1, 0, 1, 0, 0, None],
         )
+
         v_nodes_with_past_cross_attn = self.model.match_parent_path(
             # Decoder attention with past value directly used in MatMul
             matmul_qkv,
@@ -173,6 +175,7 @@ class FusionBartAttention(FusionAttention):
         else:
             logger.debug("fuse_attention: failed to match v path")
             return
+
         past_v = past_v if past_v in graph_input_names else ""
         present_v = present_v if present_v in graph_output_names else ""
 
@@ -215,12 +218,19 @@ class FusionBartAttention(FusionAttention):
             ["Transpose", "Reshape", "Concat", "Transpose", "Reshape", "MatMul"],
             [1, 0, 0, 1, 0, 0],
         )
+        k_nodes_has_bias_with_past_self_attn = self.model.match_parent_path(
+            # Decoder attention with past key concatenated before MatMul
+            matmul_qk,
+            ["Transpose", "Reshape", "Concat", "Transpose", "Reshape", "Add", "MatMul"],
+            [1, 0, 0, 1, 0, 0, 1],
+        )
         k_nodes_no_bias_with_past_cross_attn = self.model.match_parent_path(
             # Decoder attention with past key directly used in MatMul
             matmul_qk,
             ["Transpose", "Reshape"],
             [1, 0],
         )
+
         past_k, present_k = "", ""
         reshape_k_2, reshape_k_1, matmul_k = None, None, None
         if k_nodes_with_bias is not None:
@@ -234,6 +244,11 @@ class FusionBartAttention(FusionAttention):
         elif k_nodes_no_bias_with_past_self_attn is not None:
             _, reshape_k_2, concat_k, _, reshape_k_1, matmul_k = k_nodes_no_bias_with_past_self_attn
             k_nodes = k_nodes_no_bias_with_past_self_attn
+            past_k = concat_k.input[0]
+            present_k = concat_k.output[0]
+        elif k_nodes_has_bias_with_past_self_attn is not None:
+            _, reshape_k_2, concat_k, _, reshape_k_1, add_k, matmul_k = k_nodes_has_bias_with_past_self_attn
+            k_nodes = k_nodes_has_bias_with_past_self_attn
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
         elif (
@@ -301,6 +316,8 @@ class FusionBartAttention(FusionAttention):
         decoder_cross_attention = two_root_inputs and qk_nodes == qk_nodes_1
         decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
 
+        print("decoder_attention_with_past: ", decoder_attention_with_past)
+
         # For decoder_attention, the attention mask needs to be included in the attention node
         mask_index = None
         if decoder_attention:
@@ -318,7 +335,7 @@ class FusionBartAttention(FusionAttention):
                 mask_index = mask_nodes_whisper[0].output[-1]
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
-
+        print("mask_index: ", mask_index)
         if (
             encoder_attention
             or decoder_attention
@@ -332,7 +349,7 @@ class FusionBartAttention(FusionAttention):
             if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
                 logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
                 return
-
+            print("352")
             new_node = None
             if decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past:
                 # Note: Decoder attention with past key and past value is fused as multihead attention
@@ -353,11 +370,13 @@ class FusionBartAttention(FusionAttention):
                         past_v=past_v if decoder_attention_with_past else "",
                         present_k=present_k,
                         present_v=present_v,
-                        packed_qkv=decoder_attention_with_past,
+                        #packed_qkv=decoder_attention_with_past,
+                        packed_qkv=False,
                     )
                     if self.use_multi_head_attention
                     else None
                 )
+                print("new node: ", new_node.name)
             else:
                 # Temporarily set multihead attention flag to false
                 use_multi_head_attention_ground_truth = self.use_multi_head_attention
