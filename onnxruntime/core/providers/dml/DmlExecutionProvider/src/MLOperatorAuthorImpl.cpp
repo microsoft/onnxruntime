@@ -2452,7 +2452,7 @@ namespace Windows::AI::MachineLearning::Adapter
         };
 
         Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
-        
+
         const EdgeShapes* inferredOutputShapeForCompute = &m_inferredOutputShapes;
 
         if (RequiresDynamicKernelCreation())
@@ -2487,13 +2487,13 @@ namespace Windows::AI::MachineLearning::Adapter
                 cachedKernel.inferredOutputShapes = std::make_shared<EdgeShapes>();
                 cachedKernel.kernel = inferShapesAndCreateKernel(key.first, *cachedKernel.inferredOutputShapes.get());
                 inferredOutputShapeForCompute = cachedKernel.inferredOutputShapes.get();
-                
+
                 // Update the time and retrieve the underlying CompPtr before modifying the map to evict kernels
                 cachedKernel.lastUsedTick = m_kernelCacheTick++;
                 kernel = cachedKernel.kernel;
 
                 // The maximum number of kernel variations per operator is reasonably small, so just iterate to find the oldest kernel
-                const size_t maximumCachedKernelsPerNode = 32;
+                const size_t maximumCachedKernelsPerNode = 128;
                 if (m_kernelMap.size() > maximumCachedKernelsPerNode)
                 {
                     assert(m_kernelMap.size() == maximumCachedKernelsPerNode + 1);
@@ -2547,7 +2547,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
     AbiOpKernel::TensorContent AbiOpKernel::GetConstantInputs(const ComPtr<IMLOperatorTensor>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const
     {
-        
+
         TensorContent tensorContent = {};
         // Skip optional constant tensors.
         if (constantTensor != nullptr)
