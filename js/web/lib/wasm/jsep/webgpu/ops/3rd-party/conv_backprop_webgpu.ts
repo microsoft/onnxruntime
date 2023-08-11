@@ -21,7 +21,7 @@ import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
-import {createIndicesHelper, ShaderHelper} from '../common';
+import {inputVariable, outputVariable, ShaderHelper} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 
 const createConvTranspose2DOpProgramShaderSource =
@@ -55,9 +55,9 @@ const createConvTranspose2DOpProgramShaderSource =
       return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
     }`;
       }
-      const wIndicesHelper = createIndicesHelper('W', inputs[1].dims);
-      const dyIndicesHelper = createIndicesHelper('Dy', inputs[0].dims);
-      const outputIndicesHelper = createIndicesHelper('result', outputShape);
+      const w = inputVariable('W', inputs[1].dataType, inputs[1].dims);
+      const dy = inputVariable('Dy', inputs[0].dataType, inputs[0].dims);
+      const output = outputVariable('result', inputs[0].dataType, outputShape);
       const codeSnippet4 = `{
         let batch: u32 = global_id.z / outShape[1];
         let r = global_id.z % outShape[1];
@@ -101,56 +101,21 @@ const createConvTranspose2DOpProgramShaderSource =
             if (bDyCVal && bDyCVal2) {
               let d2Length = outBackprop[3];
               for (var d2 :u32 = 0; d2 < d2Length; d2 = d2 + 4) {
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices0',
-              [
-                'd2', 'd1', 'wRPerm', 'wCPerm'
-              ])};
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices1',
-              [
-                'd2', 'd1+1', 'wRPerm', 'wCPerm'
-              ])};
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices2',
-              [
-                'd2', 'd1+2', 'wRPerm', 'wCPerm'
-              ])};
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices3',
-              [
-                'd2', 'd1+3', 'wRPerm', 'wCPerm'
-              ])};
-                let wValue0 = W[${wIndicesHelper.i2oExpression('wIndices0')}];
-                let wValue1 = W[${wIndicesHelper.i2oExpression('wIndices1')}];
-                let wValue2 = W[${wIndicesHelper.i2oExpression('wIndices2')}];
-                let wValue3 = W[${wIndicesHelper.i2oExpression('wIndices3')}];
-                ${
-          dyIndicesHelper.indicesVariableDeclaration(
-              'dyIndices',
-              isChannelsLast ? ['batch', 'idyR', 'idyC', 'd2'] :
-                               [
-                                 'batch', 'd2', 'idyR', 'idyC'
-                               ])};
-                var xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
+                let wValue0 = ${w.get('d2', 'd1', 'wRPerm', 'wCPerm')};
+                let wValue1 = ${w.get('d2', 'd1 + 1', 'wRPerm', 'wCPerm')};
+                let wValue2 = ${w.get('d2', 'd1 + 2', 'wRPerm', 'wCPerm')};
+                let wValue3 = ${w.get('d2', 'd1 + 3', 'wRPerm', 'wCPerm')};
+
+                var xValue = ${
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
                 let tmpval = vec4<f32>(xValue * wValue0,
                                       xValue * wValue1,
                                       xValue * wValue2,
                                       xValue * wValue3);
                 dotProd[0] = dotProd[0] + tmpval;
 
-                ${
-          dyIndicesHelper.indicesVariableDeclaration(
-              'dyIndices2',
-              isChannelsLast ? ['batch', 'idyR', 'idyC2', 'd2'] :
-                               [
-                                 'batch', 'd2', 'idyR', 'idyC2'
-                               ])};
-                xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
+                xValue =  ${
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC2', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC2')};
 
                 dotProd[1] = dotProd[1] + vec4<f32>(xValue * wValue0,
                                                     xValue * wValue1,
@@ -160,42 +125,13 @@ const createConvTranspose2DOpProgramShaderSource =
             } else if (bDyCVal) {
               let d2Length = outBackprop[3];
               for (var d2: u32 = 0; d2 < d2Length; d2 = d2 + 4) {
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices0',
-              [
-                'd2', 'd1', 'wRPerm', 'wCPerm'
-              ])};
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices1',
-              [
-                'd2', 'd1+1', 'wRPerm', 'wCPerm'
-              ])};
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices2',
-              [
-                'd2', 'd1+2', 'wRPerm', 'wCPerm'
-              ])};
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices3',
-              [
-                'd2', 'd1+3', 'wRPerm', 'wCPerm'
-              ])};
-                let wValue0 = W[${wIndicesHelper.i2oExpression('wIndices0')}];
-                let wValue1 = W[${wIndicesHelper.i2oExpression('wIndices1')}];
-                let wValue2 = W[${wIndicesHelper.i2oExpression('wIndices2')}];
-                let wValue3 = W[${wIndicesHelper.i2oExpression('wIndices3')}];
-                ${
-          dyIndicesHelper.indicesVariableDeclaration(
-              'dyIndices',
-              isChannelsLast ? ['batch', 'idyR', 'idyC', 'd2'] :
-                               [
-                                 'batch', 'd2', 'idyR', 'idyC'
-                               ])};
-                var xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
+                let wValue0 = ${w.get('d2', 'd1', 'wRPerm', 'wCPerm')};
+                let wValue1 = ${w.get('d2', 'd1 + 1', 'wRPerm', 'wCPerm')};
+                let wValue2 = ${w.get('d2', 'd1 + 2', 'wRPerm', 'wCPerm')};
+                let wValue3 = ${w.get('d2', 'd1 + 3', 'wRPerm', 'wCPerm')};
+
+                var xValue = ${
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
                 let tmpval = vec4<f32>(xValue * wValue0,
                                       xValue * wValue1,
                                       xValue * wValue2,
@@ -205,42 +141,13 @@ const createConvTranspose2DOpProgramShaderSource =
             } else if (bDyCVal2) {
               let d2Length = outBackprop[3];
               for (var d2: u32 = 0; d2 < d2Length; d2 = d2 + 4) {
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices0',
-              [
-                'd2', 'd1', 'wRPerm', 'wCPerm'
-              ])};
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices1',
-              [
-                'd2', 'd1+1', 'wRPerm', 'wCPerm'
-              ])};
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices2',
-              [
-                'd2', 'd1+2', 'wRPerm', 'wCPerm'
-              ])};
-                ${
-          wIndicesHelper.indicesVariableDeclaration(
-              'wIndices3',
-              [
-                'd2', 'd1+3', 'wRPerm', 'wCPerm'
-              ])};
-                let wValue0 = W[${wIndicesHelper.i2oExpression('wIndices0')}];
-                let wValue1 = W[${wIndicesHelper.i2oExpression('wIndices1')}];
-                let wValue2 = W[${wIndicesHelper.i2oExpression('wIndices2')}];
-                let wValue3 = W[${wIndicesHelper.i2oExpression('wIndices3')}];
-                ${
-          dyIndicesHelper.indicesVariableDeclaration(
-              'dyIndices',
-              isChannelsLast ? ['batch', 'idyR', 'idyC', 'd2'] :
-                               [
-                                 'batch', 'd2', 'idyR', 'idyC'
-                               ])};
-                var xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
+                let wValue0 = ${w.get('d2', 'd1', 'wRPerm', 'wCPerm')};
+                let wValue1 = ${w.get('d2', 'd1 + 1', 'wRPerm', 'wCPerm')};
+                let wValue2 = ${w.get('d2', 'd1 + 2', 'wRPerm', 'wCPerm')};
+                let wValue3 = ${w.get('d2', 'd1 + 3', 'wRPerm', 'wCPerm')};
+
+                var xValue = ${
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
                 let tmpval = vec4<f32>(xValue * wValue0,
                                       xValue * wValue1,
                                       xValue * wValue2,
@@ -252,15 +159,11 @@ const createConvTranspose2DOpProgramShaderSource =
         }
 
         for (var i: u32 = 0; i < ${workPerThread}; i = i + 1) {
-          ${
-          outputIndicesHelper.indicesVariableDeclaration('outputIndices', [
-            'batch', 'r', 'c+i', 'd1'
-          ])};
-          result[${outputIndicesHelper.i2oExpression('outputIndices')}] = dotProd[i];
+          ${output.set('batch', 'r', 'c+i', 'd1', 'dotProd[i]')}
         }
       }`;
       const codeSnippet = `
-          ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
+          let outputIndices = ${output.offsetToIndices('global_idx')};
           let batch = outputIndices[0];
           let d1 = outputIndices[${channelDim}];
           let dyCorner = vec2<i32>(i32(outputIndices[${rowDim}]), i32(outputIndices[${colDim}])) - pads;
@@ -294,31 +197,20 @@ const createConvTranspose2DOpProgramShaderSource =
               let idyC: u32 = u32(dyC);
 
               for (var d2: u32 = 0; d2 < outBackprop[3]; d2 = d2 + 1) {
-                ${
-          dyIndicesHelper.indicesVariableDeclaration(
-              'dyIndices',
-              isChannelsLast ? ['batch', 'idyR', 'idyC', 'd2'] :
-                               [
-                                 'batch', 'd2', 'idyR', 'idyC'
-                               ])};
-                let xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
-                  ${
-          wIndicesHelper.indicesVariableDeclaration('wIndices', [
-            'd2', 'd1', 'wRPerm', 'wCPerm'
-          ])};
-
-                let wValue = W[${wIndicesHelper.i2oExpression('wIndices')}];
+                let xValue = ${
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
+                let wValue = ${w.get('d2', 'd1', 'wRPerm', 'wCPerm')};
                 dotProd = dotProd + xValue * wValue;
               }
             }
           }
-          result[global_idx] = dotProd;
+          ${output.setByOffset('global_idx', 'dotProd')};
         `;
 
       return `
-${wIndicesHelper.i2oImpl}
-  ${dyIndicesHelper.i2oImpl}
-  ${outputIndicesHelper.o2iImpl}
+  ${w.impl('indicesToOffset', 'get')}
+  ${dy.impl('indicesToOffset', 'get')}
+  ${output.impl('offsetToIndices')}
   ${declareFunctions}
   ${declareInputs.join('\n')}
   @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
@@ -340,7 +232,6 @@ ${wIndicesHelper.i2oImpl}
   const pads : vec2<i32> = vec2<i32>(i32(effectiveFilterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]})/2,
                                      i32(effectiveFilterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]})/2);
     ${shaderHelper.mainStart()}
-    ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
   ${isVec4 ? codeSnippet4 : codeSnippet}}`;
     };
