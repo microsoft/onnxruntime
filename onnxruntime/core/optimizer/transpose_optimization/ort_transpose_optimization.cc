@@ -89,6 +89,28 @@ constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
 constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode};
 constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOps};
 
+static bool HandleContribQuantizeDequantizeLinear(HandlerArgs& args) {
+  if (!TransposeQuantizeDequantizeAxis(args.ctx.graph, args.perm, args.node)) {
+    return false;
+  }
+
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, args.perm);
+
+  return true;
+}
+
+constexpr HandlerInfo contrib_quantize_dequantize_linear_handler = {&FirstInput, &HandleContribQuantizeDequantizeLinear};
+
+const HandlerMap& OrtHandlers() {
+  static const HandlerMap extended_handler_map{
+      {"com.microsoft.QuantizeLinear", contrib_quantize_dequantize_linear_handler},
+      {"com.microsoft.DequantizeLinear", contrib_quantize_dequantize_linear_handler},
+  };
+
+  return extended_handler_map;
+}
+
 // ORT contrib ops and special cased ONNX ops where we have EP specific handling
 const HandlerMap& OrtExtendedHandlers() {
   static const HandlerMap extended_handler_map = []() {
