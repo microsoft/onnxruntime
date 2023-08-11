@@ -273,10 +273,11 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
                                         const std::string& mode = "nearest",
                                         const std::string& coordinate_transformation_mode = "half_pixel",
                                         const std::string& nearest_mode = "round_prefer_floor",
-                                        bool add_dq_output_float = false) {
+                                        bool add_dq_output_float = false,
+                                        bool use_ms_domain_qdq_ops = false) {
   static_assert(std::is_same_v<InputType, int8_t> || std::is_same_v<InputType, uint8_t>);
   return [input_shape, sizes_data, mode, coordinate_transformation_mode,
-          nearest_mode, add_dq_output_float](ModelTestBuilder& builder) {
+          nearest_mode, add_dq_output_float, use_ms_domain_qdq_ops](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<InputType>(input_shape,
                                                     std::numeric_limits<InputType>::min(),
                                                     std::numeric_limits<InputType>::max());
@@ -287,7 +288,7 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
 
     // add DQ
     auto* dq_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<InputType>(input1_arg, .003f, 1, dq_output);
+    builder.AddDequantizeLinearNode<InputType>(input1_arg, .003f, 1, dq_output, use_ms_domain_qdq_ops);
 
     // add Resize
     auto* resize_output = builder.MakeIntermediate();
@@ -303,13 +304,13 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
     if (add_dq_output_float) {
       // add Q
       output_arg = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode<InputType>(resize_output, .003f, 1, output_arg);
+      builder.AddQuantizeLinearNode<InputType>(resize_output, .003f, 1, output_arg, use_ms_domain_qdq_ops);
       auto* f_dq_output = builder.MakeOutput();
-      builder.AddDequantizeLinearNode<InputType>(output_arg, .003f, 1, f_dq_output);
+      builder.AddDequantizeLinearNode<InputType>(output_arg, .003f, 1, f_dq_output, use_ms_domain_qdq_ops);
     } else {
       output_arg = builder.MakeOutput();
       // add Q
-      builder.AddQuantizeLinearNode<InputType>(resize_output, .003f, 1, output_arg);
+      builder.AddQuantizeLinearNode<InputType>(resize_output, .003f, 1, output_arg, use_ms_domain_qdq_ops);
     }
   };
 }
@@ -533,8 +534,9 @@ GetQDQTestCaseFn BuildQDQWhereTestCase(
 template <typename InputType, typename OutputType>
 GetQDQTestCaseFn BuildQDQTransposeTestCase(
     const std::vector<int64_t>& input_shape,
-    const std::vector<int64_t>& perms) {
-  return [input_shape, perms](ModelTestBuilder& builder) {
+    const std::vector<int64_t>& perms,
+    bool use_ms_domain_qdq_ops = false) {
+  return [input_shape, perms, use_ms_domain_qdq_ops](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<InputType>(input_shape,
                                                    std::numeric_limits<InputType>::min(),
                                                    std::numeric_limits<InputType>::max());
@@ -545,7 +547,7 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
 
     // add DQ
     auto* dq_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output);
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output, use_ms_domain_qdq_ops);
 
     // add Transpose
     auto* transpose_output = builder.MakeIntermediate();
@@ -553,7 +555,7 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     transpose_node.AddAttribute("perm", perms);
 
     // add Q
-    builder.AddQuantizeLinearNode<OutputType>(transpose_output, .003f, q_zp, output_arg);
+    builder.AddQuantizeLinearNode<OutputType>(transpose_output, .003f, q_zp, output_arg, use_ms_domain_qdq_ops);
   };
 }
 

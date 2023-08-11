@@ -1156,32 +1156,36 @@ TEST(QDQTransformerTests, Where) {
 }
 
 TEST(QDQTransformerTests, Transpose) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms,
+                       bool use_ms_domain_qdq_ops = false) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["Transpose"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
     };
 
-    TransformerTester(BuildQDQTransposeTestCase<int8_t, int8_t>(input_shape, perms),
+    TransformerTester(BuildQDQTransposeTestCase<int8_t, int8_t>(input_shape, perms, use_ms_domain_qdq_ops),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
 
   test_case({2, 13, 12, 37}, {0, 3, 1, 2});
+  test_case({2, 13, 12, 37}, {0, 3, 1, 2}, true /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, Transpose_No_Fusion) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& perms) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& perms,
+                       bool use_ms_domain_qdq_ops = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<int8_t>(input1_shape, -128, 127);
       auto* output_arg = builder.MakeOutput();
 
       // add DQ
       auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<int8_t>(input1_arg, .003f, 1, dq_output);
+      builder.AddDequantizeLinearNode<int8_t>(input1_arg, .003f, 1, dq_output, use_ms_domain_qdq_ops);
 
       // add Transpose
       auto* transpose_output = builder.MakeOutput();  // transpose output is graph output
@@ -1189,32 +1193,42 @@ TEST(QDQTransformerTests, Transpose_No_Fusion) {
       transpose_node.AddAttribute("perm", perms);
 
       // add Q
-      builder.AddQuantizeLinearNode<int8_t>(transpose_output, .003f, 1, output_arg);
+      builder.AddQuantizeLinearNode<int8_t>(transpose_output, .003f, 1, output_arg, use_ms_domain_qdq_ops);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
     };
 
     TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({2, 13, 12, 37}, {0, 3, 1, 2});
+  test_case({2, 13, 12, 37}, {0, 3, 1, 2}, true /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, Resize) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape,
-                       const std::vector<int64_t>& sizes_shape) {
+                       const std::vector<int64_t>& sizes_shape,
+                       bool use_ms_domain_qdq_ops = false) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["Resize"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
     };
 
-    TransformerTester(BuildQDQResizeTestCase(input1_shape, sizes_shape),
+    TransformerTester(BuildQDQResizeTestCase(input1_shape,
+                                             sizes_shape,
+                                             "nearest",             // mode
+                                             "half_pixel",          // coordinate_transformation_mode
+                                             "round_prefer_floor",  // nearest_mode
+                                             false,                 // add_dq_output_float
+                                             use_ms_domain_qdq_ops),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
@@ -1222,13 +1236,15 @@ TEST(QDQTransformerTests, Resize) {
 
   RandomValueGenerator rand_gen{optional<RandomValueGenerator::RandomSeedType>{2345}};
   test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16));
+  test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16), true /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, Resize_No_Fusion) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        const std::vector<int64_t>& sizes_shape,
                        const std::vector<int64_t>& concat_input2_shape,
-                       const int64_t axis) {
+                       const int64_t axis,
+                       bool use_ms_domain_qdq_ops = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
                                                    std::numeric_limits<uint8_t>::min(),
@@ -1240,7 +1256,7 @@ TEST(QDQTransformerTests, Resize_No_Fusion) {
 
       // add DQ
       auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .003f, 1, dq_output);
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .003f, 1, dq_output, use_ms_domain_qdq_ops);
 
       // add Resize
       auto* resize_output = builder.MakeIntermediate();
@@ -1257,15 +1273,16 @@ TEST(QDQTransformerTests, Resize_No_Fusion) {
       concat_node.AddAttribute("axis", axis);
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(resize_output, .003f, 1, output_arg);
+      builder.AddQuantizeLinearNode<uint8_t>(resize_output, .003f, 1, output_arg, use_ms_domain_qdq_ops);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["Resize"], 1);
       EXPECT_EQ(op_to_count["Concat"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
     };
 
     TransformerTester(build_test_case, check_graph,
@@ -1274,11 +1291,13 @@ TEST(QDQTransformerTests, Resize_No_Fusion) {
   };
 
   test_case({1, 8, 64, 64}, {4}, {1, 4, 128, 128}, 1);
+  test_case({1, 8, 64, 64}, {4}, {1, 4, 128, 128}, 1, true /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, ResizeReshapeSqueezeUnsqueeze) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
-                       const std::vector<int64_t>& sizes_shape) {
+                       const std::vector<int64_t>& sizes_shape,
+                       bool use_ms_domain_qdq_ops = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape,
                                                  std::numeric_limits<float>::min(),
@@ -1288,38 +1307,39 @@ TEST(QDQTransformerTests, ResizeReshapeSqueezeUnsqueeze) {
       auto* sizes = builder.MakeInitializer<int64_t>(sizes_shape, {1, 2, 52, 82});
 
       // add QDQ + Resize
-      auto* qdq_input = AddQDQNodePair<uint8_t>(builder, input_arg, .003f, 1);
+      auto* qdq_input = AddQDQNodePair<uint8_t>(builder, input_arg, .003f, 1, use_ms_domain_qdq_ops);
       auto* resize_output = builder.MakeIntermediate();
       builder.AddNode("Resize", {qdq_input, roi, scales, sizes}, {resize_output});
 
       // add QDQ + Reshape
-      auto* qdq_resize_output = AddQDQNodePair<uint8_t>(builder, resize_output, .003f, 1);
+      auto* qdq_resize_output = AddQDQNodePair<uint8_t>(builder, resize_output, .003f, 1, use_ms_domain_qdq_ops);
       auto* reshape_shape = builder.Make1DInitializer<int64_t>({1, 2, 52, 82});
       auto* reshape_output = builder.MakeIntermediate();
       builder.AddNode("Reshape", {qdq_resize_output, reshape_shape}, {reshape_output});
 
       // add QDQ + Squeeze
-      auto* qdq_squeeze_output = AddQDQNodePair<uint8_t>(builder, reshape_output, .003f, 1);
+      auto* qdq_squeeze_output = AddQDQNodePair<uint8_t>(builder, reshape_output, .003f, 1, use_ms_domain_qdq_ops);
       auto* squeeze_axes = builder.Make1DInitializer<int64_t>({0});
       auto* squeeze_output = builder.MakeIntermediate();
       builder.AddNode("Squeeze", {qdq_squeeze_output, squeeze_axes}, {squeeze_output});
 
       // add QDQ + Unsqueeze
-      auto* qdq_unsqueeze_output = AddQDQNodePair<uint8_t>(builder, squeeze_output, .003f, 1);
+      auto* qdq_unsqueeze_output = AddQDQNodePair<uint8_t>(builder, squeeze_output, .003f, 1, use_ms_domain_qdq_ops);
       auto* unsqueeze_axes = builder.Make1DInitializer<int64_t>({0});
       auto* unsqueeze_output = builder.MakeIntermediate();
       builder.AddNode("Unsqueeze", {qdq_unsqueeze_output, unsqueeze_axes}, {unsqueeze_output});
 
       // add QDQ
-      AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, unsqueeze_output, .003f, 1);
+      AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, unsqueeze_output, .003f, 1, use_ms_domain_qdq_ops);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["Resize"], 1);
       EXPECT_EQ(op_to_count["Reshape"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
     };
 
     TransformerTester(build_test_case, check_graph,
@@ -1334,6 +1354,7 @@ TEST(QDQTransformerTests, ResizeReshapeSqueezeUnsqueeze) {
   };
 
   test_case({1, 2, 26, 42}, {4});
+  test_case({1, 2, 26, 42}, {4}, true /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, ArgMax) {
