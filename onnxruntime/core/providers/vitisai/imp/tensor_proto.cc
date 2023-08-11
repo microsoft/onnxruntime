@@ -14,7 +14,7 @@ gsl::span<const char> tensor_proto_as_raw(
   auto& mut_tensor = const_cast<ONNX_NAMESPACE::TensorProto&>(tensor);
   if (!tensor.has_raw_data()) {
     std::vector<uint8_t> unpacked_tensor;
-    auto s = onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor);
+    auto s = onnxruntime::utils::UnpackInitializerData(tensor, onnxruntime::Path(), unpacked_tensor);
     mut_tensor.mutable_raw_data()->resize(unpacked_tensor.size());
     memcpy(mut_tensor.mutable_raw_data()->data(), unpacked_tensor.data(), unpacked_tensor.size());
   }
