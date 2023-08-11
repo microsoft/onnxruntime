@@ -4004,7 +4004,7 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Wrapper of PyTorch's autograd.Function's backward implementaiton.")
+      .SetDoc("Wrapper of PyTorch's autograd.Function's backward implementation.")
       .Input(
           0,
           "context",
