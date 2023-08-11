@@ -62,7 +62,7 @@ def load_onnx_model(
     model = ORTModelForQuestionAnswering.from_pretrained(model_id, from_transformers=True)
 
     if onnx_path is not None:
-        model.latest_model_name = Path(onnx_path).name
+        model.model_name = Path(onnx_path).name
 
         if provider != "CPUExecutionProvider":
             model.device = torch.device("cuda:0")
@@ -71,7 +71,7 @@ def load_onnx_model(
             model.device = torch.device("cpu")
             model.model = ORTModel.load_model(onnx_path)
     else:
-        onnx_path = os.path.join(model.model_save_dir.as_posix(), model.latest_model_name)
+        onnx_path = os.path.join(model.model_save_dir.as_posix(), model.model_name)
         if provider != "CPUExecutionProvider":
             model.to("cuda")
 
