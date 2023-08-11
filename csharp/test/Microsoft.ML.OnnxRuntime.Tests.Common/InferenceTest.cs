@@ -2030,7 +2030,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
-        /*
+
         [Fact(DisplayName = "TestModelRunAsyncTask")]
         private async void TestModelRunAsyncTask()
         {
@@ -2101,7 +2101,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }
             }
-        }*/
+        }
 
 #if USE_AZURE
         [Fact(DisplayName = "TestLoadAzureEP")]
