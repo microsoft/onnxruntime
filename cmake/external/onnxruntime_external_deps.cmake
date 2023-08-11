@@ -34,7 +34,7 @@ FetchContent_Declare(
 if (onnxruntime_BUILD_UNIT_TESTS)
   # WebAssembly threading support in Node.js is still an experimental feature and
   # not working properly with googletest suite.
-  if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(gtest_disable_pthreads ON)
   endif()
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
@@ -46,8 +46,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
-    FIND_PACKAGE_ARGS NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
+    OVERRIDE_FIND_PACKAGE
   )
 endif()
 
@@ -84,7 +84,7 @@ FetchContent_Declare(
 
 # Flatbuffers
 # We do not need to build flatc for iOS or Android Cross Compile
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
@@ -92,7 +92,7 @@ set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 if(Patch_FOUND)
-  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/flatbuffers/flatbuffers_cmake.patch)
+  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/flatbuffers/flatbuffers.patch)
 else()
  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND "")
 endif()
@@ -107,7 +107,7 @@ FetchContent_Declare(
 )
 
 # Download a protoc binary from Internet if needed
-if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT CMAKE_OSX_ARCHITECTURES)
+if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
   # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
   # variable.
@@ -119,7 +119,7 @@ if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT CMAKE_OSX_
     elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
       FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
       FetchContent_Populate(protoc_binary)
-    endif() 
+    endif()
     if(protoc_binary_SOURCE_DIR)
       message("Use prebuilt protoc")
       set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc.exe)
@@ -140,6 +140,14 @@ if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT CMAKE_OSX_
       message("Use prebuilt protoc")
       set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
 	  set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+    endif()
+  elseif ((CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS") AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal})
+    FetchContent_Populate(protoc_binary)
+    if(protoc_binary_SOURCE_DIR)
+      message("Use prebuilt protoc")
+      set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
+      set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
     endif()
   endif()
 endif()
@@ -218,7 +226,7 @@ if (onnxruntime_ENABLE_CPUINFO)
   else()
     # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo
     # so we don't set CPUINFO_SUPPORTED in the CXX flags below.
-    if (onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_USE_XNNPACK)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_USE_XNNPACK)
       set(CPUINFO_SUPPORTED FALSE)
     else()
       set(CPUINFO_SUPPORTED TRUE)
@@ -252,7 +260,7 @@ if (CPUINFO_SUPPORTED)
 
   # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved)
   # we do not use cpuinfo in ORT code, so don't define CPUINFO_SUPPORTED.
-  if (NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
   endif()
 
@@ -521,6 +529,3 @@ endif()
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
 FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
 
-if (onnxruntime_USE_AZURE)
-    include(triton)
-endif()

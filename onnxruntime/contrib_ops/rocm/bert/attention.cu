@@ -39,7 +39,12 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : RocmKernel(info), AttentionBase(info, true) {}
+Attention<T>::Attention(const OpKernelInfo& info)
+    : RocmKernel(info), AttentionBase(info, true), attn_type_(kAttention) {
+  using HipT = typename ToHipType<T>::MappedType;
+  using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
+  tunable_op_ = std::make_shared<AttentionTunableOp>();
+}
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -52,7 +57,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
 
   auto& device_prop = GetDeviceProp();
-  AttentionParameters attn;
+  RocmAttentionParameters attn;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
@@ -63,7 +68,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
   ORT_ENFORCE(attn.sequence_length == attn.kv_sequence_length);  // self attention
-  ORT_ENFORCE(attn.qkv_format == Q_K_V_BNSH);  // non-packed, permuted
+  ORT_ENFORCE(attn.qkv_format == Q_K_V_BNSH);                    // non-packed, permuted
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(attn.batch_size);
@@ -86,6 +91,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   using AttentionGeneric = GemmSoftmaxGemmPermuteGenericPipeline<HipT>;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
 
+  ORT_RETURN_IF_ERROR(ClassifyAttentionMode(attn_type_, &attn, /*qkv=*/{}, /*past=*/{past}, /*present=*/{present}));
+  ORT_ENFORCE(attn.mode == QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE ||
+              attn.mode == QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE ||
+              attn.mode == QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE ||
+              attn.mode == QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE ||
+              attn.mode == QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE);
+
   size_t qkv_project_output_bytes = QkvProjectGeneric::GetOutputNumBytes(&attn);
   size_t shared_workspace_bytes = std::max(QkvProjectGeneric::GetWorkspaceNumBytes(&attn),
                                            AttentionGeneric::GetWorkspaceNumBytes(&attn));
@@ -100,7 +112,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   {
     auto& params = gemm_permute_params;
     params.tuning_ctx = GetTuningContext();
-    params.stream = stream;
+    params.stream = context->GetComputeStream();
     params.handle = rocblas;
     params.attention = &attn;
     params.device_prop = &device_prop;
@@ -116,27 +128,46 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(QkvProjectGeneric::Run(&gemm_permute_params));
   auto [q_buffer, k_buffer, v_buffer] = QkvProjectGeneric::UnspliceOutputQKV(&gemm_permute_params);
 
+  // NOTE: GemmPermute always output 3BNSH, k_buffer and v_buffer can be treated as 2BNSH
   if (nullptr != present) {
-    // Concat past (2xBxNxS'xH) to present (2xBxNxTxH):
-    // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxTxH)
-    // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxTxH)
-    const int batches = attn.batch_size * attn.num_heads;
-    const int present_size_per_batch = attn.total_sequence_length * attn.head_size;
-    ORT_RETURN_IF_ERROR(
-        LaunchConcatPastToPresent(Stream(context),
-                                  attn.total_sequence_length,
-                                  attn.sequence_length,
-                                  attn.batch_size,
-                                  attn.head_size,
-                                  attn.num_heads,
-                                  device_prop.maxThreadsPerBlock,
-                                  nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
-                                  k_buffer,
-                                  reinterpret_cast<HipT*>(present->MutableDataRaw())));
+    Strides dst_strides;  // the output buffer is present Tensor, the buffer is the same
 
-    // update pointers to present_k and present_v.
+    int4 add_shape{2 * attn.batch_size, attn.num_heads, attn.sequence_length, attn.head_size};
+    HipT* add_dest = nullptr;              // destination of concatenated data to present
+    const HipT* const add_src = k_buffer;  // source of concatenated data to present
+    const auto add_src_strides = Strides::BNSHMemory(
+        2 * attn.batch_size, attn.num_heads, attn.sequence_length, attn.head_size);
+
+    if (attn.mode == QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE) {
+      dst_strides = Strides::BNSHMemory(2 * attn.batch_size, attn.num_heads, attn.total_sequence_length, attn.head_size);
+      add_dest = reinterpret_cast<HipT*>(present->MutableDataRaw()) /* + dst_strides.OffsetAt(0, 0, 0, 0)*/;
+    } else if (attn.mode == QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE) {
+      dst_strides = Strides::BNSHMemory(2 * attn.batch_size, attn.num_heads, attn.total_sequence_length, attn.head_size);
+      add_dest = reinterpret_cast<HipT*>(present->MutableDataRaw()) + dst_strides.OffsetAt(0, 0, attn.past_sequence_length, 0);
+
+      // We only need to copy past to present in this case. All other cases will be build the present incrementally
+      const int4 past_shape = {2 * attn.batch_size, attn.num_heads, attn.past_sequence_length, attn.head_size};
+      HipT* const past_dest = reinterpret_cast<HipT*>(present->MutableDataRaw());
+      const HipT* const past_src = reinterpret_cast<const HipT*>(past->DataRaw());
+      const Strides past_src_strides = Strides::BNSHMemory(
+          2 * attn.batch_size, attn.num_heads, attn.past_sequence_length, attn.head_size);
+
+      ORT_RETURN_IF_ERROR(LaunchStridedCopy(stream, past_src, past_shape, past_src_strides.ForBNSHCoord(),
+                                            past_dest, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+    } else if (attn.mode == QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE) {
+      dst_strides = Strides::BNSHMemory(2 * attn.batch_size, attn.num_heads, attn.max_sequence_length, attn.head_size);
+      add_dest = reinterpret_cast<HipT*>(present->MutableDataRaw()) /* + dst_strides.OffsetAt(0, 0, 0, 0)*/;
+    } else if (attn.mode == QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE) {
+      dst_strides = Strides::BNSHMemory(2 * attn.batch_size, attn.num_heads, attn.max_sequence_length, attn.head_size);
+      add_dest = reinterpret_cast<HipT*>(present->MutableDataRaw()) + dst_strides.OffsetAt(0, 0, attn.past_sequence_length, 0);
+    }
+
+    ORT_RETURN_IF_ERROR(LaunchStridedCopy(stream, add_src, add_shape, add_src_strides.ForBNSHCoord(),
+                                          add_dest, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+
+    // update pointers to present_k and present_v. TODO: switch to ConvertToOffsetedBufferViews
     k_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw());
-    v_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw()) + batches * present_size_per_batch;
+    v_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw()) + dst_strides.OffsetAt(attn.batch_size, 0, 0, 0);
   }
 
   // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
@@ -147,12 +178,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   {
     auto& params = gemm_softmax_gemm_permute_params;
     params.tuning_ctx = GetTuningContext();
-    params.stream = Stream(context);
+    params.stream = context->GetComputeStream();
     params.handle = rocblas;
     params.attention = &attn;
     params.device_prop = &device_prop;
     // FIXME: the params.scale seems to be different from AttentionParameters::scale;
     params.scale = 1.0f / sqrt(static_cast<float>(attn.head_size));
+    // TODO: switch to ConvertToOffsetedBufferViews
     params.q_buffer = q_buffer;
     params.k_buffer = k_buffer;
     params.v_buffer = v_buffer;
@@ -172,7 +204,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (this->GetTuningContext()->IsTunableOpEnabled() &&
       !use_persistent_softmax) {
-    return AttentionTunableOp{}(&gemm_softmax_gemm_permute_params);
+    return (*std::static_pointer_cast<AttentionTunableOp>(tunable_op_))(&gemm_softmax_gemm_permute_params);
   } else {
     return AttentionGeneric::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
   }

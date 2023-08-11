@@ -82,12 +82,10 @@ const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 #pragma warning(disable : 26400)
 #endif
 using namespace onnxruntime::logging;
-using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::Environment;
 using onnxruntime::IAllocator;
 using onnxruntime::InputDefList;
-using onnxruntime::MLFloat16;
 using onnxruntime::narrow;
 using onnxruntime::OutputDefList;
 using onnxruntime::Tensor;
@@ -819,81 +817,56 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
 ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
-                    _In_reads_(output_names_len) const char* const* output_names1, size_t output_names_len,
+                    _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                     _Inout_updates_all_(output_names_len) OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
-  InlinedVector<std::string> feed_names;
-  feed_names.reserve(input_len);
-  InlinedVector<OrtValue> feeds;
-  feeds.reserve(input_len);
-
-  for (size_t i = 0; i != input_len; ++i) {
-    if (input_names[i] == nullptr || input_names[i][0] == '\0') {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input name cannot be empty");
-    }
-
-    if (!input[i]) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   MakeString("NULL input supplied for input ", input_names[i]).c_str());
-    }
-
-    feed_names.emplace_back(input_names[i]);
-    feeds.emplace_back(*input[i]);
-  }
-
-  // Create output feed
-  InlinedVector<std::string> output_names;
-  output_names.reserve(output_names_len);
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output_names1[i] == nullptr || output_names1[i][0] == '\0') {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "output name cannot be empty");
-    }
-    output_names.emplace_back(output_names1[i]);
-  }
-
-  std::vector<OrtValue> fetches;
-  fetches.reserve(output_names_len);
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output[i] != nullptr) {
-      fetches.emplace_back(*output[i]);
-    } else {
-      fetches.emplace_back();
-    }
-  }
+  gsl::span<const char* const> input_names_span(input_names, input_len);
+  gsl::span<const OrtValue* const> input_span(input, input_len);
+  gsl::span<const char* const> output_name_span(output_names, output_names_len);
+  gsl::span<OrtValue*> output_span(output, output_names_len);
 
   Status status;
-  if (run_options == nullptr) {
-    OrtRunOptions op;
-    status = session->Run(op, feed_names, feeds, output_names, &fetches, nullptr);
+  if (run_options) {
+    status = session->Run(*run_options,
+                          input_names_span,
+                          input_span,
+                          output_name_span,
+                          output_span);
   } else {
-    status = session->Run(*run_options, feed_names, feeds, output_names, &fetches, nullptr);
+    const RunOptions default_run_options;
+    status = session->Run(default_run_options,
+                          input_names_span,
+                          input_span,
+                          output_name_span,
+                          output_span);
   }
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
 
-  if (!status.IsOK())
-    return ToOrtStatus(status);
+ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
+                    _In_reads_(input_len) const char* const* input_names,
+                    _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
+                    _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
+                    _Inout_updates_all_(output_names_len) OrtValue** output,
+                    _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
-  // We do it in two loops to make sure copy __ctors does not throw
-  InlinedVector<std::unique_ptr<OrtValue>> output_unique_ptrs;
-  output_unique_ptrs.reserve(output_names_len);
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output[i] == nullptr) {
-      output_unique_ptrs.emplace_back(std::make_unique<OrtValue>(fetches[i]));
-    } else {
-      output_unique_ptrs.emplace_back();
-    }
-  }
+  gsl::span<const char* const> input_names_span(input_names, input_len);
+  gsl::span<const OrtValue* const> input_span(input, input_len);
+  gsl::span<const char* const> output_name_span(output_names, output_names_len);
+  gsl::span<OrtValue*> output_span(output, output_names_len);
 
-  assert(output_unique_ptrs.size() == output_names_len);
-
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output[i] == nullptr) {
-      assert(output_unique_ptrs[i] != nullptr);
-      output[i] = output_unique_ptrs[i].release();
-    }
-  }
-  return nullptr;
+  return ToOrtStatus(session->RunAsync(run_options,
+                                       input_names_span,
+                                       input_span,
+                                       output_name_span,
+                                       output_span,
+                                       run_async_callback,
+                                       user_data));
   API_IMPL_END
 }
 
@@ -2233,6 +2206,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
   cfg->arena_extend_strategy = arena_extend_strategy;
   cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
   cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+  cfg->max_dead_bytes_per_chunk = -1L;
   *out = cfg.release();
   return nullptr;
   API_IMPL_END
@@ -2254,6 +2228,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
       cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "initial_growth_chunk_size_bytes") == 0) {
       cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "max_power_of_two_extend_bytes") == 0) {
+      cfg->max_power_of_two_extend_bytes = static_cast<int64_t>(arena_config_values[i]);
     } else {
       std::ostringstream oss;
       oss << "Invalid key found: " << arena_config_keys[i];
@@ -2725,8 +2701,21 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::GetOptionalContainedTypeInfo,
     &OrtApis::GetResizedStringTensorElementBuffer,
     &OrtApis::KernelContext_GetAllocator,
-    &OrtApis::GetBuildInfoString};
-// End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
+    &OrtApis::GetBuildInfoString,
+    // End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Start of Version 16 API in progress, safe to modify/rename/rearrange until we ship
+    &OrtApis::CreateROCMProviderOptions,
+    &OrtApis::UpdateROCMProviderOptions,
+    &OrtApis::GetROCMProviderOptionsAsString,
+    &OrtApis::ReleaseROCMProviderOptions,
+    &OrtApis::CreateAndRegisterAllocatorV2,
+    &OrtApis::RunAsync,
+    &OrtApis::UpdateTensorRTProviderOptionsWithValue,
+    &OrtApis::GetTensorRTProviderOptionsByName,
+    &OrtApis::UpdateCUDAProviderOptionsWithValue,
+    &OrtApis::GetCUDAProviderOptionsByName,
+};
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
 static_assert(sizeof(OrtApiBase) == sizeof(void*) * 2, "New methods can't be added to OrtApiBase as it is not versioned");

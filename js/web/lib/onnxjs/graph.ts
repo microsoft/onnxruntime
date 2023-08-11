@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {onnx} from 'onnx-proto';
-
 import {Attribute} from './attribute';
-import {onnxruntime} from './ort-schema/ort-generated';
+import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
+import {onnx} from './ort-schema/protobuf/onnx';
 import {Tensor} from './tensor';
 import {LongUtil, MAX_CLIP, MIN_CLIP, ProtoUtil} from './util';
 
@@ -333,8 +332,9 @@ class GraphImpl implements Graph, Graph.Transformer {
       for (const input of nodeProto.input) {
         const dataIndex = dataIndices.get(input);
         if (typeof dataIndex === 'undefined') {
-          // handle exception when opset > 9 and roi not given
-          if (input === '' && nodeProto.input.length === 3 && nodeProto.opType === 'Resize') {
+          // handle exception when opset > 9 and roi / scales not given
+          if (input === '' && (nodeProto.input.length === 3 || nodeProto.input.length === 4) &&
+              nodeProto.opType === 'Resize') {
             continue;
           }
           throw new Error(`unrecognized input '${input}' for node: ${nodeProto.name}`);

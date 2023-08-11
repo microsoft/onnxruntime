@@ -19,6 +19,7 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
+        const bool channelsLast = kernelCreationContext.GetOptionalAttribute<bool>(AttrName::ChannelsLast, true);
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
         const bool activation = gsl::narrow_cast<bool>(kernelCreationContext.GetAttribute<int64_t>(AttrName::Activation));
         const uint32_t groups = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::Groups));
@@ -36,19 +37,32 @@ public:
 
         // Data is in NHWC format
         const uint32_t batch = inputTensorShape[0];
-        const uint32_t height = inputTensorShape[1];
-        const uint32_t width = inputTensorShape[2];
-        const uint32_t channels = inputTensorShape[3];
+        const uint32_t height = channelsLast ? inputTensorShape[1] : inputTensorShape[2];
+        const uint32_t width = channelsLast ? inputTensorShape[2] : inputTensorShape[3];
+        const uint32_t channels = channelsLast ? inputTensorShape[3] : inputTensorShape[1];
         ML_CHECK_VALID_ARGUMENT(gammaTensorShape[0] == channels);
         ML_CHECK_VALID_ARGUMENT(betaTensorShape[0] == channels);
         ML_CHECK_VALID_ARGUMENT(channels % groups == 0);
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[1].GetDmlDataType() == m_inputTensorDescs[2].GetDmlDataType());
         const uint32_t channelsPerGroup = channels / groups;
 
-        // 1. Reshape the input from [batch, height, width, channels] to [batch, height * width, groups, channelsPerGroup]
-        // 2. Stride the reshaped input from [batch, height * width, groups, channelsPerGroup] to [batch, groups, channelsPerGroup, height * width]
-        const std::array<uint32_t, 4> inputShape = {batch, groups, channelsPerGroup, height * width};
-        const std::array<uint32_t, 4> inputStrides = {channelsPerGroup * height * width * groups, channelsPerGroup, 1, groups * channelsPerGroup};
+        std::array<uint32_t, 4> inputShape;
+        std::array<uint32_t, 4> inputStrides;
+
+        if (channelsLast)
+        {
+            // 1. Reshape the input from [batch, height, width, channels] to [batch, height * width, groups, channelsPerGroup]
+            // 2. Stride the reshaped input from [batch, height * width, groups, channelsPerGroup] to [batch, groups, channelsPerGroup, height * width]
+            inputShape = {batch, groups, channelsPerGroup, height * width};
+            inputStrides = {channelsPerGroup * height * width * groups, channelsPerGroup, 1, groups * channelsPerGroup};
+        }
+        else
+        {
+            // Reshape the input from [batch, channels, height, width] to [batch, groups, channelsPerGroup, height * width]
+            inputShape = {batch, groups, channelsPerGroup, height * width};
+            inputStrides = {groups * channelsPerGroup * height * width, channelsPerGroup * height * width, height * width, 1};
+        }
+
         TensorDesc inputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), inputShape, inputStrides);
         const DML_TENSOR_DESC inputDmlTensorDesc = inputTensorDesc.GetDmlDesc();
 
@@ -119,24 +133,36 @@ public:
 
         uint32_t currentNodeIndex = 0;
 
-        const uint32_t transposeInputIndex = currentNodeIndex++;
-        opDescs.push_back(&dmlTransposeInputDesc);
-
         const uint32_t mvnNodeIndex = currentNodeIndex++;
         opDescs.push_back(&dmlMvnDesc);
 
-        DML_INPUT_GRAPH_EDGE_DESC inputEdge{};
-        inputEdge.GraphInputIndex = 0;
-        inputEdge.ToNodeIndex = transposeInputIndex;
-        inputEdge.ToNodeInputIndex = 0;
-        inputEdges.push_back(inputEdge);
+        // We only need a transpose the input when the layout is NHWC
+        if (channelsLast)
+        {
+            const uint32_t transposeInputIndex = currentNodeIndex++;
+            opDescs.push_back(&dmlTransposeInputDesc);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC transposeInputToMvnEdge = {};
-        transposeInputToMvnEdge.FromNodeIndex = transposeInputIndex;
-        transposeInputToMvnEdge.FromNodeOutputIndex = 0;
-        transposeInputToMvnEdge.ToNodeIndex = mvnNodeIndex;
-        transposeInputToMvnEdge.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(transposeInputToMvnEdge);
+            DML_INPUT_GRAPH_EDGE_DESC inputEdge{};
+            inputEdge.GraphInputIndex = 0;
+            inputEdge.ToNodeIndex = transposeInputIndex;
+            inputEdge.ToNodeInputIndex = 0;
+            inputEdges.push_back(inputEdge);
+
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC transposeInputToMvnEdge = {};
+            transposeInputToMvnEdge.FromNodeIndex = transposeInputIndex;
+            transposeInputToMvnEdge.FromNodeOutputIndex = 0;
+            transposeInputToMvnEdge.ToNodeIndex = mvnNodeIndex;
+            transposeInputToMvnEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(transposeInputToMvnEdge);
+        }
+        else
+        {
+            DML_INPUT_GRAPH_EDGE_DESC inputEdge{};
+            inputEdge.GraphInputIndex = 0;
+            inputEdge.ToNodeIndex = mvnNodeIndex;
+            inputEdge.ToNodeInputIndex = 0;
+            inputEdges.push_back(inputEdge);
+        }
 
         if (gammaBetaCastNeeded)
         {
@@ -224,21 +250,33 @@ public:
         }
         else
         {
-            const uint32_t transposeOutputNodeIndex = currentNodeIndex++;
-            opDescs.push_back(&dmlTransposeOutputDesc);
+            if (channelsLast)
+            {
+                // We only need a transpose the output when the layout is NHWC
+                const uint32_t transposeOutputNodeIndex = currentNodeIndex++;
+                opDescs.push_back(&dmlTransposeOutputDesc);
 
-            DML_INTERMEDIATE_GRAPH_EDGE_DESC mvnToTransposeOutputEdge = {};
-            mvnToTransposeOutputEdge.FromNodeIndex = mvnNodeIndex;
-            mvnToTransposeOutputEdge.FromNodeOutputIndex = 0;
-            mvnToTransposeOutputEdge.ToNodeIndex = transposeOutputNodeIndex;
-            mvnToTransposeOutputEdge.ToNodeInputIndex = 0;
-            intermediateEdges.push_back(mvnToTransposeOutputEdge);
+                DML_INTERMEDIATE_GRAPH_EDGE_DESC mvnToTransposeOutputEdge = {};
+                mvnToTransposeOutputEdge.FromNodeIndex = mvnNodeIndex;
+                mvnToTransposeOutputEdge.FromNodeOutputIndex = 0;
+                mvnToTransposeOutputEdge.ToNodeIndex = transposeOutputNodeIndex;
+                mvnToTransposeOutputEdge.ToNodeInputIndex = 0;
+                intermediateEdges.push_back(mvnToTransposeOutputEdge);
 
-            DML_OUTPUT_GRAPH_EDGE_DESC transposeOutputToOutputEdge{};
-            transposeOutputToOutputEdge.FromNodeIndex = transposeOutputNodeIndex;
-            transposeOutputToOutputEdge.FromNodeOutputIndex = 0;
-            transposeOutputToOutputEdge.GraphOutputIndex = 0;
-            outputEdges.push_back(transposeOutputToOutputEdge);
+                DML_OUTPUT_GRAPH_EDGE_DESC transposeOutputToOutputEdge{};
+                transposeOutputToOutputEdge.FromNodeIndex = transposeOutputNodeIndex;
+                transposeOutputToOutputEdge.FromNodeOutputIndex = 0;
+                transposeOutputToOutputEdge.GraphOutputIndex = 0;
+                outputEdges.push_back(transposeOutputToOutputEdge);
+            }
+            else
+            {
+                DML_OUTPUT_GRAPH_EDGE_DESC mvnToOutputEdge{};
+                mvnToOutputEdge.FromNodeIndex = mvnNodeIndex;
+                mvnToOutputEdge.FromNodeOutputIndex = 0;
+                mvnToOutputEdge.GraphOutputIndex = 0;
+                outputEdges.push_back(mvnToOutputEdge);
+            }
         }
 
         MLOperatorGraphDesc operatorGraphDesc = {};

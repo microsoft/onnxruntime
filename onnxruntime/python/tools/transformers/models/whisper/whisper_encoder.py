@@ -40,7 +40,6 @@ class WhisperEncoder(torch.nn.Module):
 class WhisperEncoderInputs:
     def __init__(self, input_features):
         self.input_ids: torch.LongTensor = input_features
-        # HF Whisper model doesn't support Attention Mask functionality
 
     @staticmethod
     def create_dummy(

@@ -72,6 +72,21 @@ TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   }
 }
 
+TEST_F(GraphTransformationTests, TwoLayerNormShareSameInput) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_shared_input.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count.size() == 1);
+  ASSERT_TRUE(op_to_count["LayerNormalization"] == 2);
+}
+
 TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_with_cast.onnx";
   std::shared_ptr<Model> p_model;
@@ -751,7 +766,7 @@ static void EmbedLayerNormFusionFormat5(const std::basic_string<ORTCHAR_T>& file
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(initializer->size(), 12);
+      EXPECT_EQ(initializer->size(), 12U);
 
       std::vector<double> expected_value = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 8.0, 7.0, 6.0};
 

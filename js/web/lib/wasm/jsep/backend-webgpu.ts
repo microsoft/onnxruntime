@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
+import {Env} from 'onnxruntime-common';
 
-import {LOG_DEBUG} from './log';
+import {configureLogger, LOG_DEBUG} from './log';
 import {TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
@@ -90,11 +90,14 @@ export class WebGpuBackend {
   computePassEncoder: GPUComputePassEncoder|null = null;
   pendingDispatchNumber = 0;
 
-  profilingEnabled = false;
+  supportTimestampQuery = false;
   profilingQuerySet: GPUQuerySet;
+  profilingQueryData: GpuData;
   profilingTimeBase?: bigint;
 
-  async initialize(): Promise<void> {
+  env: Env;
+
+  async initialize(env: Env): Promise<void> {
     if (!navigator.gpu) {
       // WebGPU is not available.
       throw new Error('WebGpuBackend: WebGPU is not available.');
@@ -105,17 +108,23 @@ export class WebGpuBackend {
       throw new Error('WebGpuBackend: Failed to get GPU adapter.');
     }
 
+    this.env = env;
     const deviceDescriptor: GPUDeviceDescriptor = {
       requiredLimits: {
         maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
         maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
         maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-      }
+        maxBufferSize: adapter.limits.maxBufferSize,
+        maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
+        maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
+        maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
+        maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
+      },
     };
     // WebGPU Spec: Timestamp Queries Inside Passes
     // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
-    if (adapter.features.has('timestamp-query-inside-passes') && env.webgpu.profilingMode === 'default') {
-      this.profilingEnabled = true;
+    if (adapter.features.has('timestamp-query-inside-passes')) {
+      this.supportTimestampQuery = true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       deviceDescriptor.requiredFeatures = ['timestamp-query-inside-passes' as any];
     }
@@ -126,6 +135,10 @@ export class WebGpuBackend {
     this.kernels = new Map();
     this.kernelPersistentData = new Map();
     this.kernelCustomData = new Map();
+
+    // set up flags for logger
+    configureLogger(env.logLevel!, !!env.debug);
+
     // TODO: set up flags
 
     this.device.onuncapturederror = ev => {
@@ -135,7 +148,7 @@ export class WebGpuBackend {
       }
     };
 
-    if (this.profilingEnabled) {
+    if (this.supportTimestampQuery) {
       this.profilingQuerySet = this.device.createQuerySet({
         type: 'timestamp',
         count: 2,
@@ -285,7 +298,7 @@ export class WebGpuBackend {
     // the underlying buffer may be changed after the async function is called. so we use a getter function to make sure
     // the buffer is up-to-date.
     const data = getTargetBuffer();
-    data.set(new Uint8Array(arrayBuffer));
+    data.set(new Uint8Array(arrayBuffer, 0, data.byteLength));
   }
 
   alloc(size: number): number {

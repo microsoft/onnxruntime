@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.tools.json",
+  "exclude": ["type-tests/**/*.ts"],
+  "compilerOptions": {
+    "module": "ES2022",
+    "sourceMap": true
+  }
+}

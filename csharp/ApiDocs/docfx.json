@@ -4,7 +4,7 @@
       "src": [
         {
           "files": [
-            "src/Microsoft.ML.OnnxRuntime/**.cs"
+            "src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj"
           ],
           "src": "../"
         }
@@ -15,8 +15,11 @@
       "properties": {
         "AllowUnsafeBlocks": true,
         "TargetFramework" : "net6.0",
-        "Nullable" : "enable"
-      }
+        "Nullable" : "enable",
+        "LangVersion": "8.0",
+        "EnableTrainingApis": "true"
+      },
+      "filter": "filterConfig.yml"
     }
   ],
   "build": {

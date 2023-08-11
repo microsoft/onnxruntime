@@ -22,8 +22,8 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
 .. toctree::
    :maxdepth: 1
-   :caption: LEARNING ON THE EDGE
+   :caption: ON-DEVICE TRAINING
 
-   learning_on_the_edge/overview
-   learning_on_the_edge/training_artifacts
-   learning_on_the_edge/training_api
+   on_device_training/overview
+   on_device_training/training_artifacts
+   on_device_training/training_api

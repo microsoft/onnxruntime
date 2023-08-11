@@ -89,7 +89,7 @@ void SetFusedActivation(T& opDesc, const DML_OPERATOR_DESC* fusedActivation)
 
 template<>
 void SetFusedActivation(DML_ELEMENT_WISE_ADD1_OPERATOR_DESC& opDesc, const DML_OPERATOR_DESC* fusedActivation)
-{                
+{
     opDesc.FusedActivation = fusedActivation;
 }
 
@@ -118,7 +118,7 @@ public:
         DML_OPERATOR_DESC opDescDesc = { ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc};
 
         if (fusedActivation != std::nullopt)
-        {    
+        {
             // Activation is only fused for two-input sum operators
             ORT_THROW_HR_IF(E_INVALIDARG, opDescDesc.Type != DML_OPERATOR_ELEMENT_WISE_ADD1 || kernelInfo.GetInputCount() > 2);
 
@@ -160,7 +160,7 @@ public:
 
         std::optional<ActivationOperatorDesc> fusedActivation = FusionHelpers::TryGetFusedActivationDesc(kernelInfo);
         DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->GetDmlDesc() : DML_OPERATOR_DESC();
-        
+
         // Activation is only fused for two-input sum operators
         ORT_THROW_HR_IF(E_INVALIDARG, fusedActivation != std::nullopt && inputCount != 2);
 
@@ -294,7 +294,7 @@ public:
             meanDesc.ATensor = &inputDescs[0];
             meanDesc.BTensor = &inputDescs[1];
             meanDesc.OutputTensor = &outputDescs[0];
-            
+
             SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_MEAN, &meanDesc}, kernelInfo);
         }
         else
@@ -447,7 +447,7 @@ public:
         opDesc.OutputTensor = outputDescs.data();
         // MinMaxDataType will always be equal to inputDataTensorDataType
         // Assigning minMaxDataType to inputDataTensorDataType because this field
-        // has to be assigned even if program does not go through below conditional 
+        // has to be assigned even if program does not go through below conditional
         // logic for some corner test case
         // Same applies to min and max value.
         opDesc.MinMaxDataType = this->m_inputTensorDescs[0].GetDmlDataType();
@@ -458,7 +458,7 @@ public:
         {
             ReadScalarTensorData(kernelInfo.GetConstantInputTensor(1), /*out*/ &opDesc.Min.Bytes, sizeof(opDesc.Min.Bytes));
         }
-        if (kernelInfo.IsInputValid(2)) 
+        if (kernelInfo.IsInputValid(2))
         {
             ReadScalarTensorData(kernelInfo.GetConstantInputTensor(2), /*out*/ &opDesc.Max.Bytes, sizeof(opDesc.Max.Bytes));
         }
@@ -720,6 +720,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Asinh,            DmlOperatorElementwiseUnary<DM
 DML_OP_DEFINE_CREATION_FUNCTION(Acosh,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ACOSH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Atanh,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ATANH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Erf,              DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ERF_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(BitwiseNot,       DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_BIT_NOT_OPERATOR_DESC>);
 
 // Binary operators:
 DML_OP_DEFINE_CREATION_FUNCTION(Greater,          DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_LOGICAL_GREATER_THAN_OPERATOR_DESC>);
@@ -734,6 +735,9 @@ DML_OP_DEFINE_CREATION_FUNCTION(Add,              DmlOperatorElementwiseBinary<D
 DML_OP_DEFINE_CREATION_FUNCTION(Sub,              DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_SUBTRACT_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Mul,              DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_MULTIPLY_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Div,              DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_DIVIDE_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(BitwiseAnd,       DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_BIT_AND_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(BitwiseOr,        DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_BIT_OR_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(BitwiseXor,       DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_BIT_XOR_OPERATOR_DESC>);
 
 // Binary operators that support >2 inputs:
 DML_OP_DEFINE_CREATION_FUNCTION(Sum,              DmlOperatorElementwiseBinaryLoop<DML_ELEMENT_WISE_ADD_OPERATOR_DESC>);

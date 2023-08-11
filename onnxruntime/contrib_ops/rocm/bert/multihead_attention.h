@@ -20,6 +20,26 @@ class MultiHeadAttention final : public RocmKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
+  AttentionType attn_type_;
+  int num_heads_;  // number of attention heads
+  float mask_filter_value_;
+  float scale_;
+  bool past_present_share_buffer_{false};
+
+  // type-erased GemmSoftmaxGemmPermuteTunableOp<HipT>, the reason for this is:
+  //   1. We don't want to include the cuh file where GemmSoftmaxGemmPermuteTunableOp<HipT> is defined.
+  //   2. We don't want to construct the object repeatly (which is expansive) during Compute.
+  std::shared_ptr<void> tunable_op_;
+};
+
+template <typename T>
+class DecoderMaskedMultiHeadAttention final : public RocmKernel {
+ public:
+  DecoderMaskedMultiHeadAttention(const OpKernelInfo& info);
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ protected:
+  AttentionType mha_type;
   int num_heads_;  // number of attention heads
   float mask_filter_value_;
   float scale_;

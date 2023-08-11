@@ -53,12 +53,12 @@ parameters:
 - name: NugetPackageSuffix
   displayName: Suffix to append to nuget package
   type: string
-  default: ''
+  default: 'NONE'
 
 - name: AdditionalBuildFlag
   displayName: Build flags to append to build command
   type: string
-  default: ''
+  default: '--use_azure'
 
 resources:
   repositories:
@@ -70,7 +70,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
 - name: ReleaseVersionSuffix
@@ -83,6 +83,8 @@ stages:
     steps:
     - checkout: none
     - bash: |
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set +x
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
           if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
             echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
@@ -110,7 +112,10 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
+    ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
+      OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    ${{ else }}:
+      OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
     AdditionalBuildFlags: ''
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
     BuildVariant: 'default'
@@ -182,7 +187,7 @@ stages:
 #CUDA without tensorrt
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-winbuild-T4'
+    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
@@ -190,7 +195,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -198,7 +203,7 @@ stages:
 # CUDA with Tensorrt
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: tensorrt
@@ -206,7 +211,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -223,7 +228,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
 
 
     steps:
@@ -291,7 +296,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-gpu-winbuild-t4'
+    pool: 'onnxruntime-Win2022-GPU-T4'
     timeoutInMinutes: 60
     variables:
     - name: runCodesignValidationInjection
@@ -478,7 +483,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    pool: 'onnxruntime-Win2022-GPU-T4'
 
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
@@ -769,7 +774,7 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    AgentPool : 'onnxruntime-Win2022-GPU-T4'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
@@ -784,13 +789,13 @@ stages:
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'aiinfra-dml-winbuild'
+    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-nuget-dml'
     StageName: 'Windows_CI_GPU_DML_Dev'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
     EnvSetupScript: 'setup_env.bat'
@@ -807,13 +812,13 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'aiinfra-dml-winbuild'
+    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-x86-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_x86'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
     BuildArch: 'x86'
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
@@ -830,13 +835,13 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
+    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm64-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm64'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm64'
@@ -853,13 +858,13 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
+    AgentPool : 'onnxruntime-Win-CPU-2022'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm'
@@ -887,7 +892,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-gpu-winbuild-t4'
+    pool: 'onnxruntime-Win2022-GPU-T4'
 
     steps:
 

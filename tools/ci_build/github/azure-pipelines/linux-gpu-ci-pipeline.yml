@@ -1,10 +1,35 @@
+##### trigger Don't modified it manully ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+#### end trigger ####
+
 resources:
   repositories:
   - repository: manylinux
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
   - template: templates/common-variables.yml
@@ -88,9 +113,9 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/_deps
+        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
         rm -f $(Build.BinariesDirectory)/Release/models
-        rm -rf $(Build.BinariesDirectory)/Release/_deps
+        find $(Build.BinariesDirectory)/Release/_deps -mindepth 1 ! -regex '^$(Build.BinariesDirectory)/Release/_deps/onnx-src\(/.*\)?' -delete
         cd $(Build.BinariesDirectory)/Release
         find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 

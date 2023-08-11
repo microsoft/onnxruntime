@@ -129,6 +129,9 @@ class BartOnnxModel(BertOnnxModel):
 
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
         self.attention_fusion.use_multi_head_attention = False if options is None else options.use_multi_head_attention
+        self.attention_fusion.disable_multi_head_attention_bias = (
+            False if options is None else options.disable_multi_head_attention_bias
+        )
         super().optimize(options, add_dynamic_axes)
 
     def fuse_attention(self):

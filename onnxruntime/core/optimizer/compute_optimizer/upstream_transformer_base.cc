@@ -50,8 +50,9 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
   const auto& graph_outputs = graph.GetOutputs();
 
-  size_t reordered_node_count = 0;  // For summary
-  size_t passthrough_count = 0;
+  [[maybe_unused]] size_t reordered_node_count = 0;  // For summary
+  [[maybe_unused]] size_t passthrough_count = 0;
+
   for (const auto index : order) {
     auto* node_ptr = graph.GetNode(index);
     if (!node_ptr)

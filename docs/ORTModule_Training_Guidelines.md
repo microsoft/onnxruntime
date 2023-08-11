@@ -47,7 +47,7 @@ More options for **developers**.
 +	from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
 +	model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
 ```
-Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/debug_options.py) for more details.
+Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/options.py) for more details.
 
 ### 2.1 Environment Variables
 
@@ -99,12 +99,13 @@ The output directory of the onnx models by default is set to the current working
 	> Overall users should be aware that ORT performance boost might be trivial when they explicitly allow it.
 
 
-#### ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT
+#### ORTMODULE_ENABLE_CUSTOM_AUTOGRAD
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
 - **Description**: By default, all torch.autograd.Function classes will be exported to ORT PythonOp. There are some cases where you might consider disable it. For example, if you confirmed those torch.autograd.Function classes defined computations that could be inline exported by PyTorch, and it is safe to use the inline exported ONNX graph to train, then you can disable it, as a result, ORT has more opportunities to optimize more.
 	```bash
-	export ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT=1
+	export ORTMODULE_ENABLE_CUSTOM_AUTOGRAD=1 # Enable
+	export ORTMODULE_ENABLE_CUSTOM_AUTOGRAD=0 # Disable
 	```
 
 	An alternative to disable without using environment variable:
@@ -114,39 +115,74 @@ The output directory of the onnx models by default is set to the current working
 	enable_custom_autograd_support(False)
 	```
 
-#### ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS
 
-- **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
-- **Description**: By default, this is empty. When user model's setup depends on libraries who might define multiple torch.autograd.Function classes of same name, though their python import paths (e.g. 'namespace') are different, while due to limitation of PyTorch exporter (https://github.com/microsoft/onnx-converters-private/issues/115), ORT backend cannot infer which one to call. So an exception will be thrown for this case.
-Before full qualified name can be got from exporter, this environment variables can be used to specify which torch.autograd.Function classes can be ignored. An example as below, be noted, full qualified name is needed here. If there are multiple classes to be ignored, use comma as the separator.
-
-	```bash
-	export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS="megatron.fp16.fp16.fused_kernels.GELUFunction"
-	```
 
 #### ORTMODULE_ENABLE_COMPUTE_OPTIMIZER
 
 - **Feature Area**: *ORTMODULE/Optimizations*
 - **Description**: By default, this is enabled then some computation can be saved. This env var can be used for disabling
 the optimization to guarantee exactly same compute with baseline (for example PyTorch, when doing convergence parity
-debugging). Disable it with following command:
+debugging).
 
 	```bash
-	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0
+	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0 # Disable
 	```
 
-	There are fine-grained flags to control different optimizations, but only applied when `ORTMODULE_ENABLE_COMPUTE_OPTIMIZER` is enabled.
-	- `ORTMODULE_ENABLE_LABEL_SPARSITY_OPT` is used to enable the optimization leveraging label sparsity.
+#### ORTMODULE_ENABLE_SPARSE_OPTIMIZER
 
-#### ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR
-
-- **Feature Area**: *ORTMODULE/Runtime inspector*
-- **Description**: By default, this is disabled. This env var can be used for enabling the input data sparsity
-inspection. Training users or our dev could leverage this info for improving perf accordingly. Enable it with following
-command:
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the input data sparsity
+based performance optimizations, including embedding sparsity and label sparsity.
+This optimization is applicable when using optimum, which has an implementation of the ModuleWithLoss class that wraps the HuggingFace Training that allows loss computation inside ONNX Runtime (ORT).
+If you're not using optimum but want to implement a similar wrapper in your codebase to compute the loss inside ONNX Runtime (ORT), you can refer to this [Link](ORTModule_ModuleWithLoss_Wrapper.md) for detailed steps and guidelines on how to achieve this.
 
 	```bash
-	export ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR=1
+	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=0 # Disable
+	```
+
+#### ORTMODULE_PRINT_INPUT_DENSITY
+
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is disabled. This env var can be used for printing the input data sparsity
+inspection results to standard outputs.
+
+	```bash
+	export ORTMODULE_PRINT_INPUT_DENSITY=1 # Enable
+	export ORTMODULE_PRINT_INPUT_DENSITY=0 # Disable
+	```
+
+#### ORTMODULE_PRINT_MEMORY_STATS
+
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is disabled. This env var can be used for printing the memory inspection results
+to standard outputs.
+
+	```bash
+	export ORTMODULE_PRINT_MEMORY_STATS=1 # Enable
+	export ORTMODULE_PRINT_MEMORY_STATS=0 # Disable
+	```
+
+#### ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is disabled. This env var can be used for enabling or disabling the embedding input
+data sparsity based performance optimizations.
+
+	```bash
+	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
+	```
+
+#### ORTMODULE_CACHE_DIR
+
+- **Feature Area**: *ORTMODULE/RuntimeOptions*
+- **Description**: By default, this is disabled. This env vars can be used to cache the exported model for future runs. This optimization is intended to reduce experimentation time by re-using the PyTorch->ONNX exported model architecture when available.
+
+	```bash
+	export ORTMODULE_CACHE_DIR="/path/to/cache_dir" # Enable
+	unset ORTMODULE_CACHE_DIR # Disable
 	```
 
 ### 2.2 Memory Optimization
@@ -234,7 +270,60 @@ Check [FP16_Optimizer implementation](../orttraining/orttraining/python/training
 
 ```
 
-## 6. One More Thing - `LoadBalancingDistributedBatchSampler`
+
+## 6. Use OpenAI Triton to Compute ONNX Sub-graph
+
+`ORTModule` provides a way to switch to OpenAI Triton for executing some Ops to further accelerate training.
+
+### 6.1 Environment Variables
+
+#### ORTMODULE_USE_TRITON
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: By default, this is disabled. This env var can be used for enabling Triton optimization.
+
+    ```bash
+    export ORTMODULE_USE_TRITON=1
+    ```
+
+#### ORTMODULE_ENABLE_TUNING
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: By default, this is disabled. This env var can be used for enabling online Op tuning for those Ops that have multiple implementations on target EP.
+
+    ```bash
+    export ORTMODULE_ENABLE_TUNING=1
+    ```
+
+#### ORTMODULE_MAX_TUNING_DURATION_MS
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: When `ORTMODULE_ENABLE_TUNING` is enabled, this env var can be used to set max tuning duration in ms to avoid long tuning time.
+
+    ```bash
+    export ORTMODULE_MAX_TUNING_DURATION_MS=9999
+    ```
+
+#### ORTMODULE_TUNING_RESULTS_PATH
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: When `ORTMODULE_ENABLE_TUNING` is enabled, this env var can be used to specify where the online Op tuning results be saved for later use. By default the results will not be saved. When `ORTMODULE_ENABLE_TUNING` is NOT enabled, this env var can be used to specify where Op tuning results can be fetched as offline tuning results.
+
+    ```bash
+    export ORTMODULE_TUNING_RESULTS_PATH=/tmp/tuning_results
+    ```
+
+#### ORTMODULE_TRITON_DEBUG
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: By default, this is disabled. This env var can be used for enabling Triton debug mode. All original and processed sub-graphs and corresponding generated Triton codes will be saved into a triton_debug folder under working directory.
+
+    ```bash
+    export ORTMODULE_TRITON_DEBUG=1
+    ```
+
+
+## 7. One More Thing - `LoadBalancingDistributedBatchSampler`
 
 `LoadBalancingDistributedBatchSampler` balances the data load across workers based on the sample's complexity.
 This is useful in scenarios like speech and NLP, where each batch has variable length and distributed training suffers from **straggler problem**. In such scenarios, the complexity function could be defined to return the length of the input sample sequence. The usage is similar to `torch.utils.data.DistributedSampler`, where each process loads a subset of the original dataset that is exclusive to it.

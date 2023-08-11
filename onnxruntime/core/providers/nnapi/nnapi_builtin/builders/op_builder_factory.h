@@ -25,6 +25,7 @@ void CreateEluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_r
 void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateIdentityOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateLeakyReluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateQuantizeLinearOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -43,6 +44,7 @@ void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateMinMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace nnapi
 }  // namespace onnxruntime

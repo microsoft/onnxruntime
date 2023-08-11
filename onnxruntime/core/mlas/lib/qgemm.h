@@ -882,13 +882,9 @@ MlasGemmQuantGetDispatch(
     }
 #elif defined(MLAS_TARGET_ARM64)
     if(BIsSigned) {
-        if(GetMlasPlatform().GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
-            GemmQuantDispatch = &MlasGemmX8S8DispatchNeon;
-        } else {
-            GemmQuantDispatch = AIsSigned? &MlasGemmS8S8DispatchSdot : &MlasGemmU8X8DispatchUdot;
-        }
+        GemmQuantDispatch = AIsSigned ? GetMlasPlatform().GemmS8S8Dispatch : GetMlasPlatform().GemmU8S8Dispatch;
     } else if(!AIsSigned) {
-        GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
+        GemmQuantDispatch = GetMlasPlatform().GemmU8U8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     if(BIsSigned || !AIsSigned) {

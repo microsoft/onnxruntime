@@ -31,14 +31,17 @@ transformers::CudaTensorConsoleDumper g_cuda_dumper_greedysearch;
 
 GreedySearch::GreedySearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::GreedySearch(info) {
-  SetDeviceHelpers(GenerationCudaDeviceHelper::ReorderPastState,
-                   GenerationCudaDeviceHelper::AddToFeeds,
+  SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
                    GenerationCudaDeviceHelper::TopK,
                    GenerationCudaDeviceHelper::DeviceCopy<float>,
                    GenerationCudaDeviceHelper::GreedySearchProcessLogits<float>,
                    GenerationCudaDeviceHelper::GreedySearchProcessLogits<MLFloat16>,
                    GenerationCudaDeviceHelper::InitGreedyState<float>,
                    GenerationCudaDeviceHelper::InitGreedyState<MLFloat16>);
+
+#ifndef USE_ROCM
+  SetDeviceHelpers_Cuda(GenerationCudaDeviceHelper::ReorderPastState);
+#endif
 
   SetDeviceHelpers_Gpt(GenerationCudaDeviceHelper::UpdateGptFeeds<float>,
                        GenerationCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);

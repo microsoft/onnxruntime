@@ -34,10 +34,6 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
          const std::function<bool(const std::string&)>& is_sparse_initializer_func);
     ~Info() = default;
 
-    AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const {
-      return execution_provider_.GetAllocator(info.mem_type);
-    }
-
     const AllocatorPtr& GetAllocator() const {
       return allocator_ptr_;
     }
@@ -68,7 +64,6 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     }
 
    private:
-    const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
     DataTransferManager data_transfer_mgr_;
     // MLValues for optimizer

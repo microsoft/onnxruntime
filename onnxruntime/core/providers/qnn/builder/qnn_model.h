@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/framework/allocator.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
@@ -18,10 +17,8 @@ class QnnModel {
  public:
   QnnModel(const logging::Logger& logger,
            QnnBackendManager* qnn_backend_manager,
-           const onnxruntime::AllocatorPtr& cpu_allocator,
            bool is_quantized_model = true)
-      : cpu_allocator_(cpu_allocator),
-        logger_(logger),
+      : logger_(logger),
         qnn_backend_manager_(qnn_backend_manager),
         is_quantized_model_(is_quantized_model) {
   }
@@ -38,9 +35,6 @@ class QnnModel {
 
   Status ExecuteGraph(const Ort::KernelContext& context);
 
-  const std::unordered_map<std::string, size_t>& GetInputs() const { return model_input_index_map_; }
-
-  const std::unordered_map<std::string, size_t>& GetOutputs() const { return model_output_index_map_; }
   const OnnxTensorInfo* GetOutputInfo(const std::string& name) const {
     auto it = outputs_info_.find(name);
     if (it == outputs_info_.end()) {
@@ -55,7 +49,6 @@ class QnnModel {
   Status ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
                                  std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                  std::unordered_map<std::string, size_t>& input_output_index,
-                                 std::unordered_map<std::string, size_t>& input_output_index_without_initializers,
                                  bool is_input = false);
 
   const std::unordered_set<std::string>& GetInitializerInputs() const { return initializer_inputs_; }
@@ -63,25 +56,28 @@ class QnnModel {
     return initializer_inputs_.find(input_name) != initializer_inputs_.end();
   }
 
-  size_t GetInputIndex(const std::string& name) const {
+  // Return the input index within Ort graph which has initializers included
+  size_t GetOrtInputIndex(const std::string& name) const {
     return GetInputOutputIndex(name, inputs_info_);
+  }
+
+  // Return the pure input index which doesn't cover initializers
+  size_t GetGraphInputIndex(const std::string& name) const {
+    auto it = model_input_index_map_.find(name);
+    ORT_ENFORCE(it != model_input_index_map_.end(), "Input name not found.");
+    return it->second;
   }
 
   size_t GetOutputIndex(const std::string& name) const {
     return GetInputOutputIndex(name, outputs_info_);
   }
 
+  Status DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info);
+
  private:
   const NodeUnit& GetNodeUnit(const Node* node,
                               const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map) const;
   bool GetGraphInfoFromModel(QnnModelWrapper& model_wrapper);
-
-  onnxruntime::AllocatorPtr GetAllocator() {
-    if (cpu_allocator_ == nullptr) {
-      LOGS_DEFAULT(ERROR) << "cpu_allocator is null!";
-    }
-    return cpu_allocator_;
-  }
 
   Status GetQnnTensorDataLength(const std::vector<uint32_t>& dims,
                                 Qnn_DataType_t data_type,
@@ -96,13 +92,11 @@ class QnnModel {
     return it->second.index_;
   }
 
-  onnxruntime::AllocatorPtr cpu_allocator_;
   const logging::Logger& logger_;
   std::unique_ptr<GraphInfo> graph_info_;
   QnnBackendManager* qnn_backend_manager_ = nullptr;
   // <input_name, input_index>, initializer inputs are excluded, keep the input index here
   std::unordered_map<std::string, size_t> model_input_index_map_;
-  std::unordered_map<std::string, size_t> model_input_index_map_without_initializers_;
   std::unordered_map<std::string, size_t> model_output_index_map_;
   // TODO: remove initializer_inputs_, use QnnModelWrapper
   std::unordered_set<std::string> initializer_inputs_;

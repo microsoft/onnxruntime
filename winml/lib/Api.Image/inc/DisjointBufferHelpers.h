@@ -8,13 +8,11 @@
 namespace _winml {
 
 void LoadSpanFromDisjointBuffers(
-    size_t num_buffers,
-    std::function<gsl::span<byte>(size_t)> get_buffer,
-    gsl::span<byte>& buffer_span);
+  size_t num_buffers, std::function<gsl::span<byte>(size_t)> get_buffer, gsl::span<byte>& buffer_span
+);
 
 void StoreSpanIntoDisjointBuffers(
-    size_t num_buffers,
-    std::function<gsl::span<byte>(size_t)> get_buffer,
-    gsl::span<byte>& buffer_span);
+  size_t num_buffers, std::function<gsl::span<byte>(size_t)> get_buffer, gsl::span<byte>& buffer_span
+);
 
 } // namespace _winml

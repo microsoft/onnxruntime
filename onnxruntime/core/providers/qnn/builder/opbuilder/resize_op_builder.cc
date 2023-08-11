@@ -270,6 +270,17 @@ Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const 
     const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
     ORT_RETURN_IF_NOT(ArrayHasString(supported_nearest_modes, nearest_mode),
                       "QNN EP: Resize does not support nearest_mode ", nearest_mode.c_str());
+
+    // TODO: Support 'asymmetric' transformation mode with nearest_mode != 'floor'.
+    //
+    // QNN's ONNX converter tool translates 'nearest' + 'asymmetric' (regardless of rounding mode)
+    // to QNN's ResizeNearestNeighbor with {align_corners: 0, half_pixel: 0}.
+    // This is only accurate if the rounding mode is "floor". Need to investigate how to handle
+    // other rounding modes with Qualcomm. Ideally, we would use QNN's Resize operator, but it doesn't support
+    // the "asymmetric" coordinate transformation mode on HTP.
+    ORT_RETURN_IF(transformation_mode == "asymmetric" && nearest_mode != "floor",
+                  "QNN EP: Resize with coordinate_transformation_mode 'asymmetric' and nearest_mode '", nearest_mode,
+                  "' is not currently supported on the HTP backend.");
   }
 
   // Check that input shape has at least a rank of 3.
@@ -346,9 +357,9 @@ Status ResizeOpBuilder::ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrap
     qnn_half_pixel.bool8Value = static_cast<uint8_t>(1);
   }
   QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
-                                          qnn_def::align_corners, qnn_align_corners);
+                                          QNN_OP_RESIZE_BILINEAR_PARAM_ALIGN_CORNERS, qnn_align_corners);
   QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
-                                       qnn_def::half_pixel_centers, qnn_half_pixel);
+                                       QNN_OP_RESIZE_BILINEAR_PARAM_HALF_PIXEL_CENTERS, qnn_half_pixel);
 
   std::vector<std::string> param_tensor_names;
   param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
@@ -356,40 +367,8 @@ Status ResizeOpBuilder::ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrap
   param_tensor_names.push_back(qnn_half_pixel_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(qnn_half_pixel_param));
 
-  const auto& resize_output = node_unit.Outputs()[0];
-
-  const auto& output_name = resize_output.node_arg.Name();
-
-  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(quantize_param, false);
-
-  const auto* type_proto = resize_output.node_arg.TypeAsProto();
-  Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(false, type_proto, qnn_data_type));
-
-  std::vector<uint32_t> output_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(resize_output.node_arg, output_shape),
-                    "Cannot get shape");
-
-  bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
-  Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-  QnnTensorWrapper output_tensorwrapper(output_name,
-                                        tensor_type,
-                                        qnn_data_type,
-                                        quantize_param,
-                                        std::move(output_shape));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                    qnn_def::package_name,
-                                                    qnn_node_type,
-                                                    std::move(input_names),
-                                                    {output_name},
-                                                    std::move(param_tensor_names),
-                                                    do_op_validation),
-                    "Failed to add node.");
-
-  return Status::OK();
+  return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
+                        logger, false, do_op_validation, qnn_node_type);
 }
 
 Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -400,40 +379,65 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
   std::vector<std::string> param_tensor_names;
   NodeAttrHelper node_helper(node_unit);
 
-  // Parameter 'exclude_outside'
-  {
-    Qnn_Scalar_t qnn_exclude_outside = QNN_SCALAR_INIT;
-    qnn_exclude_outside.dataType = QNN_DATATYPE_BOOL_8;
-    qnn_exclude_outside.bool8Value = static_cast<uint8_t>(GetOnnxAttr(node_helper, onnx_exclude_outside_attr) != 0);
+  const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
+  const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
+  std::string qnn_op_type = "Resize";
 
-    QnnParamWrapper qnn_exclude_outside_param(node_unit.Index(), node_unit.Name(), qnn_def::exclude_outside,
-                                              qnn_exclude_outside);
-    param_tensor_names.push_back(qnn_exclude_outside_param.GetParamTensorName());
-    qnn_model_wrapper.AddParamWrapper(std::move(qnn_exclude_outside_param));
-  }
+  // Handle Resize with {mode: "nearest", coordinate_transformation_mode: "asymmetric"} uniquely.
+  // QNN's ONNX converter tool translates this configuration (regardless of rounding mode)
+  // to QNN's ResizeNearestNeighbor with {align_corners: 0, half_pixel: 0}.
+  //
+  // NOTE: This is only accurate if the rounding mode is "floor". Need to investigate how to handle
+  // other rounding modes with Qualcomm. Ideally, we would use QNN's Resize operator, but it doesn't support
+  // the "asymmetric" coordinate transformation mode on HTP.
+  if (interp_mode == "nearest" && transformation_mode == "asymmetric") {
+    qnn_op_type = "ResizeNearestNeighbor";
 
-  // Parameter 'transformation_mode'
-  {
-    const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
+    // Set parameter 'align_corners' to 0
+    Qnn_Scalar_t qnn_align_corners = QNN_SCALAR_INIT;
+    qnn_align_corners.dataType = QNN_DATATYPE_BOOL_8;
+    qnn_align_corners.bool8Value = static_cast<uint8_t>(0);
+    QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
+                                            QNN_OP_RESIZE_BILINEAR_PARAM_ALIGN_CORNERS, qnn_align_corners);
+    param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_align_corners_param));
+
+    // Set parameter 'half_pixel_centers' to 0
+    Qnn_Scalar_t qnn_half_pixel = QNN_SCALAR_INIT;
+    qnn_half_pixel.dataType = QNN_DATATYPE_BOOL_8;
+    qnn_half_pixel.bool8Value = static_cast<uint8_t>(0);
+    QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
+                                         QNN_OP_RESIZE_BILINEAR_PARAM_HALF_PIXEL_CENTERS, qnn_half_pixel);
+    param_tensor_names.push_back(qnn_half_pixel_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_half_pixel_param));
+  } else {
+    // Parameter 'transformation_mode'
     Qnn_Scalar_t qnn_transformation_mode = QNN_SCALAR_INIT;
     qnn_transformation_mode.dataType = QNN_DATATYPE_UINT_32;
     ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_coord_transf_modes, transformation_mode,
                                              "coordinate_transformation_mode", qnn_transformation_mode.uint32Value));
 
-    QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::transformation_mode,
+    QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_TRANSFORMATION_MODE,
                                                   qnn_transformation_mode);
     param_tensor_names.push_back(qnn_transformation_mode_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_transformation_mode_param));
-  }
 
-  // Parameter 'interpolation_mode'
-  {
-    const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
+    // Parameter 'exclude_outside'
+    Qnn_Scalar_t qnn_exclude_outside = QNN_SCALAR_INIT;
+    qnn_exclude_outside.dataType = QNN_DATATYPE_BOOL_8;
+    qnn_exclude_outside.bool8Value = static_cast<uint8_t>(GetOnnxAttr(node_helper, onnx_exclude_outside_attr) != 0);
+
+    QnnParamWrapper qnn_exclude_outside_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_EXCLUDE_OUTSIDE,
+                                              qnn_exclude_outside);
+    param_tensor_names.push_back(qnn_exclude_outside_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_exclude_outside_param));
+
+    // Parameter 'interpolation_mode'
     Qnn_Scalar_t qnn_interp_mode = QNN_SCALAR_INIT;
     qnn_interp_mode.dataType = QNN_DATATYPE_UINT_32;
     ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_modes, interp_mode, "mode", qnn_interp_mode.uint32Value));
 
-    QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::interpolation_mode,
+    QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_INTERPOLATION_MODE,
                                           qnn_interp_mode);
     param_tensor_names.push_back(qnn_interp_mode_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_interp_mode_param));
@@ -446,7 +450,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
       ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_nearest_modes, nearest_mode, "nearest_mode",
                                                qnn_nearest_mode.uint32Value));
 
-      QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::nearest_mode,
+      QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_NEAREST_MODE,
                                              qnn_nearest_mode);
       param_tensor_names.push_back(qnn_nearest_mode_param.GetParamTensorName());
       qnn_model_wrapper.AddParamWrapper(std::move(qnn_nearest_mode_param));
@@ -454,7 +458,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
   }
 
   return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                        logger, true, do_op_validation);
+                        logger, true, do_op_validation, qnn_op_type);
 }
 
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

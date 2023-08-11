@@ -1,13 +1,16 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Xunit;
 using Xunit.Abstractions;
+
+#if __TRAINING_ENABLED_NATIVE_BUILD__
+using Microsoft.ML.OnnxRuntime.Tensors;
+using System.Collections.Generic;
+using System.Linq;
+#endif
 
 // This runs in a separate package built from EndToEndTests
 // and for this reason it can not refer to non-public members
@@ -54,8 +57,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
 
-                var trainingSession = new TrainingSession(state, trainingPath);
+                var trainingSession = new TrainingSession(state, trainingPath, optimizerPath);
                 cleanUp.Add(trainingSession);
             }
         }
@@ -70,8 +74,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
 
-                var trainingSession = new TrainingSession(state, trainingPath);
+                var trainingSession = new TrainingSession(state, trainingPath, optimizerPath);
                 cleanUp.Add(trainingSession);
 
                 float[] expectedOutput = TestDataLoader.LoadTensorFromFile("loss_1.out");
@@ -153,8 +158,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
 
-                var trainingSession = new TrainingSession(state, trainingPath);
+                var trainingSession = new TrainingSession(state, trainingPath, optimizerPath);
                 cleanUp.Add(trainingSession);
                 RunTrainStep(trainingSession);
             }
@@ -171,7 +177,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
-                var trainingSession = new TrainingSession(state, trainingPath);
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+                var trainingSession = new TrainingSession(state, trainingPath, optimizerPath);
                 cleanUp.Add(trainingSession);
 
                 // Save checkpoint
@@ -181,7 +188,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // Load checkpoint and run train step
                 var loadedState = CheckpointState.LoadCheckpoint(savedCheckpointPath);
                 cleanUp.Add(loadedState);
-                var newTrainingSession = new TrainingSession(loadedState, trainingPath);
+                var newTrainingSession = new TrainingSession(loadedState, trainingPath, optimizerPath);
                 cleanUp.Add(newTrainingSession);
                 RunTrainStep(newTrainingSession);
             }
@@ -393,7 +400,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
-                var trainingSession = new TrainingSession(state, trainingPath);
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+                var trainingSession = new TrainingSession(state, trainingPath, optimizerPath);
                 cleanUp.Add(trainingSession);
 
                 var inputNames = trainingSession.InputNames(true);
@@ -438,7 +446,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
-                var trainingSession = new TrainingSession(state, trainingPath);
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+                var trainingSession = new TrainingSession(state, trainingPath, optimizerPath);
                 cleanUp.Add(trainingSession);
 
                 var outputNames = trainingSession.OutputNames(true);

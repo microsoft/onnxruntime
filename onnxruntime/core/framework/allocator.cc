@@ -3,7 +3,6 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
-#include "core/framework/allocatormgr.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
 #include "core/session/ort_apis.h"
@@ -153,6 +152,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
   } else if (strcmp(name1, onnxruntime::DML) == 0) {
     *out = new OrtMemoryInfo(
         onnxruntime::DML, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)),
+        id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::HIP) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::HIP, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,
+        mem_type1);
+  } else if (strcmp(name1, onnxruntime::HIP_PINNED) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::HIP_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
         id1, mem_type1);
   } else {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");
