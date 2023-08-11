@@ -126,6 +126,9 @@ const HandlerMap& OrtExtendedHandlers() {
         {"com.microsoft.QLinearSigmoid", node_1_inp_handler},
     };
 
+    const auto& base_handlers = OrtHandlers();
+    std::for_each(base_handlers.begin(), base_handlers.end(), [&map](const auto& entry) { map.insert(entry); });
+
     return map;
   }();
 
