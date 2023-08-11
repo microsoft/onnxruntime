@@ -164,6 +164,7 @@ class FusionBartAttention(FusionAttention):
         elif (
             v_nodes_with_past_cross_attn is not None and v_nodes_with_past_cross_attn[-1].input[0] in graph_input_names
         ):
+            print("v_nodes_with_past_cross_attn")
             v_nodes = v_nodes_with_past_cross_attn
             past_v = v_nodes[-1].input[0]
             present_v = v_nodes[-1].output[0]
@@ -187,6 +188,7 @@ class FusionBartAttention(FusionAttention):
             _, matmul_qk = qk_nodes_1
             qk_nodes = qk_nodes_1
         elif qk_nodes_2 is not None:
+            print("qk_nodes_2 is not None")
             _, _, add_qk, _, matmul_qk = qk_nodes_2
             qk_nodes = qk_nodes_2
         else:
@@ -255,6 +257,7 @@ class FusionBartAttention(FusionAttention):
             k_nodes_no_bias_with_past_cross_attn is not None
             and k_nodes_no_bias_with_past_cross_attn[-1].input[0] in graph_input_names
         ):
+            print("k_nodes_no_bias_with_past_cross_attn is not None")
             k_nodes = k_nodes_no_bias_with_past_cross_attn
             past_k = k_nodes[-1].input[0]
             present_k = k_nodes[-1].output[0]
@@ -314,9 +317,7 @@ class FusionBartAttention(FusionAttention):
         decoder_attention = one_root_input and qk_nodes == qk_nodes_2
         decoder_attention_with_past = encoder_attention and past_k and past_v
         decoder_cross_attention = two_root_inputs and qk_nodes == qk_nodes_1
-        decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
-
-        print("decoder_attention_with_past: ", decoder_attention_with_past)
+        decoder_cross_attention_with_past = three_root_inputs and (qk_nodes == qk_nodes_1 or qk_nodes == qk_nodes_2)
 
         # For decoder_attention, the attention mask needs to be included in the attention node
         mask_index = None
@@ -335,7 +336,7 @@ class FusionBartAttention(FusionAttention):
                 mask_index = mask_nodes_whisper[0].output[-1]
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
-        print("mask_index: ", mask_index)
+
         if (
             encoder_attention
             or decoder_attention
@@ -349,7 +350,7 @@ class FusionBartAttention(FusionAttention):
             if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
                 logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
                 return
-            print("352")
+
             new_node = None
             if decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past:
                 # Note: Decoder attention with past key and past value is fused as multihead attention
