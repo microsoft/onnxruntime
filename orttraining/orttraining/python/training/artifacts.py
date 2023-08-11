@@ -193,12 +193,7 @@ def generate_artifacts(
     logging.info("Optimizer enum provided: %s", optimizer.name)
 
     optim_model = None
-    optim_blocks = {}
-    if optimizer == OptimType.AdamW:
-        optim_blocks = {OptimType.AdamW: onnxblock.optim.AdamW}
-
-    if optimizer == OptimType.SGD:
-        optim_blocks = {OptimType.SGD: onnxblock.optim.SGD}
+    optim_blocks = {OptimType.AdamW: onnxblock.optim.AdamW, OptimType.SGD: onnxblock.optim.SGD}
 
     optim_block = optim_blocks[optimizer]()
     with onnxblock.empty_base():

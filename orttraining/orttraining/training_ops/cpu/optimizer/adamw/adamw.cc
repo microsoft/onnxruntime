@@ -137,7 +137,7 @@ Status AdamWOptimizer<T>::Compute(OpKernelContext* ctx) const {
   AdamWOptimizerBase::Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, p));
 
-  int64_t* updated_flag_ptr = p.updated_flag->template MutableData<int64_t>();
+  bool* updated_flag_ptr = p.updated_flag->template MutableData<bool>();
 
   const Tensor* update_signal = ctx->Input<Tensor>(6);
   if (update_signal == nullptr || *update_signal->template Data<bool>()) {
