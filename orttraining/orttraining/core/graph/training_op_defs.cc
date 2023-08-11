@@ -2900,6 +2900,19 @@ Example 4:
             return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {});
           });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LeakyReluGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Gradient operator for LeakyRelu.")
+      .Attr("alpha", "Alpha (negative slope) value.", AttributeProto::FLOAT, 0.01f)
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "Y", "The output tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
