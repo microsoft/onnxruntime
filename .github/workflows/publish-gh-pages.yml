@@ -84,7 +84,7 @@ jobs:
           sudo mv apidocs/docs/api/python _site/docs/api
 
       - name: Upload site
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v2
         with:
           retention-days: 21
 
