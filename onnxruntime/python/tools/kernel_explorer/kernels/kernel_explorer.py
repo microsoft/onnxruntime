@@ -107,6 +107,11 @@ class BandwidthMetric(MetricBase):
         return self.bytes * 1e6 / self.duration / 1e9
 
 
+@dataclass
+class ComputeAndBandwidthMetric(ComputeMetric, BandwidthMetric):
+    pass
+
+
 class InstanceBenchmarkReporter:
     def __init__(self):
         self.sort = False

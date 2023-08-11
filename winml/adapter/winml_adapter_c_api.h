@@ -413,16 +413,6 @@ struct WinmlAdapterApi {
   )NO_EXCEPTION;
 
   /**
-    * DmlExecutionProviderSetDefaultRoundingMode
-	  * This api is used to configure the DML EP to turn on/off rounding.
-    *
- 	  * WinML uses this to disable rounding during session initialization and then enables it again post initialization.
-    */
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderSetDefaultRoundingMode)(
-    _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled
-  )NO_EXCEPTION;
-
-  /**
     * DmlExecutionProviderFlushContext
 	 * This api is used to flush the DML EP.
     *
