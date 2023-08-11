@@ -164,7 +164,6 @@ class FusionBartAttention(FusionAttention):
         elif (
             v_nodes_with_past_cross_attn is not None and v_nodes_with_past_cross_attn[-1].input[0] in graph_input_names
         ):
-            print("v_nodes_with_past_cross_attn")
             v_nodes = v_nodes_with_past_cross_attn
             past_v = v_nodes[-1].input[0]
             present_v = v_nodes[-1].output[0]
@@ -188,7 +187,6 @@ class FusionBartAttention(FusionAttention):
             _, matmul_qk = qk_nodes_1
             qk_nodes = qk_nodes_1
         elif qk_nodes_2 is not None:
-            print("qk_nodes_2 is not None")
             _, _, add_qk, _, matmul_qk = qk_nodes_2
             qk_nodes = qk_nodes_2
         else:
@@ -257,7 +255,6 @@ class FusionBartAttention(FusionAttention):
             k_nodes_no_bias_with_past_cross_attn is not None
             and k_nodes_no_bias_with_past_cross_attn[-1].input[0] in graph_input_names
         ):
-            print("k_nodes_no_bias_with_past_cross_attn is not None")
             k_nodes = k_nodes_no_bias_with_past_cross_attn
             past_k = k_nodes[-1].input[0]
             present_k = k_nodes[-1].output[0]
@@ -336,6 +333,14 @@ class FusionBartAttention(FusionAttention):
                 mask_index = mask_nodes_whisper[0].output[-1]
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
+        elif decoder_cross_attention_with_past:
+            mask_nodes_bart_2 = self.model.match_parent_path(
+                add_qk,
+                ["Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
+                [1, 2, 1, 0, 0, 0],
+            )
+            if mask_nodes_bart_2 is not None:
+                mask_index = mask_nodes_bart_2[-1].input[0]
 
         if (
             encoder_attention
@@ -367,6 +372,7 @@ class FusionBartAttention(FusionAttention):
                         num_heads,
                         hidden_size,
                         attention_last_node.output[0],
+                        key_padding_mask=mask_index if mask_index else "",
                         past_k=past_k if decoder_attention_with_past else "",
                         past_v=past_v if decoder_attention_with_past else "",
                         present_k=present_k,
@@ -377,7 +383,6 @@ class FusionBartAttention(FusionAttention):
                     if self.use_multi_head_attention
                     else None
                 )
-                print("new node: ", new_node.name)
             else:
                 # Temporarily set multihead attention flag to false
                 use_multi_head_attention_ground_truth = self.use_multi_head_attention
@@ -394,7 +399,7 @@ class FusionBartAttention(FusionAttention):
                     hidden_size,
                     root_input,
                     attention_last_node.output[0],
-                    add_qk_str=mask_index if decoder_attention else None,
+                    add_qk_str=mask_index if (decoder_attention or decoder_cross_attention_with_past) else None,
                     past_k=past_k,
                     past_v=past_v,
                     present_k=present_k,

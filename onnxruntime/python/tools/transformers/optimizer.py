@@ -410,6 +410,14 @@ def _parse_arguments():
     )
     parser.set_defaults(float16=False)
 
+    parser.add_argument(
+        "--convert_io_types",
+        required=False,
+        action="store_true",
+        help="Keep input and output types unchanged when converting float32 to float16.",
+    )
+    parser.set_defaults(convert_io_types=False)
+
     FusionOptions.add_arguments(parser)
 
     parser.add_argument("--verbose", required=False, action="store_true", help="show debug information.")
@@ -505,7 +513,7 @@ def main():
     )
 
     if args.float16:
-        optimizer.convert_float_to_float16(keep_io_types=True)
+        optimizer.convert_float_to_float16(keep_io_types=not args.convert_io_types)
 
     if args.input_int32:
         optimizer.change_graph_inputs_to_int32()
