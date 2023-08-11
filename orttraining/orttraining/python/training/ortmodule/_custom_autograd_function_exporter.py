@@ -36,7 +36,10 @@ class PythonOpShapeInferStore:
                 tensor_input_shapes: List[Optional[List[Union[int, str]]]],
                 tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
             ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
-                return tensor_input_shapes, tensor_input_dtypes
+                tensor_output_shapes = []
+                tensor_output_dtypes = []
+                ...
+                return tensor_output_shapes, tensor_output_dtypes
 
         The tensor_input_shapes and tensor_input_dtypes are lists of shapes and dtypes of the input tensors.
         The tensor_output_shapes and tensor_output_dtypes are lists of shapes and dtypes of the output tensors.
