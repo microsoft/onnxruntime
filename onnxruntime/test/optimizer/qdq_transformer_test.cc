@@ -2162,7 +2162,8 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
 TEST(QDQTransformerTests, Clip) {
   constexpr float epsilon = std::numeric_limits<float>::epsilon();
 
-  auto test_case = [&](float scale, auto zero_point, int clip_count, int opset_version) {
+  auto test_case = [&](float scale, auto zero_point, int clip_count, int opset_version,
+                       bool use_ms_domain_qdq_ops = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<int8_t>({1, 32, 112, 112},
                                                   std::numeric_limits<int8_t>::min(),
@@ -2171,7 +2172,7 @@ TEST(QDQTransformerTests, Clip) {
 
       // add DQ
       auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<int8_t>(input_arg, .0035f, 7, dq_output);
+      builder.AddDequantizeLinearNode<int8_t>(input_arg, .0035f, 7, dq_output, use_ms_domain_qdq_ops);
 
       // add Clip
       auto* clip_output = builder.MakeIntermediate();
@@ -2191,15 +2192,16 @@ TEST(QDQTransformerTests, Clip) {
 
       // add Q + DQ
       auto* q_output = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode(clip_output, scale, zero_point, q_output);
-      builder.AddDequantizeLinearNode(q_output, scale, zero_point, output_arg);
+      builder.AddQuantizeLinearNode(clip_output, scale, zero_point, q_output, use_ms_domain_qdq_ops);
+      builder.AddDequantizeLinearNode(q_output, scale, zero_point, output_arg, use_ms_domain_qdq_ops);
     };
 
     auto check_clip_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
       EXPECT_EQ(op_to_count["Clip"], clip_count);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 2);
     };
 
     TransformerTester(build_test_case, check_clip_graph,
@@ -2212,32 +2214,52 @@ TEST(QDQTransformerTests, Clip) {
 
   std::vector<int> opsets{12, 18, 19};
   for (auto opset : opsets) {
-    test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset);  // [0, 6]
-    test_case(.02f, static_cast<int8_t>(-128), 0, opset);                // [0, 5.1]
-    test_case(.03f, static_cast<int8_t>(-128), 1, opset);                // [0, 7.65]
-    test_case(.02f, static_cast<int8_t>(127), 1, opset);                 // [-5.1 , 0]
-    test_case(.02f, static_cast<int8_t>(0), 1, opset);                   // [-2.56, 2.54]
-    test_case(.04f, static_cast<int8_t>(-97), 1, opset);                 // [-1.24, 8.96]
-    test_case(.02352941176f, static_cast<uint8_t>(0), 0, opset);         // [0, 6]
-    test_case(.02f, static_cast<uint8_t>(0), 0, opset);                  // [0, 5.1]
-    test_case(.03f, static_cast<uint8_t>(0), 1, opset);                  // [0, 7.65]
-    test_case(.02f, static_cast<uint8_t>(255), 1, opset);                // [-5.1, 0]
-    test_case(.02f, static_cast<uint8_t>(128), 1, opset);                // [-2.56, 2.54]
-    test_case(.04f, static_cast<uint8_t>(31), 1, opset);                 // [-1.24, 8.96]
+    test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset);        // [0, 6]
+    test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset, true);  // [0, 6] contrib qdq
+    test_case(.02f, static_cast<int8_t>(-128), 0, opset);                      // [0, 5.1]
+    test_case(.02f, static_cast<int8_t>(-128), 0, opset, true);                // [0, 5.1] contrib qdq
+    test_case(.03f, static_cast<int8_t>(-128), 1, opset);                      // [0, 7.65]
+    test_case(.03f, static_cast<int8_t>(-128), 1, opset, true);                // [0, 7.65] contrib qdq
+    test_case(.02f, static_cast<int8_t>(127), 1, opset);                       // [-5.1 , 0]
+    test_case(.02f, static_cast<int8_t>(127), 1, opset, true);                 // [-5.1 , 0] contrib qdq
+    test_case(.02f, static_cast<int8_t>(0), 1, opset);                         // [-2.56, 2.54]
+    test_case(.02f, static_cast<int8_t>(0), 1, opset, true);                   // [-2.56, 2.54] contrib qdq
+    test_case(.04f, static_cast<int8_t>(-97), 1, opset);                       // [-1.24, 8.96]
+    test_case(.04f, static_cast<int8_t>(-97), 1, opset, true);                 // [-1.24, 8.96] contrib qdq
+    test_case(.02352941176f, static_cast<uint8_t>(0), 0, opset);               // [0, 6]
+    test_case(.02352941176f, static_cast<uint8_t>(0), 0, opset, true);         // [0, 6] contrib qdq
+    test_case(.02f, static_cast<uint8_t>(0), 0, opset);                        // [0, 5.1]
+    test_case(.02f, static_cast<uint8_t>(0), 0, opset, true);                  // [0, 5.1] contrib qdq
+    test_case(.03f, static_cast<uint8_t>(0), 1, opset);                        // [0, 7.65]
+    test_case(.03f, static_cast<uint8_t>(0), 1, opset, true);                  // [0, 7.65] contrib qdq
+    test_case(.02f, static_cast<uint8_t>(255), 1, opset);                      // [-5.1, 0]
+    test_case(.02f, static_cast<uint8_t>(255), 1, opset, true);                // [-5.1, 0] contrib qdq
+    test_case(.02f, static_cast<uint8_t>(128), 1, opset);                      // [-2.56, 2.54]
+    test_case(.02f, static_cast<uint8_t>(128), 1, opset, true);                // [-2.56, 2.54] contrib qdq
+    test_case(.04f, static_cast<uint8_t>(31), 1, opset);                       // [-1.24, 8.96]
+    test_case(.04f, static_cast<uint8_t>(31), 1, opset, true);                 // [-1.24, 8.96] contrib qdq
   }
 
   // opset_version = 10
-  test_case(.02f, static_cast<int8_t>(-128), 0, 10);  // [0, 5.1]
-  test_case(.03f, static_cast<int8_t>(-128), 1, 10);  // [0, 7.65]
-  test_case(.02f, static_cast<uint8_t>(0), 0, 10);    // [0, 5.1]
-  test_case(.03f, static_cast<uint8_t>(0), 1, 10);    // [0, 7.65]
+  test_case(.02f, static_cast<int8_t>(-128), 0, 10);        // [0, 5.1]
+  test_case(.02f, static_cast<int8_t>(-128), 0, 10, true);  // [0, 5.1] contrib qdq
+  test_case(.03f, static_cast<int8_t>(-128), 1, 10);        // [0, 7.65]
+  test_case(.03f, static_cast<int8_t>(-128), 1, 10, true);  // [0, 7.65] contrib qdq
+  test_case(.02f, static_cast<uint8_t>(0), 0, 10);          // [0, 5.1]
+  test_case(.02f, static_cast<uint8_t>(0), 0, 10, true);    // [0, 5.1] contrib qdq
+  test_case(.03f, static_cast<uint8_t>(0), 1, 10);          // [0, 7.65]
+  test_case(.03f, static_cast<uint8_t>(0), 1, 10, true);    // [0, 7.65] contrib qdq
 
   // difference between lower/upper and min/max are within epsilon
   for (auto opset : opsets) {
-    test_case(epsilon, static_cast<int8_t>(-127), 0, opset);              // [-epsilon, x] (x <= 6 + epsilon)
-    test_case((6 + epsilon) / 255, static_cast<int8_t>(-128), 0, opset);  // [0, 6 + epsilon]
-    test_case(epsilon, static_cast<uint8_t>(1), 0, opset);                // [-epsilon, x] (x <= 6 + epsilon)
-    test_case((6 + epsilon) / 255, static_cast<uint8_t>(0), 0, opset);    // [0, 6 + epsilon]
+    test_case(epsilon, static_cast<int8_t>(-127), 0, opset);                    // [-epsilon, x] (x <= 6 + epsilon)
+    test_case(epsilon, static_cast<int8_t>(-127), 0, opset, true);              // [-epsilon, x] (x <= 6 + epsilon)
+    test_case((6 + epsilon) / 255, static_cast<int8_t>(-128), 0, opset);        // [0, 6 + epsilon]
+    test_case((6 + epsilon) / 255, static_cast<int8_t>(-128), 0, opset, true);  // [0, 6 + epsilon]
+    test_case(epsilon, static_cast<uint8_t>(1), 0, opset);                      // [-epsilon, x] (x <= 6 + epsilon)
+    test_case(epsilon, static_cast<uint8_t>(1), 0, opset, true);                // [-epsilon, x] (x <= 6 + epsilon)
+    test_case((6 + epsilon) / 255, static_cast<uint8_t>(0), 0, opset);          // [0, 6 + epsilon]
+    test_case((6 + epsilon) / 255, static_cast<uint8_t>(0), 0, opset, true);    // [0, 6 + epsilon]
   }
 }
 
