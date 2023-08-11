@@ -143,12 +143,22 @@ GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape
   };
 }
 
-std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph) {
+std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph, bool include_domain) {
   std::vector<std::string> op_types{};
   GraphViewer graph_viewer{graph};
   const auto& ordering = graph_viewer.GetNodesInTopologicalOrder();
   for (const auto node_idx : ordering) {
-    op_types.push_back(graph.GetNode(node_idx)->OpType());
+    const auto* node = graph.GetNode(node_idx);
+    std::string full_op_type;
+
+    if (include_domain) {
+      const std::string& domain = node->Domain();
+      full_op_type = domain.empty() ? node->OpType() : domain + "." + node->OpType();
+    } else {
+      full_op_type = node->OpType();
+    }
+
+    op_types.push_back(full_op_type);
   }
   return op_types;
 }
