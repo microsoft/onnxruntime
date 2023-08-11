@@ -60,8 +60,6 @@ class SplitToSequence final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  template <typename T>
-  Status ComputeImpl(OpKernelContext& context, const Tensor& input, const Tensor* p_split_input) const;
   Status PrepareForCompute(const TensorShape& input_shape, int64_t split_scalar, bool is_split_input_scalar,
                            int64_t& num_outputs, int64_t& axis, int& before_dims,
                            int& after_dims_including_split_axis, int& after_dims_excluding_split,

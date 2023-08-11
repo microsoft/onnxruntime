@@ -337,7 +337,7 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, SplitToSequence, Input, 0,
-    float, double, int32_t, int64_t, std::string);
+    float, double, int32_t, int64_t, std::string, MLFloat16);
 }  // namespace op_kernel_type_control
 
 namespace {
@@ -360,28 +360,6 @@ ONNX_CPU_OPERATOR_KERNEL(
 SplitToSequence::SplitToSequence(const OpKernelInfo& info) : OpKernel(info) {
   axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
   keepdims_ = info.GetAttrOrDefault<int64_t>("keepdims", 1);
-}
-
-Status SplitToSequence::Compute(OpKernelContext* context) const {
-  const Tensor& input = *context->Input<Tensor>(0);
-  const Tensor* p_split_input = context->Input<Tensor>(1);
-
-  Status status;
-
-  if (input.IsDataType<float>())
-    status = ComputeImpl<float>(*context, input, p_split_input);
-  else if (input.IsDataType<double>())
-    status = ComputeImpl<double>(*context, input, p_split_input);
-  else if (input.IsDataType<int32_t>())
-    status = ComputeImpl<int32_t>(*context, input, p_split_input);
-  else if (input.IsDataType<int64_t>())
-    status = ComputeImpl<int64_t>(*context, input, p_split_input);
-  else if (input.IsDataTypeString())
-    status = ComputeImpl<std::string>(*context, input, p_split_input);
-  else
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SplitToSequence operator does not support ", input.DataType(), " yet");
-
-  return status;
 }
 
 Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int64_t split_scalar, bool is_split_input_scalar,
@@ -468,12 +446,20 @@ static void GetSplitSizesInput(const Tensor& tensor, std::vector<int64_t>& split
 }
 
 template <typename T>
-Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& input,
-                                    const Tensor* p_split_input) const {
-  if (!utils::HasType<EnabledSplitToSequenceDataTypes, T>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
-  }
+static void CopyImpl(const T* input_data, T* output_data, int before_dims, int split_size,
+                     int after_dims_excluding_split, int64_t input_offset, int after_dims_including_split_axis) {
+  ::onnxruntime::math::CopyMatrix<T>(before_dims,                              // M
+                                     split_size * after_dims_excluding_split,  // N
+                                     input_data + input_offset,                // A
+                                     after_dims_including_split_axis,          // lda
+                                     output_data,                              // B
+                                     split_size * after_dims_excluding_split,  // ldb
+                                     [](const T* src, T* dst, size_t count) { copy_data<T>(src, dst, count); });
+}
 
+Status SplitToSequence::Compute(OpKernelContext* context) const {
+  const Tensor& input = *context->Input<Tensor>(0);
+  const Tensor* p_split_input = context->Input<Tensor>(1);
   auto& input_shape = input.Shape();
   int64_t num_outputs = 0;
   int64_t axis = axis_;
@@ -514,14 +500,13 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
                                         is_uneven_split,
                                         num_remaining_splits,
                                         split_sizes));
-  auto tseq = context.Output<TensorSeq>(0);
+  auto tseq = context->Output<TensorSeq>(0);
   tseq->SetType(input.DataType());
   tseq->Reserve(static_cast<size_t>(num_outputs));
 
   // copy dimensions so we can update the selected axis in place
   auto output_dimensions = input_shape.AsShapeVector();
   int64_t input_offset = 0;
-  const T* input_data = input.Data<T>();
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on while considering uneven split
     int split_size;
@@ -533,20 +518,38 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     output_dimensions[onnxruntime::narrow<size_t>(axis)] = split_size;
 
     AllocatorPtr alloc;
-    ORT_RETURN_IF_ERROR(context.GetTempSpaceAllocator(&alloc));
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
     Tensor output_tensor(input.DataType(), onnxruntime::TensorShape(output_dimensions), alloc);
-    T* output_data = output_tensor.MutableData<T>();
 
-    ::onnxruntime::math::CopyMatrix<T>(
-        before_dims,                                       // M
-        split_size * after_dims_excluding_split,           // N
-        static_cast<const T*>(input_data + input_offset),  // A
-        after_dims_including_split_axis,                   // lda
-        static_cast<T*>(output_data),                      // B
-        split_size * after_dims_excluding_split,           // ldb
-        [](const T* src, T* dst, size_t count) {
-          copy_data<T>(src, dst, count);
-        });
+    const void* input_data_raw = input.DataRaw();
+    void* output_data_raw = output_tensor.MutableDataRaw();
+    if (input.IsDataTypeString()) {
+      CopyImpl<std::string>(reinterpret_cast<const std::string*>(input_data_raw),
+                            reinterpret_cast<std::string*>(output_data_raw), before_dims, split_size,
+                            after_dims_excluding_split, input_offset, after_dims_including_split_axis);
+    } else {
+      const auto element_size = input.DataType()->Size();
+      switch (element_size) {
+        case sizeof(float): {
+          CopyImpl<float>(reinterpret_cast<const float*>(input_data_raw), reinterpret_cast<float*>(output_data_raw),
+                          before_dims, split_size, after_dims_excluding_split, input_offset,
+                          after_dims_including_split_axis);
+        } break;
+        case sizeof(double): {
+          CopyImpl<double>(reinterpret_cast<const double*>(input_data_raw), reinterpret_cast<double*>(output_data_raw),
+                           before_dims, split_size, after_dims_excluding_split, input_offset,
+                           after_dims_including_split_axis);
+        } break;
+        case sizeof(MLFloat16): {
+          CopyImpl<MLFloat16>(reinterpret_cast<const MLFloat16*>(input_data_raw),
+                              reinterpret_cast<MLFloat16*>(output_data_raw), before_dims, split_size,
+                              after_dims_excluding_split, input_offset, after_dims_including_split_axis);
+        } break;
+        default:
+          ORT_THROW("Unsupported datatype with sizeof = ", element_size);
+          break;
+      }
+    }
 
     input_offset += static_cast<int64_t>(split_size) * after_dims_excluding_split;  // offset by the N data we used in this iteration
 

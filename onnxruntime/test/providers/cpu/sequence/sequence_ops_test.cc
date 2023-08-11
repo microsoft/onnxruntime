@@ -347,6 +347,17 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloat) {
   test.Run();
 }
 
+TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitMLFloat16) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<MLFloat16>("input", {4, 2}, FloatsToMLFloat16s({1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}));
+  test.AddInput<int64_t>("split", {1, 2}, {2, 2});
+  SeqTensors<MLFloat16> output;
+  output.AddTensor({2, 2}, FloatsToMLFloat16s({1.f, 2.f, 3.f, 4.f}));
+  output.AddTensor({2, 2}, FloatsToMLFloat16s({5.f, 6.f, 7.f, 8.f}));
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitLong) {
   OpTester test("SplitToSequence", 11);
   test.AddInput<int64_t>("input", {4, 2}, GetConsequtiveVector<int64_t>(1, 8));
