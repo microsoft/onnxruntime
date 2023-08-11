@@ -44,6 +44,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
@@ -1886,11 +1887,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of attention heads</dd>
 </dl>
 
-#### Inputs
+#### Inputs (6 - 7)
 
 <dl>
 <dt><tt>query_layer</tt> : T</dt>
-<dd>tensor with shape (batch_size, seq_len, num_heads x head_size)</dd>
+<dd>tensor with shape (batch_size, seq_len, num_heads x head_size) or (token_count, num_heads x head_size)</dd>
 <dt><tt>query_bias</tt> : T</dt>
 <dd>1-d tensor with shape (num_heads x head_size)</dd>
 <dt><tt>rel_pos</tt> : T</dt>
@@ -1901,6 +1902,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>bias for the gated_ur_linear, shape (D)</dd>
 <dt><tt>eco_a</tt> : T</dt>
 <dd>tensor of shape (1, num_heads, 1, 1)</dd>
+<dt><tt>token_offset</tt> (optional) : M</dt>
+<dd>offset of each token with shape (batch_size, seq_len)</dd>
 </dl>
 
 #### Outputs
@@ -1915,6 +1918,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain token_offset to integer types</dd>
 </dl>
 
 
@@ -2339,6 +2344,57 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>G</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulFpQ4"></a><a name="com.microsoft.matmulfpq4">**com.microsoft.MatMulFpQ4**</a>
+
+  Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
+  During quantization, the matrix is divided into blocks, where each block is a
+  continguous subset inside each column. Each block is quantized into a
+  sequence of 4b integers with a scaling factor and an optional offset.
+  Currently 3 quantization types are supported:
+  (0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
+  no offset
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>blk_quant_type</tt> : int</dt>
+<dd>Quantization type</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>1-dimensional data blob</dd>
+<dt><tt>B_shape</tt> : T3</dt>
+<dd>Shape information of B</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>Matrix multiply results from A * B</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float)</dt>
+<dd>Constrain input matrix data types as single precision float tensor</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain input B data types as data blob</dd>
+<dt><tt>T3</tt> : tensor(int64)</dt>
+<dd>Constrain shape of B must be int64 tensor.</dd>
 </dl>
 
 
@@ -2904,7 +2960,7 @@ This version of the operator has been available since version 1 of the 'com.micr
    - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
    - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
   
-  The query, key and value tensors contains result of hidden embedding of real tokens after input projections.
+  The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
   Token_offset records the offset of token in the unpacked input.
   cumulative_sequence_length records cumulated length of each sequnces length.
   
@@ -2925,7 +2981,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs (5 - 6)
+#### Inputs (6 - 7)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2934,6 +2990,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Key with shape (token_count, hidden_size)</dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (token_count, v_hidden_size)</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>token_offset</tt> : M</dt>
 <dd>Offset of each token before packing, with shape (batch_size, sequence_length).</dd>
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
@@ -4645,7 +4703,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input</tt> : T</dt>
 <dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>skip</tt> : T</dt>
-<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size) or (1, sequence_length, hidden_size) or (sequence_length, hidden_size)</dd>
 <dt><tt>gamma</tt> : T</dt>
 <dd>1D input tensor with shape (hidden_size)</dd>
 <dt><tt>beta</tt> (optional) : T</dt>

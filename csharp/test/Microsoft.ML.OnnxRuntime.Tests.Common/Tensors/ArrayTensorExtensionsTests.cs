@@ -101,5 +101,48 @@ namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
             Assert.Equal(expectedDims, tensor.Dimensions.ToArray());
             CheckValues(array.Cast<int>(), tensor);
         }
+
+        [Fact]
+        public void TestLongStrides()
+        {
+            long[] emptyStrides = ShapeUtils.GetStrides(Array.Empty<long>());
+            Assert.Empty(emptyStrides);
+
+            long[] negativeDims = { 2, -3, 4, 5 };
+            Assert.Throws<ArgumentException>(() => ShapeUtils.GetStrides(negativeDims));
+
+            ReadOnlySpan<long> goodDims = stackalloc long[] { 2, 3, 4, 5 };
+            long[] expectedStrides = { 60, 20, 5, 1 };
+            Assert.Equal(expectedStrides, ShapeUtils.GetStrides(goodDims));
+        }
+
+        [Fact]
+        public void TestLongGetIndex()
+        {
+            ReadOnlySpan<long> dims = stackalloc long[] { 2, 3, 4, 5 };
+            long size = ShapeUtils.GetSizeForShape(dims);
+            Assert.Equal(120, size);
+
+            ReadOnlySpan<long> strides = ShapeUtils.GetStrides(dims);
+
+            static void IncDims(ReadOnlySpan<long> dims, Span<long> indices)
+            {
+                for (int i = dims.Length - 1; i >= 0; i--)
+                {
+                    indices[i]++;
+                    if (indices[i] < dims[i])
+                        break;
+                    indices[i] = 0;
+                }
+            }
+
+            Span<long> indices = stackalloc long[] { 0, 0, 0, 0 };
+            for (long i = 0; i < size; i++)
+            {
+                long index = ShapeUtils.GetIndex(strides, indices);
+                Assert.Equal(i, index);
+                IncDims(dims, indices);
+            }
+        }
     }
 }

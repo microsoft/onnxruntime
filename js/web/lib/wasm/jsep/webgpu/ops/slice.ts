@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata, TensorInfo} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface SliceAttributes extends AttributeWithCacheKey {
   readonly starts: number[];
@@ -38,7 +38,7 @@ const readInput = (inputs: readonly TensorView[], idx: number): number[] => {
   if (inputs.length > idx) {
     if (inputs[idx].dataType === DataType.int64) {
       inputs[idx].getBigInt64Array().forEach(v => input.push(Number(v)));
-    } else if (inputs[1].dataType === DataType.int32) {
+    } else if (inputs[idx].dataType === DataType.int32) {
       inputs[idx].getInt32Array().forEach(v => input.push(Number(v)));
     } else {
       throw new Error(`Input ${idx} must be an array of int32 or int64`);
@@ -76,12 +76,10 @@ const fixStartEndValues =
           }
         };
 
-const calculateInputIndicesImpl = (inputShape: readonly number[], outputShape: readonly number[]): string => {
-  const outputIndicesHelper = createIndicesHelper('output', outputShape);
-  const inputIndicesHelper = createIndicesHelper('input', inputShape);
-
-  return `fn calculateInputIndices(outputIndices: ${outputIndicesHelper.iType}) -> ${inputIndicesHelper.iType} {
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')};
+const calculateInputIndicesImpl =
+    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[]):
+        string => `fn calculateInputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
+          var inputIndices: ${input.type.indices};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
             var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
@@ -95,7 +93,6 @@ const calculateInputIndicesImpl = (inputShape: readonly number[], outputShape: r
           }
           return inputIndices;
       }`;
-};
 
 const createSliceProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfo => {
@@ -103,7 +100,6 @@ const createSliceProgramInfo =
       const inputSize = ShapeUtil.size(inputShape);
       const axes = (attributes.axes.length > 0) ? ShapeUtil.normalizeAxes(attributes.axes, inputShape.length) :
                                                   [...Array(inputShape.length).keys()];
-      const dataType = 'f32';  // TODO: support other data type
       let steps = readInput(inputs, 4);
       steps.forEach((step) => step !== 0 || (() => {
                                 throw new Error('step cannot be 0');
@@ -142,36 +138,34 @@ const createSliceProgramInfo =
         outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
       });
 
-      const output: TensorInfo = {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default};
+      const outputTensorInfo:
+          TensorInfo = {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default};
 
-      const outputIndicesHelper = createIndicesHelper('output', outputShape);
-      const inputIndicesHelper = createIndicesHelper('input', inputShape);
+      const output = outputVariable('output', inputs[0].dataType, outputShape);
+      const input = inputVariable('input', inputs[0].dataType, inputShape);
       const outputSize = ShapeUtil.size(outputShape);
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-        @group(0) @binding(0) var<storage, read> input: array<${dataType}>;
-        @group(0) @binding(1) var<storage, read_write> output: array<${dataType}>;
+      ${shaderHelper.declareVariables(input, output)}
         const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});
         const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});
         const ends = array<u32, ${ends.length}>(${ends.map(i => `${i}u`).join(',')});
         const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});
         const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
 
-        ${outputIndicesHelper.o2iImpl}
-        ${inputIndicesHelper.i2oImpl}
-        ${calculateInputIndicesImpl(inputShape, outputShape)}
+        ${output.impl('offsetToIndices')}
+        ${input.impl('indicesToOffset', 'get')}
+        ${calculateInputIndicesImpl(input, output, inputShape, outputShape)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-          ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-          ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
-          inputIndices = calculateInputIndices(outputIndices);
-          output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+          let outputIndices = ${output.offsetToIndices('global_idx')};
+          let inputIndices = calculateInputIndices(outputIndices);
+          ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
       }`;
       return {
         ...metadata,
         getShaderSource,
-        outputs: [output],
+        outputs: [outputTensorInfo],
         dispatchGroup: () => ({x: Math.ceil(inputSize / 64 /* workgroup size */)})
       };
     };
@@ -189,7 +183,14 @@ const createSliceProgramInfoLoader =
 
 export const slice = (context: ComputeContext, attributes: SliceAttributes): void => {
   validateInputs(context.inputs, attributes);
-  context.compute(createSliceProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
+  const programInfoLoader = createSliceProgramInfoLoader(context.inputs, attributes);
+  const program = programInfoLoader.get();
+  if (ShapeUtil.size(program.outputs[0].dims) > 0) {
+    context.compute(programInfoLoader, {inputs: [0]});
+  } else {
+    // TODO: support empty output
+    throw new Error('slice: output size is 0');
+  }
 };
 
 export const parseSliceAttributes = (attributes: Record<string, unknown>): SliceAttributes => {
