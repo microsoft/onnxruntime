@@ -103,63 +103,66 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   MHARunner* fused_runner = nullptr;
 
-  // Check whether we can use fused kernel
+  // // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
-  bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-  bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
+  // bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  // bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
+  // bool is_mask_1d_seq_len = false;
 
-  if (is_unidirectional_ && enable_fused_causal_attention_) {  // GPT
-    // GPT fused kernels requires left side padding. mask can be:
-    //     none (no padding), 1D sequence lengths or 2d mask.
-    // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
-    // where past state is empty.
-    bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
-    bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
-                                   nullptr == relative_position_bias &&
-                                   parameters.past_sequence_length == 0 &&
-                                   parameters.hidden_size == parameters.v_hidden_size &&
-                                   FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                                      enable_trt_flash_attention_, true);
-    if (use_causal_fused_runner) {
-      // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
-      if (nullptr == fused_fp16_runner_.get()) {
-        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                          enable_trt_flash_attention_, parameters.scale);
-      }
+  // if (is_unidirectional_ && enable_fused_causal_attention_) {  // GPT
+  //   // GPT fused kernels requires left side padding. mask can be:
+  //   //     none (no padding), 1D sequence lengths or 2d mask.
+  //   // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
+  //   // where past state is empty.
+  //   bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
+  //   bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
+  //                                  nullptr == relative_position_bias &&
+  //                                  parameters.past_sequence_length == 0 &&
+  //                                  parameters.hidden_size == parameters.v_hidden_size &&
+  //                                  FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
+  //                                                                     enable_trt_flash_attention_, true);
+  //   if (use_causal_fused_runner) {
+  //     // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
+  //     if (nullptr == fused_fp16_runner_.get()) {
+  //       fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+  //                                                         enable_trt_flash_attention_, parameters.scale);
+  //     }
 
-      // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
-      fused_runner = fused_fp16_runner_.get();
-    }
-  } else {  // BERT
-    bool use_fused_runner = !disable_fused_self_attention_ &&
-                            (nullptr == mask_index || is_mask_1d_seq_len) &&
-                            nullptr == past &&
-                            nullptr == present &&
-                            nullptr == relative_position_bias &&
-                            parameters.hidden_size == parameters.v_hidden_size &&
-                            FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                               enable_trt_flash_attention_, false);
+  //     // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
+  //     fused_runner = fused_fp16_runner_.get();
+  //   }
+  // } else {  // BERT
+  //   bool use_fused_runner = !disable_fused_self_attention_ &&
+  //                           (nullptr == mask_index || is_mask_1d_seq_len) &&
+  //                           nullptr == past &&
+  //                           nullptr == present &&
+  //                           nullptr == relative_position_bias &&
+  //                           parameters.hidden_size == parameters.v_hidden_size &&
+  //                           FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
+  //                                                              enable_trt_flash_attention_, false);
 
-    if (use_fused_runner) {
-      // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
-      if (nullptr == fused_fp16_runner_.get()) {
-        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                          enable_trt_flash_attention_, parameters.scale);
-      }
+  //   if (use_fused_runner) {
+  //     // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
+  //     if (nullptr == fused_fp16_runner_.get()) {
+  //       fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+  //                                                         enable_trt_flash_attention_, parameters.scale);
+  //     }
 
-      // In case some kernel not loaded due to shared memory limit, we need to double check here.
-      const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
-      if (fused_fp16_runner_->isValid(S)) {
-        fused_runner = fused_fp16_runner_.get();
-      }
-    }
-  }
+  //     // In case some kernel not loaded due to shared memory limit, we need to double check here.
+  //     const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
+  //     if (fused_fp16_runner_->isValid(S)) {
+  //       fused_runner = fused_fp16_runner_.get();
+  //     }
+  //   }
+  // }
 
 #if USE_FLASH_ATTENTION
+  assert(!disable_memory_efficient_attention_);
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
+  // printf("size of ", sizeof(T));
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
-                                        (nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
+                                        // (nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
                                         nullptr == past &&
                                         nullptr == present &&
                                         (nullptr == relative_position_bias || is_good_for_rpb) &&

@@ -753,6 +753,7 @@ Status QkvToContext(
   // Q, K and V are ready now
   DUMP_TENSOR_INIT();
 
+  assert(data.fused_cross_attention_kernel == nullptr);
   if (data.fused_cross_attention_kernel != nullptr) {
     assert(qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H);
 
@@ -804,6 +805,7 @@ Status QkvToContext(
   }
 
   // Run TRT fused attention.
+  assert(!(use_fused_kernel || use_fused_causal));
   if (use_fused_kernel || use_fused_causal) {
     int* sequence_offset = reinterpret_cast<int*>(scratch1);
     if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
@@ -850,10 +852,13 @@ Status QkvToContext(
                                                : parameters.scale;
 
 #if USE_FLASH_ATTENTION
+  // assert(data.use_memory_efficient_attention);
   if (data.use_memory_efficient_attention) {
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    
+    printf("*********USING FLASH******");
 
     //const void* query = q;
     //const void* key = k;
@@ -891,14 +896,29 @@ Status QkvToContext(
     //p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     //p.stream = stream;
     //run_memory_efficient_attention(p);
+
+    // Convert from mask to packed
+    int* sequence_offset = reinterpret_cast<int*>(scratch1);
+    if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
+      DUMP_TENSOR_D("mask", reinterpret_cast<const int*>(data.mask_index), batch_size, sequence_length);
+      LaunchTrtSequenceOffset2d(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
+    } else {
+      sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_q_cache,
+                                                   data.mask_index, batch_size, sequence_length, stream,
+                                                   sequence_offset);
+    }
+    DUMP_TENSOR_D("sequence_offset", sequence_offset, 1, (data.mask_index != nullptr ? 2 : 1) * batch_size + 1);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
     
-    ORT_RETURN_IF_ERROR(mha_fwd(
+    ORT_RETURN_IF_ERROR(mha_varlen_fwd(
       device_prop,
       stream,
       q, 
       k, 
       v,
       reinterpret_cast<void*>(data.output),
+      sequence_offset,
+      sequence_offset,
       batch_size,
       num_heads,
       num_heads,
@@ -915,6 +935,8 @@ Status QkvToContext(
     return Status::OK();
   }
 #endif
+
+  printf("*********NOT USING FLASH*******");
 
   // The following are unfused attention.
   assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);

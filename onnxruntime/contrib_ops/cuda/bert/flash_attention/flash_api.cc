@@ -258,10 +258,10 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                void* k,                // half (total_k, num_heads, head_size)
                void* v,                // half (total_k, num_heads, v_head_size)
                void* out,              // half (total_q, num_heads, v_head_size)
-               int32_t* cu_seqlens_q,  // int (batch_size + 1)
-               int32_t* cu_seqlens_k,  // int (batch_size + 1)
-               void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
-               void* o_tmp_buffer,        // NULL or float (total_q, num_heads, v_head_size)
+               int* cu_seqlens_q,  // int (batch_size + 1)
+               int* cu_seqlens_k,  // int (batch_size + 1)
+              //  void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
+              //  void* o_tmp_buffer,        // NULL or float (total_q, num_heads, v_head_size)
                const int batch_size,
                const int num_heads,
                const int num_heads_k,
@@ -306,7 +306,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   //TORCH_CHECK(cu_seqlens_q.is_contiguous(), "cu_seqlens_q must be contiguous");
   //TORCH_CHECK(cu_seqlens_k.is_contiguous(), "cu_seqlens_k must be contiguous");
 
-  constexpr bool return_softmax = false;
+  // constexpr bool return_softmax = false;
 
   //TORCH_CHECK(batch_size > 0, "batch size must be positive");
   //TORCH_CHECK(head_size_og <= 256, "FlashAttention forward only supports head dimension at most 256");
@@ -340,8 +340,8 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    q, k, v, out,
                    cu_seqlens_q,
                    cu_seqlens_k,
-                   return_softmax ? o_tmp_buffer : nullptr,
-                   softmax_lse_buffer,
+                   nullptr, //return_softmax ? o_tmp_buffer : nullptr,
+                   nullptr, //softmax_lse_buffer,
                    softmax_scale,
                    is_causal);
   run_mha_fwd(params, stream);
