@@ -440,7 +440,136 @@ Next, we will write the `evaluate` method that will take in the audio data, conv
     }
 ```
 
+The complete implementation of the `VoiceIdentifier` class can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/VoiceIdentifier.swift)
+
 ### Recording Audio
+
+We will use the `AudioRecorder` class to record audio through the microphone. It will record 10 seconds of audio and output the audio data as a `Data` object, which can be used for training and inference purposes. we will use `AVFoundation` framework to access microphone and record the audio. There will be one public method `record(callback: @escaping RecordingDoneCallback)` that will record the audio and call the callback function with the audio data as `Data` object, when the recording is done.
+
+```swift
+import AVFoundation
+import Foundation
+
+private let kSampleRate: Int = 16000
+private let kRecordingDuration: TimeInterval = 10
+
+class AudioRecorder {
+    typealias RecordResult = Result<Data, Error>
+    typealias RecordingDoneCallback = (RecordResult) -> Void
+    
+    enum AudioRecorderError: Error {
+        case Error(message: String)
+    }
+    
+    func record(callback: @escaping RecordingDoneCallback) {
+        let session = AVAudioSession.sharedInstance()
+        session.requestRecordPermission { allowed in
+            do {
+                guard allowed else {
+                    throw AudioRecorderError.Error(message: "Recording permission denied.")
+                }
+                
+                try session.setCategory(.record)
+                try session.setActive(true)
+                
+                let tempDir = FileManager.default.temporaryDirectory
+                
+                let recordingUrl = tempDir.appendingPathComponent("recording.wav")
+                
+                let formatSettings: [String: Any] = [
+                    AVFormatIDKey: kAudioFormatLinearPCM,
+                    AVSampleRateKey: kSampleRate,
+                    AVNumberOfChannelsKey: 1,
+                    AVLinearPCMBitDepthKey: 16,
+                    AVLinearPCMIsBigEndianKey: false,
+                    AVLinearPCMIsFloatKey: false,
+                    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+                ]
+                
+                let recorder = try AVAudioRecorder(url: recordingUrl, settings: formatSettings)
+                self.recorder = recorder
+                
+                let delegate = RecorderDelegate(callback: callback)
+                recorder.delegate = delegate
+                self.recorderDelegate = delegate
+                
+                guard recorder.record(forDuration: kRecordingDuration) else {
+                    throw AudioRecorderError.Error(message: "Failed to record.")
+                }
+                
+                // control should resume in recorder.delegate.audioRecorderDidFinishRecording()
+            } catch {
+                callback(.failure(error))
+            }
+        }
+    }
+    
+    private var recorderDelegate: RecorderDelegate?
+    private var recorder: AVAudioRecorder?
+    
+    private class RecorderDelegate: NSObject, AVAudioRecorderDelegate {
+        private let callback: RecordingDoneCallback
+        
+        init(callback: @escaping RecordingDoneCallback) {
+            self.callback = callback
+        }
+        
+        func audioRecorderDidFinishRecording(
+            _ recorder: AVAudioRecorder,
+            successfully flag: Bool
+        ) {
+            let recordResult = RecordResult { () -> Data in
+                guard flag else {
+                    throw AudioRecorderError.Error(message: "Recording was unsuccessful.")
+                }
+                
+                let recordingUrl = recorder.url
+                let recordingFile = try AVAudioFile(forReading: recordingUrl)
+                
+                guard
+                    let format = AVAudioFormat(
+                        commonFormat: .pcmFormatFloat32,
+                        sampleRate: recordingFile.fileFormat.sampleRate,
+                        channels: 1,
+                        interleaved: false)
+                else {
+                    throw AudioRecorderError.Error(message: "Failed to create audio format.")
+                }
+                
+                guard
+                    let recordingBuffer = AVAudioPCMBuffer(
+                        pcmFormat: format,
+                        frameCapacity: AVAudioFrameCount(recordingFile.length))
+                else {
+                    throw AudioRecorderError.Error(message: "Failed to create audio buffer.")
+                }
+                
+                try recordingFile.read(into: recordingBuffer)
+                
+                guard let recordingFloatChannelData = recordingBuffer.floatChannelData else {
+                    throw AudioRecorderError.Error(message: "Failed to get float channel data.")
+                }
+                
+                return Data(bytes: recordingFloatChannelData[0], count: Int(recordingBuffer.frameLength) * MemoryLayout<Float>.size)
+               
+            }
+            
+            callback(recordResult)
+        }
+        
+        func audioRecorderEncodeErrorDidOccur(
+            _ recorder: AVAudioRecorder,
+            error: Error?
+        ) {
+            if let error = error {
+                callback(.failure(error))
+            } else {
+                callback(.failure(AudioRecorderError.Error(message: "Encoding was unsuccessful.")))
+            }
+        }
+    }
+}
+```
 
 ### Training View
 
