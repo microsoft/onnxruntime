@@ -30,6 +30,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Resize||
+|ai.onnx:Shape|Attribute `start` with non-default value is not supported.<br/>Attribute `end` is not supported.|
 |ai.onnx:Sigmoid||
 |ai.onnx:Squeeze||
 |ai.onnx:Sqrt||
