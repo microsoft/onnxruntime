@@ -86,7 +86,7 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   }
   onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
   PathString inference_model_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("inference_model.onnx"))};
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("inference_model.onnx"))};
 
   std::vector<std::string> graph_output_names({"output-0"});
   ASSERT_STATUS_OK(model->ExportModelForInferencing(ToUTF8String(inference_model_path), graph_output_names));
