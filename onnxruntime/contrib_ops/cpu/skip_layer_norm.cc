@@ -159,7 +159,6 @@ Status SkipLayerNorm<T, V>::Compute(OpKernelContext* p_ctx) const {
             p_output[h] = (p_output[h] - mean_cast) / mean_square_cast * static_cast<float>(gamma_data[h]);
           } else {
             p_output[h] = (p_output[h] - mean_cast) / mean_square_cast * static_cast<float>(gamma_data[h]) + static_cast<float>(beta_data[h]);
-            printf("output: %f\n", (float)p_output[h]);
           }
         }
       },
