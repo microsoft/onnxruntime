@@ -244,17 +244,9 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Cos) {
                     11, ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Inaccuracy when computing cos(-1.88436)
-//
-// cos(-1.88436f) fp32 cpu ep = -0.308450460
-// cos(-1.88436f) qdq cpu ep  = -0.298039228
-// cos(-1.88436f) qdq QNN ep  = -0.321568638
-//
-// QNN error: 0.013118177652359009, CPU error: 0.010411232709884644
-//
-// input quant params: scale=0.0246399231, zero_point=127
-// output quant params: scale=0.00784313772, zero_point=127
-TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Cos_Inaccurate) {
+// Check that QNN compiles DQ -> Cos -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, UnaryOp_Cos_Inaccurate) {
   RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, {-3.14159f, -1.88436f, -0.542863f, 0.0f, 1.05622f, 3.14159f}),
                     "Cos", {},
                     11, ExpectedEPNodeAssignment::All);
@@ -449,7 +441,7 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D) {
 
 // TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 // Enable when this is fixed.
-TEST_F(QnnHTPBackendTests, DISABLED_BinaryOp_Sub4D_LargeInputs) {
+TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_LargeInputs) {
   RunQDQBinaryOpTest<uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                               TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                               17, ExpectedEPNodeAssignment::All);
@@ -457,7 +449,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_BinaryOp_Sub4D_LargeInputs) {
 
 // TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 // Enable when this is fixed.
-TEST_F(QnnHTPBackendTests, DISABLED_BinaryOp_Sub4D_Broadcast) {
+TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_Broadcast) {
   RunQDQBinaryOpTest<uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                               TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
                               17, ExpectedEPNodeAssignment::All);
@@ -470,8 +462,12 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_SmallInputs) {
                               17, ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
-// Enable when this is fixed.
+// TODO: Enable when this is fixed.
+// QNN v2.13: Inaccuracy detected for output 'output', element 2551923.
+// Output quant params: scale=4100.92626953125, zero_point=126.
+// Expected val: -277957.3125
+// QNN QDQ val: 0 (err 277957.3125)
+// CPU QDQ val: -516716.71875 (err 238759.40625)
 TEST_F(QnnHTPBackendTests, DISABLED_BinaryOp_Div4D_LargeInputs) {
   RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                               TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
@@ -481,7 +477,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_BinaryOp_Div4D_LargeInputs) {
 // TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 // Enable when this is fixed.
 // Fails accuracy when input0 has dims [1,3,768,768]
-TEST_F(QnnHTPBackendTests, DISABLED_BinaryOp_Div4D_Broadcast) {
+TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast) {
   RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                               TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
                               17, ExpectedEPNodeAssignment::All);

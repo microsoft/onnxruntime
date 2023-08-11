@@ -128,7 +128,7 @@ TEST_F(QnnCPUBackendTests, MaxPool_Large_Input) {
                    ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// QNN v2.13, backendValidateOpConfig() failed for node `MaxPool` of type `PoolMax2d` with error code 4003
 TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Ceil) {
   RunMaxPoolOpTest(TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                    {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
@@ -141,7 +141,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Ceil) {
                    ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// QNN v2.13, backendValidateOpConfig() failed for node `MaxPool` of type `PoolMax2d` with error code 4003
 TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Large_Input2_Ceil) {
   RunMaxPoolOpTest(TestInputDef<float>({1, 128, 16, 113}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                    {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
@@ -171,8 +171,7 @@ TEST_F(QnnHTPBackendTests, MaxPool_Global_HTP_u8) {
                                ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
-TEST_F(QnnHTPBackendTests, DISABLED_MaxPool_Large_Input_HTP_u8) {
+TEST_F(QnnHTPBackendTests, MaxPool_Large_Input_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>(TestInputDef<float>({1, 125, 8, 56}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                                {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
                                 utils::MakeAttribute("strides", std::vector<int64_t>{2, 2}),
@@ -196,7 +195,11 @@ TEST_F(QnnHTPBackendTests, MaxPool_Ceil_HTP_u8) {
                                ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// QNN v2.13: Inaccuracy detected for output 'output', element 58367.
+// Output quant params: scale=0.078431375324726105, zero_point=127.
+// Expected val: 5.6846914291381836
+// QNN QDQ val: -5.3333334922790527 (err 11.018024444580078)
+// CPU QDQ val: 5.6470589637756348 (err 0.037632465362548828)
 TEST_F(QnnHTPBackendTests, DISABLED_MaxPool_Large_Input2_Ceil_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>(TestInputDef<float>({1, 128, 16, 113}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                                {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
@@ -209,7 +212,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_MaxPool_Large_Input2_Ceil_HTP_u8) {
                                ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// QNN v2.13: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 TEST_F(QnnHTPBackendTests, DISABLED_MaxPool_LargeInput_1Pads) {
   RunQDQMaxPoolOpTest<uint8_t>(TestInputDef<float>({1, 64, 384, 576}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                                {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
