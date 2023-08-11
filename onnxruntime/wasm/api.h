@@ -241,7 +241,7 @@ char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
  * @param checkpoint_size size of the CheckpointState in bytes
  * @return ort_training_checkpoint_handle_t
  */
-ort_training_checkpoint_handle_t* EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint_data_buffer, size_t checkpoint_size);
+ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint_data_buffer, size_t checkpoint_size);
 
 /**
  * @brief Release the specified ORT training checkpoint state.
