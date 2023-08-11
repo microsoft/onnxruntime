@@ -5,7 +5,8 @@ trigger:
     - rel-*
   paths:
     exclude:
-    - 'js'
+    - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -14,7 +15,8 @@ pr:
     - rel-*
   paths:
     exclude:
-    - 'js'
+    - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 resources:
   repositories:

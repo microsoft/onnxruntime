@@ -9,7 +9,8 @@ trigger:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
-    - 'js'
+    - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -22,7 +23,8 @@ pr:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
-    - 'js'
+    - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 parameters:
 - name: RunOnnxRuntimeTests

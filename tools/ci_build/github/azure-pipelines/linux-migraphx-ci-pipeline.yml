@@ -10,7 +10,8 @@ pr:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
-    - 'js'
+    - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 

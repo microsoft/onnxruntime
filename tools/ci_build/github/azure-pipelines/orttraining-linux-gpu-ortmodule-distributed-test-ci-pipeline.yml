@@ -10,7 +10,8 @@ pr:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
-    - 'js'
+    - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 stages:
 - stage: ORTModuleDistributedTest
