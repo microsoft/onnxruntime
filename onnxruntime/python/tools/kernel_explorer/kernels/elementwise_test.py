@@ -84,10 +84,10 @@ class ElementwiseMetric(ke.BandwidthMetric):
     hidden_size: int
 
     def report(self):
-        prefix = f"{self.name:<50} {self.dtype}  batch_size={self.batch_size:<4} seq_len={self.seq_len:<4} hidden_size={self.hidden_size:<4} "
+        common = f"{self.dtype}  batch_size={self.batch_size:<4} seq_len={self.seq_len:<4} hidden_size={self.hidden_size:<4} {self.name}"
         if self.duration > 0:
-            return prefix + f"{self.duration:.2f} us, {self.gbps:.2f} GB/s"
-        return prefix + "not supported or redundant"
+            return f"{self.duration:>6.2f} us {self.gbps:>5.2f} GB/s " + common
+        return "not supported        " + common
 
 
 def profile_elementwise_func(batch_size, seq_len, hidden_size, dtype, func):
