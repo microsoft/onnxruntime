@@ -85,9 +85,11 @@ const createSkipLayerNormProgramInfo =
       const hasBetaInput = inputs.length > 3;
       const hasBiasInput = inputs.length > 4;
       const dataType = tensorTypeToWsglType(inputs[0].dataType);
-      const hasMeanOutput = outputCount > 1;
-      const hasInvStdDevOutput = outputCount > 2;
-      const hasInputSkipBiasSumOutput = outputCount > 3;
+      // TODO: initialize isTraining from ComputeContext
+      const isTraining = false;
+      const hasMeanOutput = isTraining && outputCount > 1;
+      const hasInvStdDevOutput = isTraining && outputCount > 2;
+      const hasInputSkipBiasSumOutput = (isTraining && outputCount > 3) || (!isTraining && outputCount > 1);
       let bindingNumber = 0;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
 const hiddenSize: u32 = ${hiddenSize};
