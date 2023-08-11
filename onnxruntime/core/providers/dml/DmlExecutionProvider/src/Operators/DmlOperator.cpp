@@ -12,6 +12,11 @@ namespace Dml
     {
         ML_CHECK_HRESULT(kernelInfo.GetExecutionInterface().As(&m_executionProvider));
         ML_CHECK_HRESULT(m_executionProvider->GetDmlDevice(/*out*/ m_dmlDevice.GetAddressOf()));
+
+        auto nodeWrapper = kernelInfo.GetNodeWrapperInterface();
+        uint32_t nodeNameSizeInBytes = nodeWrapper->GetUtf8NameBufferSizeInBytes();
+        m_nodeName.resize(nodeNameSizeInBytes);
+        ORT_THROW_IF_FAILED(nodeWrapper->GetUtf8Name(nodeNameSizeInBytes, m_nodeName.data()));
     }
 
     void DmlOperator::SetDmlOperatorDesc(
@@ -465,13 +470,13 @@ namespace Dml
     }
 
     template <typename T>
-    static void PrintNaN(const char* operatorName, const onnxruntime::Tensor& cpuData)
+    static void PrintNaN(const char* nodeName, const char* operatorName, const onnxruntime::Tensor& cpuData)
     {
         auto data = cpuData.DataAsSpan<T>();
         uint32_t nanCount = 0;
 
         printf("**********************************");
-        printf("%s\n", operatorName);
+        printf("%s (%s)\n", nodeName, operatorName);
 
         for (uint32_t i = 0; i < data.size(); ++i)
         {
@@ -538,11 +543,11 @@ namespace Dml
             switch (outputDataType)
             {
             case MLOperatorTensorDataType::Float16:
-                PrintNaN<::MLFloat16>(typeid(*this).name(), outputCountCpu);
+                PrintNaN<::MLFloat16>(m_nodeName.c_str(), typeid(*this).name(), outputCountCpu);
                 break;
 
             case MLOperatorTensorDataType::Float:
-                PrintNaN<float>(typeid(*this).name(), outputCountCpu);
+                PrintNaN<float>(m_nodeName.c_str(), typeid(*this).name(), outputCountCpu);
                 break;
 
             default:

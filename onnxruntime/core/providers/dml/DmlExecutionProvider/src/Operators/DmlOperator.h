@@ -164,6 +164,8 @@ namespace Dml
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
 
+        std::string m_nodeName;
+
     };
 
 } // namespace Dml
