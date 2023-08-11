@@ -1988,7 +1988,8 @@ class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
   // Returns the graph output types post-inferencing.
   // We ignore input_data currently as the inferencing happens prior to receiving user input.
   std::vector<const TypeProto*> doInferencing(const std::vector<const TypeProto*>& input_types,
-                                              const std::vector<const TensorProto*>& /*input_data*/) override {
+                                              const std::vector<const TensorProto*>& /*input_data*/,
+                                              const ShapeInferenceOptions&) override {
     std::vector<const TypeProto*> output_types;
 
     auto status = inferencing_func_(node_, graph_, input_types, output_types, options_);
@@ -2103,6 +2104,10 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     return nullptr;
   }
 
+  const ONNX_NAMESPACE::ShapeInferenceOptions& getShapeInferenceOptions() const {
+    return shape_inference_options_;
+  }
+
  private:
   Node& node_;
   // node_output_types_ will be populated by the operator-specific shape inference.
@@ -2111,6 +2116,9 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   std::vector<std::unique_ptr<GraphInferencerImpl>> graph_inferencers_;
   const Graph& graph_;
   const Graph::ResolveOptions& options_;
+
+  // TODO: always use default option before able to convey it from Graph::Resolve
+  ShapeInferenceOptions shape_inference_options_;
 };
 
 Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
