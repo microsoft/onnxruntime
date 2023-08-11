@@ -104,10 +104,6 @@ HRESULT OnnxruntimeDmlSessionBuilder::Initialize(OrtSession* session) {
     winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider), engine_factory_->UseOrtApi()
   );
 
-  RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true), engine_factory_->UseOrtApi()
-  );
-
   // Flush the D3D12 work from the DML execution provider
   RETURN_HR_IF_NOT_OK_MSG(
     winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider), engine_factory_->UseOrtApi()

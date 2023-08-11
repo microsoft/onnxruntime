@@ -32,25 +32,18 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   ~DMLProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  void SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode);
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
 
  private:
   ComPtr<IDMLDevice> dml_device_{};
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
-  AllocatorRoundingMode rounding_mode_ = AllocatorRoundingMode::Enabled;
   bool metacommands_enabled_ = true;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
   auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
-  Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;
-}
-
-void DMLProviderFactory::SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode) {
-  rounding_mode_ = rounding_mode;
 }
 
 void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
@@ -78,11 +71,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   auto luid = d3d12_device->GetAdapterLuid();
   env.GetTelemetryProvider().LogExecutionProviderEvent(&luid);
   return std::make_shared<onnxruntime::DMLProviderFactory>(dml_device, cmd_queue);
-}
-
-void DmlConfigureProviderFactoryDefaultRoundingMode(IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode) {
-  auto dml_provider_factory = static_cast<DMLProviderFactory*>(factory);
-  dml_provider_factory->SetDefaultRoundingMode(rounding_mode);
 }
 
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled) {

@@ -82,6 +82,11 @@ namespace Dml
 
     void* BucketizedBufferAllocator::Alloc(size_t size)
     {
+        return Alloc(size, m_defaultRoundingMode);
+    }
+
+    void* BucketizedBufferAllocator::Alloc(size_t size, AllocatorRoundingMode roundingMode)
+    {
         // For some reason lotus likes requesting 0 bytes of memory
         size = std::max<size_t>(1, size);
 
@@ -90,7 +95,7 @@ namespace Dml
         uint64_t bucketSize = 0;
 
         // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
-        if (m_defaultRoundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
+        if (roundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
         {
             Bucket* bucket = nullptr;
 
