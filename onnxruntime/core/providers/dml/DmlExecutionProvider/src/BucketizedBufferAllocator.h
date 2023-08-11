@@ -7,6 +7,7 @@
 #include "ExecutionContext.h"
 #include "DmlResourceWrapper.h"
 #include "DmlSubAllocator.h"
+#include "DmlAllocatorRoundingMode.h"
 
 namespace Dml
 {
@@ -14,7 +15,7 @@ namespace Dml
     // maintains a set of fixed-size buckets, with each bucket containing one or more D3D12 buffers of that fixed size.
     // All requested allocation sizes are rounded up to the nearest bucket size, which ensures minimal fragmentation
     // while providing an upper bound on the amount of memory "wasted" with each allocation.
-    class BucketizedBufferAllocator : public onnxruntime::IAllocator, public DmlSubAllocator
+    class BucketizedBufferAllocator : public DmlSubAllocator
     {
     public:
         ~BucketizedBufferAllocator();
@@ -41,8 +42,8 @@ namespace Dml
         uint64_t GetUniqueId(void* opaquePointer);
 
     public: // onnxruntime::IAllocator
-        void* Alloc(size_t size) final;
-        void Free(void* p) final;
+        void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
+        void Free(void* p);
 
     private:
         static const uint32_t MinResourceSizeExponent = 16; // 2^16 = 64KB
@@ -76,7 +77,7 @@ namespace Dml
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
-        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
+
         std::shared_ptr<ExecutionContext> m_context;
 
     #if _DEBUG

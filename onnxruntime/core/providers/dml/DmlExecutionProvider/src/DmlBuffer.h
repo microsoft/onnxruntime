@@ -4,6 +4,7 @@
 #pragma once
 
 #include "DmlBufferRegion.h"
+#include "DmlAllocatorRoundingMode.h"
 
 namespace Dml
 {
@@ -18,7 +19,7 @@ class OpKernelContext;
 class DmlBuffer
 {
   public:
-    explicit DmlBuffer(DmlGpuAllocator* allocator, uint64_t sizeInBytes);
+    explicit DmlBuffer(DmlGpuAllocator* allocator, uint64_t sizeInBytes, AllocatorRoundingMode roundingMode);
     ~DmlBuffer();
 
     // Move-only

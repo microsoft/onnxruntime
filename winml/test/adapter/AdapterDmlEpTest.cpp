@@ -94,16 +94,6 @@ UniqueOrtSession CreateCpuSession() {
   return CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 }
 
-void DmlExecutionProviderSetDefaultRoundingMode() {
-  GPUTEST;
-  for (bool bfc_allocator_enabled : {false, true}) {
-    auto session = CreateDmlSession(bfc_allocator_enabled);
-    OrtExecutionProvider* ort_provider;
-    THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-    THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, false), ort_api);
-  }
-}
-
 void DmlExecutionProviderFlushContext() {
   GPUTEST;
   for (bool bfc_allocator_enabled : {false, true}) {
@@ -385,7 +375,6 @@ const AdapterDmlEpTestApi& getapi() {
   static constexpr AdapterDmlEpTestApi api = {
     AdapterDmlEpTestSetup,
     AdapterDmlEpTestTeardown,
-    DmlExecutionProviderSetDefaultRoundingMode,
     DmlExecutionProviderFlushContext,
     DmlExecutionProviderReleaseCompletedReferences,
     DmlCreateAndFreeGPUAllocationFromD3DResource,

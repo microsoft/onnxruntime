@@ -18,12 +18,6 @@ namespace onnxruntime
     class KernelRegistry;
 }
 
-enum class AllocatorRoundingMode
-{
-    Disabled = 0,
-    Enabled = 1,
-};
-
 namespace Dml
 {
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
@@ -33,7 +27,6 @@ namespace Dml
         bool enableBfcAllocator);
 
     void FlushContext(onnxruntime::IExecutionProvider* provider);
-    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
 
     onnxruntime::common::Status CopyTensor(

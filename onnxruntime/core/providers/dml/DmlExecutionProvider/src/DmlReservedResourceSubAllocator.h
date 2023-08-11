@@ -79,7 +79,6 @@ namespace Dml
             std::shared_ptr<ExecutionContext> context,
             std::unique_ptr<DmlReservedResourceSubAllocator>&& subAllocator);
 
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size);
         void Free(void* p);
 

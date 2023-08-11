@@ -24,6 +24,22 @@ TEST(TransposeOpTest, IsTransposeReshapeTest) {
   ASSERT_FALSE(IsTransposeReshape(perm, input_dims));
 }
 
+// Negative test, making sure it fails
+TEST(TransposeOpTest, PermRankDoesNotMatchTensorRank) {
+  const std::vector<float> input_vals(1 * 2 * 3 * 4, 0.f);
+  const std::vector<int64_t> perm{0, 2, 1};
+
+  OpTester test("Transpose");
+  test.AddAttribute("perm", perm);
+  test.AddInput<float>("X", {1, 2, 3, 4}, input_vals);
+  // Output is not very relevant
+  test.AddOutput<float>("Y", {1, 3, 2, 4}, input_vals);
+  // This failure comes from shape inference, because in this case it knows the input dims.
+  // But in the real world, the model can supply different input dims at runtime.
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Node:node1 Output:Y [ShapeInferenceError] Mismatch between number of source and target dimensions. Source=3 Target=4");
+}
+
 // Some of the tests can't run on TensorrtExecutionProvider because of errors.
 // Those tests will fallback to other EPs.
 

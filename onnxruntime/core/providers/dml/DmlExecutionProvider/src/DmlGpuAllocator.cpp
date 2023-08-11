@@ -10,11 +10,25 @@
 #include "DmlTaggedPointer.h"
 #include "DmlAllocationInfo.h"
 #include "BucketizedBufferAllocator.h"
+#include "DmlAllocatorRoundingMode.h"
+#include "core/framework/arena_extend_strategy.h"
+#include "core/framework/bfc_arena.h"
 
 namespace Dml
 {
+    static onnxruntime::ArenaExtendStrategy RoundingModeToArenaStrategy(AllocatorRoundingMode roundingMode)
+    {
+        switch(roundingMode)
+        {
+            case AllocatorRoundingMode::Disabled: return onnxruntime::ArenaExtendStrategy::kSameAsRequested;
+            case AllocatorRoundingMode::Enabled: return onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+            default:
+                ORT_THROW_HR(E_UNEXPECTED);
+        }
+    }
+
     DmlGpuAllocator::DmlGpuAllocator(
-        onnxruntime::IAllocator* bfcAllocator,
+        onnxruntime::BFCArena* bfcAllocator,
         BucketizedBufferAllocator* bucketizedBufferAllocator,
         std::shared_ptr<DmlReservedResourceSubAllocator> bfcSubAllocator,
         ActiveAllocator activeAllocator)
@@ -33,14 +47,34 @@ namespace Dml
 
     void* DmlGpuAllocator::Alloc(size_t sizeInBytes)
     {
+        return Alloc(sizeInBytes, m_defaultRoundingMode);
+    }
+
+    void* DmlGpuAllocator::Alloc(size_t sizeInBytes, AllocatorRoundingMode roundingMode)
+    {
         switch(m_activeAllocator)
         {
-        case ActiveAllocator::BfcAllocator:
-            return m_bfcAllocator->Alloc(sizeInBytes);
-        case ActiveAllocator::BucketizedBufferAllocator:
-            return m_bucketizedBufferAllocator->Alloc(sizeInBytes);
-        default:
-            ORT_THROW_HR(E_UNEXPECTED);
+            case ActiveAllocator::BfcAllocator:
+            {
+                if (m_defaultRoundingMode != roundingMode)
+                {
+                    m_bfcAllocator->SetArenaExtendStrategy(RoundingModeToArenaStrategy(roundingMode));
+                }
+
+                auto allocatedPointer = m_bfcAllocator->Alloc(sizeInBytes);
+
+                if (m_defaultRoundingMode != roundingMode)
+                {
+                    m_bfcAllocator->SetArenaExtendStrategy(RoundingModeToArenaStrategy(m_defaultRoundingMode));
+                }
+
+                return allocatedPointer;
+            }
+
+            case ActiveAllocator::BucketizedBufferAllocator:
+                return m_bucketizedBufferAllocator->Alloc(sizeInBytes, roundingMode);
+            default:
+                ORT_THROW_HR(E_UNEXPECTED);
         }
     }
 
@@ -48,12 +82,12 @@ namespace Dml
     {
         switch(m_activeAllocator)
         {
-        case ActiveAllocator::BfcAllocator:
-            return m_bfcAllocator->Free(ptr);
-        case ActiveAllocator::BucketizedBufferAllocator:
-            return m_bucketizedBufferAllocator->Free(ptr);
-        default:
-            ORT_THROW_HR(E_UNEXPECTED);
+            case ActiveAllocator::BfcAllocator:
+                return m_bfcAllocator->Free(ptr);
+            case ActiveAllocator::BucketizedBufferAllocator:
+                return m_bucketizedBufferAllocator->Free(ptr);
+            default:
+                ORT_THROW_HR(E_UNEXPECTED);
         }
     }
 
@@ -85,34 +119,34 @@ namespace Dml
 
     void DmlGpuAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
-        switch(m_activeAllocator)
+        if (m_activeAllocator == ActiveAllocator::BfcAllocator)
         {
-        case ActiveAllocator::BfcAllocator:
-            m_bfcSubAllocator->SetDefaultRoundingMode(roundingMode);
-            break;
-        case ActiveAllocator::BucketizedBufferAllocator:
-            m_bucketizedBufferAllocator->SetDefaultRoundingMode(roundingMode);
-            break;
-        default:
-            ORT_THROW_HR(E_UNEXPECTED);
+            m_bfcAllocator->SetArenaExtendStrategy(RoundingModeToArenaStrategy(roundingMode));
         }
+
+        m_defaultRoundingMode = roundingMode;
     }
 
     DmlBuffer DmlGpuAllocator::AllocateDefaultBuffer(uint64_t num_bytes)
     {
-        return DmlBuffer(this, num_bytes);
+        return DmlBuffer(this, num_bytes, m_defaultRoundingMode);
+    }
+
+    DmlBuffer DmlGpuAllocator::AllocateDefaultBuffer(uint64_t num_bytes, AllocatorRoundingMode roundingMode)
+    {
+        return DmlBuffer(this, num_bytes, roundingMode);
     }
 
     uint64_t DmlGpuAllocator::GetUniqueId(void* opaquePointer)
     {
         switch(m_activeAllocator)
         {
-        case ActiveAllocator::BfcAllocator:
-            return m_bfcSubAllocator->GetUniqueId(opaquePointer);
-        case ActiveAllocator::BucketizedBufferAllocator:
-            return m_bucketizedBufferAllocator->GetUniqueId(opaquePointer);
-        default:
-            ORT_THROW_HR(E_UNEXPECTED);
+            case ActiveAllocator::BfcAllocator:
+                return m_bfcSubAllocator->GetUniqueId(opaquePointer);
+            case ActiveAllocator::BucketizedBufferAllocator:
+                return m_bucketizedBufferAllocator->GetUniqueId(opaquePointer);
+            default:
+                ORT_THROW_HR(E_UNEXPECTED);
         }
     }
 

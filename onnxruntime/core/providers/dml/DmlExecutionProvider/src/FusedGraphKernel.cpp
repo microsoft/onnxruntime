@@ -7,6 +7,7 @@
 #include "FusedGraphKernel.h"
 #include "DmlGraphFusionHelper.h"
 #include "DmlManagedBuffer.h"
+#include "DmlAllocatorRoundingMode.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -25,13 +26,13 @@ namespace Dml
             std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
             std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
             std::vector<DML_BUFFER_BINDING> initInputBindings,
-            std::vector<uint8_t>& isInputsUploadedByDmlEP,
-            std::vector<bool>& inputsUsed) :
+            std::vector<uint8_t>&& isInputsUploadedByDmlEP,
+            std::vector<bool>&& inputsUsed) :
         OpKernel(kernelInfo),
         m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
-        m_inputsUsed(inputsUsed),
+        m_inputsUsed(std::move(inputsUsed)),
         m_outputShapes(outputShapes),
-        m_isInputsUploadedByDmlEP(isInputsUploadedByDmlEP),
+        m_isInputsUploadedByDmlEP(std::move(isInputsUploadedByDmlEP)),
         m_nonOwnedGraphInputsFromInitializers(nonOwnedGraphInputsFromInitializers)
         {
             // Get the execution provider interfaces
@@ -64,7 +65,7 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                auto buffer = m_provider->AllocatePooledResource(persistentResourceSize);
+                auto buffer = m_provider->AllocatePooledResource(persistentResourceSize, AllocatorRoundingMode::Disabled);
                 m_persistentResource = buffer.GetD3D12Resource();
                 m_persistentResourceBinding = buffer.GetBufferBinding();
                 m_managedPersistentBuffer = wil::MakeOrThrow<DmlManagedBuffer>(std::move(buffer));
@@ -358,7 +359,7 @@ namespace Dml
 
             if (execBindingProps.TemporaryResourceSize > 0)
             {
-                auto buffer = m_provider->AllocatePooledResource(execBindingProps.TemporaryResourceSize);
+                auto buffer = m_provider->AllocatePooledResource(execBindingProps.TemporaryResourceSize, AllocatorRoundingMode::Enabled);
                 DML_BUFFER_BINDING tempBufferBinding = buffer.GetBufferBinding();
                 DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
                 m_bindingTable->BindTemporaryResource(&tempBindingDesc);
@@ -425,8 +426,8 @@ namespace Dml
         std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
         std::vector<DML_BUFFER_BINDING> initInputBindings,
-        std::vector<uint8_t>& isInputsUploadedByDmlEP,
-        std::vector<bool>& inputsUsed
+        std::vector<uint8_t>&& isInputsUploadedByDmlEP,
+        std::vector<bool>&& inputsUsed
         )
     {
         return new FusedGraphKernel(
@@ -437,8 +438,8 @@ namespace Dml
             nonOwnedGraphInputsFromInitializers,
             initializeResourceRefs,
             initInputBindings,
-            isInputsUploadedByDmlEP,
-            inputsUsed
+            std::move(isInputsUploadedByDmlEP),
+            std::move(inputsUsed)
         );
     }
 } // namespace Dml

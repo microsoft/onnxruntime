@@ -7,6 +7,7 @@
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
 #include "DmlBufferRegion.h"
 #include "DmlBuffer.h"
+#include "DmlAllocatorRoundingMode.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -16,6 +17,11 @@ template <typename... TInterfaces>
 using Base = Microsoft::WRL::RuntimeClass<
     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
     TInterfaces...>;
+}
+
+namespace onnxruntime
+{
+    class BFCArena;
 }
 
 namespace Dml
@@ -122,8 +128,6 @@ namespace Dml
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const override;
         STDMETHOD_(void, Flush)() const override;
 
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
-
         // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
         void Close() override;
@@ -131,7 +135,7 @@ namespace Dml
         void WaitForOutstandingWork();
 
         // Allocate a resource from pools.  Releasing the returned buffer returns it to the pool.
-        DmlBuffer ExecutionProviderImpl::AllocatePooledResource(size_t size) const;
+        DmlBuffer ExecutionProviderImpl::AllocatePooledResource(size_t size, AllocatorRoundingMode roundingMode) const;
 
         STDMETHOD_(ID3D12Resource*, DecodeResource)(IMLOperatorTensor* tensor) const noexcept final;
 
@@ -183,7 +187,7 @@ namespace Dml
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
-        std::shared_ptr<onnxruntime::IAllocator> m_bfcAllocator;
+        std::shared_ptr<onnxruntime::BFCArena> m_bfcAllocator;
         std::shared_ptr<BucketizedBufferAllocator> m_bucketizedAllocator;
         std::shared_ptr<DmlGpuAllocator> m_gpuAllocator;
         std::shared_ptr<DmlExternalGpuAllocator> m_externalGpuAllocator;
@@ -194,7 +198,6 @@ namespace Dml
         bool m_closed = false;
         mutable std::chrono::time_point<std::chrono::steady_clock> m_lastUploadFlushTime;
         static constexpr std::chrono::milliseconds m_batchFlushInterval = std::chrono::milliseconds(10);
-        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
         ComPtr<ID3D12CommandQueue> m_queue;
     };
 
@@ -282,11 +285,6 @@ namespace Dml
         void Flush()
         {
             return m_impl->Flush();
-        }
-
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-        {
-            return m_impl->SetDefaultRoundingMode(roundingMode);
         }
 
         void ReleaseCompletedReferences()

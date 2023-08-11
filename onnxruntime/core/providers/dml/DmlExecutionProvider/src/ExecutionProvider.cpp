@@ -19,6 +19,7 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/fallback_cpu_capability.h"
+#include "core/framework/bfc_arena.h"
 #include "DmlCommittedResourceWrapper.h"
 #include "DmlBufferRegion.h"
 #include "DmlBfcAllocator.h"
@@ -26,6 +27,7 @@
 #include "DmlBuffer.h"
 #include "DmlTaggedPointer.h"
 #include "DmlExternalGpuAllocator.h"
+#include "DmlAllocatorRoundingMode.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -114,9 +116,9 @@ namespace Dml
         m_context->GetCurrentCompletionEvent().WaitForSignal();
     }
 
-    DmlBuffer ExecutionProviderImpl::AllocatePooledResource(size_t size) const
+    DmlBuffer ExecutionProviderImpl::AllocatePooledResource(size_t size, AllocatorRoundingMode roundingMode) const
     {
-        return m_gpuAllocator->AllocateDefaultBuffer(size);
+        return m_gpuAllocator->AllocateDefaultBuffer(size, roundingMode);
     }
 
     D3D12BufferRegion ExecutionProviderImpl::GetBufferForTensor(IMLOperatorTensor* tensor) const
@@ -195,25 +197,35 @@ namespace Dml
         m_lastUploadFlushTime = std::chrono::steady_clock::now();
     }
 
+    static std::shared_ptr<onnxruntime::BFCArena> CreateBfcAllocator(std::shared_ptr<DmlReservedResourceSubAllocator> subAllocator)
+    {
+        auto device_allocator = std::make_unique<DmlBfcAllocator>(subAllocator);
+
+        auto bfcArena = std::make_unique<onnxruntime::BFCArena>(
+            std::move(device_allocator),
+            onnxruntime::BFCArena::DEFAULT_MAX_MEM,
+            onnxruntime::ArenaExtendStrategy::kSameAsRequested,
+            onnxruntime::BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
+            onnxruntime::BFCArena::DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
+            onnxruntime::BFCArena::DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES,
+            onnxruntime::BFCArena::DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES);
+
+        return bfcArena;
+    }
+
     std::vector<onnxruntime::AllocatorPtr> ExecutionProviderImpl::CreatePreferredAllocators() {
         if (!m_gpuAllocator)
         {
             auto subAllocator = std::make_shared<DmlReservedResourceSubAllocator>(
                 m_d3d12Device.Get(),
-                m_context, // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
+                m_context,
                 m_queue.Get(),
                 CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
                 D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS,
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-            // Create a BFC allocator that encapsulates our allocator
-            onnxruntime::AllocatorCreationInfo memoryInfo(
-                [subAllocator](OrtDevice::DeviceId id) {
-                    return std::make_unique<DmlBfcAllocator>(subAllocator);
-                });
-
-            m_bfcAllocator = onnxruntime::CreateAllocator(memoryInfo);
+            m_bfcAllocator = CreateBfcAllocator(subAllocator);
 
             m_bucketizedAllocator = std::make_shared<BucketizedBufferAllocator>(
                 m_d3d12Device.Get(),
@@ -978,11 +990,6 @@ namespace Dml
         m_context->Flush();
     }
 
-    void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-    {
-        m_defaultRoundingMode = roundingMode;
-    }
-
     void ExecutionProviderImpl::ReleaseCompletedReferences()
     {
          m_context->ReleaseCompletedReferences();
@@ -1107,6 +1114,10 @@ namespace Dml
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
 
+        // Allocations after this point are potentially transient and their sizes are
+        // rounded to enable pooling.
+        m_gpuAllocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
+
         return onnxruntime::common::Status::OK();
     }
 
@@ -1123,12 +1134,6 @@ namespace Dml
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->Flush();
-    }
-
-    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->SetDefaultRoundingMode(roundingMode);
     }
 
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider * provider)

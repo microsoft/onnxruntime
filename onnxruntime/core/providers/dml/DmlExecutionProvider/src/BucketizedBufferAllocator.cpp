@@ -8,6 +8,7 @@
 #include "BucketizedBufferAllocator.h"
 #include "DmlAllocationInfo.h"
 #include "DmlCommittedResourceWrapper.h"
+#include "DmlAllocatorRoundingMode.h"
 // #define PRINT_OUTSTANDING_ALLOCATIONS
 
 namespace Dml
@@ -34,13 +35,7 @@ namespace Dml
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
         D3D12_RESOURCE_STATES initialState)
-        : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
-            )
-        ),
+        :
         m_device(device),
         m_heapProperties(heapProps),
         m_heapFlags(heapFlags),
@@ -104,7 +99,7 @@ namespace Dml
         return D3D12BufferRegion(0, sizeInBytes, allocationInfo->GetD3D12Resource());
     }
 
-    void* BucketizedBufferAllocator::Alloc(size_t size)
+    void* BucketizedBufferAllocator::Alloc(size_t size, AllocatorRoundingMode roundingMode)
     {
         // For some reason lotus likes requesting 0 bytes of memory
         size = std::max<size_t>(1, size);
@@ -114,7 +109,7 @@ namespace Dml
         uint64_t bucketSize = 0;
 
         // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
-        if (m_defaultRoundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
+        if (roundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
         {
             Bucket* bucket = nullptr;
 
@@ -245,11 +240,6 @@ namespace Dml
         }
 
         return allocInfo;
-    }
-
-    void BucketizedBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-    {
-        m_defaultRoundingMode = roundingMode;
     }
 
 } // namespace Dml

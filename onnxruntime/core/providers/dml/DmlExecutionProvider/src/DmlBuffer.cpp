@@ -4,14 +4,15 @@
 #include "precomp.h"
 #include "DmlBuffer.h"
 #include "DmlGpuAllocator.h"
+#include "DmlAllocatorRoundingMode.h"
 
 namespace Dml
 {
 
-/*explicit*/ DmlBuffer::DmlBuffer(DmlGpuAllocator* allocator, uint64_t sizeInBytes)
+/*explicit*/ DmlBuffer::DmlBuffer(DmlGpuAllocator* allocator, uint64_t sizeInBytes, AllocatorRoundingMode roundingMode)
     : m_allocator(allocator)
 {
-    m_opaqueData = m_allocator->Alloc(sizeInBytes);
+    m_opaqueData = m_allocator->Alloc(sizeInBytes, roundingMode);
     ORT_THROW_HR_IF(E_OUTOFMEMORY, m_opaqueData == nullptr);
 
     m_bufferRegion = m_allocator->CreateBufferRegion(m_opaqueData, sizeInBytes);

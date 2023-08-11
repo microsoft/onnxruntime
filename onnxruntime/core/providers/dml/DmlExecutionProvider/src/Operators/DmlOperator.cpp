@@ -4,6 +4,7 @@
 #include "precomp.h"
 #include "DmlOperator.h"
 #include "../DmlManagedBuffer.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlAllocatorRoundingMode.h"
 
 namespace Dml
 {
@@ -99,7 +100,7 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                auto buffer = m_executionProvider->AllocatePooledResource(persistentResourceSize);
+                auto buffer = m_executionProvider->AllocatePooledResource(persistentResourceSize, AllocatorRoundingMode::Enabled);
                 m_persistentResourceBinding = buffer.GetBufferBinding();
                 m_managedPersistentBuffer = wil::MakeOrThrow<DmlManagedBuffer>(std::move(buffer));
             }
@@ -199,7 +200,7 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                auto buffer = m_executionProvider->AllocatePooledResource(persistentResourceSize);
+                auto buffer = m_executionProvider->AllocatePooledResource(persistentResourceSize, AllocatorRoundingMode::Enabled);
                 m_persistentResourceBinding = buffer.GetBufferBinding();
                 m_managedPersistentBuffer = wil::MakeOrThrow<DmlManagedBuffer>(std::move(buffer));
             }
@@ -231,7 +232,7 @@ namespace Dml
         {
             if (!m_managedPersistentBuffer || m_managedPersistentBuffer->SizeInBytes() < persistentResourceSize)
             {
-                auto buffer = m_executionProvider->AllocatePooledResource(persistentResourceSize);
+                auto buffer = m_executionProvider->AllocatePooledResource(persistentResourceSize, AllocatorRoundingMode::Enabled);
                 m_persistentResourceBinding = buffer.GetBufferBinding();
                 m_managedPersistentBuffer = wil::MakeOrThrow<DmlManagedBuffer>(std::move(buffer));
             }

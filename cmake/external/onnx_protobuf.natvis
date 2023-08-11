@@ -50,7 +50,7 @@
         <Item Name="[value]">_impl_.value_.tagged_ptr_</Item>
     </Expand>
   </Type>
-  
+
   <Type Name="onnx::TensorAnnotation">
     <DisplayString>{{ tensor_name={_impl_.tensor_name_.tagged_ptr_} }}</DisplayString>
     <Expand>
@@ -80,7 +80,7 @@
     <Intrinsic Name="_has_graph" Expression="(_impl_._has_bits_.has_bits_[0] &amp; 0x00000020u) != 0"/>
     <Intrinsic Name="_has_type_proto" Expression="(_impl_._has_bits_.has_bits_[0] &amp; 0x00000040u) != 0"/>
     <Intrinsic Name="_has_sparse_tensor" Expression="(_impl_._has_bits_.has_bits_[0] &amp; 0x00000080u) != 0"/>
-    <DisplayString>{{ name={ name_.tagged_ptr_ }, type={ (AttributeProto_AttributeType)_impl_.type_ } }}</DisplayString>
+    <DisplayString>{{ name={ _impl_.name_.tagged_ptr_ }, type={ (AttributeProto_AttributeType)_impl_.type_ } }}</DisplayString>
     <Expand>
       <Item Name="[name]">_impl_.name_.tagged_ptr_</Item>
       <Item Name="[type]">(AttributeProto_AttributeType)_impl_.type_</Item>
@@ -118,18 +118,21 @@
       <Item Name="[attribute]">_impl_.attribute_</Item>
     </Expand>
   </Type>
-    
+
   <Type Name="onnx::FunctionProto">
-    <DisplayString>{{ name={ _impl_.name_.tagged_ptr_ }, domain={ _impl_.domain_.tagged_ptr_ } }}</DisplayString>
+    <DisplayString>{{ name={ _impl_.name_.tagged_ptr_ } }}</DisplayString>
     <Expand>
-      <Item Name="[opset_import]">_impl_.opset_import_</Item>
       <Item Name="[input]">_impl_.input_</Item>
       <Item Name="[output]">_impl_.output_</Item>
       <Item Name="[node]">_impl_.node_</Item>
-      <Item Name="[doc]" ExcludeView="simple">_impl_.doc_string_.tagged_ptr_</Item>
+      <Item Name="[attribute]">_impl_.attribute_</Item>
+      <Item Name="[attribute_proto]" ExcludeView="simple">_impl_.attribute_proto_</Item>
+      <Item Name="[doc]">_impl_.doc_string_.tagged_ptr_</Item>
+      <Item Name="[opset_import]">_impl_.opset_import_</Item>
+      <Item Name="[domain]">_impl_.domain_.tagged_ptr_</Item>
     </Expand>
   </Type>
-  
+
   <Type Name="onnx::GraphProto">
     <DisplayString>{{ name={ _impl_.name_.tagged_ptr_ } }}</DisplayString>
     <Expand>
@@ -143,7 +146,7 @@
       <Item Name="[doc]" ExcludeView="simple">_impl_.doc_string_.tagged_ptr_</Item>
     </Expand>
   </Type>
-  
+
   <Type Name="onnx::ModelProto">
     <DisplayString>{{ producer={_impl_.producer_name_.tagged_ptr_}, domain={ _impl_.domain_.tagged_ptr_ } }}</DisplayString>
     <Expand>
@@ -156,7 +159,7 @@
       <Item Name="[graph]" ExcludeView="simple">_impl_.graph_</Item>
     </Expand>
   </Type>
-  
+
   <Type Name="onnx::TensorShapeProto_Dimension">
     <DisplayString Condition="*_impl_._oneof_case_ == 0">empty</DisplayString>
     <DisplayString Condition="*_impl_._oneof_case_ == kDimValue">{{ v = {_impl_.value_.dim_value_} }}</DisplayString>
@@ -171,7 +174,7 @@
       <Item Name="[dims]" ExcludeView="simple">_impl_.dim_</Item>
     </Expand>
   </Type>
-  
+
   <!--Type Protos-->
   <Type Name="onnx::TypeProto">
     <DisplayString>{{ type={ (ValueCase)*_impl_._oneof_case_ } }}</DisplayString>
@@ -185,7 +188,7 @@
       <Item Name="[denotation]" ExcludeView="simple">_impl_.denotation_.tagged_ptr_</Item>
     </Expand>
   </Type>
-  
+
   <Type Name="onnx::TypeProto_Tensor">
     <Intrinsic Name="_has_shape" Expression="(_impl_._has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
     <DisplayString>{{ elem_type={ (TensorProto_DataType)_impl_.elem_type_ } }}</DisplayString>
@@ -195,7 +198,7 @@
       <Item Name="[has_shape]" ExcludeView="simple">_has_shape()</Item>
     </Expand>
   </Type>
-  
+
   <Type Name="onnx::TypeProto_Sequence">
     <Intrinsic Name="_has_element_type" Expression="(_impl_._has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
     <DisplayString Condition="_has_element_type()">{{ elem_type={ *_impl_.elem_type_ } }}</DisplayString>
@@ -204,7 +207,7 @@
       <Item Name="[has_element_type]" ExcludeView="simple">_has_element_type()</Item>
     </Expand>
   </Type>
-  
+
   <Type Name="onnx::TypeProto_Map">
     <Intrinsic Name="_has_value_type" Expression="(_impl_._has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
     <DisplayString>{{ key_type={ (TensorProto_DataType)_impl_.key_type_ } }}</DisplayString>
@@ -239,7 +242,7 @@
     <DisplayString>{{ begin={ begin_ }, end={ end_ } }}</DisplayString>
     <Expand></Expand>
   </Type>
-  
+
   <!--TODO Figure out how to calculate the size of the tensor given its shape. Loops are only possible in custom lists. -->
   <Type Name="onnx::TensorProto">
     <Intrinsic Name="_has_raw_data" Expression="(_impl_._has_bits_.has_bits_[0] &amp; 0x00000002u) != 0" />
@@ -252,7 +255,7 @@
     <Intrinsic Name="_shape_size_3" Expression="_shape_size_2() * _shape_array()[2]" />
     <Intrinsic Name="_shape_size_4" Expression="_shape_size_3() * _shape_array()[3]" />
     <Intrinsic Name="_shape_size_5" Expression="_shape_size_4() * _shape_array()[4]" />
-    <DisplayString>{{ name={name_.tagged_ptr_}, data_type={ (TensorProto_DataType)_impl_.data_type_ } }}</DisplayString>
+    <DisplayString>{{ name={_impl_.name_.tagged_ptr_}, data_type={ (TensorProto_DataType)_impl_.data_type_ } }}</DisplayString>
     <Expand>
       <Item Name="[name]" ExcludeView="simple">_impl_.name_.tagged_ptr_</Item>
       <Item Name="[data_type]" ExcludeView="simple">(TensorProto_DataType)_impl_.data_type_</Item>
@@ -281,10 +284,10 @@
       <Item Name="[has_segment]" ExcludeView="simple">_has_segment()</Item>
     </Expand>
   </Type>
-  
+
   <Type Name="onnx::SparseTensorProto">
-    <Intrinsic Name="_has_values" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
-    <Intrinsic Name="_has_indices" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000002u) != 0"/>
+    <Intrinsic Name="_has_values" Expression="(_impl_._has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
+    <Intrinsic Name="_has_indices" Expression="(_impl_._has_bits_.has_bits_[0] &amp; 0x00000002u) != 0"/>
     <DisplayString>{{ SparseTensorProto }}</DisplayString>
     <Expand>
       <Item Name="[dense_shape]" ExcludeView="simple">_impl_.dims_</Item>

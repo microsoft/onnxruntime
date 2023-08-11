@@ -45,11 +45,6 @@ namespace Dml
         return (1ull << (index + MinResourceSizeExponent));
     }
 
-    void DmlReservedResourceSubAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-    {
-        // Nothing to do here; kept for compatibility with the bucketized allocator
-    }
-
     static bool GetTilingEnabled(ID3D12Device* device)
     {
         D3D12_FEATURE_DATA_D3D12_OPTIONS options = {};

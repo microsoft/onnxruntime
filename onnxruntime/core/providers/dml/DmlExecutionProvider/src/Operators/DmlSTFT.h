@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DmlDFT.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlAllocatorRoundingMode.h"
 
 // NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
 //       should be removed from IsCustomOpShader(...) in
@@ -318,7 +319,9 @@ public:
             uint64_t persistentResourceSize = m_framingOperator.op->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                m_framingOperator.persistentBufferRegion = m_dmlProvider->AllocatePooledResource(persistentResourceSize);
+                m_framingOperator.persistentBufferRegion = m_dmlProvider->AllocatePooledResource(
+                    persistentResourceSize,
+                    Dml::AllocatorRoundingMode::Enabled);
                 auto binding = m_framingOperator.persistentBufferRegion->GetBufferBinding();
                 ORT_THROW_IF_FAILED(m_dmlProvider->InitializeOperator(
                     m_framingOperator.op.Get(),
@@ -368,7 +371,9 @@ public:
             ComPtr<ID3D12GraphicsCommandList> commandList;
             ORT_THROW_IF_FAILED(executionObject.As(&commandList));
 
-            auto framingOutputBuffer = m_dmlProvider->AllocatePooledResource(m_framingOperator.outputBufferSizeInBytes);
+            auto framingOutputBuffer = m_dmlProvider->AllocatePooledResource(
+                m_framingOperator.outputBufferSizeInBytes,
+                Dml::AllocatorRoundingMode::Enabled);
             DispatchFramingOperator(commandList.Get(), context, framingOutputBuffer.Region());
 
             Dml::D3D12BufferRegion outputBufferRegion = DmlSTFTHelpers::GetOutputBufferRegionFromKernelContext(context, 0);
@@ -436,7 +441,7 @@ public:
         auto tempBufferSize = bindingProps.TemporaryResourceSize;
         if (tempBufferSize > 0)
         {
-            auto buffer = m_dmlProvider->AllocatePooledResource(tempBufferSize);
+            auto buffer = m_dmlProvider->AllocatePooledResource(tempBufferSize, Dml::AllocatorRoundingMode::Enabled);
             DML_BUFFER_BINDING bufferBinding = buffer.GetBufferBinding();
             DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
             m_framingOperator.bindingTable->BindTemporaryResource(&bindingDesc);
