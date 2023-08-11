@@ -279,12 +279,30 @@ namespace DmlGraphFusionHelper
         return initializerPartitionMap;
     }
 
+    enum DML_PREVIEW_OPERATOR_TYPE
+    {
+        DML_PREVIEW_OPERATOR_FIRST = 0xC0000000,
+    };
+
+    enum DML_GRAPH_NODE_TYPE_PREVIEW
+    { 
+        DML_GRAPH_NODE_TYPE_CONSTANT_DATA = 0xCC000000,  
+    }; 
+
+    struct DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW 
+    { 
+        const BYTE* data;
+        UINT64 dataSize;
+        _Field_z_ _Maybenull_ const char* Name; 
+    };
+
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         const uint32_t inputCount,
         const uint32_t outputCount,
         _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+        _Inout_ std::vector<DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW>& dmlConstantGraphNodes,
         _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
@@ -293,8 +311,22 @@ namespace DmlGraphFusionHelper
         for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
         {
             auto& nodeInfo = graphDesc.nodes[i];
-            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{nodeInfo.op.Get(), nodeInfo.name.data()};
-            dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
+            
+            if (std::holds_alternative<Microsoft::WRL::ComPtr<IDMLOperator>>(nodeInfo.nodeDef))
+            {
+                dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{std::get<Microsoft::WRL::ComPtr<IDMLOperator>>(nodeInfo.nodeDef).Get(), nodeInfo.name.data()};
+                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
+            }
+            else
+            {
+                dmlConstantGraphNodes[i] = DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW{
+                std::get<std::vector<uint8_t>>(nodeInfo.nodeDef).data(), 
+                std::get<std::vector<uint8_t>>(nodeInfo.nodeDef).size(), 
+                nodeInfo.name.data()
+                };
+
+                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{(DML_GRAPH_NODE_TYPE) DML_GRAPH_NODE_TYPE_CONSTANT_DATA, &dmlConstantGraphNodes[i]};
+            }
         }
 
         for (size_t i = 0; i < graphDesc.inputEdges.size(); ++i)
@@ -383,6 +415,8 @@ namespace DmlGraphFusionHelper
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
         DML_GRAPH_DESC dmlGraphDesc = {};
         std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(graphDesc.nodes.size());
+        std::vector<DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW> dmlConstantGraphNodes(graphDesc.nodes.size());
+
         std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(graphDesc.nodes.size());
         std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(graphDesc.inputEdges.size());
         std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
@@ -393,6 +427,7 @@ namespace DmlGraphFusionHelper
             fusedNodeInputCount,
             fusedNodeOutputCount,
             dmlOperatorGraphNodes,
+            dmlConstantGraphNodes,
             dmlGraphNodes,
             dmlInputEdges,
             dmlOutputEdges,

@@ -299,6 +299,8 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
     const onnxruntime::Tensor* GetInterface() const { return nullptr; }
     onnxruntime::Tensor* GetInterface() { return nullptr; }
 
+    size_t GetTensorByteSize() const { return m_tensorByteSize; }
+
  private:
     size_t m_tensorByteSize = 0;
     std::unique_ptr<std::byte[]> m_unpackedTensor;
