@@ -27,7 +27,7 @@ namespace Dml
 
         struct NodeInfo
         {
-            Microsoft::WRL::ComPtr<IDMLOperator> op;
+            std::variant<Microsoft::WRL::ComPtr<IDMLOperator>, std::vector<uint8_t>> nodeDef;
             std::string name;
         };
 
