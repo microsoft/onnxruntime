@@ -95,12 +95,18 @@ const createSkipLayerNormProgramInfo =
 const hiddenSize: u32 = ${hiddenSize};
 const epsilon: f32 = ${attributes.epsilon};
 
-@group(0) @binding(${bindingNumber++}) var<storage, read> x : array<${dataType}>;
-@group(0) @binding(${bindingNumber++}) var<storage, read> skip : array<${dataType}>;
-@group(0) @binding(${bindingNumber++}) var<storage, read> gamma : array<${dataType}>;
-${hasBetaInput ? `@group(0) @binding(${bindingNumber++}) var<storage, read> beta : array<${dataType}>;` : ''}
-${hasBiasInput ? `@group(0) @binding(${bindingNumber++}) var<storage, read> bias : array<${dataType}>;` : ''}
-@group(0) @binding(${bindingNumber++}) var<storage, read_write> output : array<${dataType}>;
+@group(0) @binding(${bindingNumber++}) var<storage, read> x : array<${dataType}, ${inputSize}>;
+@group(0) @binding(${bindingNumber++}) var<storage, read> skip : array<${dataType}, ${inputSize}>;
+@group(0) @binding(${bindingNumber++}) var<storage, read> gamma : array<${dataType}, ${hiddenSize}>;
+${
+          hasBetaInput ?
+              `@group(0) @binding(${bindingNumber++}) var<storage, read> beta : array<${dataType}, ${hiddenSize}>;` :
+              ''}
+${
+          hasBiasInput ?
+              `@group(0) @binding(${bindingNumber++}) var<storage, read> bias : array<${dataType}, ${hiddenSize}>;` :
+              ''}
+@group(0) @binding(${bindingNumber++}) var<storage, read_write> output : array<${dataType}, ${outputSize}>;
 ${hasMeanOutput ? `@group(0) @binding(${bindingNumber++}) var<storage, read_write> meanOutput : ${dataType};` : ''}
 ${
           hasInvStdDevOutput ?
