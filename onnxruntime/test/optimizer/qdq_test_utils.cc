@@ -158,7 +158,7 @@ std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph, bo
       full_op_type = node->OpType();
     }
 
-    op_types.push_back(full_op_type);
+    op_types.push_back(std::move(full_op_type));
   }
   return op_types;
 }

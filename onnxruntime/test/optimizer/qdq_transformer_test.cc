@@ -1137,19 +1137,22 @@ TEST(QDQTransformerTests, Split_with_IdenticalChildrenConsolidation) {
 }
 
 TEST(QDQTransformerTests, Where) {
-  auto test_case = [&](const std::vector<int64_t>& cond_shape, const std::vector<int64_t>& x_shape, const std::vector<int64_t>& y_shape) {
+  auto test_case = [&](const std::vector<int64_t>& cond_shape, const std::vector<int64_t>& x_shape,
+                       const std::vector<int64_t>& y_shape, bool use_ms_domain_qdq_ops = false) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["com.microsoft.QLinearWhere"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
     };
-    TransformerTester(BuildQDQWhereTestCase<int8_t>(cond_shape, x_shape, y_shape),
+    TransformerTester(BuildQDQWhereTestCase<int8_t>(cond_shape, x_shape, y_shape, use_ms_domain_qdq_ops),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
   test_case({1}, {1}, {1});
+  test_case({1}, {1}, {1}, true /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, Transpose) {

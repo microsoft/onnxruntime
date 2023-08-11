@@ -502,8 +502,9 @@ template <typename InputType>
 GetQDQTestCaseFn BuildQDQWhereTestCase(
     const std::vector<int64_t>& cond_shape,
     const std::vector<int64_t>& x_shape,
-    const std::vector<int64_t>& y_shape) {
-  return [cond_shape, x_shape, y_shape](ModelTestBuilder& builder) {
+    const std::vector<int64_t>& y_shape,
+    bool use_ms_domain_qdq_ops = false) {
+  return [cond_shape, x_shape, y_shape, use_ms_domain_qdq_ops](ModelTestBuilder& builder) {
     auto* input_cond_arg = builder.MakeInputBool(cond_shape);
     auto* input_x_arg = builder.MakeInput<InputType>(x_shape,
                                                      std::numeric_limits<InputType>::min(),
@@ -515,8 +516,8 @@ GetQDQTestCaseFn BuildQDQWhereTestCase(
     constexpr float scale = 0.003f;
     auto* dq_x_output = builder.MakeIntermediate();
     auto* dq_y_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<InputType>(input_x_arg, scale, zp, dq_x_output);
-    builder.AddDequantizeLinearNode<InputType>(input_y_arg, scale, zp, dq_y_output);
+    builder.AddDequantizeLinearNode<InputType>(input_x_arg, scale, zp, dq_x_output, use_ms_domain_qdq_ops);
+    builder.AddDequantizeLinearNode<InputType>(input_y_arg, scale, zp, dq_y_output, use_ms_domain_qdq_ops);
     // add Where
 
     auto* where_output = builder.MakeIntermediate();
@@ -524,7 +525,8 @@ GetQDQTestCaseFn BuildQDQWhereTestCase(
 
     // add Q
     auto* q_where_output = builder.MakeOutput();
-    builder.AddQuantizeLinearNode<InputType>(where_output, scale, zp, q_where_output);  // Model input (node_token_1)
+    builder.AddQuantizeLinearNode<InputType>(where_output, scale, zp, q_where_output,
+                                             use_ms_domain_qdq_ops);  // Model input (node_token_1)
   };
 }
 
