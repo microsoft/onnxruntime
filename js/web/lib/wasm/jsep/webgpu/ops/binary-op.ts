@@ -5,7 +5,7 @@ import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type BinaryCustomExpression = (expressionA: string, expressionB: string) => string;
@@ -16,8 +16,8 @@ type BinaryFunctionCall = BuiltinFunctionName|BinaryCustomExpression|{
 
 const createBinaryOpProgramShader =
     (shaderHelper: ShaderHelper, dimsA: readonly number[], dimsB: readonly number[], dimsOutput: readonly number[],
-     vectorize: boolean, doBroadcast: boolean, funcCall: BinaryFunctionCall, additionalImplementation?: string,
-     typeA = 'f32', typeB = 'f32', typeOutput = 'f32') => {
+     vectorize: boolean, doBroadcast: boolean, funcCall: BinaryFunctionCall, typeA: number, typeB: number,
+     typeOutput: number, additionalImplementation?: string) => {
       const outputSize = ShapeUtil.size(dimsOutput);
       const vecSize = Math.ceil(outputSize / 4);
 
@@ -33,28 +33,30 @@ const createBinaryOpProgramShader =
       }
 
       let broadcastImpl = '';
-      const outputIndicesHelper = createIndicesHelper('output', dimsOutput);
+      const output = outputVariable('outputData', typeOutput, dimsOutput, 4);
+      const a = inputVariable('aData', typeA, dimsA, 4);
+      const b = inputVariable('bData', typeB, dimsB, 4);
       if (doBroadcast) {
         const calcOffsetImpl = (dims: readonly number[]) => {
           const strides = ShapeUtil.computeStrides(dims);
           const offsets: string[] = [];
           for (let i = dims.length - 1; i >= 0; i--) {
             const idx = dimsOutput.length === 0 ? '0u' :
-                (dimsOutput.length === 1)       ? '(*outputIndices)' :
-                                                  `(*outputIndices)[${i + dimsOutput.length - dims.length}]`;
+                (dimsOutput.length === 1)       ? 'outputIndices' :
+                                                  `outputIndices[${i + dimsOutput.length - dims.length}]`;
             offsets.push(`${strides[i]}u * (${idx} % ${dims[i]}u)`);
           }
           return offsets.length > 0 ? offsets.join('+') : '0u';
         };
 
         broadcastImpl = `
-  ${outputIndicesHelper.o2iImpl}
+  ${output.impl('offsetToIndices')}
 
-  fn calcOffsetA(outputIndices: ptr<function, ${outputIndicesHelper.iType}>) -> u32 {
+  fn calcOffsetA(outputIndices: ${output.type.indices}) -> u32 {
     return ${calcOffsetImpl(dimsA)};
   }
 
-  fn calcOffsetB(outputIndices: ptr<function, ${outputIndicesHelper.iType}>) -> u32 {
+  fn calcOffsetB(outputIndices: ${output.type.indices}) -> u32 {
     return ${calcOffsetImpl(dimsB)};
   }
   `;
@@ -64,13 +66,15 @@ const createBinaryOpProgramShader =
       if (vectorize) {
         if (doBroadcast) {
           assignment = `
-      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-      ${outputIndicesHelper.o2iCall('global_idx * 4u', 'outputIndices')}
-      let offsetA = calcOffsetA(&outputIndices);
-      let offsetB = calcOffsetB(&outputIndices);
-      outputData[global_idx] = ${expressionVector('aData[offsetA / 4u]', 'bData[offsetB / 4u]')};`;
+      let outputIndices = ${output.offsetToIndices('global_idx * 4u')};
+      let offsetA = calcOffsetA(outputIndices);
+      let offsetB = calcOffsetB(outputIndices);
+      ${
+              output.setByOffset(
+                  'global_idx', expressionVector(a.getByOffset('offsetA / 4u'), b.getByOffset('offsetB / 4u')))}`;
         } else {
-          assignment = `outputData[global_idx] = ${expressionVector('aData[global_idx]', 'bData[global_idx]')};`;
+          assignment = output.setByOffset(
+              'global_idx', expressionVector(a.getByOffset('global_idx'), b.getByOffset('global_idx')));
         }
       } else {
         if (!doBroadcast) {
@@ -80,9 +84,9 @@ const createBinaryOpProgramShader =
           const expressionA = `aData[indexA${x}][componentA${x}]`;
           const expressionB = `bData[indexB${x}][componentB${x}]`;
           return `
-      ${outputIndicesHelper.o2iCall(`global_idx * 4u + ${x}u`, 'outputIndices')}
-      let offsetA${x} = calcOffsetA(&outputIndices);
-      let offsetB${x} = calcOffsetB(&outputIndices);
+      let outputIndices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
+      let offsetA${x} = calcOffsetA(outputIndices${x});
+      let offsetB${x} = calcOffsetB(outputIndices${x});
       let indexA${x} = offsetA${x} / 4u;
       let indexB${x} = offsetB${x} / 4u;
       let componentA${x} = offsetA${x} % 4u;
@@ -91,7 +95,6 @@ const createBinaryOpProgramShader =
         };
 
         assignment = `
-      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
       ${singleAssignment(0)}
       ${singleAssignment(1)}
       ${singleAssignment(2)}
@@ -99,9 +102,7 @@ const createBinaryOpProgramShader =
       }
 
       return `
-  @group(0) @binding(0) var<storage, read> aData : array<vec4<${typeA}>>;
-  @group(0) @binding(1) var<storage, read> bData : array<vec4<${typeB}>>;
-  @group(0) @binding(2) var<storage, read_write> outputData : array<vec4<${typeOutput}>>;
+  ${shaderHelper.declareVariables(a, b, output)}
 
   ${additionalImplementation ?? ''}
   ${broadcastImpl}
@@ -155,7 +156,8 @@ const createBinaryOpProgramInfo =
       return {
         ...metadata,
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
-            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, additionalImplementation),
+            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,
+            outputDataType, additionalImplementation),
         outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
         dispatchGroup: () =>
             ({x: Math.ceil(outputSize / 64 /* workgroup size */ / (vectorize ? 4 : 1) /* vec size */)})
