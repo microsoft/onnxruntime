@@ -158,7 +158,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     ORT_RETURN_IF_NOT(group_count > 0 && input_shape[1] % group_count == 0,
                       "GroupNormalization num_group must be divisible by group.");
     new_shape.emplace_back(SafeInt<uint32_t>(std::reduce(input_shape.begin() + 2, input_shape.end(),
-                                                        input_shape[1] / group_count, std::multiplies<int64_t>())));
+                                                         input_shape[1] / group_count, std::multiplies<int64_t>())));
     // Input will be reshaped to (N, group count, channels per group x D1 x D2 ... Dn) and recovered after normalization.
     options.set("axes", emscripten::val::array(std::vector<uint32_t>{2}));
     output = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
