@@ -1361,7 +1361,8 @@ TEST(QDQTransformerTests, ArgMax) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        int axis,
                        int keepdims,
-                       int select_last_index) {
+                       int select_last_index,
+                       bool use_ms_domain_qdq_ops) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
                                                    std::numeric_limits<uint8_t>::min(),
@@ -1370,7 +1371,7 @@ TEST(QDQTransformerTests, ArgMax) {
 
       // add DQ
       auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .003f, 1, dq_output);
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .003f, 1, dq_output, use_ms_domain_qdq_ops);
 
       // add ArgMax
       Node& argmax_node = builder.AddNode("ArgMax", {dq_output}, {output_arg});
@@ -1381,8 +1382,9 @@ TEST(QDQTransformerTests, ArgMax) {
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["ArgMax"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
     };
 
     TransformerTester(build_test_case, check_graph,
@@ -1395,13 +1397,15 @@ TEST(QDQTransformerTests, ArgMax) {
                       /* opset_version */ 19);
   };
 
-  test_case({2, 13, 12, 37}, 1, 0, 0);
-  test_case({2, 13, 12, 37}, 0, 1, 0);
-  test_case({2, 13, 12, 37}, 0, 0, 1);
+  test_case({2, 13, 12, 37}, 1, 0, 0, false /*use_ms_domain_qdq_ops*/);
+  test_case({2, 13, 12, 37}, 1, 0, 0, true /*use_ms_domain_qdq_ops*/);
+  test_case({2, 13, 12, 37}, 0, 1, 0, false /*use_ms_domain_qdq_ops*/);
+  test_case({2, 13, 12, 37}, 0, 0, 1, false /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, QLinearMatMul) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape,
+                       bool use_ms_domain_qdq_ops) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
       auto* input2_arg = builder.MakeInput<float>(input2_shape, -1.f, 1.f);
@@ -1409,31 +1413,34 @@ TEST(QDQTransformerTests, QLinearMatMul) {
 
       // add QDQ + MatMul
       auto* matmul_output = builder.MakeIntermediate();
-      auto* dq_matmul_output1 = AddQDQNodePair<uint8_t>(builder, input1_arg, .004f, 129);
-      auto* dq_matmul_output2 = AddQDQNodePair<uint8_t>(builder, input2_arg, .004f, 129);
+      auto* dq_matmul_output1 = AddQDQNodePair<uint8_t>(builder, input1_arg, .004f, 129, use_ms_domain_qdq_ops);
+      auto* dq_matmul_output2 = AddQDQNodePair<uint8_t>(builder, input2_arg, .004f, 129, use_ms_domain_qdq_ops);
       builder.AddNode("MatMul", {dq_matmul_output1, dq_matmul_output2}, {matmul_output});
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(matmul_output, .0039f, 135, output_arg);
+      builder.AddQuantizeLinearNode<uint8_t>(matmul_output, .0039f, 135, output_arg, use_ms_domain_qdq_ops);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["QLinearMatMul"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 2);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
     };
 
     TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  test_case({12, 37}, {37, 12});
-  test_case({23, 13, 13}, {13, 13});
-  test_case({22, 11, 13, 15}, {15, 13});
+  test_case({12, 37}, {37, 12}, false /*use_ms_domain_qdq_ops*/);
+  test_case({12, 37}, {37, 12}, true /*use_ms_domain_qdq_ops*/);
+  test_case({23, 13, 13}, {13, 13}, false /*use_ms_domain_qdq_ops*/);
+  test_case({22, 11, 13, 15}, {15, 13}, false /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, MatMul_No_Fusion) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape,
+                       bool use_ms_domain_qdq_ops) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
       auto* input2_arg = builder.MakeInput<float>(input2_shape, -1.f, 1.f);
@@ -1441,31 +1448,34 @@ TEST(QDQTransformerTests, MatMul_No_Fusion) {
 
       // add QDQ + MatMul
       auto* matmul_output = builder.MakeIntermediate();
-      auto* dq_matmul_output1 = AddQDQNodePair<uint8_t>(builder, input1_arg, .004f, 129);
+      auto* dq_matmul_output1 = AddQDQNodePair<uint8_t>(builder, input1_arg, .004f, 129, use_ms_domain_qdq_ops);
       builder.AddNode("MatMul", {dq_matmul_output1, input2_arg}, {matmul_output});
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(matmul_output, .0039f, 135, output_arg);
+      builder.AddQuantizeLinearNode<uint8_t>(matmul_output, .0039f, 135, output_arg, use_ms_domain_qdq_ops);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["MatMul"], 1);
       EXPECT_EQ(op_to_count["QLinearMatMul"], 0);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 2);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
     };
 
     TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  test_case({12, 37}, {37, 12});
-  test_case({23, 13, 13}, {13, 13});
-  test_case({22, 11, 13, 15}, {15, 13});
+  test_case({12, 37}, {37, 12}, false /*use_ms_domain_qdq_ops*/);
+  test_case({12, 37}, {37, 12}, true /*use_ms_domain_qdq_ops*/);
+  test_case({23, 13, 13}, {13, 13}, false /*use_ms_domain_qdq_ops*/);
+  test_case({22, 11, 13, 15}, {15, 13}, false /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, MatMul_1st_Input_Int8) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape,
+                       bool use_ms_domain_qdq_ops) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<int8_t>(input1_shape, -128, 127);
       auto* input2_arg = builder.MakeInput<float>(input2_shape, -1.f, 1.f);
@@ -1473,35 +1483,38 @@ TEST(QDQTransformerTests, MatMul_1st_Input_Int8) {
 
       // add DQ with type int8
       auto* dq_output_1 = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<int8_t>(input1_arg, .004f, 1, dq_output_1);
+      builder.AddDequantizeLinearNode<int8_t>(input1_arg, .004f, 1, dq_output_1, use_ms_domain_qdq_ops);
 
       // add QDQ + MatMul
       auto* matmul_output = builder.MakeIntermediate();
-      auto* dq_matmul_output2 = AddQDQNodePair<uint8_t>(builder, input2_arg, .004f, 129);
+      auto* dq_matmul_output2 = AddQDQNodePair<uint8_t>(builder, input2_arg, .004f, 129, use_ms_domain_qdq_ops);
       builder.AddNode("MatMul", {dq_output_1, dq_matmul_output2}, {matmul_output});
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(matmul_output, .0039f, 135, output_arg);
+      builder.AddQuantizeLinearNode<uint8_t>(matmul_output, .0039f, 135, output_arg, use_ms_domain_qdq_ops);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["MatMul"], 1);
       EXPECT_EQ(op_to_count["QLinearMatMul"], 0);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 2);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 2);
     };
 
     TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  test_case({12, 37}, {37, 12});
-  test_case({23, 13, 13}, {13, 13});
-  test_case({22, 11, 13, 15}, {15, 13});
+  test_case({12, 37}, {37, 12}, false /*use_ms_domain_qdq_ops*/);
+  test_case({12, 37}, {37, 12}, true /*use_ms_domain_qdq_ops*/);
+  test_case({23, 13, 13}, {13, 13}, false /*use_ms_domain_qdq_ops*/);
+  test_case({22, 11, 13, 15}, {15, 13}, false /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, MatMulIntegerToFloat) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape,
+                       bool use_ms_domain_qdq_ops) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<uint8_t>(input1_shape,
                                                     std::numeric_limits<uint8_t>::min(),
@@ -1513,19 +1526,20 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
 
       // add DQ
       auto* dq_output_1 = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(input1_arg, .0035f, 135, dq_output_1);
+      builder.AddDequantizeLinearNode<uint8_t>(input1_arg, .0035f, 135, dq_output_1, use_ms_domain_qdq_ops);
 
       auto* dq_output_2 = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(input2_arg, .0035f, 135, dq_output_2);
+      builder.AddDequantizeLinearNode<uint8_t>(input2_arg, .0035f, 135, dq_output_2, use_ms_domain_qdq_ops);
 
       builder.AddNode("MatMul", {dq_output_1, dq_output_2}, {output_arg});
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
     };
 
     TransformerTester(build_test_case,
@@ -1544,9 +1558,10 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
                       1e-5 /*relative_per_sample_tolerance*/);
   };
 
-  test_case({12, 37}, {37, 12});
-  test_case({23, 13, 13}, {13, 13});
-  test_case({22, 11, 13, 15}, {15, 13});
+  test_case({12, 37}, {37, 12}, false /*use_ms_domain_qdq_ops*/);
+  test_case({12, 37}, {37, 12}, true /*use_ms_domain_qdq_ops*/);
+  test_case({23, 13, 13}, {13, 13}, false /*use_ms_domain_qdq_ops*/);
+  test_case({22, 11, 13, 15}, {15, 13}, false /*use_ms_domain_qdq_ops*/);
 }
 
 TEST(QDQTransformerTests, ConvRelu) {
