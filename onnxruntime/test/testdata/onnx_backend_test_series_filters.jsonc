@@ -196,8 +196,6 @@
         "^test_reshape_reordered_last_dims*",
         "^test_reshape_zero_and_negative_dim*",
         "^test_reshape_zero_dim*",
-        "^test_size*",
-        "^test_size_example*",
         // TODO: fialures with Windows GPU CI Pipeline that are introduced with ONNX opset 19. Need to be fixed before ORT 1.15 release.
         "^test_averagepool_*",
         "^test_wrap_pad_cuda",
