@@ -682,8 +682,9 @@ class FusionAttention(Fusion):
             mha_inputs.append("")
 
         # Add optional inputs for MHA
+        mha_inputs.append(key_padding_mask)
         if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
-            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+            mha_inputs.extend([add_qk, past_k, past_v])
 
         # Add outputs for MHA
         mha_outputs = [output]

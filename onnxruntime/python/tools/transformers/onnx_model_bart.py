@@ -9,7 +9,7 @@ from fusion_attention import AttentionMask
 from fusion_bart_attention import FusionBartAttention
 from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
-from onnx import numpy_helper
+from onnx import numpy_helper, GraphProto, helper, TensorProto
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 
@@ -120,6 +120,31 @@ class FusionBartReshape(FusionReshape):
             self.replace_reshape_node(shape, reshape_node, concat_node)
 
 
+def shape_of(vi):
+    return tuple([d.dim_param if (d.dim_param) else d.dim_value for d in vi.type.tensor_type.shape.dim])
+
+
+def change_io_shape(graph: GraphProto):
+    new_inputs = []
+    for i, vi in enumerate(graph.input):
+        if vi.name == "encoder_attention_mask":
+            vi = helper.make_tensor_value_info(
+                vi.name,
+                elem_type=TensorProto.INT32,
+                shape=shape_of(vi),
+            )
+        if vi.name == "input_ids":
+            vi = helper.make_tensor_value_info(
+                vi.name,
+                elem_type=TensorProto.INT32,
+                shape=shape_of(vi),
+            )
+        new_inputs.extend([vi])
+
+    graph.ClearField("input")
+    graph.input.extend(new_inputs)
+
+
 class BartOnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
@@ -140,3 +165,5 @@ class BartOnnxModel(BertOnnxModel):
     def preprocess(self):
         self.adjust_reshape_and_expand()
         self.bart_reshape_fusion_preprocess.apply()
+        change_io_shape(self.model.graph)
+
