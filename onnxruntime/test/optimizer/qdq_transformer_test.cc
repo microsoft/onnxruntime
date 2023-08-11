@@ -892,7 +892,8 @@ TEST(QDQTransformerTests, Gemm_S8S8U8) {
 }
 
 TEST(QDQTransformerTests, Gather) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& weights_shape) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& weights_shape,
+                       bool use_ms_domain_qdq_ops = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<int64_t>(input1_shape, 0, weights_shape[0] - 1);
       auto* output_arg = builder.MakeOutput();
@@ -901,24 +902,26 @@ TEST(QDQTransformerTests, Gather) {
       auto* weight = builder.MakeInitializer<int8_t>(weights_shape, -128, 127);
       auto* dq_w_output = builder.MakeIntermediate();
       auto* gather_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<int8_t>(weight, .003f, 1, dq_w_output);
+      builder.AddDequantizeLinearNode<int8_t>(weight, .003f, 1, dq_w_output, use_ms_domain_qdq_ops);
       builder.AddNode("Gather", {dq_w_output, input1_arg}, {gather_output});
 
       // add Q
-      builder.AddQuantizeLinearNode<int8_t>(gather_output, .003f, 1, output_arg);
+      builder.AddQuantizeLinearNode<int8_t>(gather_output, .003f, 1, output_arg, use_ms_domain_qdq_ops);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["Gather"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
     };
 
     TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({12, 37}, {24, 12});
+  test_case({12, 37}, {24, 12}, true);  // Use com.microsoft QDQ ops
 }
 
 TEST(QDQTransformerTests, DoubleQDQ) {
@@ -934,23 +937,32 @@ TEST(QDQTransformerTests, DoubleQDQ) {
   constexpr float good_float_point_2 = 8.0f;
   constexpr float bad_float_point = 1.11f;
 
-  std::function<void(InferenceSessionWrapper & session)> expect_succeed = [&](InferenceSessionWrapper& session) {
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-    EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+  auto expect_succeed = [](bool use_ms_domain_qdq_ops) -> std::function<void(InferenceSessionWrapper & session)> {
+    return [use_ms_domain_qdq_ops](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+    };
   };
-  std::function<void(InferenceSessionWrapper & session)> expect_fail = [&](InferenceSessionWrapper& session) {
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
-    EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+
+  auto expect_fail = [](bool use_ms_domain_qdq_ops) -> std::function<void(InferenceSessionWrapper & session)> {
+    return [use_ms_domain_qdq_ops](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 2);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 2);
+    };
   };
 
   auto test_case_all_u8 = [&](bool succeed,
                               uint8_t zp_1, uint8_t zp_2, uint8_t zp_3, uint8_t zp_4,
-                              float scale_1, float scale_2, float scale_3, float scale_4) {
+                              float scale_1, float scale_2, float scale_3, float scale_4,
+                              bool use_ms_domain_qdq_ops = false) {
     TransformerTester(
-        BuildDoubleQDQTestCases<uint8_t, uint8_t, uint8_t, uint8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
-        succeed ? expect_succeed : expect_fail,
+        BuildDoubleQDQTestCases<uint8_t, uint8_t, uint8_t, uint8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+                                                                    use_ms_domain_qdq_ops),
+        succeed ? expect_succeed(use_ms_domain_qdq_ops) : expect_fail(use_ms_domain_qdq_ops),
         TransformerLevel::Default,
         TransformerLevel::Level1,
         12,
@@ -960,26 +972,30 @@ TEST(QDQTransformerTests, DoubleQDQ) {
 
   auto test_case_all_s8 = [&](bool succeed,
                               int8_t zp_1, int8_t zp_2, int8_t zp_3, int8_t zp_4,
-                              float scale_1, float scale_2, float scale_3, float scale_4) {
+                              float scale_1, float scale_2, float scale_3, float scale_4,
+                              bool use_ms_domain_qdq_ops = false) {
     TransformerTester(
-        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
-        succeed ? expect_succeed : expect_fail,
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+                                                                use_ms_domain_qdq_ops),
+        succeed ? expect_succeed(use_ms_domain_qdq_ops) : expect_fail(use_ms_domain_qdq_ops),
         TransformerLevel::Default,
         TransformerLevel::Level1,
         12,
         (scale_1 + scale_3) / 2,
         0.01);
     TransformerTester(
-        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
-        succeed ? expect_succeed : expect_fail,
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+                                                                use_ms_domain_qdq_ops),
+        succeed ? expect_succeed(use_ms_domain_qdq_ops) : expect_fail(use_ms_domain_qdq_ops),
         TransformerLevel::Default,
         TransformerLevel::Level1,
         18,
         (scale_1 + scale_3) / 2,
         0.01);
     TransformerTester(
-        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
-        succeed ? expect_succeed : expect_fail,
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+                                                                use_ms_domain_qdq_ops),
+        succeed ? expect_succeed(use_ms_domain_qdq_ops) : expect_fail(use_ms_domain_qdq_ops),
         TransformerLevel::Default,
         TransformerLevel::Level1,
         19,
@@ -988,99 +1004,137 @@ TEST(QDQTransformerTests, DoubleQDQ) {
   };
 
   auto test_case_2u8_2s8_failed = [&](uint8_t zp_1, uint8_t zp_2, int8_t zp_3, int8_t zp_4,
-                                      float scale_1, float scale_2, float scale_3, float scale_4) {
+                                      float scale_1, float scale_2, float scale_3, float scale_4,
+                                      bool use_ms_domain_qdq_ops = false) {
     TransformerTester(
-        BuildDoubleQDQTestCases<uint8_t, uint8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
-        expect_fail,
+        BuildDoubleQDQTestCases<uint8_t, uint8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+                                                                  use_ms_domain_qdq_ops),
+        expect_fail(use_ms_domain_qdq_ops),
         TransformerLevel::Default,
         TransformerLevel::Level1);
   };
 
   // all unsigned type
   test_case_all_u8(true, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_u8(true, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
+                   true);  // Use com.microsoft QDQ ops
   // all signed type
   test_case_all_s8(true, good_s8_1, good_s8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_s8(true, good_s8_1, good_s8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
+                   true);  // Use com.microsoft QDQ ops
   // 2 signed, 2 unsigned
   test_case_2u8_2s8_failed(good_u8_1, good_u8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_2u8_2s8_failed(good_u8_1, good_u8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
+                           true);  // Use com.microsoft QDQ ops
   //  different zero point within a pair
   test_case_all_u8(false, good_u8_1, bad_u8, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, bad_u8, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
+                   true);  // Use com.microsoft QDQ ops
   test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, bad_u8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, bad_u8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
+                   true);  // Use com.microsoft QDQ ops
   test_case_all_s8(false, good_s8_1, bad_s8, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_s8(false, good_s8_1, bad_s8, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
+                   true);  // Use com.microsoft QDQ ops
   test_case_all_s8(false, good_s8_1, good_s8_1, good_s8_2, bad_s8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_s8(false, good_s8_1, good_s8_1, good_s8_2, bad_s8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
+                   true);  // Use com.microsoft QDQ ops
   // different scale within a pair
   test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, bad_float_point, good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, bad_float_point, good_float_point_2, good_float_point_2,
+                   true);  // Use com.microsoft QDQ ops
   test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, bad_float_point, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, bad_float_point, good_float_point_2,
+                   true);  // Use com.microsoft QDQ ops
 }
 
 TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
-  auto test_case = [&](int output_index, int expected_Q_count, int expected_DQ_count) {
+  auto test_case = [&](int output_index, int expected_Q_count, int expected_DQ_count,
+                       bool use_ms_domain_qdq_ops = false) {
     auto graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["QuantizeLinear"], expected_Q_count);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], expected_DQ_count);
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], expected_Q_count);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expected_DQ_count);
     };
     TransformerTester(
-        BuildDoubleQDQWithoutLastOutput<uint8_t>(output_index),
+        BuildDoubleQDQWithoutLastOutput<uint8_t>(output_index, use_ms_domain_qdq_ops),
         graph,
         TransformerLevel::Default,
         TransformerLevel::Level1);
   };
+  constexpr bool use_ms_domain_qdq_ops = true;  // For readability.
+
   test_case(0, 2, 2);
-  test_case(1, 2, 3);  // EnsureUniqueDQForNodeUnit will duplicate first DQ, so expect one more (3)
+  test_case(0, 2, 2, use_ms_domain_qdq_ops);
+  test_case(1, 2, 3);                         // EnsureUniqueDQForNodeUnit will duplicate first DQ, so expect one more (3)
+  test_case(1, 2, 3, use_ms_domain_qdq_ops);  // EnsureUniqueDQForNodeUnit will duplicate first DQ, so expect one more (3)
   test_case(2, 2, 2);
+  test_case(2, 2, 2, use_ms_domain_qdq_ops);
   test_case(3, 1, 1);
+  test_case(3, 1, 1, use_ms_domain_qdq_ops);
 }
+
 // Because split isn't one the supported ops, this will stay the same
 TEST(QDQTransformerTests, Split) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis,
+                       bool use_ms_domain_qdq_ops = false) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["Split"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
     };
-    TransformerTester(BuildQDQSplitTestCase<int8_t, int8_t>(input_shape, axis),
+    TransformerTester(BuildQDQSplitTestCase<int8_t, int8_t>(input_shape, axis, use_ms_domain_qdq_ops),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       {12, 18, 19});
   };
   test_case({6, 18, 54}, 0);
+  test_case({6, 18, 54}, 0, true);  // Use com.microsoft QDQ ops
 }
 
 // Because split isn't one the supported ops, this will stay the same
 TEST(QDQTransformerTests, Split_without_IdenticalChildrenConsolidation) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis,
+                       bool use_ms_domain_qdq_ops = false) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["Split"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 3);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 3);
     };
-    TransformerTester(BuildConsolidationTestCase<int8_t, int8_t>(input_shape, axis),
+    TransformerTester(BuildConsolidationTestCase<int8_t, int8_t>(input_shape, axis, use_ms_domain_qdq_ops),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2, {12, 18, 19}, {}, {}, nullptr, {},
                       {"IdenticalChildrenConsolidation"});
   };
   test_case({6, 18, 54}, 0);
+  test_case({6, 18, 54}, 0, true);  // Use com.microsoft QDQ ops
 }
 
 TEST(QDQTransformerTests, Split_with_IdenticalChildrenConsolidation) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis,
+                       bool use_ms_domain_qdq_ops = false) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_ms_domain_qdq_ops);
       EXPECT_EQ(op_to_count["Split"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 3);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 3);
     };
-    TransformerTester(BuildConsolidationTestCase<int8_t, int8_t>(input_shape, axis),
+    TransformerTester(BuildConsolidationTestCase<int8_t, int8_t>(input_shape, axis, use_ms_domain_qdq_ops),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       {12, 18, 19});
   };
   test_case({6, 18, 54}, 0);
+  test_case({6, 18, 54}, 0, true);  // Use com.microsoft QDQ ops
 }
 
 TEST(QDQTransformerTests, Where) {
