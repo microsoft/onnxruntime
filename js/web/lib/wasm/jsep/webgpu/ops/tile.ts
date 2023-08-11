@@ -114,10 +114,7 @@ export const createTileProgramInfo =
 
 export const tile = (context: ComputeContext): void => {
   validateInputs(context.inputs);
-  // const cacheHint = context.inputs[0].dims.toString();
-
   const repeats: readonly number[] = getRepeats(context.inputs[1]);
-
   const cacheHint = context.inputs[0].dims.toString().concat(repeats.toString());
   context.compute(
       {...tileProgramMetadata, cacheHint, get: () => createTileProgramInfo(tileProgramMetadata, context.inputs)},
