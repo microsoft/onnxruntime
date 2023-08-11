@@ -235,8 +235,9 @@ GetQDQTestCaseFn BuildQDQMaxPoolTestCase(const std::vector<int64_t>& input_shape
 }
 
 template <typename InputType, typename OutputType>
-GetQDQTestCaseFn BuildQDQGlobalAveragePoolTestCase(const std::vector<int64_t>& input_shape) {
-  return [input_shape](ModelTestBuilder& builder) {
+GetQDQTestCaseFn BuildQDQGlobalAveragePoolTestCase(const std::vector<int64_t>& input_shape,
+                                                   bool use_ms_domain_qdq_ops = false) {
+  return [input_shape, use_ms_domain_qdq_ops](ModelTestBuilder& builder) {
     float dq_scale = 0.0035f;
     float pool_output_scale = 0.0038f;
     float q_scale = 0.0039f;
@@ -247,7 +248,7 @@ GetQDQTestCaseFn BuildQDQGlobalAveragePoolTestCase(const std::vector<int64_t>& i
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
     // add QDQ + GlobalAveragePool
-    auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, dq_scale, dq_zp);
+    auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, dq_scale, dq_zp, use_ms_domain_qdq_ops);
     auto* globalaveragepool_output = builder.MakeIntermediate();
     builder.AddNode("GlobalAveragePool", {dq_output}, {globalaveragepool_output});
 
@@ -256,11 +257,13 @@ GetQDQTestCaseFn BuildQDQGlobalAveragePoolTestCase(const std::vector<int64_t>& i
     builder.AddQuantizeLinearNode<OutputType>(globalaveragepool_output,
                                               pool_output_scale,
                                               pool_output_zp,
-                                              q_output);
+                                              q_output,
+                                              use_ms_domain_qdq_ops);
     builder.AddDequantizeLinearNode<OutputType>(q_output,
                                                 q_scale,
                                                 q_zp,
-                                                output_arg);
+                                                output_arg,
+                                                use_ms_domain_qdq_ops);
   };
 }
 
@@ -313,8 +316,8 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
 
 template <typename Input1Type, typename Input2Type, typename OutputType>
 GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
-                                       const std::string& op_type) {
-  return [input_shape, op_type](ModelTestBuilder& builder) {
+                                       const std::string& op_type, bool use_ms_domain_qdq_ops = false) {
+  return [input_shape, op_type, use_ms_domain_qdq_ops](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* input2_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
@@ -337,11 +340,13 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
     builder.AddQuantizeLinearNode<Input1Type>(input1_arg,
                                               q_scale,
                                               std::numeric_limits<Input1Type>::max() / 2,
-                                              q1_output);
+                                              q1_output,
+                                              use_ms_domain_qdq_ops);
     builder.AddDequantizeLinearNode<Input1Type>(q1_output,
                                                 op_input_scale,
                                                 std::numeric_limits<Input1Type>::max() / 2,
-                                                dq1_output);
+                                                dq1_output,
+                                                use_ms_domain_qdq_ops);
 
     // add QDQ 2
     auto* q2_output = builder.MakeIntermediate();
@@ -349,11 +354,13 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
     builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
                                               q_scale,
                                               std::numeric_limits<Input2Type>::max() / 2,
-                                              q2_output);
+                                              q2_output,
+                                              use_ms_domain_qdq_ops);
     builder.AddDequantizeLinearNode<Input2Type>(q2_output,
                                                 op_input_scale,
                                                 std::numeric_limits<Input2Type>::max() / 2,
-                                                dq2_output);
+                                                dq2_output,
+                                                use_ms_domain_qdq_ops);
 
     // add binary operator
     auto* binary_op_output = builder.MakeIntermediate();
@@ -364,11 +371,13 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
     builder.AddQuantizeLinearNode<OutputType>(binary_op_output,
                                               op_output_scale,
                                               std::numeric_limits<OutputType>::max() / 2,
-                                              q3_output);
+                                              q3_output,
+                                              use_ms_domain_qdq_ops);
     builder.AddDequantizeLinearNode<OutputType>(q3_output,
                                                 dq_scale,
                                                 std::numeric_limits<OutputType>::max() / 2,
-                                                output_arg);
+                                                output_arg,
+                                                use_ms_domain_qdq_ops);
   };
 }
 
