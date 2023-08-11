@@ -834,28 +834,113 @@ def test_two_outputs_function():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-class TwoOutputsFunctionWithNoGradOutput(torch.autograd.Function):
+@pytest.mark.skipif(
+    torch_version_lower_than("1.10.0"),
+    reason="PyTorch older than 1.10.0 has bugs for exporting multiple output custom function",
+)
+def test_two_outputs_function_none_grad_fn():
+    """This test is to verify the case that the first output tensor has grad_fn attr, but its grad_fn is None."""
+
+    class TwoOutputFunction(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, non_grad_fn_tensor, x, y):
+            z = x * y
+            # The first input is nn.Module input, who has grad_fn attr, but its grad_fn is None.
+            return (
+                non_grad_fn_tensor,
+                z,
+            )
+
+        @staticmethod
+        def backward(ctx, dc, dz):
+            return dc, dz, dz
+
+    class TwoOutputModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super().__init__()
+            self.fun = TwoOutputFunction.apply
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
+            self.int_type_tensor = torch.tensor([1, 4, 6, 7], device=torch.cuda.current_device(), dtype=torch.int64)
+
+            with torch.no_grad():
+                self.bias.uniform_()
+
+        def forward(self, x):
+            non_grad_fn_tensor, a = self.fun(self.int_type_tensor, x, self.bias)
+            assert hasattr(non_grad_fn_tensor, "grad_fn")
+            assert non_grad_fn_tensor.grad_fn is None
+            return a
+
+    output_size = 2
+
+    def model_builder():
+        return TwoOutputModel(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+
+    # Test multi-input and multi-output custom function.
+    run_training_test_and_compare(model_builder, input_generator, label_input)
+
+
+class MultipleOutputsFunctionWithNoGradOutput(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, y, test_config_materialize_grad):
         ctx.save_for_backward(x, y)
         w = x + y
         z = x * y
+        u = z.to(torch.float32).sum()
+
+        ctx.w_shape = w.shape
+        ctx.w_dtype = w.dtype
+        ctx.w_device = w.device
+        ctx.u_shape = u.shape
+        ctx.u_dtype = u.dtype
+        ctx.u_device = u.device
+        ctx.z_shape = z.shape
+        ctx.z_dtype = z.dtype
+        ctx.z_device = z.device
+
         ctx.set_materialize_grads(test_config_materialize_grad)
         ctx.test_config_materialize_grad = test_config_materialize_grad
 
-        # The requires_grad attribute values for w and z are both True, but in backward run, only z_grad will be needed.
-        # w_grad will be None/all zero.
-        return w, z
+        # Note1:
+        #   The requires_grad attribute values for w and z are both True, but in backward run, only z_grad will be needed.
+        #   w_grad will be None/all zero.
+        return w, u, z
 
     @staticmethod
-    def backward(ctx, dw, dz):
+    def backward(ctx, dw, du, dz):
         x, y = ctx.saved_tensors
         if ctx.test_config_materialize_grad:
             assert dw is not None
+            assert du is not None
             assert dz is not None
+
+            assert dw.shape == ctx.w_shape
+            assert dw.dtype == ctx.w_dtype
+            assert dw.device == ctx.w_device
+            assert du.shape == ctx.u_shape
+            assert du.dtype == ctx.u_dtype
+            assert du.device == ctx.u_device
+            assert dz.shape == ctx.z_shape
+            assert dz.dtype == ctx.z_dtype
+            assert dz.device == ctx.z_device
         else:
             assert dw is None
+            assert du is not None
             assert dz is not None
+
+            assert du.shape == ctx.u_shape
+            assert du.dtype == ctx.u_dtype
+            assert du.device == ctx.u_device
+            assert dz.shape == ctx.z_shape
+            assert dz.dtype == ctx.z_dtype
+            assert dz.device == ctx.z_device
+
         dx = dz * y
         dy = dz * x
         return dx, dy, None
@@ -866,11 +951,11 @@ class TwoOutputsFunctionWithNoGradOutput(torch.autograd.Function):
     reason="PyTorch older than 1.10.0 has bugs for exporting multiple output custom function",
 )
 @pytest.mark.parametrize("materialize_grad", [True, False])
-def test_two_outputs_function_with_no_grad_output(materialize_grad: bool):
-    class TwoOutputsFunctionWithNoGradOutputModel(torch.nn.Module):
+def test_multiple_outputs_function_with_no_grad_output(materialize_grad: bool):
+    class MultipleOutputsFunctionWithNoGradOutputModel(torch.nn.Module):
         def __init__(self, output_size):
             super().__init__()
-            self.fun = TwoOutputsFunctionWithNoGradOutput.apply
+            self.fun = MultipleOutputsFunctionWithNoGradOutput.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
@@ -878,14 +963,14 @@ def test_two_outputs_function_with_no_grad_output(materialize_grad: bool):
 
         def forward(self, x):
             # Be noted, the first output is not used in backward, so it should not require grad.
-            _, b = self.fun(x, self.bias, materialize_grad)
+            _, u, b = self.fun(x, self.bias, materialize_grad)
 
-            return b
+            return b * u.to(b.dtype)
 
     output_size = 2
 
     def model_builder():
-        return TwoOutputsFunctionWithNoGradOutputModel(output_size)
+        return MultipleOutputsFunctionWithNoGradOutputModel(output_size)
 
     def input_generator():
         return torch.randn(output_size, dtype=torch.float)

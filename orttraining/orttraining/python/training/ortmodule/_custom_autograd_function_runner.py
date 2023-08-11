@@ -83,11 +83,26 @@ def _get_context(forward_tensor_outputs: List[torch.Tensor]) -> Tuple[any, Optio
     for arg in forward_tensor_outputs:
         if not isinstance(arg, torch.Tensor) or not hasattr(arg, "grad_fn"):
             continue
+
+        if arg.grad_fn is None:
+            # For following case, it is possible grad_fn exist, but its value is None,
+            # so we need to continue to search for the first tensor having a non-None grad_fn.
+            #
+            # >>> w = torch.randn(5, 6)
+            # >>> hasattr(w, "grad_fn")
+            # True
+            # >>> w.grad_fn is None
+            # True
+            # >>> w, ... = CustomFunc.apply(w) # where CustomFunc forward just return w and other tensors.
+            #
+            # Then hasattr(w, "grad_fn") is True, but w.grad_fn is None.
+            continue
         # Use the first context we see because all of arg's share the same one.
         ctx = arg.grad_fn
         first_tensor_output = arg
         break
-
+    if first_tensor_output is not None:
+        assert ctx is not None, "ctx should not be None if first_tensor_output is not None."
     return (ctx, first_tensor_output)
 
 
@@ -137,13 +152,14 @@ def _finalize_traing_mode_forward(
             warnings.warn("Add input index to _GlobalOpKernelInfoMap, to avoid extra copy in every iteration.")
         kernel_info.materialize_grads = torch_interop_utils.get_materialize_grads(tensor_owning_ctx)
         kernel_info.materialize_grads_config = OrderedDict()
-        for output_index, tensor in enumerate(forward_output_tensors):
-            if isinstance(tensor, torch.Tensor):
-                kernel_info.materialize_grads_config[output_index] = (
-                    tensor.device,
-                    tensor.dtype,
-                    tensor.shape,
-                )
+        if kernel_info.materialize_grads:
+            for output_index, tensor in enumerate(forward_output_tensors):
+                if isinstance(tensor, torch.Tensor):
+                    kernel_info.materialize_grads_config[output_index] = (
+                        tensor.device,
+                        tensor.dtype,
+                        tensor.shape,
+                    )
 
     #         FORWARD                                                    BACKWARD FUNCTION CONNECTIONS
     # input_1 (leaf, constructed by from_dlpack)   <----reference----  AccumulateGrad gradient function
@@ -337,7 +353,8 @@ def call_python_backward_function(
                     if arg is None:
                         if _GlobalOpKernelInfoMap[fw_kernel_invoke_id].materialize_grads:
                             config = _GlobalOpKernelInfoMap[fw_kernel_invoke_id].materialize_grads_config
-                            device, dtype, shape = config[grad_input_index]
+                            # ignore the first input, which is the ctx.
+                            device, dtype, shape = config[grad_input_index - 1]
                             wrapped_arg = torch.zeros(shape, device=device, dtype=dtype)
                         else:
                             wrapped_arg = arg
