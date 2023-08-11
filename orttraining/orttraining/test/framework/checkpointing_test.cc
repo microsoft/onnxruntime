@@ -106,10 +106,10 @@ TEST(CheckpointingTest, SaveAndLoad) {
   TemporaryDirectory tmp_dir{ORT_TSTR("checkpointing_test_dir")};
 
   PathString checkpoint_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("test_checkpoint"))};
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("test_checkpoint"))};
   // this path doesn't need to exist, we just consider its parent directory
   PathString model_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("test_model.onnx"))};
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("test_model.onnx"))};
 
   DataTransferManager data_transfer{};
   ASSERT_STATUS_OK(data_transfer.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
