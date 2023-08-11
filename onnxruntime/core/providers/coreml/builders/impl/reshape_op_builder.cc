@@ -107,13 +107,6 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
-  // CoreML reshape doesn't support input shape with more than 5 dimensions
-  if (input_shape.size() > 5) {
-    LOGS(logger, VERBOSE) << "Reshape does not support input shape with rank greater than 5. Input shape: "
-                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
-    return false;
-  }
-
   // CoreML reshape does not support 0 as dimension
   NodeAttrHelper helper(node);
   const bool allow_zero = helper.Get("allowzero ", 0) == 1;
