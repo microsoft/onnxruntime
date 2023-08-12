@@ -3,6 +3,7 @@
 
 #pragma once
 #include <mutex>
+#include <optional>
 #include "orttraining/core/framework/torch/python_common.h"
 
 #ifndef SHARED_PROVIDER
