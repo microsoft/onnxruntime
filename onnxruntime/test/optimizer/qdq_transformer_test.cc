@@ -1921,12 +1921,12 @@ TEST(QDQTransformerTests, LeakyRelu_U8S8) {
 
 template <typename InputType, typename OutputType>
 void QDQTransformerSigmoidTests() {
-  auto test_case = [&](const std::vector<int64_t>& input_shape) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
       // add QDQ + Sigmoid
-      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .0035f, 7);
+      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .0035f, 7, use_contrib_qdq);
       auto* sigmoid_output = builder.MakeIntermediate();
       builder.AddNode("Sigmoid", {dq_output}, {sigmoid_output});
 
@@ -1935,25 +1935,26 @@ void QDQTransformerSigmoidTests() {
       builder.AddQuantizeLinearNode<OutputType>(sigmoid_output,
                                                 .0038f,
                                                 std::numeric_limits<OutputType>::max() / 2,
-                                                q_output);
+                                                q_output, use_contrib_qdq);
       builder.AddDequantizeLinearNode<OutputType>(q_output,
                                                   .0039f,
                                                   std::numeric_limits<OutputType>::max() / 2,
-                                                  output_arg);
+                                                  output_arg, use_contrib_qdq);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       if constexpr (std::is_same<InputType, OutputType>::value) {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearSigmoid"], 1);
         EXPECT_EQ(op_to_count["Sigmoid"], 0);
-        EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-        EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+        EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+        EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
       } else {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearSigmoid"], 0);
         EXPECT_EQ(op_to_count["Sigmoid"], 1);
-        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
-        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+        EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 2);
+        EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 2);
       }
     };
 
@@ -1983,9 +1984,10 @@ void QDQTransformerSigmoidTests() {
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
-  test_case({1, 12, 37});
-  test_case({1, 23, 13, 13});
-  test_case({1, 22, 11, 13, 15});
+  test_case({1, 12, 37}, false /*use_contrib_qdq*/);
+  test_case({1, 12, 37}, true /*use_contrib_qdq*/);
+  test_case({1, 23, 13, 13}, false /*use_contrib_qdq*/);
+  test_case({1, 22, 11, 13, 15}, false /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, Sigmoid_S8S8) {
