@@ -133,9 +133,10 @@ namespace Dml
         ExecutionContext& m_ctx;
     };
 
-    void ExecutionProviderImpl::RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& stream_handle_registry) const {
-        stream_handle_registry.RegisterCreateStreamFn(OrtDevice::CPU, [this](const OrtDevice& device) {
-            return std::make_unique<DmlStream>(const_cast<ExecutionProviderImpl&>(*this), *this->m_context, device);});
+    void ExecutionProviderImpl::RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {
+        //to-do: return a stream carrying resources
+        /*stream_handle_registry.RegisterCreateStreamFn(OrtDevice::CPU, [this](const OrtDevice& device) {
+            return std::make_unique<DmlStream>(const_cast<ExecutionProviderImpl&>(*this), *this->m_context, device);});*/
     }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
