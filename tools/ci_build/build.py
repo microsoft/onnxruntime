@@ -4,6 +4,7 @@
 
 import argparse
 import contextlib
+import json
 import os
 import platform
 import re
@@ -329,6 +330,7 @@ def parse_arguments():
         "CMake setup. Delete CMakeCache.txt if needed",
     )
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
     parser.add_argument(
         "--android_abi",
@@ -400,7 +402,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.37", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.44", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -1653,10 +1655,16 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    simulator_device_name = subprocess.check_output(
-        ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
+    simulator_device_info = subprocess.check_output(
+        [
+            sys.executable,
+            os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_info.py"),
+        ],
         text=True,
     ).strip()
+    log.debug(f"Simulator device info:\n{simulator_device_info}")
+
+    simulator_device_info = json.loads(simulator_device_info)
 
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
@@ -1680,8 +1688,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                # hardcode iOS 16.4 for now. latest macOS-13 image defaults to iOS 17 (beta) which doesn't work.
-                f"platform=iOS Simulator,OS=16.4,name={simulator_device_name}",
+                f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
             ],
             cwd=cwd,
         )
@@ -2267,7 +2274,7 @@ def main():
     if args.use_migraphx:
         args.use_rocm = True
 
-    if args.build_wheel or args.gen_doc or args.use_tvm:
+    if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
 
     if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
@@ -2441,6 +2448,8 @@ def main():
                     toolset += ",cuda=" + args.cuda_version
                 elif args.cuda_home:
                     toolset += ",cuda=" + args.cuda_home
+                if args.windows_sdk_version:
+                    target_arch += ",version=" + args.windows_sdk_version
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")

@@ -489,7 +489,7 @@ async function main() {
         karmaArgs.push('--force-localhost');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
-      if (browser === 'Edge') {
+      if (browser.startsWith('Edge')) {
         // There are currently 2 Edge browser launchers:
         //  - karma-edge-launcher: used to launch the old Edge browser
         //  - karma-chromium-edge-launcher: used to launch the new chromium-kernel Edge browser
@@ -585,7 +585,7 @@ async function main() {
       case 'chrome':
         return selectChromeBrowser(mode, webgpu, webnn, profile);
       case 'edge':
-        return 'Edge';
+        return webgpu ? 'EdgeWebGpuTest' : 'Edge';
       case 'firefox':
         return 'Firefox';
       case 'electron':

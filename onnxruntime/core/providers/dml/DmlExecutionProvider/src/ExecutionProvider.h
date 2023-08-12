@@ -126,8 +126,6 @@ namespace Dml
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const override;
         STDMETHOD_(void, Flush)() const override;
 
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
-
         // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
         void Close() override;
@@ -198,7 +196,6 @@ namespace Dml
         bool m_closed = false;
         mutable std::chrono::time_point<std::chrono::steady_clock> m_lastUploadFlushTime;
         static constexpr std::chrono::milliseconds m_batchFlushInterval = std::chrono::milliseconds(10);
-        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
     };
 
     class DataTransfer : public onnxruntime::IDataTransfer
@@ -285,11 +282,6 @@ namespace Dml
         void Flush()
         {
             return m_impl->Flush();
-        }
-
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-        {
-            return m_impl->SetDefaultRoundingMode(roundingMode);
         }
 
         void ReleaseCompletedReferences()

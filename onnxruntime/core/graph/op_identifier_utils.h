@@ -7,12 +7,7 @@
 
 #include "core/common/status.h"
 #include "core/graph/graph.h"
-
-#if !defined(ORT_MINIMAL_BUILD)
-
-#include "onnx/defs/schema.h"  // for ONNX_NAMESPACE::OpSchema
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#include "core/graph/onnx_protobuf.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
