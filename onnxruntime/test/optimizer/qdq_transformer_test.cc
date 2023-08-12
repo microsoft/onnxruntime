@@ -2007,7 +2007,8 @@ TEST(QDQTransformerTests, Sigmoid_U8S8) {
 }
 
 TEST(QDQTransformerTests, ConvTranspose_QBackward) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, const std::vector<int64_t>& perms) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
+                       const std::vector<int64_t>& perms, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
@@ -2016,8 +2017,8 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
       // add QDQ + Conv
       auto* dq_w_output = builder.MakeIntermediate();
       auto* conv_output = builder.MakeIntermediate();
-      auto* dq_conv_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
-      builder.AddDequantizeLinearNode<int8_t>(weight, .003f, -10, dq_w_output);
+      auto* dq_conv_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1, use_contrib_qdq);
+      builder.AddDequantizeLinearNode<int8_t>(weight, .003f, -10, dq_w_output, use_contrib_qdq);
       builder.AddConvNode(dq_conv_output, dq_w_output, conv_output);
 
       // add Transpose
@@ -2028,20 +2029,21 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
       // add Q
       auto* q_output = builder.MakeIntermediate();
       if constexpr (QDQIsInt8Allowed()) {
-        builder.AddQuantizeLinearNode<int8_t>(transpose_output, .0035f, 7, q_output);
-        builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
+        builder.AddQuantizeLinearNode<int8_t>(transpose_output, .0035f, 7, q_output, use_contrib_qdq);
+        builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg, use_contrib_qdq);
       } else {
-        builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .0035f, 135, q_output);
-        builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
+        builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .0035f, 135, q_output, use_contrib_qdq);
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg, use_contrib_qdq);
       }
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["Transpose"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
     };
 
     TransformerTester(build_test_case,
@@ -2050,11 +2052,13 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
                       TransformerLevel::Level2);
   };
 
-  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, {0, 3, 1, 2});
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, {0, 3, 1, 2}, false /*use_contrib_qdq*/);
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, {0, 3, 1, 2}, true /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
+                       bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
@@ -2063,8 +2067,8 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
       // add QDQ + Conv
       auto* dq_w_output = builder.MakeIntermediate();
       auto* conv_output = builder.MakeIntermediate();
-      auto* dq_conv_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
-      builder.AddDequantizeLinearNode<int8_t>(weight, .003f, -10, dq_w_output);
+      auto* dq_conv_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1, use_contrib_qdq);
+      builder.AddDequantizeLinearNode<int8_t>(weight, .003f, -10, dq_w_output, use_contrib_qdq);
       builder.AddConvNode(dq_conv_output, dq_w_output, conv_output);
 
       // add MaxPool
@@ -2098,22 +2102,23 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
       // add Q + DQ
       auto* q_output = builder.MakeIntermediate();
       if constexpr (QDQIsInt8Allowed()) {
-        builder.AddQuantizeLinearNode<int8_t>(squeeze_output, .0035f, 7, q_output);
-        builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
+        builder.AddQuantizeLinearNode<int8_t>(squeeze_output, .0035f, 7, q_output, use_contrib_qdq);
+        builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg, use_contrib_qdq);
       } else {
-        builder.AddQuantizeLinearNode<uint8_t>(squeeze_output, .0035f, 135, q_output);
-        builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
+        builder.AddQuantizeLinearNode<uint8_t>(squeeze_output, .0035f, 135, q_output, use_contrib_qdq);
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg, use_contrib_qdq);
       }
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["MaxPool"], 1);
       EXPECT_EQ(op_to_count["Reshape"], 1);
       EXPECT_EQ(op_to_count["Transpose"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
     };
 
     TransformerTester(build_test_case,
@@ -2129,7 +2134,8 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
     // TODO: fix opset 19
   };
 
-  test_case({1, 23, 13, 13}, {30, 23, 3, 3});
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, false /*use_contrib_qdq*/);
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, true /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, ConvTranspose_DQForward) {
