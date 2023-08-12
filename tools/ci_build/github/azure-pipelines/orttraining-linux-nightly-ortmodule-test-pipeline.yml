@@ -6,18 +6,6 @@ parameters:
 
 steps:
 
-- bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-  displayName: 'Mount MNIST'
-  condition: succeededOrFailed()
-
-- bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
-  displayName: 'Mount bert-data'
-  condition: succeededOrFailed()
-
-- bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-  displayName: 'Mount hf-models-cache'
-  condition: succeededOrFailed()
-
 # Entry point for all ORTModule tests
 # The onnxruntime folder is deleted in the build directory
 # to enforce use of the onnxruntime wheel
