@@ -6,20 +6,16 @@ import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 export const tileProgramMetadata = {
   name: 'Tile',
   inputTypes: [GpuDataType.default]
 };
 
-const getRepeats = (repeatsTensorView: TensorView): readonly number[] => {
-  const repeats: number[] = [];
-  if (repeatsTensorView.dims[0] > 0) {
-    repeatsTensorView.getBigInt64Array().forEach(v => repeats.push(Number(v)));
-  }
-  return repeats;
-};
+const getRepeats = (repeatsTensorView: TensorView): readonly number[] =>
+    Array.from(repeatsTensorView.getBigInt64Array(), Number);
+
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 2) {
@@ -58,51 +54,29 @@ const getOutputShape = (inputShape: readonly number[], repeats: readonly number[
 
 export const createTileProgramInfo =
     (tileProgramMetadata: ProgramMetadata, inputs: readonly TensorView[]): ProgramInfo => {
-      // We currently only support 4-byte element tensors, so using f32 here is safe
-      // TODO: support other data types for Tile
-      const dataType = 'f32';
       const inputShape = inputs[0].dims;
-
       const repeats: readonly number[] = getRepeats(inputs[1]);
-
       const outputShape = getOutputShape(inputShape, repeats);
       const outputSize = ShapeUtil.size(outputShape);
 
-      const inputIndicesHelper = createIndicesHelper('input', inputShape);
-      const outputIndicesHelper = createIndicesHelper('output', outputShape);
-
-      const isl = inputShape.length;
-      const calculateInputIndexImpl = (): string => `
-      fn calculateInputIndex(outputIndices: ${outputIndicesHelper.iType}) -> ${inputIndicesHelper.iType} {
-        ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
-
-        for (var i = 0; i < ${isl}; i++) {
-          // TODO: IndicesHelper should offer uniform way to get/set indices for all ranks
-          inputIndices${isl >= 2 ? '[i]' : ''} = (outputIndices${isl >= 2 ? '[i]' : ''} % inputShape[i]);
-        }
-
-        return inputIndices;
-      }`;
+      const dataType = inputs[0].dataType;
+      const input = inputVariable('input', dataType, inputShape);
+      const output = outputVariable('output', dataType, outputShape);
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-
       const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
-      ${calculateInputIndexImpl()};
-      @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
-      @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
-
-      ${outputIndicesHelper.o2iImpl}
-      ${inputIndicesHelper.i2oImpl}
-
+      ${shaderHelper.declareVariables(input, output)}
+      ${output.impl('offsetToIndices')}
+      ${input.impl('indicesToOffset', 'get')}
       ${shaderHelper.mainStart()}
       ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-
-      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-      ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
-      ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
-      inputIndices = calculateInputIndex(outputIndices);
-      output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
-      }`;
+      let outputIndices = ${output.offsetToIndices('global_idx')};
+      var inputIndices: ${input.type.indices};
+      for (var i = 0; i < ${inputShape.length}; i++) {
+        ${input.indicesSet('inputIndices', 'i', output.indicesGet('outputIndices', 'i').concat('% inputShape[i]'))}
+      }
+      ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
+    }`;
 
       return {
         ...tileProgramMetadata,
