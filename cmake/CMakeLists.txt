@@ -257,15 +257,21 @@ option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for thre
 # Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
 # when using python env
 if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
   set(onnxruntime_ENABLE_TRAINING_APIS ON)
-  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
   set(onnxruntime_ENABLE_ATEN ON)
   set(onnxruntime_ENABLE_TRITON ON)
+  if (NOT APPLE)
+    set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
   set(onnxruntime_ENABLE_TRAINING_OPS ON)
+  if (onnxruntime_ENABLE_PYTHON AND NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindings! "
+    "Please use the --enable_training flag instead of the --enable_training_apis flag.")
+  endif()
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -306,7 +312,15 @@ if (onnxruntime_USE_ROCM)
   add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
 
   if (NOT onnxruntime_HIPIFY_PERL)
-    set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
+    find_path(HIPIFY_PERL_PATH
+      NAMES hipify-perl
+      HINTS
+      ${onnxruntime_ROCM_HOME}/bin
+      ${onnxruntime_ROCM_HOME}/hip/bin)
+    if (HIPIFY_PERL_PATH-NOTFOUND)
+      MESSAGE(FATAL_ERROR "hipify-perl not found")
+    endif()
+    set(onnxruntime_HIPIFY_PERL ${HIPIFY_PERL_PATH}/hipify-perl)
   endif()
 
   # replicate strategy used by pytorch to get ROCM_VERSION
@@ -1230,9 +1244,12 @@ if (onnxruntime_USE_OPENVINO)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.0")
     set(OPENVINO_VERSION "2023.0")
     add_definitions(-DOPENVINO_2023_0=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.1")
+    set(OPENVINO_VERSION "2023.1")
+    add_definitions(-DOPENVINO_2023_1=1)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
-    set(OPENVINO_VERSION "2023.0")
-    add_definitions(-DOPENVINO_2023_0=1)
+    set(OPENVINO_VERSION "2023.1")
+    add_definitions(-DOPENVINO_2023_1=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1480,6 +1497,7 @@ if (UNIX AND onnxruntime_USE_MPI)
     find_path(NCCL_INCLUDE_DIR
       NAMES ${NCCL_LIBNAME}.h
       HINTS
+      ${onnxruntime_NCCL_HOME}/include/rccl
       ${onnxruntime_NCCL_HOME}/include
       $ENV{CUDA_ROOT}/include)
 

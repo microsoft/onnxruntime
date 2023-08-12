@@ -3027,6 +3027,18 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
 }
 #endif
 
+TEST(GradientCheckerTest, ReciprocalGrad) {
+  // Avoid division by 0 by using the transformer.
+  std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
+  UnaryOpGradientTest("Reciprocal", kOnnxDomain, 12, nullptr, &transformer);
+}
+
+TEST(GradientCheckerTest, LeakyReluGrad) {
+  // Gradient is non continuous at 0, so we need to avoid it.
+  std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
+  UnaryOpGradientTest("LeakyRelu", kOnnxDomain, 16, nullptr, &transformer);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

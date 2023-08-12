@@ -2754,12 +2754,21 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
   std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
 
+  // Only test updating provider option with user provided compute stream
+  cudaStream_t compute_stream = nullptr;
+  void* user_compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptionsWithValue(rel_trt_options.get(), "user_compute_stream", compute_stream) == nullptr);
+  ASSERT_TRUE(api.GetTensorRTProviderOptionsByName(rel_trt_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
+  ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
+  cudaStreamDestroy(compute_stream);
+
   const char* engine_cache_path = "./trt_engine_folder";
 
-  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
+  std::vector<const char*> keys{"device_id", "has_user_compute_stream", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
                                 "trt_engine_cache_path", option_name.c_str()};
 
-  std::vector<const char*> values{"0", "1", "0", "1",
+  std::vector<const char*> values{"0", "0", "1", "0", "1",
                                   engine_cache_path, option_value.c_str()};
 
   ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
@@ -2813,7 +2822,7 @@ INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
 
 #ifdef USE_CUDA
 
-// This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions APIs to configure and create a CUDA Execution Provider instance
+// This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions/UpdateCUDAProviderOptionsWithValue APIs to configure and create a CUDA Execution Provider instance
 TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   const auto& api = Ort::GetApi();
 
@@ -2821,12 +2830,21 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
   std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
 
+  // Only test updating OrtCUDAProviderOptionsV2 instance with user provided compute stream not running the inference
+  cudaStream_t compute_stream = nullptr;
+  void* user_compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  ASSERT_TRUE(api.UpdateCUDAProviderOptionsWithValue(rel_cuda_options.get(), "user_compute_stream", compute_stream) == nullptr);
+  ASSERT_TRUE(api.GetCUDAProviderOptionsByName(rel_cuda_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
+  ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
+  cudaStreamDestroy(compute_stream);
+
   std::vector<const char*> keys{
-      "device_id", "gpu_mem_limit", "arena_extend_strategy",
+      "device_id", "has_user_compute_stream", "gpu_mem_limit", "arena_extend_strategy",
       "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
 
   std::vector<const char*> values{
-      "0", "1024", "kSameAsRequested",
+      "0", "0", "1024", "kSameAsRequested",
       "DEFAULT", "1", "1"};
 
   ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 6) == nullptr);

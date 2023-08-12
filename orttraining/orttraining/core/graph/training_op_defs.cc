@@ -18,8 +18,14 @@ namespace training {
 using namespace ONNX_NAMESPACE;
 
 namespace {
-std::array<TensorShapeProto::Dimension, 6> GetLSTMDimensions(InferenceContext& ctx) {
-  TensorShapeProto::Dimension num_directions, sequence_length, batch_size, hidden_size, hidden_size_x4, input_size;
+
+// TODO(pengwa): remove this once customized PythonOp shape inference is supported.
+constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
+
+std::array<TensorShapeProto::Dimension, 6> GetRNNDimensions(InferenceContext& ctx) {
+  TensorShapeProto::Dimension num_directions, sequence_length, batch_size,
+      hidden_size, hidden_size_x_num_gates, input_size;
 
   const auto direction = getAttribute(ctx, "direction", "forward");
   if ((direction == "forward") || (direction == "reverse"))
@@ -49,10 +55,10 @@ std::array<TensorShapeProto::Dimension, 6> GetLSTMDimensions(InferenceContext& c
     if (weight_shape.dim_size() != 3) {
       fail_shape_inference("Weight tensor must have rank 3. Actual: ", weight_shape.dim_size());
     }
-    hidden_size_x4 = weight_shape.dim(1);
+    hidden_size_x_num_gates = weight_shape.dim(1);
   }
 
-  return {num_directions, sequence_length, batch_size, hidden_size, hidden_size_x4, input_size};
+  return {num_directions, sequence_length, batch_size, hidden_size, hidden_size_x_num_gates, input_size};
 }
 }  // namespace
 
@@ -2894,6 +2900,19 @@ Example 4:
             return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {});
           });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LeakyReluGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Gradient operator for LeakyRelu.")
+      .Attr("alpha", "Alpha (negative slope) value.", AttributeProto::FLOAT, 0.01f)
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "Y", "The output tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -3764,7 +3783,7 @@ Return true if all elements are true and false otherwise.
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .Attr(
-          "name",
+          "func_name",
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
@@ -3917,8 +3936,9 @@ Return true if all elements are true and false otherwise.
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
-        std::string func_name = getAttribute(ctx, "name", "");
-        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+        std::string func_name = getAttribute(ctx, "func_name", "");
+        // TODO(pengwa): allow custom PythonOp shape inference.
+        if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
           // PythonOp with the name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly the
           // same as a normal PythonOp when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;
@@ -3980,7 +4000,7 @@ Return true if all elements are true and false otherwise.
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .Attr(
-          "name",
+          "func_name",
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
@@ -4062,8 +4082,9 @@ Return true if all elements are true and false otherwise.
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
 
-        std::string func_name = getAttribute(ctx, "name", "");
-        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+        std::string func_name = getAttribute(ctx, "func_name", "");
+        // TODO(pengwa): allow custom PythonOp shape inference.
+        if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
           // PythonOpGrad with name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly
           // the same as a normal PythonOpGrad when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;
@@ -4363,7 +4384,7 @@ Return true if all elements are true and false otherwise.
       .Attr(
           "activations",
           "A list of 3 (or 6 if bidirectional) activation functions "
-          "for input, output, forget, cell, and hidden. The activation functions must "
+          "for input, output, forget, cell, and hidden gates. The activation functions must "
           "be one of the activation functions specified above. Optional: See the equations "
           "for default if not specified.",
           AttributeProto::STRINGS,
@@ -4371,7 +4392,7 @@ Return true if all elements are true and false otherwise.
       .Attr(
           "activation_alpha",
           "Optional scaling values used by some activation functions. The values are consumed "
-          "in the order of activation functions, for example (f, g, h) in LSTM. Default values "
+          "in the order of activation functions, for example (f, g, h) in LSTMTraining. Default values "
           "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
           "default alpha is 0.01.",
           AttributeProto::FLOATS,
@@ -4379,7 +4400,7 @@ Return true if all elements are true and false otherwise.
       .Attr(
           "activation_beta",
           "Optional scaling values used by some activation functions. The values are consumed in "
-          "the order of activation functions, for example (f, g, h) in LSTM. Default values are "
+          "the order of activation functions, for example (f, g, h) in LSTMTraining. Default values are "
           "the same as of corresponding ONNX operators.",
           AttributeProto::FLOATS,
           OPTIONAL_VALUE)
@@ -4428,7 +4449,7 @@ Return true if all elements are true and false otherwise.
           {"tensor(int32)"},
           "Constrain the length types to int32 tensors.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        const auto lstm_dimensions = GetLSTMDimensions(ctx);
+        const auto lstm_dimensions = GetRNNDimensions(ctx);
         const auto& num_directions = lstm_dimensions[0];
         const auto& sequence_length = lstm_dimensions[1];
         const auto& batch_size = lstm_dimensions[2];
@@ -4545,7 +4566,7 @@ Return true if all elements are true and false otherwise.
           {"tensor(int32)"},
           "Constrain the length types to int32 tensors.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        const auto lstm_dimensions = GetLSTMDimensions(ctx);
+        const auto lstm_dimensions = GetRNNDimensions(ctx);
         const auto& num_directions = lstm_dimensions[0];
         const auto& sequence_length = lstm_dimensions[1];
         const auto& batch_size = lstm_dimensions[2];
@@ -4637,6 +4658,224 @@ Return true if all elements are true and false otherwise.
           "T_INDEX",
           {"tensor(int32)", "tensor(int64)"},
           "Constrain indices to integer types");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GRUTraining)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "GRUTraining operator is adapted from GRU operator (https://github.com/onnx/onnx/blob/main/docs/Changelog.md#GRU-14)."
+          "The difference between the two operators is that GRUTraining generates an additional output:"
+          "the intermediate zrh gate outputs."
+          "This extra output is needed for the gradient computation while training.")
+      .Attr(
+          "activations",
+          "A list of 2 (or 4 if bidirectional) activation functions "
+          "for update, reset, and hidden gates. The activation functions must "
+          "be one of the activation functions specified above. Optional: See the equations "
+          "for default if not specified.",
+          AttributeProto::STRINGS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_alpha",
+          "Optional scaling values used by some activation functions. The values are consumed "
+          "in the order of activation functions, for example (f, g) in GRUTraining. Default values "
+          "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
+          "default alpha is 0.01.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "Optional scaling values used by some activation functions. The values are consumed in "
+          "the order of activation functions, for example (f, g) in GRUTraining. Default values are "
+          "the same as of corresponding ONNX operators.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "clip",
+          "Cell clip threshold. Clipping bounds the elements of a tensor in the range of "
+          "[-threshold, +threshold] and is applied to the input of activations. No clip if not "
+          "specified.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "linear_before_reset",
+          "When computing the output of the hidden gate, apply the linear transformation "
+          "before multiplying by the output of the reset gate.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "hidden_size",
+          "Number of neurons in the hidden layer.",
+          AttributeProto::INT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "direction",
+          "Specify if the RNN is forward, reverse, or bidirectional. Must be one of "
+          "forward (default), reverse, or bidirectional.",
+          AttributeProto::STRING,
+          std::string("forward"))
+      .Input(0, "X", "Original input to the GRU cell.", "T")
+      .Input(1, "W", "Input weight parameters to the GRU cell.", "T")
+      .Input(2, "R", "Input recurrence weight parameters to the GRU cell.", "T")
+      .Input(3, "B", "Input bias parameters to the GRU cell.", "T", OpSchema::Optional)
+      .Input(4, "SL", "Sequence lengths of the input sequence.", "TSize", OpSchema::Optional)
+      .Input(5, "Ht0", "Initial hidden state input to the GRU cell", "T", OpSchema::Optional)
+      .Output(0, "HAll", "Hidden states over all sequence steps.", "T", OpSchema::Optional)
+      .Output(1, "HFinal", "Final hidden state.", "T", OpSchema::Optional)
+      .Output(2, "ZRH", "Intermediate gate computations for all sequence steps.", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the gradient input and output types to float tensors.")
+      .TypeConstraint(
+          "TSize",
+          {"tensor(int32)"},
+          "Constrain the length types to int32 tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto gru_dimensions = GetRNNDimensions(ctx);
+        const auto& num_directions = gru_dimensions[0];
+        const auto& sequence_length = gru_dimensions[1];
+        const auto& batch_size = gru_dimensions[2];
+        const auto& hidden_size = gru_dimensions[3];
+        const auto& hidden_size_x3 = gru_dimensions[4];
+
+        const auto num_outputs = ctx.getNumOutputs();
+        for (size_t i = 0; i < num_outputs; ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+        }
+
+        if (num_outputs > 0)
+          // All hidden states
+          updateOutputShape(ctx, 0, {sequence_length, num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 1)
+          // Final hidden state
+          updateOutputShape(ctx, 1, {num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 2)
+          // ZRH gate computations
+          updateOutputShape(ctx, 2, {sequence_length, num_directions, batch_size, hidden_size_x3});
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GRUGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "GRUGrad operator that computes the partial derivative of the loss with respect to GRU inputs: "
+          "a) The input sequence, b) Weight parameters, c) Recurrence weight parameters, d) Bias parameters, "
+          "e) Previous hidden state."
+          "This operator computes the gradient of the GRU operator from opset version 14: "
+          "https://github.com/onnx/onnx/blob/main/docs/Changelog.md#GRU-14")
+      .Attr(
+          "activations",
+          "A list of 2 (or 4 if bidirectional) activation functions "
+          "for update, reset, and hidden gates. The activation functions must "
+          "be one of the activation functions specified above. Optional: See the equations "
+          "for default if not specified.",
+          AttributeProto::STRINGS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_alpha",
+          "Optional scaling values used by some activation functions. The values are consumed "
+          "in the order of activation functions, for example (f, g) in GRUTraining. Default values "
+          "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
+          "default alpha is 0.01.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "Optional scaling values used by some activation functions. The values are consumed in "
+          "the order of activation functions, for example (f, g) in GRUTraining. Default values are "
+          "the same as of corresponding ONNX operators.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "clip",
+          "Cell clip threshold. Clipping bounds the elements of a tensor in the range of "
+          "[-threshold, +threshold] and is applied to the input of activations. No clip if not "
+          "specified.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "linear_before_reset",
+          "When computing the output of the hidden gate, apply the linear transformation "
+          "before multiplying by the output of the reset gate.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "hidden_size",
+          "Number of neurons in the hidden layer.",
+          AttributeProto::INT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "direction",
+          "Specify if the RNN is forward, reverse, or bidirectional. Must be one of "
+          "forward (default), reverse, or bidirectional.",
+          AttributeProto::STRING,
+          std::string("forward"))
+      .Input(0, "X", "Original input to the GRU cell.", "T")
+      .Input(1, "W", "Input weight parameters to the GRU cell.", "T")
+      .Input(2, "R", "Input recurrent weight parameters to the GRU cell.", "T")
+      .Input(3, "B", "Input bias parameters to the GRU cell.", "T", OpSchema::Optional)
+      .Input(4, "SL", "Input sequence length of the input sequence.", "TSize", OpSchema::Optional)
+      .Input(5, "Ht0", "Initial hidden state input to the GRU cell", "T", OpSchema::Optional)
+      .Input(6, "HAll", "Hidden states over all sequence steps output from GRUTraining.", "T", OpSchema::Optional)
+      .Input(7, "ZRH", "Intermediate gate computations for all sequence steps output from GRUTraining.", "T", OpSchema::Optional)
+      .Input(8, "dHAll", "Gradient of loss with respect to the output Y of the GRU cell", "T", OpSchema::Optional)
+      .Input(9, "dHFinal", "Gradient of loss with respect to the output Y_h of the GRU cell", "T", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of loss with respect to the input (to the GRU cell).", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of loss with respect to the weight parameters (of the GRU cell).", "T", OpSchema::Optional)
+      .Output(2, "dR", "Gradient of loss with respect to the recurrence weight parameters (of the GRU cell).", "T", OpSchema::Optional)
+      .Output(3, "dB", "Gradient of loss with respect to the bias parameters (of the GRU cell).", "T", OpSchema::Optional)
+      .Output(4, "dH0", "Gradient of loss with respect to the previous hidden state (of the GRU cell).", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the gradient input and output types to float tensors.")
+      .TypeConstraint(
+          "TSize",
+          {"tensor(int32)"},
+          "Constrain the length types to int32 tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto gru_dimensions = GetRNNDimensions(ctx);
+        const auto& num_directions = gru_dimensions[0];
+        const auto& sequence_length = gru_dimensions[1];
+        const auto& batch_size = gru_dimensions[2];
+        const auto& hidden_size = gru_dimensions[3];
+        const auto& hidden_size_x3 = gru_dimensions[4];
+        const auto& input_size = gru_dimensions[5];
+
+        const auto num_outputs = ctx.getNumOutputs();
+        for (size_t i = 0; i < num_outputs; ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+        }
+
+        if (num_outputs > 0)
+          // Gradient with respect to the input tensor
+          updateOutputShape(ctx, 0, {sequence_length, batch_size, input_size});
+
+        if (num_outputs > 1)
+          // Gradient with respect to the weight tensor
+          updateOutputShape(ctx, 1, {num_directions, hidden_size_x3, input_size});
+
+        if (num_outputs > 2)
+          // Gradient with respect to the recurrence weight tensor
+          updateOutputShape(ctx, 2, {num_directions, hidden_size_x3, hidden_size});
+
+        if (num_outputs > 3) {
+          TensorShapeProto::Dimension six;
+          six.set_dim_value(6);
+          // Gradient with respect to the bias tensor
+          updateOutputShape(ctx, 3, {num_directions, six * hidden_size});
+        }
+
+        if (num_outputs > 4) {
+          if (hasInputShape(ctx, 4)) {
+            // Gradient with respect to the initial hidden state
+            updateOutputShape(ctx, 4, {num_directions, batch_size, hidden_size});
+          }
+        }
+      });
 }
 
 }  // namespace training

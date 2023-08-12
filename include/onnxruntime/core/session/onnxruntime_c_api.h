@@ -4346,6 +4346,58 @@ struct OrtApi {
                   _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                   _Inout_updates_all_(output_names_len) OrtValue** output,
                   _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
+
+  /**
+   * Update TensorRT EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * If the data type of the provider option can be represented by string please use UpdateTensorRTProviderOptions.
+   *
+   * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
+   *
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param value - A pointer to the instance that will be assigned to this provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(UpdateTensorRTProviderOptionsWithValue, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _In_ void* value);
+
+  /**
+   * Get TensorRT EP provider option where its data type is pointer.
+   * If the data type of the provider option can be represented by string please use GetTensorRTProviderOptionsAsString.
+   *
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param ptr - A pointer to the instance that is kept by the provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(GetTensorRTProviderOptionsByName, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _Outptr_ void** ptr);
+
+  /**
+   * Update CUDA EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * If the data type of the provider option can be represented by string please use UpdateCUDAProviderOptions.
+   *
+   * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
+   *
+   * \param cuda_options - OrtCUDAProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param value - A pointer to the instance that will be assigned to this provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(UpdateCUDAProviderOptionsWithValue, _Inout_ OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _In_ void* value);
+
+  /**
+   * Get CUDA EP provider option where its data type is pointer.
+   * If the data type of the provider option can be represented by string please use GetCUDAProviderOptionsAsString.
+   *
+   * \param cuda_options - OrtCUDAProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param ptr - A pointer to the instance that is kept by the provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
 };
 
 /*
