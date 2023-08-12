@@ -34,10 +34,10 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
                                         int64_t axis,
                                         bool has_input_float,
                                         bool has_input_int8,
-                                        bool has_output_int8) {
-  return [input_shapes, axis,
-          has_input_float, has_input_int8, has_output_int8](
-             ModelTestBuilder& builder) {
+                                        bool has_output_int8,
+                                        bool use_contrib_qdq) {
+  return [input_shapes, axis, has_input_float, has_input_int8,
+          has_output_int8, use_contrib_qdq](ModelTestBuilder& builder) {
     auto input_count = input_shapes.size();
     std::vector<NodeArg*> input_args;
     std::vector<NodeArg*> q_input_args;
@@ -46,9 +46,9 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
       if (i == 0 && has_input_float) {
         q_input_args.push_back(input_args.back());
       } else if (i == 0 && has_input_int8) {
-        q_input_args.push_back(AddQDQNodePair<int8_t>(builder, input_args.back(), 0.05f, 1));
+        q_input_args.push_back(AddQDQNodePair<int8_t>(builder, input_args.back(), 0.05f, 1, use_contrib_qdq));
       } else {
-        q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128));
+        q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128, use_contrib_qdq));
       }
     }
     auto* concat_output = builder.MakeIntermediate();
@@ -57,15 +57,15 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
 
     auto* q_concat_output = builder.MakeIntermediate();
     if (has_output_int8) {
-      builder.AddQuantizeLinearNode<int8_t>(concat_output, 0.05f, 1, q_concat_output);
+      builder.AddQuantizeLinearNode<int8_t>(concat_output, 0.05f, 1, q_concat_output, use_contrib_qdq);
 
       auto* output_arg = builder.MakeOutput();
-      builder.AddDequantizeLinearNode<int8_t>(q_concat_output, 0.05f, 1, output_arg);
+      builder.AddDequantizeLinearNode<int8_t>(q_concat_output, 0.05f, 1, output_arg, use_contrib_qdq);
     } else {
-      builder.AddQuantizeLinearNode<uint8_t>(concat_output, 0.05f, 128, q_concat_output);
+      builder.AddQuantizeLinearNode<uint8_t>(concat_output, 0.05f, 128, q_concat_output, use_contrib_qdq);
 
       auto* output_arg = builder.MakeOutput();
-      builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg);
+      builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg, use_contrib_qdq);
     }
   };
 }

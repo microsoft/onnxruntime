@@ -2397,17 +2397,20 @@ TEST(QDQTransformerTests, Clip) {
 TEST(QDQTransformerTests, Concat) {
   auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
                        int64_t axis,
-                       bool has_input_float = false,
-                       bool has_input_int8 = false,
-                       bool has_output_int8 = false) {
-    auto check_graph = [&input_shapes, &has_input_float, &has_input_int8, &has_output_int8](InferenceSessionWrapper& session) {
+                       bool has_input_float,
+                       bool has_input_int8,
+                       bool has_output_int8,
+                       bool use_contrib_qdq) {
+    auto check_graph = [&input_shapes, has_input_float, has_input_int8, has_output_int8,
+                        use_contrib_qdq](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       if (has_input_float || has_input_int8 || has_output_int8) {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearConcat"], 0);
       } else {
-        EXPECT_EQ(op_to_count["QuantizeLinear"], static_cast<int>(input_shapes.size()));
+        EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], static_cast<int>(input_shapes.size()));
         EXPECT_EQ(op_to_count["com.microsoft.QLinearConcat"], 1);
-        EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+        EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
       }
     };
 
@@ -2415,7 +2418,8 @@ TEST(QDQTransformerTests, Concat) {
                                              axis,
                                              has_input_float,
                                              has_input_int8,
-                                             has_output_int8),
+                                             has_output_int8,
+                                             use_contrib_qdq),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
@@ -2427,7 +2431,8 @@ TEST(QDQTransformerTests, Concat) {
                                              axis,
                                              has_input_float,
                                              has_input_int8,
-                                             has_output_int8),
+                                             has_output_int8,
+                                             use_contrib_qdq),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
@@ -2439,7 +2444,8 @@ TEST(QDQTransformerTests, Concat) {
                                              axis,
                                              has_input_float,
                                              has_input_int8,
-                                             has_output_int8),
+                                             has_output_int8,
+                                             use_contrib_qdq),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
@@ -2449,11 +2455,51 @@ TEST(QDQTransformerTests, Concat) {
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
-  test_case({{1, 6, 36}, {1, 3, 36}}, 1);
-  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2);
-  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2, true);
-  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2, false, true);
-  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2, false, false, true);
+  test_case({{1, 6, 36}, {1, 3, 36}}, 1,
+            false,   // has_input_float
+            false,   // has_input_int8
+            false,   // has_output_int8
+            false);  // use_contrib_qdq
+  test_case({{1, 6, 36}, {1, 3, 36}}, 1,
+            false,  // has_input_float
+            false,  // has_input_int8
+            false,  // has_output_int8
+            true);  // use_contrib_qdq
+  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2,
+            false,   // has_input_float
+            false,   // has_input_int8
+            false,   // has_output_int8
+            false);  // use_contrib_qdq
+  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2,
+            true,    // has_input_float
+            false,   // has_input_int8
+            false,   // has_output_int8
+            false);  // use_contrib_qdq
+  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2,
+            true,   // has_input_float
+            false,  // has_input_int8
+            false,  // has_output_int8
+            true);  // use_contrib_qdq
+  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2,
+            false,   // has_input_float
+            true,    // has_input_int8
+            false,   // has_output_int8
+            false);  // use_contrib_qdq
+  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2,
+            false,  // has_input_float
+            true,   // has_input_int8
+            false,  // has_output_int8
+            true);  // use_contrib_qdq
+  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2,
+            false,   // has_input_float
+            false,   // has_input_int8
+            true,    // has_output_int8
+            false);  // use_contrib_qdq
+  test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2,
+            false,  // has_input_float
+            false,  // has_input_int8
+            true,   // has_output_int8
+            true);  // use_contrib_qdq
 }
 
 template <typename InputType, typename OutputType>

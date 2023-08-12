@@ -591,7 +591,8 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
                                         int64_t axis,
                                         bool has_input_float = false,
                                         bool has_input_int8 = false,
-                                        bool has_output_int8 = false);
+                                        bool has_output_int8 = false,
+                                        bool use_contrib_qdq = false);
 
 GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp();
 
