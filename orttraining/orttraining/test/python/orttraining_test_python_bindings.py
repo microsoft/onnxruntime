@@ -245,13 +245,9 @@ def test_training_module_checkpoint():
         assert np.array_equal(old_flatten_params.numpy(), new_params.numpy())
 
 
-<<<<<<< HEAD
 @pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
-def test_copy_buffer_to_parameters(optimizer_type):
-=======
 @pytest.mark.parametrize("trainable_only", [True, False])
-def test_copy_buffer_to_parameters(trainable_only):
->>>>>>> main
+def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
@@ -263,13 +259,9 @@ def test_copy_buffer_to_parameters(trainable_only):
             _,
             optimizer_model_file_path,
             _,
-<<<<<<< HEAD
-        ) = _create_training_artifacts(temp_dir, optimizer_type)
-=======
         ) = _create_training_artifacts(
-            temp_dir, requires_grad=["fc2.weight", "fc2.bias"], frozen_params=["fc1.weight", "fc1.bias"]
+            temp_dir, requires_grad=["fc2.weight", "fc2.bias"], frozen_params=["fc1.weight", "fc1.bias"], optimizer_type=optimizer_type
         )
->>>>>>> main
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
 
         # Create a Module and Optimizer.
@@ -392,14 +384,10 @@ def test_get_input_output_names():
         # Create a Module.
         model = Module(training_model_file_path, state, eval_model_file_path)
 
-<<<<<<< HEAD
-        assert model.input_names() == ["input-0", "labels"]
-        assert model.output_names() == ["onnx::loss::152"]
-=======
+
         training_model = onnx.load(training_model_file_path)
         assert model.input_names() == [input.name for input in training_model.graph.input][:2]
         assert model.output_names() == [output.name for output in training_model.graph.output][:1]
->>>>>>> main
 
 
 def test_ort_custom_ops():
