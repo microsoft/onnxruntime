@@ -2589,7 +2589,8 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
                        size_t maxpool_dim,
                        const std::vector<int64_t>& perms,
                        bool add_op_boundary,
-                       bool include_zp) {
+                       bool include_zp,
+                       bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
@@ -2622,28 +2623,29 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
       constexpr float qdq_scale = 0.004f;
       if (include_zp) {
         constexpr uint8_t qdq_zero_point = 129;
-        builder.AddQuantizeLinearNode<uint8_t>(reshape_output, qdq_scale, qdq_zero_point, output_arg);
+        builder.AddQuantizeLinearNode<uint8_t>(reshape_output, qdq_scale, qdq_zero_point, output_arg, use_contrib_qdq);
       } else {
-        builder.AddQuantizeLinearNode(reshape_output, qdq_scale, output_arg);
+        builder.AddQuantizeLinearNode(reshape_output, qdq_scale, output_arg, use_contrib_qdq);
       }
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       std::vector<std::string> expected_op_types_in_order{};
       if (add_op_boundary) {
         expected_op_types_in_order.push_back("Sign");
       }
       expected_op_types_in_order.insert(
           expected_op_types_in_order.end(),
-          {"QuantizeLinear", "DequantizeLinear",
+          {qdq_keys.quantize_linear, qdq_keys.dequantize_linear,
            "Transpose",
-           "QuantizeLinear", "DequantizeLinear",
+           qdq_keys.quantize_linear, qdq_keys.dequantize_linear,
            "MaxPool",
-           "QuantizeLinear", "DequantizeLinear",
+           qdq_keys.quantize_linear, qdq_keys.dequantize_linear,
            "Reshape",
-           "QuantizeLinear"});
+           qdq_keys.quantize_linear});
 
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
@@ -2653,10 +2655,11 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
                       TransformerLevel::Level1);
   };
 
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, true /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true, false /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, QDQPropagation_DQForward) {
@@ -2664,7 +2667,8 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
                        size_t maxpool_dim,
                        const std::vector<int64_t>& perms,
                        bool add_op_boundary,
-                       bool include_zp) {
+                       bool include_zp,
+                       bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
                                                    std::numeric_limits<uint8_t>::min(),
@@ -2676,9 +2680,9 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
       auto* dq_output = builder.MakeIntermediate();
       if (include_zp) {
         constexpr uint8_t qdq_zero_point = 129;
-        builder.AddDequantizeLinearNode<uint8_t>(input_arg, qdq_scale, qdq_zero_point, dq_output);
+        builder.AddDequantizeLinearNode<uint8_t>(input_arg, qdq_scale, qdq_zero_point, dq_output, use_contrib_qdq);
       } else {
-        builder.AddDequantizeLinearNode(input_arg, qdq_scale, dq_output);
+        builder.AddDequantizeLinearNode(input_arg, qdq_scale, dq_output, use_contrib_qdq);
       }
 
       // add Transpose
@@ -2706,19 +2710,20 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       std::vector<std::string> expected_op_types_in_order{
-          "DequantizeLinear",
+          qdq_keys.dequantize_linear,
           "Transpose",
-          "QuantizeLinear", "DequantizeLinear",
+          qdq_keys.quantize_linear, qdq_keys.dequantize_linear,
           "MaxPool",
-          "QuantizeLinear", "DequantizeLinear",
+          qdq_keys.quantize_linear, qdq_keys.dequantize_linear,
           "Reshape",
-          "QuantizeLinear", "DequantizeLinear"};
+          qdq_keys.quantize_linear, qdq_keys.dequantize_linear};
       if (add_op_boundary) {
         expected_op_types_in_order.push_back("Sign");
       }
 
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
@@ -2737,10 +2742,14 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
     // TODO: fix opset 19
   };
 
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, true /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true, true /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false, true /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true, true /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
