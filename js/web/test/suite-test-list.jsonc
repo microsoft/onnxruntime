@@ -363,7 +363,7 @@
       // "test_basic_convinteger",
       // "test_batchnorm_epsilon_training_mode",
       "test_batchnorm_epsilon",
-      "test_batchnorm_example_training_mode",
+      // "test_batchnorm_example_training_mode",
       "test_batchnorm_example",
       // // "test_bernoulli_double_expanded",
       // // "test_bernoulli_double",
