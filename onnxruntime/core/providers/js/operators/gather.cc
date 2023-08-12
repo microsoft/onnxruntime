@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/js/js_kernel.h"
-
+#include "core/providers/js/js_data_types.h"
 #include "gather.h"
 
 namespace onnxruntime {
@@ -24,8 +24,9 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     10,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<AllSupportedSize>())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
+        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
+        .InputMemoryType(OrtMemTypeCPU, 1),
     Gather);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -35,8 +36,9 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<AllSupportedSize>())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
+        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
+        .InputMemoryType(OrtMemTypeCPU, 1),
     Gather);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -45,8 +47,9 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<AllSupportedSize>())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
+        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
+        .InputMemoryType(OrtMemTypeCPU, 1),
     Gather);
 
 }  // namespace js

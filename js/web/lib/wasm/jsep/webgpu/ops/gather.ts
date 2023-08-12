@@ -41,6 +41,15 @@ const createGatherProgramInfo =
       const gatheredBatchElements = N * block * elementSize;
       const axisDimLimit = inputShape[axis];
 
+        const inputIndices: number[] = [];
+        inputs[1].getBigInt64Array().forEach(v => {
+            let value = Number(v);
+            if (value < 0){
+                value += axisDimLimit;
+            }
+            inputIndices.push(value);
+        });
+
       const inputSize = ShapeUtil.size(inputShape) * elementSize;
       const outputSize = ShapeUtil.size(outputShape) * elementSize;
 
@@ -52,9 +61,9 @@ const createGatherProgramInfo =
   const N: u32 = ${N};
   const elementSize: u32 = ${elementSize};
   const indicesElementSize: u32 = ${indicesElementSize};
+  const inputIndices = array<u32, N>(${inputIndices.map(i => `${i}u`).join(',')});
 
   @group(0) @binding(0) var<storage, read> input : array<u32>;
-  @group(0) @binding(1) var<storage, read> inputIndices : array<i32>;
   @group(0) @binding(2) var<storage, read_write> output: array<u32>;
 
   ${shaderHelper.mainStart()}
@@ -63,12 +72,9 @@ const createGatherProgramInfo =
 
     let srcOffsetBatch: u32 = batch * ${dataBatchElements};
     let dstOffsetBatch: u32 = batch * ${gatheredBatchElements};
-    var idx = inputIndices[i * indicesElementSize];
-    if (idx < 0) {
-        idx = idx + ${axisDimLimit};
-    }
+    var idx = inputIndices[i];
 
-    let srcOffset = srcOffsetBatch + u32(idx) * ${blockSize};
+    let srcOffset = srcOffsetBatch + idx * ${blockSize};
     let dstOffset = dstOffsetBatch + i * ${blockSize};
     if (srcOffset >= ${inputSize}) {
         return;
