@@ -7,8 +7,7 @@
 
 #include "core/common/gsl.h"
 
-#include "onnx/onnx_pb.h"
-
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 
 namespace onnxruntime::utils {

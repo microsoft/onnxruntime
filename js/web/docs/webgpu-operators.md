@@ -63,7 +63,7 @@ Do not modify directly.*
 | ReduceSumSquare | ai.onnx(1-10,11-12,13-17,18+) |  |
 | Relu | ai.onnx(6-12,13,14+) |  |
 | Reshape | ai.onnx(5-12,13,14+) | no GPU kernel |
-| Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
+| Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
 | Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | Sin | ai.onnx(7+) |  |
@@ -75,6 +75,7 @@ Do not modify directly.*
 | Squeeze | ai.onnx(1-10,11-12,13+) |  |
 | Sub | ai.onnx(7-12,13,14+) |  |
 | Tan | ai.onnx(7+) |  |
+| Tanh | ai.onnx(6-12,13+) |  |
 | ThresholdedRelu | ai.onnx(10+) |  |
 | Transpose | ai.onnx(1-12,13+) | need perf optimization |
 | Unsqueeze | ai.onnx(1-10,11-12,13+) |  |
