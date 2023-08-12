@@ -16,8 +16,8 @@ namespace cuda {
 class QuantNbitsGemm final : public ::onnxruntime::cuda::CudaKernel {
  public:
   explicit QuantNbitsGemm(const OpKernelInfo& info) : CudaKernel{info} {
-    // ORT_ENFORCE(info.GetAttr("outfeatures", &outfeatures_).IsOK());
-    // ORT_ENFORCE(info.GetAttr("infeatures", &in_features_).IsOK());
+    // ORT_ENFORCE(info.GetAttr("out_features", &outfeatures_).IsOK());
+    ORT_ENFORCE(info.GetAttr("in_features", &in_features_).IsOK());
     bits_ = info.GetAttrOrDefault<int64_t>("bits", 3);
     groupsize_ = info.GetAttrOrDefault<int64_t>("groupsize", 128);
   }
@@ -32,7 +32,7 @@ class QuantNbitsGemm final : public ::onnxruntime::cuda::CudaKernel {
   struct ComputeImpl;
 
   // int64_t outfeatures_;
-  // int64_t in_features_;
+  int64_t in_features_;
   int64_t bits_;
   int64_t groupsize_;
 };
@@ -54,6 +54,7 @@ void DequantWeightNbit(
     void* weight_out,
     uint32_t MATRIX_K,
     uint32_t MATRIX_N,
+    uint32_t bits,
     uint32_t groupsize);
 
 template <typename T>
@@ -147,7 +148,7 @@ Status QuantNbitsGemm::ComputeInternal(OpKernelContext* ctx) const {
                       input_scale->Data<MLFloat16>(),
                       input_zeros->Data<int32_t>(),
                       temp_fp16_weight->MutableData<MLFloat16>(),
-                      weight_shape[0], weight_shape[1], groupsize_);
+                      weight_shape[0], weight_shape[1], bits_, groupsize_);
     return Fp16GemmHelper<MLFloat16>(ctx, temp_fp16_weight.get(), GetDeviceProp(), GetCublasHandle(ctx));
   }
 }
