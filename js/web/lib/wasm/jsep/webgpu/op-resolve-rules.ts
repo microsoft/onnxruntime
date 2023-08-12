@@ -93,5 +93,4 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Tanh', [unaryOps.tanh]],
   ['ThresholdedRelu', [unaryOps.thresholdedRelu, unaryOps.parseAlphaAttributes]],
   ['Transpose', [transpose, parseTransposeAttributes]],
-  ['Gather', [gather, parseGatherAttributes]],
 ]);
