@@ -1,8 +1,6 @@
 parameters:
 - name: DockerImageTag
   type: string
-- name: BuildConfig
-  type: string
 
 steps:
 
@@ -10,6 +8,6 @@ steps:
 # The onnxruntime folder is deleted in the build directory
 # to enforce use of the onnxruntime wheel
 # Uninstall orttraining requirements.txt and install ortmodule requirements.txt before running tests.
-- bash: tools/ci_build/github/azure-pipelines/templates/orttraining-linux-gpu-ortmodule-test-ci-pipeline.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) ${{ parameters.BuildConfig }} ${{ parameters.DockerImageTag }} $(Build.Reason)
+- bash: tools/ci_build/github/azure-pipelines/templates/orttraining-linux-gpu-ortmodule-test-ci-pipeline.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) Release ${{ parameters.DockerImageTag }} $(Build.Reason)
   displayName: 'Run orttraining_ortmodule_tests.py'
   condition: succeededOrFailed()
