@@ -41,14 +41,14 @@ const createGatherProgramInfo =
       const gatheredBatchElements = N * block * elementSize;
       const axisDimLimit = inputShape[axis];
 
-        const inputIndices: number[] = [];
-        inputs[1].getBigInt64Array().forEach(v => {
-            let value = Number(v);
-            if (value < 0){
-                value += axisDimLimit;
-            }
-            inputIndices.push(value);
-        });
+      const inputIndices: number[] = [];
+      inputs[1].getBigInt64Array().forEach(v => {
+        let value = Number(v);
+        if (value < 0) {
+          value += axisDimLimit;
+        }
+        inputIndices.push(value);
+      });
 
       const inputSize = ShapeUtil.size(inputShape) * elementSize;
       const outputSize = ShapeUtil.size(outputShape) * elementSize;
