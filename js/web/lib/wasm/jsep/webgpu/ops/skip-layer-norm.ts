@@ -102,15 +102,16 @@ const createSkipLayerNormProgramInfo =
       ${hasBiasInput ? `@group(0) @binding(${bindingNumber++}) var<storage, read> bias : array<${dataType}>;` : ''}
       @group(0) @binding(${bindingNumber++}) var<storage, read_write> output : array<${dataType}>;
       ${
-          hasMeanOutput ? `@group(0) @binding(${bindingNumber++}) var<storage, read_write> meanOutput : ${dataType};` :
-                          ''}
+          hasMeanOutput ?
+              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> meanOutput : array<${dataType}>` :
+              ''}
       ${
           hasInvStdDevOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> invStdOutput : ${dataType};` :
+              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> invStdOutput : array<${dataType}>` :
               ''}
       ${
           hasInputSkipBiasSumOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> inputSkipBiasSum : array<${dataType}>;` :
+              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> inputSkipBiasSum : array<${dataType}>` :
               ''}
 
       ${shaderHelper.mainStart()}
@@ -130,8 +131,8 @@ const createSkipLayerNormProgramInfo =
         }
         let mean: f32 = sum / f32(hiddenSize);
         let variance: f32 = sqrt(squareSum / f32(hiddenSize) - mean * mean + epsilon);
-        ${hasMeanOutput ? 'meanOutput = mean;' : ''}
-        ${hasInvStdDevOutput ? 'invStdOutput = 1.0 / variance;' : ''}
+        ${hasMeanOutput ? 'meanOutput[global_idx] = mean;' : ''}
+        ${hasInvStdDevOutput ? 'invStdOutput[global_idx] = 1.0 / variance;' : ''}
         for (var i: u32 = 0; i < hiddenSize; i++) {
           output[offset + i] = gamma[i] * (output[offset + i] - mean) / variance +
                                                                           ${hasBetaInput ? 'beta[offset + i]' : '0.0'};
