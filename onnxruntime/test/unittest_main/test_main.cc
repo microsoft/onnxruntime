@@ -1,12 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdlib>
+#include <iostream>
+#include <memory>
+
 #ifndef USE_ONNXRUNTIME_DLL
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-#else
 #endif
 #include <google/protobuf/message_lite.h>
 #ifdef __GNUC__
@@ -14,9 +17,10 @@
 #endif
 #endif
 
+#include "gtest/gtest.h"
+
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/util/thread_utils.h"
-#include "gtest/gtest.h"
 #include "test/test_environment.h"
 
 std::unique_ptr<Ort::Env> ort_env;
@@ -56,6 +60,13 @@ int TEST_MAIN(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
 
     ortenv_setup();
+
+    // allow verbose logging to be enabled by defining this environment variable
+    if (std::getenv("ORT_UNIT_TEST_MAIN_ENABLE_VERBOSE_LOGGING") != nullptr) {
+      std::cout << "Verbose logging is enabled.\n";
+      ort_env->UpdateEnvWithCustomLogLevel(ORT_LOGGING_LEVEL_VERBOSE);
+    }
+
     status = RUN_ALL_TESTS();
   }
   ORT_CATCH(const std::exception& ex) {
