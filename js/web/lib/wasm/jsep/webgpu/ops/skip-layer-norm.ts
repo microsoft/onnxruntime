@@ -81,7 +81,7 @@ const createSkipLayerNormProgramInfo =
       const outputShape = inputShape;
       const outputSize = inputSize;
       const hiddenSize = inputShape.slice(-1)[0];
-      const meanStdDevDim = inputShape.slice(0, -1).concat(1);
+      const meanInvStdDevDim = inputShape.slice(0, -1).concat(1);
       const hasBetaInput = inputs.length > 3;
       const hasBiasInput = inputs.length > 4;
       const dataType = tensorTypeToWsglType(inputs[0].dataType);
@@ -103,15 +103,15 @@ const createSkipLayerNormProgramInfo =
       @group(0) @binding(${bindingNumber++}) var<storage, read_write> output : array<${dataType}>;
       ${
           hasMeanOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> meanOutput : array<${dataType}>` :
+              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> meanOutput : array<${dataType}>;` :
               ''}
       ${
           hasInvStdDevOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> invStdOutput : array<${dataType}>` :
+              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> invStdOutput : array<${dataType}>;` :
               ''}
       ${
           hasInputSkipBiasSumOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> inputSkipBiasSum : array<${dataType}>` :
+              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> inputSkipBiasSum : array<${dataType}>;` :
               ''}
 
       ${shaderHelper.mainStart()}
@@ -140,10 +140,10 @@ const createSkipLayerNormProgramInfo =
       }`;
       const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
       if (hasMeanOutput) {
-        outputs.push({dims: meanStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
       }
       if (hasInvStdDevOutput) {
-        outputs.push({dims: meanStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
       }
       if (hasInputSkipBiasSumOutput) {
         outputs.push({dims: inputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
