@@ -2384,6 +2384,34 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC"));
 
+#ifdef PRINT_ERROR_VALUES
+ONNX_MS_OPERATOR_SET_SCHEMA(PrintErrorValues, 1,
+                            OpSchema()
+                                .Input(0, "X", "input", "T")
+                                .Output(0, "Y", "output", "T")
+                                .TypeConstraint(
+                                    "T",
+                                    {"tensor(float16)", "tensor(float)"},
+                                    "Constrain input and output types to float tensors.")
+                                .Attr(
+                                    "node_name",
+                                    "Name of the node.",
+                                    AttributeProto::STRING)
+                                .Attr(
+                                    "node_type",
+                                    "Type of the node.",
+                                    AttributeProto::STRING)
+                                .Attr(
+                                    "execution_provider",
+                                    "Execution provider that executed the node.",
+                                    AttributeProto::STRING)
+                                .Attr(
+                                    "node_output_index",
+                                    "Index of the output that feeds into X.",
+                                    AttributeProto::INT)
+                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+#endif
+
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);

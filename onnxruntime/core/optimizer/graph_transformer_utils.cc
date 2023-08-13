@@ -84,6 +84,10 @@
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#ifdef PRINT_ERROR_VALUES
+#include "core/optimizer/print_error_values_transformer.h"
+#endif
+
 namespace onnxruntime::optimizer_utils {
 
 static void FilterTransformers(InlinedVector<std::unique_ptr<GraphTransformer>>& transformers,
@@ -356,6 +360,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const std::string probe_level =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
       transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
+#endif
+
+#ifdef PRINT_ERROR_VALUES
+      // This needs to be at the end to make sure that all fused nodes are covered
+      transformers.emplace_back(std::make_unique<PrintErrorValuesTransformer>(dml_ep));
 #endif
 
     } break;

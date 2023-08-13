@@ -244,6 +244,9 @@ cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when usi
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
 
+# Debug options
+option(onnxruntime_PRINT_ERROR_VALUES "Insert nodes that will print potentially wrong values like NaN and INF." OFF)
+
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
 # 1. ORTModule
@@ -1455,6 +1458,10 @@ endif()
 
 if (onnxruntime_ENABLE_ROCM_PROFILING)
   add_compile_definitions(ENABLE_ROCM_PROFILING)
+endif()
+
+if (onnxruntime_PRINT_ERROR_VALUES)
+  add_compile_definitions(PRINT_ERROR_VALUES)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
