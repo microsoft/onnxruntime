@@ -58,6 +58,28 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 template <typename T, int head_size>
 void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
 
+struct DecoderMaskedMultiHeadAttentionQuantKVParams : DecoderMaskedMultiHeadAttentionParams {
+  void* k_scale = nullptr;
+  void* v_scale = nullptr;
+  int   quantize_block_size = 0;
+};
+
+template <
+    // The type of the inputs. Supported types: float and half.
+    typename T,
+    // The hidden dimension per head.
+    int head_size,
+    // The number of threads per key.
+    int THREADS_PER_KEY,
+    // The number of threads per value.
+    int THREADS_PER_VALUE,
+    // The number of threads in a threadblock.
+    int THREADS_PER_BLOCK>
+__global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+
+template <typename T, int head_size>
+void mmha_quant_kv_launch_kernel(const DecoderMaskedMultiHeadAttentionQuantKVParams& params, cudaStream_t stream);
+
 }  // namespace cuda
 
 }  // namespace contrib

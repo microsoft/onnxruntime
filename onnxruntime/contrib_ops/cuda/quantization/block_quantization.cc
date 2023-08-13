@@ -28,7 +28,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 1),  // block_size
     BlockQuantize);
 
-
 Status BlockQuantize::ComputeInternal(OpKernelContext* context) const {
   const Tensor* block_size_tensor = context->Input<Tensor>(1);
   ORT_ENFORCE(IsScalarOr1ElementVector(block_size_tensor),
@@ -43,11 +42,11 @@ Status BlockQuantize::ComputeInternal(OpKernelContext* context) const {
               "input element count should be of full blocks");
   auto block_count = element_count / block_size;
 
-  TensorShape scale_shape{block_count, static_cast<int64_t>(block_size)};
+  TensorShape scale_shape{block_count};
   Tensor* scale_tensor = context->Output(1, scale_shape);
   Tensor* y_tensor = context->Output(0, x_tensor->Shape());
 
-  if (x_tensor->IsDataType<MLFloat16>()) { // half precision float
+  if (x_tensor->IsDataType<MLFloat16>()) {  // half precision float
     typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
     return CudaBlockQuantize(
         Stream(context),
@@ -61,7 +60,6 @@ Status BlockQuantize::ComputeInternal(OpKernelContext* context) const {
 
   ORT_ENFORCE(false, "Current BlockQuantize() do not support other float input except float16.");
 }
-
 
 }  // namespace cuda
 }  // namespace contrib

@@ -24,6 +24,20 @@ class DecoderMaskedMultiHeadAttention final : public CudaKernel {
   bool past_present_share_buffer_;
 };
 
+template <typename T1, typename T2>
+class DecoderMaskedMultiHeadAttentionQuantizedKV final : public CudaKernel {
+ public:
+  DecoderMaskedMultiHeadAttentionQuantizedKV(const OpKernelInfo& info);
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ protected:
+  int num_heads_;  // number of attention heads
+  float mask_filter_value_;
+  float scale_;
+  bool past_present_share_buffer_;
+  int kv_quantize_block_size_;
+};
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
