@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cstdlib>
-#include <iostream>
-#include <memory>
+#include <cstring>
 
 #ifndef USE_ONNXRUNTIME_DLL
 #ifdef __GNUC__
@@ -58,12 +57,13 @@ int TEST_MAIN(int argc, char** argv) {
 
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
-
     ortenv_setup();
 
-    // allow verbose logging to be enabled by defining this environment variable
-    if (std::getenv("ORT_UNIT_TEST_MAIN_ENABLE_VERBOSE_LOGGING") != nullptr) {
-      std::cout << "Verbose logging is enabled.\n";
+    // allow verbose logging to be enabled by setting this environment variable to 1
+    constexpr auto kEnableVerboseLoggingEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_ENABLE_VERBOSE_LOGGING";
+    if (const char* enable_verbose_logging_str = std::getenv(kEnableVerboseLoggingEnvironmentVariableName);
+        enable_verbose_logging_str != nullptr && std::strcmp(enable_verbose_logging_str, "1") == 0) {
+      std::cout << "Enabling verbose logging.\n";
       ort_env->UpdateEnvWithCustomLogLevel(ORT_LOGGING_LEVEL_VERBOSE);
     }
 
