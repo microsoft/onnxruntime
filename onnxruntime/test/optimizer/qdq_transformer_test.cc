@@ -3464,7 +3464,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
 
 #if !defined(DISABLE_CONTRIB_OPS)
 TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis,
+                       bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -5.f, 5.f);
       auto* dq_output_arg = builder.MakeOutput();
@@ -3474,11 +3475,13 @@ TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
       builder.AddQuantizeLinearNode<uint8_t>(input_arg,
                                              .105f,
                                              127,
-                                             input_q_output);
+                                             input_q_output,
+                                             use_contrib_qdq);
       builder.AddDequantizeLinearNode<uint8_t>(input_q_output,
                                                .105f,
                                                127,
-                                               dq_output_arg);
+                                               dq_output_arg,
+                                               use_contrib_qdq);
 
       // add Softmax
       auto* softmax_output = builder.MakeIntermediate();
@@ -3490,21 +3493,24 @@ TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
       builder.AddQuantizeLinearNode<uint8_t>(softmax_output,
                                              1.0f / (std::numeric_limits<uint8_t>::max() + 1),
                                              0,
-                                             q_output);
+                                             q_output,
+                                             use_contrib_qdq);
       builder.AddDequantizeLinearNode<uint8_t>(q_output,
                                                1.0f / (std::numeric_limits<uint8_t>::max() + 1),
                                                0,
-                                               output_arg);
+                                               output_arg,
+                                               use_contrib_qdq);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
 
       // expect fusion because DQ duplication ensures that the node unit has unique DQ nodes
       EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 1);
       EXPECT_EQ(op_to_count["Softmax"], 0);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 2);  // duplicate of first DQ and original second DQ
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 2);  // duplicate of first DQ and original second DQ
     };
 
     TransformerTester(build_test_case,
@@ -3532,12 +3538,14 @@ TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
                       0.01 /*relative_per_sample_tolerance*/);
   };
 
-  test_case({1, 12, 37}, -1);
+  test_case({1, 12, 37}, -1, false);
+  test_case({1, 12, 37}, -1, true);  // Use contrib QDQ ops
 }
 
 // DQ produces graph output - special case for DropDQ path where there is only a DQ -> Node with no trailing Q
 TEST(QDQTransformerTests, DropDQSelectorWithDQProducingGraphOutput) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis, bool dq_produces_graph_output) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis, bool dq_produces_graph_output,
+                       bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -5.f, 5.f);
       auto* output_arg = builder.MakeOutput();
@@ -3546,8 +3554,8 @@ TEST(QDQTransformerTests, DropDQSelectorWithDQProducingGraphOutput) {
       auto* input_q_output = builder.MakeIntermediate();
       auto* dq_output_arg = dq_produces_graph_output ? builder.MakeOutput() : builder.MakeIntermediate();
 
-      builder.AddQuantizeLinearNode<uint8_t>(input_arg, .105f, 127, input_q_output);
-      builder.AddDequantizeLinearNode<uint8_t>(input_q_output, .105f, 127, dq_output_arg);
+      builder.AddQuantizeLinearNode<uint8_t>(input_arg, .105f, 127, input_q_output, use_contrib_qdq);
+      builder.AddDequantizeLinearNode<uint8_t>(input_q_output, .105f, 127, dq_output_arg, use_contrib_qdq);
 
       // add ArgMax
       auto* argmax_output = builder.MakeIntermediate();
@@ -3562,11 +3570,12 @@ TEST(QDQTransformerTests, DropDQSelectorWithDQProducingGraphOutput) {
       const Graph& graph = session.GetGraph();
 
       auto op_to_count = CountOpsInGraph(graph);
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       const auto expected_dq_count =
           dq_produces_graph_output
               ? 1   // EnsureUniqueDQForNodeUnit duplicates one DQ and DropDQ drops one DQ
               : 0;  // DropDQ drops one DQ
-      EXPECT_EQ(op_to_count["DequantizeLinear"], expected_dq_count);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expected_dq_count);
 
       const auto& nodes = graph.Nodes();
       const auto argmax_node_it = std::find_if(nodes.cbegin(),
@@ -3599,8 +3608,14 @@ TEST(QDQTransformerTests, DropDQSelectorWithDQProducingGraphOutput) {
   };
 
   // test with and without the DQ producing a graph output to validate the test hits DropDQ
-  test_case({1, 4, 8}, -1, false);
-  test_case({1, 4, 8}, -1, true);
+
+  // DQ does not produce graph output
+  test_case({1, 4, 8}, -1, false, false);
+  test_case({1, 4, 8}, -1, false, true);  // Use contrib QDQ ops
+
+  // DQ produces graph output
+  test_case({1, 4, 8}, -1, true, false);
+  test_case({1, 4, 8}, -1, true, true);  // Use contrib QDQ ops
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
