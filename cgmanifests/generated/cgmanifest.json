@@ -82,7 +82,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "b113f24842c6e97fe3e352084db09a6e278593ae",
+          "commitHash": "a896e3d066448b3530dbcaa48869fafefd738f57",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -102,7 +102,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a0d77f18516d2da7468a96b0de3b737266f23176",
+          "commitHash": "e2525550194ce3d8a2c4a3af451c9d9b3ae6650e",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
