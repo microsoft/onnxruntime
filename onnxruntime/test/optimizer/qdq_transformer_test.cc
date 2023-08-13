@@ -2753,13 +2753,14 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
 }
 
 TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, bool same_scale, bool same_zp) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, bool same_scale, bool same_zp,
+                       bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
 
       // add QDQ
-      auto* qdq_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 129);
+      auto* qdq_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 129, use_contrib_qdq);
 
       // Reshape
       auto* reshape_output = builder.MakeIntermediate();
@@ -2767,15 +2768,18 @@ TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
       builder.AddNode("Reshape", {qdq_output, reshape_shape}, {reshape_output});
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(reshape_output, same_scale ? .004f : .0039f, same_zp ? 129 : 128, output_arg);
+      builder.AddQuantizeLinearNode<uint8_t>(reshape_output, same_scale ? .004f : .0039f, same_zp ? 129 : 128, output_arg,
+                                             use_contrib_qdq);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       const std::vector<std::string> expected_op_types_in_order{
-          "QuantizeLinear", "DequantizeLinear",
+          qdq_keys.quantize_linear,
+          qdq_keys.dequantize_linear,
           "Reshape",
-          "QuantizeLinear"};
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+          qdq_keys.quantize_linear};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
@@ -2785,14 +2789,22 @@ TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
                       TransformerLevel::Level1);
   };
 
-  test_case({1, 13, 13, 23}, false, false);
-  test_case({1, 13, 13, 23}, false, true);
-  test_case({1, 13, 13, 23}, true, false);
-  test_case({1, 13, 13, 23}, true, true);
+  test_case({1, 13, 13, 23}, false, false, false);
+  test_case({1, 13, 13, 23}, false, false, true);  // Use contrib QDQ ops
+
+  test_case({1, 13, 13, 23}, false, true, false);
+  test_case({1, 13, 13, 23}, false, true, true);  // Use contrib QDQ ops
+
+  test_case({1, 13, 13, 23}, true, false, false);
+  test_case({1, 13, 13, 23}, true, false, true);  // Use contrib QDQ ops
+
+  test_case({1, 13, 13, 23}, true, true, false);
+  test_case({1, 13, 13, 23}, true, true, true);  // Use contrib QDQ ops
 }
 
 TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms,
+                       bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
@@ -2803,15 +2815,17 @@ TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
       transpose_node.AddAttribute("perm", perms);
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .0035f, 135, output_arg);
+      builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .0035f, 135, output_arg, use_contrib_qdq);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       const std::vector<std::string> expected_op_types_in_order{
-          "QuantizeLinear", "DequantizeLinear",
+          qdq_keys.quantize_linear,
+          qdq_keys.dequantize_linear,
           "Transpose",
-          "QuantizeLinear"};
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+          qdq_keys.quantize_linear};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
@@ -2821,11 +2835,13 @@ TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
                       TransformerLevel::Level1);
   };
 
-  test_case({1, 13, 13, 23}, {0, 2, 3, 1});
+  test_case({1, 13, 13, 23}, {0, 2, 3, 1}, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, {0, 2, 3, 1}, true /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms,
+                       bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
                                                    std::numeric_limits<uint8_t>::min(),
@@ -2834,7 +2850,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
 
       // add DQ
       auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .0035f, 135, dq_output);
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .0035f, 135, dq_output, use_contrib_qdq);
 
       // add transpose
       Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {output_arg});
@@ -2842,11 +2858,12 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       const std::vector<std::string> expected_op_types_in_order{
-          "DequantizeLinear",
+          qdq_keys.dequantize_linear,
           "Transpose",
-          "QuantizeLinear", "DequantizeLinear"};
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+          qdq_keys.quantize_linear, qdq_keys.dequantize_linear};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
@@ -2856,11 +2873,13 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
                       TransformerLevel::Level1);
   };
 
-  test_case({1, 13, 13, 23}, {0, 2, 3, 1});
+  test_case({1, 13, 13, 23}, {0, 2, 3, 1}, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, {0, 2, 3, 1}, true /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms,
+                       bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
                                                    std::numeric_limits<uint8_t>::min(),
@@ -2871,7 +2890,8 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
       auto* dq_output = builder.MakeIntermediate();
       auto* dq_scale = builder.Make1DInitializer(std::vector<float>(input_shape[1], 0.0035f));
       auto* dq_zp = builder.Make1DInitializer(std::vector<uint8_t>(input_shape[1], 135));
-      builder.AddNode("DequantizeLinear", {input_arg, dq_scale, dq_zp}, {dq_output});
+      builder.AddNode("DequantizeLinear", {input_arg, dq_scale, dq_zp}, {dq_output},
+                      use_contrib_qdq ? kMSDomain : "");
 
       // add transpose
       Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {output_arg});
@@ -2882,7 +2902,8 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
       // transpose optimization will change the order of the nodes,
       // but as we're testing there's no propagation of the DQ what matters is the op counts.
       auto op_counts = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_counts["DequantizeLinear"], 1);
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_counts[qdq_keys.dequantize_linear], 1);
       EXPECT_EQ(op_counts["Transpose"], 1);
     };
 
@@ -2902,11 +2923,12 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
                       19);  // disable TransposeOptimizer for simplicity
   };
 
-  test_case({1, 13, 13, 23}, {0, 2, 3, 1});
+  test_case({1, 13, 13, 23}, {0, 2, 3, 1}, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, {0, 2, 3, 1}, true /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
                                                    std::numeric_limits<uint8_t>::min(),
@@ -2915,17 +2937,18 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
 
       // add DQ
       auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .0035f, 135, dq_output);
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .0035f, 135, dq_output, use_contrib_qdq);
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(dq_output, .0035f, 135, output_arg);
+      builder.AddQuantizeLinearNode<uint8_t>(dq_output, .0035f, 135, output_arg, use_contrib_qdq);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       const std::vector<std::string> expected_op_types_in_order{
-          "DequantizeLinear",
-          "QuantizeLinear"};
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+          qdq_keys.dequantize_linear,
+          qdq_keys.quantize_linear};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
@@ -2935,7 +2958,8 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
                       TransformerLevel::Level1);
   };
 
-  test_case({1, 13, 13, 23});
+  test_case({1, 13, 13, 23}, false /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, true /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
@@ -3065,14 +3089,14 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 // regression test to validate TransposeOptimizer and QDQ Propagation don't loop
 // see https://github.com/microsoft/onnxruntime/issues/11605
 TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset12_19) {
-  auto test_case = [&]() {
+  auto test_case = [&](bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<uint8_t>({1, 4, 4},
                                                    std::numeric_limits<uint8_t>::min(),
                                                    std::numeric_limits<uint8_t>::max());
       // add DQ
       auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode(input_arg, 0.123f, uint8_t(0), dq_output);
+      builder.AddDequantizeLinearNode(input_arg, 0.123f, uint8_t(0), dq_output, use_contrib_qdq);
 
       // add Transpose 0, 2, 1
       const std::vector<int64_t>& perms{0, 2, 1};
@@ -3100,13 +3124,14 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset12_19) {
     // QDQ cleanup in Level2 removes the unnecessary DQ/Q pair at the start: Tr -> DQ -> SoftM -> Tr
     // this is the optimal result as the Transpose is using 8-bit data and we have no surplus Q/DQ pairs
     auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       std::vector<std::string> expected_op_types_in_order{
           "Transpose",
-          "DequantizeLinear",
+          qdq_keys.dequantize_linear,
           "Softmax",
           "Transpose"};
 
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
@@ -3119,18 +3144,19 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset12_19) {
     // TODO: fix opset 18, 19
   };
 
-  test_case();
+  test_case(false);
+  test_case(true);  // Use contrib QDQ ops
 }
 
 TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
-  auto test_case = [&]() {
+  auto test_case = [&](bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<uint8_t>({1, 4, 4},
                                                    std::numeric_limits<uint8_t>::min(),
                                                    std::numeric_limits<uint8_t>::max());
       // add DQ
       auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode(input_arg, 0.123f, uint8_t(0), dq_output);
+      builder.AddDequantizeLinearNode(input_arg, 0.123f, uint8_t(0), dq_output, use_contrib_qdq);
 
       // add Transpose 0, 2, 1
       const std::vector<int64_t>& perms{0, 2, 1};
@@ -3158,10 +3184,11 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
     // QDQ cleanup in Level2 removes the unnecessary DQ/Q pair at the start: Tr -> DQ -> SoftM -> Tr
     // this is the optimal result as the Transpose is using 8-bit data and we have no surplus Q/DQ pairs
     auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       std::vector<std::string> expected_op_types_in_order{
-          "DequantizeLinear",
+          qdq_keys.dequantize_linear,
           "Softmax"};
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
@@ -3177,7 +3204,8 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
                       19);
   };
 
-  test_case();
+  test_case(false);
+  test_case(true);  // Use contrib QDQ ops
 }
 
 // test removal of Q->DQ pairs by QDQFinalCleanupTransformer
