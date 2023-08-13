@@ -1122,7 +1122,6 @@
       "test_sinh",
       // // "test_size_example",
       // // "test_size",
-      "skip-layer-norm.jsonc",
       "test_slice_default_axes",
       "test_slice_default_steps",
       // "test_slice_end_out_of_bounds",
