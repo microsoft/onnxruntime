@@ -15,6 +15,7 @@
 #include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
@@ -88,24 +89,99 @@ InlinedVector<int64_t> GetStaticOutputShape(gsl::span<const int64_t> inferred_sh
                         << ", resulting static output shape: " << Shape2String(static_shape);
   return static_shape;
 }
+
+Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTensorData>& inputs,
+                                  const logging::Logger& logger,
+                                  id<MLFeatureProvider> __autoreleasing* _Nonnull feature_provider_out,
+                                  InlinedVector<std::unique_ptr<int32_t[]>>& conversion_buffers_out) {
+  NSError* error = nil;
+  InlinedVector<std::unique_ptr<int32_t[]>> conversion_buffers{};
+  NSMutableDictionary* feature_dictionary = [NSMutableDictionary dictionaryWithCapacity:inputs.size()];
+
+  // create a MLMultiArray feature for each input
+  for (const auto& [name, onnx_tensor_data] : inputs) {
+    const auto& shape = onnx_tensor_data.tensor_info.shape;
+
+    NSMutableArray* shape_array = [NSMutableArray arrayWithCapacity:shape.size()];
+    for (const auto dim : shape) {
+      [shape_array addObject:[NSNumber numberWithLongLong:dim]];
+    }
+
+    NSMutableArray* strides_array = [NSMutableArray arrayWithCapacity:shape.size()];
+    {
+      int64_t stride = 1;
+      for (size_t idx = 0; idx < shape.size(); ++idx) {
+        const size_t idx_from_end = shape.size() - 1 - idx;
+        [strides_array insertObject:[NSNumber numberWithLongLong:stride]
+                            atIndex:0];
+
+        stride *= shape[idx_from_end];
+      }
+    }
+
+    MLMultiArrayDataType data_type;
+    void* data_pointer = onnx_tensor_data.buffer;
+
+    switch (onnx_tensor_data.tensor_info.data_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+        data_type = MLMultiArrayDataTypeFloat32;
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        data_type = MLMultiArrayDataTypeInt32;
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        // CoreML doesn't support int64 input so convert to int32 input.
+        data_type = MLMultiArrayDataTypeInt32;
+
+        // Convert the data and store it in a buffer. Add the buffer to `conversion_buffers`.
+        const auto num_elements = narrow<size_t>(ShapeSize(shape));
+        const auto input_span = gsl::span{static_cast<const int64_t*>(onnx_tensor_data.buffer), num_elements};
+        auto conversion_buffer = std::make_unique<int32_t[]>(num_elements);
+        const auto conversion_span = gsl::span{conversion_buffer.get(), num_elements};
+        std::transform(input_span.begin(), input_span.end(), conversion_span.begin(),
+                       [](int64_t v) { return narrow<int32_t>(v); });
+
+        conversion_buffers.emplace_back(std::move(conversion_buffer));
+        data_pointer = conversion_buffers.back().get();
+
+        break;
+      }
+      default: {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output data type is not supported, actual type: ",
+                               onnx_tensor_data.tensor_info.data_type);
+      }
+    }
+
+    MLMultiArray* multi_array = [[MLMultiArray alloc] initWithDataPointer:data_pointer
+                                                                    shape:shape_array
+                                                                 dataType:data_type
+                                                                  strides:strides_array
+                                                              deallocator:^(void* /* bytes */) {
+                                                              }
+                                                                    error:&error];
+    ORT_RETURN_IF(error != nil,
+                  "Failed to create MLMultiArray for feature: ", name,
+                  ", error: ", [[error localizedDescription] UTF8String]);
+
+    MLFeatureValue* feature_value = [MLFeatureValue featureValueWithMultiArray:multi_array];
+    NSString* feature_name = [NSString stringWithUTF8String:name.c_str()];
+    feature_dictionary[feature_name] = feature_value;
+  }
+
+  auto* feature_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:feature_dictionary
+                                                                             error:&error];
+  ORT_RETURN_IF(error != nil,
+                "Failed to create MLDictionaryFeatureProvider, error: ", [[error localizedDescription] UTF8String]);
+
+  *feature_provider_out = feature_provider;
+  conversion_buffers_out = std::move(conversion_buffers);
+  return Status::OK();
+}
 }  // namespace
 
 NS_ASSUME_NONNULL_BEGIN
-
-// Model input for a CoreML model
-// All the input onnx tensors values will be converted to MLMultiArray(s)
-@interface OnnxTensorFeatureProvider : NSObject <MLFeatureProvider> {
-  const std::unordered_map<std::string, OnnxTensorData>* inputs_;
-  NSSet* featureNames_;
-  const logging::Logger* logger_;
-}
-
-- (instancetype)initWithInputs:(const std::unordered_map<std::string, OnnxTensorData>&)inputs
-                        logger:(const logging::Logger&)logger;
-- (nullable MLFeatureValue*)featureValueForName:(NSString*)featureName API_AVAILABLE_OS_VERSIONS;
-- (NSSet<NSString*>*)featureNames;
-
-@end
 
 // Execution for a CoreML model, it performs
 // 1. Compile the model by given path for execution
@@ -131,82 +207,6 @@ NS_ASSUME_NONNULL_BEGIN
     API_AVAILABLE_OS_VERSIONS;
 
 @property MLModel* model API_AVAILABLE_OS_VERSIONS;
-
-@end
-
-@implementation OnnxTensorFeatureProvider
-
-- (instancetype)initWithInputs:(const std::unordered_map<std::string, OnnxTensorData>&)inputs
-                        logger:(const logging::Logger&)logger {
-  if (self = [super init]) {
-    inputs_ = &inputs;
-    logger_ = &logger;
-  }
-  return self;
-}
-
-- (NSSet<NSString*>*)featureNames {
-  if (featureNames_ == nil) {
-    NSMutableArray* names = [[NSMutableArray alloc] init];
-    for (const auto& input : *inputs_) {
-      NSString* inputName = [NSString stringWithCString:input.first.c_str()
-                                               encoding:[NSString defaultCStringEncoding]];
-      NSAssert(inputName != nil, @"inputName must not be nil");
-      [names addObject:inputName];
-    }
-
-    featureNames_ = [NSSet setWithArray:names];
-  }
-
-  return featureNames_;
-}
-
-- (nullable MLFeatureValue*)featureValueForName:(NSString*)featureName {
-  auto it = inputs_->find([featureName cStringUsingEncoding:NSUTF8StringEncoding]);
-  if (it != inputs_->end()) {
-    auto& input = it->second;
-    NSMutableArray* shape = [[NSMutableArray alloc] init];
-    for (const auto dim : input.tensor_info.shape) {
-      [shape addObject:[NSNumber numberWithLongLong:dim]];
-    }
-
-    NSMutableArray* strides = [[NSMutableArray alloc] init];
-    int64_t stride = 1;
-    for (int i = static_cast<int>(input.tensor_info.shape.size()) - 1; i >= 0; i--) {
-      [strides insertObject:[NSNumber numberWithLongLong:stride]
-                    atIndex:0];
-
-      stride *= input.tensor_info.shape[i];
-    }
-
-    MLMultiArrayDataType data_type = MLMultiArrayDataTypeFloat32;
-    if (input.tensor_info.data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      LOGS(*logger_, ERROR) << "Input data type is not float, actual type: "
-                            << input.tensor_info.data_type;
-      return nil;
-    }
-
-    NSError* error = nil;
-    MLMultiArray* mlArray = [[MLMultiArray alloc] initWithDataPointer:input.buffer
-                                                                shape:shape
-                                                             dataType:data_type
-                                                              strides:strides
-                                                          deallocator:^(void* /* bytes */) {
-                                                          }
-                                                                error:&error];
-    if (error != nil) {
-      LOGS(*logger_, ERROR) << "Failed to create MLMultiArray for feature: " << [featureName UTF8String]
-                            << ", error: " << [[error localizedDescription] UTF8String];
-      return nil;
-    }
-
-    NSAssert(mlArray != nil, @"mlArray must not be nil");
-    auto* mlFeatureValue = [MLFeatureValue featureValueWithMultiArray:mlArray];
-    return mlFeatureValue;
-  }
-
-  return nil;
-}
 
 @end
 
@@ -285,18 +285,15 @@ NS_ASSUME_NONNULL_BEGIN
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model is not loaded");
     }
 
-    OnnxTensorFeatureProvider* input_feature = [[OnnxTensorFeatureProvider alloc] initWithInputs:inputs
-                                                                                          logger:*logger_];
-
-    if (input_feature == nil) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "inputFeature is not initialized");
-    }
+    id<MLFeatureProvider> input_features;
+    InlinedVector<std::unique_ptr<int32_t[]>> conversion_buffers;
+    ORT_RETURN_IF_ERROR(CreateInputFeatureProvider(inputs, *logger_, &input_features, conversion_buffers));
 
     MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
     NSError* error = nil;
-    id<MLFeatureProvider> output_feature = [_model predictionFromFeatures:input_feature
-                                                                  options:options
-                                                                    error:&error];
+    id<MLFeatureProvider> output_features = [_model predictionFromFeatures:input_features
+                                                                   options:options
+                                                                     error:&error];
 
     if (error != nil) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ",
@@ -305,10 +302,10 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (const auto& [output_name, output_tensor_info] : outputs) {
       MLFeatureValue* output_value =
-          [output_feature featureValueForName:[NSString stringWithUTF8String:output_name.c_str()]];
+          [output_features featureValueForName:[NSString stringWithUTF8String:output_name.c_str()]];
 
       if (output_value == nil) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_feature has no value for ", output_name);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_features has no value for ", output_name);
       }
 
       auto* data = [output_value multiArrayValue];
@@ -337,22 +334,22 @@ NS_ASSUME_NONNULL_BEGIN
                                  ") do not match");
         }
 
-        const void* model_output_data = data.dataPointer;
+        const void* model_output_buffer = data.dataPointer;
 
-        if (model_output_data == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_data has no data for ", output_name);
+        if (model_output_buffer == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_buffer has no data for ", output_name);
         }
 
         const auto onnx_data_type = output_tensor_info.data_type;
         switch (onnx_data_type) {
           case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
             const auto output_data_byte_size = num_elements * sizeof(float);
-            memcpy(output_buffer, model_output_data, output_data_byte_size);
+            memcpy(output_buffer, model_output_buffer, output_data_byte_size);
             break;
           }
           case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
             const auto output_data_byte_size = num_elements * sizeof(int32_t);
-            memcpy(output_buffer, model_output_data, output_data_byte_size);
+            memcpy(output_buffer, model_output_buffer, output_data_byte_size);
             break;
           }
           // For this case, since Coreml Spec only uses int32 for model output while onnx provides
@@ -362,11 +359,10 @@ NS_ASSUME_NONNULL_BEGIN
             ORT_RETURN_IF_NOT(data.dataType == MLMultiArrayDataTypeInt32,
                               "CoreML output data type is not MLMultiArrayDataTypeInt32");
 
-            const int32_t* model_output_data_i32 = static_cast<const int32_t*>(model_output_data);
-            int64_t* output_tensor_buffer_i64 = static_cast<int64_t*>(output_buffer);
-            for (size_t i = 0; i < num_elements; i++) {
-              output_tensor_buffer_i64[i] = model_output_data_i32[i];
-            }
+            const auto model_output_span = gsl::span{static_cast<const int32_t*>(model_output_buffer), num_elements};
+            const auto output_span = gsl::span{static_cast<int64_t*>(output_buffer), num_elements};
+            std::transform(model_output_span.begin(), model_output_span.end(), output_span.begin(),
+                           [](int32_t v) { return static_cast<int64_t>(v); });
             break;
           }
           default:

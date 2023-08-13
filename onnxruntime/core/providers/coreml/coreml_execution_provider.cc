@@ -150,6 +150,8 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
 
+        ORT_ENFORCE(coreml::IsStaticShape(shape), "Runtime shape (", coreml::Shape2String(shape), ") is not static.");
+
         // Disallow inputs with dynamic shape which actually have zero elements.
         // CoreML doesn't consistently handle this well (e.g., there may be runtime errors).
         if (const auto* model_input_info = model->TryGetInputOutputInfo(input_name); model_input_info != nullptr) {

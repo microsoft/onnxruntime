@@ -99,10 +99,12 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   SessionOptions so;
   // Ignore the shape inference error so that we can hit the invalid index error.
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
-  test.Run(so, OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
-           // On Cuda it is impossible to dereference indices memory on CPU so the check can not run
-           {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kTensorrtExecutionProvider,
-            kNnapiExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider});
+  test
+    .Config(so)
+    .Config(OpTester::ExpectResult::kExpectFailure,
+           "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]")
+    .ConfigEp(DefaultCpuExecutionProvider())
+    .RunWithConfig();
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)

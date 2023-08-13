@@ -83,13 +83,10 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, EmptyInputFails) {
   tester.AddInput<float>("A", {0, 2}, {});
   tester.AddOutput<float>("Y", {0, 4}, {});
 
-  auto eps = std::vector<std::unique_ptr<IExecutionProvider>>{};
-  eps.emplace_back(std::make_unique<CoreMLExecutionProvider>(0));
-
   tester
       .Config(ModelTester::ExpectResult::kExpectFailure,
               "the runtime shape ({0,2}) has zero elements. This is not supported by the CoreML EP.")
-      .ConfigEps(std::move(eps))
+      .ConfigEp(std::make_unique<CoreMLExecutionProvider>(0))
       .RunWithConfig();
 }
 

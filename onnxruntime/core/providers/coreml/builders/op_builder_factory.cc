@@ -114,6 +114,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateShapeOpBuilder("Shape", op_registrations);
   }
 
+  {  // Gather
+    CreateGatherOpBuilder("Gather", op_registrations);
+  }
+
   return op_registrations;
 }
 

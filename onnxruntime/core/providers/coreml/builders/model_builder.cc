@@ -140,6 +140,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     }
   }
 
+  // TODO do we need to set shape for outputs? maybe skip for dynamic (i.e., unknown) output shapes
   if (IsStaticShape(shape)) {
     *multi_array->mutable_shape() = {shape.cbegin(), shape.cend()};
   } else {
@@ -167,7 +168,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     const auto* type_proto = node_arg.TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The  ", input_output_type, " of graph doesn't have elem_type: ", name);
+                             "The ", input_output_type, " of graph doesn't have elem_type: ", name);
     }
 
     data_type = type_proto->tensor_type().elem_type();
@@ -179,10 +180,10 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
         multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        // If we have an int64 input/output type, since COREML_SPEC:ArrayFeatureType does not support INT64
+        // we assign it to be INT32 here
+        multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
         if (!is_input) {
-          // If we have an int64 output type, since COREML_SPEC:ArrayFeatureType does not support INT64
-          // we assign it to be INT32 here
-          multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
           // Record the output names and we need to change them back to Int64 when CoreML EP returns these values to ORT
           AddInt64Output(name);
         }
@@ -190,7 +191,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       default: {
         // TODO: support other type
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The  ", input_output_type, " of graph doesn't have valid type, name: ", name,
+                               "The ", input_output_type, " of graph doesn't have valid type, name: ", name,
                                " type: ", type_proto->tensor_type().elem_type());
       }
     }

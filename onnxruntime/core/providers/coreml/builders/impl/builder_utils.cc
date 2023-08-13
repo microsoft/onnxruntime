@@ -5,7 +5,7 @@
 
 #include "core/providers/coreml/builders/impl/builder_utils.h"
 
-#include "core/common/safeint.h"
+#include "core/common/narrow.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/shared/utils/utils.h"
@@ -88,26 +88,35 @@ Status HandleAutoPad(const std::vector<int64_t> input_shape,
   return Status::OK();
 }
 
-void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
-                        const float* data, size_t num_elements) {
-  *weight.mutable_floatvalue() = {data, data + num_elements};
-}
-
 Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                           const ONNX_NAMESPACE::TensorProto& tensor) {
-  auto data_type = tensor.data_type();
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    Initializer unpacked_tensor(tensor);
-    auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
-    CreateCoreMLWeight(weight, unpacked_tensor.data<float>(), num_elements);
-  } else {
-    // TODO: support other type
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  const auto data_type = tensor.data_type();
+  Initializer unpacked_tensor(tensor);
+  switch(data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<float>());
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<int64_t>());
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "The initializer of graph has unsupported type, name: ",
                            tensor.name(), " type: ", data_type);
   }
-
   return Status::OK();
+}
+
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const float> data) {
+  weight.mutable_floatvalue()->Assign(data.begin(), data.end());
+}
+
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int64_t> data) {
+  google::protobuf::RepeatedField<float> weight_floats{};
+  weight_floats.Reserve(narrow<int>(data.size()));
+  std::transform(data.begin(), data.end(), google::protobuf::RepeatedFieldBackInserter(&weight_floats),
+                 [](int64_t v) { return narrow<float>(v); });
+  *weight.mutable_floatvalue() = std::move(weight_floats);
 }
 
 }  // namespace coreml
