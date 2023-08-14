@@ -58,17 +58,24 @@ const createLayerNormProgramInfo =
 
           const hasMeanDataOutput = outputCount > 1;
           const hasInvStdOutput = outputCount > 2;
+          let bindingIndex = 0;
           const getShaderSource = (shaderHelper: ShaderHelper) => `
   const normSize: u32 = ${normSize};
   const normSizeTyped: ${dataType} = ${normSize};
   const epsilon: f32 = ${attributes.epsilon};
 
-  @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
-  @group(0) @binding(1) var<storage, read> scale : array<${dataType}>;
-  ${bias ? `@group(0) @binding(2) var<storage, read> bias : array<${dataType}>;` : ''}
-  @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
-  ${hasMeanDataOutput ? `@group(0) @binding(4) var<storage, read_write> meanDataOutput : array<${dataType}>` : ''};
-  ${hasInvStdOutput ? `@group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>` : ''};
+  @group(0) @binding(${bindingIndex++}) var<storage, read> x : array<${dataType}>;
+  @group(0) @binding(${bindingIndex++}) var<storage, read> scale : array<${dataType}>;
+  ${bias ? `@group(0) @binding(${bindingIndex++}) var<storage, read> bias : array<${dataType}>;` : ''}
+  @group(0) @binding(${bindingIndex++}) var<storage, read_write> output : array<${dataType}>;
+  ${
+              hasMeanDataOutput ?
+                  `@group(0) @binding(${bindingIndex++}) var<storage, read_write> meanDataOutput : array<${dataType}>` :
+                  ''};
+  ${
+              hasInvStdOutput ?
+                  `@group(0) @binding(${bindingIndex++}) var<storage, read_write> invStdOutput : array<${dataType}>` :
+                  ''};
 
   ${shaderHelper.mainStart()}
     let offset = global_idx * normSize;
