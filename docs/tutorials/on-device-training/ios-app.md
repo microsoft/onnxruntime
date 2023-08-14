@@ -948,12 +948,34 @@ The complete implementation of the `ContentView` can be found [here](https://git
 
 
 ## Running the iOS application
-Now, we are ready to run the application. You can run the application on the simulator or on the device. To run the application on the simulator, you can select the simulator from the list of available simulators and click on the run button.
+Now, we are ready to run the application. You can run the application on the simulator or on the device. You can find more information about running the application on the simulator and device [here](https://developer.apple.com/documentation/xcode/devices-and-simulator).
 
-<!-- Insert Xcode picture -->
 
- To run the application on the device, you will need to create a provisioning profile and sign the application with the profile. You can find more information about running the application on the device [here](https://developer.apple.com/documentation/xcode/devices-and-simulator).
+a. Now, When you run the application, you should see the following screen:
 
+<img src="../../../images/iOS_speaker_identification_app.png"  width="30%" height="30%">
+
+
+b. Next, click on the `Train` button to navigate to the `TrainingView`. The `TrainingView` will prompt you to record your voice. You will need to record your voice `kNumRecordings` times. 
+<img src="../../../images/iOS_speaker_identification_screenshot_4.jpg"  width="30%" height="30%">
+
+
+c. Once all the recordings are complete, the application will train the model on the given data. You will see the progress bar indicating the progress of the training.
+
+<img src="../../../images/iOS_speaker_identification_screenshot_5.jpg"  width="30%" height="30%">
+
+
+d. Once the training is complete, you will see the following screen:
+
+<img src="../../../images/iOS_speaker_identification_screenshot_6.jpg"  width="30%" height="30%">
+
+
+e. Now, click on the `Infer` button to navigate to the `InferView`. The `InferView` will prompt you to record your voice. Once the recording is complete, it will perform inference with the trained model and display the result of the inference.
+
+<img src="../../../images/iOS_speaker_identification_screenshot_7.jpg"  width="30%" height="30%">
+
+
+That's it! Hopefully, it identified your voice correctly.
 
 ## Conclusion
 Congratulations! You have successfully built an iOS application that can train a simple audio classification model using on-device training techniques. You can now use the application to train a model on your own voice and perform inference with the trained model. The application is also available on GitHub at  [`onnxruntime-training-examples`](https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/ios)
