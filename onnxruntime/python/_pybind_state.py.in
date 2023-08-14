@@ -7,7 +7,6 @@ Ensure that dependencies are available and then load the extension module.
 """
 import os
 import platform
-import sys
 import warnings
 
 from . import _ld_preload  # noqa: F401
