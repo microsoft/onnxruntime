@@ -52,9 +52,9 @@ jobs:
         --build-arg BUILD_UID=$(id -u)
         --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
         --build-arg ROCM_VERSION=${{ parameters.RocmVersion }}
-        --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
-        --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
-        --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+        --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root
+        --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin:
+        --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
       Repository: onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }}
 
   - task: CmdLine@2
@@ -66,7 +66,7 @@ jobs:
           --network=host \
           --cap-add=SYS_PTRACE \
           --security-opt seccomp=unconfined \
-          -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+          -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /onnxruntime_src \
