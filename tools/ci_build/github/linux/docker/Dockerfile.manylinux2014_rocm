@@ -35,7 +35,6 @@ LABEL maintainer="The ManyLinux project"
 # of the base docker image. Remove this line moving forward.
 RUN yum install -y hipify-clang
 
-# CMake
 RUN yum -y install wget
 
 # rocm lib
