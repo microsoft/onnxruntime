@@ -15,7 +15,7 @@ export interface LayerNormAttributes extends AttributeWithCacheKey {
 }
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
-  if (!inputs || inputs.length <= 2) {
+  if (!inputs || inputs.length < 2) {
     throw new Error('layerNorm requires at least 2 inputs.');
   }
 
@@ -41,7 +41,7 @@ const createLayerNormProgramInfo =
           const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
           if (scaleSize !== normSize || (bias && biasSize !== normSize)) {
             throw new Error(`Size of X.shape()[axis:] == ${normSize}.
-       Size of scale and bias (if provided) must match this. 
+       Size of scale and bias (if provided) must match this.
        Got scale size of ${scaleSize} and bias size of ${biasSize}`);
           }
 
