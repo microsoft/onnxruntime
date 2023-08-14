@@ -1,92 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 4dd56b6e..f4068a3d 100644
+index 4dd56b6e..018da488 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -26,7 +26,7 @@ option(ONNX_BUILD_TESTS "Build ONNX C++ APIs Tests" OFF)
- option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
- option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
- option(ONNX_DISABLE_STATIC_REGISTRATION "Disable static registration for onnx operator schemas." OFF)
--
-+include(FetchContent)
- if(NOT DEFINED ONNX_ML)
-   if(DEFINED ENV{ONNX_ML})
-     set(DEFAULT_ONNX_ML $ENV{ONNX_ML})
-@@ -130,7 +130,25 @@ if(ONNX_BUILD_TESTS)
-   include(googletest)
- endif()
- 
--if((ONNX_USE_LITE_PROTO AND TARGET protobuf::libprotobuf-lite) OR ((NOT ONNX_USE_LITE_PROTO) AND TARGET protobuf::libprotobuf))
-+if(NOT abseil_cpp_POPULATED)
-+  FetchContent_Declare(
-+    abseil_cpp
-+    URL https://github.com/abseil/abseil-cpp/archive/refs/tags/20230125.3.zip
-+    URL_HASH SHA1=9fdc3e68db241076d6d9c485bab1622fcc832f9c
-+    FIND_PACKAGE_ARGS NAMES absl
-+  )
-+  FetchContent_MakeAvailable(abseil_cpp)
-+endif()
-+
-+if(NOT Protobuf_POPULATED)
-+  FetchContent_Declare(
-+    Protobuf
-+    URL https://github.com/protocolbuffers/protobuf/archive/refs/tags/v23.4.zip
-+    URL_HASH SHA1=b45a39176589d5dce5ad3267bd01de1ea3874496
-+    FIND_PACKAGE_ARGS NAMES protobuf
-+  )
-+  FetchContent_MakeAvailable(protobuf)
-+endif()
-   # Sometimes we need to use protoc compiled for host architecture while linking
-   # libprotobuf against target architecture. See https://github.com/caffe2/caffe
-   # 2/blob/96f35ad75480b25c1a23d6e9e97bccae9f7a7f9c/cmake/ProtoBuf.cmake#L92-L99
-@@ -140,45 +158,8 @@ if((ONNX_USE_LITE_PROTO AND TARGET protobuf::libprotobuf-lite) OR ((NOT ONNX_USE
-   else()
-     set(ONNX_PROTOC_EXECUTABLE $<TARGET_FILE:protobuf::protoc>)
-   endif()
--else()
--  # Customized version of find Protobuf. We need to avoid situations mentioned
--  # in https://github.com/caffe2/caffe2/blob/b7d983f255ef5496474f1ea188edb5e0ac4
--  # 42761/cmake/ProtoBuf.cmake#L82-L92 The following section is stolen from
--  # cmake/ProtoBuf.cmake in Caffe2
--  find_program(Protobuf_PROTOC_EXECUTABLE
--               NAMES protoc
--               DOC "The Google Protocol Buffers Compiler")
--
--  # Only if protoc was found, seed the include directories and libraries. We
--  # assume that protoc is installed at PREFIX/bin. We use get_filename_component
--  # to resolve PREFIX.
--  if(Protobuf_PROTOC_EXECUTABLE)
--    set(ONNX_PROTOC_EXECUTABLE ${Protobuf_PROTOC_EXECUTABLE})
--    get_filename_component(_PROTOBUF_INSTALL_PREFIX
--                           ${Protobuf_PROTOC_EXECUTABLE} DIRECTORY)
--    get_filename_component(_PROTOBUF_INSTALL_PREFIX
--                           ${_PROTOBUF_INSTALL_PREFIX}/.. REALPATH)
--    find_library(Protobuf_PROTOC_LIBRARY
--                 NAMES protoc
--                 PATHS ${_PROTOBUF_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}
--                 NO_DEFAULT_PATH)
--    if(ONNX_USE_LITE_PROTO)
--      find_library(Protobuf_LITE_LIBRARY
--        NAMES protobuf-lite
--        PATHS ${_PROTOBUF_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}
--        NO_DEFAULT_PATH)
--    else()
--      find_library(Protobuf_LIBRARY
--        NAMES protobuf
--        PATHS ${_PROTOBUF_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}
--        NO_DEFAULT_PATH)
--    endif(ONNX_USE_LITE_PROTO)
--    find_path(Protobuf_INCLUDE_DIR google/protobuf/service.h
--              PATHS ${_PROTOBUF_INSTALL_PREFIX}/include
--              NO_DEFAULT_PATH)
--    find_package(Protobuf REQUIRED)
--  endif()
--endif()
-+
-+
- 
- # Build the libraries with -fPIC
- set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-@@ -397,6 +378,7 @@ if (MSVC)
+@@ -397,6 +397,7 @@ if (MSVC)
    endif()
  else()
    # On non-Windows, hide all symbols we don't need
@@ -94,49 +10,7 @@ index 4dd56b6e..f4068a3d 100644
    set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
    set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
    set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
-@@ -495,7 +477,40 @@ if(BUILD_ONNX_PYTHON)
-   target_link_libraries(onnx_cpp2py_export PRIVATE onnx)
- 
-   if(MSVC)
--    target_link_libraries(onnx_cpp2py_export PRIVATE ${PYTHON_LIBRARIES})
-+    target_link_libraries(onnx_cpp2py_export PRIVATE absl::absl_check
-+    absl::absl_log
-+    absl::algorithm
-+    absl::base
-+    absl::bind_front
-+    absl::bits
-+    absl::btree
-+    absl::cleanup
-+    absl::cord
-+    absl::core_headers
-+    absl::debugging
-+    absl::die_if_null
-+    absl::dynamic_annotations
-+    absl::flags
-+    absl::flat_hash_map
-+    absl::flat_hash_set
-+    absl::function_ref
-+    absl::hash
-+    absl::layout
-+    absl::log_initialize
-+    absl::log_severity
-+    absl::memory
-+    absl::node_hash_map
-+    absl::node_hash_set
-+    absl::optional
-+    absl::span
-+    absl::status
-+    absl::statusor
-+    absl::strings
-+    absl::synchronization
-+    absl::time
-+    absl::type_traits
-+    absl::utility
-+    absl::variant ${PYTHON_LIBRARIES})
-     target_compile_options(onnx_cpp2py_export
-                            PRIVATE /MP
-                                    /wd4244 # 'argument': conversion from 'google::
-@@ -548,20 +563,9 @@ endif()
+@@ -548,20 +549,9 @@ endif()
  if(MSVC)
    target_compile_options(onnx_proto
                           PRIVATE /MP
@@ -157,47 +31,16 @@ index 4dd56b6e..f4068a3d 100644
                                   ${EXTRA_FLAGS})
    if(ONNX_USE_PROTOBUF_SHARED_LIBS)
        target_compile_options(onnx_proto
-@@ -614,15 +618,6 @@ configure_file(
-   ${PROJECT_SOURCE_DIR}/cmake/ONNXConfig.cmake.in
-   ${PROJECT_BINARY_DIR}/ONNXConfig.cmake
-   @ONLY)
--install(FILES
--  ${PROJECT_BINARY_DIR}/ONNXConfigVersion.cmake
--  ${PROJECT_BINARY_DIR}/ONNXConfig.cmake
--  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ONNX
--  COMPONENT dev)
--install(EXPORT ONNXTargets DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ONNX")
--install(TARGETS
--  onnx onnx_proto
--  EXPORT ONNXTargets DESTINATION ${CMAKE_INSTALL_LIBDIR})
- 
- if(ONNX_BUILD_TESTS)
-   include(${ONNX_ROOT}/cmake/unittest.cmake)
-diff --git a/onnx/defs/schema.h b/onnx/defs/schema.h
-index b529c999..6906de5d 100644
---- a/onnx/defs/schema.h
-+++ b/onnx/defs/schema.h
-@@ -19,6 +19,7 @@
- #include <unordered_map>
- #include <unordered_set>
- #include <vector>
-+#include <map>
- 
- #include "onnx/common/common.h"
- #include "onnx/common/constants.h"
 diff --git a/onnx/onnx_pb.h b/onnx/onnx_pb.h
-index 0aab3e26..a732c894 100644
+index 0aab3e26..0f859267 100644
 --- a/onnx/onnx_pb.h
 +++ b/onnx/onnx_pb.h
-@@ -47,10 +47,40 @@
+@@ -47,10 +47,28 @@
  #define ONNX_API ONNX_IMPORT
  #endif
- 
-+//  onnx/onnx-operators-ml.pb.h:1178:25:   required from here
-+//  protobuf/src/google/protobuf/repeated_ptr_field.h:752:66: error: unused parameter ‘prototype’ [-Werror=unused-parameter]
+
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic push
-+#pragma GCC diagnostic ignored "-Wunused-parameter"
 +
 +// In file included from onnx/onnx-ml.pb.h:30:
 +// In file included from google/protobuf/extension_set.h:53:
@@ -208,25 +51,29 @@ index 0aab3e26..a732c894 100644
 +#endif
 +#endif  // defined(__has_warning)
 +
-+#elif defined(_MSC_VER)
-+#pragma warning(push)
-+// include\google/protobuf/port.h(96,68): warning C4100: 'context': unreferenced formal parameter
-+#pragma warning(disable : 4100)
-+#pragma warning(disable : 4146)
-+#pragma warning(disable : 4127)
-+#pragma warning(disable : 4267)
-+#pragma warning(disable : 4244)
-+#endif
++#endif  // defined(__GNUC__)
 +
  #ifdef ONNX_ML
  #include "onnx/onnx-ml.pb.h"
  #else
  #include "onnx/onnx.pb.h"
  #endif
- 
+
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic pop
-+#elif defined(_MSC_VER)
-+#pragma warning(pop)
 +#endif
++
  #endif // ! ONNX_ONNX_PB_H
+diff --git a/onnx/checker.cc b/onnx/checker.cc
+index 8fdaf037..1beb1b88 100644
+--- a/onnx/checker.cc
++++ b/onnx/checker.cc
+@@ -190,7 +190,7 @@ void check_tensor(const TensorProto& tensor, const CheckerContext& ctx) {
+         }
+         std::string data_path = path_join(ctx.get_model_dir(), relative_path);
+         // use stat64 to check whether the file exists
+-#ifdef __APPLE__
++#if defined(__APPLE__) || defined(__wasm__)
+         struct stat buffer; // APPLE does not have stat64
+         if (stat((data_path).c_str(), &buffer) != 0) {
+ #else

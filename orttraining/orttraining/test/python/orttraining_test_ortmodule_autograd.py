@@ -5,6 +5,7 @@
 # pylint: disable=C0103
 # pylint: disable=W0212
 
+import onnx
 import pytest
 import torch
 
@@ -1200,51 +1201,6 @@ def test_checkpoint_function():
     run()
 
 
-def test_skipped_autograd_function():
-    class TestSkippedFunction(torch.autograd.Function):
-        @staticmethod
-        # bias is an optional argument
-        def forward(ctx, x):
-            ctx.save_for_backward(x)
-            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
-
-        @staticmethod
-        def backward(ctx, grad_output):
-            return None
-
-    class TestSkippedModel(torch.nn.Module):
-        def __init__(self, output_size):
-            super().__init__()
-            self.custom_fn = TestSkippedFunction.apply
-            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
-
-            with torch.no_grad():
-                self.bias.uniform_()
-
-        def forward(self, model_input):
-            # model_input did not require_grad
-            out = self.custom_fn(model_input)
-            return out + self.bias
-
-    output_size = 1024
-
-    os.environ[  # noqa: F405
-        "ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"
-    ] = "orttraining_test_ortmodule_autograd.test_skipped_autograd_function.<locals>.TestSkippedFunction"
-
-    m = ORTModule(TestSkippedModel(output_size).to("cuda"))
-    can_run = True
-    try:
-        m(torch.randn(output_size, dtype=torch.float, device="cuda"))
-    except RuntimeError as e:
-        assert "No forward registered for TestSkippedFunction" in str(e)
-        can_run = False
-
-    assert not can_run
-
-    del os.environ["ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"]  # noqa: F405
-
-
 def test_pythonop_training_mode():
     def check_pythonop_training_mode(model, is_eval_mode):
         ## make sure the ort's PythonOp's training_mode is correct
@@ -1367,3 +1323,168 @@ def test_python_op_save_input_for_backward():
 
     label_input = torch.ones([output_size])
     run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
+
+
+class DupNamedFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, bias):
+        ctx.save_for_backward(input, bias)
+        assert False  # should not be called # noqa: B011
+        return bias + input
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        assert False  # should not be called # noqa: B011
+        return grad_output, grad_output
+
+
+def test_duplicate_named_functions():
+    triggered = [False, False]
+
+    class DupNamedFunction(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, input, bias):
+            ctx.save_for_backward(input, bias)
+            triggered[0] = True
+            return bias - input
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            triggered[1] = True
+            return -grad_output, grad_output
+
+    class DpNamedModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super().__init__()
+            self.relu = DupNamedFunction.apply
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
+
+            with torch.no_grad():
+                self.bias.uniform_()
+
+        def forward(self, model_input):
+            out = self.relu(model_input, self.bias)
+            return out
+
+    output_size = 1024
+
+    def model_builder():
+        return DpNamedModel(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
+
+    assert triggered[0]
+    assert triggered[1]
+
+
+def test_customized_shape_inference():
+    def _check_pythonop_shape(model):
+        graph = model._torch_module._execution_manager._training_manager._onnx_models.optimized_model.graph
+        found_pythonop = False
+        python_op_input = []
+        python_op_output = []
+        for node in graph.node:
+            if node.op_type == "PythonOp":
+                found_pythonop = True
+                python_op_input = node.input
+                python_op_output = node.output
+                break
+
+        assert found_pythonop, "PythonOp should be found in the optimized_model"
+
+        input_shapes = [None]
+        input_dtypes = [None]
+
+        output_shapes = [None, None]
+        output_dtypes = [None, None]
+
+        def _find_shape_and_dtype(value_infos):
+            for value_info in value_infos:
+                if value_info.name == python_op_input[0]:
+                    input_shapes[0] = value_info.type.tensor_type.shape
+                    input_dtypes[0] = value_info.type.tensor_type.elem_type
+
+                if value_info.name == python_op_output[0]:
+                    output_shapes[0] = value_info.type.tensor_type.shape
+                    output_dtypes[0] = value_info.type.tensor_type.elem_type
+
+                if value_info.name == python_op_output[1]:
+                    output_shapes[1] = value_info.type.tensor_type.shape
+                    output_dtypes[1] = value_info.type.tensor_type.elem_type
+
+        _find_shape_and_dtype(graph.input)
+        _find_shape_and_dtype(graph.value_info)
+
+        assert all(s is not None for s in input_shapes), "PythonOp input shape should be found in the optimized_model"
+        assert (
+            all(d is not None for d in input_dtypes) is not None
+        ), "PythonOp input dtype should be found in the optimized_model"
+
+        assert all(s is not None for s in output_shapes), "PythonOp output shape should be found in the optimized_model"
+        assert (
+            all(d is not None for d in output_dtypes) is not None
+        ), "PythonOp output dtype should be found in the optimized_model"
+
+        def _compare_shape(shape1, shape2):
+            if len(shape1.dim) != len(shape2.dim):
+                return False
+
+            for dim1, dim2 in zip(shape1.dim, shape2.dim):
+                if dim1.HasField("dim_value") and dim1.HasField("dim_value") and dim1.dim_value == dim2.dim_value:
+                    continue
+
+                if dim1.HasField("dim_param") and dim1.HasField("dim_param") and dim1.dim_param == dim2.dim_param:
+                    continue
+
+                return False
+
+            return True
+
+        assert output_dtypes[0] == onnx.TensorProto.INT64
+        assert len(output_shapes[0].dim) == 0
+        assert _compare_shape(input_shapes[0], output_shapes[1])
+        assert input_dtypes[0] == output_dtypes[1]
+
+    class CustomShapeInferFunction(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x):
+            ctx.save_for_backward(x)
+            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            x = ctx.saved_tensors
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            return ff * grad_output
+
+        @staticmethod
+        def infer_shape(node: onnx.NodeProto, tensor_input_shapes, tensor_input_dtypes):
+            return [tensor_input_shapes[0]], [tensor_input_dtypes[0]]
+
+    class TestModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super().__init__()
+            self.custom_fn = CustomShapeInferFunction.apply
+            self.bias = Parameter(torch.empty(output_size, dtype=torch.float))
+
+            with torch.no_grad():
+                self.bias.uniform_()
+
+        def forward(self, model_input):
+            # model_input did not require_grad
+            out = self.custom_fn(model_input)
+            return out + self.bias
+
+    output_size = 1024
+    ortmodule = ORTModule(
+        TestModel(output_size),
+    ).train()
+    _ = ortmodule(torch.randn(output_size, dtype=torch.float))
+    _check_pythonop_shape(ortmodule)

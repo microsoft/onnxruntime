@@ -4208,21 +4208,14 @@ def test_hf_save_pretrained():
             assert p1.data.ne(p2.data).sum() == 0
 
 
-def test_ortmodule_string_inputs_are_ignored(caplog):
+def test_ortmodule_string_inputs_are_ignored():
     pt_model = MyStrNet()
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
-    x = torch.randn(1, 2)
-
-    out = ort_model(x, "hello")
-
     target_str = "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
-    found_target_str = False
-    for record in caplog.records:
-        if target_str in record.message:
-            found_target_str = True
-
-    assert found_target_str
-    _test_helpers.assert_values_are_close(out, x + 1)
+    with pytest.warns(UserWarning, match=target_str):
+        ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
+        x = torch.randn(1, 2)
+        out = ort_model(x, "hello")
+        _test_helpers.assert_values_are_close(out, x + 1)
 
 
 def test_ortmodule_list_input():
@@ -5748,14 +5741,17 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     "test_cases",
     [
         ("Add", 0),
-        ("Add", 1),
         ("Add", 2),
+        ("Add", 3),
+        ("Add", 4),
         ("Sub", 0),
-        ("Sub", 1),
         ("Sub", 2),
+        ("Sub", 3),
+        ("Sub", 4),
         ("Mul", 0),
-        ("Mul", 1),
         ("Mul", 2),
+        ("Mul", 3),
+        ("Mul", 4),
         ("MatMul", 0),
         ("MatMul", 1),
         ("Dropout", 0),
@@ -5768,8 +5764,6 @@ def test_ops_for_padding_elimination(test_cases):
     os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     test_op = test_cases[0]
     case = test_cases[1]
-    # test_op = "Sub"
-    # case = 2
 
     class ToyModel(torch.nn.Module):
         def __init__(self, vocab_size, hidden_size, pad_token_id):
@@ -5783,10 +5777,13 @@ def test_ops_for_padding_elimination(test_cases):
         # in case 0, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [hidden_size],
         #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
         #            output of test_op.
-        # in case 1, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
-        #            this case is not support in padding elimination, so the test_op should not be included in padding
-        #            elimination subgraph and the GatherGrad should be added before test_op.
-        # in case 2, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
+        # in case 2, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
+        #            the test_op should be included in padding elimination subgraph and a 'Expand + Reshape + ShrunkenGather'
+        #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
+        # in case 3, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [1, hidden_size],
+        #            the test_op should be included in padding elimination subgraph and a 'Expand + Reshape + ShrunkenGather'
+        #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
+        # in case 4, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
         #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
         #            output of test_op. Besides, the other input of Add should be added 'Reshape + ShrunkenGather' to
         #            flatten and elimination padding.
@@ -5795,9 +5792,11 @@ def test_ops_for_padding_elimination(test_cases):
             one_input = None
             if case == 0:
                 one_input = torch.ones(self.hidden_size, dtype=torch.long).to(device)
-            elif case == 1:
-                one_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
             elif case == 2:
+                one_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
+            elif case == 3:
+                one_input = torch.ones((1, self.hidden_size), dtype=torch.long).to(device)
+            elif case == 4:
                 one_input = torch.ones(input_shape, dtype=torch.long).to(device)
                 one_input = one_input.unsqueeze(-1).expand(-1, -1, self.hidden_size)
             inputs_embeds = self.word_embeddings(input_ids)
@@ -5885,7 +5884,7 @@ def test_ops_for_padding_elimination(test_cases):
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "NonZero"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "Squeeze"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "PadAndUnflatten"]) == 1
-    if case == 2:
+    if case >= 2:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
@@ -5900,10 +5899,7 @@ def test_ops_for_padding_elimination(test_cases):
 
     gathergrad_input_optypes = [find_input_node_type(training_model, arg) for arg in gathergrad_node.input]
     if test_op == "Add" or test_op == "Mul" or test_op == "Sub":
-        if case == 0:
-            assert test_op in gathergrad_input_optypes
-        elif case == 1:
-            assert "ATen" in gathergrad_input_optypes
+        assert test_op in gathergrad_input_optypes
     elif test_op == "MatMul":
         if case == 0:
             assert "ATen" in gathergrad_input_optypes
@@ -6002,7 +5998,7 @@ def test_e2e_padding_elimination():
 
     def run_optim_step(optimizer):
         optimizer.step()
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=False)
 
     # Generate one batch of inputs (shape:[batch_size, max_seq_length]) and masks (shape:[batch_size, max_seq_length]).
     # Each input has random length from 1 to max_seq_length*0.8 with values from 2 to vocab_size and padded with 1 at
@@ -6048,8 +6044,7 @@ def test_e2e_padding_elimination():
         run_optim_step(ort_optimizer)
 
         for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
-            if pt_param.grad is not None:
-                _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
+            _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
 
         if os.getenv("ORTMODULE_ROCM_TEST", "0") == "1":
             # For ROCm EP, the difference between ORT and PyTorch is larger than CUDA EP.
@@ -6147,3 +6142,66 @@ def test_cache_exported_model():
         torch.onnx.export.reset_mock()
 
         del os.environ["ORTMODULE_CACHE_DIR"]
+
+
+def test_reciprocal_gradient():
+    class ReciprocalModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, x):
+            return 1 / x
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = "cuda"
+    pt_model = ReciprocalModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(3, 224, 224, requires_grad=True, device=device)
+    with torch.no_grad():
+        pt_x[pt_x <= 0] -= 0.2
+        pt_x[pt_x > 0] += 0.2
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+def test_leakyrelu_gradient():
+    class LeakyReluModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.leakyrelu = nn.LeakyReLU(0.5)
+
+        def forward(self, x):
+            return self.leakyrelu(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = "cuda"
+    pt_model = LeakyReluModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(3, 224, 224, requires_grad=True, device=device)
+    with torch.no_grad():
+        pt_x[pt_x <= 0] -= 0.2
+        pt_x[pt_x > 0] += 0.2
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)

@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type ElementwiseCustomExpression = (expression: string) => string;
@@ -23,17 +24,20 @@ const createElementwiseProgramShader =
       } else {
         expression = funcCall('a');
       }
+
+      const input = inputVariable('inputData', DataType.float, [vecSize], 4);
+      const output = outputVariable('outputData', DataType.float, [vecSize], 4);
+
       return `
-  @group(0) @binding(0) var<storage, read> inputData : array<vec4<f32>>;
-  @group(0) @binding(1) var<storage, read_write> outputData : array<vec4<f32>>;
+  ${shaderHelper.declareVariables(input, output)}
 
   ${additionalImplementation ?? ''}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
 
-    let a = inputData[global_idx];
-    outputData[global_idx] = ${expression};
+    let a = ${input.getByOffset('global_idx')};
+    ${output.setByOffset('global_idx', expression)}
   }`;
     };
 
@@ -170,6 +174,12 @@ export const exp = (context: ComputeContext): void => {
 
 export const floor = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Floor', 'floor'));
+};
+
+export const gelu = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'Gelu', a => `0.5 * ${a} * (1.0 + erf_vf32(${a} * 0.7071067811865475))`,
+      erfImpl('vec4<f32>')));
 };
 
 export const leakyRelu = (context: ComputeContext, attributes: AlphaAttributes): void => {

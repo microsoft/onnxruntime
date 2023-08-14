@@ -116,7 +116,7 @@ if (MSVC)
     endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date_interface WIL::WIL)
+onnxruntime_add_include_to_target(onnxruntime_common date::date WIL::WIL)
 target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
     # propagate include directories of dependencies that are part of public interface

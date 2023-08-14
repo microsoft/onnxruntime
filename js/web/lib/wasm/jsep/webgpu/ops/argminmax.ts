@@ -7,11 +7,10 @@
 
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
-import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {createReduceProgramInfo, ReduceOp} from './reduce';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length === 0 || inputs.length > 2) {
@@ -24,132 +23,70 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 
 export interface ArgMinMaxAttributes extends AttributeWithCacheKey {
   keepDims: boolean;
-  axes: number;
+  axis: number;
   selectLastIndex: number;
 }
-
-type ArgMinMaxOp = (inputs: readonly TensorView[], axes: number[]) => string[];
-
-const createReduceProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ArgMinMaxAttributes,
-     argMinMaxOp: ArgMinMaxOp): ProgramInfo => {
-      const outputShape: number[] = [];
-      const inputShape = inputs[0].dims;
-
-      const idxCopy: string[] = [];  // copy output indexes to input indexes
-
-      const axes = ShapeUtil.normalizeAxes([attributes.axes], inputs[0].dims.length);
-      const outputDimsLength = inputs[0].dims.length - (attributes.keepDims ? 0 : axes.length);
-      const ops = argMinMaxOp(inputs, axes);
-      const inputIndicesHelper = createIndicesHelper('input', inputShape);
-      const initInputIdx = (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`;
-      let reduceOps = `
-          let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};
-          ${ops[2]};`;
-      for (let k = 0; k < inputs[0].dims.length; k++) {
-        // if this axis is reduced
-        if (axes.indexOf(k) >= 0) {
-          if (attributes.keepDims) {
-            outputShape.push(1);
-          }
-          // loop over the d-th axis
-          reduceOps = `for(var j${k}: u32 = 0; j${k} < ${inputs[0].dims[k]}; j${k}++) {
-                            let lastIndex = j${k};
-                            inputIndices[${k}] = lastIndex;
-                            ${reduceOps}
-                          }`;
-        } else {
-          if (outputDimsLength > 1) {
-            idxCopy.push(`inputIndices[${k}] = outputIndices[${outputShape.length}];`);
-          } else {
-            idxCopy.push(`inputIndices[${k}] = outputIndices;`);
-          }
-          outputShape.push(inputs[0].dims[k]);
-        }
-      }
-
-      const outputIndicesHelper = createIndicesHelper('output', outputShape);
-      const outputSize = ShapeUtil.size(outputShape);
-      const dataType = 'f32';
-
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
-          @group(0) @binding(0) var<storage, read> _A : array<${dataType}>;
-          @group(0) @binding(1) var<storage, read_write> output : array<i32>;
-
-          ${outputIndicesHelper.o2iImpl}
-          ${inputIndicesHelper.i2oImpl}
-
-          ${shaderHelper.mainStart()}
-          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
-          ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-          ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
-
-          ${idxCopy.join('\n')}
-          ${ops[0]}       // init ops
-          ${initInputIdx}
-          ${ops[1]}
-          ${reduceOps}
-          ${ops[3]} // final values
-          output[global_idx*2] = bestIndex; // result it int64
-        }`;
-
-      return {
-        ...metadata,
-        getShaderSource,
-        outputs: [{dims: outputShape, dataType: DataType.int64, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64)})
-      };
-    };
 
 const createArgMinMaxAttributesFromInputs =
     (inputs: readonly TensorView[], attributes: ArgMinMaxAttributes): ArgMinMaxAttributes =>
         createAttributeWithCacheKey(
-            {axes: attributes.axes, keepDims: attributes.keepDims, selectLastIndex: attributes.selectLastIndex});
+            {axis: attributes.axis, keepDims: attributes.keepDims, selectLastIndex: attributes.selectLastIndex});
 
-const createReduceProgramInfoLoader =
-    (inputs: readonly TensorView[], name: string, attributes: ArgMinMaxAttributes, reduceOp: ArgMinMaxOp):
+const createArgMinMaxProgramInfoLoader =
+    (inputs: readonly TensorView[], name: string, attributes: ArgMinMaxAttributes, reduceOp: ReduceOp):
         ProgramInfoLoader => {
           const updatedAttributes: ArgMinMaxAttributes =
               inputs.length === 1 ? attributes : createArgMinMaxAttributesFromInputs(inputs, attributes);
-          const metadata:
-              ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
-          return {...metadata, get: () => createReduceProgramInfo(metadata, [inputs[0]], updatedAttributes, reduceOp)};
+          const cacheHint = updatedAttributes.cacheKey + inputs.map(x => x.dims.toString()).join('_');
+          const metadata: ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint};
+          return {
+            ...metadata,
+            get: () => createReduceProgramInfo(
+                metadata, [inputs[0]], reduceOp, [updatedAttributes.axis], DataType.int64, updatedAttributes.keepDims)
+          };
         };
 
 
 export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes): void => {
   validateInputs(context.inputs);
-  const argMinMaxOp: ArgMinMaxOp = (inputs: TensorView[], axes: number[]): string[] => {
+  const argMinMaxOp: ReduceOp = (input, output, axes) => {
     const idxZero = [];
-    for (let k = 0; k < inputs[0].dims.length; k++) {
+    for (let k = 0; k < input.shape.length; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
         idxZero.push(`inputIndices[${k}] = 0;`);  // first element
       }
     }
     return [
-      `${idxZero.join('\n')}`, 'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
-      'if (_A[inputIdx] < value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);} ', ''
+      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('inputOffset')};\nvar bestIndex : i32 = 0;`,
+      `if (${input.getByOffset('inputOffset')} ${attributes.selectLastIndex > 0 ? '<=' : '<'} value) {
+         value = ${input.getByOffset('inputOffset')};
+         bestIndex = i32(lastIndex);
+       }`,
+      '', output.setByOffset('global_idx', 'bestIndex')
     ];
   };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ArgMin', attributes, argMinMaxOp), {inputs: [0]});
+  context.compute(createArgMinMaxProgramInfoLoader(context.inputs, 'ArgMin', attributes, argMinMaxOp), {inputs: [0]});
 };
 
 export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes): void => {
   validateInputs(context.inputs);
-  const argMinMaxOp: ArgMinMaxOp = (inputs: TensorView[], axes: number[]): string[] => {
+  const argMinMaxOp: ReduceOp = (input, output, axes) => {
     const idxZero = [];
-    for (let k = 0; k < inputs[0].dims.length; k++) {
+    for (let k = 0; k < input.shape.length; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
         idxZero.push(`inputIndices[${k}] = 0;`);  // first element
       }
     }
     return [
-      `${idxZero.join('\n')}`, 'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
-      'if (_A[inputIdx] > value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);} ', ''
+      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('inputOffset')};\nvar bestIndex : i32 = 0;`,
+      `if (${input.getByOffset('inputOffset')} ${attributes.selectLastIndex > 0 ? '>=' : '>'} value) {
+         value = ${input.getByOffset('inputOffset')};
+         bestIndex = i32(lastIndex);
+       }`,
+      '', output.setByOffset('global_idx', 'bestIndex')
     ];
   };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'argMax', attributes, argMinMaxOp), {inputs: [0]});
+  context.compute(createArgMinMaxProgramInfoLoader(context.inputs, 'argMax', attributes, argMinMaxOp), {inputs: [0]});
 };
 
 export const parseArgMinMaxAttributes = (attributes: Record<string, unknown>): ArgMinMaxAttributes =>

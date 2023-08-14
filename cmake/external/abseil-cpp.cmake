@@ -40,6 +40,8 @@ if (GDK_PLATFORM)
   target_compile_definitions(absl_symbolize PRIVATE WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP)
 endif()
 
+# TODO: since multiple ORT's dependencies depend on Abseil, the list below would vary from version to version.
+# We'd better to not manually manage the list.
 set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set
-    absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set
-    absl::hash absl::city absl::low_level_hash absl::raw_logging_internal absl::synchronization absl::time)
+    absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::core_headers absl::fixed_array absl::throw_delegate absl::raw_hash_set
+    absl::str_format absl::hash absl::city absl::low_level_hash absl::raw_logging_internal absl::synchronization absl::time)

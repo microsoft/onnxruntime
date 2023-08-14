@@ -185,11 +185,15 @@ FetchContent_Declare(
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
-  FIND_PACKAGE_ARGS 22.3.0 NAMES protobuf
+  FIND_PACKAGE_ARGS 3.21.12 NAMES Protobuf
 )
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
-set(protobuf_INSTALL OFF CACHE BOOL "Install protobuf binaries and files" FORCE)
+#TODO: we'd better to turn the following option off. However, it will cause 
+# ".\build.bat --config Debug --parallel --skip_submodule_sync --update" fail with an error message:
+# install(EXPORT "ONNXTargets" ...) includes target "onnx_proto" which requires target "libprotobuf-lite" that is 
+# not in any export set.
+#set(protobuf_INSTALL OFF CACHE BOOL "Install protobuf binaries and files" FORCE)
 set(protobuf_USE_EXTERNAL_GTEST ON CACHE BOOL "" FORCE)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -207,13 +211,12 @@ set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
 set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
-      date
-      URL ${DEP_URL_date}
-      URL_HASH SHA1=${DEP_SHA1_date}
-    )
+  date
+  URL ${DEP_URL_date}
+  URL_HASH SHA1=${DEP_SHA1_date}
+  FIND_PACKAGE_ARGS 3...<4 NAMES date
+)
 onnxruntime_fetchcontent_makeavailable(date)
-
-
 
 FetchContent_Declare(
   mp11
@@ -485,7 +488,7 @@ endif()
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} WIL::WIL nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date_interface)
+set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} WIL::WIL nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date)
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)

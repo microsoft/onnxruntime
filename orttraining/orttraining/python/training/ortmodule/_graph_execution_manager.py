@@ -19,6 +19,7 @@ from torch.utils.cpp_extension import ROCM_HOME
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+from onnxruntime.training.utils import ORTModelInputOutputSchemaType
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
 from ._custom_autograd_function_exporter import _post_process_after_export
@@ -32,7 +33,7 @@ from ._fallback import (
 )
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
-from ._io import _FlattenedModule, _InputInfo, _ModelInputOutputSchemaType
+from ._io import _FlattenedModule, _InputInfo
 from ._runtime_inspector import RuntimeInspector
 from ._utils import check_function_has_param, get_rank
 from .options import DebugOptions, LogLevel, _RuntimeOptions
@@ -104,7 +105,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Input and output infos (including schema) for exported model.
         self._input_info: Optional[_InputInfo] = None
-        self._module_output_schema: Optional[_ModelInputOutputSchemaType] = None
+        self._module_output_schema: Optional[ORTModelInputOutputSchemaType] = None
 
         # Device where the model is placed.
         self._device: Optional[torch.device] = _utils.get_device_from_module(module)
@@ -271,7 +272,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
         random_states = _utils.get_random_states()
 
-        schema = _io._extract_schema({"args": copy.copy(inputs), "kwargs": copy.copy(kwargs)}, self._logger)
+        schema = _io._extract_schema({"args": copy.copy(inputs), "kwargs": copy.copy(kwargs)}, self._device)
         if (
             self._onnx_models.exported_model
             and schema == self._input_info.schema
@@ -279,7 +280,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         ):
             # All required models have already been exported previously
             return False
-
         self._set_device_from_module(inputs, kwargs)
         self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
         if self._debug_options.save_onnx_models.save:
@@ -299,7 +299,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         return True
 
-    def _get_exported_model(self, input_schema: _ModelInputOutputSchemaType, *inputs, **kwargs) -> onnx.ModelProto:
+    def _get_exported_model(self, input_schema: ORTModelInputOutputSchemaType, *inputs, **kwargs) -> onnx.ModelProto:
         """Exports PyTorch `self._flattened_module` to ONNX for inferencing or training,
           using `*inputs` and `**kwargs` as input
 
@@ -319,7 +319,9 @@ class GraphExecutionManager(GraphExecutionInterface):
             output_names,
             output_dynamic_axes,
             self._module_output_schema,
-        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs, self._logger)
+        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
+            self._original_module, inputs, kwargs, self._logger, self._device
+        )
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
