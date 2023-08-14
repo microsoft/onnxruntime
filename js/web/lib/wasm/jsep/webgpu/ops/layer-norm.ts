@@ -118,7 +118,8 @@ export const layerNorm = (context: ComputeContext, attributes: LayerNormAttribut
 
   const metadata = {
     name: 'LayerNormalization',
-    inputTypes: [GpuDataType.default, GpuDataType.default, GpuDataType.default],
+    inputTypes: context.inputs.length === 2 ? [GpuDataType.default, GpuDataType.default] :
+                                              [GpuDataType.default, GpuDataType.default, GpuDataType.default],
     cacheHint: attributes.cacheKey + context.outputCount.toString(10) + context.inputs.length.toString(10),
   };
 
