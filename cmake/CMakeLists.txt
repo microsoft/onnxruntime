@@ -558,7 +558,7 @@ if (WIN32)
     list(APPEND ORT_WARNING_FLAGS "/wd5054")
     # Enable warning: data member 'member' will be initialized after data member 'member2' / base class 'base_class'
     list(APPEND ORT_WARNING_FLAGS "/w15038")
-    # Supress Level 3 (c4996) compile warning : https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4996
+    # Suppress Level 3 (c4996) compile warning : https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4996
     list(APPEND ORT_WARNING_FLAGS "/wd4996")
 
     # set linker flags to minimize the binary size.
