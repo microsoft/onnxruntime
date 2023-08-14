@@ -153,7 +153,7 @@ const createSkipLayerNormProgramInfo =
         ...metadata,
         getShaderSource,
         outputs,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / hiddenSize) / 64})
+        dispatchGroup: () => ({x: Math.ceil(outputSize / hiddenSize / 64)})
       };
     };
 
