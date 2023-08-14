@@ -7,3 +7,4 @@ node_modules/
 /lib/**/*.js
 /script/**/*.js
 /test/**/*.js
+#noop
