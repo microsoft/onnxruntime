@@ -124,6 +124,10 @@ class ComputeContextImpl implements ComputeContext {
       this.module.stackRestore(stack);
     }
   }
+
+  downloadSync(gpuDataId: number): ArrayBufferLike {
+    return this.backend.downloadSync(gpuDataId);
+  }
 }
 
 export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {

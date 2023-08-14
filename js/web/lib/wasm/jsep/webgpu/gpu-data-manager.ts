@@ -33,6 +33,10 @@ export interface GpuDataManager {
    */
   release(id: GpuDataId): number;
   /**
+   * copy data from GPU to CPU synchronously.
+   */
+  downloadSync(id: GpuDataId): ArrayBufferLike;
+  /**
    * copy data from GPU to CPU.
    */
   download(id: GpuDataId): Promise<ArrayBufferLike>;
@@ -191,6 +195,97 @@ class GpuDataManagerImpl implements GpuDataManager {
     // cachedData.gpuData.buffer.destroy();
 
     return cachedData.originalSize;
+  }
+
+  downloadSync(id: GpuDataId): ArrayBufferLike {
+    const cachedData = this.storageCache.get(id);
+    if (!cachedData) {
+      throw new Error('data does not exist');
+    }
+    const bufferSize = calcNormalizedBufferSize(cachedData.originalSize);
+
+    const pixelsSize = bufferSize / 4;
+    const valsGPU = new ArrayBuffer(bufferSize);
+    const canvasWidth = 256, canvasHeight = 256;
+    const stagingDeviceStorage = new OffscreenCanvas(canvasWidth, canvasHeight);
+    const stagingHostStorage = new OffscreenCanvas(canvasWidth, canvasHeight);
+
+    const commandEncoder = this.backend.getCommandEncoder();
+    this.backend.endComputePass();
+
+    const context = stagingDeviceStorage.getContext('webgpu');
+    if (context) {
+      context.configure({
+        device: this.backend.device,
+        format: 'rgba8unorm',
+        usage: GPUTextureUsage.COPY_DST,
+        alphaMode: 'premultiplied',
+      });
+      const texture = context.getCurrentTexture();
+
+      const bytesPerRow = canvasWidth * 4;
+      const readDataGPUToCPU = (width: number, height: number, offset: number) => {
+        commandEncoder.copyBufferToTexture(
+            {
+              buffer: cachedData.gpuData.buffer,
+              bytesPerRow,
+              offset,
+            },
+            {
+              texture,
+            },
+            {
+              width,
+              height,
+            });
+        this.backend.flush();
+
+        const gl = stagingHostStorage.getContext('webgl2');
+        if (gl) {
+          const glTex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, glTex);
+          gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, stagingDeviceStorage);
+          const fb = gl.createFramebuffer();
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, glTex, 0);
+
+          const id = new Uint8ClampedArray(valsGPU, offset, width * height * 4);
+          gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, id);
+        } else {
+          throw new Error(
+              'Cannot copy data from GPU to CPU synchronously, ' +
+              'OffscreenCanvas does not support webgl2 drawing context.');
+        }
+      };
+
+      const fullyReadCount = Math.floor(pixelsSize / (canvasWidth * canvasHeight));
+      let width = canvasWidth, height = canvasHeight, offset = 0;
+      for (let i = 0; i < fullyReadCount; i++) {
+        // Read the buffer data, which fully fill the whole canvas.
+        readDataGPUToCPU(width, height, offset);
+        offset += canvasWidth * canvasHeight * 4;
+      }
+
+      const remainSize = pixelsSize % (canvasWidth * canvasHeight);
+      height = Math.floor(remainSize / canvasWidth);
+      if (height > 0) {
+        // Read the buffer data, which fully fill certain rows of canvas.
+        readDataGPUToCPU(width, height, offset);
+        offset += height * (canvasWidth * 4);
+      }
+
+      width = remainSize % canvasWidth;
+      if (width > 0) {
+        // Read the buffer data, which not fully fill one row of canvas.
+        readDataGPUToCPU(width, 1, offset);
+      }
+    } else {
+      throw new Error(
+          'Cannot copy data from GPU to CPU synchronously, OffscreenCanvas does not support webgpu drawing context.');
+    }
+
+    return valsGPU;
   }
 
   async download(id: GpuDataId): Promise<ArrayBufferLike> {

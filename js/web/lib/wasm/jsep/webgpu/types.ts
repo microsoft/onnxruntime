@@ -147,4 +147,5 @@ export interface ComputeContext {
   compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
       TensorView[];
   output(index: number, dims: readonly number[]): number;
+  downloadSync(gpuDataId: number): ArrayBufferLike;
 }

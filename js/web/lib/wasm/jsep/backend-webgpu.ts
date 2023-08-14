@@ -299,6 +299,10 @@ export class WebGpuBackend {
     this.gpuDataManager.memcpy(src, dst);
   }
 
+  downloadSync(gpuDataId: number): ArrayBufferLike {
+    return this.gpuDataManager.downloadSync(gpuDataId);
+  }
+
   async download(gpuDataId: number, getTargetBuffer: () => Uint8Array): Promise<void> {
     const arrayBuffer = await this.gpuDataManager.download(gpuDataId);
 
