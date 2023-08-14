@@ -31,7 +31,7 @@ AlignConsecutiveMacros:
 AlignEscapedNewlines: Left
 AlignOperands: DontAlign
 AlignTrailingComments:
-  Kind: Leave
+  Kind: Always
   OverEmptyLines: 0
 AllowAllArgumentsOnNextLine: true
 AllowAllParametersOfDeclarationOnNextLine: true
@@ -136,7 +136,7 @@ IntegerLiteralSeparator:
   HexMinDigits: 0
 KeepEmptyLinesAtTheStartOfBlocks: false
 LambdaBodyIndentation: Signature
-LineEnding: DeriveLF
+LineEnding: CRLF
 MacroBlockBegin: ""
 MacroBlockEnd: ""
 MaxEmptyLinesToKeep: 1
