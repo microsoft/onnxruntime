@@ -161,7 +161,7 @@ const createSkipLayerNormProgramInfoLoader =
     (inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number): ProgramInfoLoader => {
       const inputTypes = new Array(inputs.length).fill(GpuDataType.default);
       const metadata: ProgramMetadata = {
-        name: 'SkipLayerNorm',
+        name: 'SkipLayerNormalization',
         inputTypes,
         cacheHint: attributes.cacheKey,
       };

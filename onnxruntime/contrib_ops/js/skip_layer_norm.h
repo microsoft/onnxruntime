@@ -16,7 +16,7 @@ class SkipLayerNorm final : public JsKernel {
   SkipLayerNorm(const OpKernelInfo& op_kernel_info) : JsKernel(op_kernel_info) {
     ORT_ENFORCE(op_kernel_info.GetAttr("epsilon", &epsilon_).IsOK());
     ORT_ENFORCE(epsilon_ >= 0);
-    JSEP_INIT_KERNEL_ATTRIBUTE(SkipLayerNorm, ({
+    JSEP_INIT_KERNEL_ATTRIBUTE(SkipLayerNormalization, ({
                                  "epsilon" : $1
                                }),
                                epsilon_);

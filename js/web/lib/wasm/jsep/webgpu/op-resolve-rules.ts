@@ -86,7 +86,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Sin', [unaryOps.sin]],
   ['Sinh', [unaryOps.sinh]],
   ['Slice', [slice, parseSliceAttributes]],
-  ['SkipLayerNorm', [skipLayerNorm, parseSkipLayerNormAttributes]],
+  ['SkipLayerNormalization', [skipLayerNorm, parseSkipLayerNormAttributes]],
   ['Split', [split, parseSplitAttributes]],
   ['Sqrt', [unaryOps.sqrt]],
   ['Softmax', [softmax, parseSoftmaxAttributes]],
