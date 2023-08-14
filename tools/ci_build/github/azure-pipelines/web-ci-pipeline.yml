@@ -7,7 +7,11 @@ trigger:
     include:
     - 'js/web'
     - 'js/node'
-    - 'onnxruntime/core/providers/js'
+    - 'onnxruntime'
+    exclude:
+    - 'onnxruntime/core/providers/tensorrt'
+    - 'onnxruntime/core/providers/cuda'
+    - 'onnxruntime/core/providers/rocm'
 pr:
   branches:
     include:
@@ -17,7 +21,11 @@ pr:
     include:
     - 'js/web'
     - 'js/node'
-    - 'onnxruntime/core/providers/js'
+    - 'onnxruntime'
+    exclude:
+    - 'onnxruntime/core/providers/tensorrt'
+    - 'onnxruntime/core/providers/cuda'
+    - 'onnxruntime/core/providers/rocm'
 parameters:
 - name: NpmPublish
   displayName: 'NPM packages publish configuration'
