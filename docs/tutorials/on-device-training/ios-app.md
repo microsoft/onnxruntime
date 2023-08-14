@@ -20,7 +20,7 @@ Here is what the application will look like:
 ## Introduction
 We will guide you through the process of building an iOS application that can train a simple audio classification model using on-device training techniques. The tutorial showcases the `transfer learning` technique where knowledge gained from training a model on one task is leveraged to improve the performance of a model on a different but related task. Instead of starting the learning process from scratch, transfer learning allows us to transfer the knowledge or features learned by a pre-trained model to a new task.
 
-In this tutorial, we will leverage the `wav2vec` model which has been trained on large-scale celebrity speech data such as `VoxCeleb1`. We will use the pre-trained model to extract features from the audio data and train a binary classifier to identify the speaker. The initial layers of the model serves as a feature extractor, capturing the important features of the audio data. and only the last layer of the model is trained to perform the classification task.
+In this tutorial, we will leverage the `wav2vec` model which has been trained on large-scale celebrity speech data such as `VoxCeleb1`. We will use the pre-trained model to extract features from the audio data and train a binary classifier to identify the speaker. The initial layers of the model serves as a feature extractor, capturing the important features of the audio data. Only the last layer of the model is trained to perform the classification task.
 
 In the tutorial, we will:
 - Use iOS audio APIs to capture audio data for training
@@ -301,9 +301,10 @@ The `Trainer` class will have the following public methods:
         return try ORTValue (
             tensorData: tensorData, elementType: ORTTensorElementDataType.int64, shape: inputShape
         )
+    }
     ```
 
-    c. Now we are ready to write `trainStep` function, which takes batch of input data and labels and performs one training step on given batch.
+    c. We are ready to write `trainStep` function, which takes batch of input data and labels and performs one training step on given batch.
 
     ```swift
     func trainStep(inputData: [Data], labels: [Int64]) throws  {
@@ -318,7 +319,7 @@ The `Trainer` class will have the following public methods:
     }
     ```
 
-    d. Finally, we have everything we need to write training loop. Here, `kNumOtherRecordings` represent how many recordings we have in `recordings` directory that we created earlier. `kNumEpochs` represents how many epochs we want to train the model on given data. `kUserIndex` and `kOtherIndex` represent the labels for user and other recordings respectively.
+    d. Finally, we have everything we need to write the training loop. Here, `kNumOtherRecordings` represent how many recordings we have in `recordings` directory that we created earlier. `kNumEpochs` represents how many epochs we want to train the model on given data. `kUserIndex` and `kOtherIndex` represent the labels for user and other recordings respectively.
 
     we also have `progressCallback` that will be called after each training step. We will use this callback to update the progress bar in the UI.
 
@@ -373,7 +374,7 @@ You can find the complete implementation of the `Trainer` class [here](https://g
 ### Inference with the trained model
 The `VoiceIdentifier` class will handle the inference with the trained model. It will load the trained model and perform inference on the given audio data. The class will have the `evaluate(inputData: Data) -> Result<(Bool, Float), Error>` method that will take in the audio data and return the result of the inference. The result will be a tuple of `(Bool, Float)`, where the first element represents whether the audio belongs to the user or not, and the second element represents the confidence score of the prediction.
 
-First, we load the trained model using `ORTSession` object. The `ORTSession` object will be used to perform inference with the model. 
+First, we load the trained model using `ORTSession` object. 
 
 ```swift
 class VoiceIdentifier {
@@ -881,7 +882,7 @@ struct InferView_Previews: PreviewProvider {
 The complete implementation of the `InferView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/InferView.swift)
 
 ### ContentView
-Finally, we will  replace the default `ContentView`, so that it will contain buttons to navigate to the `TrainingView` and `InferView`.
+Finally, we will replace the default `ContentView`, so that it will contain buttons to navigate to the `TrainingView` and `InferView`.
 
 ```swift
 import SwiftUI
@@ -951,7 +952,7 @@ The complete implementation of the `ContentView` can be found [here](https://git
 Now, we are ready to run the application. You can run the application on the simulator or on the device. You can find more information about running the application on the simulator and device [here](https://developer.apple.com/documentation/xcode/devices-and-simulator).
 
 
-a. Now, When you run the application, you should see the following screen:
+a. Now, when you run the application, you should see the following screen:
 
 <img src="../../../images/iOS_speaker_identification_app.png"  width="30%" height="30%">
 
