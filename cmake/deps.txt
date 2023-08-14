@@ -7,7 +7,7 @@
 #If you need to change abseil's version to a different one, you may also want to update external\abseil-cpp.natvis
 #since the file contains a version string: "lts_20230125". However, the file is for debugging purposes only and would
 #not affect built binaries.
-abseil_cpp;https://github.com/abseil/abseil-cpp/archive/refs/tags/20230125.3.zip;9fdc3e68db241076d6d9c485bab1622fcc832f9c
+abseil_cpp;https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.0.zip;04271dfbfac59269b6939e1e9d5faf0d18a7ba91
 cxxopts;https://github.com/jarro2783/cxxopts/archive/3c73d91c0b04e2b59462f0a741be8c07024c1bc0.zip;6c6ca7f8480b26c8d00476e0e24b7184717fe4f0
 date;https://github.com/HowardHinnant/date/archive/refs/tags/v3.0.1.zip;2dac0c81dc54ebdd8f8d073a75c053b04b56e159
 dlpack;https://github.com/dmlc/dlpack/archive/refs/tags/v0.6.zip;4d565dd2e5b31321e5549591d78aa7f377173445
