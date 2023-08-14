@@ -13,6 +13,9 @@ jobs:
 
   # Entry point for all ortmodule training tests
   - script: |
+      COMMIT_ID=$(python3 -c "import onnxruntime; print(onnxruntime.get_build_info().split('git-commit-id=')[1].split(',')[0])")
+      cd $(Build.SourcesDirectory)
+      $(Build.SourcesDirectory)
       docker run \
         --gpus all \
         --rm \
