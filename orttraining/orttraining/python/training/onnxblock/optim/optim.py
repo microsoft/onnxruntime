@@ -253,8 +253,6 @@ class AdamW(_Optimizer):
         first_order_moments_name = "first_order_moments"
         second_order_moments_name = "second_order_moments"
 
-        onnx_model = self.base
-
         # Prepare the tensor sequence inputs for moments
         onnx_model.graph.input.append(
             onnx.helper.make_tensor_sequence_value_info(

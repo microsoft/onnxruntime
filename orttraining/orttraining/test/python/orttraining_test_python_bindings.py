@@ -28,12 +28,11 @@ class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingBlock):
         return self.loss(output_name)
 
 
-
 def _create_training_artifacts(
     artifact_directory: str | os.PathLike,
     requires_grad: list[str] | None = None,
     frozen_params: list[str] | None = None,
-    optimizer_type=artifacts.OptimType.AdamW
+    optimizer_type=artifacts.OptimType.AdamW,
 ):
     device = "cpu"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
@@ -128,7 +127,7 @@ def test_optimizer_step(optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type)
+        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module and Optimizer.
@@ -154,7 +153,7 @@ def test_get_and_set_lr(optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type)
+        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module and Optimizer.
@@ -185,7 +184,7 @@ def test_scheduler_step(optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type)
+        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module and Optimizer.
@@ -260,7 +259,10 @@ def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
             optimizer_model_file_path,
             _,
         ) = _create_training_artifacts(
-            temp_dir, requires_grad=["fc2.weight", "fc2.bias"], frozen_params=["fc1.weight", "fc1.bias"], optimizer_type=optimizer_type
+            temp_dir,
+            requires_grad=["fc2.weight", "fc2.bias"],
+            frozen_params=["fc1.weight", "fc1.bias"],
+            optimizer_type=optimizer_type,
         )
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
 
@@ -383,7 +385,6 @@ def test_get_input_output_names():
 
         # Create a Module.
         model = Module(training_model_file_path, state, eval_model_file_path)
-
 
         training_model = onnx.load(training_model_file_path)
         assert model.input_names() == [input.name for input in training_model.graph.input][:2]
