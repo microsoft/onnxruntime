@@ -13,7 +13,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("U", DataTypeImpl::GetTensorType<float>()),
     SkipLayerNorm);
 
 }  // namespace js
