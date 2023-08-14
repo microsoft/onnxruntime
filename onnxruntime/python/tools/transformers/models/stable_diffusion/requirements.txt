@@ -1,0 +1,10 @@
+diffusers>=0.15.1
+transformers>=4.26.0
+numpy>=1.24.1
+accelerate
+onnx>=1.13.0
+coloredlogs
+packaging
+protobuf==3.20.3
+psutil
+sympy
