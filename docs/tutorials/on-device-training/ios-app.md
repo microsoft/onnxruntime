@@ -49,6 +49,7 @@ In the tutorial, we will:
     - [Recording Audio](#recording-audio)
     - [Training View](#training-view)
     - [Inference View](#inference-view)
+    - [ContentView](#contentview)
 - [Running the iOS application](#running-the-ios-application)
 - [Conclusion](#conclusion)
 
@@ -319,6 +320,8 @@ The `Trainer` class will have the following public methods:
 
     d. Finally, we have everything we need to write training loop. Here, `kNumOtherRecordings` reperesent how many recordings we have in `recordings` directory that we created earlier. `kNumEpochs` represents how many epochs we want to train the model on given data. `kUserIndex` and `kOtherIndex` represent the labels for user and other recordings respectively.
 
+    we also have `progressCallback` that will be called after each training step. We will use this callback to update the progress bar in the UI.
+
     ```swift
     private let kNumOtherRecordings: Int = 20
     private let kNumEpochs: Int = 3
@@ -326,16 +329,21 @@ The `Trainer` class will have the following public methods:
     let kUserIndex: Int64 = 1
     let kOtherIndex: Int64 = 0
 
-    func train(_ trainingData: [Data]) throws {
+    func train(_ trainingData: [Data], progressCallback: @escaping (Double) -> Void) throws {
         let numRecordings = trainingData.count
         var otherRecordings = Array(0..<kNumOtherRecordings)
         for e in 0..<kNumEpochs {
+            print("Epoch: \(e)")
             otherRecordings.shuffle()
             let otherData = otherRecordings.prefix(numRecordings)
             
             for i in 0..<numRecordings {
                 let (buffer, wavFileData) = try getDataFromWavFile(fileName: "other_\(otherData[i])")
                 try trainStep(inputData: [trainingData[i], wavFileData], labels: [kUserIndex, kOtherIndex])
+                print("finished training on recording \(i)")
+                
+                let progress = Double((e * numRecordings) + i + 1) / Double(kNumEpochs * numRecordings)
+                progressCallback(progress)
             }
         }
         
@@ -573,9 +581,380 @@ class AudioRecorder {
 
 ### Training View
 
+The `TrainingView` will be used to train the model on the user's voice. First, it wil promt the user to record `kNumRecordings` of their voice. Then, it will train the model on the user's voice and some pre-recorded audio data. Finally, it will export the trained model for inference purposes.
+
+```swift
+import SwiftUI
+
+struct TrainView: View {
+    
+    enum ViewState {
+        case recordingTrainingData, trainingInProgress, trainingComplete
+    }
+    
+    private static let sentences = [
+        "In the embrace of nature's beauty, I find peace and tranquility. The gentle rustling of leaves soothes my soul, and the soft sunlight kisses my skin. As I breathe in the fresh air, I am reminded of the interconnectedness of all living things, and I feel a sense of oneness with the world around me.",
+        "Under the starlit sky, I gaze in wonder at the vastness of the universe. Each twinkle represents a story yet untold, a dream yet to be realized. With every new dawn, I am filled with hope and excitement for the opportunities that lie ahead. I embrace each day as a chance to grow, to learn, and to create beautiful memories.",
+        "A warm hug from a loved one is a precious gift that warms my heart. In that tender embrace, I feel a sense of belonging and security. Laughter and tears shared with dear friends create a bond that withstands the test of time. These connections enrich my life and remind me of the power of human relationships.",
+        "Life's journey is like a beautiful melody, with each note representing a unique experience. As I take each step, I harmonize with the rhythm of existence. Challenges may come my way, but I face them with resilience and determination, knowing they are opportunities for growth and self-discovery.",
+        "With every page turned in a book, I open the door to new worlds and ideas. The written words carry the wisdom of countless souls, and I am humbled by the knowledge they offer. In stories, I find a mirror to my own experiences and a beacon of hope for a better tomorrow.",
+        "Life's trials may bend me, but they will not break me. Through adversity, I discover the strength within my heart. Each obstacle is a chance to learn, to evolve, and to emerge as a better version of myself. I am grateful for every lesson, for they shape me into the person I am meant to be.",
+        "The sky above is an ever-changing canvas of colors and clouds. In its vastness, I realize how small I am in the grand scheme of things, and yet, I know my actions can ripple through the universe. As I walk this Earth, I seek to leave behind a positive impact and a legacy of love and compassion.",
+        "In the stillness of meditation, I connect with the depth of my soul. The external noise fades away, and I hear the whispers of my inner wisdom. With each breath, I release tension and embrace serenity. Meditation is my sanctuary, a place where I can find clarity and renewed energy.",
+        "Kindness is a chain reaction that spreads like wildfire. A simple act of compassion can brighten someone's day and inspire them to pay it forward. Together, we can create a wave of goodness that knows no boundaries, reaching even the farthest corners of the world.",
+        "As the sun rises on a new day, I am filled with gratitude for the gift of life. Every moment is a chance to make a difference, to love deeply, and to embrace joy. I welcome the adventures that await me and eagerly embrace the mysteries yet to be uncovered."
+    ]
+
+    
+    private let kNumRecordings = 5
+    private let audioRecorder = AudioRecorder()
+    private let trainer = try! Trainer()
+    
+    @State private var trainingData: [Data] = []
+    
+    @State private var viewState: ViewState = .recordingTrainingData
+    @State private var readyToRecord: Bool = true
+    @State private var trainingProgress: Double = 0.0
+    
+    private func recordVoice() {
+        audioRecorder.record { recordResult in
+           switch recordResult {
+           case .success(let recordingData):
+               trainingData.append(recordingData)
+               print("Successfully completed Recording")
+           case .failure(let error):
+               print("Error: \(error)")
+            }
+            
+            readyToRecord = true
+            
+            if trainingData.count == kNumRecordings  {
+                viewState = .trainingInProgress
+                trainAndExportModel()
+            }
+        }
+    }
+    
+    private func updateProgressBar(progress: Double) {
+        DispatchQueue.main.async {
+            trainingProgress = progress
+        }
+    }
+    
+    private func trainAndExportModel() {
+        Task {
+            do {
+                try trainer.train(trainingData, progressCallback: updateProgressBar)
+                try trainer.exportModelForInference()
+                   
+                DispatchQueue.main.async {
+                    viewState = .trainingComplete
+                    print("Training is complete")
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    viewState = .trainingComplete
+                    print("Training Failed: \(error)")
+                }
+            }
+        }
+    }
+    
+    
+    var body: some View {
+        VStack {
+           
+            switch viewState {
+            case .recordingTrainingData:
+                Text("\(trainingData.count + 1) of \(kNumRecordings)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding()
+                
+                ProgressView(value: Double(trainingData.count),
+                             total: Double(kNumRecordings))
+                .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+                .frame(height: 10)
+                .cornerRadius(5)
+                
+                Spacer()
+                
+                Text(TrainView.sentences[trainingData.count % TrainView.sentences.count])
+                    .font(.body)
+                    .padding()
+                    .multilineTextAlignment(.center)
+                    .fontDesign(.monospaced)
+                
+                Spacer()
+                
+                ZStack(alignment: .center) {
+                    Image(systemName: "mic.fill")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 100, height: 100)
+                        .foregroundColor( readyToRecord ? .gray: .red)
+                        .transition(.scale)
+                        .animation(.easeIn, value: 1)
+                }
+                
+                Spacer()
+                
+                Button(action: {
+                    readyToRecord = false
+                    recordVoice()
+                }) {
+                    Text(readyToRecord ? "Record" : "Recording ...")
+                        .font(.title)
+                        .padding()
+                        .background(readyToRecord ? .green : .gray)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }.disabled(!readyToRecord)
+                    
+            case .trainingInProgress:
+                VStack {
+                    Spacer()
+                    ProgressView(value: trainingProgress,
+                                 total: 1.0,
+                                 label: {Text("Training")},
+                                 currentValueLabel: {Text(String(format: "%.0f%%", trainingProgress * 100))})
+                    .padding()
+                    Spacer()
+                }
+                    
+            case .trainingComplete:
+                Spacer()
+                Text("Training successfully finished!")
+                    .font(.title)
+                    .padding()
+                    .multilineTextAlignment(.center)
+                    .fontDesign(.monospaced)
+                
+                Spacer()
+                NavigationLink(destination: InferView()) {
+                    Text("Infer")
+                        .font(.title)
+                        .padding()
+                        .background(.purple)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .padding(.leading, 20)
+            }
+            
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("Train")
+    }
+}
+
+struct TrainView_Previews: PreviewProvider {
+    static var previews: some View {
+        TrainView()
+    }
+}
+```
+
+The complete implementation of the `TrainingView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/TrainView.swift)
+
 ### Inference View
+Lastly, we will create `InferView` that will be used to perform inference with the trained model. It will prompt the user to record their voice and perform inference with the trained model. Then, it will display the result of the inference.
+
+```swift
+import SwiftUI
+
+struct InferView: View {
+    
+    enum InferResult {
+        case user, other, notSet
+    }
+    
+    private let audioRecorder = AudioRecorder()
+    
+    @State private var voiceIdentifier: VoiceIdentifier? = nil
+    @State private var readyToRecord: Bool = true
+    
+    @State private var inferResult: InferResult = InferResult.notSet
+    @State private var probUser: Float = 0.0
+    
+    @State private var showAlert = false
+    @State private var alertMessage = ""
+
+    private func recordVoice() {
+        audioRecorder.record { recordResult in
+            let recognizeResult = recordResult.flatMap { recordingData in
+                return voiceIdentifier!.evaluate(inputData: recordingData)
+            }
+            endRecord(recognizeResult)
+        }
+    }
+    
+    private func endRecord(_ result: Result<(Bool, Float), Error>) {
+        DispatchQueue.main.async {
+            switch result {
+            case .success(let (isMatch, confidence)):
+                print("Your Voice with confidence: \(isMatch),  \(confidence)")
+                inferResult = isMatch ? .user : .other
+                probUser = confidence
+            case .failure(let error):
+                print("Error: \(error)")
+            }
+            readyToRecord = true
+        }
+    }
+    
+    var body: some View {
+        VStack {
+            Spacer()
+            
+            ZStack(alignment: .center) {
+                Image(systemName: "mic.fill")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 100, height: 100)
+                    .foregroundColor( readyToRecord ? .gray: .red)
+                    .transition(.scale)
+                    .animation(.easeInOut, value: 1)
+            }
+            
+            Spacer()
+            
+            Button(action: {
+                readyToRecord = false
+                recordVoice()
+            }) {
+                Text(readyToRecord ? "Record" : "Recording ...")
+                    .font(.title)
+                    .padding()
+                    .background(readyToRecord ? .green : .gray)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                
+            }.disabled(voiceIdentifier == nil || !readyToRecord)
+                .opacity(voiceIdentifier == nil ? 0.5: 1.0)
+            
+            if  inferResult != .notSet {
+                Spacer()
+                ZStack (alignment: .center) {
+                    Image(systemName: inferResult == .user ? "person.crop.circle.fill.badge.checkmark": "person.crop.circle.fill.badge.xmark")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 100, height: 100)
+                        .foregroundColor(inferResult == .user ? .green : .red)
+                        .animation(.easeInOut, value: 2)
+                    
+                }
+                
+                Text("Probability of User : \(String(format: "%.2f", probUser*100.0))%")
+                    .multilineTextAlignment(.center)
+                    .fontDesign(.monospaced)
+            }
+            
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("Infer")
+        .onAppear {
+            do {
+                voiceIdentifier = try  VoiceIdentifier()
+                
+            } catch {
+                alertMessage = "Error initializing inference session, make sure that training is completed: \(error)"
+                showAlert = true
+            }
+            
+        }
+        .alert(isPresented: $showAlert) {
+            Alert(title: Text("Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+        }
+    }
+}
+
+struct InferView_Previews: PreviewProvider {
+    static var previews: some View {
+        InferView()
+    }
+}
+```
+
+The complete implementation of the `InferView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/InferView.swift)
+
+### ContentView
+Finally, we will  replace the defualt `ContentView`, so that it will contain buttons to navigate to the `TrainingView` and `InferView`.
+
+```swift
+import SwiftUI
+
+struct ContentView: View {
+    var body: some View {
+        NavigationView {
+            VStack {
+                
+                Text("My Voice")
+                    .font(.largeTitle)
+                    .padding(.top, 50)
+                
+                Spacer()
+                
+                ZStack(alignment: .center) {
+                    Image(systemName: "waveform.circle.fill")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 100, height: 100)
+                        .foregroundColor(.purple)
+                }
+                
+                Spacer()
+                
+                HStack {
+                    NavigationLink(destination: TrainView()) {
+                        Text("Train")
+                            .font(.title)
+                            .padding()
+                            .background(Color.purple)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                    .padding(.trailing, 20)
+                    
+                    NavigationLink(destination: InferView()) {
+                        Text("Infer")
+                            .font(.title)
+                            .padding()
+                            .background(.purple)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                    .padding(.leading, 20)
+                }
+                
+                Spacer()
+            }
+            .padding()
+        }
+    }
+}
+
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
+}
+```
+
+The complete implementation of the `ContentView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/ContentView.swift).
+
+
 
 ## Running the iOS application
+Now, we are ready to run the application. You can run the application on the simulator or on the device. To run the application on the simulator, you can select the simulator from the list of available simulators and click on the run button.
+
+<!-- Insert Xcode picture -->
+
+ To run the application on the device, you will need to create a provisioning profile and sign the application with the profile. You can find more information about creating provisioning profile and signing the application [here](https://developer.apple.com/documentation/xcode/devices-and-simulator).
+
+
 
 ## Conclusion
 Congratulations! You have successfully built an iOS application that can train a simple audio classification model using on-device training techniques. You can now use the application to train a model on your own voice and perform inference with the trained model. The application is also available on GitHub at  [`onnxruntime-training-examples`](https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/ios)
