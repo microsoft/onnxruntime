@@ -23,6 +23,7 @@ export interface TensorInfo {
   dims: readonly number[];
   dataType: number;
   gpuDataType: GpuDataType;
+  outputIndex?: number;
 }
 
 

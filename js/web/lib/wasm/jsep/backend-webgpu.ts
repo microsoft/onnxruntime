@@ -119,6 +119,7 @@ export class WebGpuBackend {
         maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
         maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
         maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
+        maxBindingsPerBindGroup: adapter.limits.maxBindingsPerBindGroup,
       },
     };
     // WebGPU Spec: Timestamp Queries Inside Passes
@@ -248,7 +249,8 @@ export class WebGpuBackend {
       const isPersistent = validatedOutputIndices[i] === -2;
       const tensorView = (isTemporary || isPersistent) ?
           createIntermediateOutput(programInfo.outputs[i].dataType, programInfo.outputs[i].dims) :
-          createKernelOutput(validatedOutputIndices[i], programInfo.outputs[i].dataType, programInfo.outputs[i].dims);
+          createKernelOutput(programInfo.outputs[i].outputIndex || validatedOutputIndices[i],
+              programInfo.outputs[i].dataType, programInfo.outputs[i].dims);
       const gpuData = this.gpuDataManager.get(tensorView.data);
       if (!gpuData) {
         throw new Error(`no GPU data for output: ${tensorView.data}`);

@@ -65,7 +65,7 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
     let outputIndices = ${output.offsetToIndices('global_idx')};
     var inputIndices: ${input.type.indices};
     for (var i = 0; i < ${inputShape.length}; i++) {
-      if (inputShape[i] == 1) {
+      if (${input.indicesGet('inputShape', 'i')} == 1) {
         // TODO: IndicesHelper should offer uniform way to get/set indices for all ranks
         ${input.indicesSet('inputIndices', 'i', 0)}
       } else {

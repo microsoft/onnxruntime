@@ -125,7 +125,7 @@ class JsKernel : public OpKernel {
         p_serialized_kernel_context[index++] = 0;
         continue;
       }
-      p_serialized_kernel_context[index++] = static_cast<uint32_t>(input_ptr->GetElementType());
+      p_serialized_kernel_context[index++] = static_cast<uintptr_t>(input_ptr->GetElementType());
       p_serialized_kernel_context[index++] = reinterpret_cast<uintptr_t>(input_ptr->DataRaw());
       p_serialized_kernel_context[index++] = static_cast<uintptr_t>(input_ptr->Shape().NumDimensions());
       for (size_t d = 0; d < input_ptr->Shape().NumDimensions(); d++) {

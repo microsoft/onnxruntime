@@ -118,7 +118,7 @@ const createConcatProgramInfo =
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-    let indices = ${output.offsetToIndices('global_idx')};
+    var indices = ${output.offsetToIndices('global_idx')};
 
     let inputIndex = calculateInputIndex(${indicesAxis});
     if (inputIndex != 0u) {
@@ -138,7 +138,11 @@ const createConcatProgramInfo =
 const createConcatProgramInfoLoader =
     (inputs: readonly TensorView[], attributes: ConcatAttributes): ProgramInfoLoader => {
       const metadata = createConcatProgramMetadata(inputs.length, attributes.cacheKey);
-      return {...metadata, get: () => createConcatProgramInfo(metadata, inputs, attributes.axis)};
+      return {
+          ...metadata,
+          cacheHint: metadata.cacheHint + inputs[0].dims.join(','),
+          get: () => createConcatProgramInfo(metadata, inputs, attributes.axis)
+      };
     };
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {

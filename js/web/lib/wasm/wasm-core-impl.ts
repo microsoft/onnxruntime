@@ -49,7 +49,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
  */
 export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
-  initOrt(10, logLevelStringToEnum(env.logLevel));
+  initOrt(32, logLevelStringToEnum(env.logLevel));
 
   if (!BUILD_DEFS.DISABLE_WEBGPU) {
     // init JSEP if available
@@ -245,7 +245,6 @@ export const run = async(
         wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), dataOffset);
       }
 
-      console.log("PTR_SIZE", ptrSize);
       const stack = wasm.stackSave();
       const dimsOffset = wasm.stackAlloc(ptrSize * dims.length);
       try {
