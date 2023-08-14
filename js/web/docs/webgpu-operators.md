@@ -75,6 +75,7 @@ Do not modify directly.*
 | Squeeze | ai.onnx(1-10,11-12,13+) |  |
 | Sub | ai.onnx(7-12,13,14+) |  |
 | Tan | ai.onnx(7+) |  |
+| Tanh | ai.onnx(6-12,13+) |  |
 | ThresholdedRelu | ai.onnx(10+) |  |
 | Tile | ai.onnx(6-12,13+) |  |
 | Transpose | ai.onnx(1-12,13+) | need perf optimization |
