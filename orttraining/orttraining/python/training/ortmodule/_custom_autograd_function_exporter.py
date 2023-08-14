@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import sys
+from typing import Callable, ClassVar, Dict, Optional
 
 import onnx
 import torch
@@ -18,8 +19,44 @@ from ._custom_op_symbolic_registry import pytorch_type_to_onnx, wrap_custom_expo
 from ._fallback import ORTModuleONNXModelException, wrap_exception
 from ._utils import get_fully_qualified_class_name, get_runtime_pytorch_version
 
+
+class PythonOpShapeInferStore:
+    """A class to store shape inference functions for torch.autograd.Function."""
+
+    _CLASS_MAP: ClassVar[Dict[str, Callable]] = {}
+
+    @classmethod
+    def register(cls, kclass: torch.autograd.Function) -> None:
+        """Register a shape inference function for a torch.autograd.Function if there is staticmethod "infer_shape" defined.
+
+        The signature of the shape inference function should be:
+            @staticmethod
+            def infer_shape(
+                node: onnx.NodeProto,
+                tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+                tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+            ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+                tensor_output_shapes = []
+                tensor_output_dtypes = []
+                ...
+                return tensor_output_shapes, tensor_output_dtypes
+
+        The tensor_input_shapes and tensor_input_dtypes are lists of shapes and dtypes of the input tensors.
+        The tensor_output_shapes and tensor_output_dtypes are lists of shapes and dtypes of the output tensors.
+        Be noted: we only pass in tensor inputs, and return tensor outputs, non-tensor inputs/outputs are ignored.
+
+        """
+        kclass_name = get_fully_qualified_class_name(kclass)
+        if hasattr(kclass, "infer_shape") and kclass_name not in cls._CLASS_MAP:
+            cls._CLASS_MAP[kclass_name] = kclass.infer_shape
+
+    @classmethod
+    def get_shape_infer(cls, name: str) -> Optional[Callable]:
+        return cls._CLASS_MAP.get(name, None)
+
+
 """
-Defines a list of names of torch.torch.autograd.Function, for checkpoint activation purposes.
+Defines a list of names of torch.autograd.Function, for checkpoint activation purposes.
 
 Note:
     If CheckpointFunction is exported as PythonOp, the checkpoint-ed computation
@@ -256,6 +293,9 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 
         # Register function with class names.
         register_torch_autograd_function(func_full_qual_name, func_class)
+
+        # Register shape inference function.
+        PythonOpShapeInferStore.register(func_class)
         return returned_args
     except Exception as e:
         sys.stdout.flush()
@@ -271,7 +311,7 @@ def _post_process_after_export(
 ) -> onnx.ModelProto:
     """Post process the exported model."""
     if enable_custom_autograd_function:
-        return _post_process_enabling_autograd_function(exported_model)
+        exported_model = _post_process_enabling_autograd_function(exported_model)
     return exported_model
 
 
