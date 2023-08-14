@@ -2386,7 +2386,8 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
                                           RunAsyncCallbackFn callback,
                                           void* user_data) {
   size_t num_fetches = fetch_names.size();
-  if (!thread_pool_.get() || concurrency::ThreadPool::DegreeOfParallelism(thread_pool_.get()) < 2) {
+  concurrency::ThreadPool* tp = GetIntraOpThreadPoolToUse();
+  if (!tp || concurrency::ThreadPool::DegreeOfParallelism(tp) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
   std::function<void()> run_fn = [=]() {
@@ -2413,7 +2414,7 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
       callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "unknown exception")));
     }
   };  // run_fn
-  concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);
+  concurrency::ThreadPool::Schedule(tp, run_fn);
   return Status::OK();
 }
 

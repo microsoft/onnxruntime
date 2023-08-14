@@ -14,6 +14,7 @@
 #include "test_allocator.h"
 #include "../shared_lib/test_fixture.h"
 #include <stdlib.h>
+#include <thread>
 
 struct Input {
   const char* name = nullptr;
@@ -21,10 +22,27 @@ struct Input {
   std::vector<float> values;
 };
 
+struct InferenceParams {
+  int provider_type;
+  bool async;
+};
+
 extern std::unique_ptr<Ort::Env> ort_env;
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/squeezenet/model.onnx");
-class CApiTestGlobalThreadPoolsWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
+static std::thread::id caller_tid = std::this_thread::get_id();
+static std::atomic_bool atomic_wait{false};
+class CApiTestGlobalThreadPoolsWithProvider : public testing::TestWithParam<InferenceParams> {
 };
+
+void CallbackSucceed(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status_ptr) {
+  auto callee_tid = std::this_thread::get_id();
+  ASSERT_NE(*(reinterpret_cast<std::thread::id*>(user_data)), callee_tid);
+  Ort::Status status(status_ptr);
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_TRUE(num_outputs > 0);
+  ASSERT_TRUE(outputs != nullptr);
+  atomic_wait.store(true);
+}
 
 template <typename OutT>
 static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
@@ -32,7 +50,8 @@ static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
                        const char* output_name,
                        const std::vector<int64_t>& dims_y,
                        const std::vector<OutT>& values_y,
-                       Ort::Value* output_tensor) {
+                       Ort::Value* output_tensor,
+                       bool async) {
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names;
   for (size_t i = 0; i < inputs.size(); i++) {
@@ -41,13 +60,29 @@ static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
   }
 
   std::vector<Ort::Value> ort_outputs;
-  if (output_tensor)
-    session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, output_tensor, 1);
-  else {
-    ort_outputs = session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
-    ASSERT_EQ(ort_outputs.size(), 1u);
-    output_tensor = &ort_outputs[0];
+  if (async)
+  {
+    atomic_wait.store(false);
+    session_object.RunAsync(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, output_tensor, 1, CallbackSucceed, &caller_tid);
+
+    std::chrono::duration<double, std::milli> dur{100};
+    // timeout in about 10 secs
+    for (int i = 0; i < 100 && !atomic_wait.load(); ++i) {
+      std::this_thread::sleep_for(dur);
+    }
+
+    ASSERT_EQ(atomic_wait.load(), true);
   }
+  else {
+    if (output_tensor)
+      session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, output_tensor, 1);
+    else {
+      ort_outputs = session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
+      ASSERT_EQ(ort_outputs.size(), 1u);
+      output_tensor = &ort_outputs[0];
+    }
+  }
+
 
   auto type_info = output_tensor->GetTensorTypeAndShapeInfo();
   ASSERT_EQ(type_info.GetShape(), dims_y);
@@ -96,7 +131,8 @@ static void TestInference(Ort::Session& session,
                           std::vector<Input>& inputs,
                           const char* output_name,
                           const std::vector<int64_t>& expected_dims_y,
-                          const std::vector<OutT>& expected_values_y) {
+                          const std::vector<OutT>& expected_values_y,
+                          bool async) {
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
 
@@ -106,7 +142,8 @@ static void TestInference(Ort::Session& session,
                    output_name,
                    expected_dims_y,
                    expected_values_y,
-                   &value_y);
+                   &value_y,
+                   async);
 }
 
 static void GetInputsAndExpectedOutputs(std::vector<Input>& inputs,
@@ -144,12 +181,14 @@ TEST_P(CApiTestGlobalThreadPoolsWithProvider, simple) {
   std::string output_name;
   GetInputsAndExpectedOutputs(inputs, expected_dims_y, expected_values_y, output_name);
 
+  const InferenceParams& inference_params = GetParam();
+
   // create session
-  Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, GetParam());
+  Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, inference_params.provider_type);
 
   // run session
   if (session) {
-    TestInference<PATH_TYPE, float>(session, inputs, output_name.c_str(), expected_dims_y, expected_values_y);
+    TestInference<PATH_TYPE, float>(session, inputs, output_name.c_str(), expected_dims_y, expected_values_y, inference_params.async);
   }
 }
 
@@ -164,14 +203,16 @@ TEST_P(CApiTestGlobalThreadPoolsWithProvider, simple2) {
   std::string output_name;
   GetInputsAndExpectedOutputs(inputs, expected_dims_y, expected_values_y, output_name);
 
+  const InferenceParams& inference_params = GetParam();
+
   // create sessions
-  Ort::Session session1 = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, GetParam());
-  Ort::Session session2 = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, GetParam());
+  Ort::Session session1 = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, inference_params.provider_type);
+  Ort::Session session2 = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, inference_params.provider_type);
 
   // run session
   if (session1 && session2) {
-    TestInference<PATH_TYPE, float>(session1, inputs, output_name.c_str(), expected_dims_y, expected_values_y);
-    TestInference<PATH_TYPE, float>(session2, inputs, output_name.c_str(), expected_dims_y, expected_values_y);
+    TestInference<PATH_TYPE, float>(session1, inputs, output_name.c_str(), expected_dims_y, expected_values_y, inference_params.async);
+    TestInference<PATH_TYPE, float>(session2, inputs, output_name.c_str(), expected_dims_y, expected_values_y, inference_params.async);
   }
 }
 
@@ -187,29 +228,35 @@ TEST_P(CApiTestGlobalThreadPoolsWithProvider, simple3) {
   std::string output_name;
   GetInputsAndExpectedOutputs(inputs, expected_dims_y, expected_values_y, output_name);
 
+  const InferenceParams& inference_params = GetParam();
+
   // first session
   {
     // create session
-    Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, GetParam());
+    Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, inference_params.provider_type);
 
     // run session
     if (session) {
-      TestInference<PATH_TYPE, float>(session, inputs, output_name.c_str(), expected_dims_y, expected_values_y);
+      TestInference<PATH_TYPE, float>(session, inputs, output_name.c_str(), expected_dims_y, expected_values_y, inference_params.async);
     }
   }
 
   // second session
   {
     // create session
-    Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, GetParam());
+    Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, inference_params.provider_type);
 
     // run session
     if (session) {
-      TestInference<PATH_TYPE, float>(session, inputs, output_name.c_str(), expected_dims_y, expected_values_y);
+      TestInference<PATH_TYPE, float>(session, inputs, output_name.c_str(), expected_dims_y, expected_values_y,inference_params.async);
     }
   }
 }
 
 INSTANTIATE_TEST_SUITE_P(CApiTestGlobalThreadPoolsWithProviders,
                          CApiTestGlobalThreadPoolsWithProvider,
-                         ::testing::Values(0, 1, 2, 3, 4));
+                         ::testing::Values(InferenceParams{0,false}, InferenceParams{0,true},
+                                           InferenceParams{1,false}, InferenceParams{1,true},
+                                           InferenceParams{2,false}, InferenceParams{2,true},
+                                           InferenceParams{3,false}, InferenceParams{3,true},
+                                           InferenceParams{4,false}, InferenceParams{4,true}));
