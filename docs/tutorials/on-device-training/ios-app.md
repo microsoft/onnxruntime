@@ -10,7 +10,7 @@ nav_order: 2
 
 In this tutorial, we will explore how to build an iOS application that incorporates ONNX Runtime's On-Device Training solution. On-device training refers to the process of training a machine learning model directly on an edge device without relying on cloud services or external servers.
 
-In this tutorial, we will build a simple speaker identification app that learns to idefiy a speaker's voice. We will take a look at how to train a model on-device, export the trained model, and use the trained model to perform inference.
+In this tutorial, we will build a simple speaker identification app that learns to identify a speaker's voice. We will take a look at how to train a model on-device, export the trained model, and use the trained model to perform inference.
 
 Here is what the application will look like:
 
@@ -18,9 +18,9 @@ Here is what the application will look like:
 <img src="../../../images/iOS_speaker_identification_app.png"  width="30%" height="30%">
 
 ## Introduction
-We will guide you through the process of building an iOS application that can train a simple audio classification model using on-device training techniques. The tutorial showcases the `transfer learning` technique where knowledge gained from training a model on one task is leveraged to improve the performance of a model on a different but realted task. Instead of starting the learning process from scratch, transfer learning allows us to transfer the knowledge or features learned by a pre-trained model to a new task.
+We will guide you through the process of building an iOS application that can train a simple audio classification model using on-device training techniques. The tutorial showcases the `transfer learning` technique where knowledge gained from training a model on one task is leveraged to improve the performance of a model on a different but related task. Instead of starting the learning process from scratch, transfer learning allows us to transfer the knowledge or features learned by a pre-trained model to a new task.
 
-In this tutorial, we will leverage the `wav2vec` model which has been trained on large-scale celebrity speech data such as `VoxCeleb1`. We will use the pre-trained model to extract features from the audio data and train a binary classifier to identify the speaker. The initial layers of the model servw as a feature extractor, capturing the important features of the audio data. and only the last layer of the model is trained to perform the classification task.
+In this tutorial, we will leverage the `wav2vec` model which has been trained on large-scale celebrity speech data such as `VoxCeleb1`. We will use the pre-trained model to extract features from the audio data and train a binary classifier to identify the speaker. The initial layers of the model serves as a feature extractor, capturing the important features of the audio data. and only the last layer of the model is trained to perform the classification task.
 
 In the tutorial, we will:
 - Use iOS audio APIs to capture audio data for training
@@ -177,7 +177,7 @@ This will create a `MyVoice.xcworkspace` file in the project directory. Open the
 
 Now, create a new group in the project and name it `artifacts`. Drag and drop the artifacts generated in the previous section into the `artifacts` group. Make sure to select `Create folder references` and `Copy items if needed` options. This will add the artifacts to the project.
 
-Next, create a new group in the project and name it `recrodings`. This group will contain the audio recordings that will be used for training. You can generate the recordings by running the [`recording_gen.py`](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/recording_gen.py) script at the root of the project. Alternatively, you can also any other recordings of length 10 seconds in .wav format.
+Next, create a new group in the project and name it `recordings`. This group will contain the audio recordings that will be used for training. You can generate the recordings by running the [`recording_gen.py`](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/recording_gen.py) script at the root of the project. Alternatively, you can also any other recordings of length 10 seconds in .wav format.
 The project structure should look like this:
 
 ![Xcode Project Structure](../../../images/iOS_speaker_identification_screenshot_3.png)
@@ -185,7 +185,7 @@ The project structure should look like this:
 
 ### Application Overview
 
-The application will consitst of two main UI Views: `TrainingView` and `InferenceView`. The `TrainingView` is used to train the model on-device, and the `InferenceView` is used to perform inference with the trained model. Addtionally, there is `ContentView` which is the home view of the application and contains buttons to navigate to the `TrainingView` and `InferenceView`.
+The application will consist of two main UI Views: `TrainingView` and `InferenceView`. The `TrainingView` is used to train the model on-device, and the `InferenceView` is used to perform inference with the trained model. Additionally, there is `ContentView` which is the home view of the application and contains buttons to navigate to the `TrainingView` and `InferenceView`.
 
 Additionally, we will also create `AudioRecorder` class to handle the recording of audio through the microphone. It will record 10 seconds of audio and output the audio data as a `Data` object, which can be used for training and inference purposes.
 
@@ -249,7 +249,7 @@ The `Trainer` class will have the following public methods:
 
 2.  #### Training the model
 
-    a. Before training the model, we first need to extrat the data from the wav files that we created in earlier section. Here is the simple function that will extract the data from the wav file.
+    a. Before training the model, we first need to extract the data from the wav files that we created in earlier section. Here is the simple function that will extract the data from the wav file.
     ```swift
     private func getDataFromWavFile(fileName: String) throws -> (AVAudioBuffer, Data) {
         guard let fileUrl = Bundle.main.url(forResource: fileName, withExtension:"wav") else {
@@ -318,7 +318,7 @@ The `Trainer` class will have the following public methods:
     }
     ```
 
-    d. Finally, we have everything we need to write training loop. Here, `kNumOtherRecordings` reperesent how many recordings we have in `recordings` directory that we created earlier. `kNumEpochs` represents how many epochs we want to train the model on given data. `kUserIndex` and `kOtherIndex` represent the labels for user and other recordings respectively.
+    d. Finally, we have everything we need to write training loop. Here, `kNumOtherRecordings` represent how many recordings we have in `recordings` directory that we created earlier. `kNumEpochs` represents how many epochs we want to train the model on given data. `kUserIndex` and `kOtherIndex` represent the labels for user and other recordings respectively.
 
     we also have `progressCallback` that will be called after each training step. We will use this callback to update the progress bar in the UI.
 
@@ -402,7 +402,7 @@ class VoiceIdentifier {
 }
 ```
 
-Next, we will write the `evaluate` method that will take in the audio data, convert it to `ORTValue`, and perform inference with the model. Then, take the output of the model and extract probabilites.
+Next, we will write the `evaluate` method that will take in the audio data, convert it to `ORTValue`, and perform inference with the model. Then, take the output of the model and extract probabilities.
 
 
 ```swift
@@ -581,7 +581,7 @@ class AudioRecorder {
 
 ### Training View
 
-The `TrainingView` will be used to train the model on the user's voice. First, it wil promt the user to record `kNumRecordings` of their voice. Then, it will train the model on the user's voice and some pre-recorded audio data. Finally, it will export the trained model for inference purposes.
+The `TrainingView` will be used to train the model on the user's voice. First, it wil prompt the user to record `kNumRecordings` of their voice. Then, it will train the model on the user's voice and some pre-recorded audio data. Finally, it will export the trained model for inference purposes.
 
 ```swift
 import SwiftUI
@@ -881,7 +881,7 @@ struct InferView_Previews: PreviewProvider {
 The complete implementation of the `InferView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/InferView.swift)
 
 ### ContentView
-Finally, we will  replace the defualt `ContentView`, so that it will contain buttons to navigate to the `TrainingView` and `InferView`.
+Finally, we will  replace the default `ContentView`, so that it will contain buttons to navigate to the `TrainingView` and `InferView`.
 
 ```swift
 import SwiftUI
@@ -952,8 +952,7 @@ Now, we are ready to run the application. You can run the application on the sim
 
 <!-- Insert Xcode picture -->
 
- To run the application on the device, you will need to create a provisioning profile and sign the application with the profile. You can find more information about creating provisioning profile and signing the application [here](https://developer.apple.com/documentation/xcode/devices-and-simulator).
-
+ To run the application on the device, you will need to create a provisioning profile and sign the application with the profile. You can find more information about running the application on the device [here](https://developer.apple.com/documentation/xcode/devices-and-simulator).
 
 
 ## Conclusion
