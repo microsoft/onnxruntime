@@ -10,6 +10,9 @@ trigger:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
+    - 'js/web'
+    - 'js/node'
+    - 'onnxruntime/core/providers/js'
 pr:
   branches:
     include:
@@ -21,6 +24,9 @@ pr:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
+    - 'js/web'
+    - 'js/node'
+    - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
 parameters:

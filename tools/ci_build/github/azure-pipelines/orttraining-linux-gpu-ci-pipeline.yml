@@ -1,5 +1,18 @@
 trigger: none
-
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'js/node'
+    - 'onnxruntime/core/providers/js'
 jobs:
 - template: templates/linux-ci.yml
   parameters:
