@@ -404,7 +404,7 @@ class VoiceIdentifier {
 }
 ```
 
-Next, we will write the `evaluate` method. First, it will take the audio data and convert it to `ORTValue`. Then, it will perform inference with the model. Lastly, It will extract logits from the output and apply softMax to get probabilities.
+Next, we will write the `evaluate` method. First, it will take the audio data and convert it to `ORTValue`. Then, it will perform inference with the model. Lastly, it will extract logits from the output and apply softmax to get probabilities.
 
 
 ```swift
