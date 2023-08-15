@@ -16,6 +16,7 @@ jobs:
       COMMIT_ID=$(python3 -c "import onnxruntime; print(onnxruntime.get_build_info().split('git-commit-id=')[1].split(',')[0])")
       cd $(Build.SourcesDirectory)
       git checkout $COMMIT_ID
+      git branch
       echo "Retrieved ONNX Runtime Commit ID: $COMMIT_ID"
       docker run \
         --gpus all \
