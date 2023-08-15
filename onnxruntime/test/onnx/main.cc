@@ -787,17 +787,20 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
 
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases,
-              LoadTestTolerances(enable_cuda, enable_openvino, override_tolerance, atol, rtol),
-              all_disabled_tests,
-              [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
-                tests.push_back(l.get());
-                owned_tests.push_back(std::move(l));
-              });
-
+    Status st = LoadTests(data_dirs, whitelisted_test_cases,
+                          LoadTestTolerances(enable_cuda, enable_openvino, override_tolerance, atol, rtol),
+                          all_disabled_tests,
+                          [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
+                            tests.push_back(l.get());
+                            owned_tests.push_back(std::move(l));
+                          });
+    if (!st.IsOK()) {
+      fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
+      return -1;
+    }
     auto tp = TestEnv::CreateThreadPool(Env::Default());
     TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);
-    Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
+    st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
