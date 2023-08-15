@@ -3,15 +3,8 @@
 
 import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
-
 import {ShaderHelper} from './common';
-
-export interface BiasSplitGeluAttributes extends AttributeWithCacheKey {
-    axis: number;
-    epsilon: number;
-}
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
     if (inputs[0].dataType !== DataType.float) {
@@ -36,7 +29,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const createBiasSplitGeluProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: BiasSplitGeluAttributes):
+    (metadata: ProgramMetadata, inputs: readonly TensorView[]):
         ProgramInfo => {
         const input = inputs[0];
         const outputShape = input.dims.slice();
@@ -45,14 +38,15 @@ const createBiasSplitGeluProgramInfo =
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
         const channels = input.dims[2];
         const blockSize = channels / 320;
-        const outputSize = gridSize * 320;
+        const outputSize = gridSize;
 
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const TPB = 320;
 
   @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
   @group(0) @binding(1) var<storage, read> bias : array<${dataType}>;
-  @group(0) @binding(2) var<storage, read_write> output : array<${dataType}>;
+  @group(0) @binding(2) var<storage, read> residual : array<${dataType}>;
+  @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
 
   ${shaderHelper.mainStart()}
     if (global_idx >= ${outputSize}) {
@@ -61,19 +55,13 @@ const createBiasSplitGeluProgramInfo =
     let blockIdx = global_idx / ${channels};
     let threadIdx = global_idx % ${channels};
     
-    var indexInput = blockIdx * ${channels} * 2 + threadIdx;
-    var indexOutput = blockIdx * ${channels} + threadIdx;
-    var indexBias = threadIdx;
+    var baseOffset = blockIdx * ${channels} + threadIdx;
+    var biasOffset = threadIdx;
 
     for (var h: u32 = 0u; h < ${blockSize}; h++) {
-      let valueLeft = input[indexInput] + bias[indexBias];
-      let valueRight = input[indexInput + ${channels}] + bias[indexBias + ${channels}];
-      
-      let geluRight = valueRight * 0.5 * (erf_vf32(valueRight / M_SQRT2) + 1);
-      output[indexOutput] = valueLeft * geluRight;
-      indexInput += TPB;
-      indexOutput += TPB;
-      indexBias += TPB;
+      output[baseOffset] = input[baseOffset] + bias[biasOffset] + residual[baseOffset];
+      baseOffset += TPB;
+      biasOffset += TPB;
     }
   }`;
 
@@ -85,17 +73,13 @@ const createBiasSplitGeluProgramInfo =
         };
     };
 
-export const parseBiasSplitGeluAttributes = (attributes: BiasSplitGeluAttributes): BiasSplitGeluAttributes =>
-    createAttributeWithCacheKey({axis: attributes.axis, epsilon: attributes.epsilon});
-
-export const biasAdd = (context: ComputeContext, attributes: BiasSplitGeluAttributes): void => {
+export const biasAdd = (context: ComputeContext): void => {
     validateInputs(context.inputs);
     const inputTypes = Array(context.inputs.length).fill(GpuDataType.default);
     const metadata = {
         name: 'BiasAdd',
         inputTypes,
-        // cacheHint: attributes.cacheKey,
     };
 
-    context.compute(createBiasSplitGeluProgramInfo(metadata, context.inputs, attributes));
+    context.compute(createBiasSplitGeluProgramInfo(metadata, context.inputs));
 };

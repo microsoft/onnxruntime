@@ -22,8 +22,8 @@ import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
-import {biasSplitGelu} from "./ops/bias-split-gelu";
-import {biasAdd} from "./ops/bias-add";
+import {biasSplitGelu} from './ops/bias-split-gelu';
+import {biasAdd} from './ops/bias-add';
 
 export type RunFunction = (context: ComputeContext, attribute?: unknown) => void;
 export type ParseAttributeFunction = (attributeRaw: unknown) => unknown;

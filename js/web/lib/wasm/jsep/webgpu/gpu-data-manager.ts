@@ -160,16 +160,31 @@ class GpuDataManagerImpl implements GpuDataManager {
     // eslint-disable-next-line no-bitwise
     if ((usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
       let buffers = this.freeBuffers.get(bufferSize);
-      if (!buffers) {
-        buffers = [];
-        this.freeBuffers.set(bufferSize, buffers);
-      }
-      if (buffers.length > 0) {
-        gpuBuffer = buffers.pop() as GPUBuffer;
-      } else {
-        // create gpu buffer
-        gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
-      }
+      // if (!buffers || !buffers.length) {
+      //   const existingSizes = this.freeBuffers.keys();
+      //   const existingSizesSorted = Array.from(existingSizes).sort((a, b) => a - b);
+      //   for (const size of existingSizesSorted) {
+      //     if (size > bufferSize) {
+      //       const buffers = this.freeBuffers.get(size);
+      //       if(buffers && buffers.length) {
+      //         gpuBuffer = buffers.pop();
+      //       }
+      //     }
+      //   }
+      // }
+      //
+      // if (!gpuBuffer) {
+        if (!buffers) {
+          buffers = [];
+          this.freeBuffers.set(bufferSize, buffers);
+        }
+        if (buffers.length > 0) {
+          gpuBuffer = buffers.pop() as GPUBuffer;
+        } else {
+          // create gpu buffer
+          gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+        }
+      // }
     } else {
       // create gpu buffer
       gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});

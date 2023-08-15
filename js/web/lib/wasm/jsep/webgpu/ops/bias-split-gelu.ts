@@ -3,16 +3,9 @@
 
 import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
-
 import {ShaderHelper} from './common';
-import {erfImpl} from "./unary-op";
-
-export interface BiasSplitGeluAttributes extends AttributeWithCacheKey {
-    axis: number;
-    epsilon: number;
-}
+import {erfImpl} from './unary-op';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
     if (inputs[0].dataType !== DataType.float) {
@@ -37,7 +30,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const createBiasSplitGeluProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: BiasSplitGeluAttributes):
+    (metadata: ProgramMetadata, inputs: readonly TensorView[]):
         ProgramInfo => {
         const input = inputs[0];
         const outputShape = input.dims.slice();
@@ -47,7 +40,7 @@ const createBiasSplitGeluProgramInfo =
         const halfHiddenSize = outputShape[2];
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
         const blockSize = halfHiddenSize / 256;
-        const outputSize = gridSize * 256;
+        const outputSize = gridSize;
 
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const M_SQRT2 = sqrt(2.0);
@@ -90,17 +83,13 @@ const createBiasSplitGeluProgramInfo =
         };
     };
 
-export const parseBiasSplitGeluAttributes = (attributes: BiasSplitGeluAttributes): BiasSplitGeluAttributes =>
-    createAttributeWithCacheKey({axis: attributes.axis, epsilon: attributes.epsilon});
-
-export const biasSplitGelu = (context: ComputeContext, attributes: BiasSplitGeluAttributes): void => {
+export const biasSplitGelu = (context: ComputeContext): void => {
     validateInputs(context.inputs);
 
     const metadata = {
         name: 'BiasSplitGelu',
         inputTypes: [GpuDataType.default, GpuDataType.default],
-        // cacheHint: attributes.cacheKey,
     };
 
-    context.compute(createBiasSplitGeluProgramInfo(metadata, context.inputs, attributes));
+    context.compute(createBiasSplitGeluProgramInfo(metadata, context.inputs));
 };
