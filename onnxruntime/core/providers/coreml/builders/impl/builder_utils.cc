@@ -92,7 +92,7 @@ Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                           const ONNX_NAMESPACE::TensorProto& tensor) {
   const auto data_type = tensor.data_type();
   Initializer unpacked_tensor(tensor);
-  switch(data_type) {
+  switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<float>());
       break;
@@ -101,8 +101,8 @@ Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "The initializer of graph has unsupported type, name: ",
-                           tensor.name(), " type: ", data_type);
+                             "The initializer of graph has unsupported type, name: ",
+                             tensor.name(), " type: ", data_type);
   }
   return Status::OK();
 }

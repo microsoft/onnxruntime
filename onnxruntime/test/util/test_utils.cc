@@ -107,7 +107,7 @@ void VerifyEPNodeAssignment(const Graph& graph, const std::string& provider_type
 }
 
 static gsl::span<const std::byte> GetModelBytes(ModelPathOrBytes model_path_or_bytes,
-                                         std::vector<std::byte>& byte_buffer_out) {
+                                                std::vector<std::byte>& byte_buffer_out) {
   if (const auto* model_bytes = std::get_if<gsl::span<const std::byte>>(&model_path_or_bytes);
       model_bytes != nullptr) {
     byte_buffer_out = std::vector<std::byte>{};

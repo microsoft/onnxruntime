@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import onnx
 from onnx import helper
 from onnx.onnx_pb import TensorProto

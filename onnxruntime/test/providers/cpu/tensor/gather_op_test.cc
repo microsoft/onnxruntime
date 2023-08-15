@@ -100,11 +100,11 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   // Ignore the shape inference error so that we can hit the invalid index error.
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
   test
-    .Config(so)
-    .Config(OpTester::ExpectResult::kExpectFailure,
-           "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]")
-    .ConfigEp(DefaultCpuExecutionProvider())
-    .RunWithConfig();
+      .Config(so)
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]")
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
