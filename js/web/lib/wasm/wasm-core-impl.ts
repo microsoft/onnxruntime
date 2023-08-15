@@ -6,9 +6,15 @@ import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
-import {logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
+import {
+  logLevelStringToEnum,
+  tensorDataTypeEnumToString,
+  tensorDataTypeStringToEnum,
+  tensorTypeToTypedArrayConstructor
+} from './wasm-common';
 import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
+import { FSNode } from './binding/ort-wasm';
 
 /**
  * get the input/output count of the session.
@@ -69,32 +75,21 @@ const activeSessions = new Map<number, SessionMetadata>();
 
 /**
  * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.
- * @returns a 2-elements tuple - the pointer and size of the allocated buffer
+ * @returns a 3-elements tuple - the pointer, size of the allocated buffer, and optional weights.pb FS node
  */
-export const createSessionAllocate = async (model: Uint8Array | { reader: ReadableStreamDefaultReader<Uint8Array>; size: number }): Promise<[number, number]> => {
+export const createSessionAllocate = (model: Uint8Array, weights?: ArrayBuffer): [number, number, FSNode?] => {
   const wasm = getInstance();
-  if (model instanceof Uint8Array) {
-    const modelDataOffset = wasm._malloc(model.byteLength);
-    wasm.HEAPU8.set(model, modelDataOffset);
-    return [modelDataOffset, model.byteLength];
-  } else {
-    const modelDataOffset = wasm._malloc(model.size);
-    let offset = 0;
-    while (true) {
-      const { done, value } = await model.reader.read();
+  const modelDataOffset = wasm._malloc(model.byteLength);
+  wasm.HEAPU8.set(model, modelDataOffset);
 
-      if (done) {
-        break;
-      }
-
-      const memory = new Uint8Array(wasm.HEAPU8.buffer, Number(modelDataOffset) + offset, value.byteLength);
-      memory.set(new Uint8Array(value.buffer));
-
-      offset += value.byteLength;
-      // console.log('wrote chunk', offset);
-    }
-    return [modelDataOffset, model.size];
+  let weightsFile: FSNode|undefined;
+  if (weights) {
+    weightsFile = wasm.FS.create('/home/web_user/weights.pb');
+    weightsFile.contents = new Uint8Array(weights);
+    weightsFile.usedBytes = weights.byteLength;
+    wasm.FS.chdir('/home/web_user');
   }
+  return [modelDataOffset, model.byteLength, weightsFile];
 };
 
 /**
@@ -158,11 +153,8 @@ export const createSessionFinalize =
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
         allocs.forEach(alloc => wasm._free(alloc));
-        try {
-          // @ts-ignore
+        if (modelData[2]) {
           wasm.FS.unlink('/home/web_user/weights.pb');
-        } catch (e) {
-          // do nothing
         }
       }
     };
@@ -174,7 +166,7 @@ export const createSessionFinalize =
  */
 export const createSession =
     async (model: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SerializableSessionMetadata> => {
-      const modelData: SerializableModeldata = await createSessionAllocate(model);
+      const modelData: SerializableModeldata = createSessionAllocate(model);
       return createSessionFinalize(modelData, options);
     };
 

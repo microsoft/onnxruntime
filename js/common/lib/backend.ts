@@ -42,7 +42,8 @@ export interface Backend {
    */
   init(): Promise<void>;
 
-  createSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+  createSessionHandler(uriOrBufferOrResponses: string|[string,string]|Uint8Array|[Uint8Array, ArrayBuffer],
+    options?: InferenceSession.SessionOptions):
       Promise<SessionHandler>;
 }
 

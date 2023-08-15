@@ -147,17 +147,17 @@ export const initializeRuntime = async(env: Env): Promise<void> => {
   }
 };
 
-export const createSessionAllocate = async(model: Uint8Array | { reader: ReadableStreamDefaultReader<Uint8Array>; size: number }): Promise<SerializableModeldata> => {
-  // if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
-  //   ensureWorker();
-  //   return new Promise<SerializableModeldata>((resolve, reject) => {
-  //     createSessionAllocateCallbacks.push([resolve, reject]);
-  //     const message: OrtWasmMessage = {type: 'create_allocate', in : {model}};
-  //     proxyWorker!.postMessage(message, [model.buffer]);
-  //   });
-  // } else {
-    return core.createSessionAllocate(model);
-  // }
+export const createSessionAllocate = async(model: Uint8Array, weights?: ArrayBuffer): Promise<SerializableModeldata> => {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
+    ensureWorker();
+    return new Promise<SerializableModeldata>((resolve, reject) => {
+      createSessionAllocateCallbacks.push([resolve, reject]);
+      const message: OrtWasmMessage = {type: 'create_allocate', in : {model, weights}};
+      proxyWorker!.postMessage(message, [model.buffer]);
+    });
+  } else {
+    return core.createSessionAllocate(model, weights);
+  }
 };
 
 export const createSessionFinalize = async(modeldata: SerializableModeldata, options?: InferenceSession.SessionOptions):

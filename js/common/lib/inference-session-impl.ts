@@ -125,10 +125,11 @@ export class InferenceSession implements InferenceSessionInterface {
       Promise<InferenceSessionInterface>;
   static create(buffer: Uint8Array, options?: SessionOptions): Promise<InferenceSessionInterface>;
   static async create(
-      arg0: string|ArrayBufferLike|Uint8Array, arg1?: SessionOptions|number, arg2?: number,
+      arg0: string|ArrayBufferLike|Uint8Array|[string, string]|[Uint8Array,ArrayBufferLike],
+      arg1?: SessionOptions|number, arg2?: number,
       arg3?: SessionOptions): Promise<InferenceSessionInterface> {
     // either load from a file or buffer
-    let filePathOrUint8Array: string|Uint8Array;
+    let filePathOrUint8Array: string|[string, string]|Uint8Array|[Uint8Array, (SharedArrayBuffer | ArrayBuffer)];
     let options: SessionOptions = {};
 
     if (typeof arg0 === 'string') {
@@ -182,8 +183,18 @@ export class InferenceSession implements InferenceSessionInterface {
         throw new TypeError('\'options\' must be an object.');
       }
       filePathOrUint8Array = new Uint8Array(buffer, byteOffset, byteLength);
+    } else if (Array.isArray(arg0)) {
+      if (typeof arg0[0] === 'string' && typeof arg0[1] === 'string') {
+        filePathOrUint8Array = arg0 as [string, string];
+      } else if (arg0[0] instanceof Uint8Array && arg0[1] instanceof Uint8Array) {
+        filePathOrUint8Array = arg0 as [Uint8Array, ArrayBufferLike];
+      } else {
+        throw new TypeError('Unexpected argument[0]: array must be [modelPath, weightsPath],' +
+          ' or [modelBuffer, weightsBuffer]');
+      }
     } else {
-      throw new TypeError('Unexpected argument[0]: must be \'path\' or \'buffer\'.');
+      throw new TypeError('Unexpected argument[0]: must be \'path\', \'buffer\', [modelPath, weightsPath],' +
+        ' or [modelBuffer, weightsBuffer]');
     }
 
     // get backend hints
