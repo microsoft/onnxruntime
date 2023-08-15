@@ -85,6 +85,13 @@ stages:
 
       - template: telemetry-steps.yml
 
+      - ${{ if eq(parameters['buildJava'], 'true') }}:
+        - task: JavaToolInstaller@0
+          inputs:
+            versionSpec: "11"
+            jdkArchitectureOption: ${{ parameters.buildArch }}
+            jdkSourceOption: 'PreInstalled'
+
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.8'
