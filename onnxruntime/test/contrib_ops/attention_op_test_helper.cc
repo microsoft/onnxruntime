@@ -484,7 +484,15 @@ void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& da
   data.fp16_output_data = data.fp32_output_data;
 }
 
-void GetAttentionDataWithNeoXRotaryEmbedding(std::vector<float>& input, std::vector<float>& weights, std::vector<float>& bias,
+void GetCausal_EmptyPastState(std::vector<float>& input, std::vector<float>& output, std::vector<float>& present) {
+  LoadTensor("Causal_EmptyPastState.input_data", input);
+  LoadTensor("Causal_EmptyPastState.output_data", output);
+  LoadTensor("Causal_EmptyPastState.present_data", present);
+}
+
+void GetAttentionDataWithNeoXRotaryEmbedding(std::vector<float>& input,
+                                             std::vector<float>& weights,
+                                             std::vector<float>& bias,
                                              std::vector<float>& output) {
   LoadTensor("AttentionDataWithNeoXRotaryEmbedding.input", input);
   LoadTensor("AttentionDataWithNeoXRotaryEmbedding.weights", weights);

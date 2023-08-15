@@ -83,6 +83,8 @@ void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(Atten
 void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias(AttentionTestData& data);
 void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& data);
 
+void GetCausal_EmptyPastState(std::vector<float>& input, std::vector<float>& output, std::vector<float>& present);
+
 void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);
 void GetAttentionDataWithNeoXRotaryEmbedding(std::vector<float>& input,
                                              std::vector<float>& weights,
