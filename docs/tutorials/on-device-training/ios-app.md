@@ -106,7 +106,7 @@ To follow along with this tutorial, you should have a basic understanding of mac
 3. ### Generate the training artifacts. 
     We will use the `CrossEntropyLoss` loss and the `AdamW` optimizer for this tutorial. More details around artifact generation can be found [here](../../../docs/api/python/on_device_training/training_artifacts.html).
 
-    Since, the model also outputs logits and hidden states, we will use `onnxblock` to define a custom loss function that extracts logits from the model output and passes it to the `CrossEntropyLoss` function.
+    Since the model also outputs logits and hidden states, we will use `onnxblock` to define a custom loss function that extracts logits from the model output and passes it to the `CrossEntropyLoss` function.
 
     ```python
     import onnxruntime.training.onnxblock as onnxblock
