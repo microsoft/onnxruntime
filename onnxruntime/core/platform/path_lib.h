@@ -317,7 +317,7 @@ inline OrtFileType DTToFileType(unsigned char t) {
 }
 
 template <typename T>
-void LoopDir(const std::string& dir_name, T func) {
+Status LoopDir(const std::string& dir_name, T func) {
   DIR* dir = opendir(dir_name.c_str());
   if (dir == nullptr) {
     auto e = errno;
@@ -334,21 +334,16 @@ void LoopDir(const std::string& dir_name, T func) {
     std::ostringstream oss;
     oss << "couldn't open '" << dir_name << "':" << msg;
     std::string s = oss.str();
-    ORT_THROW(s);
+    return Status(common::ONNXRUNTIME, common::FAIL, s);
   }
-  ORT_TRY {
-    struct dirent* dp;
-    while ((dp = readdir(dir)) != nullptr) {
-      if (!func(dp->d_name, DTToFileType(dp->d_type))) {
-        break;
-      }
+  struct dirent* dp;
+  while ((dp = readdir(dir)) != nullptr) {
+    if (!func(dp->d_name, DTToFileType(dp->d_type))) {
+      break;
     }
   }
-  ORT_CATCH(const std::exception& ex) {
-    closedir(dir);
-    ORT_RETHROW;
-  }
   closedir(dir);
+  return Status::OK();
 }
 #endif
 template <typename T>
