@@ -11,26 +11,22 @@
 		e.target.parentNode.parentNode.remove();
 	};
 	onMount(() => {
+	
 		anime({
 			targets: '.toast',
 			opacity: '1',
 			duration: 1000,
-			delay: 3000,
+			delay: 10000,
 			easing: 'easeInOutQuad',
 			begin: function () {
 				document.querySelector<HTMLElement>('.toast')!.style.display = 'block';
 			}
 		});
-		anime({
-			targets: '.toast',
-			delay: 3500,
-			easing: 'easeOutElastic(1, .25)',
-			translateY: -10
-		});
 	});
 </script>
 
 <svelte:head>
+	
 	{@html oneLight}
 	<title>ONNX Runtime | Home</title>
 	<meta property="og:title" content="ONNX Runtime | Home" />
@@ -53,7 +49,7 @@
 	<meta property="og:url" content="https://onnxruntime.ai" />
 	<meta property="og:type" content="website" />
 </svelte:head>
-<div class="toast z-[2] opacity-0 hidden">
+<div class="toast z-10 opacity-0 hidden">
 	<div class="alert alert-info">
 		<svg
 			xmlns="http://www.w3.org/2000/svg"
@@ -70,7 +66,7 @@
 		<span
 			>Please help us improve ONNX Runtime <br class="md:hidden" />by participating in our
 			<a class="underline" href="https://ncv.microsoft.com/UySXuzobM9">customer survey</a>.</span
-		> <button aria-label="close"  on:click={removetoast} class="w-8 h-8 pt-1"><IoIosClose /></button>
+		> <button aria-label="close" on:click={removetoast} class="w-8 h-8 pt-1"><IoIosClose /></button>
 	</div>
 </div>
 <div class="selection:bg-success">

@@ -60,8 +60,7 @@
 		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner">
 			<img src="https://onnxruntime.ai/images/logos/oracle-logo.png" alt="Oracle" />
 		</button>
-		<a href="/testimonials" class="partner">
-			<!-- <img src="https://onnxruntime.ai/images/logos/redis-logo.png" alt="Redis" />-->
+		<a on:mouseenter={handleEnter} on:mouseleave={handleLeave} href="/testimonials" class="partner">
 			<p class="underline text-center pt-20">...and many more</p>
 		</a>
 	</div>

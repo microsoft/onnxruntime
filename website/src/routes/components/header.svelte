@@ -5,11 +5,11 @@
 	import FaGithub from 'svelte-icons/fa/FaGithub.svelte';
 	import FaYoutube from 'svelte-icons/fa/FaYoutube.svelte';
 	import FaLinkedinIn from 'svelte-icons/fa/FaLinkedinIn.svelte';
+	import OnnxIcon from '../../images/onnx-icon.svelte';
 	onMount(() => {
 		themeChange(false);
 	});
 </script>
-<!-- TODO: ONNX Icon color -->
 <div class="navbar bg-base-100">
 	<div class="navbar-start">
 		<div class="dropdown">
@@ -75,7 +75,8 @@
 			</button>
 		</div>
 		<a href="/" class="btn btn-ghost normal-case text-xl">
-			<img src={onnximage} class="w-8 h-8 hidden lg:block" alt="ONNX Runtime logo" />ONNXRuntime
+			<OnnxIcon width={32} height={32}/>
+			ONNXRuntime
 			<img src={onnximage} class="w-8 h-8 lg:hidden" alt="ONNX Runtime logo" />
 		</a>
 	</div>
@@ -136,6 +137,3 @@
 		/>
 	</div>
 </div>
-
-<style>
-</style>

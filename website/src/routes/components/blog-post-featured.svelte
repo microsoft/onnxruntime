@@ -1,24 +1,24 @@
 <script lang="ts">
-	import anime from "animejs";
-	 export let title: string;
-	 export let description: string;
-	 export let badges: Array<Array<string>>;
-	 export let imgsrc: string;
-	 export let imgalt: string;
+	import anime from 'animejs';
+	export let title: string;
+	export let description: string;
+	export let badges: Array<Array<string>>;
+	export let imgsrc: string;
+	export let imgalt: string;
 	let handleEnter = (e: any) => {
 		anime({
 			targets: e.target,
 			scale: 1.05,
-			duration: 1500,
-		})
-	}
+			duration: 1500
+		});
+	};
 	let handleLeave = (e: any) => {
 		anime({
 			targets: e.target,
 			scale: 1,
-			duration: 1500,
-		})
-	}
+			duration: 1500
+		});
+	};
 </script>
 
 <article on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="m-4 md:m-10">
