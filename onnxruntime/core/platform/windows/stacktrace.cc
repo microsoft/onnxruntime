@@ -44,7 +44,7 @@ namespace detail {
 std::vector<std::string> CaptureStackTrace::Trace() const {
   std::vector<std::string> stacktrace;
   auto st = std::stacktrace::current();
-  for (auto& stack : st) {
+  for (const auto& stack : st) {
     std::ostringstream oss;
     oss << stack.source_file() << "(" << stack.source_line() << "): " << stack.description();
     stacktrace.push_back(oss.str());
