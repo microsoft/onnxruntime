@@ -2386,7 +2386,7 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
                                           RunAsyncCallbackFn callback,
                                           void* user_data) {
   size_t num_fetches = fetch_names.size();
-  auto* tp = intra_op_thread_pool_from_env_ ? intra_op_thread_pool_from_env_ : thread_pool_.get();
+  auto* tp = GetIntraOpThreadPoolToUse();
   if (!tp || concurrency::ThreadPool::DegreeOfParallelism(tp) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }

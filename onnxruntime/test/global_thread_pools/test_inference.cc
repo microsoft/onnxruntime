@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <atomic>
+#include <thread>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "../shared_lib/test_fixture.h"
@@ -170,15 +171,18 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
 }
 
 TEST_P(CApiTestGlobalThreadPoolsWithProvider, simpleAsync) {
+  Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, GetParam());
+  if (!session) {
+    return;
+  }
+
   std::vector<Input> inputs;
   std::vector<int64_t> expected_dims_y;
   std::vector<float> expected_values_y;
   std::string output_name;
   GetInputsAndExpectedOutputs(inputs, expected_dims_y, expected_values_y, output_name);
 
-  Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, GetParam());
   auto allocator = std::make_unique<MockedOrtAllocator>();
-
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names;
   for (size_t i = 0; i < inputs.size(); i++) {
@@ -190,14 +194,16 @@ TEST_P(CApiTestGlobalThreadPoolsWithProvider, simpleAsync) {
                                                             inputs[i].dims.size()));
   }
   std::vector<const char*> output_names = {output_name.c_str()};
-  Ort::Value ort_outputs[1] = {Ort::Value{nullptr}};
+  std::vector<Ort::Value> ort_outputs;
+  ort_outputs.emplace_back(Ort::Value{nullptr});
 
+  atomic_wait.store(false);
   session.RunAsync(Ort::RunOptions{nullptr},
                    input_names.data(),
                    ort_inputs.data(),
                    ort_inputs.size(),
                    output_names.data(),
-                   ort_outputs,
+                   ort_outputs.data(),
                    1,
                    AsyncCallback,
                    expected_values_y.data());
