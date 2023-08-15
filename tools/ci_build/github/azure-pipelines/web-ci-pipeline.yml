@@ -6,7 +6,6 @@ trigger:
   paths:
     include:
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime'
     exclude:
     - 'onnxruntime/core/providers/tensorrt'
@@ -20,7 +19,6 @@ pr:
   paths:
     include:
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime'
     exclude:
     - 'onnxruntime/core/providers/tensorrt'
