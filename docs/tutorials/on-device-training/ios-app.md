@@ -84,7 +84,7 @@ To follow along with this tutorial, you should have a basic understanding of mac
     #export model to ONNX
     dummy_input = torch.randn(1, 160000, requires_grad=True)
     torch.onnx.export(model, dummy_input, "wav2vec.onnx",input_names=["input"], output_names=["output"],
-                    dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}})
+                      dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}})
     ```
 2. ### Define the trainable and non trainable parameters
 
