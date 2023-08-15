@@ -319,9 +319,9 @@ The `Trainer` class will have the following public methods:
     }
     ```
 
-    d. Finally, we have everything we need to write the training loop. Here, `kNumOtherRecordings` represent how many recordings we have in `recordings` directory that we created earlier. `kNumEpochs` represents how many epochs we want to train the model on given data. `kUserIndex` and `kOtherIndex` represent the labels for user and other recordings respectively.
+    d. Finally, we have everything we need to write the training loop. Here, `kNumOtherRecordings` represent how many recordings we have in the `recordings` directory that we created earlier. `kNumEpochs` represents how many epochs we want to train the model on the given data. `kUserIndex` and `kOtherIndex` represent the labels for the user and other recordings respectively.
 
-    we also have `progressCallback` that will be called after each training step. We will use this callback to update the progress bar in the UI.
+    We also have a `progressCallback` that will be called after each training step. We will use this callback to update the progress bar in the UI.
 
     ```swift
     private let kNumOtherRecordings: Int = 20
