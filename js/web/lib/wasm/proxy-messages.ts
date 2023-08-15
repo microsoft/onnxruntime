@@ -3,6 +3,8 @@
 
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
+import {FSNode} from './binding/ort-wasm';
+
 /**
  *  tuple elements are: ORT element type; dims; tensor data
  */
@@ -16,7 +18,7 @@ export type SerializableSessionMetadata = [number, string[], string[]];
 /**
  *  tuple elements are: modeldata.offset, modeldata.length
  */
-export type SerializableModeldata = [number, number];
+export type SerializableModeldata = [number, number, FSNode?];
 
 interface MessageError {
   err?: string;
@@ -34,7 +36,7 @@ interface MessageInitOrt extends MessageError {
 
 interface MessageCreateSessionAllocate extends MessageError {
   type: 'create_allocate';
-  in ?: {model: Uint8Array};
+  in ?: {model: Uint8Array; weights?: ArrayBuffer};
   out?: SerializableModeldata;
 }
 

@@ -32,8 +32,8 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
       break;
     case 'create_allocate':
       try {
-        const {model} = ev.data.in!;
-        const modeldata = createSessionAllocate(model);
+        const {model, weights} = ev.data.in!;
+        const modeldata = createSessionAllocate(model, weights);
         postMessage({type: 'create_allocate', out: modeldata} as OrtWasmMessage);
       } catch (err) {
         postMessage({type: 'create_allocate', err} as OrtWasmMessage);

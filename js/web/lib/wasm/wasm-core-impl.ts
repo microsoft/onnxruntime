@@ -3,6 +3,7 @@
 
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
+import {FSNode} from './binding/ort-wasm';
 import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
@@ -68,16 +69,24 @@ const activeSessions = new Map<number, SessionMetadata>();
 
 /**
  * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.
- * @returns a 2-elements tuple - the pointer and size of the allocated buffer
+ * @returns a 3-elements tuple - the pointer, size of the allocated buffer, and optional weights.pb FS node
  */
-export const createSessionAllocate = (model: Uint8Array): [number, number] => {
+export const createSessionAllocate = (model: Uint8Array, weights?: ArrayBuffer): [number, number, FSNode?] => {
   const wasm = getInstance();
   const modelDataOffset = wasm._malloc(model.byteLength);
   if (modelDataOffset === 0) {
     throw new Error(`Can't create a session. failed to allocate a buffer of size ${model.byteLength}.`);
   }
   wasm.HEAPU8.set(model, modelDataOffset);
-  return [modelDataOffset, model.byteLength];
+
+  let weightsFile: FSNode|undefined;
+  if (weights) {
+    weightsFile = wasm.FS.create('/home/web_user/weights.pb');
+    weightsFile.contents = new Uint8Array(weights);
+    weightsFile.usedBytes = weights.byteLength;
+    wasm.FS.chdir('/home/web_user');
+  }
+  return [modelDataOffset, model.byteLength, weightsFile];
 };
 
 /**
@@ -141,6 +150,9 @@ export const createSessionFinalize =
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
         allocs.forEach(alloc => wasm._free(alloc));
+        if (modelData[2]) {
+          wasm.FS.unlink('/home/web_user/weights.pb');
+        }
       }
     };
 

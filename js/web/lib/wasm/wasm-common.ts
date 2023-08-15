@@ -180,3 +180,21 @@ export const tensorTypeToWsglType = (type: DataType) => {
       throw new Error(`Unsupported type: ${type}`);
   }
 };
+
+export const streamResponseToBuffer = async (response: Response, output: ArrayBuffer, outputOffset = 0) => {
+  let offset = outputOffset;
+  if (typeof response.body?.getReader !== 'undefined') {
+    const reader = response.body.getReader();
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = new Uint8Array(output, offset, value.byteLength);
+      chunk.set(new Uint8Array(value));
+      offset += value.byteLength;
+    }
+  }
+}
