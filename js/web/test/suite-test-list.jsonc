@@ -1328,6 +1328,7 @@
       "asin.jsonc",
       "ceil.jsonc",
       //"concat.jsonc",
+      "cast.jsonc",
       "conv.jsonc",
       "cos.jsonc",
       "div.jsonc",
