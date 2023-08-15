@@ -879,7 +879,7 @@ struct InferView_Previews: PreviewProvider {
 }
 ```
 
-The complete implementation of the `InferView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/InferView.swift)
+The complete implementation of the `InferView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/InferView.swift).
 
 ### ContentView
 Finally, we will update the default `ContentView` so that it will contain buttons to navigate to the `TrainingView` and `InferView`.
