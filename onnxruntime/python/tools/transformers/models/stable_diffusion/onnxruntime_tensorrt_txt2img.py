@@ -37,8 +37,6 @@ import os
 import shutil
 from typing import List, Optional, Union
 
-import onnx
-import onnx_graphsurgeon as gs
 import torch
 from cuda import cudart
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
@@ -50,9 +48,8 @@ from diffusers.pipelines.stable_diffusion import (
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import DIFFUSERS_CACHE, logging
 from huggingface_hub import snapshot_download
-from onnx import shape_inference
+from models import CLIP, VAE, UNet
 from ort_utils import OrtCudaSession
-from polygraphy.backend.onnx.loader import fold_constants
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 import onnxruntime as ort
@@ -122,142 +119,6 @@ class Engine(OrtCudaSession):
         logger.info("trt_ep_options=%s", trt_ep_options)
 
         return trt_ep_options
-
-
-class Optimizer:
-    def __init__(self, onnx_graph):
-        self.graph = gs.import_onnx(onnx_graph)
-
-    def cleanup(self):
-        self.graph.cleanup().toposort()
-
-    def get_optimized_onnx_graph(self):
-        return gs.export_onnx(self.graph)
-
-    def select_outputs(self, keep, names=None):
-        self.graph.outputs = [self.graph.outputs[o] for o in keep]
-        if names:
-            for i, name in enumerate(names):
-                self.graph.outputs[i].name = name
-
-    def fold_constants(self):
-        onnx_graph = fold_constants(gs.export_onnx(self.graph), allow_onnxruntime_shape_inference=True)
-        self.graph = gs.import_onnx(onnx_graph)
-
-    def infer_shapes(self):
-        onnx_graph = gs.export_onnx(self.graph)
-        if onnx_graph.ByteSize() > 2147483648:
-            raise TypeError("ERROR: model size exceeds supported 2GB limit")
-        else:
-            onnx_graph = shape_inference.infer_shapes(onnx_graph)
-
-        self.graph = gs.import_onnx(onnx_graph)
-
-
-class BaseModel:
-    def __init__(self, model, name, fp16=False, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77):
-        self.model = model
-        self.name = name
-        self.fp16 = fp16
-        self.device = device
-
-        self.min_batch = 1
-        self.max_batch = max_batch_size
-        self.min_image_shape = 256  # min image resolution: 256x256
-        self.max_image_shape = 1024  # max image resolution: 1024x1024
-        self.min_latent_shape = self.min_image_shape // 8
-        self.max_latent_shape = self.max_image_shape // 8
-
-        self.embedding_dim = embedding_dim
-        self.text_maxlen = text_maxlen
-
-    def get_model(self):
-        return self.model
-
-    def get_input_names(self):
-        pass
-
-    def get_output_names(self):
-        pass
-
-    def get_dynamic_axes(self):
-        return None
-
-    def get_sample_input(self, batch_size, image_height, image_width):
-        pass
-
-    def get_profile_id(self, batch_size, image_height, image_width, static_batch, static_image_shape):
-        (
-            min_batch,
-            max_batch,
-            min_image_height,
-            max_image_height,
-            min_image_width,
-            max_image_width,
-            _,
-            _,
-            _,
-            _,
-        ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_image_shape)
-
-        profile_id = f"_b_{batch_size}" if static_batch else f"_b_{min_batch}_{max_batch}"
-
-        if self.name != "CLIP":
-            if static_image_shape:
-                profile_id += f"_h_{image_height}_w_{image_width}"
-            else:
-                profile_id += f"_h_{min_image_height}_{max_image_height}_w_{min_image_width}_{max_image_width}"
-
-        return profile_id
-
-    def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
-        return None
-
-    def get_shape_dict(self, batch_size, image_height, image_width):
-        return None
-
-    def optimize(self, onnx_graph):
-        opt = Optimizer(onnx_graph)
-        opt.cleanup()
-        opt.fold_constants()
-        opt.infer_shapes()
-        opt.cleanup()
-        return opt.get_optimized_onnx_graph()
-
-    def check_dims(self, batch_size, image_height, image_width):
-        assert batch_size >= self.min_batch and batch_size <= self.max_batch
-        assert image_height % 8 == 0 or image_width % 8 == 0
-        latent_height = image_height // 8
-        latent_width = image_width // 8
-        assert latent_height >= self.min_latent_shape and latent_height <= self.max_latent_shape
-        assert latent_width >= self.min_latent_shape and latent_width <= self.max_latent_shape
-        return (latent_height, latent_width)
-
-    def get_minmax_dims(self, batch_size, image_height, image_width, static_batch, static_image_shape):
-        min_batch = batch_size if static_batch else self.min_batch
-        max_batch = batch_size if static_batch else self.max_batch
-        latent_height = image_height // 8
-        latent_width = image_width // 8
-        min_image_height = image_height if static_image_shape else self.min_image_shape
-        max_image_height = image_height if static_image_shape else self.max_image_shape
-        min_image_width = image_width if static_image_shape else self.min_image_shape
-        max_image_width = image_width if static_image_shape else self.max_image_shape
-        min_latent_height = latent_height if static_image_shape else self.min_latent_shape
-        max_latent_height = latent_height if static_image_shape else self.max_latent_shape
-        min_latent_width = latent_width if static_image_shape else self.min_latent_shape
-        max_latent_width = latent_width if static_image_shape else self.max_latent_shape
-        return (
-            min_batch,
-            max_batch,
-            min_image_height,
-            max_image_height,
-            min_image_width,
-            max_image_width,
-            min_latent_height,
-            max_latent_height,
-            min_latent_width,
-            max_latent_width,
-        )
 
 
 def get_onnx_path(model_name, onnx_dir, opt=True):
@@ -352,8 +213,7 @@ def build_engines(
                 # Optimize onnx
                 if not os.path.exists(onnx_opt_path):
                     logger.info("Generating optimizing model: %s", onnx_opt_path)
-                    onnx_opt_graph = model_obj.optimize(onnx.load(onnx_path))
-                    onnx.save(onnx_opt_graph, onnx_opt_path)
+                    model_obj.optimize_trt(onnx_path, onnx_opt_path)
                 else:
                     logger.info("Found cached optimized model: %s", onnx_opt_path)
 
@@ -401,177 +261,6 @@ def build_engines(
 
 def run_engine(engine, feed_dict):
     return engine.infer(feed_dict)
-
-
-class CLIP(BaseModel):
-    def __init__(self, model, device, max_batch_size, embedding_dim):
-        super().__init__(
-            model=model, name="CLIP", device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
-        )
-
-    def get_input_names(self):
-        return ["input_ids"]
-
-    def get_output_names(self):
-        return ["text_embeddings", "pooler_output"]
-
-    def get_dynamic_axes(self):
-        return {"input_ids": {0: "B"}, "text_embeddings": {0: "B"}}
-
-    def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
-        self.check_dims(batch_size, image_height, image_width)
-        min_batch, max_batch, _, _, _, _, _, _, _, _ = self.get_minmax_dims(
-            batch_size, image_height, image_width, static_batch, static_image_shape
-        )
-        return {
-            "input_ids": [(min_batch, self.text_maxlen), (batch_size, self.text_maxlen), (max_batch, self.text_maxlen)]
-        }
-
-    def get_shape_dict(self, batch_size, image_height, image_width):
-        self.check_dims(batch_size, image_height, image_width)
-        return {
-            "input_ids": (batch_size, self.text_maxlen),
-            "text_embeddings": (batch_size, self.text_maxlen, self.embedding_dim),
-        }
-
-    def get_sample_input(self, batch_size, image_height, image_width):
-        self.check_dims(batch_size, image_height, image_width)
-        return torch.zeros(batch_size, self.text_maxlen, dtype=torch.int32, device=self.device)
-
-    def optimize(self, onnx_graph):
-        opt = Optimizer(onnx_graph)
-        opt.select_outputs([0])  # delete graph output#1
-        opt.cleanup()
-        opt.fold_constants()
-        opt.infer_shapes()
-        opt.select_outputs([0], names=["text_embeddings"])  # rename network output
-        opt.cleanup()
-        return opt.get_optimized_onnx_graph()
-
-
-class UNet(BaseModel):
-    def __init__(
-        self, model, fp16=False, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77, unet_dim=4
-    ):
-        super().__init__(
-            model=model,
-            name="UNet",
-            fp16=fp16,
-            device=device,
-            max_batch_size=max_batch_size,
-            embedding_dim=embedding_dim,
-            text_maxlen=text_maxlen,
-        )
-        self.unet_dim = unet_dim
-
-    def get_input_names(self):
-        return ["sample", "timestep", "encoder_hidden_states"]
-
-    def get_output_names(self):
-        return ["latent"]
-
-    def get_dynamic_axes(self):
-        return {
-            "sample": {0: "2B", 2: "H", 3: "W"},
-            "encoder_hidden_states": {0: "2B"},
-            "latent": {0: "2B", 2: "H", 3: "W"},
-        }
-
-    def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
-        latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        (
-            min_batch,
-            max_batch,
-            _,
-            _,
-            _,
-            _,
-            min_latent_height,
-            max_latent_height,
-            min_latent_width,
-            max_latent_width,
-        ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_image_shape)
-        return {
-            "sample": [
-                (2 * min_batch, self.unet_dim, min_latent_height, min_latent_width),
-                (2 * batch_size, self.unet_dim, latent_height, latent_width),
-                (2 * max_batch, self.unet_dim, max_latent_height, max_latent_width),
-            ],
-            "encoder_hidden_states": [
-                (2 * min_batch, self.text_maxlen, self.embedding_dim),
-                (2 * batch_size, self.text_maxlen, self.embedding_dim),
-                (2 * max_batch, self.text_maxlen, self.embedding_dim),
-            ],
-        }
-
-    def get_shape_dict(self, batch_size, image_height, image_width):
-        latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        return {
-            "sample": (2 * batch_size, self.unet_dim, latent_height, latent_width),
-            "timestep": [1],
-            "encoder_hidden_states": (2 * batch_size, self.text_maxlen, self.embedding_dim),
-            "latent": (2 * batch_size, 4, latent_height, latent_width),
-        }
-
-    def get_sample_input(self, batch_size, image_height, image_width):
-        latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        dtype = torch.float16 if self.fp16 else torch.float32
-        return (
-            torch.randn(
-                2 * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
-            ),
-            torch.tensor([1.0], dtype=torch.float32, device=self.device),
-            torch.randn(2 * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
-        )
-
-
-class VAE(BaseModel):
-    def __init__(self, model, device, max_batch_size, embedding_dim):
-        super().__init__(
-            model=model, name="VAE decoder", device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
-        )
-
-    def get_input_names(self):
-        return ["latent"]
-
-    def get_output_names(self):
-        return ["images"]
-
-    def get_dynamic_axes(self):
-        return {"latent": {0: "B", 2: "H", 3: "W"}, "images": {0: "B", 2: "8H", 3: "8W"}}
-
-    def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
-        latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        (
-            min_batch,
-            max_batch,
-            _,
-            _,
-            _,
-            _,
-            min_latent_height,
-            max_latent_height,
-            min_latent_width,
-            max_latent_width,
-        ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_image_shape)
-        return {
-            "latent": [
-                (min_batch, 4, min_latent_height, min_latent_width),
-                (batch_size, 4, latent_height, latent_width),
-                (max_batch, 4, max_latent_height, max_latent_width),
-            ]
-        }
-
-    def get_shape_dict(self, batch_size, image_height, image_width):
-        latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        return {
-            "latent": (batch_size, 4, latent_height, latent_width),
-            "images": (batch_size, 3, image_height, image_width),
-        }
-
-    def get_sample_input(self, batch_size, image_height, image_width):
-        latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        return torch.randn(batch_size, 4, latent_height, latent_width, dtype=torch.float32, device=self.device)
 
 
 class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
@@ -644,8 +333,8 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
 
         self.models["unet"] = UNet(
             self.unet,
-            fp16=True,
             device=self.torch_device,
+            fp16=True,
             max_batch_size=self.max_batch_size,
             embedding_dim=self.embedding_dim,
             unet_dim=(9 if self.inpaint else 4),
@@ -888,23 +577,22 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
 
 
 if __name__ == "__main__":
-    import torch
-    from diffusers import DDIMScheduler
+    model_name_or_path = "runwayml/stable-diffusion-v1-5"
 
-    scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1", subfolder="scheduler")
+    scheduler = DDIMScheduler.from_pretrained(model_name_or_path, subfolder="scheduler")
 
     pipe = OnnxruntimeTensorRTStableDiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-2-1",
+        model_name_or_path,
         revision="fp16",
         torch_dtype=torch.float16,
         scheduler=scheduler,
         image_height=512,
         image_width=512,
-        max_batch_size=1,
+        max_batch_size=4,
     )
 
     # re-use cached folder to save ONNX models and TensorRT Engines
-    pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", revision="fp16")
+    pipe.set_cached_folder(model_name_or_path, revision="fp16")
 
     pipe = pipe.to("cuda")
 
