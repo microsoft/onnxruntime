@@ -78,13 +78,18 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     const auto& nodes = graph_viewer_.GetNodesInTopologicalOrder();
 
+    const auto& node = graph_viewer_.GetNode(nodes[0]);
+
+    // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
+    // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
+    if (nodes.size() <= 3) {
+      if (data_ops_->IsOpSupportedOnlyInModel(node->OpType())) {
+        return result;
+      }
+    }
+    
     // Nodes that work well in models but not as a single node
     if (nodes.size() == 1) {
-      // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
-      // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
-      const auto& node = graph_viewer_.GetNode(nodes[0]);
-      if (data_ops_->IsOpSupportedOnlyInModel(node->OpType()))
-        return result;
       // If reshape is not an intermediate node, shape needs to be an initializer
       if (data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
         return result;
