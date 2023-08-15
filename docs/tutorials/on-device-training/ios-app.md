@@ -757,7 +757,7 @@ struct TrainView_Previews: PreviewProvider {
 }
 ```
 
-The complete implementation of the `TrainingView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/TrainView.swift)
+The complete implementation of the `TrainingView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/TrainView.swift).
 
 ### Inference View
 Lastly, we will create the `InferView` that will be used to perform inference with the trained model. It will prompt the user to record their voice and perform inference with the trained model. Then, it will display the result of the inference.
