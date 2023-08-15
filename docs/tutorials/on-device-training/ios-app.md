@@ -187,11 +187,11 @@ The project structure should look like this:
 
 The application will consist of two main UI Views: `TrainingView` and `InferenceView`. The `TrainingView` is used to train the model on-device, and the `InferenceView` is used to perform inference with the trained model. Additionally, there is `ContentView` which is the home view of the application and contains buttons to navigate to the `TrainingView` and `InferenceView`.
 
-Additionally, we will also create `AudioRecorder` class to handle the recording of audio through the microphone. It will record 10 seconds of audio and output the audio data as a `Data` object, which can be used for training and inference purposes.
+Additionally, we will also create an `AudioRecorder` class to handle the recording of audio through the microphone. It will record 10 seconds of audio and output the audio data as a `Data` object, which can be used for training and inference purposes.
 
-We will have `Trainer` class which will handle the training and exporting of the model.
+We will have a `Trainer` class which will handle the training and exporting of the model.
 
-Laslty, we will also create `VoiceIdentifier` class that will handle the inference with the trained model. 
+Lastly, we will also create a `VoiceIdentifier` class that will handle the inference with the trained model. 
 
 ### Training the model
 
