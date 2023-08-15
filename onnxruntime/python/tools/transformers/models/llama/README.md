@@ -1,8 +1,8 @@
-# LLaMA
+# LLaMA-2
 
-## Exporting LLaMA
+## Exporting LLaMA-2
 
-There are several ways to export LLaMA models such as LLaMA and LLaMA-2 (using LLaMA-2 7B as an example).
+There are several ways to export LLaMA-2 models (using LLaMA-2 7B as an example).
 
 Option 1: from convert_to_onnx
 ```
@@ -21,7 +21,7 @@ Option 2: from [Microsoft's custom export](https://github.com/microsoft/Llama-2-
 
 Option 3: from [Hugging Face's Optimum](https://github.com/huggingface/optimum)
 
-## Examples of Exporting LLaMA
+## Examples of Exporting LLaMA-2
 
 Here are some additional examples for exporting LLaMA.
 
@@ -56,9 +56,9 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 
 Note: [Intel's Neural Compressor](https://github.com/intel/neural-compressor) takes time to run the SmoothQuant quantization algorithm on LLMs. On an [Azure Standard_NC24s_v3 VM](https://learn.microsoft.com/en-us/azure/virtual-machines/ncv3-series), it takes about ~30-45 min for each of the exported ONNX models.
 
-## Benchmark LLaMA
+## Benchmark LLaMA-2
 
-Here are some examples of how you can benchmark LLaMA.
+Here are some examples of how you can benchmark LLaMA-2.
 
 Note: In the below examples, `PyTorch` refers to running in PyTorch without `torch.compile` and `PyTorch 2.0` refers to running in PyTorch with `torch.compile`.
 

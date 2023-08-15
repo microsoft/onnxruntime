@@ -148,6 +148,8 @@ def process_log_file(device_id, log_file, base_results):
                 step = "per-token"
             elif latency_pattern in line:
                 latency_s = float(line[len(latency_pattern) : line.rfind(" ")])
+                if step == "prompt":
+                    latency_s /= sequence_length
                 latency_ms = latency_s * 1000
             elif throughput_pattern in line:
                 throughput = float(line[len(throughput_pattern) : line.rfind(" ")])
