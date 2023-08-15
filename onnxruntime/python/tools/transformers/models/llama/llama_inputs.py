@@ -8,7 +8,6 @@ from transformers import LlamaConfig
 # Get position_ids from attention_mask
 def get_position_ids(attention_mask: torch.Tensor, use_past_kv: bool):
     position_ids = attention_mask.long().cumsum(-1) - 1
-    # position_ids.masked_fill_(attention_mask == 0, 1)
     if use_past_kv:
         position_ids = position_ids[:, -1].unsqueeze(-1)
     return position_ids
