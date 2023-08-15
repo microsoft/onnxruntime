@@ -198,9 +198,9 @@ Lastly, we will also create a `VoiceIdentifier` class that will handle the infer
 First, we will create a `Trainer` class that will handle the training and exporting of the model. It will load the training artifacts, train the model on given audio, and export the trained model using ONNX Runtime on device training APIs. The detailed documentation for the API can be found [here](../../../docs/api/objectivec/index.html).
 
 The `Trainer` class will have the following public methods:
-- `init()` - Initializes the training session and loads the training artifacts
-- `train(_ trainingData: [Data])` - Trains the model on the given user audio data. It will take in an array of `Data` objects, where each `Data` object represents the audio data of the user and use it along with some pre-recorded audio data to train the model.
-- `exportModelForInference()` - Exports the trained model for inference purposes
+- `init()` - Initializes the training session and loads the training artifacts.
+- `train(_ trainingData: [Data])` - Trains the model on the given user audio data. It will take in an array of `Data` objects, where each `Data` object represents the audio data of the user, and use it along with some pre-recorded audio data to train the model.
+- `exportModelForInference()` - Exports the trained model for inference purposes.
 
 
 1. #### Loading the training artifacts and initializing training session
