@@ -127,15 +127,15 @@ HRESULT _winml::GetDXCoreHardwareAdapterWithPreference(
 HRESULT _winml::CreateD3D11On12Device(ID3D12Device* device12, ID3D11Device** device11) {
   return CommonDeviceHelpers::RunDelayLoadedApi(
     D3D11On12CreateDevice,
-    device12,  // pointer to d3d12 device
+    device12,                          // pointer to d3d12 device
     D3D11_CREATE_DEVICE_BGRA_SUPPORT,  // required in order to interop with Direct2D
-    nullptr,  // feature level (defaults to d3d12)
-    0,  // size of feature levels in bytes
-    nullptr,  // an array of unique command queues for D3D11On12 to use
-    0,  // size of the command queue array
-    0,  // D3D12 device node to use
-    device11,  // d3d11 device out param
-    nullptr,  // pointer to d3d11 device context (unused)
+    nullptr,                           // feature level (defaults to d3d12)
+    0,                                 // size of feature levels in bytes
+    nullptr,                           // an array of unique command queues for D3D11On12 to use
+    0,                                 // size of the command queue array
+    0,                                 // D3D12 device node to use
+    device11,                          // d3d11 device out param
+    nullptr,                           // pointer to d3d11 device context (unused)
     nullptr
   );  // pointer to the returned feature level (unused)
 }

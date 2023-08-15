@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
- // Licensed under the MIT License.
+// Licensed under the MIT License.
 
 #pragma once
 #include "adapter/pch.h"
@@ -69,7 +69,7 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 
 namespace onnxruntime {
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled);
-}// namespace onnxruntime
+}  // namespace onnxruntime
 
 #endif  // USE_DML
 

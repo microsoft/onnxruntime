@@ -98,4 +98,4 @@ winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(
   return builder_;
 }
 
-}// namespace WINML_EXPERIMENTALP
+}  // namespace WINML_EXPERIMENTALP

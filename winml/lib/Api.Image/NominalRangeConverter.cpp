@@ -3,8 +3,8 @@
 
 namespace _winml {
 NominalRangeConverter::NominalRangeConverter(winml::LearningModelPixelRange pixelRange) {
-    // For Normalization: the formula is input_range[min, max] / scale - shift
-    // For DeNormalization: the formula is (input_range[min, max] + shift) * scale
+  // For Normalization: the formula is input_range[min, max] / scale - shift
+  // For DeNormalization: the formula is (input_range[min, max] + shift) * scale
   if (pixelRange == winml::LearningModelPixelRange::ZeroTo255) {
     scale = 1.f;
     shift = 0;
@@ -17,9 +17,9 @@ NominalRangeConverter::NominalRangeConverter(winml::LearningModelPixelRange pixe
   }
 };
 
-  // [0, 255] --> [0, 255]
-  // [0, 255] / 255 --> [0, 1]
-  // [0, 255] * 2 / 255 - 1 --> [-1, 1]
+// [0, 255] --> [0, 255]
+// [0, 255] / 255 --> [0, 1]
+// [0, 255] * 2 / 255 - 1 --> [-1, 1]
 float NominalRangeConverter::Normalize(float val) const {
   return val / scale - shift;
 }
@@ -38,9 +38,9 @@ __m128 NominalRangeConverter::Normalize(__m128 sse_data) const {
 }
 #endif
 
-  // [0, 255] --> [0, 255]
-  // ([0, 1] + 0 ) * 255 -> [0, 1]
-  // ([-1, 1] + 1) * 255 / 2 --> [-1, 1]
+// [0, 255] --> [0, 255]
+// ([0, 1] + 0 ) * 255 -> [0, 1]
+// ([-1, 1] + 1) * 255 / 2 --> [-1, 1]
 float NominalRangeConverter::Denormalize(float val) const {
   return scale * (val + shift);
 }
@@ -58,4 +58,4 @@ __m128 NominalRangeConverter::Denormalize(__m128 sse_data) const {
   return _mm_mul_ps(sse_added, sse_scale);
 }
 #endif
-} // namespace _winml
+}  // namespace _winml

@@ -22,51 +22,51 @@ struct ReluShapeInferrer : winrt::implements<ReluShapeInferrer, IMLOperatorShape
 struct ReluOperator : winrt::implements<ReluOperator, IMLOperatorKernel> {
   ReluOperator() {}
 
-    // Computes the outputs of the kernel.  In this case, the output will represent
-    // the Rectified Linear Unit (Relu) output.
-    //
-    // Based on the operators location in the model graph this operator may be called multiple times
-    // or simultaneously within the same instance of the class during evaluation.  Implementations
-    // of this method must be thread-safe.
+  // Computes the outputs of the kernel.  In this case, the output will represent
+  // the Rectified Linear Unit (Relu) output.
+  //
+  // Based on the operators location in the model graph this operator may be called multiple times
+  // or simultaneously within the same instance of the class during evaluation.  Implementations
+  // of this method must be thread-safe.
   STDMETHOD(Compute)(IMLOperatorKernelContext* context) {
-        // Get the input tensor
+    // Get the input tensor
     winrt::com_ptr<IMLOperatorTensor> inputTensor;
     context->GetInputTensor(0, inputTensor.put());
 
-        // Get the output tensor
+    // Get the output tensor
     winrt::com_ptr<IMLOperatorTensor> outputTensor;
     context->GetOutputTensor(0, outputTensor.put());
 
-        // Get the input and output shape sizes
+    // Get the input and output shape sizes
     uint32_t inputDimsSize = inputTensor->GetDimensionCount();
     uint32_t outputDimsSize = outputTensor->GetDimensionCount();
     if (inputDimsSize != outputDimsSize) {
       return E_UNEXPECTED;
     }
 
-        // Get the input shape
+    // Get the input shape
     std::vector<uint32_t> inputDims(inputDimsSize);
     outputTensor->GetShape(inputDimsSize, inputDims.data());
 
-        // Get the output shape
+    // Get the output shape
     std::vector<uint32_t> outputDims(outputDimsSize);
     outputTensor->GetShape(outputDimsSize, outputDims.data());
 
-        // For the number of total elements in the input and output shapes
+    // For the number of total elements in the input and output shapes
     auto outputDataSize = std::accumulate(outputDims.begin(), outputDims.end(), 1, std::multiplies<uint32_t>());
     auto inputDataSize = std::accumulate(inputDims.begin(), inputDims.end(), 1, std::multiplies<uint32_t>());
     if (outputDataSize != inputDataSize) {
       return E_UNEXPECTED;
     }
 
-        // If the tensor types are both float type
+    // If the tensor types are both float type
     if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float && inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float) {
-            // For cpu data
+      // For cpu data
       if (outputTensor->IsCpuData() && inputTensor->IsCpuData()) {
         ComputeInternal<float>(inputTensor.get(), outputTensor.get(), inputDataSize);
       }
     } else if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Double && inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Double) {
-            // For cpu data
+      // For cpu data
       if (outputTensor->IsCpuData() && inputTensor->IsCpuData()) {
         ComputeInternal<double>(inputTensor.get(), outputTensor.get(), inputDataSize);
       }

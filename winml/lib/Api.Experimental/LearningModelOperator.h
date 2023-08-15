@@ -40,10 +40,10 @@ struct LearningModelOperator : LearningModelOperatorT<LearningModelOperator> {
   wfc::IMap<winrt::hstring, winrt::hstring> output_mapping_;
 };
 
-} // namespace WINML_EXPERIMENTALP
+}  // namespace WINML_EXPERIMENTALP
 
 namespace WINML_EXPERIMENTAL::factory_implementation {
 
 struct LearningModelOperator : LearningModelOperatorT<LearningModelOperator, implementation::LearningModelOperator> {};
 
-}// namespace WINML_EXPERIMENTAL::factory_implementation
+}  // namespace WINML_EXPERIMENTAL::factory_implementation
