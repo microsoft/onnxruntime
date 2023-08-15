@@ -237,7 +237,8 @@ static std::vector<ITestCase*> GetAllTestCases() {
   // Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
   allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
 
-  WINML_EXPECT_NO_THROW(LoadTests(
+  // Do not fail if the dataDirs do not exist
+  (void)LoadTests(
     dataDirs,
     whitelistedTestCases,
     TestTolerances(1e-3, 1e-3, {}, {}),
@@ -246,7 +247,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
       tests.push_back(l.get());
       ownedTests.push_back(std::move(l));
     }
-  ));
+  );
   return tests;
 }
 
