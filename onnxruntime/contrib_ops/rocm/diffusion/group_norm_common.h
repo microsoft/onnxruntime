@@ -35,7 +35,7 @@ int32_t findMaxDivisor(int32_t n, int32_t maxAllowedDivisor) {
 
 template <typename T>
 struct GroupNormNHWCParams : OpParams {
-  GroupNormNHWCParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* dst, float* redBuffer, const T* src, const float* gamma,
+  GroupNormNHWCParams(RocmTuningContext* tuning_ctx, onnxruntime::Stream* stream, T* dst, float* redBuffer, const T* src, const float* gamma,
                       const float* beta, int32_t n, int32_t h, int32_t w, int32_t c, int32_t groups, float epsilon, bool withSwish)
       : OpParams(tuning_ctx, stream), dst(dst), src(src), gamma(gamma), beta(beta), redBuffer(redBuffer), epsilon(epsilon), n(n), h(h), w(w), c(c), groups(groups), withSwish(withSwish) {
     int32_t maxBlocksPerHW = 1024;

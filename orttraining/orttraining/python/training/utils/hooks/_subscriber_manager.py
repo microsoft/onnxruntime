@@ -6,8 +6,9 @@
 
 import inspect
 from contextlib import contextmanager
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple, Union
 
+import onnx
 import torch
 
 from onnxruntime.training.utils import extract_data_and_schema, unflatten_data_using_schema
@@ -27,6 +28,14 @@ def no_increase_global_step():
         yield
     finally:
         ORT_NO_INCREASE_GLOBAL_STEP[0] = False
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
 
 
 class _IncrementStep(torch.autograd.Function):
@@ -57,6 +66,14 @@ class _IncrementStep(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *grad_output: Tuple[Optional[torch.Tensor], ...]) -> Tuple[Optional[torch.Tensor], ...]:
         return (None, *tuple(g for g in grad_output))
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
 
 
 class SubscriberManager:

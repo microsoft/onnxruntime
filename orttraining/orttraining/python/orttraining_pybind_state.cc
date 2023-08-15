@@ -1006,12 +1006,12 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
              ORT_THROW_IF_ERROR(model->LazyResetGrad());
            })
       .def("copy_parameters_to_buffer",
-           [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
-             ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
+           [](onnxruntime::training::api::Module* model, OrtValue& output, bool trainable_only) -> void {
+             ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output, trainable_only));
            })
       .def("copy_buffer_to_parameters",
-           [](onnxruntime::training::api::Module* model, OrtValue& input) -> void {
-             ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input));
+           [](onnxruntime::training::api::Module* model, OrtValue& input, bool trainable_only) -> void {
+             ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input, trainable_only));
            })
       .def("get_parameters_size",
            [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
@@ -1235,6 +1235,15 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           std::string model_str;
           ort_model->ToProto().SerializeToString(&model_str);
           return py::bytes(model_str);
+        });
+
+  m.def("is_ortmodule_available",
+        []() {
+#ifdef __linux__
+          return true;
+#else
+        return false;
+#endif
         });
 #endif
 }

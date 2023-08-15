@@ -158,6 +158,8 @@ class DebugOptions:
             return [
                 # [W shape_type_inference.cpp:1974] Warning: The shape inference of com.microsoft::PythonOp type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function. (function UpdateReliable)
                 "type is missing, so it may result in wrong shape inference",
+                #  diagnostics [WARNING] - None
+                "[WARNING] - None",
             ]
 
         return None
