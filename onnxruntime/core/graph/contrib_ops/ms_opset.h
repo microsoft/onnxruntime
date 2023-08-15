@@ -107,8 +107,13 @@ class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, WordConvEmbedding);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, GemmFastGelu);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, DecoderMaskedSelfAttention);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, DecoderMaskedMultiHeadAttention);
+
 #ifdef PRINT_ERROR_VALUES
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, PrintErrorValues);
+#endif
+
+#ifdef PRINT_TOLERANCE_ERRORS
+class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, PrintToleranceErrors);
 #endif
 
 class OpSet_Microsoft_ver1 {
@@ -211,8 +216,13 @@ class OpSet_Microsoft_ver1 {
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, GemmFastGelu)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, DecoderMaskedSelfAttention)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, DecoderMaskedMultiHeadAttention)>());
+
 #ifdef PRINT_ERROR_VALUES
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, PrintErrorValues)>());
+#endif
+
+#ifdef PRINT_TOLERANCE_ERRORS
+    fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, PrintToleranceErrors)>());
 #endif
   }
 };

@@ -246,6 +246,7 @@ option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for thre
 
 # Debug options
 option(onnxruntime_PRINT_ERROR_VALUES "Insert nodes that will print potentially wrong values like NaN and INF." OFF)
+option(onnxruntime_PRINT_TOLERANCE_ERRORS "Insert nodes that will print values that exceed a tolerance threshold between float16 and float32." OFF)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -1462,6 +1463,10 @@ endif()
 
 if (onnxruntime_PRINT_ERROR_VALUES)
   add_compile_definitions(PRINT_ERROR_VALUES)
+endif()
+
+if (onnxruntime_PRINT_TOLERANCE_ERRORS)
+  add_compile_definitions(PRINT_TOLERANCE_ERRORS)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)

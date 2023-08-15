@@ -135,6 +135,10 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, PrintErrorValues);
 #endif
 
+#ifdef PRINT_TOLERANCE_ERRORS
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, PrintToleranceErrors);
+#endif
+
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
   KernelCreateInfo info;
@@ -306,6 +310,10 @@ Status RegisterCpuContribKernels(KernelRegistry& kernel_registry) {
 #ifdef PRINT_ERROR_VALUES
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, MLFloat16, PrintErrorValues)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, PrintErrorValues)>,
+#endif
+
+#ifdef PRINT_TOLERANCE_ERRORS
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, PrintToleranceErrors)>,
 #endif
 
   };

@@ -47,8 +47,7 @@ Status PrintErrorValuesTransformer::ApplyImpl(Graph& graph, bool& modified, int 
       }
 
       auto data_type = proto_type->tensor_type().elem_type();
-      if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-          data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      if (data_type != TensorProto_DataType_FLOAT16 && data_type != TensorProto_DataType_FLOAT) {
         continue;
       }
 

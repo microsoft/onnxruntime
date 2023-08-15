@@ -2412,6 +2412,39 @@ ONNX_MS_OPERATOR_SET_SCHEMA(PrintErrorValues, 1,
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 #endif
 
+#ifdef PRINT_TOLERANCE_ERRORS
+ONNX_MS_OPERATOR_SET_SCHEMA(PrintToleranceErrors, 1,
+                            OpSchema()
+                                .Input(0, "float16_input", "float16 input", "T1")
+                                .Input(1, "float32_input", "float32 input", "T2")
+                                .Output(0, "Y", "output", "T1")
+                                .TypeConstraint(
+                                    "T1",
+                                    {"tensor(float16)"},
+                                    "Constrain the first input and output to float16.")
+                                .TypeConstraint(
+                                    "T2",
+                                    {"tensor(float)"},
+                                    "Constrain the second input to float.")
+                                .Attr(
+                                    "node_name",
+                                    "Name of the node.",
+                                    AttributeProto::STRING)
+                                .Attr(
+                                    "node_type",
+                                    "Type of the node.",
+                                    AttributeProto::STRING)
+                                .Attr(
+                                    "execution_provider",
+                                    "Execution provider that executed the node.",
+                                    AttributeProto::STRING)
+                                .Attr(
+                                    "node_output_index",
+                                    "Index of the output that feeds into X.",
+                                    AttributeProto::INT)
+                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+#endif
+
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);

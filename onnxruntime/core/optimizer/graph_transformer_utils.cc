@@ -88,6 +88,10 @@
 #include "core/optimizer/print_error_values_transformer.h"
 #endif
 
+#ifdef PRINT_TOLERANCE_ERRORS
+#include "core/optimizer/print_tolerance_errors_transformer.h"
+#endif
+
 namespace onnxruntime::optimizer_utils {
 
 static void FilterTransformers(InlinedVector<std::unique_ptr<GraphTransformer>>& transformers,
@@ -362,9 +366,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
 #endif
 
+#ifdef PRINT_TOLERANCE_ERRORS
+      // This needs to be at the end to make sure that all fused nodes are covered
+      transformers.emplace_back(std::make_unique<PrintToleranceErrorsTransformer>(cpu_cuda_rocm_acl_armnn_eps));
+#endif
+
 #ifdef PRINT_ERROR_VALUES
       // This needs to be at the end to make sure that all fused nodes are covered
-      transformers.emplace_back(std::make_unique<PrintErrorValuesTransformer>(dml_ep));
+      transformers.emplace_back(std::make_unique<PrintErrorValuesTransformer>(cpu_cuda_rocm_acl_armnn_eps));
 #endif
 
     } break;
