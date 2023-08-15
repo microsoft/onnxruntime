@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <atomic>
+#include <thread>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "../shared_lib/test_fixture.h"
@@ -151,6 +152,68 @@ TEST_P(CApiTestGlobalThreadPoolsWithProvider, simple) {
   if (session) {
     TestInference<PATH_TYPE, float>(session, inputs, output_name.c_str(), expected_dims_y, expected_values_y);
   }
+}
+
+static std::thread::id caller_tid = std::this_thread::get_id();
+static std::atomic_bool atomic_wait{false};
+
+void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status_ptr) {
+  const float* expected_result = reinterpret_cast<const float*>(user_data);
+  auto callee_tid = std::this_thread::get_id();
+  EXPECT_NE(caller_tid, callee_tid);
+  Ort::Status status(status_ptr);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_EQ(num_outputs, 1UL);
+  Ort::Value output_value(outputs[0]);
+  EXPECT_NEAR(output_value.GetTensorData<float>()[1], expected_result[1], 0.001);
+  output_value.release();
+  atomic_wait.store(true);
+}
+
+TEST_P(CApiTestGlobalThreadPoolsWithProvider, simpleAsync) {
+  Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, GetParam());
+  if (!session) {
+    return;
+  }
+
+  std::vector<Input> inputs;
+  std::vector<int64_t> expected_dims_y;
+  std::vector<float> expected_values_y;
+  std::string output_name;
+  GetInputsAndExpectedOutputs(inputs, expected_dims_y, expected_values_y, output_name);
+
+  auto allocator = std::make_unique<MockedOrtAllocator>();
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names;
+  for (size_t i = 0; i < inputs.size(); i++) {
+    input_names.emplace_back(inputs[i].name);
+    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator->Info(),
+                                                            inputs[i].values.data(),
+                                                            inputs[i].values.size(),
+                                                            inputs[i].dims.data(),
+                                                            inputs[i].dims.size()));
+  }
+  std::vector<const char*> output_names = {output_name.c_str()};
+  std::vector<Ort::Value> ort_outputs;
+  ort_outputs.emplace_back(Ort::Value{nullptr});
+
+  atomic_wait.store(false);
+  session.RunAsync(Ort::RunOptions{nullptr},
+                   input_names.data(),
+                   ort_inputs.data(),
+                   ort_inputs.size(),
+                   output_names.data(),
+                   ort_outputs.data(),
+                   1,
+                   AsyncCallback,
+                   expected_values_y.data());
+
+  std::chrono::duration<double, std::milli> dur{100};
+  // timeout in about 10 secs
+  for (int i = 0; i < 100 && !atomic_wait.load(); ++i) {
+    std::this_thread::sleep_for(dur);
+  }
+  EXPECT_EQ(atomic_wait.load(), true);
 }
 
 // Test 2
