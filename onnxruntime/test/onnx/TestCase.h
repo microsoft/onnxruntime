@@ -6,8 +6,8 @@
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
-#include <core/common/common.h>
 #include <core/common/status.h>
+#include <core/common/common.h>
 #include <core/platform/path_lib.h>
 
 namespace Ort {
