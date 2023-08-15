@@ -14,6 +14,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:DepthToSpace|Only DCR mode DepthToSpace is supported.|
 |ai.onnx:Div||
 |ai.onnx:Flatten||
+|ai.onnx:Gather|Input `indices` with scalar value is not supported.|
 |ai.onnx:Gemm|Input B should be constant.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
