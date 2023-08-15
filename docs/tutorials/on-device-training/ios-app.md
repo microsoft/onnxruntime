@@ -368,7 +368,7 @@ The `Trainer` class will have the following public methods:
     }
     ```
 
-You can find the complete implementation of the `Trainer` class [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/Trainer.swift)
+You can find the complete implementation of the `Trainer` class [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/Trainer.swift).
 
 
 ### Inference with the trained model
