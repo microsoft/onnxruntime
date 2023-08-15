@@ -7,8 +7,9 @@ import os
 import shutil
 import warnings
 from pathlib import Path
-from typing import Optional, Union
+from typing import List, Optional, Tuple, Union
 
+import onnx
 import torch
 
 from ._subscriber_base import RuntimeStates, SubscriberBase
@@ -82,6 +83,14 @@ class _InspectActivation(torch.autograd.Function):
             None,
             None,
         )
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
 
 
 class StatisticsSubscriber(SubscriberBase):

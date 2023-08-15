@@ -3,14 +3,22 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import ctypes
 import inspect
+import warnings
 from collections import OrderedDict
 from types import CodeType, FunctionType
-from typing import Callable, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
+import onnx
 import torch
 
-from onnxruntime.training.utils import ORTModelInputOutputType, extract_data_and_schema, unflatten_data_using_schema
+from onnxruntime.training.utils import (
+    ORTModelInputOutputType,
+    extract_data_and_schema,
+    pytorch_dtype_to_onnx,
+    unflatten_data_using_schema,
+)
 
 from ._subscriber_base import RuntimeStates, SubscriberBase
 
@@ -78,10 +86,30 @@ try:
         # Only done once no matter how many times this function is called for different modules.
         DeepSpeedZeRoOffload.setup_zero_stage3_hooks = _setup_zero_stage3_ort_compatible_hooks
 
-except ImportError:
+except ImportError as e:
+    warnings.warn(f"DeepSpeed import error {e}")
 
     def configure_ort_compatible_zero_stage3():
         raise RuntimeError("DeepSpeed is not installed, cannot configure ORT compatible ZeRO stage3.")
+
+
+def _get_offloaded_params(module: torch.nn.Module) -> List[torch.nn.parameter.Parameter]:
+    """Retrieve the parameters that are not available for this module.
+
+    Logic adapted from
+    https://github.com/microsoft/DeepSpeed/blob/9d79cfd1e90cae9306dc1b5837d374b2c9489ac8/deepspeed/runtime/zero/partitioned_param_coordinator.py#L267
+    """
+    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+    from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params
+
+    # Retrive the parameters that are not available for this module.
+    params_to_fetch = frozenset(iter_params(module))
+    partitioned_params = []
+    for param in params_to_fetch:
+        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+            partitioned_params.append(param)
+
+    return partitioned_params
 
 
 class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
@@ -122,6 +150,14 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
 
         args = unflatten_data_using_schema(args_tensors, args_schema)
         kwargs = unflatten_data_using_schema(kwargs_tensors, kwargs_schema)
+
+        # We will re-retrieve the partitioned parameter tensors other than use the one passed in input (of size 0).
+        # This is required for ORT run because in ORT graph, the tensor of size 0 will always be size 0
+        # (this step is not necessary for PyTorch run, because PyTorch will re-use the same tensor
+        # while .data got updated to full-sized data after pre_forward_with_kwargs_function is called).
+        partitioned_params = _get_offloaded_params(module)
+        ctx.partitioned_params = partitioned_params
+
         f_ret = pre_forward_with_kwargs_function(module, args, kwargs)
 
         if f_ret is None:
@@ -151,7 +187,38 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
             if ret is not None:
                 updated_grads = ret
 
-        return (None, None, None, None, None, None, None, *updated_grads)
+        # TODO(pengwa) Update grad for partitioned parameters.
+        input_count = len(updated_grads) - len(ctx.partitioned_params)
+        zeros = [torch.zeros(0, dtype=p.dtype, device=p.device) for p in ctx.partitioned_params]
+        zero_grads = updated_grads[:input_count] + tuple(zeros)
+
+        return (None, None, None, None, None, None, None, *zero_grads)
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        input_pointer_scalars_attr_name = "input_pointer_scalars"
+        found = [attr for attr in node.attribute if attr.name == input_pointer_scalars_attr_name]
+        assert len(found) == 1
+        input_pointer_scalars = found[0].ints
+
+        # Restore the nn.Module from the pointer.
+        module = ctypes.cast(input_pointer_scalars[0], ctypes.py_object).value
+
+        partitioned_params = _get_offloaded_params(module)
+        tensor_output_shapes = tensor_input_shapes
+        tensor_output_dtypes = tensor_input_dtypes
+        start_offset = len(tensor_input_shapes) - len(partitioned_params)
+        for index, param in enumerate(partitioned_params):
+            tensor_output_shapes[start_offset + index] = list(param.ds_shape)
+            tensor_output_dtypes[start_offset + index] = pytorch_dtype_to_onnx(param.dtype)
+        assert len(tensor_output_shapes) == len(tensor_input_shapes)
+        assert len(tensor_output_dtypes) == len(tensor_input_dtypes)
+
+        return tensor_output_shapes, tensor_output_dtypes
 
 
 class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
@@ -199,6 +266,14 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
                 updated_args = ret
         return (None, None, None, None, *updated_args)
 
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
+
 
 class _ZeROOffloadFunctions:
     def __init__(self, one_time_init: _ZeROOffloadOneTimeInitializer, offloader) -> None:
@@ -242,15 +317,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         args_tensors, args_schema = extract_data_and_schema(args)
         kwargs_tensors, kwargs_schema = extract_data_and_schema(kwargs)
 
-        from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-        from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params
-
-        # Retrive the parameters that are not available for this module.
-        params_to_fetch = frozenset(iter_params(module))
-        partitioned_params = []
-        for param in params_to_fetch:
-            if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
-                partitioned_params.append(param)
+        partitioned_params = _get_offloaded_params(module)
 
         _pre_forward_module_hook = self._functions.get("_pre_forward_module_hook")
 
