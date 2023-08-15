@@ -18,10 +18,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
-                                         const size_t begin_index,
-                                         const size_t num_arg);
-
 class PythonOpBase {
  public:
   PythonOpBase(const OpKernelInfo& info) {
@@ -120,13 +116,22 @@ class PythonOpBase {
   // Types. input_tensor_types_[i] is the element type of the i-th tensor.
   std::vector<int64_t> input_tensor_types_;
 
-  // Concatenation of all floats from apply(...) 's inputs.
+  // Concatenation of all bools from apply(...) 's inputs.
+  std::vector<int64_t> input_bool_scalars_;
+  std::vector<int64_t> input_bool_scalar_positions_;
+
+  // Concatenation of all ints from apply(...) 's inputs.
   std::vector<int64_t> input_int_scalars_;
   std::vector<int64_t> input_int_scalar_positions_;
 
-  // Concatenation of all ints from apply(...) 's inputs.
+  // Concatenation of all floats from apply(...) 's inputs.
   std::vector<float> input_float_scalars_;
   std::vector<int64_t> input_float_scalar_positions_;
+
+  // Concatenation of all bool tuples from apply(...) 's inputs.
+  std::vector<int64_t> input_bool_tuples_;
+  std::vector<int64_t> input_bool_tuple_positions_;
+  std::vector<int64_t> input_bool_tuple_begins_;
 
   // Concatenation of all int tuples from apply(...) 's inputs.
   std::vector<int64_t> input_int_tuples_;
@@ -145,7 +150,7 @@ class PythonOpBase {
   std::vector<int64_t> output_tensor_types_;
 
  private:
-  void AddIntScalarArgs();
+  void AddPrimitiveTypeScalarArgs();
   void AddInputTupleArgs();
   void AddFloatTupleArgs();
   void AddPointerScalarArgs();
@@ -154,6 +159,8 @@ class PythonOpBase {
 
   void SetContextOutput(OpKernelContext* context, void* diff_ctx) const;
   void SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const;
+
+  std::string kernel_invoke_id_;
 };
 
 class PythonOpGradBase {
@@ -185,6 +192,8 @@ class PythonOpGradBase {
 
  private:
   void SetPositions();
+
+  std::string kernel_invoke_id_;
 };
 
 }  // namespace contrib

@@ -137,11 +137,18 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         input_tensor_types = []
         input_tensor_ranks = []
 
+        input_bool_scalars = []
+        input_bool_scalar_positions = []
+
         input_int_scalars = []
         input_int_scalar_positions = []
 
         input_float_scalars = []
         input_float_scalar_positions = []
+
+        input_bool_tuples = []
+        input_bool_tuple_positions = []
+        input_bool_tuple_begins = []
 
         input_int_tuples = []
         input_int_tuple_positions = []
@@ -164,55 +171,77 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
-            elif call_type == "c":
-                # Got a non-tensor variable.
-                # Non-tensor can't have gradient.
-                if isinstance(arg, float):
-                    # A float.
-                    input_float_scalar_positions.append(i)
-                    input_float_scalars.append(arg)
-                elif isinstance(arg, int):
-                    # A int.
-                    input_int_scalar_positions.append(i)
-                    input_int_scalars.append(arg)
-                elif isinstance(arg, tuple):
-                    assert len(arg) > 0
-                    # A tuple of int or float.
-                    if all(isinstance(ele, int) for ele in arg):
-                        # A tuple of ints.
-                        input_int_tuple_positions.append(i)
-                        input_int_tuple_begins.append(len(input_int_tuples))
-                        input_int_tuples.extend(list(arg))
-                    elif all(isinstance(ele, float) for ele in arg):
-                        # A tuple of floats.
-                        input_float_tuple_positions.append(i)
-                        input_float_tuple_begins.append(len(input_float_tuples))
-                        input_float_tuples.extend(list(arg))
-                    else:
-                        raise wrap_exception(
-                            ORTModuleONNXModelException, Exception(f"Unknown argument type found: {type(arg)}.")
-                        )
-                else:
-                    is_inspect_activation = (
-                        func_full_qual_name == "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation"
-                    )
-                    if is_inspect_activation and isinstance(arg, str):
-                        # _InspectActivation is a special case where the first argument is a string
-                        # that is used to determine the activation name to be inspected.
-                        debug_comment += arg
+                continue
 
-                    # All other inputs are accessed via "pointers".
-                    input_pointer_scalar_positions.append(i)
-                    input_pointer_scalars.append(id(arg))
-
-                    # For pointer (for example, ProcessGroup passed to PythonOp) needed for PythonOp execution,
-                    # we append it into a global store to hold a reference (in case it is released after module exported).
-                    register_miscellaneous_const_input(arg)
-            else:
+            if call_type != "c":
                 raise wrap_exception(
                     ORTModuleONNXModelException,
                     Exception(f"Unknown calling convention found: {i}. Only 'd' and 'c' are supported"),
                 )
+
+            # Got a non-tensor variable.
+            # Non-tensor can't have gradient.
+            if isinstance(arg, float):
+                # A float.
+                input_float_scalar_positions.append(i)
+                input_float_scalars.append(arg)
+                continue
+            # bool check MUST be before int check since bool is a subclass of int
+            elif isinstance(arg, bool):
+                # A bool.
+                input_bool_scalar_positions.append(i)
+                input_bool_scalars.append(int(arg))
+                continue
+            elif isinstance(arg, int):
+                # A int.
+                input_int_scalar_positions.append(i)
+                input_int_scalars.append(arg)
+                continue
+
+            is_bool_tuple = False
+            is_int_tuple = False
+            is_float_tuple = False
+            if isinstance(arg, tuple) and len(arg) > 0:
+                # bool check MUST be before int check since bool is a subclass of int.
+                is_bool_tuple = all(isinstance(ele, bool) for ele in arg)
+                is_int_tuple = not is_bool_tuple and all(isinstance(ele, int) for ele in arg)
+                is_float_tuple = not is_bool_tuple and not is_int_tuple and all(isinstance(ele, float) for ele in arg)
+
+            # Only support tuple of bool, int or float, for other types, handle it as a pointer.
+            if is_bool_tuple:
+                # A tuple of bool.
+                input_bool_tuple_positions.append(i)
+                input_bool_tuple_begins.append(len(input_bool_tuples))
+                input_bool_tuples.extend([int(ele) for ele in arg])
+                continue
+            elif is_int_tuple:
+                # A tuple of ints.
+                input_int_tuple_positions.append(i)
+                input_int_tuple_begins.append(len(input_int_tuples))
+                input_int_tuples.extend(list(arg))
+                continue
+            elif is_float_tuple:
+                # A tuple of floats.
+                input_float_tuple_positions.append(i)
+                input_float_tuple_begins.append(len(input_float_tuples))
+                input_float_tuples.extend(list(arg))
+                continue
+
+            is_inspect_activation = (
+                func_full_qual_name == "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation"
+            )
+            if is_inspect_activation and isinstance(arg, str):
+                # _InspectActivation is a special case where the first argument is a string
+                # that is used to determine the activation name to be inspected.
+                debug_comment += arg
+
+            # All other inputs are accessed via "pointers".
+            input_pointer_scalar_positions.append(i)
+            input_pointer_scalars.append(id(arg))
+
+            # For pointer (for example, ProcessGroup passed to PythonOp) needed for PythonOp execution,
+            # we append it into a global store to hold a reference (in case it is released after module exported).
+            register_miscellaneous_const_input(arg)
 
         output_tensor_types = []
         output_tensor_ranks = []
@@ -235,12 +264,19 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             "comment_s": debug_comment,
         }
 
+        if len(input_bool_scalars) > 0:
+            attrs["input_bool_scalars_i"] = input_bool_scalars
+            attrs["input_bool_scalar_positions_i"] = input_bool_scalar_positions
         if len(input_int_scalars) > 0:
             attrs["input_int_scalars_i"] = input_int_scalars
             attrs["input_int_scalar_positions_i"] = input_int_scalar_positions
         if len(input_float_scalars) > 0:
             attrs["input_float_scalars_f"] = input_float_scalars
             attrs["input_float_scalar_positions_i"] = input_float_scalar_positions
+        if len(input_bool_tuples) > 0:
+            attrs["input_bool_tuples_i"] = input_bool_tuples
+            attrs["input_bool_tuple_positions_i"] = input_bool_tuple_positions
+            attrs["input_bool_tuple_begins_i"] = input_bool_tuple_begins
         if len(input_int_tuples) > 0:
             attrs["input_int_tuples_i"] = input_int_tuples
             attrs["input_int_tuple_positions_i"] = input_int_tuple_positions

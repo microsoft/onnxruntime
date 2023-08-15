@@ -3706,14 +3706,14 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Yield Op.")
-      .Input(0, "module_outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
+      .Input(0, "module_outputs", "Module outputs to be returned to PyTorch.", "T", OpSchema::Variadic,
              /*is_homogeneous*/ false,
              /*min_arity*/ 1)
       /*
       For a situation where there are no trainable parameters in a model, the YieldOp minimum
       number of arguments expected for module_output_grad should be 0.
       */
-      .Output(0, "module_outputs_grad", "Gradient of module outputs returned from pytorch.", "T", OpSchema::Variadic,
+      .Output(0, "module_outputs_grad", "Gradient of module outputs returned from PyTorch.", "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 0)
       .Attr("non_differentiable_outputs", "The indices of the module outputs that doesn't have a gradient.", AttributeProto::INTS, OPTIONAL_VALUE)
@@ -3760,11 +3760,11 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Wrapper of Pytorch's autograd.Function implementation.")
+      .SetDoc("Wrapper of PyTorch's autograd.Function implementation.")
       .Input(
           0,
           "inputs",
-          "Module outputs to be returned to pytorch.",
+          "Module outputs to be returned to PyTorch.",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -3777,7 +3777,7 @@ Return true if all elements are true and false otherwise.
       .Output(
           1,
           "outputs",
-          "Outputs returned from pytorch.",
+          "Outputs returned from PyTorch.",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -3797,7 +3797,7 @@ Return true if all elements are true and false otherwise.
           "which means all inputs don't require grad. Frontend needs this info to call into torch correctly.",
           AttributeProto::INTS,
           false)
-      // Input Pytorch tensors.
+      // Input PyTorch tensors.
       .Attr(
           "input_tensor_types",
           "Input types of autograd.Function.apply.",
@@ -3806,6 +3806,17 @@ Return true if all elements are true and false otherwise.
           "input_tensor_ranks",
           "Input tensors' ranks of autograd.Function.apply.",
           AttributeProto::INTS)
+      // Input bool scalars.
+      .Attr(
+          "input_bool_scalars",
+          "Python bool arguments.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_bool_scalar_positions",
+          "",
+          AttributeProto::INTS,
+          false)
       // Input int scalars.
       .Attr(
           "input_int_scalars",
@@ -3825,6 +3836,22 @@ Return true if all elements are true and false otherwise.
           false)
       .Attr(
           "input_float_scalar_positions",
+          "",
+          AttributeProto::INTS,
+          false)
+      // Input bool tuple.
+      .Attr(
+          "input_bool_tuples",
+          "Python bool-tuple arguments.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_bool_tuple_positions",
+          "",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_bool_tuple_begins",
           "",
           AttributeProto::INTS,
           false)
@@ -3977,7 +4004,7 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Wrapper of Pytorch's autograd.Function's backward implementaiton.")
+      .SetDoc("Wrapper of PyTorch's autograd.Function's backward implementation.")
       .Input(
           0,
           "context",
@@ -3986,7 +4013,10 @@ Return true if all elements are true and false otherwise.
       .Input(
           1,
           "inputs",
-          "The gradient inputs (as inputs of autograd.Function.backward).",
+          "The gradient inputs (as inputs of autograd.Function.backward)."
+          "Be noted: input name will be empty when its grad input is not needed by the autograd.Function.backward."
+          "In PyTorch, if a forward tensor doesn't require gradient, then it's corresponding grad will be all zeros "
+          "or None (depending on the value of ctx.set_materialize_grads is true or false).",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -3994,7 +4024,7 @@ Return true if all elements are true and false otherwise.
       .Output(
           0,
           "outputs",
-          "Outputs returned from pytorch.",
+          "Outputs returned from PyTorch.",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -4057,16 +4087,18 @@ Return true if all elements are true and false otherwise.
         const auto input_tensor_types_proto = ctx.getAttribute("input_tensor_types");
         // This is a required field.
         ORT_ENFORCE(input_tensor_types_proto, "PythonOpGrad's must have \"input_tensor_types\" attribute.");
-        // Check if the inferred input types match those described in the
-        // "input_tensor_types" attributes.
+        // Check if the inferred input types match those described in the "input_tensor_types" attributes.
         // Expected input schema: [ctx, grad_input_1, ..., grad_input_N]
         // Other variables are used to invoke autograd.Function.backward(ctx, grad_input1, ..., grad_input_N).
         // The "input_count" here means 1 + N.
         const auto input_count = input_tensor_types_proto->ints().size() + 1;
-        // The first input is a pointer which points to
-        // a Python object created by torch.autograd.Function.apply.
+        // The first input is a pointer which points to a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it in PythonOpGrad implementation.
         for (auto i = 1; i < input_count; ++i) {
+          if (!ctx.hasInput(i)) {
+            continue;
+          }
+
           const auto inferred_input_type = ctx.getInputType(i);
           ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "-th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
