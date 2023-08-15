@@ -449,7 +449,7 @@ Next, we will write the `evaluate` method that will take in the audio data, conv
     }
 ```
 
-The complete implementation of the `VoiceIdentifier` class can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/VoiceIdentifier.swift)
+The complete implementation of the `VoiceIdentifier` class can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/VoiceIdentifier.swift).
 
 ### Recording Audio
 
