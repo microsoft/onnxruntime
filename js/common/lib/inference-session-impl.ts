@@ -189,12 +189,16 @@ export class InferenceSession implements InferenceSessionInterface {
         filePathOrUint8Array = arg0 as [Uint8Array, ArrayBufferLike];
       } else {
         throw new TypeError(
-            'Unexpected argument[0]: array must be [modelPath, weightsPath],' +
-            ' or [modelBuffer, weightsBuffer]');
+            'Unexpected argument[0]: array must be [modelPath, weightsPath], or [modelBuffer, weightsBuffer]');
+      }
+      if (typeof arg1 === 'object' && arg1 !== null) {
+        options = arg1;
+      } else if (typeof arg1 !== 'undefined') {
+        throw new TypeError('\'options\' must be an object.');
       }
     } else {
       throw new TypeError(
-          'Unexpected argument[0]: must be \'path\', \'buffer\', [modelPath, weightsPath],' +
+          'Unexpected argument[0]: must be \'path\', \'buffer\', [modelPath, weightsPath]' +
           ' or [modelBuffer, weightsBuffer]');
     }
 
