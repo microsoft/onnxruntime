@@ -33,15 +33,16 @@ static inline bool starts_with(const std::string& s, const std::string& prefix) 
   return s.compare(0, prefix.size(), prefix) == 0;
 };
 
-// File format is like the following:
-//   name:TestCaseName1.TensorName1
-//   1.1, 2.3
-//   ===
-//   name:TestCaseName2.TensorName2
-//   3.3, 4.5,
-//   5.6, 6.7
-//   ===
 void load_tensors_from_file(const std::string& path, std::unordered_map<std::string, std::vector<float>>& tensors) {
+  // File format is like the following:
+  //   name:TestCaseName1.TensorName1
+  //   1.1, 2.3
+  //   ===
+  //   name:TestCaseName2.TensorName2
+  //   3.3, 4.5,
+  //   5.6, 6.7
+  //   ===
+  // Note that "name:" and "===" shall be at the begining of a line without leading space!
   std::ifstream infile(path);
   if (!infile.good()) {
     ORT_THROW("Cannot open file:", path);
@@ -62,7 +63,7 @@ void load_tensors_from_file(const std::string& path, std::unordered_map<std::str
       trim(name);
     }
     if (name.empty()) {
-      ORT_THROW("Empty name in line:", line);
+      ORT_THROW("Failed to find name in line:", line);
     }
 
     std::vector<float> values;
@@ -81,10 +82,11 @@ void load_tensors_from_file(const std::string& path, std::unordered_map<std::str
           continue;
         }
 
-        try {
+        ORT_TRY {
           float value = std::stof(token);
           values.push_back(value);
-        } catch (const std::exception& e) {
+        }
+        ORT_CATCH(const std::exception& e) {
           ORT_THROW("Failed to parse float from name='", name, ",token='", token, "'. Exception:", e.what());
         }
       }
