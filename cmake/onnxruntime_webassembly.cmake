@@ -204,7 +204,7 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
-  set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
+  set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','FS']")
   if (onnxruntime_USE_JSEP)
     set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput")
   else()
@@ -220,7 +220,7 @@ else()
     "SHELL:-s MODULARIZE=1"
     "SHELL:-s EXPORT_ALL=0"
     "SHELL:-s VERBOSE=0"
-    "SHELL:-s FILESYSTEM=0"
+    "SHELL:-s FILESYSTEM=1"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
   )
