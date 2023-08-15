@@ -9,11 +9,10 @@
 		themeChange(false);
 	});
 </script>
-
+<!-- TODO: ONNX Icon color -->
 <div class="navbar bg-base-100">
 	<div class="navbar-start">
 		<div class="dropdown">
-			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<label tabindex="0" class="btn btn-ghost lg:hidden">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -29,7 +28,6 @@
 					/></svg
 				>
 			</label>
-			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<ul
 				tabindex="0"
 				class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
@@ -55,7 +53,11 @@
 						</li>
 						<li>
 							<a href="https://www.tiktok.com/@onnxruntimeai" target="_blank"
-								><svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 448 512"
+								><svg
+									xmlns="http://www.w3.org/2000/svg"
+									height="1em"
+									viewBox="0 0 448 512"
+									fill="currentColor"
 									><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
 										d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"
 									/></svg
@@ -73,8 +75,9 @@
 			</ul>
 		</div>
 		<a href="/" class="btn btn-ghost normal-case text-xl">
-			<img src={onnximage} class="w-8 h-8 hidden lg:block" alt="ONNX Runtime logo" />ONNXRuntime<img src={onnximage} class="w-8 h-8 lg:hidden" alt="ONNX Runtime logo" /></a
-		>
+			<img src={onnximage} class="w-8 h-8 hidden lg:block" alt="ONNX Runtime logo" />ONNXRuntime
+			<img src={onnximage} class="w-8 h-8 lg:hidden" alt="ONNX Runtime logo" />
+		</a>
 	</div>
 	<div class="navbar-center hidden lg:flex">
 		<ul class="menu menu-horizontal px-1">
@@ -101,7 +104,11 @@
 						</li>
 						<li>
 							<a href="https://www.tiktok.com/@onnxruntimeai" target="_blank"
-								><svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 448 512"
+								><svg
+									xmlns="http://www.w3.org/2000/svg"
+									height="1em"
+									viewBox="0 0 448 512"
+									fill="currentColor"
 									><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
 										d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"
 									/></svg

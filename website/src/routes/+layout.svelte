@@ -5,7 +5,6 @@
 	import { onMount } from 'svelte';
 	import IoIosClose from 'svelte-icons/io/IoIosClose.svelte';
 	import anime from 'animejs';
-	// TODO: Tiktok icon is only black. 
 	import oneLight from 'svelte-highlight/styles/one-light';
 
 	let removetoast = (e) => {
@@ -18,7 +17,6 @@
 			duration: 1000,
             delay: 3000,
 			easing: 'easeInOutQuad',
-			// @ts-ignore
 			begin: function () { document.querySelector('.toast').style.display = 'block';},
 		});
         anime({
@@ -32,9 +30,9 @@
 <svelte:head>
 	{@html oneLight}
 </svelte:head>
-<!-- TODO: Make toast an alert w/ icon -->
 <div class="toast z-[2] opacity-0 hidden">
-	<div class="alert alert-primary">
+	<div class="alert alert-info">
+		<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
 		<span
 			>Please help us improve ONNX Runtime <br class="md:hidden"/>by participating in our <a
 				class="underline"

@@ -1,10 +1,25 @@
 <script>
 	import anime from "animejs";
-
-	let badges = [
-		['ONNX', 'primary'],
-		['ML', 'primary']
-	];
+	/**
+	 * @type {String}
+	 */
+	 export let title;
+	/**
+	 * @type {String}
+	 */
+	 export let description;
+	/**
+	 * @type {Array<Array<String>>}
+	 */
+	 export let badges;
+	/**
+	 * @type {String}
+	 */
+	 export let imgsrc;
+	/**
+	 * @type {String}
+	 */
+	 export let imgalt;
 	let handleEnter = (e) => {
 		anime({
 			targets: e.target,
@@ -21,15 +36,15 @@
 	}
 </script>
 
-<div on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="m-10">
+<article on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="m-10">
 	<a href="http://blog.com">
 		<div class="card bg-base-100 border border-primary" data-svelte-h="svelte-1oufy6g">
 			<figure>
-				<img src="https://source.unsplash.com/random/400x300" alt="random" />
+				<img src={imgsrc} alt={imgalt} />
 			</figure>
 			<div class="card-body">
-				<h2 class="card-title">Title</h2>
-				<p>Description</p>
+				<h2 class="card-title">{title}</h2>
+				<p>{description}</p>
 				<div class="card-actions">
 					<div>
 						{#each badges as badge}
@@ -40,4 +55,4 @@
 			</div>
 		</div>
 	</a>
-</div>
+</article>

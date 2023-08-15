@@ -21,7 +21,6 @@
 	// a svelte function to conditionally render different "Highlight" components based on what tab was clicked
 	let activeTab = 'Python'; // set the initial active tab to Python
 
-	// TODO: ensure work, change timeout
 	let tabs = ['Python', 'C#', 'JavaScript', 'Java', 'C++'];
 	let interacted = false;
 	let currentTab = 0;
@@ -37,28 +36,21 @@
 		setTimeout(cycleCode, 10000);
 	}
 
-	let handleClick = (event) => {
+	let handleClick = (e) => {
 		interacted = true;
-		const tabText = event.target.textContent.trim();
+		const tabText = e.target.textContent.trim();
 		if (tabText === 'More..') {
 			window.location.href = '/docs/get-started';
 		}
 		activeTab = tabText;
 		activeTab = activeTab;
 	};
-	let copy = async () => {
-		try {
-			await navigator.clipboard.writeText(copy);
-		} catch (err) {
-			console.error('Failed to copy:', err);
-		}
-	};
 	// TODO: get data theme from html tag
 </script>
 
-<div class="container mx-auto">
-	<div class="grid-cols-3 gap-10 grid">
-		<div class="col-span-1 mx-auto">
+<div class="container mx-auto px-4">
+	<div class="grid-cols-3 gap-4 grid">
+		<div class="col-span-1 mx-auto ml-10">
 			<h1 class="text-xl mb-4">Use ONNX Runtime with your favorite language, or dive right into the tutorials.</h1>
 				<button class="btn btn-block mb-4">Quickstart</button>
 				<button class="btn btn-block mb-4">Tutorials</button>

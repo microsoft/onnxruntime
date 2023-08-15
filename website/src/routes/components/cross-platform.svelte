@@ -1,6 +1,6 @@
-<div class="container mx-auto mb-10">
-	<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <img src="https://placehold.co/600x400" alt="" />
+<div class="container mx-auto px-10 mb-10">
+	<div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+    <img class="mx-auto" src="https://placehold.co/600x300" alt="" />
 		<div class="">
 			<h1 class="text-4xl">Cross-Platform</h1><br/><br/>
 			<p class="text-xl">

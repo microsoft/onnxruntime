@@ -1,5 +1,5 @@
-<div class="container mx-auto mb-10">
-	<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<div class="container mx-auto px-10 mb-10">
+	<div class="grid grid-cols-1 md:grid-cols-2 gap-10">
 		<div class="">
 			<h1 class="text-4xl">Performance</h1><br/><br/>
 			<p class="text-xl">
@@ -13,6 +13,6 @@
 				performance for specific use cases and models..
 			</p>
 		</div>
-    <img src="https://placehold.co/600x400" alt="" />
+    <img class="mx-auto" src="https://placehold.co/600x400" alt="" />
 	</div>
 </div>
