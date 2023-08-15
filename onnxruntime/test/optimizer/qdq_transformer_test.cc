@@ -37,8 +37,6 @@
 namespace onnxruntime {
 namespace test {
 
-#if !defined(DISABLE_CONTRIB_OPS)
-
 struct QDQOpKeys {
   const char* quantize_linear;
   const char* dequantize_linear;
@@ -50,6 +48,8 @@ constexpr QDQOpKeys GetQDQOpKeys(bool use_contrib_qdq) {
   }
   return {"QuantizeLinear", "DequantizeLinear"};
 }
+
+#if !defined(DISABLE_CONTRIB_OPS)
 
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 void QDQTransformerConvTests() {
