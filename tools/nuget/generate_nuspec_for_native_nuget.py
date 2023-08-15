@@ -1097,8 +1097,11 @@ def generate_files(line_list, args):
                 "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
             )
 
+    # README
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "README.md") + '" target="README.md" />')
+
     # Process License, ThirdPartyNotices, Privacy
-    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE.txt") + '" target="LICENSE.txt" />')
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE") + '" target="LICENSE" />')
     files_list.append(
         "<file src="
         + '"'
