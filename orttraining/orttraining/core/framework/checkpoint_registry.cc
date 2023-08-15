@@ -80,7 +80,7 @@ CheckpointRegistry::CheckpointIdToPathMap CheckpointRegistry::GetCheckpointsFrom
     const PathString& checkpoints_directory_path) {
   CheckpointIdToPathMap checkpoints{};
   if (Env::Default().FolderExists(checkpoints_directory_path)) {
-    LoopDir(
+    ORT_THROW_IF_ERROR(LoopDir(
         checkpoints_directory_path,
         [&checkpoints_directory_path, &checkpoints](
             const PathString& file_name, OrtFileType /*file_type*/) {
@@ -90,7 +90,7 @@ CheckpointRegistry::CheckpointIdToPathMap CheckpointRegistry::GetCheckpointsFrom
                 id, ConcatPathComponent(checkpoints_directory_path, file_name));
           }
           return true;
-        });
+        }));
   }
 
   return checkpoints;

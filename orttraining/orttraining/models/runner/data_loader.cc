@@ -16,17 +16,17 @@ using ThreadPool = onnxruntime::concurrency::ThreadPool;
 
 static std::vector<PathString> GetAllDataFiles(const PathString& dir_path) {
   std::vector<PathString> data_files;
-  LoopDir(dir_path,
-          [&data_files, &dir_path](const PathChar* filename, OrtFileType f_type) -> bool {
-            PathString filename_str = filename;
-            if (filename_str[0] == '.' ||
-                f_type != OrtFileType::TYPE_REG ||
-                !HasExtensionOf(filename_str, ORT_TSTR("pb"))) {
-              return true;
-            }
-            data_files.push_back(ConcatPathComponent(dir_path, filename_str));
-            return true;
-          });
+  ORT_THROW_IF_ERROR(LoopDir(dir_path,
+                             [&data_files, &dir_path](const PathChar* filename, OrtFileType f_type) -> bool {
+                               PathString filename_str = filename;
+                               if (filename_str[0] == '.' ||
+                                   f_type != OrtFileType::TYPE_REG ||
+                                   !HasExtensionOf(filename_str, ORT_TSTR("pb"))) {
+                                 return true;
+                               }
+                               data_files.push_back(ConcatPathComponent(dir_path, filename_str));
+                               return true;
+                             }));
 
   // Sort to ensure the view on training files are identical on all the workers
   std::sort(data_files.begin(), data_files.end());

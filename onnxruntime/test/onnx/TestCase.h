@@ -101,8 +101,8 @@ class TestTolerances {
   const Map relative_overrides_;
 };
 
-void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-               const TestTolerances& tolerances,
-               const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
-               const std::function<void(std::unique_ptr<ITestCase>)>& process_function);
+onnxruntime::common::Status LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+                                      const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+                                      const TestTolerances& tolerances,
+                                      const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
+                                      const std::function<void(std::unique_ptr<ITestCase>)>& process_function);

@@ -1192,42 +1192,39 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
       paths.pop_back();
       std::basic_string<ORTCHAR_T> my_dir_name = GetLastComponent(node_data_root_path);
-      ORT_TRY {
-        LoopDir(node_data_root_path, [&](const ORTCHAR_T* filename, OrtFileType f_type) -> bool {
-          if (filename[0] == ORT_TSTR('.'))
-            return true;
-          if (f_type == OrtFileType::TYPE_DIR) {
-            std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(node_data_root_path, filename);
-            paths.push_back(p);
-            return true;
-          }
-          std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
-          if (!HasExtensionOf(filename_str, ORT_TSTR("onnx")))
-            return true;
-          std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
-          if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
-            test_case_name = test_case_name.substr(5);
-          if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
-            return true;
+      // ignore non-exist dir
+      (void)LoopDir(node_data_root_path, [&](const ORTCHAR_T* filename, OrtFileType f_type) -> bool {
+        if (filename[0] == ORT_TSTR('.'))
+          return true;
+        if (f_type == OrtFileType::TYPE_DIR) {
+          std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(node_data_root_path, filename);
+          paths.push_back(p);
+          return true;
+        }
+        std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
+        if (!HasExtensionOf(filename_str, ORT_TSTR("onnx")))
+          return true;
+        std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
+        if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
+          test_case_name = test_case_name.substr(5);
+        if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
+          return true;
 
 #ifdef DISABLE_ML_OPS
-          auto starts_with = [](const std::basic_string<PATH_CHAR_TYPE>& find_in,
-                                const std::basic_string<PATH_CHAR_TYPE>& find_what) {
-            return find_in.compare(0, find_what.size(), find_what) == 0;
-          };
-          if (starts_with(test_case_name, ORT_TSTR("XGBoost_")) || starts_with(test_case_name, ORT_TSTR("coreml_")) ||
-              starts_with(test_case_name, ORT_TSTR("scikit_")) || starts_with(test_case_name, ORT_TSTR("libsvm_"))) {
-            return true;
-          }
-#endif
-          std::basic_ostringstream<PATH_CHAR_TYPE> oss;
-          oss << provider_name << ORT_TSTR("_") << ConcatPathComponent(node_data_root_path, filename_str);
-          v.emplace_back(oss.str());
+        auto starts_with = [](const std::basic_string<PATH_CHAR_TYPE>& find_in,
+                              const std::basic_string<PATH_CHAR_TYPE>& find_what) {
+          return find_in.compare(0, find_what.size(), find_what) == 0;
+        };
+        if (starts_with(test_case_name, ORT_TSTR("XGBoost_")) || starts_with(test_case_name, ORT_TSTR("coreml_")) ||
+            starts_with(test_case_name, ORT_TSTR("scikit_")) || starts_with(test_case_name, ORT_TSTR("libsvm_"))) {
           return true;
-        });
-      }
-      ORT_CATCH(const std::exception&) {
-      }  // ignore non-exist dir
+        }
+#endif
+        std::basic_ostringstream<PATH_CHAR_TYPE> oss;
+        oss << provider_name << ORT_TSTR("_") << ConcatPathComponent(node_data_root_path, filename_str);
+        v.emplace_back(oss.str());
+        return true;
+      });
     }
   }
   return v;

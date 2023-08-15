@@ -503,20 +503,20 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
   std::vector<PATH_STRING_TYPE> test_data_pb_files;
 
   const PATH_STRING_TYPE& dir_path = test_data_dirs_[id];
-  LoopDir(dir_path,
-          [&test_data_pb_files, &dir_path, is_input](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
-            if (filename[0] == '.') return true;
-            if (f_type != OrtFileType::TYPE_REG) return true;
-            std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
-            if (!HasExtensionOf(filename_str, ORT_TSTR("pb"))) return true;
-            const std::basic_string<PATH_CHAR_TYPE> file_prefix =
-                is_input ? ORT_TSTR("input_") : ORT_TSTR("output_");
-            if (!filename_str.compare(0, file_prefix.length(), file_prefix)) {
-              std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(dir_path, filename_str);
-              test_data_pb_files.push_back(p);
-            }
-            return true;
-          });
+  ORT_THROW_IF_ERROR(LoopDir(dir_path,
+                             [&test_data_pb_files, &dir_path, is_input](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
+                               if (filename[0] == '.') return true;
+                               if (f_type != OrtFileType::TYPE_REG) return true;
+                               std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
+                               if (!HasExtensionOf(filename_str, ORT_TSTR("pb"))) return true;
+                               const std::basic_string<PATH_CHAR_TYPE> file_prefix =
+                                   is_input ? ORT_TSTR("input_") : ORT_TSTR("output_");
+                               if (!filename_str.compare(0, file_prefix.length(), file_prefix)) {
+                                 std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(dir_path, filename_str);
+                                 test_data_pb_files.push_back(p);
+                               }
+                               return true;
+                             }));
 
   SortFileNames(test_data_pb_files);
 
@@ -715,7 +715,7 @@ OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_p
     }
   }
 
-  LoopDir(test_case_dir, [&test_case_dir, this](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
+  ORT_THROW_IF_ERROR(LoopDir(test_case_dir, [&test_case_dir, this](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
     if (filename[0] == '.') return true;
     if (f_type == OrtFileType::TYPE_DIR) {
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(test_case_dir, filename);
@@ -723,20 +723,20 @@ OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_p
       debuginfo_strings_.push_back(ToUTF8String(p));
     }
     return true;
-  });
+  }));
 }
 
-void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-               const TestTolerances& tolerances,
-               const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
-               const std::function<void(std::unique_ptr<ITestCase>)>& process_function) {
+onnxruntime::common::Status LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+                                      const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+                                      const TestTolerances& tolerances,
+                                      const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
+                                      const std::function<void(std::unique_ptr<ITestCase>)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
     std::basic_string<PATH_CHAR_TYPE> node_data_root_path = paths.back();
     paths.pop_back();
     std::basic_string<PATH_CHAR_TYPE> my_dir_name = GetLastComponent(node_data_root_path);
-    LoopDir(node_data_root_path, [&](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
+    onnxruntime::common::Status st = LoopDir(node_data_root_path, [&](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
       if (filename[0] == '.') return true;
       if (f_type == OrtFileType::TYPE_DIR) {
         std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(node_data_root_path, filename);
@@ -774,12 +774,12 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 #if !defined(ORT_MINIMAL_BUILD)
         model_info = TestModelInfo::LoadOnnxModel(p.c_str());
 #else
-        ORT_THROW("onnx model is not supported in this build");
+        return false;
 #endif
       } else if (is_ort_format) {
         model_info = TestModelInfo::LoadOrtModel(p.c_str());
       } else {
-        ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
+        return false;
       }
 
       const auto tolerance_key = ToUTF8String(my_dir_name);
@@ -790,7 +790,9 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       process_function(std::move(l));
       return true;
     });
+    if (!st.IsOK()) return st;
   }
+  return Status::OK();
 }
 
 TestTolerances::TestTolerances(

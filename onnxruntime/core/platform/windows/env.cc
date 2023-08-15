@@ -479,9 +479,9 @@ common::Status WindowsEnv::CreateFolder(const std::string& path) const {
   return Status::OK();
 }
 
-common::Status WindowsEnv::DeleteFolder(const PathString& path) const {
+Status WindowsEnv::DeleteFolder(const PathString& path) const {
   Status final_status = Status::OK();
-  LoopDir(
+  ORT_RETURN_IF_ERROR(LoopDir(
       path,
       [this, &path, &final_status](
           const PathString& child_basename, OrtFileType file_type) {
@@ -508,7 +508,7 @@ common::Status WindowsEnv::DeleteFolder(const PathString& path) const {
         }
 
         return final_status.IsOK();
-      });
+      }));
 
   ORT_RETURN_IF_ERROR(final_status);
 

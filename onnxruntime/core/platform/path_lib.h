@@ -200,25 +200,28 @@ inline std::string FormatErrorCode(DWORD dw) {
                  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)s.data(), bufferLength / sizeof(TCHAR), NULL);
   return s;
 }
+
+// This function should not throw because it could be called before main function is started.
 template <typename T>
-void LoopDir(const std::wstring& dir_name, T func) {
+Status LoopDir(const std::wstring& dir_name, T func) {
   std::wstring pattern = dir_name + L"\\*";
   WIN32_FIND_DATAW ffd;
   std::unique_ptr<void, decltype(&FindClose)> hFind(FindFirstFileW(pattern.c_str(), &ffd), FindClose);
   if (hFind.get() == INVALID_HANDLE_VALUE) {
     DWORD dw = GetLastError();
     std::string s = FormatErrorCode(dw);
-    ORT_THROW(s);
+    return Status(common::ONNXRUNTIME, common::FAIL, s.c_str());
   }
   do {
-    if (!func(ffd.cFileName, DTToFileType(ffd.dwFileAttributes))) return;
+    if (!func(ffd.cFileName, DTToFileType(ffd.dwFileAttributes))) return Status::OK();
   } while (FindNextFileW(hFind.get(), &ffd) != 0);
   DWORD dwError = GetLastError();
   if (dwError != ERROR_NO_MORE_FILES) {
     DWORD dw = GetLastError();
     std::string s = FormatErrorCode(dw);
-    ORT_THROW(s);
+    return Status(common::ONNXRUNTIME, common::FAIL, s.c_str());
   }
+  return Status::OK();
 }
 
 // TODO: rewrite it with PathFindNextComponentW
@@ -258,7 +261,7 @@ inline OrtFileType DTToFileTypeAIX(struct stat st) {
 }
 
 template <typename T>
-void LoopDir(const std::string& dir_name, T func) {
+Status LoopDir(const std::string& dir_name, T func) {
   DIR* dir = opendir(dir_name.c_str());
   struct stat stats;
   if (dir == nullptr) {
@@ -276,25 +279,20 @@ void LoopDir(const std::string& dir_name, T func) {
     std::ostringstream oss;
     oss << "couldn't open '" << dir_name << "':" << msg;
     std::string s = oss.str();
-    ORT_THROW(s);
+    return Status(common::ONNXRUNTIME, common::FAIL, s);
   }
-  ORT_TRY {
-    struct dirent* dp;
-    while ((dp = readdir(dir)) != nullptr) {
-      std::basic_string<PATH_CHAR_TYPE> filename = ConcatPathComponent<PATH_CHAR_TYPE>(dir_name, dp->d_name);
-      if (stat(filename.c_str(), &stats) != 0) {
-        continue;
-      }
-      if (!func(dp->d_name, DTToFileTypeAIX(stats))) {
-        break;
-      }
+  struct dirent* dp;
+  while ((dp = readdir(dir)) != nullptr) {
+    std::basic_string<PATH_CHAR_TYPE> filename = ConcatPathComponent<PATH_CHAR_TYPE>(dir_name, dp->d_name);
+    if (stat(filename.c_str(), &stats) != 0) {
+      continue;
+    }
+    if (!func(dp->d_name, DTToFileTypeAIX(stats))) {
+      break;
     }
   }
-  ORT_CATCH(const std::exception& ex) {
-    closedir(dir);
-    ORT_RETHROW;
-  }
   closedir(dir);
+  return Status::OK();
 }
 #else
 inline OrtFileType DTToFileType(unsigned char t) {
