@@ -304,7 +304,7 @@ The `Trainer` class will have the following public methods:
     }
     ```
 
-    c. We are ready to write `trainStep` function, which takes batch of input data and labels and performs one training step on given batch.
+    c. We are ready to write the `trainStep` function, which takes a batch of input data and labels and performs one training step on the given batch.
 
     ```swift
     func trainStep(inputData: [Data], labels: [Int64]) throws  {
