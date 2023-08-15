@@ -40,4 +40,4 @@ const std::unordered_map<std::string, std::string>& LearningModelJoinOptions::Ge
   return linkages_;
 }
 
-}// namespace WINML_EXPERIMENTALP
+}  // namespace WINML_EXPERIMENTALP
