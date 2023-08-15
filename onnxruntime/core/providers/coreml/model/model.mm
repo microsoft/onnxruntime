@@ -16,6 +16,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
+#include "core/common/span_utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
@@ -35,6 +36,8 @@ namespace {
  * `inferred_shape` is the inferred shape known at model compile time. It may contain dynamic dimensions (-1).
  * `coreml_static_shape` is the static output shape of the CoreML MLMultiArray output. It must NOT contain dynamic
  * dimensions.
+ * Returns a static output shape which is `inferred_shape` with each of its dynamic dimensions replaced by the
+ * corresponding static dimension from `coreml_static_shape`.
  */
 InlinedVector<int64_t> GetStaticOutputShape(gsl::span<const int64_t> inferred_shape,
                                             gsl::span<const int64_t> coreml_static_shape,
@@ -45,32 +48,24 @@ InlinedVector<int64_t> GetStaticOutputShape(gsl::span<const int64_t> inferred_sh
   // return early if the shapes match
   if (std::equal(inferred_shape.begin(), inferred_shape.end(),
                  coreml_static_shape.begin(), coreml_static_shape.end())) {
-    return InlinedVector<int64_t>(coreml_static_shape.begin(), coreml_static_shape.end());
+    return InlinedVector<int64_t>(inferred_shape.begin(), inferred_shape.end());
   }
 
-  // Special CoreML behavior notes:
-  // - Sometimes the CoreML output shape has extra leading ones.
+  if (inferred_shape.empty() && SpanEq(coreml_static_shape, AsSpan<int64_t>({1}))) {
+    // Special case - inferred output shape is [] (scalar) and CoreML output shape is [1].
+    // CoreML doesn't handle scalar multiarrays so we convert scalar inputs to shape [1] and do the reverse for scalar
+    // outputs.
+    return InlinedVector<int64_t>{};
+  }
 
-  ORT_ENFORCE(inferred_shape.size() <= coreml_static_shape.size(),
+  ORT_ENFORCE(inferred_shape.size() == coreml_static_shape.size(),
               "CoreML static output shape (", Shape2String(coreml_static_shape),
-              ") has fewer elements than the inferred shape (", Shape2String(inferred_shape), ").");
-
-  // if coreml_static_shape has more elements, we expect them to be leading ones
-  const size_t num_leading_dimensions = coreml_static_shape.size() - inferred_shape.size();
-  const auto coreml_static_shape_common_begin = coreml_static_shape.begin() + num_leading_dimensions;
-
-  if (num_leading_dimensions > 0) {
-    const bool has_only_leading_ones =
-        std::all_of(coreml_static_shape.begin(), coreml_static_shape_common_begin,
-                    [](int64_t dim) { return dim == 1; });
-    ORT_ENFORCE(has_only_leading_ones, "CoreML static output shape (", Shape2String(coreml_static_shape),
-                ") has leading dimensions with value other than 1.");
-  }
+              ") and inferred shape (", Shape2String(inferred_shape), ") have different ranks.");
 
   InlinedVector<int64_t> static_shape{};
   static_shape.reserve(inferred_shape.size());
   std::transform(inferred_shape.begin(), inferred_shape.end(),
-                 coreml_static_shape_common_begin,
+                 coreml_static_shape.begin(),
                  std::back_inserter(static_shape),
                  [&](int64_t inferred_dim, int64_t coreml_static_dim) {
                    ORT_ENFORCE(inferred_dim == -1 || inferred_dim == coreml_static_dim,
@@ -82,11 +77,6 @@ InlinedVector<int64_t> GetStaticOutputShape(gsl::span<const int64_t> inferred_sh
                    return inferred_dim != -1 ? inferred_dim : coreml_static_dim;
                  });
 
-  // Ideally, the CoreML static shape would match the inferred shape exactly, apart from the former providing values
-  // for -1's in the latter. For now, this is not the case so it is probably worth logging them.
-  LOGS(logger, VERBOSE) << "CoreML static output shape: " << Shape2String(coreml_static_shape)
-                        << ", inferred shape: " << Shape2String(inferred_shape)
-                        << ", resulting static output shape: " << Shape2String(static_shape);
   return static_shape;
 }
 

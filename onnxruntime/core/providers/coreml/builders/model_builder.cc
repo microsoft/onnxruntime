@@ -140,26 +140,31 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     }
   }
 
-  // TODO do we need to set shape for outputs? maybe skip for dynamic (i.e., unknown) output shapes
   if (IsStaticShape(shape)) {
     *multi_array->mutable_shape() = {shape.cbegin(), shape.cend()};
   } else {
-    auto& multi_array_shape_range = *multi_array->mutable_shaperange();
-    auto& multi_array_shape = *multi_array->mutable_shape();
+    if (is_input) {
+      auto& multi_array_shape_range = *multi_array->mutable_shaperange();
+      auto& multi_array_shape = *multi_array->mutable_shape();
 
-    for (const auto dim : shape) {
-      auto& multi_array_dim_size_range = *multi_array_shape_range.mutable_sizeranges()->Add();
-      if (dim == -1) {
-        multi_array_dim_size_range.set_lowerbound(0);
-        multi_array_dim_size_range.set_upperbound(-1);  // unbounded
+      for (const auto dim : shape) {
+        auto& multi_array_dim_size_range = *multi_array_shape_range.mutable_sizeranges()->Add();
+        if (dim == -1) {
+          multi_array_dim_size_range.set_lowerbound(0);
+          multi_array_dim_size_range.set_upperbound(-1);  // unbounded
 
-        multi_array_shape.Add(1);  // pick 1 as an arbitrary default dynamic dimension value
-      } else {
-        multi_array_dim_size_range.set_lowerbound(dim);
-        multi_array_dim_size_range.set_upperbound(dim);
+          multi_array_shape.Add(1);  // pick 1 as an arbitrary default dynamic dimension value
+        } else {
+          multi_array_dim_size_range.set_lowerbound(dim);
+          multi_array_dim_size_range.set_upperbound(dim);
 
-        multi_array_shape.Add(dim);
+          multi_array_shape.Add(dim);
+        }
       }
+    } else {
+      // Leave dynamic output shapes unspecified.
+      // If we specify an output shape that doesn't match the actual output shape at runtime, CoreML returns a 5D shape
+      // padded with ones.
     }
   }
 
