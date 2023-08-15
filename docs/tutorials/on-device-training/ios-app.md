@@ -281,7 +281,7 @@ The `Trainer` class will have the following public methods:
 
        
 
-    b. The `TrainingSession.trainStep` is responsible for training the model. It takes in the input data and the labels and returns the loss. The input audio data are passed as `ORTValue`. Thus, we need to convert the input audio `Data` objects and labels to `ORTValue`.
+    b. The `TrainingSession.trainStep` function is responsible for training the model. It takes in the input data and the labels and returns the loss. The inputs are passed to ONNX Runtime as `ORTValue` objects. Thus, we need to convert the input audio `Data` objects and labels to `ORTValue`.
 
     ```swift
     private func getORTValue(dataList: [Data]) throws -> ORTValue {
