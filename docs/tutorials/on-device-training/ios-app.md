@@ -47,8 +47,8 @@ In the tutorial, we will:
 
     - [Inference with the trained model](#inference-with-the-trained-model)
     - [Recording Audio](#recording-audio)
-    - [Training View](#training-view)
-    - [Inference View](#inference-view)
+    - [Train View](#train-view)
+    - [Infer View](#infer-view)
     - [ContentView](#contentview)
 - [Running the iOS application](#running-the-ios-application)
 - [Conclusion](#conclusion)
@@ -114,12 +114,13 @@ To follow along with this tutorial, you should have a basic understanding of mac
 
     # define the loss function
     class CustomCELoss(onnxblock.Block):
-    def __init__(self):
-        super().__init__()
-        self.celoss = onnxblock.loss.CrossEntropyLoss()
+        def __init__(self):
+            super().__init__()
+            self.celoss = onnxblock.loss.CrossEntropyLoss()
 
-    def build(self, logits, *args):
-        return self.celoss(logits)
+
+        def build(self, logits, *args):
+            return self.celoss(logits)
 
 
     # Generate the training artifacts
@@ -140,11 +141,11 @@ To follow along with this tutorial, you should have a basic understanding of mac
 ### Xcode Setup
 Open Xcode, and create a new project. Select `iOS` as the platform and `App` as the template. Click Next.
 
-![Xcode Setup New Project](../../../images/iOS_speaker_identification_screenshot_1.png)
+![Xcode Setup New Project](../../../images/iOS_speaker_identification_xcode_new_app_screen.png)
 
 Enter the project name. Here, we will name the project 'MyVoice', but you can name it anything you prefer. Make sure to select `SwiftUI` as the interface, and `Swift` as the language. Then, click Next.
 
-![Xcode Setup Project Name](../../../images/iOS_speaker_identification_screenshot_2.png)
+![Xcode Setup Project Name](../../../images/iOS_speaker_identification_xcode_new_project_screen.png)
 
 Select the location where you want to save the project and click `Create`.
 
@@ -175,17 +176,17 @@ pod install
 
 This will create a `MyVoice.xcworkspace` file in the project directory. Open the `xcworkspace` file in Xcode. This will open the project in Xcode with the CocoaPods dependencies available.
 
-Now, create a new group in the project and name it `artifacts`. Drag and drop the artifacts generated in the previous section into the `artifacts` group. Make sure to select `Create folder references` and `Copy items if needed` options. This will add the artifacts to the project.
+Now, right click on the 'MyVoice' group in the project navigator and click 'New Group' to create a new group in the project called `artifacts`. Drag and drop the artifacts generated in the previous section into the `artifacts` group. Make sure to select `Create folder references` and `Copy items if needed` options. This will add the artifacts to the project.
 
-Next, create a new group in the project and name it `recordings`. This group will contain the audio recordings that will be used for training. You can generate the recordings by running the [`recording_gen.py`](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/recording_gen.py) script at the root of the project. Alternatively, you can also any other recordings of length 10 seconds in .wav format.
+Next, right click on the 'MyVoice' group and click 'New Group' to create a new group in the project called `recordings`. This group will contain the audio recordings that will be used for training. You can generate the recordings by running the [`recording_gen.py`](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/recording_gen.py) script at the root of the project. Alternatively, you can also use any other recordings of length 10 seconds in .wav format except the ones that you are planning to use for inference. Make sure to name the recordings as `other_0.wav`, `other_1.wav`, etc. and add them to the `recordings` group.
 The project structure should look like this:
 
-![Xcode Project Structure](../../../images/iOS_speaker_identification_screenshot_3.png)
+![Xcode Project Structure](../../../images/iOS_speaker_identification_xcode_project_nav_screen.png)
 
 
 ### Application Overview
 
-The application will consist of two main UI Views: `TrainingView` and `InferenceView`. The `TrainingView` is used to train the model on-device, and the `InferenceView` is used to perform inference with the trained model. Additionally, there is the `ContentView` which is the home view of the application and contains buttons to navigate to the `TrainingView` and `InferenceView`.
+The application will consist of two main UI Views: `TrainView` and `InferView`. The `TrainView` is used to train the model on-device, and the `InferView` is used to perform inference with the trained model. Additionally, there is the `ContentView` which is the home view of the application and contains buttons to navigate to the `TrainView` and `InferView`.
 
 Additionally, we will also create an `AudioRecorder` class to handle the recording of audio through the microphone. It will record 10 seconds of audio and output the audio data as a `Data` object, which can be used for training and inference purposes.
 
@@ -403,7 +404,7 @@ class VoiceIdentifier {
 }
 ```
 
-Next, we will write the `evaluate` method that will take in the audio data, convert it to `ORTValue`, and perform inference with the model. Then, take the output of the model and extract probabilities.
+Next, we will write the `evaluate` method. First, it will take the audio data and convert it to `ORTValue`. Then, it will perform inference with the model. Lastly, It will extract logits from the output and apply softMax to get probabilities.
 
 
 ```swift
@@ -580,9 +581,9 @@ class AudioRecorder {
 }
 ```
 
-### Training View
+### Train View
 
-The `TrainingView` will be used to train the model on the user's voice. First, it will prompt the user to record `kNumRecordings` recordings of their voice. Then, it will train the model on the user's voice and some pre-recorded recordings of other speakers' voices. Finally, it will export the trained model for inference purposes.
+The `TrainView` will be used to train the model on the user's voice. First, it will prompt the user to record `kNumRecordings` recordings of their voice. Then, it will train the model on the user's voice and some pre-recorded recordings of other speakers' voices. Finally, it will export the trained model for inference purposes.
 
 ```swift
 import SwiftUI
@@ -757,9 +758,9 @@ struct TrainView_Previews: PreviewProvider {
 }
 ```
 
-The complete implementation of the `TrainingView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/TrainView.swift).
+The complete implementation of the `TrainView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/TrainView.swift).
 
-### Inference View
+### Infer View
 Lastly, we will create the `InferView` that will be used to perform inference with the trained model. It will prompt the user to record their voice and perform inference with the trained model. Then, it will display the result of the inference.
 
 ```swift
@@ -882,7 +883,7 @@ struct InferView_Previews: PreviewProvider {
 The complete implementation of the `InferView` can be found [here](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/MyVoice/InferView.swift).
 
 ### ContentView
-Finally, we will update the default `ContentView` so that it will contain buttons to navigate to the `TrainingView` and `InferView`.
+Finally, we will update the default `ContentView` so that it will contain buttons to navigate to the `TrainView` and `InferView`.
 
 ```swift
 import SwiftUI
@@ -957,23 +958,24 @@ a. Now, when you run the application, you should see the following screen:
 <img src="../../../images/iOS_speaker_identification_app.png"  width="30%" height="30%">
 
 
-b. Next, click on the `Train` button to navigate to the `TrainingView`. The `TrainingView` will prompt you to record your voice. You will need to record your voice `kNumRecordings` times. 
-<img src="../../../images/iOS_speaker_identification_screenshot_4.jpg"  width="30%" height="30%">
+b. Next, click on the `Train` button to navigate to the `TrainView`. The `TrainView` will prompt you to record your voice. You will need to record your voice `kNumRecordings` times. 
+
+<img src="../../../images/iOS_speaker_identification_training_screen.jpg"  width="30%" height="30%">
 
 
 c. Once all the recordings are complete, the application will train the model on the given data. You will see the progress bar indicating the progress of the training.
 
-<img src="../../../images/iOS_speaker_identification_screenshot_5.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_training_progress_screen.jpg"  width="30%" height="30%">
 
 
 d. Once the training is complete, you will see the following screen:
 
-<img src="../../../images/iOS_speaker_identification_screenshot_6.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_training_complete_screen.jpg"  width="30%" height="30%">
 
 
 e. Now, click on the `Infer` button to navigate to the `InferView`. The `InferView` will prompt you to record your voice. Once the recording is complete, it will perform inference with the trained model and display the result of the inference.
 
-<img src="../../../images/iOS_speaker_identification_screenshot_7.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_infer_screen.jpg"  width="30%" height="30%">
 
 
 That's it! Hopefully, it identified your voice correctly.
