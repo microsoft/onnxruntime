@@ -6,7 +6,15 @@ trigger:
   paths:
     include:
     - 'js/web'
+    - 'js/node'
     - 'onnxruntime'
+    - 'cmake'
+    - 'include'
+    - 'tool'
+    - '.gitmodules'
+    - 'setup.py'
+    - 'build.*'
+    - '.github'
     exclude:
     - 'onnxruntime/core/providers/tensorrt'
     - 'onnxruntime/core/providers/cuda'
@@ -19,7 +27,15 @@ pr:
   paths:
     include:
     - 'js/web'
+    - 'js/node'
     - 'onnxruntime'
+    - 'cmake'
+    - 'include'
+    - 'tool'
+    - '.gitmodules'
+    - 'setup.py'
+    - 'build.*'
+    - '.github'
     exclude:
     - 'onnxruntime/core/providers/tensorrt'
     - 'onnxruntime/core/providers/cuda'
