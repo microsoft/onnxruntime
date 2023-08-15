@@ -11,7 +11,7 @@ from transformers import LlamaTokenizer
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import create_onnxruntime_session  # noqa: E402
-from llama_parity import get_position_ids  # noqa: E402
+from llama_inputs import get_position_ids  # noqa: E402
 
 
 class QuantKVDataLoader:
@@ -93,7 +93,7 @@ class QuantKVDataLoader:
                     past_sequence_length = inputs["past_key_values.0.key"].shape[2]
 
                     inputs["input_ids"] = input_ids[:, -1].unsqueeze(0).detach().cpu().numpy().astype(np.int64)
-                    attn_mask_torch = torch.zeros((self.batch_size, past_sequence_length + 1), dtype=torch.int64)
+                    attn_mask_torch = torch.ones((self.batch_size, past_sequence_length + 1), dtype=torch.int64)
                     inputs["attention_mask"] = attn_mask_torch.detach().cpu().numpy().astype(np.int64)
                     inputs["position_ids"] = (
                         get_position_ids(attn_mask_torch, use_past_kv=True).detach().cpu().numpy().astype(np.int64)

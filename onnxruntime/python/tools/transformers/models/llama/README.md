@@ -2,25 +2,30 @@
 
 ## Exporting LLaMA
 
-There are two ways to export LLaMA models such as LLaMA and LLaMA2 (using LLaMA2 7B as an example).
+There are several ways to export LLaMA models such as LLaMA and LLaMA-2 (using LLaMA-2 7B as an example).
 
-Option 1: from source
+Option 1: from convert_to_onnx
 ```
+# From source:
 $ git clone https://github.com/microsoft/onnxruntime
 $ cd onnxruntime/onnxruntime/python/tools/transformers/models/llama
 $ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b
-```
 
-Option 2: from wheel
-```
+# From wheel:
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b
 ```
 
-# Examples of Exporting LLaMA
+To make this option compatible with [Hugging Face's Optimum](https://github.com/huggingface/optimum), you will need to create `config.json` and `generation_config.json` for your model and store them in the same directory as your ONNX models. For example, you can find those JSON files for LLaMA-2 7B on Hugging Face [here](https://huggingface.co/meta-llama/Llama-2-7b-hf).
+
+Option 2: from [Microsoft's custom export](https://github.com/microsoft/Llama-2-Onnx)
+
+Option 3: from [Hugging Face's Optimum](https://github.com/huggingface/optimum)
+
+## Examples of Exporting LLaMA
 
 Here are some additional examples for exporting LLaMA.
 
-## Export Saved Model on Disk
+### Export Saved Model on Disk
 ```
 # From source:
 $ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
@@ -29,7 +34,7 @@ $ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
 ```
 
-## Export with Different Precision
+### Export with Different Precision
 
 FP16:
 ```
@@ -59,33 +64,75 @@ Note: In the below examples, `PyTorch` refers to running in PyTorch without `tor
 
 ### Variants
 
-1. PyTorch (without `torch.compile`), FP32, Hugging Face `generate()` and `decode()` API
+1. PyTorch (without `torch.compile`), FP32
 ```
 python3 benchmark.py \
     --benchmark-type hf-pt \
     --model-name meta-llama/Llama-2-7b-hf \
     --model-size 7b \
     --precision fp32 \
-    --batch-size 2 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
     --device cpu \
-    --prompt "Hey, are you conscious? Can you talk to me?" \
     --auth
 ```
 
-2. PyTorch 2.0 (with `torch.compile`), FP16, Hugging Face `generate()` and `decode()` API
+2. PyTorch 2.0 (with `torch.compile`), FP16
 ```
 python3 benchmark.py \
     --benchmark-type hf-pt2 \
     --model-name meta-llama/Llama-2-7b-hf \
     --model-size 7b \
     --precision fp16 \
-    --batch-size 2 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
     --device cuda \
-    --prompt "Hey, are you conscious? Can you talk to me?" \
     --auth
 ```
 
-3. ONNX Runtime, FP32
+3. Optimum + ONNX Runtime, FP32, export via Optimum or convert_to_onnx
+```
+python3 benchmark.py \
+    --benchmark-type hf-ort \
+    --hf-ort-model-path ./Llama-2-7b-hf-onnx/ \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --model-size 7b \
+    --precision fp32 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cpu \
+    --auth
+```
+
+4. Optimum + ONNX Runtime, FP16, export via convert_to_onnx
+```
+python3 benchmark.py \
+    --benchmark-type hf-ort \
+    --hf-ort-model-path ./llama2-7b/ \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --model-size 7b \
+    --precision fp16 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cuda \
+    --auth
+```
+
+5. Optimum + ONNX Runtime, INT8, export via convert_to_onnx
+```
+python3 benchmark.py \
+    --benchmark-type hf-ort \
+    --hf-ort-model-path ./llama2-7b/ \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --model-size 7b \
+    --precision int8 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cpu \
+    --auth
+```
+
+6. ONNX Runtime, FP32, Microsoft custom export
 ```
 python3 benchmark.py \
     --benchmark-type ort \
@@ -93,20 +140,22 @@ python3 benchmark.py \
     --model-name meta-llama/Llama-2-7b-hf \
     --model-size 7b \
     --precision fp32 \
-    --batch-size 1 \
-    --sequence-length 16 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
     --device cpu
 ```
 
-4. ONNX Runtime, FP16
+7. ONNX Runtime, FP16, Microsoft custom export
 ```
 python3 benchmark.py \
     --benchmark-type ort \
-    --ort-model-path llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
+    --ort-model-path ./llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
     --model-size 7b \
     --precision fp16 \
-    --batch-size 1 \
-    --sequence-length 16 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
     --device cuda
 ```
+
+You can also profile each of these variants by adding the `--profile` flag and providing one batch size and sequence length combination.

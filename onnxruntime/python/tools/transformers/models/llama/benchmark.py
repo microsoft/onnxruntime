@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import gc
+import itertools
 import logging
 import os
 import sys
@@ -19,286 +20,354 @@ from onnxruntime.transformers.benchmark_helper import measure_memory
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import setup_logger  # noqa: E402
-
-PRECISION = {
-    "fp32": (torch.float32, np.float32),
-    "fp16": (torch.float16, np.float16),
-    "int8": (torch.int8, np.int8),
-}
+from llama_inputs import get_msft_sample_inputs, get_sample_inputs, get_sample_with_past_kv_inputs  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
-def get_position_ids(attention_mask, use_past_key_values=True):
-    position_ids = attention_mask.long().cumsum(-1) - 1
-    position_ids.masked_fill_(attention_mask == 0, 1)
-    if use_past_key_values:
-        position_ids = position_ids[:, -1].unsqueeze(-1)
-    return position_ids
-
-
-def get_inputs(args, config, tokenizer):
-    prompt = [args.prompt for _ in range(args.batch_size)]
+def get_inputs(args: argparse.Namespace):
+    init_inputs, iter_inputs = None, None
 
     if args.benchmark_type in {"hf-pt", "hf-pt2", "hf-ort"}:
-        tokenizer_outputs = tokenizer(prompt, return_tensors="pt").to(args.device)
-
-        inputs = {
-            "input_ids": tokenizer_outputs.input_ids,
-            "attention_mask": tokenizer_outputs.attention_mask,
-            "max_new_tokens": args.max_length,
-        }
-        if args.benchmark_type == "hf-ort":
-            inputs["position_ids"] = get_position_ids(inputs["attention_mask"])
-
-        exclude_list = inputs.keys()
+        init_inputs = get_sample_inputs(
+            args.config,
+            args.target_device,
+            args.batch_size,
+            args.sequence_length,
+            return_dict=True,
+        )
+        iter_inputs = get_sample_with_past_kv_inputs(
+            args.config,
+            args.target_device,
+            args.batch_size,
+            args.sequence_length,
+            use_fp16=args.use_fp16,
+            return_dict=True,
+        )
 
     elif args.benchmark_type == "ort":
         # Microsoft export from https://github.com/microsoft/Llama-2-Onnx
-        batch_size = args.batch_size
-        max_seq_len = args.sequence_length
-        head_size = config.hidden_size // config.num_attention_heads
-        inputs = {
-            "x": np.random.rand(batch_size, 1, config.hidden_size),
-            "attn_mask": -10000.0
-            * np.triu(np.ones((batch_size, config.hidden_size // 2, config.hidden_size // 2)), k=1),
-            "k_cache": np.random.rand(
-                batch_size, config.num_hidden_layers, max_seq_len, config.num_attention_heads, head_size
-            ),
-            "v_cache": np.random.rand(
-                batch_size, config.num_hidden_layers, max_seq_len, config.num_attention_heads, head_size
-            ),
-            "pos": np.array(max_seq_len, dtype=np.int64),
-        }
-
-        exclude_list = ["pos"]
+        init_inputs = get_msft_sample_inputs(
+            args.config,
+            args.batch_size,
+            past_seq_len=0,
+            seq_len=args.sequence_length,
+            use_fp16=args.use_fp16,
+        )
+        iter_inputs = get_msft_sample_inputs(
+            args.config,
+            args.batch_size,
+            past_seq_len=args.sequence_length,
+            seq_len=1,
+            use_fp16=args.use_fp16,
+        )
 
     else:
         raise Exception("Unable to auto-detect inputs for provided model")
 
-    return set_inputs(args, inputs, exclude_list)
+    return init_inputs, iter_inputs
 
 
-def set_inputs(args, input_dict, exclude_list):
-    # Cast certain inputs to another dtype
-    precision_dest = "fp32" if args.precision == "int8" else args.precision
-
-    for k, v in input_dict.items():
-        if k in exclude_list:
-            continue
-
-        if isinstance(v, torch.Tensor):
-            input_dict[k] = v.to(PRECISION[precision_dest][0])
-        elif isinstance(v, np.ndarray):
-            input_dict[k] = v.astype(PRECISION[precision_dest][1])
-
-    return input_dict
-
-
-def get_vars(args):
-    config = LlamaConfig.from_pretrained(args.model_name)
-    tokenizer = LlamaTokenizer.from_pretrained(args.model_name)
-    inputs = get_inputs(args, config, tokenizer)
-    model = None
+def get_model(args: argparse.Namespace):
+    model, sess_options = None, None
+    start_time, end_time = None, None
 
     # There are multiple sources that the model could come from:
     # 1) Benchmark LLaMA from unofficial source on Hugging Face
     # 2) Benchmark LLaMA from official source on Hugging Face, which requires an authentication token
     # 3) Benchmark LLaMA from local download of model
-    torch_dtype = PRECISION[args.precision][0] if args.precision != "int8" else PRECISION["fp32"][0]
-    target_device = f"{args.device}:{args.device_id}" if args.device == "cuda" else args.device
 
     if args.benchmark_type in {"hf-pt", "hf-pt2"}:
         source = args.hf_pt_model_path if args.hf_pt_model_path else args.model_name
         start_time = time.time()
         model = LlamaForCausalLM.from_pretrained(
             source,
-            torch_dtype=torch_dtype,
+            torch_dtype=torch.float16 if args.use_fp16 else torch.float32,
             use_auth_token=args.auth,
             use_cache=True,
-        ).to(target_device)
+        ).to(args.target_device)
         end_time = time.time()
 
-    elif args.benchmark_type == "hf-ort":
-        # Optimum export
-        source = args.hf_ort_model_path if args.hf_ort_model_path else args.model_name
-        start_time = time.time()
-        model = ORTModelForCausalLM.from_pretrained(
-            source,
-            use_auth_token=args.auth,
-            use_io_binding=True,
-        ).to(target_device)
-        end_time = time.time()
+        if args.benchmark_type == "hf-pt2":
+            model = torch.compile(model)
 
-    elif args.benchmark_type == "ort":
-        # Microsoft export
+    elif args.benchmark_type in {"hf-ort", "ort"}:
         sess_options = ort.SessionOptions()
         sess_options.enable_profiling = args.profile
         if args.verbose:
             sess_options.log_verbosity_level = 3
             sess_options.log_severity_level = 1
-        logger.info(f"Loading model from {args.ort_model_path}")
-        start_time = time.time()
-        model = ort.InferenceSession(args.ort_model_path, providers=[args.execution_provider])
-        end_time = time.time()
 
     else:
         raise Exception(f"Cannot recognize {args.benchmark_type}")
 
+    if args.benchmark_type == "hf-ort":
+        # Optimum export or convert_to_onnx.py export
+        provider = args.execution_provider[0] if type(args.execution_provider) is tuple else args.execution_provider
+        provider_options = args.execution_provider[1] if type(args.execution_provider) is tuple else None
+
+        decoder_file_name = None
+        decoder_with_past_file_name = None
+        for filename in os.listdir(args.hf_ort_model_path):
+            if ".onnx" not in filename or ".onnx_data" in filename or ".onnx.data" in filename:
+                continue
+            if "decoder_model.onnx" in filename or f"decoder_model_{args.precision}.onnx" in filename:
+                decoder_file_name = filename
+            if (
+                "decoder_with_past_model.onnx" in filename
+                or f"decoder_with_past_model_{args.precision}.onnx" in filename
+            ):
+                decoder_with_past_file_name = filename
+
+        start_time = time.time()
+        model = ORTModelForCausalLM.from_pretrained(
+            args.hf_ort_model_path,
+            decoder_file_name=decoder_file_name,
+            decoder_with_past_file_name=decoder_with_past_file_name,
+            use_auth_token=args.auth,
+            use_io_binding=(args.device != "cpu"),
+            provider=provider,
+            provider_options=provider_options,
+            session_options=sess_options,
+        )
+        end_time = time.time()
+
+    if args.benchmark_type == "ort":
+        # Microsoft export from https://github.com/microsoft/Llama-2-Onnx
+        logger.info(f"Loading model from {args.ort_model_path}")
+        start_time = time.time()
+        model = ort.InferenceSession(
+            args.ort_model_path,
+            sess_options,
+            providers=[args.execution_provider],
+        )
+        end_time = time.time()
+
     logger.info(f"Loaded model in {end_time - start_time} s")
 
-    if "pt2" in args.benchmark_type:
-        model = torch.compile(model)
-
-    return inputs, tokenizer, model
+    return model
 
 
 def time_fn(args, fn, inputs):
-    init_range = range(args.warmup_runs) if args.benchmark_type == "ort" else trange(args.warmup_runs, file=sys.stdout)
-    inf_range = range(args.num_runs) if args.benchmark_type == "ort" else trange(args.num_runs, file=sys.stdout)
-
     # Warm up
-    for _ in init_range:
+    warmup_range = (
+        range(args.warmup_runs)
+        if args.benchmark_type == "ort"
+        else trange(args.warmup_runs, file=sys.stdout, desc="Warm up")
+    )
+    for _ in warmup_range:
         outputs = fn(inputs)
 
     if args.verbose:
         logger.info(outputs)
 
     # Benchmark
-    if args.device == "cuda":
+    if args.device != "cpu":
         torch.cuda.synchronize()
     start_time = time.time()
 
-    for _ in inf_range:
+    bench_range = (
+        range(args.num_runs)
+        if args.benchmark_type == "ort"
+        else trange(args.num_runs, file=sys.stdout, desc="Benchmark")
+    )
+    for _ in bench_range:
         outputs = fn(inputs)
 
-    if args.device == "cuda":
+    if args.device != "cpu":
         torch.cuda.synchronize()
     end_time = time.time()
 
+    # Newline print after trange in order to print metrics on new lines without progress bar on same line
+    if args.benchmark_type != "ort":
+        logger.info("")
+
     latency = (end_time - start_time) / args.num_runs
     throughput = args.batch_size / latency
-    metrics = (args.batch_size, latency, throughput)
 
-    # Newline print after trange in order to print metrics on new line without progress bar on same line
-    if args.benchmark_type != "ort":
-        logger.info("\n")
+    logger.info(f"Batch Size: {args.batch_size}")
+    logger.info(f"Sequence Length: {args.sequence_length}")
+    logger.info(f"Latency: {latency} s")
+    logger.info(f"Throughput: {throughput} qps")
+    return
 
-    return outputs, metrics
 
+def profile_fn(args, fn, inputs, inputs_type):
+    # Filename prefix format:
+    # "b<batch-size>_s<sequence-length>_<benchmark-type>-<precision>-<device>_<inference-step>_<inputs-type>_<current-time>"
+    prefix = f"b{args.batch_size}_s{args.sequence_length}_{args.benchmark_type.lower()}-{args.precision}-{args.device}_{fn.__name__.replace('_', '-')}_{inputs_type}_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}"
+    filename = None
 
-def run_hf_inference(args, inputs, tokenizer, model):
-    def gen_and_dec():
-        predicted_ids = model.generate(**inputs)
-        transcription = []
-        for bs in range(args.batch_size):
-            for rs in range(args.num_return_sequences):
-                transcription.append(
-                    tokenizer.batch_decode(
-                        predicted_ids[bs * args.num_return_sequences + rs], skip_special_tokens=True
-                    )[0]
-                )
-
-    if args.profile:
-        # Profile kernels
+    if args.benchmark_type in {"hf-pt", "hf-pt2"}:
+        # Profile PyTorch kernels
         with profile(  # noqa: SIM117
             activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True
         ) as prof:
             with record_function("model_inference"):
-                gen_and_dec()
+                fn(inputs)
         prof_data = prof.key_averages(group_by_stack_n=5).table(sort_by=args.pt_filter_by, row_limit=args.pt_num_rows)
 
-        # Filename format example: "hf_pt2_gen_and_dec_<current-time>.txt"
-        filename = f"{args.benchmark_type.lower().replace(' + ', '_')}_gen_and_dec_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}.txt"
+        filename = os.path.join(args.log_folder, f"{prefix}.log")
         with open(filename, "w") as f:
             f.write(prof_data)
 
-        # Measure CPU usage
-        pid = os.getpid()
-        process = psutil.Process(pid)
-        process.cpu_percent(interval=0.1)
+    else:
+        # Profile ORT kernels
+        fn(inputs)
 
-        gen_and_dec()
-        logger.info(f"CPU percentage = {process.cpu_percent(interval=None)}%")
+        # Set new log name for ORT profile log generated
+        filename = f"{prefix}.json"
 
-        # Measure memory usage
-        gc.collect()
-        torch.cuda.empty_cache()
-        measure_memory(is_gpu=(args.device == "cuda"), func=lambda: gen_and_dec())
-
-        return
-
-    logger.info("Evaluating `model.generate` step")
-    generate_fn = lambda inputs: model.generate(**inputs)  # noqa: E731
-    predicted_ids, metrics = time_fn(args, generate_fn, inputs)
-    logger.info(f"Batch size = {metrics[0]}, latency = {metrics[1]} s, throughput = {metrics[2]} qps")
-
-    logger.info("Evaluating `tokenizer.batch_decode` step")
-    transcription_fn = lambda pred_ids: tokenizer.batch_decode(  # noqa: E731
-        pred_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
-    )
-    transcription, metrics = time_fn(args, transcription_fn, predicted_ids)
-    logger.info(f"Batch size = {metrics[0]}, latency = {metrics[1]} s, throughput = {metrics[2]} qps")
+    return filename
 
 
-def run_ort_inference(args, inputs, model):
-    # Check that all model inputs will be provided
-    model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
-    user_inputs = set(inputs.keys())
-    missing_inputs = model_inputs - user_inputs
-    if len(missing_inputs):
-        logger.error(f"The following model inputs are missing: {missing_inputs}")
-        raise Exception("There are missing inputs to the model. Please add them to `get_inputs`.")
+def measure_fn(args, fn, inputs):
+    # Measure CPU usage
+    pid = os.getpid()
+    process = psutil.Process(pid)
+    process.cpu_percent(interval=0.1)
 
-    # Remove unnecessary inputs from model inputs
-    unnecessary_inputs = user_inputs - model_inputs
-    if len(unnecessary_inputs):
-        for unnecessary_input in unnecessary_inputs:
-            logger.info(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
-            del inputs[unnecessary_input]
+    fn(inputs)
+    logger.info(f"CPU usage: {process.cpu_percent(interval=None)}%")
 
-    # Add IO binding for non-CPU inputs
-    if args.device != "cpu":
-        io_binding = model.io_binding()
-        for k, v in inputs.items():
-            io_binding.bind_cpu_input(k, v)
-        for output in model.get_outputs():
-            io_binding.bind_output(output.name)
+    # Measure memory usage
+    gc.collect()
+    torch.cuda.empty_cache()
+    measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs))
+
+    # Flush output so memory usage is printed
+    sys.stdout.flush()
+
+
+def run_hf_inference(args, init_inputs, iter_inputs, model):
+    # Inference steps to measure
+    def get_logits(inputs):
+        # Inference pass without decoding
+        outputs = model(**inputs)  # noqa: F841
+
+    def get_pred_ids(inputs):
+        # Inference pass with predicted token ids generation
+        predicted_ids = model.generate(**inputs)  # noqa: F841
+
+    def gen_and_dec(inputs):
+        # Inference pass with generation and decoding
+        predicted_ids = get_pred_ids(inputs)
+        transcription = []
+        for bs in range(args.batch_size):
+            for rs in range(args.num_return_sequences):
+                transcription.append(
+                    args.tokenizer.batch_decode(
+                        predicted_ids[bs * args.num_return_sequences + rs], skip_special_tokens=True
+                    )[0]
+                )
+
+    if args.benchmark_type == "hf-pt2":
+        # Run forward pass once with each set of inputs to process through Dynamo
+        get_logits(init_inputs)
+        get_logits(iter_inputs)
 
     if args.profile:
-        # Measure CPU usage
-        pid = os.getpid()
-        process = psutil.Process(pid)
-        process.cpu_percent(interval=0.1)
+        new_logname = profile_fn(args, get_logits, init_inputs, "prompt")
+        if args.benchmark_type == "hf-ort":
+            # Turn profiling off to stop appending to log
+            old_logname = model.decoder.session.end_profiling()
+            logger.warning(f"Renaming {old_logname} to {new_logname}")
+            os.rename(old_logname, os.path.join(args.log_folder, new_logname))
 
-        model.run(None, inputs) if args.device == "cpu" else model.run_with_iobinding(io_binding)
-        logger.info(f"CPU percentage = {process.cpu_percent(interval=None)}%")
-
-        # Turn profiling off to stop generating logs
-        args.profile = False
-        model.end_profiling()
-
-        # Measure memory usage
-        gc.collect()
-        torch.cuda.empty_cache()
-        measure_memory(is_gpu=(args.device == "cuda"), func=lambda: model.run(None, inputs))
+        new_logname = profile_fn(args, get_logits, iter_inputs, "per-token")
+        if args.benchmark_type == "hf-ort":
+            # Turn profiling off to stop appending to log
+            old_logname = model.decoder_with_past.session.end_profiling()
+            logger.warning(f"Renaming {old_logname} to {new_logname}")
+            os.rename(old_logname, os.path.join(args.log_folder, new_logname))
 
         return
 
-    if args.device == "cpu":
-        generate_fn = lambda inputs: model.run(None, inputs)  # noqa: E731
-        outputs, metrics = time_fn(args, generate_fn, inputs)
-    else:
-        generate_fn = lambda io_binding: model.run_with_iobinding(io_binding)  # noqa: E731
-        outputs, metrics = time_fn(args, generate_fn, io_binding)
-    logger.info(f"Batch size = {metrics[0]}, latency = {metrics[1]} s, throughput = {metrics[2]} qps")
+    # PyTorch evaluations
+    logger.info("\nEvaluating `model(inputs)` step to get past_key_values")
+    time_fn(args, get_logits, init_inputs)
+    measure_fn(args, get_logits, init_inputs)
+
+    logger.info("\nEvaluating `model(inputs)` step with past_key_values")
+    time_fn(args, get_logits, iter_inputs)
+    measure_fn(args, get_logits, iter_inputs)
 
 
-def run_inference(args, inputs, tokenizer, model):
+def run_ort_inference(args, init_inputs, iter_inputs, model):
+    def prepare_ort_inputs(inputs):
+        # Check that all model inputs will be provided
+        model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
+        user_inputs = set(inputs.keys())
+        missing_inputs = model_inputs - user_inputs
+        if len(missing_inputs):
+            logger.error(f"The following model inputs are missing: {missing_inputs}")
+            raise Exception("There are missing inputs to the model. Please add them and try again.")
+
+        # Remove unnecessary inputs from model inputs
+        unnecessary_inputs = user_inputs - model_inputs
+        if len(unnecessary_inputs):
+            for unnecessary_input in unnecessary_inputs:
+                logger.info(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
+                del inputs[unnecessary_input]
+
+        # Add IO bindings for non-CPU execution providers
+        if args.device != "cpu":
+            io_binding = model.io_binding()
+            for k, v in inputs.items():
+                io_binding.bind_cpu_input(k, v)
+            for output in model.get_outputs():
+                io_binding.bind_output(output.name)
+            return io_binding
+
+        return inputs
+
+    def with_io_binding(io_binding):
+        # Inference pass with IO binding
+        model.run_with_iobinding(io_binding)
+
+    def without_io_binding(inputs):
+        # Inference pass without IO binding
+        outputs = model.run(None, inputs)  # noqa: F841
+
+    generate_fn = with_io_binding if args.device != "cpu" else without_io_binding
+
+    if args.profile:
+        ort_init_inputs = prepare_ort_inputs(init_inputs)
+        new_logname = profile_fn(args, generate_fn, ort_init_inputs, "prompt")
+
+        # Turn profiling off to stop appending to log file
+        old_logname = model.end_profiling()
+        logger.warning(f"Renaming {old_logname} to {new_logname}")
+        os.rename(old_logname, os.path.join(args.log_folder, new_logname))
+
+        # Re-initialize model for new log file instead of appending to old log file
+        model = get_model(args)
+        ort_iter_inputs = prepare_ort_inputs(iter_inputs)
+        new_logname = profile_fn(args, generate_fn, ort_iter_inputs, "per-token")
+
+        # Turn profiling off to stop appending to log
+        old_logname = model.end_profiling()
+        logger.warning(f"Renaming {old_logname} to {new_logname}")
+        os.rename(old_logname, os.path.join(args.log_folder, new_logname))
+        return
+
+    # ORT evaluations
+    logger.info("\nEvaluating `model(inputs)` step to get past_key_values")
+    ort_init_inputs = prepare_ort_inputs(init_inputs)
+    time_fn(args, generate_fn, ort_init_inputs)
+    measure_fn(args, generate_fn, ort_init_inputs)
+
+    logger.info("\nEvaluating `model(inputs)` step with past_key_values")
+    ort_iter_inputs = prepare_ort_inputs(iter_inputs)
+    time_fn(args, generate_fn, ort_iter_inputs)
+    measure_fn(args, generate_fn, ort_iter_inputs)
+
+
+def run_inference(args, init_inputs, iter_inputs, model):
     if args.benchmark_type in {"hf-pt", "hf-pt2", "hf-ort"}:
-        run_hf_inference(args, inputs, tokenizer, model)
+        run_hf_inference(args, init_inputs, iter_inputs, model)
     elif args.benchmark_type == "ort":
-        run_ort_inference(args, inputs, model)
+        run_ort_inference(args, init_inputs, iter_inputs, model)
     else:
         raise Exception(f"Cannot recognize {args.benchmark_type}")
 
@@ -321,6 +390,7 @@ def get_args():
 
     # Args for choosing the model
     parser.add_argument("-ms", "--model-size", required=True, type=str, default="7b", choices=["7b", "13b", "70b"])
+
     parser.add_argument(
         "-p",
         "--precision",
@@ -328,8 +398,7 @@ def get_args():
         type=str,
         default="fp32",
         choices=["int8", "fp16", "fp32"],
-        help="Precision for model and inputs. For PyTorch models, this sets the model's precision. \
-                              For ONNX models, the model's precision should be set before running this script.",
+        help="Precision for model. For ONNX models, the model's precision should be set before running this script.",
     )
     parser.add_argument(
         "--hf-pt-model-path",
@@ -343,17 +412,24 @@ def get_args():
         default="",
         help="Path to directory containing all ONNX files (e.g. tokenizer, encoder, decoder, decoder_with_past)",
     )
-    parser.add_argument("--ort-model-path", type=str, default="", help="Path to ONNX model")
-
-    parser.add_argument("-b", "--batch-size", type=int, default=1)
-    parser.add_argument("-s", "--sequence-length", type=int, default=512)
-    parser.add_argument("--prompt", type=str, default="Hey, are you conscious? Can you talk to me?")
-
-    # Args for decoding logic
-    parser.add_argument("--max-length", type=int, default=32)
-    parser.add_argument("--num-return-sequences", type=int, default=1)
+    parser.add_argument(
+        "--ort-model-path",
+        type=str,
+        default="",
+        help="Path to ONNX model",
+    )
 
     # Args for running and evaluating the model
+    parser.add_argument(
+        "-b",
+        "--batch-sizes",
+        default="1 2",
+    )
+    parser.add_argument(
+        "-s",
+        "--sequence-lengths",
+        default="8 16 32 64 128 256 512",
+    )
     parser.add_argument(
         "-d",
         "--device",
@@ -361,10 +437,14 @@ def get_args():
         default="cuda" if torch.cuda.is_available() else "cpu",
         choices=["cpu", "cuda", "rocm"],
     )
-    parser.add_argument("-id", "--device-id", type=int, default=0, choices=[0, 1, 2, 3])
+    parser.add_argument("-id", "--device-id", type=int, default=0)
     parser.add_argument("-w", "--warmup-runs", type=int, default=5)
     parser.add_argument("-n", "--num-runs", type=int, default=10)
     parser.add_argument("--seed", type=int, default=2)
+
+    # Args for decoding logic
+    parser.add_argument("--max-length", type=int, default=32)
+    parser.add_argument("--num-return-sequences", type=int, default=1)
 
     # Args for accessing detailed info
     parser.add_argument("--profile", default=False, action="store_true")
@@ -373,6 +453,7 @@ def get_args():
     )
     parser.add_argument("--pt-num-rows", type=int, default=1000, help="Number of rows for PyTorch profiler to display")
     parser.add_argument("--verbose", default=False, action="store_true")
+    parser.add_argument("--log-folder", type=str, default=os.path.join("."), help="Folder to cache log files")
 
     args = parser.parse_args()
 
@@ -389,6 +470,21 @@ def get_args():
             args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
             args.device = "cuda"
 
+    # Check that model paths have been specified for any benchmarking with ORT
+    if args.benchmark_type == "hf-ort":
+        assert args.hf_ort_model_path, "Please specify a path to `--hf-ort-model-path`"
+    if args.benchmark_type == "ort":
+        assert args.ort_model_path, "Please specify a path to `--ort-model-path`"
+
+    args.batch_sizes = args.batch_sizes.split(" ")
+    args.sequence_lengths = args.sequence_lengths.split(" ")
+
+    # Check that only one (batch_size, sequence_length) combination is set for profiling
+    if args.profile:
+        assert (
+            len(args.batch_sizes) == 1 and len(args.sequence_lengths) == 1
+        ), "Please provide only one (batch_size, sequence_length) combination for profiling"
+
     return args
 
 
@@ -397,8 +493,26 @@ def main():
     setup_logger(args.verbose)
     logger.info(args.__dict__)
     torch.backends.cudnn.benchmark = True
-    inputs, tokenizer, model = get_vars(args)
-    run_inference(args, inputs, tokenizer, model)
+
+    tokenizer = LlamaTokenizer.from_pretrained(args.model_name)
+    config = LlamaConfig.from_pretrained(args.model_name)
+    target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
+    use_fp16 = args.precision == "fp16"
+
+    setattr(args, "tokenizer", tokenizer)  # noqa: B010
+    setattr(args, "config", config)  # noqa: B010
+    setattr(args, "target_device", target_device)  # noqa: B010
+    setattr(args, "use_fp16", use_fp16)  # noqa: B010
+
+    # Measure prompt cost (init_inputs) and generated token cost (iter_inputs)
+    model = get_model(args)
+    for batch_size, sequence_length in itertools.product(args.batch_sizes, args.sequence_lengths):
+        logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
+        setattr(args, "batch_size", int(batch_size))  # noqa: B010
+        setattr(args, "sequence_length", int(sequence_length))  # noqa: B010
+
+        init_inputs, iter_inputs = get_inputs(args)
+        run_inference(args, init_inputs, iter_inputs, model)
 
 
 if __name__ == "__main__":

@@ -12,41 +12,13 @@ from transformers import LlamaConfig, LlamaForCausalLM
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision, prepare_environment, setup_logger  # noqa: E402
+from llama_inputs import get_sample_inputs, get_sample_with_past_kv_inputs  # noqa: E402
 from llama_parity import main as parity_check  # noqa: E402
 from onnx_model import OnnxModel  # noqa: E402
 
 from onnxruntime import quantization as ort_quantization  # noqa: E402
 
 logger = logging.getLogger("")
-
-
-def get_sample_inputs(config: LlamaConfig):
-    batch_size, seq_len = 2, 8
-    input_ids = torch.randint(low=0, high=config.vocab_size, size=(batch_size, seq_len), dtype=torch.int64)
-    attn_mask = torch.ones(batch_size, seq_len, dtype=torch.int64)
-    # pos_ids is of shape (batch_size, seq_len)
-    pos_ids = attn_mask.long().cumsum(-1) - 1
-
-    return (input_ids, attn_mask, pos_ids)
-
-
-def get_model_with_past_kv_inputs(config: LlamaConfig):
-    batch_size, past_seq_len = 2, 8
-    num_heads, head_size = config.num_attention_heads, int(config.hidden_size / config.num_attention_heads)
-    input_ids = torch.randint(low=0, high=config.vocab_size, size=(batch_size, 1), dtype=torch.int64)
-    attn_mask = torch.ones(batch_size, past_seq_len + 1, dtype=torch.int64)
-    # pos_ids is of shape (batch_size, 1)
-    pos_ids = attn_mask.long().cumsum(-1) - 1
-    pos_ids = pos_ids[:, -1].unsqueeze(-1)
-    past_kv = [
-        (
-            torch.rand(batch_size, num_heads, past_seq_len, head_size),
-            torch.rand(batch_size, num_heads, past_seq_len, head_size),
-        )
-        for _ in range(config.num_hidden_layers)
-    ]
-
-    return (input_ids, attn_mask, pos_ids, past_kv)
 
 
 def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
@@ -134,8 +106,12 @@ def run_dynamo_export(args: argparse.Namespace, l_config: LlamaConfig, llama: Ll
 
     config.capture_scalar_outputs = True
 
+    # Dummy values for export
+    batch_size, sequence_length = 2, 8
+    device = torch.device("cpu")
+
     # Export decoder_model.onnx
-    input_ids, attn_mask, pos_ids = get_sample_inputs(l_config)
+    input_ids, attn_mask, pos_ids = get_sample_inputs(l_config, device, batch_size, sequence_length)
     temp_dir = args.output  # tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir, "temp.onnx")  # os.path.join(temp_dir.name, "temp.onnx")
     torch.onnx.dynamo_export(
@@ -155,7 +131,9 @@ def run_dynamo_export(args: argparse.Namespace, l_config: LlamaConfig, llama: Ll
     )  # temp_dir.cleanup()
 
     # Export decoder_with_past_model.onnx
-    input_ids, attn_mask, pos_ids, past_kv = get_model_with_past_kv_inputs(l_config)
+    input_ids, attn_mask, pos_ids, past_kv = get_sample_with_past_kv_inputs(
+        l_config, device, batch_size, sequence_length
+    )
     temp_dir = args.output  # tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir, "temp.onnx")  # os.path.join(temp_dir.name, "temp.onnx")
     torch.onnx.dynamo_export(
@@ -178,8 +156,12 @@ def run_dynamo_export(args: argparse.Namespace, l_config: LlamaConfig, llama: Ll
 
 
 def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM):
+    # Dummy values for export
+    batch_size, sequence_length = 2, 8
+    device = torch.device("cpu")
+
     # Export decoder_model.onnx
-    decoder_inputs = get_sample_inputs(l_config)
+    decoder_inputs = get_sample_inputs(l_config, device, batch_size, sequence_length)
 
     input_names = ["input_ids", "attention_mask", "position_ids"]
     output_names = [
@@ -219,7 +201,7 @@ def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llam
     temp_dir.cleanup()
 
     # Export decoder_with_past_model.onnx
-    decoder_with_past_inputs = get_model_with_past_kv_inputs(l_config)
+    decoder_with_past_inputs = get_sample_with_past_kv_inputs(l_config, device, batch_size, sequence_length)
     input_names = [
         "input_ids",
         "attention_mask",
@@ -270,9 +252,9 @@ def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llam
 
 
 def remove_existing_files(output_path: str):
-    for fle in os.listdir(output_path):
-        filepath = os.path.join(output_path, fle)
-        if ".onnx" in fle or ".onnx.data" in fle:
+    for filename in os.listdir(output_path):
+        filepath = os.path.join(output_path, filename)
+        if ".onnx" in filename or ".onnx.data" in filename:
             os.remove(filepath)
             logger.warning(f"Removing {filepath}")
 
@@ -455,8 +437,7 @@ def main():
             "Step 3 - ONNX Script from source: https://github.com/microsoft/onnxscript#installing-onnx-script"
         )
         logger.warning(
-            "Note: When you install ONNX weekly, omit `onnx` when running the first line for installing ONNX Script. \
-                        This is because you already installed `onnx-weekly` in the previous step."
+            "Note: After you install ONNX weekly, omit `onnx` when running the first line for installing ONNX Script. This is because you already installed `onnx-weekly` in the previous step."
         )
         run_dynamo_export(args, l_config, llama)
     else:
@@ -583,12 +564,13 @@ def main():
     # Verify parity on all saved ONNX models
     del llama  # Delete LLaMA model from memory since it will be loaded again during parity check
     logger.info("Verifying parity on all ONNX models created")
-    for fle in os.listdir(args.output):
-        if ".data" in fle or ".onnx" not in fle:
+    for filename in os.listdir(args.output):
+        if ".data" in filename or ".onnx" not in filename:
             continue
 
-        parity_cmd = ["-m", f"{original_model_name}", "-o", f"{os.path.join(args.output, fle)}"]
-        if "with_past" in fle:
+        precision = filename[filename.rfind("_") + 1 : filename.find(".onnx")]
+        parity_cmd = ["-m", f"{original_model_name}", "-o", f"{os.path.join(args.output, filename)}", "-fp", precision]
+        if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
         parity_check(parity_cmd)
 
