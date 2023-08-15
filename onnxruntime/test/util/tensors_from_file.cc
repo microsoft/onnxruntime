@@ -31,7 +31,7 @@ static inline void Trim(std::string& s) {
 
 static inline bool StartsWith(const std::string& s, const std::string& prefix) {
   return s.compare(0, prefix.size(), prefix) == 0;
-};
+}
 
 void LoadTensorsFromFile(const std::string& path, std::unordered_map<std::string, std::vector<float>>& tensors) {
   std::ifstream infile(path);
@@ -47,7 +47,7 @@ void LoadTensorsFromFile(const std::string& path, std::unordered_map<std::string
   //   3.3, 4.5,
   //   5.6, 6.7
   //   ===
-  // Note that "name:" and "===" shall be at the begining of a line without leading space!
+  // Note that "name:" and "===" shall be at the beginning of a line without leading space!
   const std::string name_prefix = "name:";
   const std::string end_tensor_prefix = "===";
 

@@ -37,7 +37,8 @@ void GetBias_3_64(std::vector<float>& bias_data) {
   LoadTensor("Bias_3_64.bias_data", bias_data);
 }
 
-void SampleAttentionWeight(std::vector<float>& data, std::vector<float>& output, int elements, int start_offset, int step) {
+void SampleAttentionWeight(std::vector<float>& data, std::vector<float>& output,
+                           int elements, int start_offset, int step) {
   int data_length = static_cast<int>(data.size());
 
   output.resize(elements);
@@ -440,24 +441,34 @@ void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(Atten
   LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.key_data", data.key_data);
   LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.value_data", data.value_data);
   LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.bias_data", data.bias_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.past_key_data", data.past_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.past_value_data", data.past_value_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.fp32_output_data", data.fp32_output_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.past_key_data",
+             data.past_key_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.past_value_data",
+             data.past_value_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.fp32_output_data",
+             data.fp32_output_data);
   data.fp16_output_data = data.fp32_output_data;
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.present_key_data", data.present_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.present_value_data", data.present_value_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.present_key_data",
+             data.present_key_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.present_value_data",
+             data.present_value_data);
   data.is_static_kv = false;
 }
 
 void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias(AttentionTestData& data) {
   GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(data);
   data.bias_data.clear();
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.past_key_data", data.past_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.past_value_data", data.past_value_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.fp32_output_data", data.fp32_output_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.past_key_data",
+             data.past_key_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.past_value_data",
+             data.past_value_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.fp32_output_data",
+             data.fp32_output_data);
   data.fp16_output_data = data.fp32_output_data;
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.present_key_data", data.present_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.present_value_data", data.present_value_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.present_key_data",
+             data.present_key_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.present_value_data",
+             data.present_value_data);
   data.is_static_kv = false;
 }
 
@@ -578,17 +589,21 @@ void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias(Packed
   LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.qkv_data", data.qkv_data);
 
   // shape: 1, num_heads, sequence_length, sequence_length
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.rel_pos_bias_data", data.rel_pos_bias_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.rel_pos_bias_data",
+             data.rel_pos_bias_data);
   data.broadcast_rel_pos_bias = true;
 
   // Do not test fp32
   data.fp32_output_data = {};
 
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.fp16_output_data", data.fp16_output_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.fp16_output_data",
+             data.fp16_output_data);
 }
 
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type) {
-  return std::find(data.skip_kernel_types.begin(), data.skip_kernel_types.end(), kernel_type) != data.skip_kernel_types.end();
+  return data.skip_kernel_types.end() != std::find(data.skip_kernel_types.begin(),
+                                                   data.skip_kernel_types.end(),
+                                                   kernel_type);
 }
 
 }  // namespace test

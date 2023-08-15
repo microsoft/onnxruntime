@@ -336,7 +336,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   }
   // attention with past/present state
   else if (data.past_key != nullptr || data.present_key != nullptr) {
-    // TODO: support memory efficient attention without bias but with past/present (like pass_past_in_kv)
+    // Below logic does not support memory efficient attention with past (like pass_past_in_kv) but without bias
     if (data.bias == nullptr) {
       // cross attention with past state
       if (data.past_key != nullptr && data.present_key == nullptr) {
