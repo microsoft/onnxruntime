@@ -43,11 +43,7 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
 
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
+#include "flatbuffers/flatbuffers.h"
 
 namespace onnxruntime {
 class Graph;

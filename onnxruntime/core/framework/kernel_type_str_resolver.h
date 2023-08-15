@@ -18,11 +18,7 @@
 #include "core/graph/graph.h"
 #include "core/platform/ort_mutex.h"
 
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
+#include "flatbuffers/flatbuffers.h"
 
 namespace onnxruntime {
 

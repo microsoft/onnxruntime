@@ -9,21 +9,11 @@
 #include "core/common/path_string.h"
 #include "core/common/status.h"
 
+#include "flatbuffers/flatbuffers.h"
+
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
 }
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-
-template <typename T>
-struct Offset;
-
-struct String;
-
-template <typename T>
-class Vector;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 

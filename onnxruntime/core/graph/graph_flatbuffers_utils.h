@@ -9,6 +9,8 @@
 #include "core/graph/ort_format_load_options.h"
 #include "core/framework/tensor.h"
 
+#include "flatbuffers/flatbuffers.h"
+
 namespace ONNX_NAMESPACE {
 class AttributeProto;
 class TensorProto;
@@ -17,12 +19,6 @@ class TensorProto;
 class SparseTensorProto;
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 }  // namespace ONNX_NAMESPACE
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 

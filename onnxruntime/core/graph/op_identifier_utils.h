@@ -9,14 +9,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
 
-namespace flatbuffers {
-class FlatBufferBuilder;
-
-template <typename T>
-struct Offset;
-
-struct String;
-}  // namespace flatbuffers
+#include "flatbuffers/flatbuffers.h"
 
 namespace onnxruntime {
 

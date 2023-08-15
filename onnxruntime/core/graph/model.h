@@ -15,11 +15,7 @@
 #include "core/graph/function_template.h"
 #endif
 
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
+#include "flatbuffers/flatbuffers.h"
 
 namespace onnxruntime {
 

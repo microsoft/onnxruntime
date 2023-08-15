@@ -43,11 +43,7 @@
 #include "core/framework/program_region.h"
 #endif
 
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
+#include "flatbuffers/flatbuffers.h"
 
 namespace onnxruntime {
 
