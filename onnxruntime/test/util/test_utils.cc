@@ -120,7 +120,7 @@ static gsl::span<const std::byte> GetModelBytes(ModelPathOrBytes model_path_or_b
   std::ifstream stream{std::basic_string<ORTCHAR_T>{model_path},
                        std::ios::in | std::ios::binary | std::ios::ate};
   ORT_ENFORCE(stream, "Failed to open file.");
-  const auto num_bytes = stream.tellg();
+  const auto num_bytes = narrow<size_t>(stream.tellg());
   byte_buffer.resize(num_bytes);
   stream.seekg(0);
   ORT_ENFORCE(stream.read(reinterpret_cast<char*>(byte_buffer.data()), num_bytes), "Failed to read file.");
