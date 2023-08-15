@@ -372,7 +372,7 @@ You can find the complete implementation of the `Trainer` class [here](https://g
 
 
 ### Inference with the trained model
-The `VoiceIdentifier` class will handle the inference with the trained model. It will load the trained model and perform inference on the given audio data. The class will have the `evaluate(inputData: Data) -> Result<(Bool, Float), Error>` method that will take in the audio data and return the result of the inference. The result will be a tuple of `(Bool, Float)`, where the first element represents whether the audio belongs to the user or not, and the second element represents the confidence score of the prediction.
+The `VoiceIdentifier` class will handle the inference with the trained model. It will load the trained model and perform inference on the given audio data. The class will have the `evaluate(inputData: Data) -> Result<(Bool, Float), Error>` method that will take in the audio data and return the result of the inference. The result will be a tuple of `(Bool, Float)`, where the first element represents whether the audio is identified to be the user or not, and the second element represents the confidence score of the prediction.
 
 First, we load the trained model using `ORTSession` object. 
 
