@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "core/providers/cpu/tensor/shape_op.h"
 
 namespace onnxruntime {
@@ -11,8 +12,7 @@ using SupportedTypes =
         int32_t,
         uint32_t>;
 
-std::vector<MLDataType> JsepSupportedDataTypes() {
-  return BuildKernelDefConstraintsFromTypeList<SupportedTypes>();
-}
-}
-}
+const std::vector<MLDataType> JsepSupportedDataTypes = BuildKernelDefConstraintsFromTypeList<SupportedTypes>();
+
+}  // namespace js
+}  // namespace onnxruntime

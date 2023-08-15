@@ -5,6 +5,6 @@
 
 namespace onnxruntime {
 namespace js {
-  std::vector<MLDataType> JsepSupportedDataTypes();
+const std::vector<MLDataType> JsepSupportedDataTypes;
 }
-}
+}  // namespace onnxruntime
