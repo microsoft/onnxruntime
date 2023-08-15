@@ -453,7 +453,7 @@ The complete implementation of the `VoiceIdentifier` class can be found [here](h
 
 ### Recording Audio
 
-We will use the `AudioRecorder` class to record audio through the microphone. It will record 10 seconds of audio and output the audio data as a `Data` object, which can be used for training and inference purposes. we will use `AVFoundation` framework to access microphone and record the audio. There will be one public method `record(callback: @escaping RecordingDoneCallback)` that will record the audio and call the callback function with the audio data as `Data` object, when the recording is done.
+We will use the `AudioRecorder` class to record audio through the microphone. It will record 10 seconds of audio and output the audio data as a `Data` object, which can be used for training and inference purposes. We will use the `AVFoundation` framework to access the microphone and record the audio. There will be one public method `record(callback: @escaping RecordingDoneCallback)` that will record the audio and call the callback function with the audio data when the recording is done.
 
 ```swift
 import AVFoundation
