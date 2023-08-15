@@ -27,6 +27,8 @@ class GatherOpBuilder : public BaseOpBuilder {
                          const logging::Logger& logger) const override;
 };
 
+// Add operator related
+#if defined(__APPLE__)
 namespace {
 int64_t GetAxisAttribute(const Node& node) {
   NodeAttrHelper node_attr_helper{node};
@@ -34,8 +36,6 @@ int64_t GetAxisAttribute(const Node& node) {
 }
 }  // namespace
 
-// Add operator related
-#if defined(__APPLE__)
 Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   auto layer = CreateNNLayer(model_builder, node);
