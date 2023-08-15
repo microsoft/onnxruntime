@@ -15,10 +15,10 @@ static void LoadTensor(const std::string& name, std::vector<float>& values) {
   static std::once_flag load_once_flag;
   std::call_once(load_once_flag, []() {
     const std::string test_data_path("testdata/attention/attention_test_data.txt");
-    load_tensors_from_file(test_data_path, tensors);
+    LoadTensorsFromFile(test_data_path, tensors);
 
     const std::string packed_mha_test_data_path("testdata/attention/packed_multihead_attention_test_data.txt");
-    load_tensors_from_file(packed_mha_test_data_path, tensors);
+    LoadTensorsFromFile(packed_mha_test_data_path, tensors);
   });
 
   auto it = tensors.find(name);

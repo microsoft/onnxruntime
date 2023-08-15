@@ -10,8 +10,8 @@
 namespace onnxruntime {
 namespace test {
 
-// Read float tensors from a file
-void load_tensors_from_file(const std::string& path, std::unordered_map<std::string, std::vector<float>>& tensors);
+// Read a dictionary of name to float tensors mapping from a text file.
+void LoadTensorsFromFile(const std::string& path, std::unordered_map<std::string, std::vector<float>>& tensors);
 
 }  // namespace test
 }  // namespace onnxruntime

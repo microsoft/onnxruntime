@@ -11,29 +11,34 @@
 namespace onnxruntime {
 namespace test {
 
-static inline void ltrim(std::string& s) {
+static inline void TrimLeft(std::string& s) {
   s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
             return !std::isspace(ch);
           }));
 }
 
-static inline void rtrim(std::string& s) {
+static inline void TrimRight(std::string& s) {
   s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
             return !std::isspace(ch);
           }).base(),
           s.end());
 }
 
-static inline void trim(std::string& s) {
-  rtrim(s);
-  ltrim(s);
+static inline void Trim(std::string& s) {
+  TrimRight(s);
+  TrimLeft(s);
 }
 
-static inline bool starts_with(const std::string& s, const std::string& prefix) {
+static inline bool StartsWith(const std::string& s, const std::string& prefix) {
   return s.compare(0, prefix.size(), prefix) == 0;
 };
 
-void load_tensors_from_file(const std::string& path, std::unordered_map<std::string, std::vector<float>>& tensors) {
+void LoadTensorsFromFile(const std::string& path, std::unordered_map<std::string, std::vector<float>>& tensors) {
+  std::ifstream infile(path);
+  if (!infile.good()) {
+    ORT_THROW("Cannot open file:", path);
+  }
+
   // File format is like the following:
   //   name:TestCaseName1.TensorName1
   //   1.1, 2.3
@@ -43,12 +48,7 @@ void load_tensors_from_file(const std::string& path, std::unordered_map<std::str
   //   5.6, 6.7
   //   ===
   // Note that "name:" and "===" shall be at the begining of a line without leading space!
-  std::ifstream infile(path);
-  if (!infile.good()) {
-    ORT_THROW("Cannot open file:", path);
-  }
-
-  const std::string prefix = "name:";
+  const std::string name_prefix = "name:";
   const std::string end_tensor_prefix = "===";
 
   std::string line;
@@ -58,9 +58,9 @@ void load_tensors_from_file(const std::string& path, std::unordered_map<std::str
     }
 
     std::string name;
-    if (starts_with(line, prefix)) {
-      name = line.substr(prefix.length());
-      trim(name);
+    if (StartsWith(line, name_prefix)) {
+      name = line.substr(name_prefix.length());
+      Trim(name);
     }
     if (name.empty()) {
       ORT_THROW("Failed to find name in line:", line);
@@ -71,13 +71,13 @@ void load_tensors_from_file(const std::string& path, std::unordered_map<std::str
       if (line.empty()) {
         continue;
       }
-      if (starts_with(line, end_tensor_prefix)) {
+      if (StartsWith(line, end_tensor_prefix)) {
         break;
       }
 
       std::istringstream ss(line);
       for (std::string token; std::getline(ss, token, ',');) {
-        trim(token);
+        Trim(token);
         if (token.empty()) {
           continue;
         }
@@ -86,8 +86,8 @@ void load_tensors_from_file(const std::string& path, std::unordered_map<std::str
           float value = std::stof(token);
           values.push_back(value);
         }
-        ORT_CATCH(const std::exception& e) {
-          ORT_THROW("Failed to parse float from name='", name, ",token='", token, "'. Exception:", e.what());
+        ORT_CATCH(const std::exception&) {
+          ORT_THROW("Failed to parse float from name='", name, ", token='", token);
         }
       }
     }
@@ -97,8 +97,8 @@ void load_tensors_from_file(const std::string& path, std::unordered_map<std::str
     }
 
     auto result = tensors.insert({name, values});
-    if (result.second == false) {  // not inserted
-      ORT_THROW("Failed to insert name=", name);
+    if (result.second == false) {
+      ORT_THROW("Failed to insert: duplicated name=", name);
     }
   }
 }
