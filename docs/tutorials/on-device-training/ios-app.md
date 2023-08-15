@@ -582,7 +582,7 @@ class AudioRecorder {
 
 ### Training View
 
-The `TrainingView` will be used to train the model on the user's voice. First, it wil prompt the user to record `kNumRecordings` of their voice. Then, it will train the model on the user's voice and some pre-recorded audio data. Finally, it will export the trained model for inference purposes.
+The `TrainingView` will be used to train the model on the user's voice. First, it will prompt the user to record `kNumRecordings` recordings of their voice. Then, it will train the model on the user's voice and some pre-recorded recordings of other speakers' voices. Finally, it will export the trained model for inference purposes.
 
 ```swift
 import SwiftUI
