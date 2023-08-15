@@ -42,21 +42,21 @@ const createGatherProgramInfo =
       const axisDimLimit = inputShape[axis];
 
       const inputIndices: number[] = [];
-      inputs[1].getBigInt64Array().forEach(v => {
-        let value = Number(v);
+      const inputIndicesArray = indicesElementSize === 2
+        ? inputs[1].getBigInt64Array()
+        : inputs[1].getInt32Array();
+      for (const i of inputIndicesArray[Symbol.iterator]()) {
+        let value = Number(i);
         if (value < 0) {
           value += axisDimLimit;
         }
         inputIndices.push(value);
-      });
+      }
 
       const inputSize = ShapeUtil.size(inputShape) * elementSize;
       const outputSize = ShapeUtil.size(outputShape) * elementSize;
 
       const totalGathers = M * N;
-      // int64 indices would be treated as little endian i32 with assumption they fall in i32 limits
-      // That assumption is safe as it's not possible to allocate >2gb buffer for input tensor
-      // Input data will be treated as u32 or two u32 for 8-byte tensors
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
   const elementSize: u32 = ${elementSize};
@@ -64,7 +64,7 @@ const createGatherProgramInfo =
   const inputIndices = array<u32, N>(${inputIndices.map(i => `${i}u`).join(',')});
 
   @group(0) @binding(0) var<storage, read> input : array<u32>;
-  @group(0) @binding(2) var<storage, read_write> output: array<u32>;
+  @group(0) @binding(1) var<storage, read_write> output: array<u32>;
 
   ${shaderHelper.mainStart()}
     let batch: u32 = global_idx / N;
@@ -105,9 +105,13 @@ export const gather = (context: ComputeContext, attributes: GatherAttributes): v
 
   const metadata = {
     name: 'Gather',
-    inputTypes: [GpuDataType.default, GpuDataType.default],
-    cacheHint: attributes.cacheKey + inputs[0].dataType.toString(10) + inputs[1].dataType.toString(10),
+    inputTypes: [GpuDataType.default],
+    cacheHint: attributes.cacheKey + inputs[0].dataType.toString(10) + inputs[1].dataType.toString(10) +
+    inputs[1].dims.join(','),
   };
 
-  context.compute(createGatherProgramInfo(metadata, context.inputs, attributes));
+  context.compute(
+    createGatherProgramInfo(metadata, context.inputs, attributes),
+    { inputs: [inputs[0]] },
+  );
 };

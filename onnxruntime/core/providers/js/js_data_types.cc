@@ -12,8 +12,7 @@ using SupportedTypes =
         int32_t,
         uint32_t>;
 
-std::vector<MLDataType> JsepSupportedDataTypes() {
-  return BuildKernelDefConstraintsFromTypeList<SupportedTypes>();
-}
+const std::vector<MLDataType> JsepSupportedDataTypes = BuildKernelDefConstraintsFromTypeList<SupportedTypes>();
+
 }  // namespace js
 }  // namespace onnxruntime

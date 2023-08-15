@@ -24,7 +24,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     10,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T", JsepSupportedDataTypes)
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Gather);
@@ -36,7 +36,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T", JsepSupportedDataTypes)
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Gather);
@@ -47,7 +47,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T", JsepSupportedDataTypes)
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Gather);
