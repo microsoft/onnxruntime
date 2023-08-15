@@ -296,10 +296,6 @@ ComPtr<ID3D12GraphicsCommandList> DmlCommandRecorder::GetCommandList()
     return m_currentCommandList;
 }
 
-ComPtr<IDMLCommandRecorder> DmlCommandRecorder::GetCommandRecorder() {
-    return m_recorder;
-}
-
 void DmlCommandRecorder::ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers)
 {
     m_currentCommandList->ResourceBarrier(gsl::narrow_cast<uint32_t>(barriers.size()), barriers.data());

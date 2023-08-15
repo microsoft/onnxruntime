@@ -136,11 +136,6 @@ namespace Dml
         m_dmlRecorder.GetCommandList().CopyTo(commandList);
     }
 
-    void ExecutionContext::GetCommandRecorder(IDMLCommandRecorder** commandRecorder) {
-        auto recorder = m_dmlRecorder.GetCommandRecorder();
-        *commandRecorder = recorder.Get();
-    }
-
     void ExecutionContext::SetCommandRecorder(ICommandRecorder* newRecorder)
     {
         assert(!m_closed);

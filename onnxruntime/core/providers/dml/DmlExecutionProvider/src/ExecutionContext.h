@@ -67,7 +67,6 @@ namespace Dml
         void ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers);
 
         void GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList);
-        void GetCommandRecorder(IDMLCommandRecorder** commandRecorder);
 
         // Forces all queued work to begin executing on the GPU. This method returns immediately and does not wait
         // for the submitted work to complete execution on the GPU.

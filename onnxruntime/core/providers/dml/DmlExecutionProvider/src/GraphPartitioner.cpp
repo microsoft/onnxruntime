@@ -163,9 +163,6 @@ namespace Dml
         // Ensure that shape information is known statically for the inputs and outputs of the node,
         // which is required for MLGraph compilation.
         const onnxruntime::KernelCreateInfo* createInfo = kernel_lookup.LookUpKernel(node);
-        if (!createInfo) {
-            return; // this is a custom dml op
-        }
         assert(createInfo != nullptr);  // since GetRegistrationProperties is called only when node is a DML node
 
         auto regInfoIter = internalRegInfoMap.find(createInfo->kernel_def.get());

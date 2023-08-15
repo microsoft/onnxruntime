@@ -47,8 +47,7 @@ namespace Dml
             _Out_ uint64_t* completionValue);
 
         ComPtr<ID3D12GraphicsCommandList> GetCommandList();
-        ComPtr<IDMLCommandRecorder> GetCommandRecorder();
-
+        
         void ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers);
         void AddUAVBarrier();
 

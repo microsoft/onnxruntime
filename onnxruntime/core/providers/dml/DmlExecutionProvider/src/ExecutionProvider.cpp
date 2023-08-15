@@ -95,52 +95,6 @@ namespace Dml
 #endif
     }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // read resources dynamically from ep and context
-    struct DmlStream : public onnxruntime::Stream {
-
-         DmlStream(ExecutionProviderImpl& ep,
-                   ExecutionContext& ctx,
-                   const OrtDevice& ort_device):
-                       onnxruntime::Stream({}, ort_device),
-                       m_ep(ep),
-                       m_ctx(ctx) {}
-
-         void* GetResource(int version, int id) const override {
-            ORT_ENFORCE(version <= ORT_DML_RESOUCE_VERSION, "versions incompatible");
-            void* resource = {};
-            switch(id) {
-                case DmlResource::dml_device_t:
-                    m_ep.GetDmlDevice(reinterpret_cast<IDMLDevice**>(&resource));
-                    break;
-                case DmlResource::d3d12_device_t: // to be dropped, since it could be fetched from cmd list?
-                    m_ep.GetD3DDevice(reinterpret_cast<ID3D12Device**>(&resource));
-                    break;
-                case DmlResource::cmd_list_t:
-                    m_ctx.GetCommandListForRecordingAndInvalidateState(reinterpret_cast<ID3D12GraphicsCommandList**>(&resource));
-                    break;
-                case DmlResource::cmd_recorder_t:
-                    m_ctx.GetCommandRecorder(reinterpret_cast<IDMLCommandRecorder**>(&resource));
-                    break;
-                default:
-                    break;
-            }
-            return resource;
-         }
-
-        ExecutionProviderImpl& m_ep;
-        ExecutionContext& m_ctx;
-    };
-
-    void ExecutionProviderImpl::RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {
-        //to-do: return a stream carrying resources
-        /*stream_handle_registry.RegisterCreateStreamFn(OrtDevice::CPU, [this](const OrtDevice& device) {
-            return std::make_unique<DmlStream>(const_cast<ExecutionProviderImpl&>(*this), *this->m_context, device);});*/
-    }
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void ExecutionProviderImpl::Close()
     {
         m_context->Close();

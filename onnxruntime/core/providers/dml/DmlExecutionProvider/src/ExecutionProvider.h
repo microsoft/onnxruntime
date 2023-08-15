@@ -5,7 +5,7 @@
 
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
-#include "core/providers/dml/dml_resource.h"
+
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
@@ -169,8 +169,6 @@ namespace Dml
         onnxruntime::common::Status OnSessionInitializationEnd();
         std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators();
 
-        void RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& stream_handle_registry) const;
-
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
 
@@ -304,11 +302,6 @@ namespace Dml
         void MetacommandsEnabled()
         {
             m_impl->MetacommandsEnabled();
-        }
-
-        void RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& stream_handle_registry,
-            onnxruntime::AllocatorMap&) const override {
-             m_impl->RegisterStreamHandlers(stream_handle_registry);
         }
 
         virtual std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators() override

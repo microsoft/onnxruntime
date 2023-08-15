@@ -1479,13 +1479,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     list(APPEND custom_op_lib_option "-D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1")
   endif()
 
-  if (onnxruntime_USE_DML)
-    list(APPEND custom_op_src_patterns
-      "${TEST_SRC_DIR}/testdata/custom_op_library/dml/dml_ops.*")
-    list(APPEND custom_op_lib_include WIL::WIL)
-    # list(APPEND custom_op_lib_link "dxguid.lib d3d12.lib dxgi.lib")
-  endif()
-
   file(GLOB custom_op_src ${custom_op_src_patterns})
   onnxruntime_add_shared_library(custom_op_library ${custom_op_src})
   target_compile_options(custom_op_library PRIVATE ${custom_op_lib_option})
