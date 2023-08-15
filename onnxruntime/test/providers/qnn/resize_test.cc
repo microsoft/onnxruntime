@@ -178,11 +178,12 @@ static void RunQDQResizeOpTest(const TestInputDef<float>& input_def,
 // CPU tests:
 //
 
-// Our non-quantized implementation of Resize uses QNN's ResizeNearestNeighbor operator,
-// which is __not__ equivalent to ONNX's Resize operator with a single specific "nearest_mode".
-// The following disabled unit tests would pass if we removed the check in QNN EP that expects the
-// "nearest_mode" to be "floor". Sometimes, ResizeNearestNeighbor is equivalent to ONNX Resize with
-// "round_prefer_floor", and other times it is equivalent to ONNX Resize with "round_prefer_ceil".
+// TODO: Our QNN CPU translation of ONNX Resize with "nearest" mode uses QNN's ResizeNearestNeighbor
+// operator, which does not have a way to specify rounding (i.e., "nearest_mode" in ONNX). It is not clear
+// what kind of rounding QNN's ResizeNearestNeighbor uses. Therefore, we do not yet know how to compare
+// ONNX Resize to QNN ResizeNearestNeighbor. These tests should remain disabled until this behavior is
+// clarified. If, for example, it turns out that ResizeNearestNeighbor uses "floor" rounding, then we should
+// only compare against ONNX resize with "floor" rounding.
 
 // Upsample that uses "round_prefer_floor" as the "nearest_mode".
 // coordinate_transformation_mode: "half_pixel"
@@ -195,11 +196,9 @@ TEST_F(QnnCPUBackendTests, DISABLED_ResizeUpsampleNearestHalfPixel_rpf) {
                      ExpectedEPNodeAssignment::All);
 }
 
-// QNN v2.13 Failed for Linux
-#if defined(_WIN32)
 // Upsample that uses "round_prefer_ceil" as the "nearest_mode".
 // coordinate_transformation_mode: "half_pixel"
-TEST_F(QnnCPUBackendTests, ResizeUpsampleNearestHalfPixel_rpc) {
+TEST_F(QnnCPUBackendTests, DISABLED_ResizeUpsampleNearestHalfPixel_rpc) {
   RunCPUResizeOpTest(TestInputDef<float>({1, 1, 2, 4}, false, -10.0f, 10.0f),
                      {1, 1, 7, 5}, "nearest", "half_pixel", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All);
@@ -207,7 +206,7 @@ TEST_F(QnnCPUBackendTests, ResizeUpsampleNearestHalfPixel_rpc) {
 
 // Downsample that uses "round_prefer_ceil" as the "nearest_mode".
 // coordinate_transformation_mode: "half_pixel"
-TEST_F(QnnCPUBackendTests, ResizeDownsampleNearestHalfPixel_rpc) {
+TEST_F(QnnCPUBackendTests, DISABLED_ResizeDownsampleNearestHalfPixel_rpc) {
   RunCPUResizeOpTest(TestInputDef<float>({1, 1, 2, 4}, false, -10.0f, 10.0f),
                      {1, 1, 1, 3}, "nearest", "half_pixel", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All);
@@ -215,12 +214,11 @@ TEST_F(QnnCPUBackendTests, ResizeDownsampleNearestHalfPixel_rpc) {
 
 // Downsample that uses "round_prefer_floor" as the "nearest_mode".
 // coordinate_transformation_mode: "half_pixel"
-TEST_F(QnnCPUBackendTests, ResizeDownsampleNearestHalfPixel_rpf) {
+TEST_F(QnnCPUBackendTests, DISABLED_ResizeDownsampleNearestHalfPixel_rpf) {
   RunCPUResizeOpTest(TestInputDef<float>({1, 1, 2, 4}, false, -10.0f, 10.0f),
                      {1, 1, 1, 2}, "nearest", "half_pixel", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All);
 }
-#endif
 
 // Upsample that uses "round_prefer_floor" as the "nearest_mode".
 // coordinate_transformation_mode: "align_corners"
@@ -231,11 +229,9 @@ TEST_F(QnnCPUBackendTests, DISABLED_ResizeUpsampleNearestAlignCorners_rpf) {
                      ExpectedEPNodeAssignment::All);
 }
 
-// QNN v2.13 Failed for Linux
-#if defined(_WIN32)
 // Upsample that uses "round_prefer_ceil" as the "nearest_mode".
 // coordinate_transformation_mode: "align_corners"
-TEST_F(QnnCPUBackendTests, ResizeUpsampleNearestAlignCorners_rpc) {
+TEST_F(QnnCPUBackendTests, DISABLED_ResizeUpsampleNearestAlignCorners_rpc) {
   RunCPUResizeOpTest(TestInputDef<float>({1, 1, 2, 4}, false, -10.0f, 10.0f),
                      {1, 1, 7, 5}, "nearest", "align_corners", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All);
@@ -243,7 +239,7 @@ TEST_F(QnnCPUBackendTests, ResizeUpsampleNearestAlignCorners_rpc) {
 
 // Downsample that uses "round_prefer_ceil" as the "nearest_mode".
 // coordinate_transformation_mode: "align_corners"
-TEST_F(QnnCPUBackendTests, ResizeDownsampleNearestAlignCorners_rpc) {
+TEST_F(QnnCPUBackendTests, DISABLED_ResizeDownsampleNearestAlignCorners_rpc) {
   RunCPUResizeOpTest(TestInputDef<float>({1, 1, 2, 4}, false, -10.0f, 10.0f),
                      {1, 1, 1, 3}, "nearest", "align_corners", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All);
@@ -251,12 +247,11 @@ TEST_F(QnnCPUBackendTests, ResizeDownsampleNearestAlignCorners_rpc) {
 
 // Downsample that uses "round_prefer_floor" as the "nearest_mode".
 // coordinate_transformation_mode: "align_corners"
-TEST_F(QnnCPUBackendTests, ResizeDownsampleNearestAlignCorners_rpf) {
+TEST_F(QnnCPUBackendTests, DISABLED_ResizeDownsampleNearestAlignCorners_rpf) {
   RunCPUResizeOpTest(TestInputDef<float>({1, 1, 2, 4}, false, -10.0f, 10.0f),
                      {1, 1, 1, 2}, "nearest", "align_corners", "round_prefer_floor",
                      ExpectedEPNodeAssignment::All);
 }
-#endif
 
 //
 // Cpu tests that use the "linear" mode.
