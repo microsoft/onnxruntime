@@ -1308,7 +1308,8 @@
       "test_unsqueeze_three_axes",
       "test_unsqueeze_two_axes",
       "test_unsqueeze_unsorted_axes",
-      "test_unsqueeze"
+      "test_unsqueeze",
+      "test_wrap_pad"
       // "test_upsample_nearest",
       // "test_where_example",
       // "test_where_long_example",

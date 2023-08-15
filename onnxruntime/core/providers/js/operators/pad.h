@@ -9,7 +9,6 @@
 namespace onnxruntime {
 namespace js {
 
-template <typename T>
 class Pad : public JsKernel, public PadBase {
  public:
   Pad(const OpKernelInfo& info) : JsKernel(info), PadBase(info) {

@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface PadAttributes extends AttributeWithCacheKey {
   // 0-constant, 1-reflect, 2-edge, 3-wrap
@@ -168,39 +168,31 @@ const getPadSnippet =
     };
 
 const generatePadCode =
-    (shaderHelper: ShaderHelper, inputDims: readonly number[], attributes: PadAttributes, dataType: string): string => {
-      const outputDims = ShapeUtil.padShape(inputDims.slice(), attributes.pads);
-      const outputSize = ShapeUtil.size(outputDims);
-      const inputStrides = ShapeUtil.computeStrides(inputDims);
-      const inputStridesRank = inputStrides.length;
-      const padSnippet = getPadSnippet(outputDims, inputDims, inputStrides, attributes, dataType);
+    (shaderHelper: ShaderHelper, inputs: readonly TensorView[], attributes: PadAttributes, dataType: string):
+        string => {
+          const inputDims = inputs[0].dims;
+          const outputDims = ShapeUtil.padShape(inputDims.slice(), attributes.pads);
+          const outputSize = ShapeUtil.size(outputDims);
+          const inputStrides = ShapeUtil.computeStrides(inputDims);
+          const padSnippet = getPadSnippet(outputDims, inputDims, inputStrides, attributes, dataType);
 
-      const outputIndicesHelper = createIndicesHelper('output', outputDims);
-      const xIndicesHelper = createIndicesHelper('x', inputDims);
+          const output = outputVariable('output', inputs[0].dataType, outputDims);
+          const input = inputVariable('x', inputs[0].dataType, inputDims);
 
-      const padCode = `
-          @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
-          @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+          const padCode = `
+      ${shaderHelper.declareVariables(input, output)}
+        ${output.impl()}
+        ${shaderHelper.mainStart()}
+          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-          ${outputIndicesHelper.o2iImpl}
-          ${xIndicesHelper.i2oImpl}
+          let indices = ${output.offsetToIndices('global_idx')};
 
-          ${shaderHelper.mainStart()}
-            ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-
-            ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-            ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
-            ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
-            ${outputIndicesHelper.o2iCall('global_idx', 'xIndices')}
-
-            var offsets: array<u32, ${inputStridesRank}>;
-
-            var value = ${dataType}(0);
-            ${padSnippet}
-            output[global_idx] = value;
-          }`;
-      return padCode;
-    };
+          var value = ${dataType}(0);
+          ${padSnippet}
+          output[global_idx] = value;
+      }`;
+          return padCode;
+        };
 
 const createPadProgramInfo =
     (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: PadAttributes): ProgramInfo => {
@@ -208,7 +200,7 @@ const createPadProgramInfo =
       return {
         ...metadata,
         outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        getShaderSource: shaderHelper => generatePadCode(shaderHelper, inputs[0].dims, attributes, 'f32'),
+        getShaderSource: shaderHelper => generatePadCode(shaderHelper, inputs, attributes, 'f32'),
         dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
       };
     };
