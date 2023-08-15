@@ -20,7 +20,7 @@ Here is what the application will look like:
 ## Introduction
 We will guide you through the process of building an iOS application that can train a simple audio classification model using on-device training techniques. The tutorial showcases the `transfer learning` technique where knowledge gained from training a model on one task is leveraged to improve the performance of a model on a different but related task. Instead of starting the learning process from scratch, transfer learning allows us to transfer the knowledge or features learned by a pre-trained model to a new task.
 
-In this tutorial, we will leverage the `wav2vec` model which has been trained on large-scale celebrity speech data such as `VoxCeleb1`. We will use the pre-trained model to extract features from the audio data and train a binary classifier to identify the speaker. The initial layers of the model serves as a feature extractor, capturing the important features of the audio data. Only the last layer of the model is trained to perform the classification task.
+In this tutorial, we will leverage the `wav2vec` model which has been trained on large-scale celebrity speech data such as `VoxCeleb1`. We will use the pre-trained model to extract features from the audio data and train a binary classifier to identify the speaker. The initial layers of the model serve as a feature extractor, capturing the important features of the audio data. Only the last layer of the model is trained to perform the classification task.
 
 In the tutorial, we will:
 - Use iOS audio APIs to capture audio data for training
