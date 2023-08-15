@@ -12,7 +12,7 @@
 <Customers/>
 <CodeBlocks/>
 <!-- <Stats/> -->
-<Table/>
+<!-- <Table/> -->
 <Performance/>
 <CrossPlatform/>
 <GenerativeAi/>
