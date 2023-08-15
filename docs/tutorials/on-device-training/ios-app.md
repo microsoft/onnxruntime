@@ -24,7 +24,7 @@ In this tutorial, we will leverage the `wav2vec` model which has been trained on
 
 In the tutorial, we will:
 - Use iOS audio APIs to capture audio data for training
-- train a model on-device
+- Train a model on-device
 - Export the trained model
 - Use the exported model to perform inference
 
