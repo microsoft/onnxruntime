@@ -29,7 +29,15 @@ from datasets import load_dataset
 from evaluate import evaluator
 from optimum.onnxruntime import ORTModelForQuestionAnswering
 from optimum.onnxruntime.modeling_ort import ORTModel
+from packaging import version as version_check
 from transformers import AutoTokenizer, pipeline
+
+from optimum.version import __version__ as optimum_version
+
+if version_check.parse(optimum_version) < version_check.parse("1.6.0"):
+    raise ImportError(
+        f"Please install optimum>=1.6.0. The version {optimum_version} was found."
+    )
 
 PRETRAINED_SQUAD_MODELS = [
     "bert-large-uncased-whole-word-masking-finetuned-squad",
