@@ -178,7 +178,9 @@ This will create a `MyVoice.xcworkspace` file in the project directory. Open the
 
 Now, right click on the 'MyVoice' group in the project navigator and click 'New Group' to create a new group in the project called `artifacts`. Drag and drop the artifacts generated in the previous section into the `artifacts` group. Make sure to select `Create folder references` and `Copy items if needed` options. This will add the artifacts to the project.
 
-Next, right click on the 'MyVoice' group and click 'New Group' to create a new group in the project called `recordings`. This group will contain the audio recordings that will be used for training. You can generate the recordings by running the [`recording_gen.py`](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/recording_gen.py) script at the root of the project. Alternatively, you can also use any other recordings of length 10 seconds in .wav format except the ones that you are planning to use for inference. Make sure to name the recordings as `other_0.wav`, `other_1.wav`, etc. and add them to the `recordings` group.
+Next, right click on the 'MyVoice' group and click 'New Group' to create a new group in the project called `recordings`. This group will contain the audio recordings that will be used for training. You can generate the recordings by running the [`recording_gen.py`](https://github.com/microsoft/onnxruntime-training-examples/blob/master/on_device_training/mobile/ios/recording_gen.py) script at the root of the project. Alternatively, you can also use any other speakers' voice recordings except the speaker whose voice are you planning to use for training. Make sure that recordings are mono channel of length 10 seconds in .wav format with 16KHz sample rate. Additionally, make sure to name the recordings as `other_0.wav`, `other_1.wav`, etc., and add them to the `recordings` group.
+
+
 The project structure should look like this:
 
 ![Xcode Project Structure](../../../images/iOS_speaker_identification_xcode_project_nav_screen.png)
