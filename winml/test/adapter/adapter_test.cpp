@@ -14,7 +14,7 @@ static void AdapterTestSetup() {
   ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   winml_adapter_api = OrtGetWinMLAdapter(ORT_API_VERSION);
 
-    // for model tests
+  // for model tests
   std::wstring module_path = FileHelpers::GetModulePath();
   std::string squeezenet_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(
     module_path + L"squeezenet_modifiedforruntimestests.onnx"

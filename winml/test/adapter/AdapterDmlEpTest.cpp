@@ -369,7 +369,7 @@ void SessionGetInputRequiredDeviceId() {
     WINML_EXPECT_EQUAL(0, device_id);
   }
 }
-}// namespace
+}  // namespace
 
 const AdapterDmlEpTestApi& getapi() {
   static constexpr AdapterDmlEpTestApi api = {
