@@ -355,7 +355,7 @@ The `Trainer` class will have the following public methods:
 
     We can use the `exportModelForInference` method of the `ORTTrainingSession` class to export the trained model. The method takes in the path where the model should be exported and the output names of the model.
     
-    Here we will export the model to the `Library` directory of the application. The exported model will be used for inference purposes.
+    Here, we will export the model to the `Library` directory of the application. The exported model will be used for inference purposes.
 
     ```swift
     func exportModelForInference() throws {
