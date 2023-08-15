@@ -67,7 +67,7 @@ bool GatherOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
   // This modification changes the shape of the Gather output.
   if (indices_shape.empty()) {
     LOGS(logger, VERBOSE) << "Gather does not support scalar 'indices'";
-    return false;  // TODO test this? maybe have a graph with Gather (scalar indices) -> Shape and verify the output
+    return false;
   }
 
   if (data_shape.size() + indices_shape.size() - 1 > 5) {
