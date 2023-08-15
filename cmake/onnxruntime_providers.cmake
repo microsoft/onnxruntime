@@ -1283,7 +1283,7 @@ if (onnxruntime_USE_DML)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_dml
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface WIL::WIL
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${WIL_TARGET}
   )
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE
@@ -1503,7 +1503,7 @@ if (onnxruntime_USE_ROCM)
   add_definitions(-DUSE_ROCM=1)
   include(onnxruntime_rocm_hipify.cmake)
 
-  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME}/rccl ${onnxruntime_ROCM_HOME}/roctracer)
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME})
 
   find_package(HIP)
   find_package(hiprand REQUIRED)
@@ -1512,12 +1512,21 @@ if (onnxruntime_USE_ROCM)
 
   # MIOpen version
   if(NOT DEFINED ENV{MIOPEN_PATH})
-    set(MIOPEN_PATH ${onnxruntime_ROCM_HOME}/miopen)
+    set(MIOPEN_PATH ${onnxruntime_ROCM_HOME})
   else()
     set(MIOPEN_PATH $ENV{MIOPEN_PATH})
   endif()
+  find_path(MIOPEN_VERSION_H_PATH
+    NAMES version.h
+    HINTS
+    ${MIOPEN_PATH}/include/miopen
+    ${MIOPEN_PATH}/miopen/include)
+  if (MIOPEN_VERSION_H_PATH-NOTFOUND)
+    MESSAGE(FATAL_ERROR "miopen version.h not found")
+  endif()
+  MESSAGE(STATUS "Found miopen version.h at ${MIOPEN_VERSION_H_PATH}")
 
-  file(READ ${MIOPEN_PATH}/include/miopen/version.h MIOPEN_HEADER_CONTENTS)
+  file(READ ${MIOPEN_VERSION_H_PATH}/version.h MIOPEN_HEADER_CONTENTS)
         string(REGEX MATCH "define MIOPEN_VERSION_MAJOR * +([0-9]+)"
                                  MIOPEN_VERSION_MAJOR "${MIOPEN_HEADER_CONTENTS}")
         string(REGEX REPLACE "define MIOPEN_VERSION_MAJOR * +([0-9]+)" "\\1"

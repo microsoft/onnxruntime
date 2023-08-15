@@ -122,13 +122,13 @@ static void RunLayerNormQDQTest(const std::vector<int64_t>& input_shape,
 
 // Check that QNN compiles DQ -> LayerNormalization -> Q as a single unit.
 // Use an input of rank 3.
-// Failed QNN op validation: QnnDsp <E> Param[0] has incorrect Value 3
+// QNN HTP only supports axis = -1
 // TODO: Use new QDQ accuracy testing approach (see TestQDQModelAccuracy)
 TEST_F(QnnHTPBackendTests, TestQDQLayerNorm1DAxis0) {
   RunLayerNormQDQTest({1, 2, 3}, {1, 2, 3}, ExpectedEPNodeAssignment::None);
 }
 
-// Failed QNN FinalizeGraphs: QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
+// QNN v2.13: Failed QNN FinalizeGraphs: QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
 //
 // TODO: Use new QDQ accuracy testing approach (see TestQDQModelAccuracy)
 TEST_F(QnnHTPBackendTests, DISABLED_TestQDQLayerNorm1DAxis2) {

@@ -612,9 +612,10 @@ template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
-    cudaStream_t stream,
+    Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data) {
+  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   constexpr size_t element_size = sizeof(T);
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
@@ -939,7 +940,7 @@ Status QkvToContext(
 
     T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place with masked score for persistent softmax.
     ORT_RETURN_IF_ERROR(
-        ComputeSoftmaxWithRawMask<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads,
+        ComputeSoftmaxWithRawMask<T>(ort_stream, total_sequence_length, sequence_length, batch_size, num_heads,
                                      mask_index, nullptr, data.relative_position_bias, parameters.broadcast_res_pos_bias,
                                      scratch1, scratch2, parameters.is_unidirectional, scale, mask_dimension,
                                      parameters.max_sequence_length, use_persistent_softmax, persistent_softmax_workspace,
@@ -980,7 +981,7 @@ Status QkvToContext(
 template <typename T>
 Status DecoderQkvToContext(
     const cudaDeviceProp& device_prop,
-    cudaStream_t stream,
+    Stream* ort_stream,
     cublasHandle_t& cublas,
     const size_t element_size,
     const int batch_size,
@@ -1011,6 +1012,7 @@ Status DecoderQkvToContext(
   const int v_buffer_offset = (sequence_length + kv_sequence_length) * BHN;
 
   T* temp_qkv_buffer = workspace_buffer;
+  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
 
   const T* q = qkv_buffer;
   // transpose q and copy them to qkv_buffer
@@ -1107,7 +1109,7 @@ Status DecoderQkvToContext(
   if (has_key_padding_mask) {
     constexpr int mask_dimension = 2;
     constexpr int max_sequence_length = 0;
-    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size,
+    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(ort_stream, kv_sequence_length, sequence_length, batch_size,
                                                      num_heads, nullptr, key_padding_mask, add_before_softmax,
                                                      false/*broadcast rpb*/, scratch1, scratch2, is_unidirectional,
                                                      1.0f, mask_dimension, max_sequence_length, false, nullptr,
@@ -1142,7 +1144,7 @@ Status DecoderQkvToContext(
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& device_prop,
-    cudaStream_t stream,
+    Stream* stream,
     cublasHandle_t& cublas,
     const size_t element_size,
     const int batch_size,
@@ -1228,14 +1230,14 @@ template struct AttentionData<half>;
 template Status QkvToContext<float>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
-    cudaStream_t stream,
+    Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data);
 
 template Status QkvToContext<half>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
-    cudaStream_t stream,
+    Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
 
