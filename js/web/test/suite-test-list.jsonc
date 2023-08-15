@@ -1373,7 +1373,8 @@
       "tan.jsonc",
       "tile.jsonc",
       "transpose.jsonc",
-      "transpose_int32_uint32.jsonc"
+      "transpose_int32_uint32.jsonc",
+      "where.jsonc"
       //"xor.jsonc"
     ]
   },
