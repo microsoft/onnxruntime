@@ -89,7 +89,7 @@ const createSkipLayerNormProgramInfo =
       const isTraining = false;
       const hasMeanOutput = isTraining && outputCount > 1;
       const hasInvStdDevOutput = isTraining && outputCount > 2;
-      const hasInputSkipBiasSumOutput = (isTraining && outputCount > 3) || (!isTraining && outputCount > 1);
+      const hasInputSkipBiasSumOutput = isTraining ? outputCount > 3 : outputCount > 1;
       let bindingNumber = 0;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       const hiddenSize: u32 = ${hiddenSize};
@@ -134,8 +134,7 @@ const createSkipLayerNormProgramInfo =
         ${hasMeanOutput ? 'meanOutput[global_idx] = mean;' : ''}
         ${hasInvStdDevOutput ? 'invStdOutput[global_idx] = 1.0 / variance;' : ''}
         for (var i: u32 = 0; i < hiddenSize; i++) {
-          output[offset + i] = gamma[i] * (output[offset + i] - mean) / variance +
-                                                                          ${hasBetaInput ? 'beta[offset + i]' : '0.0'};
+          output[offset + i] = (output[offset + i] - mean) / variance * gamma[i] + ${hasBetaInput ? 'beta[i]' : '0.0'};
         }
       }`;
       const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
