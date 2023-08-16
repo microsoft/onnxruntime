@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
+template <typename T, bool NCHW>
 class BatchNorm final : public CudaKernel {
  public:
   BatchNorm(const OpKernelInfo& op_kernel_info)

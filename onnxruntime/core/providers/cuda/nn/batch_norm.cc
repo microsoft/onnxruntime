@@ -11,38 +11,38 @@ using namespace std;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                   \
+#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                     \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
-      kOnnxDomain,                                                 \
+      DOMAIN,                                                      \
       7, 8,                                                        \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
-      BatchNorm<T>);                                               \
+      BatchNorm<T, NHWC>);                                         \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
-      kOnnxDomain,                                                 \
+      DOMAIN,                                                      \
       9, 13,                                                       \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
-      BatchNorm<T>);                                               \
+      BatchNorm<T, NHWC>);                                         \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
-      kOnnxDomain,                                                 \
+      DOMAIN,                                                      \
       14, 14,                                                      \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())   \
           .TypeConstraint("U", DataTypeImpl::GetTensorType<T>()),  \
-      BatchNorm<T>);                                               \
+      BatchNorm<T, NHWC>);                                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
       BatchNormalization,                                          \
-      kOnnxDomain,                                                 \
+      DOMAIN,                                                      \
       15,                                                          \
       T,                                                           \
       kCudaExecutionProvider,                                      \
@@ -50,10 +50,10 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())   \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
-      BatchNorm<T>);
+      BatchNorm<T, NHWC>);
 
-template <typename T>
-Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const {
+template <typename T, bool NHWC>
+Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* p_op_kernel_context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
@@ -62,7 +62,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   const Tensor* mean = p_op_kernel_context->Input<Tensor>(3);
   const Tensor* var = p_op_kernel_context->Input<Tensor>(4);
 
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var, spatial_ == 1));
+  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var, spatial_ == 1, NHWC));
 
   const TensorShape& x_shape = X->Shape();
   const TensorShape& channel_shape = mean->Shape();
@@ -175,13 +175,15 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   return Status::OK();
 }
 
-#define SPECIALIZED_COMPUTE(T) \
-  REGISTER_KERNEL_TYPED(T)     \
-  template Status BatchNorm<T>::ComputeInternal(OpKernelContext* ctx) const;
+#define SPECIALIZED_COMPUTE(T, DOMAIN, NHWC) \
+  REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)     \
+  template Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* ctx) const;
 
-SPECIALIZED_COMPUTE(float)
-SPECIALIZED_COMPUTE(double)
-SPECIALIZED_COMPUTE(MLFloat16)
+SPECIALIZED_COMPUTE(float, kOnnxDomain, false)
+SPECIALIZED_COMPUTE(double, kOnnxDomain, false)
+SPECIALIZED_COMPUTE(MLFloat16, kOnnxDomain, false)
 
+SPECIALIZED_COMPUTE(float, kMSInternalNHWCDomain, true)
+SPECIALIZED_COMPUTE(MLFloat16, kMSInternalNHWCDomain, true)
 }  // namespace cuda
 }  // namespace onnxruntime

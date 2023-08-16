@@ -22,11 +22,17 @@ class BatchNormHelper {
                                        const Tensor* B,
                                        const Tensor* mean,
                                        const Tensor* var,
-                                       bool is_spatial = true) {
+                                       bool is_spatial = true,
+                                       bool is_nhwc = false) {
     const auto& x_dims = X->Shape().GetDims();
 
     // If x_dims size < 2, num_channels defaults to 1.
-    int64_t num_channels = x_dims.size() > 1 ? x_dims[1] : 1;
+    int64_t num_channels;
+    if (is_nhwc) {
+      num_channels = x_dims.size() > 1 ? x_dims[x_dims.size() - 1] : 1;
+    } else {
+      num_channels = x_dims.size() > 1 ? x_dims[1] : 1;
+    }
     // the first 2 are respectively - N and C.
     int num_feature_dims = x_dims.size() > 1 ? static_cast<int>(x_dims.size() - 2) : 0;
 

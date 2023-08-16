@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
+template <typename T, bool NHWC>
 class InstanceNorm final : public CudaKernel {
  public:
   InstanceNorm(const OpKernelInfo& op_kernel_info);
