@@ -146,12 +146,14 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     return it->second;
   } else {
     const std::string& op_type = node_unit.OpType();
-    const bool is_qdq_node = op_type == "QuantizeLinear" || op_type == "DequantizeLinear";
+    // const bool is_qdq_node = op_type == "QuantizeLinear" || op_type == "DequantizeLinear";
 
+    const bool is_quantized_node = NodeUnit::Type::QDQGroup == node_unit.UnitType();
     // Is NPU backend, is single node, case by case
     // Q/DQ nodes -- supported
     // Transpose nodes -- supported
     // Cast nodes -- need to call CastOpBuilder::IsOpSupported
+    /*
     if (is_npu_backend && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
       if (is_qdq_node) {  // Qnn has Quantize & Dequantize Op
         LOGS(logger, VERBOSE) << "Single Q/DQ node is supported for NPU backend. Node name: " << node_unit.Name();
@@ -180,6 +182,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
                           << node_unit.OpType() << " node `" << node_unit.Name() << "` will not be assigned to QNN EP.";
       return false;
     }
+    */
 
     bool supported = false;
     const auto* op_builder = qnn::GetOpBuilder(op_type);
@@ -190,7 +193,8 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     } else {
       auto status = op_builder->IsOpSupported(qnn_model_wrapper,
                                               node_unit, logger,
-                                              is_npu_backend);
+                                              is_npu_backend,
+                                              is_quantized_node);
       if (Status::OK() != status) {
         LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
                               << "` is not supported: " << status.ErrorMessage();

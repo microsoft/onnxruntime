@@ -26,13 +26,14 @@ class ResizeOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend,
+                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
+                       bool is_quantized_node,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
@@ -40,7 +41,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
+                                     bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -180,9 +181,10 @@ static bool ArrayHasString(const std::array<std::string_view, N>& strings, std::
 Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
-                                      bool is_quantized_model) const {
+                                      bool is_npu_backend,
+                                      bool is_quantized_node) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
   }
 
   // QNN doesn't support anti-aliasing (added in opset 18)
@@ -196,7 +198,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   // currently use QNN's Resize op for quantized models and either ResizeBilinear or ResizeNearestNeighbor for
   // non-quantized models. This requires separate validation for quantized models.
   // TODO: Use only Resize once QNN's Resize op works in the QNN cpu backend.
-  return is_quantized_model ? ValidateQDQOp(qnn_model_wrapper, node_unit) : ValidateOp(qnn_model_wrapper, node_unit);
+  return is_npu_backend ? ValidateQDQOp(qnn_model_wrapper, node_unit) : ValidateOp(qnn_model_wrapper, node_unit);
 }
 
 Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
@@ -302,7 +304,7 @@ Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const 
 Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
-                                      bool is_quantized_model,
+                                      bool is_quantized_node,
                                       std::vector<std::string>& input_names,
                                       bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
@@ -310,7 +312,7 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   // Only cares about the 1st input
   const auto& inputs = node_unit.Inputs();
 
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_node, input_names));
 
   return Status::OK();
 }
@@ -319,13 +321,13 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger,
-                                                    bool is_quantized_model,
+                                                    bool is_quantized_node,
                                                     bool do_op_validation) const {
   // The QNN Resize op does not currently work with the QNN cpu backend, but works with the HTP backend. Therefore, we
   // currently use QNN's Resize op for quantized models and either ResizeBilinear or ResizeNearestNeighbor for
   // non-quantized models. This requires separate handling for quantized models.
   // TODO: Use only Resize once QNN's Resize op works in the QNN cpu backend.
-  return is_quantized_model ? ProcessQDQOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation) : ProcessOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation);
+  return is_quantized_node ? ProcessQDQOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation) : ProcessOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation);
 }
 
 Status ResizeOpBuilder::ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,

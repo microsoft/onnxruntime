@@ -127,9 +127,10 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
       continue;
     }
 
+    bool is_quantized_node = NodeUnit::Type::QDQGroup == node_unit.UnitType();
     if (const auto* op_builder = GetOpBuilder(node->OpType())) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_,
-                                                        is_quantized_model_));
+                                                        is_quantized_node));
     }
   }
 

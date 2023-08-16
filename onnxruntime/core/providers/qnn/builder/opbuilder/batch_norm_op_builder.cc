@@ -21,7 +21,8 @@ class BatchNormOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend,
+                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
 };
 
 // BatchNorm is sensitive with data layout, no special validation so far
@@ -30,11 +31,12 @@ class BatchNormOpBuilder : public BaseOpBuilder {
 Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                          const NodeUnit& node_unit,
                                          const logging::Logger& logger,
-                                         bool is_quantized_model) const {
+                                         bool is_npu_backend,
+                                         bool is_quantized_node) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
     // It's useless to fallback the node after layout transformation because CPU EP can't support it anyway
     // Still do it here so hopefully QNN Op validation API can tell us some details why it's not supported
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
   } else {
     NodeAttrHelper node_helper(node_unit);
     const float default_epsilon = 1e-05f;
@@ -47,7 +49,7 @@ Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_ENFORCE(inputs.size() == 5, "5 input expected per BatchNorm Onnx Spec.");
     // Check input type is float for CPU.
     ONNX_NAMESPACE::DataType input_data_type = inputs[0].node_arg.Type();
-    ORT_RETURN_IF(!is_quantized_model && input_data_type != float_elem_type, "QNN BatchNorm CPU only support float32.");
+    ORT_RETURN_IF(!is_npu_backend && input_data_type != float_elem_type, "QNN BatchNorm CPU only support float32.");
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");

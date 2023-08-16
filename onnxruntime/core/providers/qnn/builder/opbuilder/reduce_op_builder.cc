@@ -54,13 +54,14 @@ class ReduceOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend,
+                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
+                       bool is_quantized_node,
                        std::vector<std::string>& input_names,
                        bool do_op_validation = false) const override ORT_MUST_USE_RESULT;
 
@@ -68,7 +69,7 @@ class ReduceOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
+                                     bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -181,30 +182,31 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
 Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
-                                      bool is_quantized_model) const {
+                                      bool is_npu_backend,
+                                      bool is_quantized_node) const {
   ReduceOpType reduce_op_type = GetReduceOpType(node_unit.OpType());
   if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_UNKNOWN) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unknown reduce operator ", node_unit.OpType());
   }
 
-  if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_PROD && is_quantized_model) {
+  if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_PROD && is_npu_backend) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: ReduceProd operator not supported by HTP backend.");
   }
 
-  if (is_quantized_model) {
+  if (is_npu_backend) {
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
                       "QNN EP: Cannot get input shape for");
     ORT_RETURN_IF(input_shape.size() > 4, "QNN EP: HTP backend does not support Reduce ops with rank > 4.");
   }
 
-  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
 }
 
 Status ReduceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
-                                      bool is_quantized_model,
+                                      bool is_quantized_node,
                                       std::vector<std::string>& input_names,
                                       bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
@@ -213,7 +215,7 @@ Status ReduceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   // Only need to process input[0]. In newer opset versions, input[1] corresponds to the reduce axes,
   // which needs to be set as a QNN parameter.
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_node, input_names));
 
   return Status::OK();
 }
@@ -222,7 +224,7 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger,
-                                                    bool is_quantized_model,
+                                                    bool is_quantized_node,
                                                     bool do_op_validation) const {
   NodeAttrHelper node_attr_helper(node_unit);
   std::vector<std::string> param_tensor_names;
@@ -260,7 +262,7 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
+                                     logger, is_quantized_node, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

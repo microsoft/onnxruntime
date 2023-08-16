@@ -22,7 +22,7 @@ class GemmOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
+                       bool is_quantized_node,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
@@ -30,7 +30,7 @@ class GemmOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
+                                     bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -72,14 +72,14 @@ Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
 Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_quantized_model,
+                                    bool is_quantized_node,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   if (do_op_validation) {
     ORT_RETURN_IF_ERROR(ExplictOpCheck(node_unit));
   }
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  utils::InitializeQuantizeParam(quantize_param, is_quantized_model);
+  utils::InitializeQuantizeParam(quantize_param, is_quantized_node);
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
 
   // for Input A, B, C: 1 -- need transpose, 0 -- not needed
@@ -100,7 +100,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     }
 
     const auto* type_proto = inputs[input_i].node_arg.TypeAsProto();
-    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_node, type_proto, qnn_data_type));
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
@@ -157,10 +157,10 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
-                                                  bool is_quantized_model,
+                                                  bool is_quantized_node,
                                                   bool do_op_validation) const {
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
-                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
+                                     logger, is_quantized_node, do_op_validation, GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
 

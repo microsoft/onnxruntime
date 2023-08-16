@@ -22,14 +22,15 @@ class PoolOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend,
+                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
+                                     bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -48,14 +49,15 @@ class PoolOpBuilder : public BaseOpBuilder {
 Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_quantized_model) const {
+                                    bool is_npu_backend,
+                                    bool is_quantized_node) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
   }
 
   const auto& inputs = node_unit.Inputs();
   ONNX_NAMESPACE::DataType input_data_type = inputs[0].node_arg.Type();
-  if (!is_quantized_model && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float")) {
+  if (!is_npu_backend && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float")) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type " + *input_data_type + " is not supported in CPU backend.");
   }
 
@@ -129,7 +131,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
-                                                  bool is_quantized_model,
+                                                  bool is_quantized_node,
                                                   bool do_op_validation) const {
   NodeAttrHelper node_helper(node_unit);
   // Get the NCHW from input data, use HW for the pool filter size and pool stride
@@ -216,7 +218,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
+                                     logger, is_quantized_node, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

@@ -24,12 +24,13 @@ class BaseOpBuilder : public IOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model) const override ORT_MUST_USE_RESULT;
+                       bool is_npu_backend,
+                       bool is_quantized_node) const override ORT_MUST_USE_RESULT;
 
   Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
                            const NodeUnit& node_unit,
                            const logging::Logger& logger,
-                           bool is_quantized_model,
+                           bool is_quantized_node,
                            bool do_op_validation) const override final ORT_MUST_USE_RESULT;
 
   std::string GetOpBuilderType() const override;
@@ -43,7 +44,7 @@ class BaseOpBuilder : public IOpBuilder {
   virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                const logging::Logger& logger,
-                               bool is_quantized_model,
+                               bool is_quantized_node,
                                std::vector<std::string>& input_names,
                                bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
@@ -51,7 +52,7 @@ class BaseOpBuilder : public IOpBuilder {
                                              const NodeUnit& node_unit,
                                              std::vector<std::string>&& input_names,
                                              const logging::Logger& logger,
-                                             bool is_quantized_model,
+                                             bool is_quantized_node,
                                              bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
   virtual Status ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -59,14 +60,14 @@ class BaseOpBuilder : public IOpBuilder {
                                 std::vector<std::string>&& input_names,
                                 std::vector<std::string>&& param_tensor_names,
                                 const logging::Logger& logger,
-                                bool is_quantized_model,
+                                bool is_quantized_node,
                                 bool do_op_validation,
                                 const std::string& qnn_op_type) const ORT_MUST_USE_RESULT;
 
   Status ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                       const NodeUnitIODef& input,
                       const logging::Logger& logger,
-                      bool is_quantized_model,
+                      bool is_quantized_node,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
   const std::string& GetNodeName(const NodeUnit& node_unit) const {

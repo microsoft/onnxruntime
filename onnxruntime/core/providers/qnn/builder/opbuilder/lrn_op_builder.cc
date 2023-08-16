@@ -21,14 +21,15 @@ class LRNOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend,
+                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
+                                     bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -50,9 +51,10 @@ const OnnxAttrInfo<int64_t> LRNOpBuilder::onnx_size_attr = {"size", 0};
 Status LRNOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnit& node_unit,
                                    const logging::Logger& logger,
-                                   bool is_quantized_model) const {
+                                   bool is_npu_backend,
+                                   bool is_quantized_node) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
   }
 
   const auto float_elem_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float");
@@ -67,13 +69,13 @@ Status LRNOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   // Check that the input type is float for CPU.
   ONNX_NAMESPACE::DataType input_data_type = input.node_arg.Type();
-  ORT_RETURN_IF(!is_quantized_model && input_data_type != float_elem_type,
+  ORT_RETURN_IF(!is_npu_backend && input_data_type != float_elem_type,
                 "QNN EP: LRN operator does not support the input type '", input_data_type->c_str(),
                 "' on the CPU backend.");
 
   // Check that the output type is float for CPU.
   ONNX_NAMESPACE::DataType output_data_type = output.node_arg.Type();
-  ORT_RETURN_IF(!is_quantized_model && output_data_type != float_elem_type,
+  ORT_RETURN_IF(!is_npu_backend && output_data_type != float_elem_type,
                 "QNN EP: LRN operator does not support the input type '", input_data_type->c_str(),
                 "' on the CPU backend.");
 
@@ -110,7 +112,7 @@ Status LRNOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                                  const NodeUnit& node_unit,
                                                  std::vector<std::string>&& input_names,
                                                  const logging::Logger& logger,
-                                                 bool is_quantized_model,
+                                                 bool is_quantized_node,
                                                  bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
   NodeAttrHelper node_helper(node_unit);
@@ -174,7 +176,7 @@ Status LRNOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   }
 
   return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                        logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType()));
+                        logger, is_quantized_node, do_op_validation, GetQnnOpType(node_unit.OpType()));
 }
 
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

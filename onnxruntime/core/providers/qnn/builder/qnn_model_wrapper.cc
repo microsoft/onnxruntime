@@ -355,15 +355,15 @@ bool QnnModelWrapper::ProcessQuantizationParameter(const std::optional<NodeUnitI
   return true;
 }
 
-Status QnnModelWrapper::GetOnnxInputInfo(const NodeUnitIODef& input, bool is_quantized_model,
+Status QnnModelWrapper::GetOnnxInputInfo(const NodeUnitIODef& input, bool is_quantized_node,
                                          OnnxInputInfo& input_info) const {
   const std::string& name = input.node_arg.Name();
 
   // Fill in quantization param info.
   input_info.quant_param = QNN_QUANTIZE_PARAMS_INIT;
-  utils::InitializeQuantizeParam(input_info.quant_param, is_quantized_model);
+  utils::InitializeQuantizeParam(input_info.quant_param, is_quantized_node);
 
-  if (is_quantized_model) {
+  if (is_quantized_node) {
     ORT_RETURN_IF_NOT(ProcessQuantizationParameter(input.quant_param,
                                                    input_info.quant_param.scaleOffsetEncoding.scale,
                                                    input_info.quant_param.scaleOffsetEncoding.offset),
@@ -372,7 +372,7 @@ Status QnnModelWrapper::GetOnnxInputInfo(const NodeUnitIODef& input, bool is_qua
 
   // Fill in QNN data type.
   input_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, input.node_arg.TypeAsProto(), input_info.qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_node, input.node_arg.TypeAsProto(), input_info.qnn_data_type));
 
   // Fill in shape.
   ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, input_info.shape), "Cannot get shape");

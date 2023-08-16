@@ -17,10 +17,10 @@ class QnnModel {
  public:
   QnnModel(const logging::Logger& logger,
            QnnBackendManager* qnn_backend_manager,
-           bool is_quantized_model = true)
+           bool is_npu_backend = true)
       : logger_(logger),
         qnn_backend_manager_(qnn_backend_manager),
-        is_quantized_model_(is_quantized_model) {
+        is_npu_backend_(is_npu_backend) {
   }
 
   ~QnnModel() = default;
@@ -100,7 +100,7 @@ class QnnModel {
   std::unordered_map<std::string, size_t> model_output_index_map_;
   // TODO: remove initializer_inputs_, use QnnModelWrapper
   std::unordered_set<std::string> initializer_inputs_;
-  bool is_quantized_model_ = false;
+  bool is_npu_backend_ = false;
   std::unordered_map<std::string, OnnxTensorInfo> inputs_info_;
   std::unordered_map<std::string, OnnxTensorInfo> outputs_info_;
   std::vector<Qnn_Tensor_t> qnn_inputs_;
