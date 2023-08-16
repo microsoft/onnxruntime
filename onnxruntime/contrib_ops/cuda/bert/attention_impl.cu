@@ -43,6 +43,7 @@ limitations under the License.
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
@@ -898,19 +899,49 @@ Status QkvToContext(
     //p.stream = stream;
     //run_memory_efficient_attention(p);
 
-    // Convert from mask to packed
+    // cumulated sequence length
     int* sequence_offset = reinterpret_cast<int*>(scratch1);
     if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
       DUMP_TENSOR_D("mask", reinterpret_cast<const int*>(data.mask_index), batch_size, sequence_length);
       LaunchTrtSequenceOffset2d(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
+      DUMP_TENSOR_D("sequence_offset", sequence_offset, 1, 2 * batch_size + 1);
     } else {
-      sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_q_cache,
-                                                   data.mask_index, batch_size, sequence_length, stream,
-                                                   sequence_offset);
+      // sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_q_cache,
+      //                                              data.mask_index, batch_size, sequence_length, stream,
+      //                                              sequence_offset);
+      LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, stream);
+      DUMP_TENSOR_D("sequence_offset", sequence_offset, 1, batch_size + 1);
     }
-    DUMP_TENSOR_D("sequence_offset", sequence_offset, 1, (data.mask_index != nullptr ? 2 : 1) * batch_size + 1);
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    // int* q_sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_q_cache,
+    //                                                     data.mask_index, batch_size, sequence_length, stream,
+    //                                                     scratch1);
+
+    // DUMP_TENSOR_D("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
+
+    // int* kv_sequence_offset = q_sequence_offset + (GetSequenceOffsetSize(batch_size, false) / sizeof(int));
+    // kv_sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_kv_cache,
+    //                                                 data.mask_index, batch_size, kv_sequence_length, stream,
+    //                                                 kv_sequence_offset);
+    // CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    // DUMP_TENSOR_D("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
     
+    // CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+    // cumulated sequence pointers
+    // const size_t cumulated_seq_len_elements = batch_size + 1;
+    // auto cumulated_seq_len_buffer = GetScratchBuffer<int>(cumulated_seq_len_elements, stream);
+    // int* sequence_offset = reinterpret_cast<int*>(scratch1);
+    // LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
+    // Add bias
+    const int format = 3;
+    // format 3: BxSx(NH + NH + NH_v) => BxSxNxH + BxSxNxH + BxSxNxH_v
+    LaunchAddBiasTranspose<T>(stream, 3, format, device_prop.maxThreadsPerBlock,
+                                  batch_size, sequence_length, parameters.num_heads, parameters.head_size,
+                                  data.gemm_buffer, data.bias, data.workspace,
+                                  true, -1, nullptr);
+    
+    int total_token_count = batch_size * sequence_length;
+    cudaStreamSynchronize(stream);
     ORT_RETURN_IF_ERROR(mha_varlen_fwd(
       device_prop,
       stream,
@@ -922,17 +953,17 @@ Status QkvToContext(
       sequence_offset,
       batch_size,
       num_heads,
-      num_heads,
+      num_heads, //num_heads_k
       qk_head_size,
       v_head_size,
-      total_sequence_length, //TODO: ISCORRECT?
+      total_token_count, // Total token count
       sequence_length, // IS THIS MAX_SEQLEN_Q?
       kv_sequence_length, // IS THIS MAX_SEQLEN_V
       scale, // scale refer to softmax scale?
       false // is causal
       ));
-
-    DUMP_TENSOR("flash attention output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    cudaStreamSynchronize(stream);
+    DUMP_TENSOR("flash attention output", data.output, total_token_count, parameters.v_hidden_size);
     return Status::OK();
   }
 #endif

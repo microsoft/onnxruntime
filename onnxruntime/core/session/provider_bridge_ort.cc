@@ -1139,6 +1139,7 @@ struct ProviderSharedLibrary {
 
     auto full_path = Env::Default().GetRuntimePath() +
                      PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_shared") LIBRARY_EXTENSION);
+    // full_path = "/home/aciddelgado/onnxruntime/build/Linux/Debug/libonnxruntime_providers_shared.so";
     ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
     void (*PProvider_SetHost)(void*);
@@ -1190,6 +1191,7 @@ struct ProviderLibrary {
         s_library_shared.Ensure();
 
         auto full_path = Env::Default().GetRuntimePath() + filename_;
+        // full_path = std::string("/home/aciddelgado/onnxruntime/build/Linux/Debug/")+filename_;
         ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
 
         Provider* (*PGetProvider)();
