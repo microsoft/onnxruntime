@@ -44,6 +44,15 @@ def _setup_zero_stage3_ort_compatible_hooks(self):
     FWD_MODULE_STACK.append(self.module)
 
 
+# Adapted from https://github.com/microsoft/DeepSpeed/blob/e8318634b4313eaad89842cf4322e1762d34ced3/deepspeed/runtime/zero/linear.py#L104
+# In the original logic, if bias is None, after export to ONNX, None becomes a constant, so backward op complains
+# output count more than needed.
+def _zero3_linear_wrap_ort_compatible(input, weight, bias=None):
+    from deepspeed.runtime.zero.linear import LinearFunctionForZeroStage3
+
+    return LinearFunctionForZeroStage3.apply(input, weight, bias)
+
+
 class _ZeROOffloadOneTimeInitializer:
     """Store the hook functions from DeepSpeed ZeRO offload.
 
@@ -85,6 +94,11 @@ try:
 
         # Only done once no matter how many times this function is called for different modules.
         DeepSpeedZeRoOffload.setup_zero_stage3_hooks = _setup_zero_stage3_ort_compatible_hooks
+
+        from deepspeed.runtime.zero.linear import zero3_linear_wrap
+
+        if torch.nn.functional.linear is zero3_linear_wrap:
+            torch.nn.functional.linear = _zero3_linear_wrap_ort_compatible
 
 except ImportError as e:
     warnings.warn(f"DeepSpeed import error {e}")
