@@ -169,7 +169,8 @@ const createSkipLayerNormProgramInfoLoader =
 
 export const skipLayerNorm = (context: ComputeContext, attributes: SkipLayerNormAttributes): void => {
   validateInputs(context.inputs);
-
+  // Mean and InvStdDev are only used in training mode and are not required for inference.
+  // They are added here for completeness only.
   const outputs = [0];
   if (context.outputCount > 2) {
     outputs.push(1);
@@ -179,6 +180,11 @@ export const skipLayerNorm = (context: ComputeContext, attributes: SkipLayerNorm
   }
   if (context.outputCount > 1) {
     outputs.push(3);
+  }
+  // The following condition is not expected to be hit in the inference flow.
+  // It is added to catch incorrect usage. To fail sooner than later.
+  if ((context.outputCount + context.inputs.length) > 8) {
+    throw new Error('Current WebGPU implementation only supports up to 8, inputs and outputs combined.');
   }
   context.compute(createSkipLayerNormProgramInfoLoader(context.inputs, attributes, context.outputCount), {outputs});
 };
