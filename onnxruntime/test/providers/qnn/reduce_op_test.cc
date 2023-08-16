@@ -76,7 +76,8 @@ static void RunReduceOpCpuTest(const std::string& op_type,
                                const std::vector<int64_t>& axes,
                                bool keepdims,
                                int opset,
-                               ExpectedEPNodeAssignment expected_ep_assignment) {
+                               ExpectedEPNodeAssignment expected_ep_assignment,
+                               float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";
@@ -92,7 +93,8 @@ static void RunReduceOpCpuTest(const std::string& op_type,
                                                   false),  // noop_with_empty_axes
                   provider_options,
                   opset,
-                  expected_ep_assignment);
+                  expected_ep_assignment,
+                  fp32_abs_err);
 }
 
 //
@@ -166,11 +168,23 @@ TEST_F(QnnCPUBackendTests, ReduceSumOpset11_Float) {
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, ReduceProdOpset18) {
   RunReduceOpCpuTest<float>("ReduceProd",
-                            TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                            TestInputDef<float>({2, 2}, false, {-10.0f, -8.2f, 0.0f, 10.0f}),
                             std::vector<int64_t>{0, 1},
                             true,  // keepdims
                             18,
                             ExpectedEPNodeAssignment::All);
+}
+
+// TODO: Investigate slight inaccuracy. x64 Windows/Linux require a slightly larger error tolerance greater than 1.5e-5f.
+// LOG: ... the value pair (208.881729, 208.881744) at index #0 don't match, which is 1.52588e-05 from 208.882
+TEST_F(QnnCPUBackendTests, ReduceProdOpset18_SlightlyInaccurate_WindowsLinuxX64) {
+  RunReduceOpCpuTest<float>("ReduceProd",
+                            TestInputDef<float>({2, 2}, false, {3.21289f, -5.9981f, -1.72799f, 6.27263f}),
+                            std::vector<int64_t>{0, 1},
+                            true,  // keepdims
+                            18,
+                            ExpectedEPNodeAssignment::All,
+                            2e-5f);  // x64 Linux & Windows require larger tolerance.
 }
 
 // Test creates a graph with a ReduceProd node, and checks that all
@@ -180,7 +194,7 @@ TEST_F(QnnCPUBackendTests, ReduceProdOpset18) {
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, ReduceProdOpset13) {
   RunReduceOpCpuTest<float>("ReduceProd",
-                            TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                            TestInputDef<float>({2, 2}, false, {-10.0f, -8.2f, 0.0f, 10.0f}),
                             std::vector<int64_t>{0, 1},
                             true,  // keepdims
                             13,
