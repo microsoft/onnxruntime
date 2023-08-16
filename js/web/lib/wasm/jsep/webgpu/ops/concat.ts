@@ -118,7 +118,7 @@ const createConcatProgramInfo =
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-    let indices = ${output.offsetToIndices('global_idx')};
+    var indices = ${output.offsetToIndices('global_idx')};
 
     let inputIndex = calculateInputIndex(${indicesAxis});
     if (inputIndex != 0u) {

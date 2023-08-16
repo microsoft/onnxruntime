@@ -190,7 +190,7 @@ export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes)
     const idxZero = [];
     for (let k = 0; k < input.shape.length; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
-        idxZero.push(`inputIndices[${k}] = 0;`);  // first element
+        idxZero.push(input.indicesSet('inputIndices', k, 0));
       }
     }
 
