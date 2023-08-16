@@ -282,6 +282,11 @@ Module::Module(const ModelIdentifiers& model_identifiers,
 
   if (model_identifiers.IsEvalModelAvailable()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+    if (!op_domains.empty()) {
+      ORT_THROW_IF_ERROR(eval_sess_->AddCustomOpDomains(op_domains));
+    }
+#endif
     if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
       ORT_THROW_IF_ERROR(eval_sess_->Load(std::get<std::optional<std::string>>(model_identifiers.eval_model).value()));
     } else {
@@ -292,11 +297,6 @@ Module::Module(const ModelIdentifiers& model_identifiers,
     return;
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  if (!op_domains.empty()) {
-    ORT_THROW_IF_ERROR(eval_sess_->AddCustomOpDomains(op_domains));
-  }
-#endif
   for (const auto& provider : providers) {
     ORT_THROW_IF_ERROR(eval_sess_->RegisterExecutionProvider(provider));
   }
