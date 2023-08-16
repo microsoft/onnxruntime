@@ -8,7 +8,7 @@ import inspect
 import warnings
 from collections import OrderedDict
 from types import CodeType, FunctionType
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import onnx
 import torch
@@ -93,23 +93,30 @@ except ImportError as e:
         raise RuntimeError("DeepSpeed is not installed, cannot configure ORT compatible ZeRO stage3.")
 
 
-def _get_offloaded_params(module: torch.nn.Module) -> List[torch.nn.parameter.Parameter]:
-    """Retrieve the parameters that are not available for this module.
+def _get_params_for_current_module(module: torch.nn.Module) -> List[torch.nn.parameter.Parameter]:
+    """Retrieve the parameters for this module.
 
     Logic adapted from
     https://github.com/microsoft/DeepSpeed/blob/9d79cfd1e90cae9306dc1b5837d374b2c9489ac8/deepspeed/runtime/zero/partitioned_param_coordinator.py#L267
     """
-    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
     from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params
 
     # Retrive the parameters that are not available for this module.
-    params_to_fetch = frozenset(iter_params(module))
-    partitioned_params = []
-    for param in params_to_fetch:
-        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
-            partitioned_params.append(param)
+    partitioned_params = [param for param in iter_params(module)]
 
     return partitioned_params
+
+
+def _get_all_offloaded_params(module: torch.nn.Module) -> Dict[str, torch.nn.parameter.Parameter]:
+    """Retrieve all the parameters that are offloaded."""
+    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+
+    all_offloaed_params = OrderedDict()
+    for name, param in module.named_parameters():
+        if hasattr(param, "ds_status") and param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+            all_offloaed_params[name] = param
+
+    return all_offloaed_params
 
 
 class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
@@ -146,16 +153,16 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         """
         args_tensors = tensor_list[:args_tensor_count]
         kwargs_tensors = tensor_list[args_tensor_count : args_tensor_count + kwargs_tensor_count]
-        partitioned_params = tensor_list[args_tensor_count + kwargs_tensor_count :]
 
         args = unflatten_data_using_schema(args_tensors, args_schema)
         kwargs = unflatten_data_using_schema(kwargs_tensors, kwargs_schema)
 
-        # We will re-retrieve the partitioned parameter tensors other than use the one passed in input (of size 0).
+        # We will re-retrieve the parameter tensors other than use the one passed in input (of size 0 for
+        # those partitioned params).
         # This is required for ORT run because in ORT graph, the tensor of size 0 will always be size 0
         # (this step is not necessary for PyTorch run, because PyTorch will re-use the same tensor
         # while .data got updated to full-sized data after pre_forward_with_kwargs_function is called).
-        partitioned_params = _get_offloaded_params(module)
+        partitioned_params = _get_params_for_current_module(module)
         ctx.partitioned_params = partitioned_params
 
         f_ret = pre_forward_with_kwargs_function(module, args, kwargs)
@@ -208,7 +215,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         # Restore the nn.Module from the pointer.
         module = ctypes.cast(input_pointer_scalars[0], ctypes.py_object).value
 
-        partitioned_params = _get_offloaded_params(module)
+        partitioned_params = _get_params_for_current_module(module)
         tensor_output_shapes = tensor_input_shapes
         tensor_output_dtypes = tensor_input_dtypes
         start_offset = len(tensor_input_shapes) - len(partitioned_params)
@@ -314,10 +321,17 @@ class ZeROOffloadSubscriber(SubscriberBase):
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+        """This function is a dispatcher to call DeepSpeed stage3 pre forward hooks in sequence.
+
+        All hook functions can be retrieved from the function store, due to exporter only supports a list of tensors as
+        input and output for torch.autograd.Function, so we do flatten and unflatten here.
+
+        """
+
         args_tensors, args_schema = extract_data_and_schema(args)
         kwargs_tensors, kwargs_schema = extract_data_and_schema(kwargs)
 
-        partitioned_params = _get_offloaded_params(module)
+        partitioned_params = _get_params_for_current_module(module)
 
         _pre_forward_module_hook = self._functions.get("_pre_forward_module_hook")
 
@@ -371,14 +385,35 @@ class ZeROOffloadSubscriber(SubscriberBase):
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+        """This function is a dispatcher to call DeepSpeed stage3 post forward hooks in sequence.
+
+        All hook functions can be retrieved from function store, due to exporter only supports a list of tensors as
+        input and output for torch.autograd.Function, so we do flatten and unflatten here.
+
+        """
+
         outputs_tensors, outputs_schema = extract_data_and_schema(outputs)
 
         _post_forward_module_hook = self._functions.get("_post_forward_module_hook")
 
+        def _wrap_post_forward_module_hook(module, input, outputs):
+            # STAGE3WARN: _post_forward_module_hook applied this for each tensor output, so we do a simple wrap here.
+            from deepspeed.runtime.zero.partition_parameters import is_zero_param
+
+            updated_outputs = _post_forward_module_hook(module, input, outputs)
+            if updated_outputs:
+                for updated_output in updated_outputs:
+                    # restore zero param attributes if those get stripped by `backward_function`
+                    if not is_zero_param(updated_output) and is_zero_param(outputs):
+                        updated_output.ds_param_alias = outputs
+                return updated_outputs
+            else:
+                return outputs
+
         self._check_all_tensor(outputs_tensors, module, "post_forward_module_apply_impl input check")
 
         updated_outputs_tensors = ORTZeROOffloadPostForwardFunction.apply(
-            module, _post_forward_module_hook, None, outputs_schema, *outputs_tensors
+            module, _wrap_post_forward_module_hook, None, outputs_schema, *outputs_tensors
         )
 
         self._check_all_tensor(updated_outputs_tensors, module, "post_forward_module_apply_impl output check")
@@ -390,6 +425,8 @@ class ZeROOffloadSubscriber(SubscriberBase):
 
         _pre_backward_module_hook = self._functions.get("_pre_backward_module_hook")
         # STAGE3WARN: _pre_backward_module_hook's second argument `input is not used, so we just pass a None here.
+        # STAGE3WARN: part of the original _pre_backward_module_hook can be traced correctly so we moved them into
+        # _wrap_post_forward_module_hook above.
         updated_outputs = _pre_backward_module_hook(module, None, updated_outputs)
 
         return args, updated_outputs
@@ -403,15 +440,11 @@ class ZeROOffloadSubscriber(SubscriberBase):
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         outputs_tensors, outputs_schema = extract_data_and_schema(outputs)
 
-        def _pre_backward_function(module, grads):
-            return
-
         _end_of_forward_hook = self._functions.get("_end_of_forward_hook")
-
         self._check_all_tensor(outputs_tensors, module, "post_forward_outmost_module_apply_impl input check")
 
         updated_outputs_tensors = ORTZeROOffloadPostForwardFunction.apply(
-            module, _end_of_forward_hook, _pre_backward_function, outputs_schema, *outputs_tensors
+            module, _end_of_forward_hook, None, outputs_schema, *outputs_tensors
         )
 
         self._check_all_tensor(updated_outputs_tensors, module, "post_forward_outmost_module_apply_impl output check")

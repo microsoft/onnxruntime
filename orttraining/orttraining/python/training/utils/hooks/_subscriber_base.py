@@ -119,7 +119,7 @@ class SubscriberBase:
         self,
         run_rtx: RuntimeStates,
         module: torch.nn.Module,
-        inputs: ORTModelInputOutputType,
+        args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is called inside the nn.Module's post-forward hook.
@@ -127,7 +127,7 @@ class SubscriberBase:
         Args:
             run_rtx (RuntimeStates): The runtime states of SubscriberManager.
             module (torch.nn.Module): The module that is being executed.
-            inputs (ORTModelInputOutputType): The inputs arguments that are passed to the module's post-forward
+            args (ORTModelInputOutputType): The inputs arguments that are passed to the module's post-forward
                 hook as input.
             outputs (ORTModelInputOutputType): The outputs arguments that are passed to the module's post-forward
                 hook as input.
@@ -136,18 +136,18 @@ class SubscriberBase:
             Tuple[ORTModelInputOutputType, ORTModelInputOutputType]: Updated inputs and outputs.
         """
         if self._need_skip_step(run_rtx.global_states.execution_step):
-            return inputs, outputs
+            return args, outputs
 
-        return self.post_forward_module_apply_impl(run_rtx, module, inputs, outputs)
+        return self.post_forward_module_apply_impl(run_rtx, module, args, outputs)
 
     def post_forward_module_apply_impl(
         self,
         run_rtx: RuntimeStates,
         module: torch.nn.Module,
-        inputs: ORTModelInputOutputType,
+        args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-        return inputs, outputs
+        return args, outputs
 
     def post_forward_tensor_apply(
         self, run_rtx: RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
@@ -177,7 +177,7 @@ class SubscriberBase:
         self,
         run_rtx: RuntimeStates,
         module: torch.nn.Module,
-        inputs: ORTModelInputOutputType,
+        args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is called inside the outmost nn.Module's post-forward hook.
@@ -185,7 +185,7 @@ class SubscriberBase:
         Args:
             run_rtx (RuntimeStates): The runtime states of SubscriberManager.
             module (torch.nn.Module): The module that is being executed.
-            inputs (ORTModelInputOutputType): The inputs arguments that are passed to the module's post-forward
+            args (ORTModelInputOutputType): The inputs arguments that are passed to the module's post-forward
                 hook as input.
             outputs (ORTModelInputOutputType): The outputs arguments that are passed to the module's post-forward
                 hook as input.
@@ -194,18 +194,18 @@ class SubscriberBase:
             Tuple[ORTModelInputOutputType, ORTModelInputOutputType]: Updated inputs and outputs.
         """
         if self._need_skip_step(run_rtx.global_states.execution_step):
-            return inputs, outputs
+            return args, outputs
 
-        return self.post_forward_outmost_module_apply_impl(run_rtx, module, inputs, outputs)
+        return self.post_forward_outmost_module_apply_impl(run_rtx, module, args, outputs)
 
     def post_forward_outmost_module_apply_impl(
         self,
         run_rtx: RuntimeStates,
         module: torch.nn.Module,
-        inputs: ORTModelInputOutputType,
+        args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-        return inputs, outputs
+        return args, outputs
 
     def _need_skip_step(self, current_step: int) -> bool:
         return current_step < self._start_step or current_step >= self._end_step
