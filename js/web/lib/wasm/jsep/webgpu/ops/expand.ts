@@ -56,7 +56,7 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
   const output = outputVariable('output', dataType, outputShape);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
+  const inputShape = ${input.indices(...inputShape)};
   ${shaderHelper.declareVariables(input, output)}
   ${output.impl('offsetToIndices')}
   ${input.impl('indicesToOffset', 'get')}
@@ -65,7 +65,7 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
     let outputIndices = ${output.offsetToIndices('global_idx')};
     var inputIndices: ${input.type.indices};
     for (var i = 0; i < ${inputShape.length}; i++) {
-      if (inputShape[i] == 1) {
+      if (${input.indicesGet('inputShape', 'i')} == 1) {
         ${input.indicesSet('inputIndices', 'i', 0)}
       } else {
         ${
@@ -86,7 +86,7 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
 export const expand = (context: ComputeContext): void => {
   validateInputs(context.inputs);
   const outputShape = Array.from(context.inputs[1].getBigInt64Array(), Number);
-  const cacheHint = context.inputs[0].dims.toString().concat(outputShape.toString());
+  const cacheHint = outputShape.toString();
   context.compute(
       {...expandProgramMetadata, cacheHint, get: () => createExpandProgramInfo(expandProgramMetadata, context.inputs)},
       {inputs: [0]});
