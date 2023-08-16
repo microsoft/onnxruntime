@@ -199,7 +199,6 @@ static void RunPackedMultiHeadAttentionTest(
   }
 }
 
-#if !defined(_MSC_VER)
 TEST(PackedMultiHeadAttentionTest, PackedQKV_NoPadding_NoBias_trt) {
   AttentionTestData data;
   GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(data);
@@ -411,7 +410,6 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_unfused) {
       data.token_count,
       AttentionKernelType::AttentionKernel_Unfused);
 }
-#endif
 
 TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_RelPosBias) {
   PackedAttentionTestData data;
