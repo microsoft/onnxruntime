@@ -169,7 +169,18 @@ const createSkipLayerNormProgramInfoLoader =
 
 export const skipLayerNorm = (context: ComputeContext, attributes: SkipLayerNormAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createSkipLayerNormProgramInfoLoader(context.inputs, attributes, context.outputCount));
+
+  const outputs = [0];
+  if (context.outputCount > 2) {
+    outputs.push(1);
+  }
+  if (context.outputCount > 3) {
+    outputs.push(2);
+  }
+  if (context.outputCount > 1) {
+    outputs.push(3);
+  }
+  context.compute(createSkipLayerNormProgramInfoLoader(context.inputs, attributes, context.outputCount), {outputs});
 };
 
 export const parseSkipLayerNormAttributes = (attributes: Record<string, unknown>): SkipLayerNormAttributes => {
