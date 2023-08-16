@@ -34,6 +34,8 @@ _DTYPE_TO_ONNX = {torch_dtype: onnx_dtype for k, (onnx_dtype, torch_dtype) in _C
 
 def pytorch_dtype_to_onnx(dtype: torch.dtype) -> torch.onnx.TensorProtoDataType:
     """Converts a pytorch dtype to an onnx dtype."""
+    if dtype not in _DTYPE_TO_ONNX:
+        raise RuntimeError(f"Unsupported dtype {dtype}")
     return _DTYPE_TO_ONNX[dtype]
 
 
