@@ -57,7 +57,7 @@ struct OpenVINO_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
     auto& provider_options_map = *reinterpret_cast<const ProviderOptions*>(void_params);
 
-    const char* device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision
+    std::string device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision
                                             //   with these values at runtime.
     bool enable_vpu_fast_compile = false;   // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to
                                             // speeds up the model's compilation to VPU device specific format.
@@ -77,6 +77,19 @@ struct OpenVINO_Provider : Provider {
 
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
       device_type = provider_options_map.at("device_type").c_str();
+
+      std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
+                                                         "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
+                                                         "GPU.0_FP16", "GPU.1_FP16",
+                                                         "VPUX_FP16", "VPUX_U8"};
+      if (!((ov_supported_device_types.find(device_type) != ov_supported_device_types.end()) ||
+            (device_type.find("HETERO:") == 0) || (device_type.find("MULTI:") == 0) || (device_type.find("AUTO:") == 0))) {
+        ORT_THROW(
+            "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+            "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
+            "'GPU.0_FP16', 'GPU.1_FP16', 'VPUX_FP16', 'VPUX_U8' or from"
+            " HETERO/MULTI/AUTO options available. \n");
+      }
     }
     if (provider_options_map.find("device_id") != provider_options_map.end()) {
       device_id = provider_options_map.at("device_id").c_str();
@@ -90,10 +103,16 @@ struct OpenVINO_Provider : Provider {
 
     if (provider_options_map.find("num_of_threads") != provider_options_map.end()) {
       num_of_threads = std::stoi(provider_options_map.at("num_of_threads"));
+      if (num_of_threads <= 0) {
+        num_of_threads = 1;
+      }
     }
 
     if (provider_options_map.find("num_streams") != provider_options_map.end()) {
       num_streams = std::stoi(provider_options_map.at("num_streams"));
+      if (num_streams <= 0 && num_streams > 8) {
+        ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_streams' should be in the range of 1-8 \n");
+      }
     }
     std::string bool_flag = "";
     if (provider_options_map.find("enable_vpu_fast_compile") != provider_options_map.end()) {
@@ -121,7 +140,7 @@ struct OpenVINO_Provider : Provider {
       else if (bool_flag == "false" || bool_flag == "False")
         enable_dynamic_shapes = false;
     }
-    return std::make_shared<OpenVINOProviderFactory>(device_type,
+    return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
                                                      enable_vpu_fast_compile,
                                                      device_id,
                                                      num_of_threads,
