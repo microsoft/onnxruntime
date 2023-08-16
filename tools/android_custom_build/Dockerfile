@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
   python3-pip \
   python3-setuptools \
   python3-wheel \
-  unzip
+  unzip lsb-release
 
 # cmake
 RUN CMAKE_VERSION=3.26.3 && \

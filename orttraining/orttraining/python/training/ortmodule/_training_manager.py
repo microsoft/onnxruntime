@@ -17,7 +17,7 @@ from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
-from ._io import _FlattenedModule, _InputInfo
+from ._io import _FlattenedModule, _InputInfo, unflatten_user_output
 from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
@@ -322,7 +322,7 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_inspector,
             )
 
-            outputs = _io.unflatten_user_output(
+            outputs = unflatten_user_output(
                 self._module_output_schema,
                 self._forward_class.apply(*prepared_input_list),
             )
@@ -360,9 +360,6 @@ class TrainingManager(GraphExecutionManager):
 
         super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
-        self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
-            self._graph_builder.get_forward_model()
-        )
 
         # Apply registered graph transformers to the optimized model
         device_type = self._device.type

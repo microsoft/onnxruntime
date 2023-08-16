@@ -3,5 +3,6 @@ dist/
 docs/
 
 /test/**/*.js
+/test/**/*.js.map
 
 tsconfig.tsbuildinfo

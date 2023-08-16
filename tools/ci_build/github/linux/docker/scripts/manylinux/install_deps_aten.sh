@@ -19,7 +19,7 @@ GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
 
 DISTRIBUTOR=$(lsb_release -i -s)
 
-if [[ "$DISTRIBUTOR" = "CentOS" && $SYS_LONG_BIT = "64" ]]; then
+if [[  ("$DISTRIBUTOR" = "CentOS" || "$DISTRIBUTOR" = "RedHatEnterprise") && $SYS_LONG_BIT = "64" ]]; then
   LIBDIR="lib64"
 else
   LIBDIR="lib"
