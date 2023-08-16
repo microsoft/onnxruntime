@@ -545,7 +545,7 @@ if (onnxruntime_USE_CUDA)
       target_link_libraries(${target} PRIVATE cupti)
     endif()
 
-    if (onnxruntime_ENABLE_NVTX_PROFILE)
+    if (onnxruntime_ENABLE_NVTX_PROFILE AND NOT WIN32)
       target_link_libraries(${target} PRIVATE nvToolsExt)
     endif()
 
