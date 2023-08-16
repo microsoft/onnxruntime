@@ -93,11 +93,27 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    OrtCUDAProviderOptions cuda_options;
-    cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
-    cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+      const auto &api = Ort::GetApi();
+      std::string workspace = std::to_string(4ul * 1024ul * 1024ul * 1024ul);
+      std::vector<const char *> option_name = {
+          "do_copy_in_default_stream",
+          "cudnn_conv_algo_search",
+          "prefer_nhwc"
+      };
+      std::vector<const char *> option_value = {
+          !performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0",
+          performance_test_config.run_config.cudnn_conv_algo ? "EXHAUSTIVE" : "HEURISTIC",
+          performance_test_config.run_config.prefer_nhwc ? "1" : "0"
+      };
+      OrtCUDAProviderOptionsV2* cuda_options;
+
+      Ort::ThrowOnError(api.CreateCUDAProviderOptions(&cuda_options));
+      Ort::ThrowOnError(
+          api.UpdateCUDAProviderOptions(cuda_options, option_name.data(),
+                                        option_value.data(), option_name.size()));
+
     // TODO: Support arena configuration for users of perf test
-    session_options.AppendExecutionProvider_CUDA(cuda_options);
+    session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif

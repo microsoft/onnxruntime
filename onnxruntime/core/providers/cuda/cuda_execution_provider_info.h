@@ -71,6 +71,7 @@ struct CUDAExecutionProviderInfo {
   cuda::TunableOpInfo tunable_op{};
 
   bool enable_skip_layer_norm_strict_mode{false};
+  bool prefer_nhwc{false};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);

@@ -53,6 +53,7 @@ struct RunConfig {
   GraphOptimizationLevel optimization_level{ORT_ENABLE_ALL};
   std::basic_string<ORTCHAR_T> optimized_model_path;
   int cudnn_conv_algo{0};
+  bool prefer_nhwc{false};
   bool do_cuda_copy_in_separate_stream{false};
   bool set_denormal_as_zero{false};
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;

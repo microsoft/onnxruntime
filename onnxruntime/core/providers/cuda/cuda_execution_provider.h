@@ -32,6 +32,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream) override;
 
+  DataLayout GetPreferredLayout() const override;
+
   const void* GetExecutionHandle() const noexcept override {
     // The CUDA interface does not return anything interesting.
     return nullptr;
@@ -68,6 +70,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool GetCudnnConvUseMaxWorkspace() const { return info_.cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return info_.cudnn_conv1d_pad_to_nc1d; }
   bool IsSkipLayerNormInStrictMode() const { return info_.enable_skip_layer_norm_strict_mode; }
+  bool IsNHWCPreferred() const { return info_.prefer_nhwc; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);

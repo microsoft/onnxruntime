@@ -271,6 +271,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 #endif
 }
 
+DataLayout CUDAExecutionProvider::GetPreferredLayout() const {
+  return this->IsNHWCPreferred() ? DataLayout::NHWC : DataLayout::NCHW;
+}
+
 CUDAExecutionProvider::~CUDAExecutionProvider() {
   // clean up thread local context caches
   {
