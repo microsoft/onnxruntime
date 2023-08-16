@@ -28,7 +28,7 @@ static constexpr int kBiasIndex = 10;
 
 #define REGISTER_KERNEL_TYPED(T1, T2)                                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
-      DecoderMaskedMultiHeadAttentionQuantizedKV,                             \
+      DecoderMaskedMultiHeadAttentionQuantKV,                                 \
       kMSDomain,                                                              \
       1,                                                                      \
       T1,                                                                     \
@@ -39,13 +39,12 @@ static constexpr int kBiasIndex = 10;
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())             \
           .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex) \
           .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex),         \
-      DecoderMaskedMultiHeadAttentionQuantizedKV<T1, T2>);
+      DecoderMaskedMultiHeadAttentionQuantKV<T1, T2>);
 
-REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(MLFloat16, uint16_t)
 
 template <typename T1, typename T2>
-DecoderMaskedMultiHeadAttentionQuantizedKV<T1, T2>::DecoderMaskedMultiHeadAttentionQuantizedKV(const OpKernelInfo& info) : CudaKernel(info) {
+DecoderMaskedMultiHeadAttentionQuantKV<T1, T2>::DecoderMaskedMultiHeadAttentionQuantKV(const OpKernelInfo& info) : CudaKernel(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
@@ -53,12 +52,12 @@ DecoderMaskedMultiHeadAttentionQuantizedKV<T1, T2>::DecoderMaskedMultiHeadAttent
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
   int64_t quantize_block_size = 0;
-  ORT_ENFORCE(info.GetAttr("kv_quantize_block_size", &quantize_block_size).IsOK() && quantize_block_size > 0 && (quantize_block_size & -quantize_block_size) == 0);
-  kv_quantize_block_size_ = static_cast<int>(quantize_block_size);
+  ORT_ENFORCE(info.GetAttr("quant_kv_block_size", &quantize_block_size).IsOK() && quantize_block_size > 0 && (quantize_block_size & -quantize_block_size) == 0);
+  quant_kv_block_size_ = static_cast<int>(quantize_block_size);
 }
 
 template <typename T1, typename T2>
-Status DecoderMaskedMultiHeadAttentionQuantizedKV<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+Status DecoderMaskedMultiHeadAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -71,10 +70,10 @@ Status DecoderMaskedMultiHeadAttentionQuantizedKV<T1, T2>::ComputeInternal(OpKer
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
   const Tensor* bias = context->Input<Tensor>(kBiasIndex);
   const Tensor* past_key_scale = context->Input<Tensor>(kPastScaleInputIndex);
-  const Tensor* past_value_scale = context->Input<Tensor>(kPastValueInputIndex);
+  const Tensor* past_value_scale = context->Input<Tensor>(kPastScaleInputIndex + 1                                                                                                                                                                                                                                                                                                                                                                                                );
 
   auto& device_prop = GetDeviceProp();
-  DecoderMaskedMultiHeadAttentionQuantizedKVParams parameters;
+  DecoderMaskedMultiHeadAttentionQuantKVParams parameters;
   bool is_dmmha_packing = (key == nullptr && value == nullptr);
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
@@ -105,23 +104,23 @@ Status DecoderMaskedMultiHeadAttentionQuantizedKV<T1, T2>::ComputeInternal(OpKer
 
   // This kernel is for decoding only (i.e.) sequence length has to be 1
   if (sequence_length != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedMultiHeadAttentionQuantizedKV");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedMultiHeadAttentionQuantKV");
   }
 
   if (parameters.head_size != parameters.v_head_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "QK head size should be same as V head size to use DecoderMaskedMultiHeadAttentionQuantizedKV");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "QK head size should be same as V head size to use DecoderMaskedMultiHeadAttentionQuantKV");
   }
 
   if (parameters.mask_type != AttentionMaskType::MASK_2D_KEY_PADDING &&
       parameters.mask_type != AttentionMaskType::MASK_NONE) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "DecoderMaskedMultiHeadAttentionQuantizedKV only supports no mask or 2D key "
+                           "DecoderMaskedMultiHeadAttentionQuantKV only supports no mask or 2D key "
                            "padding mask of shape [batch, total_seq_length] currently");
   }
 
   if (past_key != nullptr) {
     ORT_ENFORCE(past_key_scale != nullptr && past_value_scale != nullptr);
-    ORT_ENFORCE(kv_quantize_block_size_ <= parameters.v_hidden_size && parameters.v_hidden_size % kv_quantize_block_size_ == 0);
+    ORT_ENFORCE(quant_kv_block_size_ <= parameters.v_hidden_size && parameters.v_hidden_size % quant_kv_block_size_ == 0);
   }
 
   TensorShapeVector output_shape(3);
@@ -137,7 +136,7 @@ Status DecoderMaskedMultiHeadAttentionQuantizedKV<T1, T2>::ComputeInternal(OpKer
   Tensor* present_key = context->Output(kPresentOutputIndex, present_shape);
   Tensor* present_value = context->Output(kPresentOutputIndex + 1, present_shape);
 
-  TensorShape present_scale_shape{present_shape.Size() / kv_quantize_block_size_};
+  TensorShape present_scale_shape{present_shape.Size() / quant_kv_block_size_};
   Tensor* present_key_scale = context->Output(kPresentScaleOutputIndex, present_shape);
   Tensor* present_value_scale = context->Output(kPresentScaleOutputIndex + 1, present_shape);
 
@@ -157,7 +156,7 @@ Status DecoderMaskedMultiHeadAttentionQuantizedKV<T1, T2>::ComputeInternal(OpKer
   if (past_key == nullptr && present_key == nullptr) {
     if (relative_position_bias != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "DecoderMaskedMultiHeadAttentionQuantizedKV does not support relative position bias for cross-attention");
+                             "DecoderMaskedMultiHeadAttentionQuantKV does not support relative position bias for cross-attention");
     }
 
     parameters.is_cross_attention = true;
@@ -237,20 +236,20 @@ Status DecoderMaskedMultiHeadAttentionQuantizedKV<T1, T2>::ComputeInternal(OpKer
 
   switch (parameters.head_size) {
     case 32:
-      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
+      mmha_quant_kv_launch_kernel<T2, 32>(parameters, cuda_stream);
       break;
 
     case 64:
-      mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
+      mmha_quant_kv_launch_kernel<T2, 64>(parameters, cuda_stream);
       break;
 
     case 128:
-      mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
+      mmha_quant_kv_launch_kernel<T2, 128>(parameters, cuda_stream);
       break;
 
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Unsupported head size in DecoderMaskedMultiHeadAttentionQuantizedKV. "
+                             "Unsupported head size in DecoderMaskedMultiHeadAttentionQuantKV. "
                              "Got head size: ",
                              parameters.head_size);
   }

@@ -61,7 +61,7 @@ void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cud
 struct DecoderMaskedMultiHeadAttentionQuantKVParams : DecoderMaskedMultiHeadAttentionParams {
   void* k_scale = nullptr;
   void* v_scale = nullptr;
-  int32_t quantize_block_size = 0;
+  int32_t quant_kv_block_size = 0;
 };
 
 template <

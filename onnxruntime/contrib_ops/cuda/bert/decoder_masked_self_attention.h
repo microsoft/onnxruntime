@@ -19,6 +19,15 @@ class DecoderMaskedSelfAttention final : public CudaKernel, public AttentionBase
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T1, typename T2>
+class DecoderMaskedSelfAttentionQuantKV final : public CudaKernel, public AttentionBase {
+  int quant_kv_block_size_ = 0;
+ public:
+  DecoderMaskedSelfAttentionQuantKV(const OpKernelInfo& info);
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+};
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

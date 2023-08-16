@@ -722,6 +722,161 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
+constexpr const char* DecoderMaskedSelfAttentionQuantKV_ver1_doc = R"DOC(
+Self attention that supports input sequence length of 1, and using quantized KV cache.
+
+The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
+is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
+and v_hidden_size is that of V.
+
+The mask_index is optional. If it is provided, only raw attention mask with shape (batch_size, total_sequence_length) is supported currently.
+
+Both past and present state need to be provided.
+
+The qkv_hidden_sizes is required only when K and V have different hidden sizes.
+
+The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
+Currently, only self attention is supported which means that kv_sequence_length equals to sequence_length (sequence length of Q).
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DecoderMaskedSelfAttentionQuantKV, 1,
+    OpSchema()
+        .SetDoc(DecoderMaskedSelfAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("past_present_share_buffer",
+              "Corresponding past and present are same tensor, its size is "
+              "(2, batch_size, num_heads, max_sequence_length, head_size)",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("do_rotary",
+              "Whether to use rotary position embedding. Default value is 0.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("quant_kv_block_size",
+              "block size to do the quantization",
+              AttributeProto::INT)
+        .Input(0,
+               "input",
+               "Input tensor with shape (batch_size, 1, input_hidden_size)",
+               "T")
+        .Input(1,
+               "weights",
+               "Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)",
+               "T")
+        .Input(2,
+               "bias",
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
+               "T")
+        .Input(3,
+               "mask_index",
+               "Mask values of shape (batch_size, total_sequence_length)",
+               "M",
+               OpSchema::Optional)
+        .Input(4,
+               "past",
+               "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)"
+               "When past_present_share_buffer is set, "
+               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size). "
+               "The first `batch_size * num_heads * max_sequence_length * head_size` elements correspond to keys "
+               "and the next `batch_size * num_heads * max_sequence_length * head_size` elements correspond to values. "
+               "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to "
+               "become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`.",
+               "Q")
+        .Input(5,
+               "relative_position_bias",
+               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "T",
+               OpSchema::Optional)
+        .Input(6,
+               "past_sequence_length",
+               "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).",
+               "M")
+        .Input(7,
+               "beam_width",
+               "The beam width that is being used while decoding."
+               "If not provided, the beam width will be assumed to be 1.",
+               "M",
+               OpSchema::Optional)
+        .Input(8,
+               "cache_indirection",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
+               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
+               "M",
+               OpSchema::Optional)
+        .Input(9,
+               "past_scales",
+               "scales for past key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size / qunatize_block_size)"
+               "When past_present_share_buffer is set, "
+               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size / qunatize_block_size). "
+               "Note, no re-ordering apply to this tensor.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
+                "T")
+        .Output(1,
+                "present",
+                "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size). "
+                "If past_present_share_buffer is set, "
+                "its shape is (2, batch_size, num_heads, max_sequence_length, head_size), "
+                "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
+                "Q")
+        .Output(2,
+               "present_scales",
+               "scales for present key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size / qunatize_block_size)"
+               "When past_present_share_buffer is set, "
+               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size / qunatize_block_size). "
+               "Note, no re-ordering apply to this tensor.",
+               "T")
+
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("Q",
+                        {"tensor(int8)"},
+                        "Constrain input and output types to int8 tensors.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain mask index to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          constexpr int past_input_index = 4;
+          constexpr int past_scale_index = 9;
+          AttentionTypeAndShapeInference(ctx, past_input_index);
+
+          if (ctx.getNumOutputs() > 1) {  // has present output
+            if (hasInputShape(ctx, past_input_index)) {
+              auto& past_shape = getInputShape(ctx, past_input_index);
+              auto& past_dims = past_shape.dim();
+              auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
+              auto attr_proto = ctx.getAttribute("quant_kv_block_size");
+              if (!((nullptr != attr_proto) && attr_proto->has_i())) {
+                fail_shape_inference("Attr quant_kv_block_size not found");
+              }
+              auto quant_kv_block_size = attr_proto->i();
+
+              if (past_present_share_buffer) {
+                propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
+                propagateElemTypeFromInputToOutput(ctx, past_scale_index, 2);
+              } else {
+                fail_shape_inference("past_present_share_buffer must be true");
+              }
+            }
+          }
+        }));
+
+
 constexpr const char* DecoderMaskedMultiHeadAttention_ver1_doc = R"DOC(
 Multihead attention that supports input sequence length of 1.
 Similar to DecoderMaskedSelfAttention but this op excludes QKV MatMul and Bias.
@@ -848,23 +1003,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           MultiHeadAttentionTypeAndShapeInference(ctx, 5, is_dmmha_packing);
         }));
 
-constexpr const char* DecoderMaskedMultiHeadAttentionQuantizedKV_ver1_doc = R"DOC(
+constexpr const char* DecoderMaskedMultiHeadAttentionQuantKV_ver1_doc = R"DOC(
 Multihead attention that supports input sequence length of 1.
 Similar to DecoderMaskedSelfAttention but this op excludes QKV MatMul and Bias.
 This op supports both Self and Cross Attention. Th input past kv are block quantized.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    DecoderMaskedMultiHeadAttentionQuantizedKV, 1,
+    DecoderMaskedMultiHeadAttentionQuantKV, 1,
     OpSchema()
-        .SetDoc(DecoderMaskedMultiHeadAttentionQuantizedKV_ver1_doc)
+        .SetDoc(DecoderMaskedMultiHeadAttentionQuantKV_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("past_present_share_buffer",
               "Corresponding past and present are same tensor, its size is "
               "(batch_size, num_heads, max_sequence_length, head_size)",
               AttributeProto::INT,
               OPTIONAL_VALUE)
-        .Attr("kv_quantize_block_size",
+        .Attr("quant_kv_block_size",
               "block size when quantizing the present/past kv tensors"
               "It should be less or equal than kv head size, and must be power of 2.",
               AttributeProto::INT,
@@ -1014,7 +1169,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_scale_index + 1), 4);
               } else {
                 ONNX_NAMESPACE::TensorShapeProto present_scale_shape;
-                present_shape.add_dim();
+                present_scale_shape.add_dim();
                 updateOutputShape(ctx, 3, present_scale_shape);
                 updateOutputShape(ctx, 4, present_scale_shape);
               }
