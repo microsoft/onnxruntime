@@ -62,6 +62,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['InstanceNormalization', [instanceNorm, parseInstanceNormAttributes]],
   ['LayerNormalization', [layerNorm, parseLayerNormAttributes]],
   ['LeakyRelu', [unaryOps.leakyRelu, unaryOps.parseAlphaAttributes]],
+  ['Log', [unaryOps.log]],
   ['MatMul', [matMul]],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
   ['MaxPool', [pool.maxPool, pool.parseMaxPoolAttributes]],

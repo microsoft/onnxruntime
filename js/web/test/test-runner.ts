@@ -574,7 +574,7 @@ export class ProtoOpTestContext {
   private readonly loadedData: Uint8Array;  // model data, inputs, outputs
   session: ort.InferenceSession;
   readonly backendHint: string;
-  constructor(test: Test.OperatorTest) {
+  constructor(test: Test.OperatorTest, private readonly sessionOptions: ort.InferenceSession.SessionOptions = {}) {
     const opsetImport = onnx.OperatorSetIdProto.create(test.opset);
     const operator = test.operator;
     const attribute = (test.attributes || []).map(attr => {
@@ -641,25 +641,39 @@ export class ProtoOpTestContext {
       // if inputShapeDefinitions is not specified, use undefined for all inputs
       normalizedInputShapeDefinitions = new Array(inputCount).fill(undefined);
     } else if (test.inputShapeDefinitions === 'rankOnly') {
+      // check if all test cases have data
+      if (test.cases.some(testCase => testCase.inputs!.some(input => !input.data || !input.dims))) {
+        throw new Error(`Test cases for test: ${test.name} [${
+            test.operator}] must have data for each inputs when inputShapeDefinitions is 'rankOnly'`);
+      }
+
       // if inputShapeDefinitions is 'rankOnly', use semantic names for all inputs. This means only rank is specified.
       normalizedInputShapeDefinitions =
-          test.cases[0].inputs!.map((input, i) => input.dims.map((_, j) => `_input_${i}_d${j}`));
+          test.cases[0].inputs!.map((input: Test.TensorValue, i) => input.dims.map((_, j) => `_input_${i}_d${j}`));
 
       // check if all test cases have the same rank for each inputs
       if (test.cases.some(
-              testCase =>
-                  testCase.inputs!.some((input, i) => input.dims.length !== test.cases[0].inputs![i].dims.length))) {
+              testCase => testCase.inputs!.some(
+                  (input: Test.TensorValue, i) =>
+                      input.dims.length !== (test.cases[0].inputs![i] as Test.TensorValue).dims.length))) {
         throw new Error(`Test cases for test: ${test.name} [${
             test.operator}] must have the same rank for each inputs in different test cases`);
       }
     } else if (test.inputShapeDefinitions === 'static') {
+      // check if all test cases have data
+      if (test.cases.some(testCase => testCase.inputs!.some(input => !input.data || !input.dims))) {
+        throw new Error(`Test cases for test: ${test.name} [${
+            test.operator}] must have data for each inputs when inputShapeDefinitions is 'rankOnly'`);
+      }
+
       // if inputShapeDefinitions is 'static', use the shape of the first test case for all inputs.
-      normalizedInputShapeDefinitions = test.cases[0].inputs!.map(input => input.dims);
+      normalizedInputShapeDefinitions = test.cases[0].inputs!.map((input: Test.TensorValue) => input.dims);
 
       // check if all test cases have the same shape for each inputs
       if (test.cases.some(
               testCase => testCase.inputs!.some(
-                  (input, i) => TensorResultValidator.integerEqual(input.dims, test.cases[0].inputs![i].dims)))) {
+                  (input: Test.TensorValue, i) => TensorResultValidator.integerEqual(
+                      input.dims, (test.cases[0].inputs![i] as Test.TensorValue).dims)))) {
         throw new Error(`Test cases for test: ${test.name} [${
             test.operator}] must have the same shape for each inputs in different test cases`);
       }
@@ -714,7 +728,8 @@ export class ProtoOpTestContext {
     }
   }
   async init(): Promise<void> {
-    this.session = await ort.InferenceSession.create(this.loadedData, {executionProviders: [this.backendHint]});
+    this.session = await ort.InferenceSession.create(
+        this.loadedData, {executionProviders: [this.backendHint], ...this.sessionOptions});
   }
 
   async dispose(): Promise<void> {
@@ -726,19 +741,35 @@ async function runProtoOpTestcase(
     session: ort.InferenceSession, testCase: Test.OperatorTestCase, validator: TensorResultValidator): Promise<void> {
   const feeds: Record<string, ort.Tensor> = {};
   testCase.inputs!.forEach((input, i) => {
-    let data: number[]|BigUint64Array|BigInt64Array = input.data;
-    if (input.type === 'uint64') {
-      data = BigUint64Array.from(input.data.map(BigInt));
-    } else if (input.type === 'int64') {
-      data = BigInt64Array.from(input.data.map(BigInt));
+    if (input.data) {
+      let data: number[]|BigUint64Array|BigInt64Array = input.data;
+      if (input.type === 'uint64') {
+        data = BigUint64Array.from(input.data.map(BigInt));
+      } else if (input.type === 'int64') {
+        data = BigInt64Array.from(input.data.map(BigInt));
+      }
+      feeds[`input_${i}`] = new ort.Tensor(input.type, data, input.dims);
     }
-    feeds[`input_${i}`] = new ort.Tensor(input.type, data, input.dims);
   });
+
+  const outputs: ort.Tensor[] = [];
+  const expectedOutputNames: string[] = [];
+  testCase.outputs!.forEach((output, i) => {
+    if (output.data) {
+      let data: number[]|BigUint64Array|BigInt64Array = output.data;
+      if (output.type === 'uint64') {
+        data = BigUint64Array.from(output.data.map(BigInt));
+      } else if (output.type === 'int64') {
+        data = BigInt64Array.from(output.data.map(BigInt));
+      }
+      outputs.push(new ort.Tensor(output.type, data, output.dims));
+      expectedOutputNames.push(`output_${i}`);
+    }
+  });
+
   const results = await session.run(feeds);
 
-  const outputs = testCase.outputs!.map(output => new ort.Tensor(output.type, output.data, output.dims));
   const actualOutputNames = Object.getOwnPropertyNames(results);
-  const expectedOutputNames = outputs.map((_, i) => `output_${i}`);
   expect(actualOutputNames.length).to.equal(expectedOutputNames.length);
   expect(actualOutputNames).to.have.members(expectedOutputNames);
 
@@ -757,11 +788,11 @@ function createTensor(dims: number[], type: Tensor.DataType, data: number[]): Te
 async function runOpTestcase(
     inferenceHandler: InferenceHandler, operator: Operator, testcase: Test.OperatorTestCase,
     validator: TensorResultValidator): Promise<void> {
-  testcase.inputs.forEach((input, i) => {
+  testcase.inputs.forEach((input: Test.TensorValue, i) => {
     Logger.verbose('TestOpRunner', `   Input '${i}': ${input.type}[${input.dims.join(',')}]`);
   });
-  const inputTensors =
-      testcase.inputs.map(input => createTensor(input.dims, input.type as Tensor.DataType, input.data));
+  const inputTensors = testcase.inputs.map(
+      (input: Test.TensorValue) => createTensor(input.dims, input.type as Tensor.DataType, input.data));
 
   const results = operator.impl(inferenceHandler, inputTensors, operator.context);
 
@@ -776,8 +807,8 @@ async function runOpTestcase(
   results.forEach((output, i) => {
     Logger.verbose('TestOpRunner', `  Result'${i}': ${output.type}[${output.dims.join(',')}]`);
   });
-  const expectedTensors =
-      testcase.outputs.map(output => createTensor(output.dims, output.type as Tensor.DataType, output.data));
+  const expectedTensors = testcase.outputs.map(
+      (output: Test.TensorValue) => createTensor(output.dims, output.type as Tensor.DataType, output.data));
   validator.checkTensorResult(results, expectedTensors);
 }
 

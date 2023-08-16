@@ -262,3 +262,7 @@ export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttrib
       `const thresholded_relu_alpha_: vec4<f32> = vec4<f32>(${attributes.alpha});`, attributes.cacheKey));
   return 0;
 };
+
+export const log = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Log', 'log'));
+};
