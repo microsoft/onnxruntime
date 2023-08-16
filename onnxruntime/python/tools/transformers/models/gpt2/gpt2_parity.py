@@ -16,7 +16,6 @@ import datetime
 import json
 import logging
 import os
-import sys
 
 import onnx
 import scipy.stats

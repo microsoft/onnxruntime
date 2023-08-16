@@ -7,7 +7,6 @@
 import logging
 import os
 import random
-import sys
 import tempfile
 from pathlib import Path
 from typing import List, Union
