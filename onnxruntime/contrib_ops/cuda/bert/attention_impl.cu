@@ -933,7 +933,7 @@ Status QkvToContext(
     // LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
     // Add bias
     const int format = 3;
-    // format 3: BxSx(NH + NH + NH_v) => BxSxNxH + BxSxNxH + BxSxNxH_v
+    // format 3: BxSx(NH + NH + NH_v) => BxSxNxH + BxSxNxH + BxSxNxH_v WRONG?????
     LaunchAddBiasTranspose<T>(stream, 3, format, device_prop.maxThreadsPerBlock,
                                   batch_size, sequence_length, parameters.num_heads, parameters.head_size,
                                   data.gemm_buffer, data.bias, data.workspace,
@@ -944,12 +944,13 @@ Status QkvToContext(
     ORT_RETURN_IF_ERROR(mha_varlen_fwd(
       device_prop,
       stream,
-      q, 
-      k, 
+      q,
+      k,
       v,
       reinterpret_cast<void*>(data.output),
       sequence_offset,
       sequence_offset,
+      data.softmax_lse_buffer, // TODO softmax buffer
       batch_size,
       num_heads,
       num_heads, //num_heads_k

@@ -259,7 +259,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                void* out,              // half (total_q, num_heads, v_head_size)
                int* cu_seqlens_q,  // int (batch_size + 1)
                int* cu_seqlens_k,  // int (batch_size + 1)
-              //  void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
+               void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
               //  void* o_tmp_buffer,        // NULL or float (total_q, num_heads, v_head_size)
                const int batch_size,
                const int num_heads,
@@ -340,7 +340,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    cu_seqlens_q,
                    cu_seqlens_k,
                    nullptr, //return_softmax ? o_tmp_buffer : nullptr,
-                   nullptr, //softmax_lse_buffer,
+                   softmax_lse_buffer, //softmax_lse_buffer,
                    softmax_scale,
                    is_causal);
   run_mha_fwd(params, stream);

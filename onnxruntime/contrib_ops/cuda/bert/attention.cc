@@ -7,7 +7,7 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include "contrib_ops/cuda/bert/flash_attention/flash.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
@@ -249,6 +249,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.cumulated_sequence_length_q_cache = nullptr;
   data.cumulated_sequence_length_kv_cache = nullptr;
   // }
+#if USE_FLASH_ATTENTION
+  size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
+  auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+  data.softmax_lse_buffer = reinterpret_cast<CudaT*>(soft_buff.get());
+#endif
 
   return QkvToContext<CudaT>(device_prop, cublas, stream, parameters, data);
 }
