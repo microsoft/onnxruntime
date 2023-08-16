@@ -237,7 +237,6 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    nullptr,
                    softmax_scale,
                    is_causal);
-
   run_mha_fwd(params, stream);
   return Status::OK(); // TODO: return from inside run_mha_fwd to make sure status is actually ok
 
@@ -321,9 +320,9 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   ORT_ENFORCE(batch_size > 0);
   ORT_ENFORCE((head_size % 8 == 0) && (head_size <= 128));
 
-  bool loop = false;
-  int max_seqlen_k = get_max_seqlen_k(max_seqlen_k_, head_size, loop);
-  int max_seqlen_q = get_max_seqlen_q(max_seqlen_q_);
+  // bool loop = false;
+  int max_seqlen_k = max_seqlen_k_; //get_max_seqlen_k(max_seqlen_k_, head_size, loop);
+  int max_seqlen_q = max_seqlen_q_; //get_max_seqlen_q(max_seqlen_q_);
 
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);

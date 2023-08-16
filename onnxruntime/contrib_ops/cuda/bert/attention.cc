@@ -231,11 +231,26 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_value = nullptr;
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
+  auto stream = Stream(context);
+  // Use flash
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  // auto cumseqlen = new CumulatedSequenceLengthCache();
+  // cumseqlen->Initialize(sequence_length, stream);
+  // data.cumulated_sequence_length_q_cache = cumseqlen;
+  // data.cumulated_sequence_length_kv_cache = cumseqlen; // TEMP, should be different
+  // if (use_memory_efficient_attention) {
+  //   const size_t cumulated_seq_len_elements = batch_size + 1;
+  //   auto cumulated_seq_len_buffer = GetScratchBuffer<int>(cumulated_seq_len_elements, context->GetComputeStream());
+  //   int* sequence_offset = reinterpret_cast<int*>(cumulated_seq_len_buffer.get());
+  //   LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
+  //   data.cumulated_sequence_length_q_cache = cumulated_seq_len_buffer;
+  //   data.cumulated_sequence_length_kv_cache = cumulated_seq_len_buffer;
+  // } else {
   data.cumulated_sequence_length_q_cache = nullptr;
   data.cumulated_sequence_length_kv_cache = nullptr;
+  // }
 
-  return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
+  return QkvToContext<CudaT>(device_prop, cublas, stream, parameters, data);
 }
 
 }  // namespace cuda
