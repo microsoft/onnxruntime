@@ -36,8 +36,162 @@ namespace cuda {
 
 using namespace decoder_masked_self_attention_details;
 
+template <typename T>
+struct TFLoatTypeFrom;
+
+template<>
+struct TFloatTypeFrom<float> {
+  using Type = float;
+};
+
+template<>
+struct TFloatTypeFrom<uint16_t> {
+  using Type = half;
+};
+
+// TODO, optimize these inline functions
+inline __device__ __half2 Dequantize(char2 ch2, const half scale) {
+  __half2 h2;
+  h2.x = __short2half_rn((short)ch2.x) * scale;
+  h2.y = __short2half_rn((short)ch2.y) * scale;
+  return h2;
+}
+
+inline __device__ __half4 Dequantize(char4 ch4, const half scale) {
+  __half4 h4;
+  h4.x = __short2half_rn((short)ch4.x) * scale;
+  h4.y = __short2half_rn((short)ch4.y) * scale;
+  h4.z = __short2half_rn((short)ch4.z) * scale;
+  h4.w = __short2half_rn((short)ch4.w) * scale;
+  return h4;
+}
+
+template <typename TVec_kernel>
+inline __device__ TVec_kernel LoadQ8(const TVec_kernel* q8, half scale);
+
+template <>
+inline __device__ uint32_t LoadQ8(const uint32_t* q8, half scale) {
+  char2 ch2 = *(char2*)q8;
+  union {
+    __half2 h2;
+    uint32_t whole;
+  } vec;
+  vec.h2 = Dequantize(ch2, scale);
+  return vec.whole;
+}
+
+template <>
+inline __device__ uint2 LoadQ8(const uint2* q8, half scale) {
+  char2 ch4 = *(char4*)q8;
+  union {
+    __half4 h4;
+    uint2 whole;
+  } vec;
+  vec.h4 = Dequantize(ch4, scale);
+  return vec.whole;
+}
+
+template <>
+inline __device__ uint4 LoadQ8(const uint4* q8, half scale) {
+  struct __align__(8) Char8 {
+    char4 first;
+    char4 second;
+  };
+  Char8 ch8 = *(Char8)q8;
+  union {
+    struct {
+      __half4 first;
+      __half4 second;
+    };
+    uint32_t whole;
+  } vec;
+  vec.first = Dequantize(ch8.first, scale);
+  vec.second = Dequantize(ch8.second, scale);
+  return vec.whole;
+}
+
+template <typename TVec>
+inline __device__ float MaxAbsFloat(TVec v);
+
+template <>
+inline __device__ float MaxAbsFloat(const uint32_t v) {
+  union {
+    __half2 h2;
+    uint32_t whole;
+  } uvec;
+  float2 f2 = half22float2(uvec.h2);
+  return fabsf(fmaxf(f2.x f2.y));
+}
+
+template <>
+inline __device__ float MaxAbsFloat(const uint2 v) {
+  return fmaxf(MaxAbsFloat(v.x), MaxAbsFloat(v.y));
+}
+
+template <>
+inline __device__ float MaxAbsFloat(const uint4 v) {
+  return fmaxf(
+      fmaxf(MaxAbsFloat(v.x), MaxAbsFloat(v.y)),
+      fmaxf(MaxAbsFloat(v.w), MaxAbsFloat(v.z)));
+}
+
+template <typename TVec>
+inline __device__ void QuantizeTo(int8_t* dst, TVec v, float scale);
+
+template <>
+inline __device__ void QuantizeTo(int8_t* dst, uint32_t v, float scale) {
+  union {
+    uint32_t u;
+    half2 h2;
+  } uh2;
+  uh2.u = v;
+  char2 q;
+  if (scale) {
+    q.x = (char)(min(127, max(-128, int(uh2.h2.x / scale))));
+    q.y = (char)(min(127, max(-128, int(uh2.h2.y / scale))));
+  } else {
+    q.x = 0;
+    q.y = 0;
+  }
+  *(char2*)dst = q;
+}
+
+template <>
+inline __device__ void QuantizeTo(int8_t* dst, uint2 v, float scale) {
+  union {
+    uint2 u2;
+    struct {
+      half xy;
+      half zw;
+    };
+  } uh4;
+  uh3.u2 = v;
+  char4 q;
+  if (scale) {
+    q.x = (char)(min(127, max(-128, int(uh4.xy.x / scale))));
+    q.y = (char)(min(127, max(-128, int(uh4.xy.y / scale))));
+    q.z = (char)(min(127, max(-128, int(uh4.zw.x / scale))));
+    q.w = (char)(min(127, max(-128, int(uh4.zw.y / scale))));
+  } else {
+    q.x = 0;
+    q.y = 0;
+    q.z = 0;
+    q.w = 0;
+  }
+  *(char4*)dst = q;
+}
+
+template <>
+inline __device__ void QuantizeTo(int8_t* dst, uint4 v, float scale) {
+  QuantizeTo(dst, uint2{v.x, v.y}, scale);
+  QuantizeTo(dst + 4, uint2{v.z, v.w}, scale);
+}
+
+// template <typename TVec>
+// inline __device__ void QuantizeTo(int8_t* dst, TVec v, float scale);
+
 template <
-    // The type of the inputs. Supported types: float and half.
+    // The type of the inputs. Supported types: float and half(uint16_t).
     typename T,
     // The hidden dimension per head.
     int head_size,
@@ -52,6 +206,8 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
   (void)(params);
 #else
+  using TQ8 = int8_t; // quantized value type for K V cache
+  using TFp = TFloatTypeFrom<T>::Type;
 
   // Make sure the hidden dimension per head is a multiple of the number of threads per key.
   static_assert(head_size % THREADS_PER_KEY == 0, "");
@@ -96,6 +252,14 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
   // The number of elements per vector.
   constexpr int QK_VEC_SIZE = sizeof(Qk_vec_m) / sizeof(T);
+  // caller need to check that
+  //    * params.quantize_block_size is power of 2 and > 0
+  //    * params.quantize_block_size % QK_VEC_SIZE == 0
+  //    * params.quantize_block_size % K_VEC_SIZE == 0
+  //    * params.quantize_block_size % V_VEC_SIZE == 0
+  //    * head_size % params.quantize_block_size == 0
+  const int scales_per_head = head_size / params.quantize_block_size;
+
 
   // Make sure the hidden size per head is a multiple of the vector size.
   static_assert(head_size % QK_VEC_SIZE == 0, "");
@@ -107,7 +271,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   // tion of the thread in that chunk.
 
   // The number of elements in a chunk of 16B (that's the x in the above formula).
-  constexpr int QK_ELTS_IN_16B = 16 / sizeof(T);
+  constexpr int QK_ELTS_IN_16B = 16 / sizeof(TQ8); //sizeof(T);
 
   // The number of K vectors in 16B.
   constexpr int QK_VECS_IN_16B = 16 / sizeof(Qk_vec_m);
@@ -174,8 +338,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     q = add_vec(q, q_bias);
   }
 
-
-  T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
+  TQ8* params_k_cache = reinterpret_cast<TQ8*>(params.k_cache);
 
   const float inv_sqrt_dh = params.scale;
 
@@ -245,6 +408,19 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       __syncthreads();
     }
 
+    float max_abs_k = MaxAbsFloat(k);
+    // Perform the final reduction to compute the max inside each warp.
+    int threads_per_scale = params.quantize_block_size / QK_VEC_SIZE;
+    if (threads_per_scale <= WARP_SIZE) {
+      for (int mask = threads_per_scale / 2; mask >= 1; mask /= 2) {
+        max_abs_k = fmaxf(max_abs_k, __shfl_xor_sync(uint32_t(-1), max_abs_k, mask));
+      }
+    } else {
+      constexpr int WARPS_PER_RED = (threads_per_scale + WARP_SIZE - 1) / WARP_SIZE;
+      max_abs_k = block_sum<WARPS_PER_RED>(&red_smem[WARPS_PER_RED], max_abs_k);
+    }
+    __syncthreads();
+
     if (!is_masked) {
       // Write the K values to the global memory cache.
       // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
@@ -261,9 +437,12 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       // Two chunks are separated by L * x elements. A thread write QK_VEC_SIZE elements.
       int offset = bhi * params.max_sequence_length * head_size + co * params.max_sequence_length * QK_ELTS_IN_16B +
                    tlength * QK_ELTS_IN_16B + ci;
-
       // Trigger the stores to global memory.
-      *reinterpret_cast<Qk_vec_m*>(&params_k_cache[offset]) = vec_conversion<Qk_vec_m, Qk_vec_k>(k);
+      QuantizeTo(&params_k_cache[offset], vec_conversion<Qk_vec_m, Qk_vec_k>(k), max_abs_k);
+      if (tidx % threads_per_scale == 0) {
+        const int scale_offset = (bhi * params.max_sequence_length + tlength) *scales_per_head + tidx / threads_per_scale;
+        *(((TFp*)parameters.k_scale) + scale_offset) = (TFp)max_abs_k;
+      }
 
       // Compute \sum_i Q[i] * K^T[i] for the current timestep.
       using Qk_vec_acum = Qk_vec_k;
@@ -336,7 +515,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   constexpr int K_PER_WARP = WARP_SIZE / THREADS_PER_KEY;
 
   // Base pointer for the beam's batch, before offsetting with indirection buffer
-  T* k_cache_batch = &params_k_cache[bbhi * params.max_sequence_length * head_size + ki];
+  TQ8* k_cache_batch = &params_k_cache[bbhi * params.max_sequence_length * head_size + ki];
 
   // Pick a number of keys to make sure all the threads of a warp enter (due to shfl_sync).
   int ti_end = ((tlength + K_PER_WARP - 1) / K_PER_WARP) * K_PER_WARP;
@@ -347,30 +526,33 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
     bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
+    const int mapped_beam_index = (has_beams && ti < tlength) ? beam_indices[ti] : 0;
+    const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
+
+    const int mapped_bhi = (bbi * params.beam_width + mapped_beam_index) * params.num_heads + hi;
+    const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + ki / params.quantize_block_size;
+    float scale_of_k = (ti < tlength) ? (float)*(((TFp*)parameters.k_scale) + scale_offset) : 0.0f;
+    int next_quant_block_ki = ((ki + params.quantize_block_size - 1) / params.quantize_block_size + 1) * params.quantize_block_size;
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
 
-    if (has_beams) {
-#pragma unroll
+    if (ti < tlength) {
+      #pragma unroll
       for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
         int jj = ii * params.max_sequence_length + ti;
 
-        if (ti < tlength) {
-          const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
-              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
+        if (ki + (ii * K_VEC_SIZE) >= next_quant_block_ki) {
+          scale_offset++;
+          next_quant_block_ki += params.quantize_block_size;
+          scale_of_k = (float)*(((TFp*)parameters.k_scale) + scale_offset);
         }
+        k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
+            reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), scale_of_k));
       }
     } else {
-#pragma unroll
       for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        int jj = ii * params.max_sequence_length + ti;
-
-        if (ti < tlength) {
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
-              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
-        }
+        zero(k_vec[ii]);
       }
     }
 
@@ -466,12 +648,12 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   int vi = tidx % THREADS_PER_VALUE * V_VEC_SIZE;
 
   // The base pointer for the value in the cache buffer.
-  T* params_v_cache = reinterpret_cast<T*>(params.v_cache);
+  TQ8* params_v_cache = reinterpret_cast<TQ8*>(params.v_cache);
 
-  T* v_cache = &params_v_cache[bhi * params.max_sequence_length * head_size + vi];
+  TQ8* v_cache = &params_v_cache[bhi * params.max_sequence_length * head_size + vi];
 
   // Base pointer for the beam's batch, before offsetting with indirection buffer
-  T* v_cache_batch = &params_v_cache[bbhi * params.max_sequence_length * head_size + vi];
+  TQ8* v_cache_batch = &params_v_cache[bbhi * params.max_sequence_length * head_size + vi];
 
   // The number of values processed per iteration of the loop.
   constexpr int V_PER_ITER = THREADS_PER_BLOCK / THREADS_PER_VALUE;
@@ -504,8 +686,14 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     const int beam_src = has_beams ? params.cache_indir[bi_max_seq_length + ti] : 0;
     const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
 
+    const int mapped_bhi = (bbi * params.beam_width + beam_offset) * params.num_heads + hi;
+    const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + vi / params.quantize_block_size;
+    float scale_of_v = (float)*(((TFp*)parameters.v_scale) + scale_offset);
+
     // Load the values from the cache.
-    V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
+    // V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
+    V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(LoadQ8(
+                    reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]), scale_of_v));
 
     // Load the logits from shared memory.
     T logit = logits_smem[ti];
@@ -522,8 +710,25 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       v = add_vec(v, v_bias);
     }
 
+    float max_abs_v = MaxAbsFloat(v);
+    // Perform the final reduction to compute the max inside each warp.
+    if (THREADS_PER_VALUE <= WARP_SIZE) {
+      for (int mask = THREADS_PER_VALUE / 2; mask >= 1; mask /= 2) {
+        max_abs_v = fmaxf(max_abs_v, __shfl_xor_sync(uint32_t(-1), max_abs_v, mask));
+      }
+    } else {
+      constexpr int WARPS_PER_RED = (THREADS_PER_VALUE + WARP_SIZE - 1) / WARP_SIZE;
+      max_abs_v = block_sum<WARPS_PER_RED>(&red_smem[WARPS_PER_RED], max_abs_v);
+    }
+    __syncthreads();
     // Store the values with bias back to global memory in the cache for V.
-    *reinterpret_cast<V_vec_m*>(&v_cache[tlength * head_size]) = vec_conversion<V_vec_m, V_vec_k>(v);
+    //*reinterpret_cast<V_vec_m*>(&v_cache[tlength * head_size]) = vec_conversion<V_vec_m, V_vec_k>(v);
+    QuantizeTo(&v_cache[tlength * head_size], vec_conversion<V_vec_m, V_vec_k>(v), max_abs_v);
+    if (vi % params.quantize_block_size == 0) {
+      const int scales_per_head = head_size / params.quantize_block_size;
+      const int scale_offset = (bhi * params.max_sequence_length + tlength) * scales_per_head + vi / params.quantize_block_size;
+      *(((TFp*)parameters.v_scale) + scale_offset) = (TFp)max_abs_v;
+    }
 
     // Initialize the output value with the current timestep.
     out = fma(logits_smem[tlength], v, out);
