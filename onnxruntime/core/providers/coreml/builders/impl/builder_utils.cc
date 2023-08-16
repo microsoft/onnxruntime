@@ -96,6 +96,9 @@ Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<float>());
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<int32_t>());
+      break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<int64_t>());
       break;
@@ -111,12 +114,23 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
   weight.mutable_floatvalue()->Assign(data.begin(), data.end());
 }
 
-void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int64_t> data) {
+namespace {
+template<typename T>
+void CreateCoreMLWeightConvertingDataToFloats(CoreML::Specification::WeightParams& weight, gsl::span<const T> data) {
   google::protobuf::RepeatedField<float> weight_floats{};
   weight_floats.Reserve(narrow<int>(data.size()));
   std::transform(data.begin(), data.end(), google::protobuf::RepeatedFieldBackInserter(&weight_floats),
-                 [](int64_t v) { return narrow<float>(v); });
+                 [](T v) { return narrow<float>(v); });
   *weight.mutable_floatvalue() = std::move(weight_floats);
+}
+}
+
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int32_t> data) {
+  CreateCoreMLWeightConvertingDataToFloats(weight, data);
+}
+
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int64_t> data) {
+  CreateCoreMLWeightConvertingDataToFloats(weight, data);
 }
 
 }  // namespace coreml
