@@ -20,7 +20,7 @@ Here is what the application will look like:
 ## Introduction
 We will guide you through the process of building an iOS application that can train a simple audio classification model using on-device training techniques. The tutorial showcases the `transfer learning` technique where knowledge gained from training a model on one task is leveraged to improve the performance of a model on a different but related task. Instead of starting the learning process from scratch, transfer learning allows us to transfer the knowledge or features learned by a pre-trained model to a new task.
 
-In this tutorial, we will leverage the `wav2vec` model which has been trained on large-scale celebrity speech data such as `VoxCeleb1`. We will use the pre-trained model to extract features from the audio data and train a binary classifier to identify the speaker. The initial layers of the model serve as a feature extractor, capturing the important features of the audio data. Only the last layer of the model is trained to perform the classification task.
+In this tutorial, we will leverage the [`wav2vec`](https://huggingface.co/superb/wav2vec2-base-superb-sid) model which has been trained on large-scale celebrity speech data such as `VoxCeleb1`. We will use the pre-trained model to extract features from the audio data and train a binary classifier to identify the speaker. The initial layers of the model serve as a feature extractor, capturing the important features of the audio data. Only the last layer of the model is trained to perform the classification task.
 
 In the tutorial, we will:
 - Use iOS audio APIs to capture audio data for training
@@ -150,13 +150,9 @@ Enter the project name. Here, we will name the project 'MyVoice', but you can na
 Select the location where you want to save the project and click `Create`.
 
 
-Now, we will need to add the `onnxruntime-training-objc` pods to the project. We will use `CocoaPods` to add the dependency. If you don't have CocoaPods installed, you can install it by running the following command in the terminal:
+Now, we will need to add the `onnxruntime-training-objc` pods to the project. We will use `CocoaPods` to add the dependency. If you don't have CocoaPods installed, you can check out the installation instructions [here](https://guides.cocoapods.org/using/getting-started.html#installation). 
 
-```bash
-sudo gem install cocoapods
-```
-
-Navigate to the project directory and run the following command to create a `Podfile`:
+After installing CocoaPods, navigate to the project directory and run the following command to create a `Podfile`:
 
 ```bash
 pod init
