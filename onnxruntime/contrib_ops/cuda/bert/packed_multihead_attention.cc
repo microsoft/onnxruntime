@@ -9,6 +9,7 @@
 #include "contrib_ops/cuda/bert/packed_multihead_attention_impl.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -277,6 +278,11 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.no_qkv_workspace = no_qkv_workspace;
   data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;
+#if USE_FLASH_ATTENTION
+  size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
+  auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+  data.softmax_lse_buffer = reinterpret_cast<CudaT*>(soft_buff.get());
+#endif
 
   return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }

@@ -17,6 +17,7 @@
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
@@ -631,14 +632,41 @@ Status FusedAttentionCutlass(
   p.query = data.no_qkv_workspace ? data.query : data.workspace;
   p.key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   p.value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
-  p.attn_bias = data.relative_position_bias;
+  p.attn_bias = data.relative_position_bias; // TODO: where is this in flash?
   p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float))
                     ? (data.workspace + (data.no_qkv_workspace ? 0 : (elements_qk + elements_qk + elements_v)))
                     : nullptr;
   p.stream = stream;
-  run_memory_efficient_attention(p);
+
+  // size_t softmax_lse_bytes = get_softmax_lse_size(p.sequence_length, p.batch_size, parameters.num_heads);
+  // auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes);
+
+  // run_memory_efficient_attention(p);
+  cudaStreamSynchronize(stream);
+  ORT_RETURN_IF_ERROR(mha_varlen_fwd(
+    device_prop,
+    p.stream,
+    const_cast<void*>(p.query), 
+    const_cast<void*>(p.key), 
+    const_cast<void*>(p.value),
+    p.output,
+    p.seqstart_q_ptr,
+    p.seqstart_k_ptr,
+    reinterpret_cast<void*>(data.softmax_lse_buffer),
+    p.batch_size,
+    p.num_heads,
+    p.num_heads, //num_heads_k
+    p.qk_head_size,
+    p.v_head_size,
+    p.batch_size * p.sequence_length, // Total token count
+    p.sequence_length, // IS THIS MAX_SEQLEN_Q?
+    p.kv_sequence_length, // IS THIS MAX_SEQLEN_V
+    p.scale, // scale refer to softmax scale?
+    p.causal // is causal
+    ));
+  cudaStreamSynchronize(stream);
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", reinterpret_cast<const T*>(p.query), parameters.token_count, num_heads * qk_head_size);

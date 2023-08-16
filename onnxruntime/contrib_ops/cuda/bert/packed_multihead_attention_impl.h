@@ -30,6 +30,8 @@ struct PackedMultiHeadAttentionData {
   void* fused_runner;
 
   bool use_memory_efficient_attention;
+
+  void* softmax_lse_buffer;
 };
 
 template <typename T>

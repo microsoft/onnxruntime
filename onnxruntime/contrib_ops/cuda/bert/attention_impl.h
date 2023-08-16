@@ -78,6 +78,8 @@ struct AttentionData {
 
   mutable CumulatedSequenceLengthCache* cumulated_sequence_length_q_cache;
   mutable CumulatedSequenceLengthCache* cumulated_sequence_length_kv_cache;
+
+  void* softmax_lse_buffer;
 };
 
 template <typename T>
