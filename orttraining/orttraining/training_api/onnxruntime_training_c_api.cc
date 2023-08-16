@@ -50,7 +50,7 @@ static OrtStatus* CreateSessionAndLoadModel(_In_ const OrtEnv* env, _In_ const O
 ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* env,
                     _In_ const OrtSessionOptions* options, _Inout_ OrtCheckpointState* checkpoint_state,
                     _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path,
-                    _In_ const ORTCHAR_T* optimizer_model_path, _Outptr_ OrtTrainingSession** out) {
+                    _In_ const ORTCHAR_T* optimizer_model_path, _Outptr_result_maybenull_ OrtTrainingSession** out) {
   API_IMPL_BEGIN
   if (options != nullptr && options->value.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1") {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Use Env Allocators is not supported for on device training.");
@@ -88,7 +88,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSessionFromBuffer, _In_ const
                     _In_ const void* train_model_data, size_t train_data_length,
                     _In_ const void* eval_model_data, size_t eval_data_length,
                     _In_ const void* optim_model_data, size_t optim_data_length,
-                    _Outptr_ OrtTrainingSession** out) {
+                    _Outptr_result_maybenull_ OrtTrainingSession** out) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::training::api::TrainingSession> train_sess;
   OrtStatus* status = nullptr;
