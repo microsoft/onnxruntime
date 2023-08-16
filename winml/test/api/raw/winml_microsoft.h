@@ -421,7 +421,7 @@ __declspec(selectany
 ) const GUID TensorFactory2IID<double>::IID = ABI::Microsoft::AI::MachineLearning::IID_ITensorDoubleStatics2;
 
 inline HRESULT GetActivationFactory(const wchar_t* p_class_id, const IID& iid, void** factory) noexcept {
-    // Fallback to OS binary if the redistributable is not present!
+  // Fallback to OS binary if the redistributable is not present!
   auto library = LoadLibraryExW(MachineLearningDll, nullptr, 0);
   if (library == nullptr) {
     return HRESULT_FROM_WIN32(GetLastError());
@@ -500,15 +500,15 @@ class WinMLLearningModel {
 
   int32_t Initialize(const char* bytes, size_t size, bool with_copy = false) {
     auto hr = RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED);
-      // https://docs.microsoft.com/en-us/windows/win32/api/roapi/nf-roapi-roinitialize#return-value
-      // RPC_E_CHANGED_MODE indicates already initialized as multithreaded
+    // https://docs.microsoft.com/en-us/windows/win32/api/roapi/nf-roapi-roinitialize#return-value
+    // RPC_E_CHANGED_MODE indicates already initialized as multithreaded
     if (hr < 0 && hr != RPC_E_CHANGED_MODE) {
       return static_cast<int32_t>(hr);
     }
 
     Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamReference> random_access_stream_ref;
     if (with_copy) {
-          // Create in memory stream
+      // Create in memory stream
       Microsoft::WRL::ComPtr<IInspectable> in_memory_random_access_stream_insp;
       RETURN_HR_IF_FAILED(RoActivateInstance(
         Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_InMemoryRandomAccessStream)
@@ -516,31 +516,31 @@ class WinMLLearningModel {
         in_memory_random_access_stream_insp.GetAddressOf()
       ));
 
-          // QI memory stream to output stream
+      // QI memory stream to output stream
       Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IOutputStream> output_stream;
       RETURN_HR_IF_FAILED(in_memory_random_access_stream_insp.As(&output_stream));
 
-        // Create data writer factory
+      // Create data writer factory
       Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IDataWriterFactory> activation_factory;
       RETURN_HR_IF_FAILED(RoGetActivationFactory(
         Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_DataWriter).Get(),
         IID_PPV_ARGS(activation_factory.GetAddressOf())
       ));
 
-        // Create data writer object based on the in memory stream
+      // Create data writer object based on the in memory stream
       Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IDataWriter> data_writer;
       RETURN_HR_IF_FAILED(activation_factory->CreateDataWriter(output_stream.Get(), data_writer.GetAddressOf()));
 
-        // Write the model to the data writer and thus to the stream
+      // Write the model to the data writer and thus to the stream
       RETURN_HR_IF_FAILED(
         data_writer->WriteBytes(static_cast<uint32_t>(size), reinterpret_cast<BYTE*>(const_cast<char*>(bytes)))
       );
 
-        // QI the in memory stream to a random access stream
+      // QI the in memory stream to a random access stream
       Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStream> random_access_stream;
       RETURN_HR_IF_FAILED(in_memory_random_access_stream_insp.As(&random_access_stream));
 
-        // Create a random access stream reference factory
+      // Create a random access stream reference factory
       Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamReferenceStatics>
         random_access_stream_ref_statics;
       RETURN_HR_IF_FAILED(RoGetActivationFactory(
@@ -549,8 +549,8 @@ class WinMLLearningModel {
         IID_PPV_ARGS(random_access_stream_ref_statics.GetAddressOf())
       ));
 
-        // Create a random access stream reference from the random access stream view on top of
-        // the in memory stream
+      // Create a random access stream reference from the random access stream view on top of
+      // the in memory stream
       RETURN_HR_IF_FAILED(random_access_stream_ref_statics->CreateFromStream(
         random_access_stream.Get(), random_access_stream_ref.GetAddressOf()
       ));
@@ -570,7 +570,7 @@ class WinMLLearningModel {
       ));
     }
 
-      // Create a learning model factory
+    // Create a learning model factory
     Microsoft::WRL::ComPtr<ABI::Microsoft::AI::MachineLearning::ILearningModelStatics> learning_model;
     RETURN_HR_IF_FAILED(GetActivationFactory(
       RuntimeClass_Microsoft_AI_MachineLearning_LearningModel,
@@ -578,8 +578,8 @@ class WinMLLearningModel {
       &learning_model
     ));
 
-        // Create a learning model from the factory with the random access stream reference that points
-        // to the random access stream view on top of the in memory stream copy of the model
+    // Create a learning model from the factory with the random access stream reference that points
+    // to the random access stream view on top of the in memory stream copy of the model
     RETURN_HR_IF_FAILED(learning_model->LoadFromStream(random_access_stream_ref.Get(), m_learning_model.GetAddressOf())
     );
 

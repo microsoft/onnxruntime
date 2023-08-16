@@ -19,7 +19,7 @@ using namespace wgi;
 
 namespace ImageTestHelper {
 BitmapPixelFormat GetPixelFormat(const std::wstring& inputPixelFormat) {
-        // Return corresponding BitmapPixelFormat according to input string
+  // Return corresponding BitmapPixelFormat according to input string
   if (L"Bgra8" == inputPixelFormat || L"Bgr8" == inputPixelFormat) {
     return BitmapPixelFormat::Bgra8;
   } else if (L"Rgba8" == inputPixelFormat || L"Rgb8" == inputPixelFormat) {
@@ -42,7 +42,7 @@ TensorFloat LoadInputImageFromCPU(SoftwareBitmap softwareBitmap, const std::wstr
   uint32_t height = softwareBitmap.PixelHeight();
   uint32_t width = softwareBitmap.PixelWidth();
 
-        // TODO: Need modification for Gray8
+  // TODO: Need modification for Gray8
   std::vector<int64_t> shape = {1, 3, height, width};
   float* pCPUTensor;
   uint32_t uCapacity;
@@ -50,7 +50,7 @@ TensorFloat LoadInputImageFromCPU(SoftwareBitmap softwareBitmap, const std::wstr
   com_ptr<ITensorNative> itn = tf.as<ITensorNative>();
   itn->GetBuffer(reinterpret_cast<BYTE**>(&pCPUTensor), &uCapacity);
   if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
-            // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
+    // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
     for (UINT32 i = 0; i < size - 2; i += 4) {
       UINT32 pixelInd = i / 4;
       pCPUTensor[pixelInd] = (float)pData[i];
@@ -65,8 +65,8 @@ TensorFloat LoadInputImageFromCPU(SoftwareBitmap softwareBitmap, const std::wstr
       pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i];
     }
   }
-        // else if()
-        // TODO: for Gray8
+  // else if()
+  // TODO: for Gray8
   else {
     std::cerr << "Unsupported pixelFormat";
   }
@@ -87,7 +87,7 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
   float* pCPUTensor;
   uint32_t uCapacity;
 
-        // CPU tensor initialization
+  // CPU tensor initialization
   TensorFloat tf = TensorFloat::Create(shape);
   com_ptr<ITensorNative> itn = tf.as<ITensorNative>();
   itn->GetBuffer(reinterpret_cast<BYTE**>(&pCPUTensor), &uCapacity);
@@ -95,7 +95,7 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
   uint32_t height = softwareBitmap.PixelHeight();
   uint32_t width = softwareBitmap.PixelWidth();
   if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
-            // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
+    // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
     for (UINT32 i = 0; i < size - 2; i += 4) {
       UINT32 pixelInd = i / 4;
       pCPUTensor[pixelInd] = (float)pData[i];
@@ -110,19 +110,19 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
       pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i];
     }
   }
-        // else if()
-        // TODO: for Gray8
+  // else if()
+  // TODO: for Gray8
   else {
     std::cerr << "unsupported pixelFormat";
   }
 
-        // create the d3d device.
+  // create the d3d device.
   com_ptr<ID3D12Device> pD3D12Device = nullptr;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(
     nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&pD3D12Device)
   ));
 
-        // create the command queue.
+  // create the command queue.
   com_ptr<ID3D12CommandQueue> dxQueue = nullptr;
   D3D12_COMMAND_QUEUE_DESC commandQueueDesc = {};
   commandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -133,7 +133,7 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
   com_ptr<::IUnknown> spUnk;
   devicefactory->CreateFromD3D12CommandQueue(dxQueue.get(), spUnk.put());
 
-        // Create ID3D12GraphicsCommandList and Allocator
+  // Create ID3D12GraphicsCommandList and Allocator
   D3D12_COMMAND_LIST_TYPE queuetype = dxQueue->GetDesc().Type;
   com_ptr<ID3D12CommandAllocator> alloctor;
   com_ptr<ID3D12GraphicsCommandList> cmdList;
@@ -144,8 +144,8 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
     0, queuetype, alloctor.get(), nullptr, winrt::guid_of<ID3D12CommandList>(), cmdList.put_void()
   );
 
-        // Create Committed Resource
-        // 3 is number of channels we use. R G B without alpha.
+  // Create Committed Resource
+  // 3 is number of channels we use. R G B without alpha.
   UINT64 bufferbytesize = 3 * sizeof(float) * softwareBitmap.PixelWidth() * softwareBitmap.PixelHeight();
   D3D12_HEAP_PROPERTIES heapProperties = {
     D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
@@ -174,7 +174,7 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
     pGPUResource.put_void()
   );
 
-        // Create the GPU upload buffer.
+  // Create the GPU upload buffer.
   auto heap_properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
   auto buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(bufferbytesize);
   WINML_EXPECT_NO_THROW(pD3D12Device->CreateCommittedResource(
@@ -187,38 +187,38 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
     imageUploadHeap.put_void()
   ));
 
-        // Copy from Cpu to GPU
+  // Copy from Cpu to GPU
   D3D12_SUBRESOURCE_DATA CPUData = {};
   CPUData.pData = reinterpret_cast<BYTE*>(pCPUTensor);
   CPUData.RowPitch = static_cast<LONG_PTR>(bufferbytesize);
   CPUData.SlicePitch = static_cast<LONG_PTR>(bufferbytesize);
   UpdateSubresources(cmdList.get(), pGPUResource.get(), imageUploadHeap.get(), 0, 0, 1, &CPUData);
 
-        // Close the command list and execute it to begin the initial GPU setup.
+  // Close the command list and execute it to begin the initial GPU setup.
   WINML_EXPECT_NO_THROW(cmdList->Close());
   ID3D12CommandList* ppCommandLists[] = {cmdList.get()};
   dxQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-        //Create Event
+  //Create Event
   HANDLE directEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
   wil::unique_event hDirectEvent(directEvent);
 
-        //Create Fence
+  //Create Fence
   ::Microsoft::WRL::ComPtr<ID3D12Fence> spDirectFence = nullptr;
   WINML_EXPECT_HRESULT_SUCCEEDED(
     pD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(spDirectFence.ReleaseAndGetAddressOf()))
   );
-        //Adds fence to queue
+  //Adds fence to queue
   WINML_EXPECT_HRESULT_SUCCEEDED(dxQueue->Signal(spDirectFence.Get(), FENCE_SIGNAL_VALUE));
   WINML_EXPECT_HRESULT_SUCCEEDED(spDirectFence->SetEventOnCompletion(FENCE_SIGNAL_VALUE, hDirectEvent.get()));
 
-        //Wait for signal
+  //Wait for signal
   DWORD retVal = WaitForSingleObject(hDirectEvent.get(), INFINITE);
   if (retVal != WAIT_OBJECT_0) {
     WINML_EXPECT_HRESULT_SUCCEEDED(E_UNEXPECTED);
   }
 
-        // GPU tensorize
+  // GPU tensorize
   com_ptr<::IUnknown> spUnkTensor;
   TensorFloat input1imagetensor(nullptr);
   int64_t shapes[4] = {1, 3, softwareBitmap.PixelWidth(), softwareBitmap.PixelHeight()};
@@ -229,7 +229,7 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
 }
 
 bool VerifyHelper(VideoFrame actual, VideoFrame expected) {
-        // Verify two input ImageFeatureValues are identified.
+  // Verify two input ImageFeatureValues are identified.
   auto softwareBitmapActual = actual.SoftwareBitmap();
   auto softwareBitmapExpected = expected.SoftwareBitmap();
   WINML_EXPECT_TRUE(softwareBitmapActual.PixelHeight() == softwareBitmapExpected.PixelHeight());
@@ -252,15 +252,15 @@ bool VerifyHelper(VideoFrame actual, VideoFrame expected) {
   byte* pActualByte = actualBytes;
   byte* pExpectedByte = expectedBytes;
 
-        // hard code, might need to be modified later.
+  // hard code, might need to be modified later.
   const float cMaxErrorRate = 0.4f;
   int8_t epsilon = 20;
 
-        // Even given two same ImageFeatureValues, the comparison cannot exactly match.
-        // So we use error rate.
+  // Even given two same ImageFeatureValues, the comparison cannot exactly match.
+  // So we use error rate.
   UINT errors = 0;
   for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++) {
-            // Only the check the first three channels, which are (B, G, R)
+    // Only the check the first three channels, which are (B, G, R)
     if ((i + 1) % 4 == 0)
       continue;
     auto diff = (*pActualByte - *pExpectedByte);
@@ -271,4 +271,4 @@ bool VerifyHelper(VideoFrame actual, VideoFrame expected) {
   std::cerr << "total errors is " << errors << "/" << size << ", errors rate is " << (float)errors / size << std::endl;
   return (float)errors / size < cMaxErrorRate;
 }
-}// namespace ImageTestHelper
+}  // namespace ImageTestHelper
