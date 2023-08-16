@@ -1340,7 +1340,7 @@
       "global-average-pool.jsonc",
       //"greater.jsonc",
       //"less.jsonc",
-      //"log.jsonc",
+      "log.jsonc",
       //"matmul.jsonc", // <--- some tests fail (when input is 3D/4D/5D)
       "mul.jsonc",
       //"neg.jsonc",
