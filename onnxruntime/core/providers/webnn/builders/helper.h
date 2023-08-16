@@ -134,6 +134,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"ArgMax", "argMax"},
     {"ArgMin", "argMin"},
     {"AveragePool", "averagePool2d"},
+    {"BatchNormalization", "meanVarianceNormalization"},
     {"Cast", "cast"},
     {"Ceil", "ceil"},
     {"Clip", "clamp"},
