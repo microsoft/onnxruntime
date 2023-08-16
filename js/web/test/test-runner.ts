@@ -574,7 +574,7 @@ export class ProtoOpTestContext {
   private readonly loadedData: Uint8Array;  // model data, inputs, outputs
   session: ort.InferenceSession;
   readonly backendHint: string;
-  constructor(test: Test.OperatorTest) {
+  constructor(test: Test.OperatorTest, private readonly sessionOptions: ort.InferenceSession.SessionOptions = {}) {
     const opsetImport = onnx.OperatorSetIdProto.create(test.opset);
     const operator = test.operator;
     const attribute = (test.attributes || []).map(attr => {
@@ -714,7 +714,8 @@ export class ProtoOpTestContext {
     }
   }
   async init(): Promise<void> {
-    this.session = await ort.InferenceSession.create(this.loadedData, {executionProviders: [this.backendHint]});
+    this.session = await ort.InferenceSession.create(
+        this.loadedData, {executionProviders: [this.backendHint], ...this.sessionOptions});
   }
 
   async dispose(): Promise<void> {
