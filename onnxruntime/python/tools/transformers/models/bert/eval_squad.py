@@ -29,7 +29,12 @@ from datasets import load_dataset
 from evaluate import evaluator
 from optimum.onnxruntime import ORTModelForQuestionAnswering
 from optimum.onnxruntime.modeling_ort import ORTModel
+from optimum.version import __version__ as optimum_version
+from packaging import version as version_check
 from transformers import AutoTokenizer, pipeline
+
+if version_check.parse(optimum_version) < version_check.parse("1.6.0"):
+    raise ImportError(f"Please install optimum>=1.6.0. The version {optimum_version} was found.")
 
 PRETRAINED_SQUAD_MODELS = [
     "bert-large-uncased-whole-word-masking-finetuned-squad",
@@ -62,7 +67,7 @@ def load_onnx_model(
     model = ORTModelForQuestionAnswering.from_pretrained(model_id, from_transformers=True)
 
     if onnx_path is not None:
-        model.latest_model_name = Path(onnx_path).name
+        model.model_name = Path(onnx_path).name
 
         if provider != "CPUExecutionProvider":
             model.device = torch.device("cuda:0")
@@ -71,7 +76,7 @@ def load_onnx_model(
             model.device = torch.device("cpu")
             model.model = ORTModel.load_model(onnx_path)
     else:
-        onnx_path = os.path.join(model.model_save_dir.as_posix(), model.latest_model_name)
+        onnx_path = os.path.join(model.model_save_dir.as_posix(), model.model_name)
         if provider != "CPUExecutionProvider":
             model.to("cuda")
 
