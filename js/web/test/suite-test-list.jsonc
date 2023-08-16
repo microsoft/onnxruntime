@@ -1345,6 +1345,7 @@
       //"neg.jsonc",
       //"not.jsonc",
       //"or.jsonc",
+      "layer-norm.jsonc",
       "leaky-relu.jsonc",
       "reduce-min.jsonc",
       "relu.jsonc",
