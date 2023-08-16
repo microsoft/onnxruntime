@@ -150,14 +150,12 @@ def run(
 
     # Do not re-use onnx file from previous test since weights of model are random.
     onnx_model_path = "./temp/layer_norm_{}_formula{}.onnx".format("fp16" if float16 else "fp32", formula)
-    export_onnx(model, onnx_model_path, float16, hidden_size, device)  # noqa: F405
+    export_onnx(model, onnx_model_path, float16, hidden_size, device)
 
     if optimized:
         optimized_onnx_path = "./temp/layer_norm_{}_formula{}_opt.onnx".format("fp16" if float16 else "fp32", formula)
         if (not float16) or cast_fp16:
-            optimize_onnx(  # noqa: F405
-                onnx_model_path, optimized_onnx_path, expected_op=LayerNorm.get_fused_op(), verbose=verbose
-            )
+            optimize_onnx(onnx_model_path, optimized_onnx_path, expected_op=LayerNorm.get_fused_op(), verbose=verbose)
         else:
             if cast_onnx_only:
                 optimize_fp16_onnx_with_cast(onnx_model_path, optimized_onnx_path, epsilon=epsilon)
@@ -168,7 +166,7 @@ def run(
     else:
         onnx_path = onnx_model_path
 
-    num_failure = run_parity(  # noqa: F405
+    num_failure = run_parity(
         model,
         onnx_path,
         batch_size,
@@ -306,7 +304,7 @@ class TestLayerNormParity(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    args, remaining_args = parse_arguments(namespace_filter=unittest)  # noqa: F405
+    args, remaining_args = parse_arguments(namespace_filter=unittest)
 
     TestLayerNormParity.verbose = args.log_verbose
     TestLayerNormParity.optimized = args.optimize
