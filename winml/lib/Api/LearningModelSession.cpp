@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
- // Licensed under the MIT License.
+// Licensed under the MIT License.
 
 #include "lib/Api/pch/pch.h"
 
@@ -20,8 +20,8 @@
 static const auto c_enable_debug_output = L"EnableDebugOutput";
 
 namespace guid_details {
- // This GUID is to be used for delimiting ML-related categories of capturable work.
- // {D113B493-BBA2-4993-8608-D706A73B91CE}
+// This GUID is to be used for delimiting ML-related categories of capturable work.
+// {D113B493-BBA2-4993-8608-D706A73B91CE}
 struct __declspec(uuid("D113B493-BBA2-4993-8608-D706A73B91CE")) __declspec(novtable
 ) WINML_PIX_EVAL_CAPTURABLE_WORK_GUID {};
 }  // namespace guid_details
@@ -61,7 +61,7 @@ LearningModelSession::LearningModelSession(
 WINML_CATCH_ALL
 
 _winml::IModel* LearningModelSession::GetOptimizedModel() {
-   // Get the model proto
+  // Get the model proto
 
   auto should_close_model = session_options_ != nullptr && session_options_.CloseModelOnSessionCreation();
 
@@ -72,18 +72,18 @@ _winml::IModel* LearningModelSession::GetOptimizedModel(bool should_close_model)
   com_ptr<_winml::IModel> model;
 
   {
-     // Lock the model detach/copy since multiple threads can access concurrently
+    // Lock the model detach/copy since multiple threads can access concurrently
     CWinMLAutoLock lock(&session_creation_lock_);
 
-      // Throw if the model has been disposed and is not capable of creating
-     // new sessions.
+    // Throw if the model has been disposed and is not capable of creating
+    // new sessions.
     auto model_impl = model_.as<winmlp::LearningModel>();
     WINML_THROW_HR_IF_TRUE_MSG(E_INVALIDARG, model_impl->IsDisposed(), "The model has been disposed.");
 
     model.attach(should_close_model ? model_impl->DetachModel() : model_impl->CloneModel());
   }
 
-    // Ensure that the model is runnable on the device
+  // Ensure that the model is runnable on the device
   auto isFloat16Supported = device_.as<winmlp::LearningModelDevice>()->GetD3DDeviceCache()->IsFloat16Supported();
   if (!isFloat16Supported) {
     WINML_THROW_IF_FAILED(model->ModelEnsureNoFloat16());
@@ -92,13 +92,13 @@ _winml::IModel* LearningModelSession::GetOptimizedModel(bool should_close_model)
 }
 
 void LearningModelSession::Initialize() {
-   // Begin recording session creation telemetry
+  // Begin recording session creation telemetry
   _winmlt::TelemetryEvent session_creation_event(_winmlt::EventCategory::kSessionCreation);
-   // Get the optimized model proto from the learning model
+  // Get the optimized model proto from the learning model
   com_ptr<_winml::IModel> model;
   model.attach(GetOptimizedModel());
 
-    // Create the session builder
+  // Create the session builder
   auto device_impl = device_.as<winmlp::LearningModelDevice>();
   auto model_impl = model_.as<winmlp::LearningModel>();
 
@@ -121,7 +121,7 @@ void LearningModelSession::Initialize() {
 
   auto num_intra_op_threads = device_impl->NumberOfIntraOpThreads();
   auto allow_spinning = device_impl->AllowSpinning();
-   // Make onnxruntime apply the batch size override, if any
+  // Make onnxruntime apply the batch size override, if any
   if (session_options_) {
     if (session_options_.BatchSizeOverride() != 0) {
       WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
@@ -130,7 +130,7 @@ void LearningModelSession::Initialize() {
     com_ptr<winmlp::LearningModelSessionOptions> session_options_impl =
       session_options_.as<winmlp::LearningModelSessionOptions>();
 
-      // Make onnxruntime apply named dimension overrides, if any
+    // Make onnxruntime apply named dimension overrides, if any
     if (session_options_impl && session_options_impl->NamedDimensionOverrides().Size() > 0) {
       WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides())
       );
@@ -164,7 +164,7 @@ void LearningModelSession::Initialize() {
   com_ptr<_winml::IEngine> engine;
   WINML_THROW_IF_FAILED(engine_builder->CreateEngine(engine.put()));
 
-    // Register the custom operator registry
+  // Register the custom operator registry
   operator_registry_ =
     MLOperatorRegistry(model_impl->GetOperatorRegistry(), [](auto registry) { registry->Release(); });
   WINML_THROW_IF_FAILED(engine->RegisterCustomRegistry(operator_registry_.get()));

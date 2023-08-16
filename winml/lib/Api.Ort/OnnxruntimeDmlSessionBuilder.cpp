@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
- // Licensed under the MIT License.
+// Licensed under the MIT License.
 
 #include "lib/Api.Ort/pch.h"
 
@@ -64,7 +64,7 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(OrtSessionOptions** options) 
     winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), use_arena), ort_api
   );
 
-    // call release() so the underlying OrtSessionOptions object isn't freed
+  // call release() so the underlying OrtSessionOptions object isn't freed
   *options = session_options.release();
 
   return S_OK;
