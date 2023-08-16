@@ -2,6 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema",
   "type": "array",
   "items": {
+    "type": "object",
     "properties": {
       "name": {
         "type": "string",
@@ -170,78 +171,140 @@
               "type": "array",
               "description": "the test case inputs",
               "items": {
-                "properties": {
-                  "type": {
-                    "enum": [
-                      "float32",
-                      "float64",
-                      "int8",
-                      "int16",
-                      "int32",
-                      "int64",
-                      "uint8",
-                      "uint16",
-                      "uint32",
-                      "uint64",
-                      "bool",
-                      "string"
-                    ]
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "float32",
+                          "float64",
+                          "int8",
+                          "int16",
+                          "int32",
+                          "int64",
+                          "uint8",
+                          "uint16",
+                          "uint32",
+                          "uint64",
+                          "bool",
+                          "string"
+                        ]
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": ["number", "string", "boolean"]
+                        }
+                      },
+                      "dims": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "required": ["type", "data", "dims"],
+                    "additionalProperties": false
                   },
-                  "data": {
-                    "type": "array",
-                    "items": {
-                      "type": ["number", "string", "boolean"]
-                    }
-                  },
-                  "dims": {
-                    "type": "array",
-                    "items": {
-                      "type": "integer",
-                      "minimum": 0
-                    }
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "float32",
+                          "float64",
+                          "int8",
+                          "int16",
+                          "int32",
+                          "int64",
+                          "uint8",
+                          "uint16",
+                          "uint32",
+                          "uint64",
+                          "bool",
+                          "string"
+                        ]
+                      },
+                      "data": {
+                        "type": "null"
+                      }
+                    },
+                    "required": ["type", "data"],
+                    "additionalProperties": false
                   }
-                },
-                "required": ["type", "data", "dims"],
-                "additionalProperties": false
+                ]
               }
             },
             "outputs": {
               "type": "array",
               "description": "the test case outputs",
               "items": {
-                "properties": {
-                  "type": {
-                    "enum": [
-                      "float32",
-                      "float64",
-                      "int8",
-                      "int16",
-                      "int32",
-                      "int64",
-                      "uint8",
-                      "uint16",
-                      "uint32",
-                      "uint64",
-                      "bool",
-                      "string"
-                    ]
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "float32",
+                          "float64",
+                          "int8",
+                          "int16",
+                          "int32",
+                          "int64",
+                          "uint8",
+                          "uint16",
+                          "uint32",
+                          "uint64",
+                          "bool",
+                          "string"
+                        ]
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": ["number", "string", "boolean"]
+                        }
+                      },
+                      "dims": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "required": ["type", "data", "dims"],
+                    "additionalProperties": false
                   },
-                  "data": {
-                    "type": "array",
-                    "items": {
-                      "type": ["number", "string", "boolean"]
-                    }
-                  },
-                  "dims": {
-                    "type": "array",
-                    "items": {
-                      "type": "integer",
-                      "minimum": 0
-                    }
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "float32",
+                          "float64",
+                          "int8",
+                          "int16",
+                          "int32",
+                          "int64",
+                          "uint8",
+                          "uint16",
+                          "uint32",
+                          "uint64",
+                          "bool",
+                          "string"
+                        ]
+                      },
+                      "data": {
+                        "type": "null"
+                      }
+                    },
+                    "required": ["type", "data"],
+                    "additionalProperties": false
                   }
-                },
-                "required": ["type", "data", "dims"],
-                "additionalProperties": false
+                ]
               }
             }
           },
