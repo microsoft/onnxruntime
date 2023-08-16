@@ -159,7 +159,7 @@ const createConvTranspose2DOpProgramShaderSource =
         }
 
         for (var i: u32 = 0; i < ${workPerThread}; i = i + 1) {
-          ${output.set('batch', 'r', 'c+i', 'd1', 'dotProd[i]')}
+          ${output.set('batch', 'r', 'c+i', 'd1', 'dotProd[i]')};
         }
       }`;
       const codeSnippet = `
