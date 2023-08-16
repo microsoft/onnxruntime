@@ -148,7 +148,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     const std::string& op_type = node_unit.OpType();
     // const bool is_qdq_node = op_type == "QuantizeLinear" || op_type == "DequantizeLinear";
 
-    const bool is_quantized_node = NodeUnit::Type::QDQGroup == node_unit.UnitType();
+    const bool is_quantized_node = NodeUnit::Type::QDQGroup == node_unit.UnitType() || op_type == "QuantizeLinear" || op_type == "DequantizeLinear";
     // Is NPU backend, is single node, case by case
     // Q/DQ nodes -- supported
     // Transpose nodes -- supported
