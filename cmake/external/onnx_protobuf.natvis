@@ -92,9 +92,9 @@
       <Item Name="[strings]" Condition="_impl_.type_ == AttributeProto_AttributeType_STRINGS">_impl_.strings_</Item>
       <Item Name="[t]" Condition="_impl_.type_ == AttributeProto_AttributeType_TENSOR &amp;&amp; _has_tensor()">_impl_.t_</Item>
       <Item Name="[tensors]" Condition="_impl_.type_ == AttributeProto_AttributeType_TENSORS">_impl_.tensors_</Item>
-      <Item Name="[g]" Condition="_impl_.type_ == AttributeProto_AttributeType_GRAPH &amp;&amp; _has_graph()">_impl_.t_</Item>
+      <Item Name="[g]" Condition="_impl_.type_ == AttributeProto_AttributeType_GRAPH &amp;&amp; _has_graph()">_impl_.g_</Item>
       <Item Name="[graphs]" Condition="_impl_.type_ == AttributeProto_AttributeType_GRAPHS">_impl_.graphs_</Item>
-      <Item Name="[tp]" Condition="_impl_.type_ == AttributeProto_AttributeType_TYPE_PROTO &amp;&amp; _has_type_proto()">_impl_.t_</Item>
+      <Item Name="[tp]" Condition="_impl_.type_ == AttributeProto_AttributeType_TYPE_PROTO &amp;&amp; _has_type_proto()">_impl_.tp_</Item>
       <Item Name="[type_protos]" Condition="_impl_.type_ == AttributeProto_AttributeType_TYPE_PROTOS">_impl_.type_protos_</Item>
       <Item Name="[sparse_tensor]" Condition="_impl_.type_ == AttributeProto_AttributeType_SPARSE_TENSOR &amp;&amp; _has_sparse_tensor()">_impl_.sparse_tensor_</Item>
       <Item Name="[sparse_tensors]" Condition="_impl_.type_ == AttributeProto_AttributeType_SPARSE_TENSORS">_impl_.sparse_tensors_</Item>
@@ -239,7 +239,7 @@
 
    <!--Protos-->
   <Type Name="onnx::TensorProto_Segment">
-    <DisplayString>{{ begin={ begin_ }, end={ end_ } }}</DisplayString>
+    <DisplayString>{{ begin={ _impl_.begin_ }, end={ _impl_.end_ } }}</DisplayString>
     <Expand></Expand>
   </Type>
 
@@ -276,7 +276,7 @@
       <Item Name="[uint64_data]" ExcludeView="simple" Condition="_impl_.data_type_ == TensorProto_DataType_UINT64 &amp;&amp; !_has_raw_data()">_impl_.uint64_data_</Item>
       <Item Name="[double_data]" ExcludeView="simple" Condition="_impl_.data_type_ == TensorProto_DataType_DOUBLE &amp;&amp; !_has_raw_data()">_impl_.double_data_</Item>
       <Item Name="[string_data]" ExcludeView="simple" Condition="_impl_.data_type_ == TensorProto_DataType_STRING &amp;&amp; !_has_raw_data()">_impl_.string_data_</Item>
-      <Item Name="[raw_data]" ExcludeView="simple" Condition="_has_raw_data()">(std::string*)(_impl_.raw_data_.tagged_ptr_)</Item>
+      <Item Name="[raw_data]" ExcludeView="simple" Condition="_has_raw_data()">_impl_.raw_data_.tagged_ptr_</Item>
       <Item Name="[data_location]" ExcludeView="simple" Condition="_has_data_location()">(TensorProto_DataLocation) _impl_.data_location_</Item>
       <Item Name="[external_data]" ExcludeView="simple" Condition="_has_data_location()">_impl_.external_data_</Item>
       <Item Name="[has_raw_data]" ExcludeView="simple">_has_raw_data()</Item>
