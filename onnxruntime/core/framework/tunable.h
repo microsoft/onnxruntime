@@ -24,28 +24,34 @@
 #include "core/common/logging/logging.h"
 #endif
 #include "core/framework/execution_provider.h"
+#include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
 namespace onnxruntime {
 
-template <typename TuningContextT, typename StreamT>
+template <typename TuningContextT, typename NativeStreamT>
 struct OpParams {
   OpParams() : tuning_ctx{nullptr}, stream{} {}
-  OpParams(TuningContextT* tuning_ctx, StreamT stream) : tuning_ctx(tuning_ctx), stream(stream) {}
+  OpParams(TuningContextT* tuning_ctx, Stream* stream) : tuning_ctx(tuning_ctx), stream(stream) {}
   virtual ~OpParams() = default;
   virtual std::string Signature() const = 0;
-  virtual StreamT Stream() const { return stream; }
-  virtual TuningContextT* TuningContext() const { return tuning_ctx; }
+  inline onnxruntime::Stream* Stream() const { return stream; }
+  inline TuningContextT* TuningContext() const { return tuning_ctx; }
+  inline NativeStreamT StreamHandle() const {
+    return nullptr != stream ? static_cast<NativeStreamT>(stream->GetHandle()) : nullptr;
+  }
 
   // NOTE: the reason of TuningContext does not contains the Stream is that ORT now supports multiple stream and the
   // stream may change from call to call.
   TuningContextT* tuning_ctx;
-  StreamT stream;
+  onnxruntime::Stream* stream;
 };
 
 template <typename StreamT>
 class ITimer {
  public:
+  using NativeStreamT = StreamT;
+
   explicit ITimer(StreamT stream) : stream_{stream} {}
   virtual ~ITimer() = default;
 
@@ -217,7 +223,7 @@ class TunableOp {
   }
 
   static double Profile(Op<ParamsT>& op, const ParamsT* param, int num_iter) {
-    TimerT timer{param->Stream()};
+    TimerT timer{param->StreamHandle()};
     timer.Start();
     for (int i = 0; i < num_iter; i++) {
       ORT_THROW_IF_ERROR(op(param));

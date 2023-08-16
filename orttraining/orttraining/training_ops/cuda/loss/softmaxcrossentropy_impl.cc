@@ -49,7 +49,7 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   T* log_prob_data = log_prob->template MutableData<T>();
 
   // calculate logsoftmax
-  auto status = SoftMaxComputeHelper<T, T, true>(Stream(ctx),
+  auto status = SoftMaxComputeHelper<T, T, true>(ctx->GetComputeStream(),
                                                  logit_data,
                                                  logit_reshape,
                                                  log_prob_data,
@@ -151,7 +151,7 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   T* log_prob_data = log_prob->template MutableData<T>();
 
   // calculate logsoftmax
-  auto status = SoftMaxComputeHelper<T, T, true>(Stream(ctx),
+  auto status = SoftMaxComputeHelper<T, T, true>(ctx->GetComputeStream(),
                                                  logit_data,
                                                  logit_reshape,
                                                  log_prob_data,

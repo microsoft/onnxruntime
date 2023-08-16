@@ -265,7 +265,10 @@ class QDQQuantizer(ONNXQuantizer):
             if self.opset_version < 13:
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
-                weight_name, onnx_proto.TensorProto.INT8, axis, keep_float_weight=self.add_qdq_pair_to_weight
+                weight_name,
+                self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
+                axis,
+                keep_float_weight=self.add_qdq_pair_to_weight,
             )
         else:
             q_weight_name, zp_name, scale_name = self.quantize_initializer(
@@ -413,23 +416,43 @@ class QDQQuantizer(ONNXQuantizer):
             self.quantize_bias_static(bias_name, input_name, weight_name, beta)
             self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
             quant_value = self.quantized_value_map[bias_name]
-            inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
-            node_name = add_dequant_suffix(bias_name)
-            if quant_value.axis is not None:
+            if quant_value.node_type == "Cast":
+                # simple cast to float 16 and not DequantizeLinear
+                # cublasLtMatmul only supports (b)float16, float bias.
+                node_name = add_dequant_suffix(bias_name)
                 dequant_node = onnx.helper.make_node(
-                    "DequantizeLinear",
-                    inputs,
+                    "Cast",
+                    [quant_value.q_name],
                     [bias_name],
-                    node_name,
-                    axis=quant_value.axis,
+                    name=node_name,
+                    to=onnx.TensorProto.FLOAT,
                 )
+            elif quant_value.node_type in (None, "DequantizeLinear"):
+                if quant_value.node_qtype in {
+                    onnx.TensorProto.FLOAT16,
+                    onnx.TensorProto.BFLOAT16,
+                    onnx.TensorProto.FLOAT,
+                }:
+                    raise RuntimeError(f"Unexpected quantize type {quant_value.node_qtype} for DequantizeLinear.")
+                inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
+                node_name = add_dequant_suffix(bias_name)
+                if quant_value.axis is not None:
+                    dequant_node = onnx.helper.make_node(
+                        "DequantizeLinear",
+                        inputs,
+                        [bias_name],
+                        node_name,
+                        axis=quant_value.axis,
+                    )
+                else:
+                    dequant_node = onnx.helper.make_node(
+                        "DequantizeLinear",
+                        inputs,
+                        [bias_name],
+                        node_name,
+                    )
             else:
-                dequant_node = onnx.helper.make_node(
-                    "DequantizeLinear",
-                    inputs,
-                    [bias_name],
-                    node_name,
-                )
+                raise RuntimeError(f"Unexpected operator type {quant_value.node_type!r}.")
             self.model.add_node(dequant_node)
 
     def is_tensor_quantized(self, tensor_name):

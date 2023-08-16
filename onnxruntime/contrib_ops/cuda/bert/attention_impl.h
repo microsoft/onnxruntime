@@ -84,13 +84,13 @@ template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
-    cudaStream_t stream,
+    Stream* stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
-    cudaStream_t stream,              // Cuda stream
+    Stream* stream,                   // ORT Stream
     cublasHandle_t& cublas,           // Cublas handle
     const size_t element_size,        // Element size of input tensor
     const int batch_size,             // Batch size (B)

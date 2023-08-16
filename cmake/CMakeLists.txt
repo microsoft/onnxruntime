@@ -2,12 +2,7 @@
 # Licensed under the MIT License.
 
 # Minimum CMake required
-if(WIN32)
-  # TODO: actually we need cmake 3.26+ on Windows but QNN EP's build machine doesn't have it
-  cmake_minimum_required(VERSION 3.25)
-else()
-  cmake_minimum_required(VERSION 3.26)
-endif()
+cmake_minimum_required(VERSION 3.26)
 
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
@@ -19,13 +14,7 @@ cmake_policy(SET CMP0117 NEW)
 cmake_policy(SET CMP0104 OLD)
 
 # Enable Hot Reload for MSVC compilers if supported.
-if (POLICY CMP0141)
-  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
-    cmake_policy(SET CMP0141 NEW)
-  else()
-    cmake_policy(SET CMP0141 OLD)
-  endif()
-endif()
+cmake_policy(SET CMP0141 NEW)
 
 # Project
 project(onnxruntime C CXX ASM)
@@ -312,7 +301,15 @@ if (onnxruntime_USE_ROCM)
   add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
 
   if (NOT onnxruntime_HIPIFY_PERL)
-    set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
+    find_path(HIPIFY_PERL_PATH
+      NAMES hipify-perl
+      HINTS
+      ${onnxruntime_ROCM_HOME}/bin
+      ${onnxruntime_ROCM_HOME}/hip/bin)
+    if (HIPIFY_PERL_PATH-NOTFOUND)
+      MESSAGE(FATAL_ERROR "hipify-perl not found")
+    endif()
+    set(onnxruntime_HIPIFY_PERL ${HIPIFY_PERL_PATH}/hipify-perl)
   endif()
 
   # replicate strategy used by pytorch to get ROCM_VERSION
@@ -1236,9 +1233,12 @@ if (onnxruntime_USE_OPENVINO)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.0")
     set(OPENVINO_VERSION "2023.0")
     add_definitions(-DOPENVINO_2023_0=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.1")
+    set(OPENVINO_VERSION "2023.1")
+    add_definitions(-DOPENVINO_2023_1=1)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
-    set(OPENVINO_VERSION "2023.0")
-    add_definitions(-DOPENVINO_2023_0=1)
+    set(OPENVINO_VERSION "2023.1")
+    add_definitions(-DOPENVINO_2023_1=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1486,6 +1486,7 @@ if (UNIX AND onnxruntime_USE_MPI)
     find_path(NCCL_INCLUDE_DIR
       NAMES ${NCCL_LIBNAME}.h
       HINTS
+      ${onnxruntime_NCCL_HOME}/include/rccl
       ${onnxruntime_NCCL_HOME}/include
       $ENV{CUDA_ROOT}/include)
 
