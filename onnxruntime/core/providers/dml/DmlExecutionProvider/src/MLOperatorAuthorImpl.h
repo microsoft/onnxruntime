@@ -176,7 +176,7 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter,
-        onnxruntime::OpKernelContext* kernelContext = nullptr
+        const onnxruntime::OpKernelContext* kernelContext = nullptr
         )
     :   m_impl(impl),
         m_kernelContext(kernelContext),
@@ -245,7 +245,7 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
  protected:
     // Lifetime is managed by the caller and guaranteed to outlive this class
     const onnxruntime::OpNodeProtoHelper<NodeInfoImpl_t>* m_impl = nullptr;
-    mutable onnxruntime::OpKernelContext* m_kernelContext = nullptr;
+    const onnxruntime::OpKernelContext* m_kernelContext = nullptr;
 
  private:
     template <MLOperatorAttributeType T>
@@ -304,8 +304,6 @@ class TensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
 
     void* m_tensorData = nullptr;
     bool m_isDataInterface = false;
-
-    ID3D12Resource* m_abiDataInterface;
 };
 
 class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
@@ -362,7 +360,7 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter,
-        onnxruntime::OpKernelContext* kernelContext = nullptr
+        const onnxruntime::OpKernelContext* kernelContext = nullptr
     );
 
     // HasTensorShapeDescription returns false if and only if the kernel is registered using

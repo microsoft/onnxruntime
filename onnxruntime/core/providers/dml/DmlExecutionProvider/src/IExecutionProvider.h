@@ -69,8 +69,6 @@ namespace Dml
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const noexcept = 0;
         STDMETHOD_(void, Flush)() const noexcept = 0;
 
-        STDMETHOD_(ID3D12Resource*, DecodeResource)(IMLOperatorTensor* tensor) const noexcept = 0;
-
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept = 0;
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept = 0;
 

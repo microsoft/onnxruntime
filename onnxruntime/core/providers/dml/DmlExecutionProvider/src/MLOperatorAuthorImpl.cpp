@@ -557,7 +557,7 @@ namespace Windows::AI::MachineLearning::Adapter
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter,
-        onnxruntime::OpKernelContext* kernelContext
+        const onnxruntime::OpKernelContext* kernelContext
         )
     :   OpNodeInfoWrapper(kerneInfo, inputShapeOverrides, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, kernelContext),
         m_inferredOutputShapes(inferredOutputShapes),
@@ -1806,6 +1806,8 @@ namespace Windows::AI::MachineLearning::Adapter
             {
                 m_winmlProvider->GetABIExecutionInterfaceAndInvalidateState(isInternalOperator, m_abiExecutionObject.ReleaseAndGetAddressOf());
             }
+
+            TransitionResourcesForOperatorIfRequired(true);
         }
     }
 

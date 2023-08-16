@@ -30,7 +30,6 @@ namespace Dml
     class PooledUploadHeap;
     class ReadbackHeap;
     class ExecutionContext;
-    class DmlReservedResourceSubAllocator;
     class BucketizedBufferAllocator;
     class DmlCpuAllocator;
     class ExecutionProvider;
@@ -136,8 +135,6 @@ namespace Dml
 
         // Allocate a resource from pools.  Releasing the returned buffer returns it to the pool.
         DmlBuffer ExecutionProviderImpl::AllocatePooledResource(size_t size, AllocatorRoundingMode roundingMode) const;
-
-        STDMETHOD_(ID3D12Resource*, DecodeResource)(IMLOperatorTensor* tensor) const noexcept final;
 
         std::shared_ptr<onnxruntime::KernelRegistry> GetKernelRegistry() const
         {

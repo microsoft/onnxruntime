@@ -26,7 +26,6 @@ void DmlCommandRecorder::SetAllocator(std::weak_ptr<DmlGpuAllocator> allocator)
     m_allocator = allocator;
 }
 
-
 void DmlCommandRecorder::InitializeOperator(
     IDMLCompiledOperator* op,
     const DML_BINDING_DESC& persistentResourceBinding,

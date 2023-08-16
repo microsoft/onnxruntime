@@ -90,7 +90,6 @@ void DmlConfigureProviderFactoryBfcAllocatorEnabled(IExecutionProviderFactory* f
   dml_provider_factory->SetBfcAllocatorEnabled(bfc_allocator_enabled);
 }
 
-
 bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     DXGI_ADAPTER_DESC1 desc;
     adapter->GetDesc1(&desc);

@@ -22,7 +22,7 @@
 #include "core/framework/bfc_arena.h"
 #include "DmlCommittedResourceWrapper.h"
 #include "DmlBufferRegion.h"
-#include "DmlBfcAllocator.h"
+#include "DmlReservedResourceAllocatorWrapper.h"
 #include "DmlGpuAllocator.h"
 #include "DmlBuffer.h"
 #include "DmlTaggedPointer.h"
@@ -127,18 +127,6 @@ namespace Dml
         return tensorWrapper->GetBufferRegion();
     }
 
-    ID3D12Resource* __stdcall ExecutionProviderImpl::DecodeResource(IMLOperatorTensor* tensor) const noexcept
-    {
-        ORT_TRY
-        {
-            return GetBufferForTensor(tensor).GetD3D12Resource();
-        }
-        ORT_CATCH_GENERIC
-        {
-            return nullptr;
-        }
-    }
-
 // ORT release pipelines agent pools do not have 19H1 SDK installed which defines D3D_FEATURE_LEVEL_1_0_CORE.
 // Once ORT/WinML github project can be built with VS2019, we can update these pools to use install the 19H1 SDK
 // using the command line installer tool with VS2019
@@ -199,10 +187,8 @@ namespace Dml
 
     static std::shared_ptr<onnxruntime::BFCArena> CreateBfcAllocator(std::shared_ptr<DmlReservedResourceSubAllocator> subAllocator)
     {
-        auto device_allocator = std::make_unique<DmlBfcAllocator>(subAllocator);
-
         auto bfcArena = std::make_unique<onnxruntime::BFCArena>(
-            std::move(device_allocator),
+            std::make_unique<DmlReservedResourceAllocatorWrapper>(subAllocator),
             onnxruntime::BFCArena::DEFAULT_MAX_MEM,
             onnxruntime::ArenaExtendStrategy::kSameAsRequested,
             onnxruntime::BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES,

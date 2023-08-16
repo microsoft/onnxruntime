@@ -41,8 +41,7 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
   memory_limit_ = total_memory;
   stats_.bytes_limit = static_cast<int64_t>(total_memory);
 
-  arena_extend_strategy_ = arena_extend_strategy;
-  UpdateFirstAllocationShrinkageLogic();
+  SetArenaExtendStrategy(arena_extend_strategy);
 
   // Create a bunch of bins of various good sizes.
 

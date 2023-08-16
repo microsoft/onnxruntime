@@ -10,10 +10,6 @@
 
 namespace Dml
 {
-    class DmlReservedResourceSubAllocator;
-    class DmlReservedResourceSubAllocator;
-    struct TaggedPointer;
-
     // An allocator that makes logically contiguous allocations backed by D3D heaps.
     //
     // Heaps must fit entirely in either local or non-local memory. Larger heaps

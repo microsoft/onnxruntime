@@ -8,10 +8,10 @@
 
 namespace Dml
 {
-    class DmlBfcAllocator : public onnxruntime::IAllocator
+    class DmlReservedResourceAllocatorWrapper : public onnxruntime::IAllocator
     {
     public:
-        DmlBfcAllocator(std::shared_ptr<DmlReservedResourceSubAllocator> subAllocator)
+        DmlReservedResourceAllocatorWrapper(std::shared_ptr<DmlReservedResourceSubAllocator> subAllocator)
         : onnxruntime::IAllocator(
             OrtMemoryInfo(
                 onnxruntime::DML,
