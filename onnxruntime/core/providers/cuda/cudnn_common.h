@@ -16,7 +16,7 @@ class CudnnTensor final {
   ~CudnnTensor();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnTensor);
 
-  Status Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType);
+  Status Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType, bool is_nhwc = false);
   Status Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode);
   // Set 4D tensor format (for NHWC)
   Status Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w);

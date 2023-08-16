@@ -15,6 +15,34 @@ using ConvPadVector = ConvAttributes::ConvPadVector;
 
 namespace cuda {
 
+static std::vector<size_t> generateStrides(TensorShapeVector&shape, bool nhwc)
+{
+  // For INT8x4 and INT8x32 we still compute standard strides here to input
+  // into the cuDNN functions. We will manually scale by resizeFactor in the cpu ref.
+  int32_t nbDims = shape.size();
+  std::vector<size_t> strides; //{nbDims};
+  strides.resize(nbDims);
+  if (nhwc)
+  {
+    strides[nbDims - 1] = 1;
+    for (int64_t d = nbDims - 2; d >= 0; d--)
+    {
+      strides[d] = strides[d + 1] * shape[d + 1];
+    }
+  } else
+  {
+    // Here we assume that the format is CUDNN_TENSOR_NHWC
+    strides[1] = 1;
+    strides[nbDims - 1] = strides[1] * shape[1];
+    for (int64_t d = nbDims - 2; d >= 2; d--)
+    {
+      strides[d] = strides[d + 1] * shape[d + 1];
+    }
+    strides[0] = strides[2] * shape[2];
+  }
+  return strides;
+}
+
 class CudnnConvolutionDescriptor final {
  public:
   CudnnConvolutionDescriptor();
@@ -185,6 +213,7 @@ class Conv : public CudaKernel {
   using CudaT = typename ToCudaType<T>::MappedType;
 
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
+    transpose_weights_ = info.GetKernelDef().Domain() == kMSInternalNHWCDomain;
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
   }
@@ -201,6 +230,7 @@ class Conv : public CudaKernel {
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
   static const cudnnConvolutionFwdAlgo_t kAllAlgos[];
+  bool transpose_weights_ = false;
 };
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,

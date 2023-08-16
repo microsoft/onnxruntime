@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/tensor/transpose_impl.h"
 #include "core/providers/cuda/nn/conv.h"
 #include "core/common/span_utils.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -12,27 +13,30 @@ namespace cuda {
 
 // Op Set 11 for Conv only update document to clearify default dilations and strides value.
 // which are already convered by op set 11 cpu versoin, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T)                                                           \
+#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                                           \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Conv,                                                                                \
-      kOnnxDomain,                                                                         \
+      DOMAIN,                                                                         \
       1, 10,                                                                               \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T, false>);                                                                     \
+      Conv<T, NHWC>);                                                                     \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       Conv,                                                                                \
-      kOnnxDomain,                                                                         \
+      DOMAIN,                                                                         \
       11,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T, false>);
+      Conv<T, NHWC>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(float, kOnnxDomain, false)
+REGISTER_KERNEL_TYPED(double, kOnnxDomain, false)
+REGISTER_KERNEL_TYPED(MLFloat16, kOnnxDomain, false)
+
+REGISTER_KERNEL_TYPED(float, kMSInternalNHWCDomain, true)
+REGISTER_KERNEL_TYPED(MLFloat16, kMSInternalNHWCDomain, true)
 
 template <typename T, bool NHWC>
 const cudnnConvolutionFwdAlgo_t Conv<T, NHWC>::kAllAlgos[] = {
@@ -132,10 +136,37 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       s_.cached_benchmark_results.clear();
     }
 
-    ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, channels_last));
+    // If we remove the contrib op NhwcConv we can rewrite this to be much simpler
+    // basically only strides of W will change and a transpose kernel is launched if NHWC is true
+    // currently we are only allowed to transpose the weight if node is part of kMSInternalNHWCDomain
+    if (transpose_weights_) {
+      // if the OP is registered in domain kMSInternalNHWCDomain the weights are not transposed beforehand.
+      auto nchw_strides = generateStrides(w_dims, false);
+      w_dims = {w_dims[0], w_dims[2], w_dims[3], w_dims[1]};
+      auto nhwc_strides = generateStrides(w_dims, true);
+      cudaStream_t compute_stream = Stream(context);
+      const T * w_data_nchw = W->Data<T>();
+      size_t weight_bytes = W->SizeInBytes();
+      // cudaMallocAsync(&w_data_nhwc_temp, weight_bytes, compute_stream);
+      IAllocatorUniquePtr<void> w_data_nhwc_temp = GetTransientScratchBuffer<void>(weight_bytes);
+      const TArray<int64_t> nchw_strides_arr = {};
+      const TArray<fast_divmod> nhwc_strides_arr = {};
+      auto status = TransposeImpl(
+        compute_stream, sizeof(T), w_dims.size(),
+        nchw_strides_arr, w_data_nchw, nhwc_strides_arr, w_data_nhwc_temp.get(), w_dims.size()
+      );
+
+      T * w_data_nchw_out = const_cast<T*>(W->Data<T>());
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(w_data_nchw_out ,w_data_nhwc_temp.get() , weight_bytes, cudaMemcpyDeviceToDevice, compute_stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(compute_stream));
+      // cudaFreeAsync(w_data_nhwc_temp, compute_stream);
+    }
+
+    const bool weight_desc_channel_last = (!transpose_weights_ && channels_last);
+    ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, weight_desc_channel_last));
 
     TensorShapeVector kernel_shape;
-    ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape, channels_last));
+    ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape, weight_desc_channel_last));
 
     const size_t kernel_rank = kernel_shape.size();
 

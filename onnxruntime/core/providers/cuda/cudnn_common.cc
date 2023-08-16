@@ -27,7 +27,7 @@ Status CudnnTensor::CreateTensorIfNeeded() {
   return Status::OK();
 }
 
-Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType) {
+Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType, bool is_nhwc) {
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
   int rank = gsl::narrow_cast<int>(input_dims.size());
@@ -37,6 +37,10 @@ Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dat
   for (int i = 0; i < rank; i++) {
     dims[i] = gsl::narrow_cast<int>(input_dims[i]);
     strides[i] = gsl::narrow_cast<int>(pitches[i]);
+  }
+  if (is_nhwc) {
+    std::swap(dims[1], dims[rank - 1]);
+    std::swap(strides[1], strides[rank - 1]);
   }
   CUDNN_RETURN_IF_ERROR(cudnnSetTensorNdDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
   return Status::OK();

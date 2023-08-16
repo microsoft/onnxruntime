@@ -217,6 +217,7 @@ struct CUDA_Provider : Provider {
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
+    info.prefer_nhwc = params->prefer_nhwc;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
     info.tunable_op.enable = params->tunable_op_enable;
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
@@ -253,6 +254,7 @@ struct CUDA_Provider : Provider {
     cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
     cuda_options.cudnn_conv1d_pad_to_nc1d = internal_options.cudnn_conv1d_pad_to_nc1d;
     cuda_options.enable_skip_layer_norm_strict_mode = internal_options.enable_skip_layer_norm_strict_mode;
+    cuda_options.prefer_nhwc = internal_options.prefer_nhwc;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
