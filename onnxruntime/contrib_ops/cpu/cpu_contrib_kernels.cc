@@ -81,12 +81,14 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, QGemm);
 // ******** End: Quantization ******************* //
 
+#if !defined(ORT_MINIMAL_BUILD)
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, MLFloat16, FusedConv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, MLFloat16, NhwcFusedConv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSInternalNHWCDomain, 12, MLFloat16, MaxPool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSInternalNHWCDomain, 11, MLFloat16, AveragePool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSInternalNHWCDomain, 1, MLFloat16, GlobalAveragePool);
+#endif
 #endif
 
 // This section includes all op kernel declarations for former experimental ops which have now been removed from onnx.
@@ -159,6 +161,7 @@ Status RegisterNchwcKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -178,6 +181,7 @@ Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
 
   return Status::OK();
 }
+#endif
 #endif
 
 Status RegisterQuantizationKernels(KernelRegistry& kernel_registry) {
@@ -314,10 +318,12 @@ Status RegisterCpuContribKernels(KernelRegistry& kernel_registry) {
 
   ORT_RETURN_IF_ERROR(RegisterQuantizationKernels(kernel_registry));
 
+#if !defined(ORT_MINIMAL_BUILD)
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   if (MlasFp16AccelerationSupported()) {
     ORT_RETURN_IF_ERROR(RegisterFp16Kernels(kernel_registry));
   }
+#endif
 #endif
 
   return Status::OK();

@@ -2395,6 +2395,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -2426,6 +2427,7 @@ Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
 
   return Status::OK();
 }
+#endif
 #endif
 
 // Forward declarations of ml op kernels
@@ -2604,10 +2606,12 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
 
 Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(RegisterOnnxOperatorKernels(kernel_registry));
+#if !defined(ORT_MINIMAL_BUILD)
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   if (MlasFp16AccelerationSupported()) {
     ORT_RETURN_IF_ERROR(RegisterFp16Kernels(kernel_registry));
   }
+#endif
 #endif
 #ifndef DISABLE_ML_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::ml::RegisterOnnxMLOperatorKernels(kernel_registry));
