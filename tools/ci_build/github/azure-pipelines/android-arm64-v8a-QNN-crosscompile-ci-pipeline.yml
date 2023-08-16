@@ -66,7 +66,7 @@ jobs:
       set -e -x
       rm -rf /tmp/scripts
       cp -r tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts /tmp
-      /tmp/install_protobuf.sh -p $(Build.BinariesDirectory)/installed -d cmake/deps.txt
+      /tmp/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed -d cmake/deps.txt
       python3 tools/ci_build/build.py \
         --config Release \
         --android \
