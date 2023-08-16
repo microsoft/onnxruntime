@@ -93,7 +93,7 @@ def get_model(args: argparse.Namespace):
         sess_options = ort.SessionOptions()
         sess_options.enable_profiling = args.profile
         if args.verbose:
-            sess_options.log_verbosity_level = 3
+            sess_options.log_verbosity_level = 1
             sess_options.log_severity_level = 1
 
     else:
