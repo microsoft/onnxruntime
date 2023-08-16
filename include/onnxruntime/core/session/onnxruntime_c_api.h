@@ -4308,8 +4308,6 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseROCMProviderOptions)(_Frees_ptr_opt_ OrtROCMProviderOptions* input);
 
-  /// @}
-
   /** \brief Create an allocator with specific type and register it with the ::OrtEnv
    *  This API enhance CreateAndRegisterAllocator that it can create an allocator with specific type, not just CPU allocator
    *  Enables sharing the allocator between multiple sessions that use the same env instance.
@@ -4398,6 +4396,19 @@ struct OrtApi {
    * \since Version 1.16.
    */
   ORT_API2_STATUS(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
+
+  /**
+   * Get a EP resoure.
+   * E.g. a cuda stream or a cublas handle
+   *
+   * \param context - Kernel context
+   * \param resouce_version - Version of the resource
+   * \param resource_id - Type of resource
+   * \param resource - A pointer to returned resource
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
 };
 
 /*

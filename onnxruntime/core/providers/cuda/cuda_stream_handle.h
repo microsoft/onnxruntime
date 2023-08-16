@@ -34,6 +34,8 @@ struct CudaStream : Stream {
 
   cublasHandle_t cublas_handle_{};
 
+  void* GetResource(int version, int id) const override;
+
  private:
   std::vector<void*> deferred_cpu_buffers_;
   AllocatorPtr cpu_allocator_;

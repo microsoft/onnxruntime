@@ -2712,6 +2712,8 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::UpdateCUDAProviderOptionsWithValue,
     &OrtApis::GetCUDAProviderOptionsByName,
     // End of Version 16 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::KernelContext_GetResource,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

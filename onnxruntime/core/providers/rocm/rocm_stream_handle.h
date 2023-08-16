@@ -23,6 +23,8 @@ struct RocmStream : Stream {
 
   Status CleanUpOnRunEnd() override;
 
+  void* GetResource(int version, int id) const override;
+
   void EnqueDeferredCPUBuffer(void* cpu_buffer);
 
   bool own_stream_{true};
