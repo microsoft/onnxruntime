@@ -5,6 +5,8 @@
 // This file contains implementation of a fp16 convolution operator.
 //
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/mlas/inc/mlas.h"
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -631,3 +633,5 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 }  // namespace onnxruntime
 
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+#endif // !defined(ORT_MINIMAL_BUILD)
