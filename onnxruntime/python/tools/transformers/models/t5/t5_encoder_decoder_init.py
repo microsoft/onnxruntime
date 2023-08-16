@@ -125,7 +125,7 @@ class T5EncoderDecoderInitHelper:
         )
         input_list = inputs.to_list()
 
-        present_names = PastKeyValuesHelper.get_past_names(model.config.num_layers, present=True)
+        present_names = PastKeyValuesHelper.get_past_names(model.config.num_decoder_layers, present=True)
 
         output_names = ["logits", "encoder_hidden_states", *present_names]
 
@@ -271,6 +271,8 @@ class T5EncoderDecoderInitHelper:
             input_list = inputs.to_list()
             torch_outputs = model(*input_list)
 
+            num_decoder_layers = model.config.num_decoder_layers
+
             assert torch_outputs[0].cpu().numpy().shape == ort_outputs[0].shape
             max_diff = numpy.amax(numpy.abs(torch_outputs[0].cpu().numpy() - ort_outputs[0]))
             logger.debug(f"logits max_diff={max_diff}")
@@ -281,13 +283,13 @@ class T5EncoderDecoderInitHelper:
             logger.debug(f"encoder_hidden_states max_diff={max_diff}")
             max_diff_all = max(max_diff_all, max_diff)
 
-            for i in range(2 * model.config.num_layers):
+            for i in range(2 * num_decoder_layers):
                 max_diff = numpy.amax(numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[2 + i]))
                 logger.debug(f"self attention past state {i} max_diff={max_diff}")
 
-            for i in range(2 * model.config.num_layers):
+            for i in range(2 * num_decoder_layers):
                 max_diff = numpy.amax(
-                    numpy.abs(torch_outputs[3][i].cpu().numpy() - ort_outputs[2 + 2 * model.config.num_layers + i])
+                    numpy.abs(torch_outputs[3][i].cpu().numpy() - ort_outputs[2 + 2 * num_decoder_layers + i])
                 )
                 logger.debug(f"cross attention past state {i} max_diff={max_diff}")
                 max_diff_all = max(max_diff_all, max_diff)
