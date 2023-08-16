@@ -243,7 +243,7 @@ def run_hf_inference(args, init_inputs, iter_inputs, model):
     # Inference steps to measure
     def get_logits(inputs):
         # Inference pass without decoding
-        outputs = model(**inputs)  # noqa: F841
+        outputs = model(**inputs)
         return outputs
 
     # Examples of other inference steps that can be measured:
@@ -251,7 +251,7 @@ def run_hf_inference(args, init_inputs, iter_inputs, model):
 
     # def get_pred_ids(inputs):
     #     # Inference pass with predicted token ids generation
-    #     predicted_ids = model.generate(**inputs)  # noqa: F841
+    #     predicted_ids = model.generate(**inputs)
     #     return predicted_ids
 
     # def gen_and_dec(inputs):
@@ -335,7 +335,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
 
     def without_io_binding(inputs):
         # Inference pass without IO binding
-        outputs = model.run(None, inputs)  # noqa: F841
+        outputs = model.run(None, inputs)
         return outputs
 
     generate_fn = with_io_binding if args.device != "cpu" else without_io_binding
