@@ -368,8 +368,8 @@ static void VerifyInvalidBindExceptions() {
   auto ensureWinmlInvalidBinding = std::bind(matchException, std::placeholders::_1, WINML_ERR_INVALID_BINDING);
 
   /*
-        Verify tensor bindings throw correct bind exceptions
-    */
+    Verify tensor bindings throw correct bind exceptions
+  */
 
   // Bind invalid image as tensorfloat input
   auto image = FileHelpers::LoadImageFeatureValue(L"227x227.png");
@@ -394,8 +394,8 @@ static void VerifyInvalidBindExceptions() {
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"X", tensorInvalidShape), winrt::hresult_error, ensureWinmlInvalidBinding);
 
   /*
-        Verify sequence bindings throw correct bind exceptions
-    */
+    Verify sequence bindings throw correct bind exceptions
+  */
 
   // Bind invalid image as sequence<map<int, float> output
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", image), winrt::hresult_error, ensureWinmlInvalidBinding);
@@ -410,35 +410,8 @@ static void VerifyInvalidBindExceptions() {
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
 
   /*
-        Verify image bindings throw correct bind exceptions
-    */
-
-  // WINML_EXPECT_NO_THROW(LoadModel(L"fns-candy.onnx"));
-
-  // LearningModelSession imageSession(m_model);
-  // LearningModelBinding imageBinding(imageSession);
-
-  // auto inputName = m_model.InputFeatures().First().Current().Name();
-
-  // // Bind invalid map as image input
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
-
-  // // Bind invalid sequence as image input
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
-
-  // // Bind invalid tensor type as image input
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
-
-  // // Bind invalid tensor size as image input
-  // auto tensorFloat = TensorFloat::Create(std::vector<int64_t> { 1, 1, 100, 100 });
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, tensorFloat), winrt::hresult_error, ensureWinmlInvalidBinding);
-
-  // // Bind invalid tensor shape as image input
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, tensorInvalidShape), winrt::hresult_error, ensureWinmlInvalidBinding);
-
-  /*
-        Verify map bindings throw correct bind exceptions
-    */
+    Verify map bindings throw correct bind exceptions
+  */
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"dictvectorizer-int64.onnx", learningModel));
 
   LearningModelSession mapSession(learningModel);
