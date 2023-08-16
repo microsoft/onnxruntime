@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import onnximage from '../../images/ONNX-Icon.svg';
 	import { onMount } from 'svelte';
 	import anime from 'animejs';
@@ -6,7 +6,6 @@
 	import { Highlight } from 'svelte-highlight';
 	import { bash } from 'svelte-highlight/languages';
 	import FaRegClipboard from 'svelte-icons/fa/FaRegClipboard.svelte'
-
 	onMount(() => {
 		anime.timeline({ loop: false }).add({
 			targets: '.img',
@@ -20,7 +19,7 @@
 	let pythonCode = 'pip install onnxruntime';
 	let nugetCode = 'nuget get onnxruntime';
 	let copied = false;
-	let copy = async (code) => {
+	let copy = async (code: string) => {
     try {
 		copied = true
 		setTimeout(() => {
@@ -62,14 +61,14 @@
 
 							<Highlight language={bash} code={pythonCode} />
 						</div>
-						<button on:click={() => copy(pythonCode)} class="col-span-1 btn rounded-none h-full"><span class="w-6 h-6"><FaRegClipboard/></span></button>
+						<button aria-label="copy python code" on:click={() => copy(pythonCode)} class="col-span-1 btn rounded-none h-full"><span class="w-6 h-6"><FaRegClipboard/></span></button>
 					</div>
 					<div class="grid grid-cols-6 bg-white">
 						<div class="col-span-5">
 
 							<Highlight language={bash} code={nugetCode} />
 						</div>
-						<button on:click={() => copy(nugetCode)} class="col-span-1 btn rounded-none h-full"><span class="w-6 h-6"><FaRegClipboard/></span></button>
+						<button aria-label="copy nuget code" on:click={() => copy(nugetCode)} class="col-span-1 btn rounded-none h-full"><span class="w-6 h-6"><FaRegClipboard/></span></button>
 					</div>
 				</div>
 				<p class="text-lg mt-2">Don't see your favourite platform? We support <a class="underline" href="http://">many</a>!</p>

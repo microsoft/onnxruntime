@@ -27,17 +27,17 @@
 	let imgalt = "image alt"
 </script>
 
-<div class="container px-20 mx-auto">
+<div class="container mx-auto">
 	<h1 class="text-5xl">Blogs & Announcements</h1>
 
 	<div class="pt-5">
-		<h3 class="text-3xl">Featured posts</h3>
-		<div class="grid grid-cols-3">
+		<h3 class="text-3xl pb-4 md:pb-0">Featured posts</h3>
+		<div class="grid md:grid-cols-3">
 			<FeaturedBlog title="test" description="test" badges={badges} {imgsrc} {imgalt}/>
 			<FeaturedBlog title="test" description="test" badges={badges} {imgsrc} {imgalt}/>
 			<FeaturedBlog title="test" description="test" badges={badges} {imgsrc} {imgalt}/>
 		</div>
 	</div>
-	<h3 class="text-3xl">Recent posts</h3>
+	<h3 class="text-3xl pb-4">Recent posts</h3>
 	<Blog title="test" description="test" badges={badges} {imgsrc} {imgalt} />
 </div>

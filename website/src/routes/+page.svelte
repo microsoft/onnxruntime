@@ -7,6 +7,8 @@
     import GenerativeAi from "./components/generative-ai.svelte";
     import Table from "./components/table.svelte"
     import Stats from "./components/stats.svelte";
+    import TrainingInference from "./components/training-inference.svelte";
+    import WebMobile from "./components/web-mobile.svelte"
 </script>
 <Hero/> 
 <Customers/>
@@ -16,3 +18,5 @@
 <Performance/>
 <CrossPlatform/>
 <GenerativeAi/>
+<TrainingInference/>
+<WebMobile/>

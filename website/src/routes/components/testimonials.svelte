@@ -1,1 +1,1 @@
-testimonials
+Don’t just take our word for it! Hear from some of the organizations & products using ONNX Runtime:

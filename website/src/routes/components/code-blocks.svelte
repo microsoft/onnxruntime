@@ -1,4 +1,4 @@
-<script>
+<script lang='ts'>
 	import Highlight from 'svelte-highlight';
 	import python from 'svelte-highlight/languages/python';
 	import csharp from 'svelte-highlight/languages/csharp';
@@ -36,7 +36,7 @@
 		setTimeout(cycleCode, 10000);
 	}
 
-	let handleClick = (e) => {
+	let handleClick = (e: any) => {
 		interacted = true;
 		const tabText = e.target.textContent.trim();
 		if (tabText === 'More..') {
@@ -99,35 +99,35 @@
 				<Highlight language={python} code={pythonCode} />
 				<div class="div" in:fade={{ duration: 500 }}>
 					<a href="https://onnxruntime.ai/docs/get-started/with-python" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
-						>Learn more<span class="w-5 h-5"><FaLink /></span></a
+						>Python Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
 			{:else if activeTab === 'C#'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={csharp} code={csharpCode} />
 					<a href="https://onnxruntime.ai/docs/get-started/with-csharp" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
-						>Learn more<span class="w-5 h-5"><FaLink /></span></a
+						>C# Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
 			{:else if activeTab === 'JavaScript'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={javascript} code={javascriptCode} />
 					<a href="https://onnxruntime.ai/docs/get-started/with-javascript" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
-						>Learn more<span class="w-5 h-5"><FaLink /></span></a
+						>JavaScript Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
 			{:else if activeTab === 'Java'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={java} code={javaCode} />
 					<a href="https://onnxruntime.ai/docs/get-started/with-java" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
-						>Learn more<span class="w-5 h-5"><FaLink /></span></a
+						>Java Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
 			{:else if activeTab === 'C++'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={cpp} code={cppCode} />
 					<a href="https://onnxruntime.ai/docs/get-started/with-cpp" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
-						>Learn more<span class="w-5 h-5"><FaLink /></span></a
+						>C++ Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
 			{:else if activeTab === 'More..'}

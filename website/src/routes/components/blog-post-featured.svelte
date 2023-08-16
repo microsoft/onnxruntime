@@ -1,33 +1,18 @@
-<script>
+<script lang="ts">
 	import anime from "animejs";
-	/**
-	 * @type {String}
-	 */
-	 export let title;
-	/**
-	 * @type {String}
-	 */
-	 export let description;
-	/**
-	 * @type {Array<Array<String>>}
-	 */
-	 export let badges;
-	/**
-	 * @type {String}
-	 */
-	 export let imgsrc;
-	/**
-	 * @type {String}
-	 */
-	 export let imgalt;
-	let handleEnter = (e) => {
+	 export let title: string;
+	 export let description: string;
+	 export let badges: Array<Array<string>>;
+	 export let imgsrc: string;
+	 export let imgalt: string;
+	let handleEnter = (e: any) => {
 		anime({
 			targets: e.target,
 			scale: 1.05,
 			duration: 1500,
 		})
 	}
-	let handleLeave = (e) => {
+	let handleLeave = (e: any) => {
 		anime({
 			targets: e.target,
 			scale: 1,
@@ -36,10 +21,10 @@
 	}
 </script>
 
-<article on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="m-10">
+<article on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="m-4 md:m-10">
 	<a href="http://blog.com">
 		<div class="card bg-base-100 border border-primary" data-svelte-h="svelte-1oufy6g">
-			<figure>
+			<figure class="w-100">
 				<img src={imgsrc} alt={imgalt} />
 			</figure>
 			<div class="card-body">

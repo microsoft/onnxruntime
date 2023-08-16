@@ -36,7 +36,7 @@
 	}
 </script>
 
-<article on:mouseenter={handleEnter} on:mouseleave={handleLeave}  class="m-10">
+<article on:mouseenter={handleEnter} on:mouseleave={handleLeave}  class="m-4 md:m-10">
 	<a href="http://blog.com">
 		<div class="card card-side bg-base-100 border border-primary">
 			<div class="card-body">

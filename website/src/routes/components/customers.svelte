@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import anime from 'animejs';
 
 	import { onMount } from 'svelte';
@@ -17,14 +17,14 @@
 		});
 	});
 
-	let handleEnter = (e) => {
+	let handleEnter = (e:any) => {
 		anime({
 			targets: e.target,
 			scale: 1.1,
 			duration: 1500,
 		})
 	}
-	let handleLeave = (e) => {
+	let handleLeave = (e:any) => {
 		anime({
 			targets: e.target,
 			scale: 1,

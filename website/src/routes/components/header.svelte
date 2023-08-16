@@ -13,7 +13,7 @@
 <div class="navbar bg-base-100">
 	<div class="navbar-start">
 		<div class="dropdown">
-			<label tabindex="0" class="btn btn-ghost lg:hidden">
+			<button tabindex="0" class="btn btn-ghost lg:hidden">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					class="h-5 w-5"
@@ -27,8 +27,8 @@
 						d="M4 6h16M4 12h8m-8 6h16"
 					/></svg
 				>
-			</label>
-			<ul
+			</button>
+			<button
 				tabindex="0"
 				class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
 			>
@@ -72,7 +72,7 @@
 						GitHub</a
 					>
 				</li>
-			</ul>
+			</button>
 		</div>
 		<a href="/" class="btn btn-ghost normal-case text-xl">
 			<img src={onnximage} class="w-8 h-8 hidden lg:block" alt="ONNX Runtime logo" />ONNXRuntime
@@ -84,7 +84,7 @@
 			<li><a href="/blogs">Blogs</a></li>
 			<li><a href="/">Docs</a></li>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-			<li tabindex="1">
+			<li tabindex="0">
 				<details class="z-[1]">
 					<summary>Community</summary>
 					<ul class="p-2">
@@ -128,6 +128,7 @@
 	</div>
 	<div class="navbar-end">
 		<input
+			aria-label="toggle color theme"
 			data-toggle-theme="business, corporate"
 			type="checkbox"
 			class="toggle toggle-dark"
