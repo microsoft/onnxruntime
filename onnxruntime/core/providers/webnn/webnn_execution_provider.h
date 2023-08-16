@@ -6,6 +6,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/webnn/builders/helper.h"
 
 #include <emscripten.h>
 #include <emscripten/val.h>
@@ -44,6 +45,7 @@ class WebNNExecutionProvider : public IExecutionProvider {
   emscripten::val wnn_builder_ = emscripten::val::object();
 
   DataLayout preferred_layout_;
+  webnn::WebnnDeviceType wnn_device_type_;
   InlinedHashMap<std::string, std::unique_ptr<onnxruntime::webnn::Model>> models_;
 };
 }  // namespace onnxruntime

@@ -3,23 +3,42 @@
 
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {init as initJsep} from './jsep/init';
 import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
-import {allocWasmString} from './string-utils';
 import {logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
+import {allocWasmString, checkLastError} from './wasm-utils';
+
+/**
+ * get the input/output count of the session.
+ * @param sessionHandle the handle representing the session. should be non-zero.
+ * @returns a tuple including 2 numbers, representing the input count and output count.
+ */
+const getSessionInputOutputCount = (sessionHandle: number): [number, number] => {
+  const wasm = getInstance();
+  const stack = wasm.stackSave();
+  try {
+    const dataOffset = wasm.stackAlloc(8);
+    const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + 4);
+    if (errorCode !== 0) {
+      checkLastError('Can\'t get session input/output count.');
+    }
+    return [wasm.HEAP32[dataOffset / 4], wasm.HEAP32[dataOffset / 4 + 1]];
+  } finally {
+    wasm.stackRestore(stack);
+  }
+};
 
 /**
  * initialize ORT environment.
  * @param numThreads SetGlobalIntraOpNumThreads(numThreads)
  * @param loggingLevel CreateEnv(static_cast<OrtLoggingLevel>(logging_level))
  */
-const initOrt = async(numThreads: number, loggingLevel: number): Promise<void> => {
+const initOrt = (numThreads: number, loggingLevel: number): void => {
   const errorCode = getInstance()._OrtInit(numThreads, loggingLevel);
   if (errorCode !== 0) {
-    throw new Error(`Can't initialize onnxruntime. error code = ${errorCode}`);
+    checkLastError('Can\'t initialize onnxruntime.');
   }
 };
 
@@ -29,10 +48,15 @@ const initOrt = async(numThreads: number, loggingLevel: number): Promise<void> =
  */
 export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
-  await initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
+  initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
 
-  // init JSEP if available
-  await initJsep(getInstance(), env);
+  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+    // init JSEP if available
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const initJsep = require('./jsep/init').init;
+    await initJsep(getInstance(), env);
+  }
 };
 
 /**
@@ -43,16 +67,25 @@ type SessionMetadata = [number, number[], number[]];
 const activeSessions = new Map<number, SessionMetadata>();
 
 /**
- * create an instance of InferenceSession.
- * @returns the metadata of InferenceSession. 0-value handle for failure.
+ * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.
+ * @returns a 2-elements tuple - the pointer and size of the allocated buffer
  */
 export const createSessionAllocate = (model: Uint8Array): [number, number] => {
   const wasm = getInstance();
   const modelDataOffset = wasm._malloc(model.byteLength);
+  if (modelDataOffset === 0) {
+    throw new Error(`Can't create a session. failed to allocate a buffer of size ${model.byteLength}.`);
+  }
   wasm.HEAPU8.set(model, modelDataOffset);
   return [modelDataOffset, model.byteLength];
 };
 
+/**
+ * create an inference session using the prepared buffer containing the model data.
+ * @param modelData a 2-elements tuple containing the pointer and size of the model data buffer.
+ * @param options an optional session options object.
+ * @returns a 3-elements tuple containing [session handle, input names, output names]
+ */
 export const createSessionFinalize =
     (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
       const wasm = getInstance();
@@ -60,48 +93,55 @@ export const createSessionFinalize =
       let sessionHandle = 0;
       let sessionOptionsHandle = 0;
       let allocs: number[] = [];
+      const inputNamesUTF8Encoded = [];
+      const outputNamesUTF8Encoded = [];
 
       try {
         [sessionOptionsHandle, allocs] = setSessionOptions(options);
 
         sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
         if (sessionHandle === 0) {
-          throw new Error('Can\'t create a session');
+          checkLastError('Can\'t create a session.');
         }
+
+        const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);
+
+        const inputNames = [];
+        const outputNames = [];
+        for (let i = 0; i < inputCount; i++) {
+          const name = wasm._OrtGetInputName(sessionHandle, i);
+          if (name === 0) {
+            checkLastError('Can\'t get an input name.');
+          }
+          inputNamesUTF8Encoded.push(name);
+          inputNames.push(wasm.UTF8ToString(name));
+        }
+        for (let i = 0; i < outputCount; i++) {
+          const name = wasm._OrtGetOutputName(sessionHandle, i);
+          if (name === 0) {
+            checkLastError('Can\'t get an output name.');
+          }
+          outputNamesUTF8Encoded.push(name);
+          outputNames.push(wasm.UTF8ToString(name));
+        }
+
+        activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
+        return [sessionHandle, inputNames, outputNames];
+      } catch (e) {
+        inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+        outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+
+        if (sessionHandle !== 0) {
+          wasm._OrtReleaseSession(sessionHandle);
+        }
+        throw e;
       } finally {
         wasm._free(modelData[0]);
         if (sessionOptionsHandle !== 0) {
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
-        allocs.forEach(wasm._free);
+        allocs.forEach(alloc => wasm._free(alloc));
       }
-
-      const inputCount = wasm._OrtGetInputCount(sessionHandle);
-      const outputCount = wasm._OrtGetOutputCount(sessionHandle);
-
-      const inputNames = [];
-      const inputNamesUTF8Encoded = [];
-      const outputNames = [];
-      const outputNamesUTF8Encoded = [];
-      for (let i = 0; i < inputCount; i++) {
-        const name = wasm._OrtGetInputName(sessionHandle, i);
-        if (name === 0) {
-          throw new Error('Can\'t get an input name');
-        }
-        inputNamesUTF8Encoded.push(name);
-        inputNames.push(wasm.UTF8ToString(name));
-      }
-      for (let i = 0; i < outputCount; i++) {
-        const name = wasm._OrtGetOutputName(sessionHandle, i);
-        if (name === 0) {
-          throw new Error('Can\'t get an output name');
-        }
-        outputNamesUTF8Encoded.push(name);
-        outputNames.push(wasm.UTF8ToString(name));
-      }
-
-      activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
-      return [sessionHandle, inputNames, outputNames];
     };
 
 
@@ -119,14 +159,12 @@ export const releaseSession = (sessionId: number): void => {
   const wasm = getInstance();
   const session = activeSessions.get(sessionId);
   if (!session) {
-    throw new Error('invalid session id');
+    throw new Error(`cannot release session. invalid session id: ${sessionId}`);
   }
-  const sessionHandle = session[0];
-  const inputNamesUTF8Encoded = session[1];
-  const outputNamesUTF8Encoded = session[2];
+  const [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded] = session;
 
-  inputNamesUTF8Encoded.forEach(wasm._OrtFree);
-  outputNamesUTF8Encoded.forEach(wasm._OrtFree);
+  inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+  outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
   wasm._OrtReleaseSession(sessionHandle);
   activeSessions.delete(sessionId);
 };
@@ -140,11 +178,9 @@ export const run = async(
   const wasm = getInstance();
   const session = activeSessions.get(sessionId);
   if (!session) {
-    throw new Error('invalid session id');
+    throw new Error(`cannot run inference. invalid session id: ${sessionId}`);
   }
-  const sessionHandle = session[0];
-  const inputNamesUTF8Encoded = session[1];
-  const outputNamesUTF8Encoded = session[2];
+  const [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded] = session;
 
   const inputCount = inputIndices.length;
   const outputCount = outputIndices.length;
@@ -194,7 +230,7 @@ export const run = async(
         const tensor = wasm._OrtCreateTensor(
             tensorDataTypeStringToEnum(dataType), dataOffset, dataByteLength, dimsOffset, dims.length);
         if (tensor === 0) {
-          throw new Error('Can\'t create a tensor');
+          checkLastError(`Can't create tensor for input[${i}].`);
         }
         inputValues.push(tensor);
       } finally {
@@ -235,74 +271,74 @@ export const run = async(
 
       const output: SerializableTensor[] = [];
 
-      if (errorCode === 0) {
-        for (let i = 0; i < outputCount; i++) {
-          const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
+      if (errorCode !== 0) {
+        checkLastError('failed to call OrtRun().');
+      }
 
-          const beforeGetTensorDataStack = wasm.stackSave();
-          // stack allocate 4 pointer value
-          const tensorDataOffset = wasm.stackAlloc(4 * 4);
+      for (let i = 0; i < outputCount; i++) {
+        const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
 
-          let type: Tensor.Type|undefined, dataOffset = 0;
-          try {
-            errorCode = wasm._OrtGetTensorData(
-                tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
-            if (errorCode !== 0) {
-              throw new Error(`Can't access output tensor data. error code = ${errorCode}`);
-            }
-            let tensorDataIndex = tensorDataOffset / 4;
-            const dataType = wasm.HEAPU32[tensorDataIndex++];
-            dataOffset = wasm.HEAPU32[tensorDataIndex++];
-            const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
-            const dimsLength = wasm.HEAPU32[tensorDataIndex++];
-            const dims = [];
-            for (let i = 0; i < dimsLength; i++) {
-              dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
-            }
-            wasm._OrtFree(dimsOffset);
+        const beforeGetTensorDataStack = wasm.stackSave();
+        // stack allocate 4 pointer value
+        const tensorDataOffset = wasm.stackAlloc(4 * 4);
 
-            const size = dims.length === 0 ? 1 : dims.reduce((a, b) => a * b);
-            type = tensorDataTypeEnumToString(dataType);
-            if (type === 'string') {
-              const stringData: string[] = [];
-              let dataIndex = dataOffset / 4;
-              for (let i = 0; i < size; i++) {
-                const offset = wasm.HEAPU32[dataIndex++];
-                const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
-                stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
-              }
-              output.push([type, dims, stringData]);
-            } else {
-              const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
-              const data = new typedArrayConstructor(size);
-              new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-                  .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
-              output.push([type, dims, data]);
-            }
-          } finally {
-            wasm.stackRestore(beforeGetTensorDataStack);
-            if (type === 'string' && dataOffset) {
-              wasm._free(dataOffset);
-            }
-            wasm._OrtReleaseTensor(tensor);
+        let type: Tensor.Type|undefined, dataOffset = 0;
+        try {
+          errorCode = wasm._OrtGetTensorData(
+              tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
+          if (errorCode !== 0) {
+            checkLastError(`Can't access output tensor data on index ${i}.`);
           }
+          let tensorDataIndex = tensorDataOffset / 4;
+          const dataType = wasm.HEAPU32[tensorDataIndex++];
+          dataOffset = wasm.HEAPU32[tensorDataIndex++];
+          const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
+          const dimsLength = wasm.HEAPU32[tensorDataIndex++];
+          const dims = [];
+          for (let i = 0; i < dimsLength; i++) {
+            dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
+          }
+          wasm._OrtFree(dimsOffset);
+
+          const size = dims.length === 0 ? 1 : dims.reduce((a, b) => a * b);
+          type = tensorDataTypeEnumToString(dataType);
+          if (type === 'string') {
+            const stringData: string[] = [];
+            let dataIndex = dataOffset / 4;
+            for (let i = 0; i < size; i++) {
+              const offset = wasm.HEAPU32[dataIndex++];
+              const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
+              stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
+            }
+            output.push([type, dims, stringData]);
+          } else {
+            const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
+            const data = new typedArrayConstructor(size);
+            new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+                .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
+            output.push([type, dims, data]);
+          }
+        } finally {
+          wasm.stackRestore(beforeGetTensorDataStack);
+          if (type === 'string' && dataOffset) {
+            wasm._free(dataOffset);
+          }
+          wasm._OrtReleaseTensor(tensor);
         }
       }
 
-      if (errorCode === 0) {
-        return output;
-      } else {
-        throw new Error(`failed to call OrtRun(). error code = ${errorCode}.`);
-      }
+      return output;
     } finally {
       wasm.stackRestore(beforeRunStack);
     }
   } finally {
-    inputValues.forEach(wasm._OrtReleaseTensor);
-    inputAllocs.forEach(wasm._free);
+    inputValues.forEach(v => wasm._OrtReleaseTensor(v));
+    inputAllocs.forEach(p => wasm._free(p));
 
-    wasm._OrtReleaseRunOptions(runOptionsHandle);
-    runOptionsAllocs.forEach(wasm._free);
+    if (runOptionsHandle !== 0) {
+      wasm._OrtReleaseRunOptions(runOptionsHandle);
+    }
+    runOptionsAllocs.forEach(p => wasm._free(p));
   }
 };
 
@@ -320,7 +356,7 @@ export const endProfiling = (sessionId: number): void => {
   // profile file name is not used yet, but it must be freed.
   const profileFileName = wasm._OrtEndProfiling(sessionHandle);
   if (profileFileName === 0) {
-    throw new Error('Can\'t get an profile file name');
+    checkLastError('Can\'t get an profile file name.');
   }
   wasm._OrtFree(profileFileName);
 };

@@ -24,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
 Status SliceGrad::Compute(OpKernelContext* context) const {
   const Tensor& grad = *context->Input<Tensor>(0);
   const Tensor& shape = *context->Input<Tensor>(1);
-  const TensorShape data_shape(shape.template Data<int64_t>(), shape.Shape().Size());
+  const TensorShape data_shape(shape.template DataAsSpan<int64_t>());
   Tensor& output = *context->Output(0, data_shape);
   memset(output.MutableDataRaw(), 0, output.SizeInBytes());
   // Initialize the starts & ends to the actual tensor shape

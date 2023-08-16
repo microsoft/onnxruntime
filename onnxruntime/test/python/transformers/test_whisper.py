@@ -123,6 +123,61 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_with_past_cross_mha_fused.onnx")
 
+    # Attention type #4 in onnx_model_bart.py
+    def test_decoder_multihead_attention_split_bias_fusion(self):
+        num_heads = 4
+        hidden_size = 64
+        model = create_whisper_decoder_multihead_attention(num_heads=num_heads, hidden_size=hidden_size)
+        dir = "."
+        model_path = os.path.join(dir, "whisper_decoder_mha.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bart")
+        options.use_multi_head_attention = True
+        options.disable_multi_head_attention_bias = True
+        optimized_model = optimize_model(
+            model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size, optimization_options=options
+        )
+        os.remove(model_path)
+        self.verify_fusion(optimized_model, "decoder_mha_split_bias_fused.onnx")
+
+    # Attention type #3 in onnx_model_bart.py
+    def test_decoder_with_past_multihead_self_attention_split_bias_fusion_with_skiplayernorm(self):
+        num_heads = 4
+        hidden_size = 64
+        model = create_whisper_decoder_with_past_multihead_self_attention(
+            num_heads=num_heads, hidden_size=hidden_size, add_before_layernorm=False
+        )
+        dir = "."
+        model_path = os.path.join(dir, "whisper_decoder_with_past_self_mha.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bart")
+        options.use_multi_head_attention = True
+        options.disable_multi_head_attention_bias = True
+
+        optimized_model = optimize_model(
+            model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size, optimization_options=options
+        )
+        os.remove(model_path)
+        self.verify_fusion(optimized_model, "decoder_with_past_self_mha_split_bias_fused.onnx")
+
+    # Attention type #5 in onnx_model_bart.py
+    def test_decoder_with_past_multihead_cross_attention_split_bias_fusion(self):
+        num_heads = 4
+        hidden_size = 64
+        model = create_whisper_decoder_with_past_multihead_cross_attention(num_heads=num_heads, hidden_size=hidden_size)
+        dir = "."
+        model_path = os.path.join(dir, "whisper_decoder_with_past_cross_mha.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bart")
+        options.use_multi_head_attention = True
+        options.disable_multi_head_attention_bias = True
+
+        optimized_model = optimize_model(
+            model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size, optimization_options=options
+        )
+        os.remove(model_path)
+        self.verify_fusion(optimized_model, "decoder_with_past_cross_mha_split_bias_fused.onnx")
+
 
 if __name__ == "__main__":
     unittest.main()

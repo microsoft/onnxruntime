@@ -56,8 +56,8 @@ def _to_gradient_definition(gradient):
 
 
 class CustomGradientRegistry:
-    _GRADIENTS = {}
-    _STOP_GRADIENT_EDGES = {}
+    _GRADIENTS = {}  # noqa: RUF012
+    _STOP_GRADIENT_EDGES = {}  # noqa: RUF012
 
     @classmethod
     def register(cls, domain, name, attributes, fn):

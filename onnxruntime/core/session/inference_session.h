@@ -305,6 +305,20 @@ class InferenceSession {
                                    std::vector<OrtValue>* p_fetches,
                                    const std::vector<OrtDevice>* p_fetches_device_info = nullptr);
 
+  [[nodiscard]] common::Status Run(const RunOptions& run_options,
+                                   gsl::span<const char* const> feed_names,
+                                   gsl::span<const OrtValue* const> feeds,
+                                   gsl::span<const char* const> fetch_names,
+                                   gsl::span<OrtValue*> fetches);
+
+  [[nodiscard]] common::Status RunAsync(const RunOptions* run_options,
+                                        gsl::span<const char* const> feed_names,
+                                        gsl::span<const OrtValue* const> feeds,
+                                        gsl::span<const char* const> fetch_names,
+                                        gsl::span<OrtValue*> fetches,
+                                        RunAsyncCallbackFn callback,
+                                        void* user_data = nullptr);
+
   /**
    * Run a pre-loaded and pre-intialized model.
    * Multiple threads are allowed to run this function; hence its thread-safe.
@@ -626,9 +640,6 @@ class InferenceSession {
 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
-
-  // Updates all providers with the allocators from the env based on OrtMemoryInfo
-  void UpdateProvidersWithSharedAllocators();
 
   /*
    * Validate and parses the shrink arena request string from the user

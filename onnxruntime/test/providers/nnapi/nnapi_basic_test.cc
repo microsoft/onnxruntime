@@ -65,10 +65,11 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   std::vector<int64_t> dims_mul_y = {3, 2, 2};
   std::vector<float> values_mul_y = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x,
                        &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_y, values_mul_y,
+  CreateMLValue<float>(cpu_allocator, dims_mul_y, values_mul_y,
                        &ml_value_y);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -93,7 +94,8 @@ TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
 
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(std::move(cpu_allocator), dims_mul_x, values_mul_x,
                        &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -120,7 +122,8 @@ TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 4, 4};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(std::move(cpu_allocator), dims_mul_x, values_mul_x,
                        &ml_value_x);
 
   NameMLValMap feeds;
@@ -149,7 +152,8 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
   std::vector<int64_t> dims_x = {1, 1, 1, 3};
   std::vector<float> values_x = {0.0f, 256.0f, 512.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x,
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(std::move(cpu_allocator), dims_x, values_x,
                        &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -206,13 +210,14 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x,
                        &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x,
                        &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x,
                        &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -518,6 +523,31 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestCast) {
   RunQDQModelTest(build_func, "nnapi_qdq_test_graph_cast", {ExpectedEPNodeAssignment::None});
 }
 
+TEST(NnapiExecutionProviderTest, TestGather) {
+  auto BuildGatherTestCase = [](const std::vector<int64_t>& input_shape,
+                                bool scalar_indices) {
+    return [input_shape, scalar_indices](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape,
+                                                 std::numeric_limits<float>::min(),
+                                                 std::numeric_limits<float>::max());
+      auto* output_arg = builder.MakeOutput();
+      auto* indices = builder.MakeScalarInitializer<int64_t>(1);
+      if (!scalar_indices) {
+        indices = builder.Make1DInitializer<int64_t>({1});
+      }
+      auto& gather_node = builder.AddNode("Gather", {input_arg, indices}, {output_arg});
+      gather_node.AddAttribute("axis", int64_t(1));
+    };
+  };
+
+  RunQDQModelTest(BuildGatherTestCase({10, 5, 5} /* input_shape */, true /* scalar_indices */),
+                  "nnapi_test_graph_gather_scalar", {ExpectedEPNodeAssignment::All});
+
+  RunQDQModelTest(BuildGatherTestCase({10, 5, 5} /* input_shape */, false /* not scalar_indices */),
+                  "nnapi_test_graph_gather",
+                  {ExpectedEPNodeAssignment::All});
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
@@ -540,7 +570,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, data,
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, data,
                        &ml_value);
 
   NameMLValMap feeds;

@@ -7,6 +7,7 @@
 
 #include "core/common/status.h"
 #include "core/graph/ort_format_load_options.h"
+#include "core/framework/tensor.h"
 
 namespace ONNX_NAMESPACE {
 class AttributeProto;
@@ -88,6 +89,30 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               onnxruntime::Graph& graph, onnxruntime::Node& node,
                               const OrtFormatLoadOptions& load_options,
                               const logging::Logger& logger);
+
+#ifdef ENABLE_TRAINING_APIS
+
+/// @brief Save an ORT Tensor to a flatbuffer tensor
+/// @param[in] tensor_name Name of the tensor
+/// @param[in] ort_tensor ORT tensor to serialize to a flatbuffer tensor
+/// @param[in] builder flatbuffer builder to use for creating the flatbuffer tensor
+/// @param[out] fbs_tensor flatbuffer tensor to serialize the ORT tensor to
+/// @return Status indicating success or providing error information
+Status SaveOrtTensorOrtFormat(
+    const std::string& tensor_name, const onnxruntime::Tensor& ort_tensor,
+    flatbuffers::FlatBufferBuilder& builder,
+    flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
+
+/// @brief Load an ORT tensor from a flatbuffer tensor
+/// @param[in] fbs_tensor flatbuffer tensor to load the ORT tensor from
+/// @param[in] allocator Allocator to use for creating the ORT tensor
+/// @param[out] tensor_name Name of the tensor
+/// @param[out] ort_tensor ORT tensor to load the flatbuffer tensor into
+/// @return Status indicating success or providing error information
+Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr allocator,
+                              std::string& tensor_name, onnxruntime::Tensor& ort_tensor);
+
+#endif
 
 }  // namespace utils
 }  // namespace fbs

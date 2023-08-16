@@ -273,15 +273,8 @@ std::unique_ptr<IExecutionProvider> CreateTrainingEP(
     const SessionOptions& session_options,
     const std::string& provider_type,
     const ProviderOptionsMap& provider_options_map) {
-  auto provider = CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
-  // The CPU provider instance created by the factory doesn't create allocators by default. The session registers
-  // the allocators to allow sharing. However, in some training scenarios (particularly eager mode), no session is
-  // created but it (eager mode) relies on the allocator in the CPU provider. Hence the need to call RegisterAllocator.
-  if (provider_type == kCpuExecutionProvider) {
-    AllocatorManager mgr;  // temporary only to call RegisterAllocator
-    provider->RegisterAllocator(mgr);
-  }
-  return provider;
+  // TODO(leca): REVIEW: No allocators are initialized
+  return CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
 }
 
 std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::string& provider_type,

@@ -44,6 +44,8 @@ class TestSetting:
     seed: int
     verbose: bool
     log_severity: int
+    average_sequence_length: int
+    random_sequence_length: bool
 
 
 @dataclass
@@ -55,6 +57,7 @@ class ModelSetting:
     opt_level: int
     input_tuning_results: Optional[str]
     output_tuning_results: Optional[str]
+    mask_type: int
 
 
 def create_session(
@@ -365,7 +368,9 @@ def run_performance(model_setting, test_setting, perf_results):
         input_ids,
         segment_ids,
         input_mask,
-        random_mask_length=False,
+        test_setting.average_sequence_length,
+        test_setting.random_sequence_length,
+        mask_type=model_setting.mask_type,
     )
 
     run_perf_tests(model_setting, test_setting, perf_results, all_inputs)
@@ -473,6 +478,7 @@ def parse_arguments():
         default=None,
         help="input name for input ids",
     )
+
     parser.add_argument(
         "--segment_ids_name",
         required=False,
@@ -480,6 +486,7 @@ def parse_arguments():
         default=None,
         help="input name for segment ids",
     )
+
     parser.add_argument(
         "--input_mask_name",
         required=False,
@@ -494,11 +501,37 @@ def parse_arguments():
         type=str,
         help="tuning results (json) to be loaded before benchmark",
     )
+
     parser.add_argument(
         "--output_tuning_results",
         default=None,
         type=str,
         help="tuning results (json) to be saved after benchmark",
+    )
+
+    parser.add_argument(
+        "-a",
+        "--average_sequence_length",
+        default=-1,
+        type=int,
+        help="average sequence length excluding padding",
+    )
+
+    parser.add_argument(
+        "-r",
+        "--random_sequence_length",
+        required=False,
+        action="store_true",
+        help="use uniform random instead of fixed sequence length",
+    )
+    parser.set_defaults(random_sequence_length=False)
+
+    parser.add_argument(
+        "--mask_type",
+        required=False,
+        type=int,
+        default=2,
+        help="mask type: (1: mask index or sequence length, 2: raw 2D mask, 3: key len, cumulated lengths of query and key)",
     )
 
     args = parser.parse_args()
@@ -511,11 +544,14 @@ def main():
     if args.test_times == 0:
         args.test_times = max(1, int(1000 / args.samples))
 
+    if args.average_sequence_length <= 0:
+        args.average_sequence_length = args.sequence_length
+
     manager = multiprocessing.Manager()
     perf_results = manager.dict()
 
     batch_size_set = set(args.batch_size)
-    if not min(batch_size_set) >= 1 and max(batch_size_set) <= 128:
+    if not (min(batch_size_set) >= 1 and max(batch_size_set) <= 128):
         raise Exception("batch_size not in range [1, 128]")
 
     model_setting = ModelSetting(
@@ -526,6 +562,7 @@ def main():
         args.opt_level,
         args.input_tuning_results,
         args.output_tuning_results,
+        args.mask_type,
     )
 
     for batch_size in batch_size_set:
@@ -541,6 +578,8 @@ def main():
             args.seed,
             args.verbose,
             args.log_severity,
+            args.average_sequence_length,
+            args.random_sequence_length,
         )
 
         print("test setting", test_setting)

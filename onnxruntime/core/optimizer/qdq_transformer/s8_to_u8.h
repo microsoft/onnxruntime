@@ -50,7 +50,7 @@ inline bool Int8TensorProto2Uint8(
   Initializer temp(*src, graph.ModelPath());
   int8_t* p = temp.data<int8_t>();
   bool should_convert = false;
-  for (int i = 0; i < temp.size(); i++) {
+  for (size_t i = 0; i < temp.size(); i++) {
     if (*p < -64 || *p > 64) {
       should_convert = true;
     }

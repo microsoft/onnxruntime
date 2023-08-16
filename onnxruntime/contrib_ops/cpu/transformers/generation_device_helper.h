@@ -33,6 +33,7 @@ enum DeviceCopyDirection {
 
 namespace GenerationDeviceHelper {
 
+#ifdef USE_CUDA
 using ReorderPastStateFunc = std::function<Status(
     const void* cuda_device_prop,  // cudaDeviceProp
     Tensor& past_state,
@@ -42,6 +43,7 @@ using ReorderPastStateFunc = std::function<Status(
 using InitCacheIndirFunc = std::function<Status(
     Tensor& cache_indir,
     Stream* stream)>;
+#endif
 
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
@@ -64,11 +66,13 @@ using CreateGptInputsFunc = std::function<Status(
     OrtValue& expanded_attention_mask)>;
 
 using AddToFeedsFunc = std::function<Status(
-    const IExecutionProvider* provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer)>;
+    IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr device_allocator,
+    AllocatorPtr host_allocator,
+    const OrtMemoryInfo& location)>;
 
 template <typename T>
 using InitBeamStateFunc = std::function<void(
@@ -76,6 +80,12 @@ using InitBeamStateFunc = std::function<void(
     gsl::span<int32_t>& sequence_lengths,
     int batch_size,
     int num_beams,
+    Stream* stream)>;
+
+using CreateBeamScorer = std::function<std::unique_ptr<transformers::IBeamScorer>(
+    const transformers::IGenerationParameters& parameters,
+    AllocatorPtr& allocator,
+    AllocatorPtr& allocator_cpu,
     Stream* stream)>;
 
 template <typename T>
@@ -88,7 +98,6 @@ template <typename T>
 using ProcessLogitsFunc = std::function<Status(
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IBeamSearchState<T>* beam_state,          // state
-    transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
     transformers::ISequences* sequences,                    // sequences
     AllocatorPtr& allocator,                                // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -208,11 +217,13 @@ Status TopK(
     Tensor& output_indices);
 
 Status AddToFeeds(
-    const IExecutionProvider* execution_provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer);
+    IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr device_allocator,
+    AllocatorPtr host_allocator,
+    const OrtMemoryInfo& location);
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
@@ -229,7 +240,6 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
 template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                      transformers::IBeamSearchState<T>* beam_state,          // state
-                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
                      transformers::ISequences* sequences,                    // sequences
                      AllocatorPtr& allocator,                                // default allocator
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)

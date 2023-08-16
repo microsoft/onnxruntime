@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/narrow.h"
 #include "core/platform/env_var_utils.h"
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -392,29 +393,29 @@ static void RunModelWithRandomInput(
   constexpr int hidden_size = 768;
   constexpr int num_heads = 12;
 
-  int token_count = 0;
+  int64_t token_count = 0;
   std::vector<int32_t> cum_seq_len(batch_size + 1);
   cum_seq_len[0] = 0;
 
-  int original_offset = 0;
-  int token_offset_idx = 0;
+  int64_t original_offset = 0;
+  int64_t token_offset_idx = 0;
   std::vector<int32_t> token_offset(batch_size * sequence_length);
-  for (int b = 0; b < batch_size; b++) {
-    int actual_seq_len = (sequence_length / (b + 1));
+  for (int64_t b = 0; b < batch_size; b++) {
+    int64_t actual_seq_len = (sequence_length / (b + 1));
     token_count += actual_seq_len;
-    cum_seq_len[b + 1] = token_count;
+    cum_seq_len[b + 1] = narrow<int32_t>(token_count);
 
     original_offset = b * sequence_length;
-    for (int s = 0; s < actual_seq_len; s++) {
-      token_offset[token_offset_idx++] = original_offset++;
+    for (int64_t s = 0; s < actual_seq_len; s++) {
+      token_offset[token_offset_idx++] = narrow<int32_t>(original_offset++);
     }
   }
 
-  for (int b = 0; b < batch_size; b++) {
-    int actual_seq_len = (sequence_length / (b + 1));
+  for (int64_t b = 0; b < batch_size; b++) {
+    int64_t actual_seq_len = (sequence_length / (b + 1));
     original_offset = b * sequence_length + actual_seq_len;
-    for (int s = actual_seq_len; s < sequence_length; s++) {
-      token_offset[token_offset_idx++] = original_offset++;
+    for (int64_t s = actual_seq_len; s < sequence_length; s++) {
+      token_offset[token_offset_idx++] = narrow<int32_t>(original_offset++);
     }
   }
 

@@ -15,6 +15,15 @@ __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::
   return dY * (_Normcdf(X) + X * kAlpha * _Exp(-T(0.5) * X * X));
 }
 
+template <>
+__device__ __inline__ half ComputeGeluGradScalar(half dY, half X, gelu_computation_mode::Default) {
+  const half kHalf = half(0.5);
+  const half kOne = half(1.0);
+  const half kAlpha = half(M_SQRT1_2);
+  const half kBeta = half(M_2_SQRTPI) * kAlpha * kHalf;
+  return dY * (kHalf * (kOne + _Erf(kAlpha * X)) + X * kBeta * _Exp(-kHalf * X * X));
+}
+
 template <typename T>
 __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::Approximation) {
   // copied and adapted from DeepSpeed:

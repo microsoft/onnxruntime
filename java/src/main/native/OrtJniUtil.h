@@ -44,6 +44,8 @@ OrtErrorCode getTensorTypeShape(JNIEnv * jniEnv, JavaTensorTypeShape * output, c
 
 jfloat convertHalfToFloat(uint16_t half);
 
+jfloat convertBF16ToFloat(uint16_t half);
+
 jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo * info);
 
 jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorTypeAndShapeInfo * info);

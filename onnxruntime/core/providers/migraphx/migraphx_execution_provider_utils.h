@@ -3,7 +3,6 @@
 
 #pragma once
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {

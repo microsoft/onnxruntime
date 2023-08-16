@@ -5,6 +5,7 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/common/safeint.h"
 
 #include "base_op_builder.h"
@@ -78,7 +79,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(ExplictOpCheck(node_unit));
   }
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(quantize_param, is_quantized_model);
+  utils::InitializeQuantizeParam(quantize_param, is_quantized_model);
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
 
   // for Input A, B, C: 1 -- need transpose, 0 -- not needed
@@ -99,7 +100,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     }
 
     const auto* type_proto = inputs[input_i].node_arg.TypeAsProto();
-    ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
@@ -130,11 +131,11 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       input_shape[0] = old_input_shape[1];
       input_shape[1] = old_input_shape[0];
       const std::string& node_input_name(input_name);
-      input_tensor_name = input_tensor_name + "_trans";
+      input_tensor_name = input_tensor_name + "_ort_qnn_ep_transpose";
       std::vector<uint32_t> perm{1, 0};
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(), node_input_name, input_tensor_name,
                                                              old_input_shape, perm, input_shape,
-                                                             qnn_data_type, quantize_param));
+                                                             qnn_data_type, quantize_param, do_op_validation));
     }
 
     if (2 == input_i && 2 == input_shape.size()) {

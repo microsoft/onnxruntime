@@ -480,12 +480,6 @@ class IfOpTesterWithOptionalTypeAsOutput : public OpTester {
   }
 
  protected:
-  // Since this test is being written at a time when only opset 15  has been released, we override
-  // IsAllowReleasedONNXOpsetsOnlySetForThisTest() to return `false`to allow this test to run
-  bool IsAllowReleasedONNXOpsetsOnlySetForThisTest() const override {
-    return false;
-  }
-
   void AddNodes(onnxruntime::Graph& graph,
                 std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                 std::vector<onnxruntime::NodeArg*>& graph_output_defs,

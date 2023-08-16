@@ -46,8 +46,6 @@ class BeamSearch : public IControlFlowKernel {
 
   // device helpers that is same for both GPT and encoder-decoder models.
   void SetDeviceHelpers(
-      const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
-      const GenerationDeviceHelper::InitCacheIndirFunc& init_cache_indir_func,
       const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       const GenerationDeviceHelper::TopkFunc& topk_func,
       const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
@@ -55,9 +53,8 @@ class BeamSearch : public IControlFlowKernel {
       const GenerationDeviceHelper::ProcessLogitsFunc<float>& process_logits_func,
       const GenerationDeviceHelper::ProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
       const GenerationDeviceHelper::InitBeamStateFunc<float>& init_beam_state_func,
-      const GenerationDeviceHelper::InitBeamStateFunc<MLFloat16>& init_beam_state_fp16_func) {
-    reorder_past_state_func_ = reorder_past_state_func;
-    init_cache_indir_func_ = init_cache_indir_func;
+      const GenerationDeviceHelper::InitBeamStateFunc<MLFloat16>& init_beam_state_fp16_func,
+      const GenerationDeviceHelper::CreateBeamScorer& create_beam_scorer_func) {
     add_to_feeds_func_ = add_to_feeds_func;
     topk_func_ = topk_func;
     device_copy_func_ = device_copy_func;
@@ -66,7 +63,17 @@ class BeamSearch : public IControlFlowKernel {
     process_logits_fp16_func_ = process_logits_fp16_func;
     init_beam_state_func_ = init_beam_state_func;
     init_beam_state_fp16_func_ = init_beam_state_fp16_func;
+    create_beam_scorer_func_ = create_beam_scorer_func;
   }
+
+#ifdef USE_CUDA
+  void SetDeviceHelpers_Cuda(
+      const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
+      const GenerationDeviceHelper::InitCacheIndirFunc& init_cache_indir_func) {
+    reorder_past_state_func_ = reorder_past_state_func;
+    init_cache_indir_func_ = init_cache_indir_func;
+  }
+#endif
 
   void SetDeviceHelpers_Gpt(
       const GenerationDeviceHelper::UpdateGptFeedsFunc<float>& update_gpt_feeds_func,
@@ -89,13 +96,13 @@ class BeamSearch : public IControlFlowKernel {
     expand_buffer_float16_func_ = expand_buffer_float16_func;
   }
 
+#ifdef USE_CUDA
   const void* cuda_device_prop_ = nullptr;
   int cuda_device_arch_ = 0;
+#endif
 
  private:
   // Device specific functions
-  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
-  GenerationDeviceHelper::InitCacheIndirFunc init_cache_indir_func_;
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::TopkFunc topk_func_;
   GenerationDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
@@ -106,6 +113,12 @@ class BeamSearch : public IControlFlowKernel {
 
   GenerationDeviceHelper::InitBeamStateFunc<float> init_beam_state_func_;
   GenerationDeviceHelper::InitBeamStateFunc<MLFloat16> init_beam_state_fp16_func_;
+  GenerationDeviceHelper::CreateBeamScorer create_beam_scorer_func_;
+
+#ifdef USE_CUDA
+  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
+  GenerationDeviceHelper::InitCacheIndirFunc init_cache_indir_func_;
+#endif
 
   //------------------------------------------------------------
   // Device specific functions for GPT

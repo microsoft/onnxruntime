@@ -50,7 +50,9 @@ class TestWhereModel(unittest.TestCase):
             [out_put],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 16)])
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 16), helper.make_opsetid("com.microsoft", 1)]
+        )
         save(model, model_path)
 
     def quantize_where_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
@@ -145,7 +147,7 @@ class TestWhereModel(unittest.TestCase):
         self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={"ForceQuantizeNoInputCheck": True})
         print(__name__)
 
-    def test_quantize_where_u8u8_no_ForceQuantizeNoInputCheck(self):  # noqa: N802
+    def test_quantize_where_u8u8_no_force_quantize_no_input_check(self):
         self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={"ForceQuantizeNoInputCheck": False})
         print(__name__)
 

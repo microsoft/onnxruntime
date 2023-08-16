@@ -202,10 +202,7 @@ class TrainingBlock(blocks.Block):
         # The order of model inputs after gradient graph building is: user inputs, model parameters as inputs
         # The order of the model outputs is: user outputs, model parameter gradients (in the order of parameter inputs)
         self._training_model, self._eval_model = _training_graph_utils.build_gradient_graph(
-            model,
-            self._requires_grad,
-            self._frozen_params,
-            output,
+            model, self._requires_grad, self._frozen_params, output, accessor._GLOBAL_CUSTOM_OP_LIBRARY
         )
 
         _training_graph_utils.build_gradient_accumulation_graph(self._training_model, self._requires_grad)

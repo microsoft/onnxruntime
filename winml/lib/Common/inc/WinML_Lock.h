@@ -16,42 +16,22 @@ class CWinMLLock {
   CRITICAL_SECTION critical_section_;
 
  public:
-  CWinMLLock() {
-    InitializeCriticalSection(&critical_section_);
-  };
+  CWinMLLock() { InitializeCriticalSection(&critical_section_); };
 
-  ~CWinMLLock() {
-    DeleteCriticalSection(&critical_section_);
-  };
+  ~CWinMLLock() { DeleteCriticalSection(&critical_section_); };
 
-  void Lock() {
-    EnterCriticalSection(&critical_section_);
-  };
-  void Unlock() {
-    LeaveCriticalSection(&critical_section_);
-  };
-  void LockExclusive() {
-    EnterCriticalSection(&critical_section_);
-  };
-  void UnlockExclusive() {
-    LeaveCriticalSection(&critical_section_);
-  };
+  void Lock() { EnterCriticalSection(&critical_section_); };
+  void Unlock() { LeaveCriticalSection(&critical_section_); };
+  void LockExclusive() { EnterCriticalSection(&critical_section_); };
+  void UnlockExclusive() { LeaveCriticalSection(&critical_section_); };
   BOOL IsLockHeldByCurrentThread() {
     return GetCurrentThreadId() == static_cast<DWORD>(reinterpret_cast<ULONG_PTR>(critical_section_.OwningThread));
   };
-  BOOL IsLockHeld() {
-    return critical_section_.OwningThread != 0;
-  };
-  BOOL TryLock() {
-    return TryEnterCriticalSection(&critical_section_);
-  };
+  BOOL IsLockHeld() { return critical_section_.OwningThread != 0; };
+  BOOL TryLock() { return TryEnterCriticalSection(&critical_section_); };
   // aliased methods to help code compat so that CriticalSections can be passed to ReaderWriter templates
-  void LockShared() {
-    EnterCriticalSection(&critical_section_);
-  };
-  void UnlockShared() {
-    LeaveCriticalSection(&critical_section_);
-  };
+  void LockShared() { EnterCriticalSection(&critical_section_); };
+  void UnlockShared() { LeaveCriticalSection(&critical_section_); };
 };
 
 // locks a critical section, and unlocks it automatically

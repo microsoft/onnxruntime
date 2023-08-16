@@ -34,6 +34,7 @@ try:
     from onnxruntime.capi._pybind_state import SessionIOBinding  # noqa: F401
     from onnxruntime.capi._pybind_state import SessionOptions  # noqa: F401
     from onnxruntime.capi._pybind_state import create_and_register_allocator  # noqa: F401
+    from onnxruntime.capi._pybind_state import create_and_register_allocator_v2  # noqa: F401
     from onnxruntime.capi._pybind_state import disable_telemetry_events  # noqa: F401
     from onnxruntime.capi._pybind_state import enable_telemetry_events  # noqa: F401
     from onnxruntime.capi._pybind_state import get_all_providers  # noqa: F401

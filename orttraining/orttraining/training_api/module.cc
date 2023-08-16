@@ -25,6 +25,7 @@ namespace {
 // TODO: consolidate with frontend tooling
 const std::string ACCUMULATE_GRAD_CONTROL_INPUT_NAME{"lazy_reset_grad"};
 
+#if !defined(ORT_MINIMAL_BUILD)
 std::unordered_set<const Node*> GetReverseReachableNodes(Graph& inference_graph,
                                                          InlinedVector<const NodeArg*>& output_node_args) {
   // Perform a graph traversal from the graph outputs to collect all reachable nodes from the outputs
@@ -116,7 +117,7 @@ Status TransformModelInputsForInference(Graph& inference_graph,
 
   return Status::OK();
 }
-
+#endif
 }  // namespace
 
 Status Parameter::SetGrad(const std::string& gradient_name, const OrtValue& param_grad) {
@@ -154,7 +155,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const onnxruntime::SessionOptions& session_options,
                const Environment& env,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-               const std::optional<std::string>& eval_model_path_or_bytes)
+               const std::optional<std::string>& eval_model_path_or_bytes,
+               [[maybe_unused]] gsl::span<OrtCustomOpDomain* const> op_domains)
     : state_{state} {
   // Enforce weight prepacking is disabled
   // If the user explicitly enabled weight prepacking then return an error.
@@ -168,6 +170,12 @@ Module::Module(const std::string& train_model_path_or_bytes,
   }
 
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  if (!op_domains.empty()) {
+    ORT_THROW_IF_ERROR(train_sess_->AddCustomOpDomains(op_domains));
+  }
+#endif
+
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   for (const auto& provider : providers) {
     ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(provider));
@@ -272,6 +280,12 @@ Module::Module(const std::string& train_model_path_or_bytes,
 
   if (eval_model_path_or_bytes.has_value()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+    if (!op_domains.empty()) {
+      ORT_THROW_IF_ERROR(eval_sess_->AddCustomOpDomains(op_domains));
+    }
+#endif
+
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
     for (const auto& provider : providers) {
       ORT_THROW_IF_ERROR(eval_sess_->RegisterExecutionProvider(provider));
@@ -450,8 +464,7 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   utils::WrapInOrtValue<bool>(!accumulate_gradient_, &reset_grad_input);
   feeds.push_back(reset_grad_input);
 
-  auto status = train_sess_->Run(RunOptions(), train_input_names_, feeds, train_output_names_, &outputs);
-  ORT_THROW_IF_ERROR(status);
+  ORT_THROW_IF_ERROR(train_sess_->Run(RunOptions(), train_input_names_, feeds, train_output_names_, &outputs));
 
   // Reset the flag after every step. In case the ResetGrad was called before running
   // the current step, it will have done the effective resetting during the
@@ -470,6 +483,10 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// TODO (baijumeswani): ExportModelForInferencing should work irrespective of whether
+//                      the build is minimal or not. This will require to read the ort_format eval model,
+//                      trainsform it to an inference model and save it in ort_format.
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
                                          gsl::span<const std::string> graph_output_names) const {
   ORT_RETURN_IF(!eval_sess_ || eval_model_path_.empty(),
@@ -493,9 +510,9 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
 
   // Save the model at the desired location.
   ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
-
   return Status::OK();
 }
+#endif
 
 size_t Module::GetTrainingModelInputCount() const noexcept {
   return train_user_input_count_;
@@ -517,6 +534,14 @@ std::string Module::GetEvalModelInputName(size_t index) const {
               "Eval input name index out of range. Expected in range [0-", eval_user_input_count_, "). Actual: ",
               index);
   return eval_input_names_.at(index);
+}
+
+std::pair<common::Status, const InputDefList*> Module::GetTrainingModelInputs() const noexcept {
+  return train_sess_->GetModelInputs();
+}
+
+std::pair<common::Status, const InputDefList*> Module::GetEvalModelInputs() const noexcept {
+  return eval_sess_->GetModelInputs();
 }
 
 }  // namespace api

@@ -2,10 +2,12 @@
 # Licensed under the MIT License.
 
 import copy
+import os
 from typing import List, Optional, Set, Tuple, Union
 
 import onnx
 
+from onnxruntime import SessionOptions
 from onnxruntime.capi._pybind_state import GradientGraphBuilder, get_optimized_model
 
 
@@ -66,17 +68,25 @@ def _move_initializers_to_inputs(model: onnx.ModelProto, initializer_names: Opti
 
 
 def _gradient_model_for(
-    model: onnx.ModelProto, requires_grad: Set[str], output_names: List[str], loss_name: str
+    model: onnx.ModelProto,
+    requires_grad: Set[str],
+    output_names: List[str],
+    loss_name: str,
+    options: Optional[SessionOptions] = None,
 ) -> onnx.ModelProto:
     """Builds the gradient graph on top of the given input forward only graph."""
 
-    builder = GradientGraphBuilder(model.SerializeToString(), set(output_names), requires_grad, loss_name)
+    builder = GradientGraphBuilder(model.SerializeToString(), set(output_names), requires_grad, loss_name, options)
     builder.build()
     return onnx.load_from_string(builder.get_model())
 
 
 def build_gradient_graph(
-    model: onnx.ModelProto, requires_grad: Set[str], frozen_params: Set[str], output_names: Union[List[str], str]
+    model: onnx.ModelProto,
+    requires_grad: Set[str],
+    frozen_params: Set[str],
+    output_names: Union[List[str], str],
+    custom_op_library: Optional[str] = None,
 ) -> Tuple[onnx.ModelProto, onnx.ModelProto]:
     """Prepare the training model and the eval model.
 
@@ -106,10 +116,14 @@ def build_gradient_graph(
     eval_model = copy.deepcopy(model)
     _disable_training_mode(eval_model)
 
-    optimized_model = onnx.load_from_string(get_optimized_model(model.SerializeToString(), requires_grad))
+    options = SessionOptions()
+    if custom_op_library is not None:
+        options.register_custom_ops_library(os.fspath(custom_op_library))
+
+    optimized_model = onnx.load_from_string(get_optimized_model(model.SerializeToString(), requires_grad, options))
 
     # Assumption is that the first graph output is the loss output
-    gradient_model = _gradient_model_for(optimized_model, requires_grad, output_names, output_names[0])
+    gradient_model = _gradient_model_for(optimized_model, requires_grad, output_names, output_names[0], options)
 
     _reorder_outputs(gradient_model, output_names, requires_grad)
 

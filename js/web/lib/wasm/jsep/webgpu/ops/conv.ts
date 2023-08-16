@@ -187,7 +187,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   const sequentialAccessByThreads = /* backend.adapterInfo.isIntel() */ true;
 
   // STEP.1: transpose weight
-  const transposedWeight = (context.customData.wT as TensorView | undefined) ??
+  const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
       context.compute(
           {
             ...transposeProgramMetadata,
@@ -195,8 +195,8 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
             get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
           },
           {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
-  if (attributes.wIsConst && !context.customData.wT) {
-    context.customData.wT = transposedWeight;
+  if (attributes.wIsConst && !context.kernelCustomData.wT) {
+    context.kernelCustomData.wT = transposedWeight;
   }
 
   // STEP.2: prepare reshaped inputs

@@ -69,13 +69,11 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status DumpQnnContext(const onnxruntime::PathString& context_cache_pathstring,
-                        const std::string& model_name,
-                        const std::string& graph_name);
+  Status DumpQnnContext(const std::string& model_name, const std::string& graph_name);
 
-  Status LoadCachedQnnContext(const onnxruntime::PathString& context_cache_pathstring, QnnModel& qnn_model);
+  Status LoadCachedQnnContext(QnnModel& qnn_model);
 
-  Status GetMetadataFromOrtContextFile(const onnxruntime::PathString& model_path);
+  Status GetMetadataFromOrtContextFile();
 
   Status ValidateWithContextFile(const std::string& model_name, const std::string& graph_name);
 
@@ -132,6 +130,10 @@ class QnnBackendManager {
 
   // NPU backend requires quantized model
   bool IsNpuBackend() { return is_npu_backend_; }
+
+  bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
+                                const std::string& model_description,
+                                const onnxruntime::PathString& model_pathstring);
 
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
@@ -197,6 +199,10 @@ class QnnBackendManager {
   HtpPerformanceMode htp_performance_mode_;
   std::string model_name_from_ctx_cache_ = "";
   std::string graph_name_from_ctx_cache_ = "";
+  std::string model_description_from_ctx_cache_ = "";
+  std::string model_description_ = "";
+  std::string context_cache_path_ = "";
+  bool ctx_file_exists_ = false;
   bool ctx_metadata_tried_ = false;
   bool ort_generated_ctx_cache_ = false;
   bool get_capability_round_2_ = false;

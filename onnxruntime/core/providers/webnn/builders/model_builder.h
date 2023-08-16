@@ -9,6 +9,7 @@
 
 #include "model.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/webnn/builders/helper.h"
 
 #include <emscripten.h>
 #include <emscripten/val.h>
@@ -20,8 +21,9 @@ class IOpBuilder;
 
 class ModelBuilder {
  public:
-  ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger, const emscripten::val& context,
-               const emscripten::val& builder, const DataLayout preferred_layout);
+  ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
+               const emscripten::val& context, const emscripten::val& builder,
+               const DataLayout preferred_layout, const WebnnDeviceType wnn_device_type);
   ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
@@ -40,7 +42,7 @@ class ModelBuilder {
   // Add a constant operand (allocate persist buffer and move the ownership to mem_persist_buffers_).
   Status AddOperandFromPersistMemoryBuffer(
       const std::string& name, const void* buffer,
-      const size_t size, const std::vector<uint32_t> shape, const size_t element_size = 4);
+      const size_t size, const std::vector<uint32_t> shape, const int32_t data_type);
   // Find if an output has a fuseable activation (e.g., Relu).
   emscripten::val FindActivation(const Node& node, const NodeArg& output,
                                  const InlinedHashSet<std::string> supported_nodes = {});
@@ -49,6 +51,8 @@ class ModelBuilder {
   GetFusedActivations() const { return fused_activations_; }
 
   DataLayout GetPreferredLayout() const { return preferred_layout_; }
+
+  WebnnDeviceType GetWebnnDeviceType() const { return wnn_device_type_; }
 
   // The initializer will be processed separately, skip it as an initializer.
   void AddInitializerToSkip(const std::string& tensor_name);
@@ -66,6 +70,7 @@ class ModelBuilder {
   emscripten::val wnn_context_ = emscripten::val::object();
   emscripten::val wnn_builder_ = emscripten::val::object();
   DataLayout preferred_layout_;
+  WebnnDeviceType wnn_device_type_;
   std::vector<std::vector<uint8_t>> unpacked_tensors_;
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;
   std::vector<std::string> input_names_;

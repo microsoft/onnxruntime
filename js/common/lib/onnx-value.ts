@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from './tensor';
+import {Tensor} from './tensor.js';
 
 type NonTensorType = never;
 

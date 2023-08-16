@@ -40,12 +40,18 @@ class GemmTunableOp : public TunableOp<GemmParams<T>> {
     this->RegisterOp(RocBlasGemmOp<T>);
 
 #ifdef USE_HIPBLASLT
-    this->RegisterOp(HipBlasLtGemmOp<T>);
+    for (auto&& [_, op] : GetHipBlasLtGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
 #endif
 
 #ifdef USE_ROCBLAS_EXTENSION_API
-    this->RegisterNestedTunableOp(&rocblas_gemm_tunable_op_);
-#endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
+    for (auto&& [_, op] : GetRocBlasGemmTypeStringAndOps<T>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+#endif
 
 #ifdef USE_COMPOSABLE_KERNEL
     for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
@@ -79,11 +85,6 @@ class GemmTunableOp : public TunableOp<GemmParams<T>> {
       delete params;
     }
   }
-
- private:
-#ifdef USE_ROCBLAS_EXTENSION_API
-  RocBlasGemmTunableOp<T> rocblas_gemm_tunable_op_;
-#endif
 };
 
 template <typename T, typename ALayout, typename BLayout>
@@ -93,8 +94,11 @@ class BatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
     this->RegisterOp(RocBlasBatchedGemmOp<T>);
 
 #ifdef USE_ROCBLAS_EXTENSION_API
-    this->RegisterNestedTunableOp(&rocblas_batched_gemm_tunable_op_);
-#endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
+    for (auto&& [_, op] : GetRocBlasBatchedGemmTypeStringAndOps<T>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+#endif
   }
 
   const BatchedGemmParams<T>* PreTuning(const BatchedGemmParams<T>* params) override {
@@ -131,11 +135,6 @@ class BatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
       delete params;
     }
   }
-
- private:
-#ifdef USE_ROCBLAS_EXTENSION_API
-  RocBlasBatchedGemmTunableOp<T> rocblas_batched_gemm_tunable_op_;
-#endif
 };
 
 template <typename T, typename ALayout, typename BLayout>
@@ -145,12 +144,18 @@ class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>
     this->RegisterOp(RocBlasStridedBatchedGemmOp<T>);
 
 #ifdef USE_HIPBLASLT
-    this->RegisterOp(HipBlasLtStridedBatchedGemmOp<T>);
+    for (auto&& [_, op] : GetHipBlasLtStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
 #endif
 
 #ifdef USE_ROCBLAS_EXTENSION_API
-    this->RegisterNestedTunableOp(&rocblas_strided_batched_gemm_tunable_op_);
-#endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
+    for (auto&& [_, op] : GetRocBlasStridedBatchedGemmTypeStringAndOps<T>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+#endif
 
 #ifdef USE_COMPOSABLE_KERNEL
     for (auto&& [_, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
@@ -178,11 +183,6 @@ class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>
       delete params;
     }
   }
-
- private:
-#ifdef USE_ROCBLAS_EXTENSION_API
-  RocBlasStridedBatchedGemmTunableOp<T> rocblas_strided_batched_gemm_tunable_op_;
-#endif
 };
 
 }  // namespace internal

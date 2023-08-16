@@ -53,7 +53,7 @@ struct CosineSumWindow {
     auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
 
     // Calculate the radians to increment per sample
-    constexpr double pi = 3.14159265;
+    constexpr double pi = M_PI;
     constexpr double tau = 2 * pi;
     const size_t denominator = is_periodic ? size : size - 1;
     const double angular_increment = tau / denominator;

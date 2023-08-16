@@ -99,6 +99,16 @@ export interface TensorView {
   getFloat32Array(): Float32Array;
 
   /**
+   * get a BigInt64Array data view of the tensor data. tensor data must be on CPU.
+   */
+  getBigInt64Array(): BigInt64Array;
+
+  /**
+   * get a Int32Array data view of the tensor data. tensor data must be on CPU.
+   */
+  getInt32Array(): Int32Array;
+
+  /**
    * create a new tensor view with the same data but different dimensions.
    */
   reshape(newDims: readonly number[]): TensorView;

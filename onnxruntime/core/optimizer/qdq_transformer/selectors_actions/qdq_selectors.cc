@@ -330,23 +330,29 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
          dt_input_1 == dt_output;
 }
 
-bool InstanceNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                                   const Node& node,
-                                                   const std::vector<const Node*>& dq_nodes,
-                                                   const std::vector<const Node*>& q_nodes) const {
+bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                                           const Node& node,
+                                                           const std::vector<const Node*>& dq_nodes,
+                                                           const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
 
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_scale = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_bias = 0;
+  bool has_bias = false;
+  // bias is optional for LayerNorm
+  if (dq_nodes.size() > 2) {
+    has_bias = true;
+    dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  }
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
   // Input, output, and scale need to be the same type. The bias is int32.
   return (dt_input == dt_output) &&
          (dt_input == dt_scale) &&
-         (dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
+         (has_bias ? dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 : true);
 }
 
 bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,

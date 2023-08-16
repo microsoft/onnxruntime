@@ -26,10 +26,11 @@ export interface OrtWasmModule extends EmscriptenModule {
   // #region ORT APIs
   _OrtInit(numThreads: number, loggingLevel: number): number;
 
+  _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
+
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
   _OrtReleaseSession(sessionHandle: number): void;
-  _OrtGetInputCount(sessionHandle: number): number;
-  _OrtGetOutputCount(sessionHandle: number): number;
+  _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
   _OrtGetInputName(sessionHandle: number, index: number): number;
   _OrtGetOutputName(sessionHandle: number, index: number): number;
 

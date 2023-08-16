@@ -35,14 +35,13 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         self,
         encoder: torch.nn.Module,
         decoder: torch.nn.Module,
-        lm_head: torch.nn.Module,
         config: WhisperConfig,
         decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.config = config
         self.whisper_encoder = WhisperEncoder(encoder, config)
-        self.whisper_decoder_init = WhisperDecoderInit(decoder, lm_head, config, decoder_start_token_id)
+        self.whisper_decoder_init = WhisperDecoderInit(decoder, config, decoder_start_token_id)
 
     def forward(
         self,

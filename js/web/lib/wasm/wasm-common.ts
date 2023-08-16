@@ -3,6 +3,8 @@
 
 import {Tensor} from 'onnxruntime-common';
 
+// This file includes common definitions. They do NOT have dependency on the WebAssembly instance.
+
 /**
  * Copied from ONNX definition. Use this to drop dependency 'onnx_proto' to decrease compiled .js file size.
  */
@@ -45,6 +47,8 @@ export const tensorDataTypeStringToEnum = (type: string): DataType => {
       return DataType.int32;
     case 'uint32':
       return DataType.uint32;
+    case 'float16':
+      return DataType.float16;
     case 'float32':
       return DataType.float;
     case 'float64':
@@ -80,6 +84,8 @@ export const tensorDataTypeEnumToString = (typeProto: DataType): Tensor.Type => 
       return 'int32';
     case DataType.uint32:
       return 'uint32';
+    case DataType.float16:
+      return 'float16';
     case DataType.float:
       return 'float32';
     case DataType.double:
@@ -110,6 +116,8 @@ export const tensorTypeToTypedArrayConstructor = (type: Tensor.Type): Float32Arr
     Int8ArrayConstructor|Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|
     Uint8ArrayConstructor|Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
       switch (type) {
+        case 'float16':
+          return Uint16Array;
         case 'float32':
           return Float32Array;
         case 'uint8':
@@ -154,5 +162,21 @@ export const logLevelStringToEnum = (logLevel?: 'verbose'|'info'|'warning'|'erro
       return 4;
     default:
       throw new Error(`unsupported logging level: ${logLevel}`);
+  }
+};
+
+export const tensorTypeToWsglType = (type: DataType) => {
+  switch (type) {
+    case DataType.float:
+      return 'f32';
+    // TODO: enable after "shader-f16" WSGL extension release
+    // case DataType.float16:
+    //   return 'f16';
+    case DataType.int32:
+      return 'i32';
+    case DataType.uint32:
+      return 'u32';
+    default:
+      throw new Error(`Unsupported type: ${type}`);
   }
 };

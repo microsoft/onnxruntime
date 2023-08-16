@@ -670,7 +670,7 @@ static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
   // pixel value in the output
   // (cache because we don't have to re-compute each time we come across the output width/output height value
   // while iterating the output image tensor
-  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) *
+  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float) *
                                       (output_depth + output_height + output_width);
 
   // Limit number of allocations to just 1

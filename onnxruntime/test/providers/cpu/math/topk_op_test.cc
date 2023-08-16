@@ -591,7 +591,7 @@ static void top_3_explicit_aix_infinity(int opset_version, bool positive) {
   std::vector<int64_t> expected_indices = {0, 0, 1, 1, 2, 2};
   std::vector<int64_t> expected_dimensions = {3, 2};
   int64_t axis = 0;
-  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0, 1);
+  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, true, axis, 0, 1);
 }
 
 TEST(TopKOperator, Top3ExplicitAxisInfinity) {

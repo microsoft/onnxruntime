@@ -22,7 +22,6 @@
 #include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
 #include "core/framework/tensor_shape.h"
@@ -180,6 +179,7 @@ class ATen;
 class Group;
 class PassThrough;
 class YieldOp;
+class TritonOp;
 class AdamWOptimizerBase;
 class SGDOptimizerV2Base;
 class ShrunkenGatherCommon;
@@ -260,10 +260,10 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 

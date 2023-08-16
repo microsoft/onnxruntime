@@ -137,12 +137,20 @@ class WindowsThread : public EnvThread {
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
 
-    const ORTCHAR_T* name_prefix =
-        (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
-    std::wostringstream oss;
-    oss << name_prefix << "-" << p->index;
-    // Ignore the error
-    (void)SetThreadDescription(GetCurrentThread(), oss.str().c_str());
+    // Not all machines have kernel32.dll and/or SetThreadDescription (e.g. Azure App Service sandbox)
+    // so we need to ensure it's available before calling.
+    HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
+    if (kernelModule != nullptr) {
+      auto setThreadDescriptionFn = (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
+      if (setThreadDescriptionFn != nullptr) {
+        const ORTCHAR_T* name_prefix = (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime"
+                                                                                                  : p->name_prefix;
+        std::wostringstream oss;
+        oss << name_prefix << "-" << p->index;
+        // Ignore any errors
+        (void)(setThreadDescriptionFn)(GetCurrentThread(), oss.str().c_str());
+      }
+    }
 
     unsigned ret = 0;
     ORT_TRY {

@@ -131,7 +131,7 @@ template <>
 struct AlgoSearch<T_BwdDataPerf> {
   static constexpr auto DEFAULT_ALGO = CUDNN_CONVOLUTION_BWD_DATA_ALGO_1;
   static AlgoPerfCache<T_BwdDataPerf>& Cache() { return bwd_data_algos; }
-  static Status FindAlgorithms(const ConvArgs& args, const CUDAExecutionProvider* provider,
+  static Status FindAlgorithms(const ConvArgs& args, const CUDAExecutionProvider* provider, const AllocatorPtr& allocator,
                                std::vector<T_BwdDataPerf>& perf_results) {
     static const T_BwdDataAlgo algos[] = {
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_0, CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
@@ -150,7 +150,7 @@ struct AlgoSearch<T_BwdDataPerf> {
                                                                           : AlgoSearchWorkspaceSize;
       // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
       // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
-      IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
+      IAllocatorUniquePtr<void> workspace = max_workspace_size == 0 ? nullptr : IAllocator::MakeUniquePtr<void>(allocator, max_workspace_size, true);
       CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
           args.handle, args.w_desc, args.w_data, args.y_tensor, args.dy_data, args.conv_desc, args.x_tensor,
           args.dx_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size));
@@ -166,7 +166,7 @@ template <>
 struct AlgoSearch<T_BwdFilterPerf> {
   static constexpr auto DEFAULT_ALGO = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
   static AlgoPerfCache<T_BwdFilterPerf>& Cache() { return bwd_filter_algos; }
-  static Status FindAlgorithms(const ConvArgs& args, const CUDAExecutionProvider* provider,
+  static Status FindAlgorithms(const ConvArgs& args, const CUDAExecutionProvider* provider, const AllocatorPtr& allocator,
                                std::vector<T_BwdFilterPerf>& perf_results) {
     static const T_BwdFilterAlgo algos[] = {
         CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
@@ -191,7 +191,7 @@ struct AlgoSearch<T_BwdFilterPerf> {
                                                                           : AlgoSearchWorkspaceSize;
       // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
       // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
-      IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
+      IAllocatorUniquePtr<void> workspace = max_workspace_size == 0 ? nullptr : IAllocator::MakeUniquePtr<void>(allocator, max_workspace_size, true);
       CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardFilterAlgorithmEx(
           args.handle, args.x_tensor, args.x_data, args.y_tensor, args.dy_data, args.conv_desc, args.w_desc,
           args.dw_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size));
@@ -220,7 +220,7 @@ class AlgoIterator {
     return Status::OK();
   }
 
-  Status TryAll(const CUDAExecutionProvider* provider, cudaStream_t /*stream*/, std::function<Status(const T_Perf& perf)> f) {
+  Status TryAll(const CUDAExecutionProvider* provider, const AllocatorPtr& allocator, std::function<Status(const T_Perf& perf)> f) {
     auto& cache = AlgoSearch<T_Perf>::Cache();
 
     if (T_Perf algo_perf; cache.Find(args_.params, &algo_perf) && f(algo_perf) == Status::OK()) {
@@ -230,7 +230,7 @@ class AlgoIterator {
     std::vector<T_Perf> perf_results;
     ORT_RETURN_IF_ERROR(args_.params.algo_mode == OrtCudnnConvAlgoSearchDefault
                             ? OnlyDefaultAlgorithm(args_, perf_results)
-                            : AlgoSearch<T_Perf>::FindAlgorithms(args_, provider, perf_results));
+                            : AlgoSearch<T_Perf>::FindAlgorithms(args_, provider, allocator, perf_results));
     for (auto& algo_perf : perf_results) {
       if (f(algo_perf) == Status::OK()) {
         cache.Insert(args_.params, algo_perf);
@@ -375,10 +375,9 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 Status ConvGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream) const {
-  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   return AlgoIterator<T_BwdDataPerf>(args_).TryAll(
       static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider()),
-      cuda_stream,
+      Info().GetAllocator(OrtMemType::OrtMemTypeDefault),
       [&](const T_BwdDataPerf& algo_perf) -> Status {
         const auto one = Consts<CudaT>::One;
         const auto zero = Consts<CudaT>::Zero;
@@ -393,10 +392,9 @@ Status ConvGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream) const {
 
 template <typename T>
 Status ConvGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream) const {
-  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   return AlgoIterator<T_BwdFilterPerf>(args_).TryAll(
       static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider()),
-      cuda_stream,
+      Info().GetAllocator(OrtMemType::OrtMemTypeDefault),
       [&](const T_BwdFilterPerf& algo_perf) -> Status {
         const auto one = Consts<CudaT>::One;
         const auto zero = Consts<CudaT>::Zero;

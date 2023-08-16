@@ -55,6 +55,10 @@ class FusionTranspose(Fusion):
             cast_children = self.model.get_children(cast_node, input_name_to_nodes)
             if cast_children and len(cast_children) > 1:
                 return
+
+            if cast_node.input[0] not in output_name_to_node:
+                return
+
             transpose_a = output_name_to_node[cast_node.input[0]]
 
         if transpose_a.op_type != "Transpose":

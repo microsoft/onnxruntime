@@ -59,6 +59,27 @@ stages:
     buildNodejs: true
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
+- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
+  # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
+  - stage: cuda_multi_gpu
+    dependsOn: []
+    jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_cuda_11.bat
+        buildArch: x64
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: true
+        RunStaticCodeAnalysis: false
+        ORT_EP_NAME: CUDA
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-GPU-MultiA10
+        OnnxruntimeTestGpuDeviceId: 1
+
 - stage: Mimalloc
   dependsOn: [ ]
   jobs:
@@ -166,9 +187,9 @@ stages:
           #Merge the multiple prof data into a single indexed profile data file
           llvm-profdata merge -sparse -o ort.profdata *.profraw
           #Create coverage report, output the result to 'report.json'
-          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
+          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
 
-          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
+          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
 
     - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:

@@ -2,7 +2,7 @@
 # Label: com.nvidia.cuda.version: 11.8.0
 # Label: com.nvidia.cudnn.version: 8.7.0
 # Ubuntu 20.04
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04@sha256:b754c43fe9d62e88862d168c4ab9282618a376dbc54871467870366cacfa456e
 
 ARG PYTHON_VERSION=3.8
 ARG DEBIAN_FRONTEND=noninteractive

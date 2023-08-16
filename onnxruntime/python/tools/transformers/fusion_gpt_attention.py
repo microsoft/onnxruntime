@@ -423,19 +423,19 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                     if mul_val != -10000:
                         self.mask_filter_value = mul_val
 
-            mask_nodes = self.model.match_parent_path(
+            i, mask_nodes, _ = self.model.match_parent_paths(
                 where_qk,
                 [
-                    "Cast",
-                    "Slice",
-                    "Slice",
-                    "Unsqueeze",
-                    "Sub",
-                    "Squeeze",
-                    "Slice",
-                    "Shape",
+                    (
+                        ["Cast", "Slice", "Slice", "Unsqueeze", "Sub", "Squeeze", "Slice", "Shape"],
+                        [0, 0, 0, 1, 0, 0, 0, 0],
+                    ),
+                    # For Transformers >= 4.27, causal mask uses torch.bool instead of torch.uint8, so no Cast to bool.
+                    (
+                        ["Slice", "Slice", "Unsqueeze", "Sub", "Squeeze", "Slice", "Shape"],
+                        [0, 0, 1, 0, 0, 0, 0],
+                    ),
                 ],
-                [0, 0, 0, 1, 0, 0, 0, 0],
                 output_name_to_node,
             )  # yapf: disable
             if mask_nodes is None:
@@ -443,7 +443,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 logger.debug("fuse_attention: failed to match mask path")
                 return
 
-            slice_mask = mask_nodes[2]
+            slice_mask = mask_nodes[2 if i == 0 else 1]
 
             div_or_concat = self.model.get_parent(mask_nodes[-1], 0, output_name_to_node)
             if div_or_concat.op_type == "Div":
@@ -457,12 +457,16 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 logger.debug("fuse_attention: failed to match mask path")
 
         # Validate that the mask data is either lower triangular (unidirectional) or all ones
-        mask_data = numpy_helper.to_array(self.model.get_initializer(slice_mask.input[0]))
+        mask_data = self.model.get_constant_value(slice_mask.input[0])
         if not (
-            len(mask_data.shape) == 4 and mask_data.shape[:2] == (1, 1) and mask_data.shape[2] == mask_data.shape[3]
+            isinstance(mask_data, np.ndarray)
+            and len(mask_data.shape) == 4
+            and mask_data.shape[:2] == (1, 1)
+            and mask_data.shape[2] == mask_data.shape[3]
         ):
             logger.debug("fuse_attention: skip since mask shape is not 1x1xWxW")
             return
+
         if np.allclose(mask_data, np.ones_like(mask_data)):
             is_unidirectional = False
         elif not np.allclose(mask_data, np.tril(np.ones_like(mask_data))):

@@ -6,6 +6,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/random_seed.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "orttraining/training_api/checkpoint.h"
@@ -32,6 +33,9 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
                     _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path,
                     _In_ const ORTCHAR_T* optimizer_model_path, _Outptr_ OrtTrainingSession** out) {
   API_IMPL_BEGIN
+  if (options != nullptr && options->value.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1") {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Use Env Allocators is not supported for on device training.");
+  }
   std::unique_ptr<onnxruntime::training::api::TrainingSession> train_sess;
   auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
   OrtStatus* status = nullptr;
@@ -49,7 +53,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
             eval_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_path))
                             : std::nullopt,
             optimizer_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(optimizer_model_path))
-                                 : std::nullopt));
+                                 : std::nullopt),
+        options == nullptr ? gsl::span<OrtCustomOpDomain* const>() : options->custom_op_domains_);
 
     *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
   }
@@ -281,6 +286,22 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ OrtCheckpointState* ch
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::LoadCheckpointFromBuffer, _In_ const void* checkpoint_buffer,
+                    _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state) {
+  API_IMPL_BEGIN
+
+  *checkpoint_state = nullptr;
+  auto chkpt_state = std::make_unique<onnxruntime::training::api::CheckpointState>();
+  const auto* checkpoint_bytes = reinterpret_cast<const uint8_t*>(checkpoint_buffer);
+  gsl::span checkpoint_span(checkpoint_bytes, num_bytes);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      onnxruntime::training::api::LoadCheckpointFromBuffer(checkpoint_span, *chkpt_state));
+  *checkpoint_state = reinterpret_cast<OrtCheckpointState*>(chkpt_state.release());
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtTrainingApis::GetParametersSize, _Inout_ OrtTrainingSession* sess,
                     _Out_ size_t* out, bool trainable_only) {
   API_IMPL_BEGIN
@@ -329,6 +350,9 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
                     _In_reads_(graph_outputs_len) const char* const* graph_output_names) {
   API_IMPL_BEGIN
 
+  OrtStatus* status = nullptr;
+
+#if !defined(ORT_MINIMAL_BUILD)
   if (graph_outputs_len == 0U) {
     return OrtApis::CreateStatus(
         ORT_INVALID_ARGUMENT,
@@ -350,8 +374,16 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(
       session->ExportModelForInferencing(onnxruntime::ToUTF8String(inference_model_path), output_names));
+#else
+  ORT_UNUSED_PARAMETER(sess);
+  ORT_UNUSED_PARAMETER(inference_model_path);
+  ORT_UNUSED_PARAMETER(graph_outputs_len);
+  ORT_UNUSED_PARAMETER(graph_output_names);
+  status = OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "Inference model cannot be exported in a minimal training build.");
+#endif
 
-  return nullptr;
+  return status;
   API_IMPL_END
 }
 
@@ -516,7 +548,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::TrainingSessionGetEvalModelInputName,
     &OrtTrainingApis::AddProperty,
     &OrtTrainingApis::GetProperty,
-};
+    &OrtTrainingApis::LoadCheckpointFromBuffer};
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {
   // No constraints on the API version yet.

@@ -78,7 +78,8 @@ struct Module {
          const onnxruntime::SessionOptions& session_options,
          const Environment& env,
          const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-         const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
+         const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt,
+         gsl::span<OrtCustomOpDomain* const> op_domains = gsl::span<OrtCustomOpDomain* const>());
 
   // Return the trainable/nontrainable parameters
   std::vector<std::shared_ptr<Parameter>> Parameters() const;
@@ -117,10 +118,12 @@ struct Module {
   // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
   Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Load the eval model from eval_model_path_or_bytes and transform it for the purpose of
   // inferencing, and serialize to given path
   Status ExportModelForInferencing(const std::string& inference_model_path,
                                    gsl::span<const std::string> graph_output_names) const;
+#endif
 
   // Returns the user input count for training graph
   size_t GetTrainingModelInputCount() const noexcept;
@@ -133,6 +136,12 @@ struct Module {
 
   // Returns the user input name for eval graph at given index
   std::string GetEvalModelInputName(size_t index) const;
+
+  // Returns the input definitions of the Training model
+  std::pair<common::Status, const InputDefList*> GetTrainingModelInputs() const noexcept;
+
+  // Returns the input definitions of the Eval model
+  std::pair<common::Status, const InputDefList*> GetEvalModelInputs() const noexcept;
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};

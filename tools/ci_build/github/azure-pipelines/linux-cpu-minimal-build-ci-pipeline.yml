@@ -20,14 +20,41 @@
 #        in an extended minimal build.
 # 7. Build extended minimal ORT with NNAPI, with exceptions/RTTI/ml_ops disabled, for Android(arm64-v8a),
 #    this safe-guards the extended minimal build with NNAPI EP.
-
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'js/node'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'js/node'
+    - 'onnxruntime/core/providers/js'
 resources:
   repositories:
   - repository: manylinux
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E

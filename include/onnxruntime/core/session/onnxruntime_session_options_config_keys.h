@@ -217,3 +217,11 @@ static const char* const kDebugLayoutTransformation = "session.debug_layout_tran
 // - "0": CPU EP fallback is not disabled. [DEFAULT]
 // - "1": CPU EP fallback is disabled.
 static const char* const kOrtSessionOptionsDisableCPUEPFallback = "session.disable_cpu_ep_fallback";
+
+// Use this config when serializing a large model after optimization to specify an external initializers file
+static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFileName =
+    "session.optimized_model_external_initializers_file_name";
+
+// Use this config to control the minimum size of the initializer when externalizing it during serialization
+static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
+    "session.optimized_model_external_initializers_min_size_in_bytes";

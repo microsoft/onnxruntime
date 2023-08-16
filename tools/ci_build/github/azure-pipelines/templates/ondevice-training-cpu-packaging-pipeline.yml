@@ -76,7 +76,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: onnxruntime-Win-CPU-2019
+    ort_build_pool_name: onnxruntime-Win-CPU-2022
 
 - template: win-ci.yml
   parameters:

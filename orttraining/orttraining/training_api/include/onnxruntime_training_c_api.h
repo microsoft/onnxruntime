@@ -13,7 +13,7 @@
  *
  * In order to train a model with onnxruntime, the following training artifacts must be generated:
  * - The training onnx model
- * - The checkpoint directory
+ * - The checkpoint file
  * - The optimizer onnx model
  * - The eval onnx model model (optional)
  *
@@ -123,9 +123,9 @@ struct OrtTrainingApi {
   /// \name Accessing The Training Session State
   /// @{
 
-  /** \brief Load a checkpoint state from directory on disk into checkpoint_state.
+  /** \brief Load a checkpoint state from a file on disk into checkpoint_state.
    *
-   * This function will parse a checkpoint directory, pull relevant files and load the training
+   * This function will parse a checkpoint file, pull relevant data and load the training
    * state into the checkpoint_state. This checkpoint state can then be used to create the
    * training session by invoking OrtTrainingApi::CreateTrainingSession. By doing so, the training
    * session will resume training from the given checkpoint state.
@@ -133,7 +133,7 @@ struct OrtTrainingApi {
    * training state (including model parameters, its gradients, the optimizer states and the properties).
    * As a result, it is required that the checkpoint state outlive the lifetime of the training session.
    *
-   * \param[in] checkpoint_path Path to the checkpoint directory
+   * \param[in] checkpoint_path Path to the checkpoint file
    * \param[out] checkpoint_state Checkpoint state that contains the states of the training session.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -142,14 +142,14 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path,
                   _Outptr_ OrtCheckpointState** checkpoint_state);
 
-  /** \brief Save the given state to a checkpoint directory on disk.
+  /** \brief Save the given state to a checkpoint file on disk.
    *
-   * This function serializes the provided checkpoint state to a directory on disk.
+   * This function serializes the provided checkpoint state to a file on disk.
    * This checkpoint can later be loaded by invoking OrtTrainingApi::LoadCheckpoint to resume
    * training from this snapshot of the state.
    *
    * \param[in] checkpoint_state The checkpoint state to save.
-   * \param[in] checkpoint_path Path to the checkpoint directory.
+   * \param[in] checkpoint_path Path to the checkpoint file.
    * \param[in] include_optimizer_state Flag to indicate whether to save the optimizer state or not.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -172,7 +172,7 @@ struct OrtTrainingApi {
    * - The training onnx model
    * - The evaluation onnx model (optional)
    * - The optimizer onnx model
-   * - The checkpoint directory
+   * - The checkpoint file
    *
    * These artifacts can be generated using the `onnxruntime-training` python [utility](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/onnxblock/README.md).
    *
@@ -621,6 +621,31 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(GetProperty, _In_ const OrtCheckpointState* checkpoint_state,
                   _In_ const char* property_name, _Inout_ OrtAllocator* allocator,
                   _Out_ enum OrtPropertyType* property_type, _Outptr_ void** property_value);
+
+  /// @}
+
+  /// \name Accessing The Training Session State
+  /// @{
+
+  /** \brief Load a checkpoint state from a buffer into checkpoint_state.
+   *
+   * This function will parse a checkpoint bytes buffer, pull relevant data and load the training
+   * state into the checkpoint_state. This checkpoint state can then be used to create the
+   * training session by invoking OrtTrainingApi::CreateTrainingSession. By doing so, the training
+   * session will resume training from the given checkpoint state.
+   * \note Note that the training session created with a checkpoint state uses this state to store the entire
+   * training state (including model parameters, its gradients, the optimizer states and the properties).
+   * As a result, it is required that the checkpoint state outlive the lifetime of the training session.
+   *
+   * \param[in] checkpoint_buffer Path to the checkpoint bytes buffer.
+   * \param[in] num_bytes Number of bytes in the checkpoint buffer.
+   * \param[out] checkpoint_state Checkpoint state that contains the states of the training session.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(LoadCheckpointFromBuffer, _In_ const void* checkpoint_buffer,
+                  _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state);
 
   /// @}
 };

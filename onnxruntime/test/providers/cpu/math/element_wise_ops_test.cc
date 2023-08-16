@@ -15,7 +15,7 @@ namespace test {
 std::vector<MLFloat16> MakeMLFloat16(const std::initializer_list<float>& input) {
   std::vector<MLFloat16> output;
   std::transform(input.begin(), input.end(), std::back_inserter(output),
-                 [](float fl) { return MLFloat16(math::floatToHalf(fl)); });
+                 [](float fl) { return MLFloat16(fl); });
   return output;
 }
 
@@ -1341,7 +1341,7 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
   OpTester test{"Sum", 8};
 
-  const auto dims = GetShapeVector(shape);
+  const auto dims = shape.AsShapeVector();
   const std::vector<element_type> input_data(shape.Size(), 1);
 
   for (size_t i = 0; i < num_inputs; ++i) {
@@ -2652,8 +2652,8 @@ void TrigFloat16Test(OpTester& test, std::initializer_list<float> input) {
   std::vector<MLFloat16> float16_input;
   std::vector<MLFloat16> float16_output;
   for (auto v : input) {
-    float16_input.push_back(MLFloat16(math::floatToHalf(v)));
-    float16_output.push_back(MLFloat16(math::floatToHalf(op(v))));
+    float16_input.push_back(MLFloat16(v));
+    float16_output.push_back(MLFloat16(op(v)));
   }
 
   test.AddInput<MLFloat16>("X", dims, float16_input);

@@ -629,6 +629,8 @@ def test_load_checkpoint():
     # When
     simple_block.requires_grad("fc2.weight", True)
     simple_block.requires_grad("fc1.bias", True)
+    simple_block.requires_grad("fc1.weight", True)
+    simple_block.requires_grad("fc2.bias", True)
 
     with onnxblock.base(onnx_model):
         _ = simple_block(onnx_model.graph.output[0].name)
@@ -915,3 +917,26 @@ def test_label_encoder_composition():
 
     all_nodes = [node.op_type for node in model.graph.node]
     assert "LabelEncoder" in all_nodes
+
+
+def test_save_ort_format():
+    device = "cpu"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(
+            base_model,
+            requires_grad=["fc1.weight", "fc1.bias", "fc2.weight", "fc2.bias"],
+            loss=artifacts.LossType.CrossEntropyLoss,
+            optimizer=artifacts.OptimType.AdamW,
+            artifact_directory=temp_dir,
+            ort_format=True,
+        )
+
+        assert os.path.exists(os.path.join(temp_dir, "training_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "training_model.ort"))
+        assert os.path.exists(os.path.join(temp_dir, "eval_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "eval_model.ort"))
+        assert os.path.exists(os.path.join(temp_dir, "optimizer_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "optimizer_model.ort"))

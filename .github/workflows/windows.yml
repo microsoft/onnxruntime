@@ -2,9 +2,13 @@ name: Windows_CI
 on:
   push:
     branches:
-      - master
       - main
+      - rel-*
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   Onnxruntime-TVM:
@@ -13,7 +17,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - uses: actions/setup-python@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.8.x'
           architecture: 'x64'
@@ -32,6 +36,14 @@ jobs:
       - name: 'Setup TVM EP Python requirements'
         run: |
           python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/github/linux/tvm/requirements.txt
+      - name: 'rm gtest in conda'
+        shell: pwsh
+        run: |
+          Remove-Item 'C:\Miniconda\Library\lib\cmake\gtest' -Recurse -Force
+          Remove-Item 'C:\Miniconda\Library\lib\gmock.lib' -Force
+          Remove-Item 'C:\Miniconda\Library\lib\gmock_main.lib' -Force
+          Remove-Item 'C:\Miniconda\Library\lib\gtest.lib' -Force
+          Remove-Item 'C:\Miniconda\Library\lib\gtest_main.lib' -Force
       - name: 'Build and Test'
         run: |
           python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir build --config Release --skip_submodule_sync --parallel --enable_pybind --disable_contrib_ops --disable_ml_ops --skip_onnx_tests --use_tvm

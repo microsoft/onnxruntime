@@ -26,6 +26,8 @@ static void xir_shape_infer(ONNX_NAMESPACE::InferenceContext& ctx) {
     updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT);
   } else if (data_type->s() == "int8") {
     updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT8);
+  } else if (data_type->s() == "uint8") {
+    updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
   } else if (data_type->s() == "int32") {
     updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT32);
   } else if (data_type->s() == "int64") {

@@ -21,11 +21,12 @@ NSString *const JsTensorTypeString = @"string";
 
 /**
  * It creates an input tensor from a map passed by react native js.
- * 'data' must be a string type as data is encoded as base64. It first decodes it and creates a tensor.
+ * 'data' is blob object and the buffer is stored in RCTBlobManager. It first resolve it and creates a tensor.
  */
-+ (Ort::Value)createInputTensor:(NSDictionary *)input
++ (Ort::Value)createInputTensor:(RCTBlobManager *)blobManager
+                          input:(NSDictionary *)input
                    ortAllocator:(OrtAllocator *)ortAllocator
-                    allocations:(std::vector<Ort::MemoryAllocation> &)allocatons {
+                    allocations:(std::vector<Ort::MemoryAllocation> &)allocations {
   // shape
   NSArray *dimsArray = [input objectForKey:@"dims"];
   std::vector<int64_t> dims;
@@ -48,22 +49,27 @@ NSString *const JsTensorTypeString = @"string";
     }
     return inputTensor;
   } else {
-    NSString *data = [input objectForKey:@"data"];
-    NSData *buffer = [[NSData alloc] initWithBase64EncodedString:data options:0];
+    NSDictionary *data = [input objectForKey:@"data"];
+    NSString *blobId = [data objectForKey:@"blobId"];
+    long size = [[data objectForKey:@"size"] longValue];
+    long offset = [[data objectForKey:@"offset"] longValue];
+    auto buffer = [blobManager resolve:blobId offset:offset size:size];
     Ort::Value inputTensor = [self createInputTensor:tensorType
                                                 dims:dims
                                               buffer:buffer
                                         ortAllocator:ortAllocator
-                                         allocations:allocatons];
+                                         allocations:allocations];
+    [blobManager remove:blobId];
     return inputTensor;
   }
 }
 
 /**
  * It creates an output map from an output tensor.
- * a data array is encoded as base64 string.
+ * a data array is store in RCTBlobManager.
  */
-+ (NSDictionary *)createOutputTensor:(const std::vector<const char *> &)outputNames
++ (NSDictionary *)createOutputTensor:(RCTBlobManager *)blobManager
+                         outputNames:(const std::vector<const char *> &)outputNames
                               values:(const std::vector<Ort::Value> &)values {
   if (outputNames.size() != values.size()) {
     NSException *exception = [NSException exceptionWithName:@"create output tensor"
@@ -109,8 +115,13 @@ NSString *const JsTensorTypeString = @"string";
       }
       outputTensor[@"data"] = buffer;
     } else {
-      NSString *data = [self createOutputTensor:value];
-      outputTensor[@"data"] = data;
+      NSData *data = [self createOutputTensor:value];
+      NSString *blobId = [blobManager store:data];
+      outputTensor[@"data"] = @{
+        @"blobId" : blobId,
+        @"offset" : @0,
+        @"size" : @(data.length),
+      };
     }
 
     outputTensorMap[[NSString stringWithUTF8String:outputName]] = outputTensor;
@@ -137,7 +148,7 @@ static Ort::Value createInputTensorT(OrtAllocator *ortAllocator, const std::vect
                     allocations:(std::vector<Ort::MemoryAllocation> &)allocations {
   switch (tensorType) {
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-    return createInputTensorT<float_t>(ortAllocator, dims, buffer, allocations);
+    return createInputTensorT<float>(ortAllocator, dims, buffer, allocations);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
     return createInputTensorT<uint8_t>(ortAllocator, dims, buffer, allocations);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
@@ -170,20 +181,19 @@ static Ort::Value createInputTensorT(OrtAllocator *ortAllocator, const std::vect
   }
 }
 
-template <typename T> static NSString *createOutputTensorT(const Ort::Value &tensor) {
+template <typename T> static NSData *createOutputTensorT(const Ort::Value &tensor) {
   const auto data = tensor.GetTensorData<T>();
-  NSData *buffer = [NSData dataWithBytesNoCopy:(void *)data
-                                        length:tensor.GetTensorTypeAndShapeInfo().GetElementCount() * sizeof(T)
-                                  freeWhenDone:false];
-  return [buffer base64EncodedStringWithOptions:0];
+  return [NSData dataWithBytesNoCopy:(void *)data
+                              length:tensor.GetTensorTypeAndShapeInfo().GetElementCount() * sizeof(T)
+                        freeWhenDone:false];
 }
 
-+ (NSString *)createOutputTensor:(const Ort::Value &)tensor {
++ (NSData *)createOutputTensor:(const Ort::Value &)tensor {
   ONNXTensorElementDataType tensorType = tensor.GetTensorTypeAndShapeInfo().GetElementType();
 
   switch (tensorType) {
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-    return createOutputTensorT<float_t>(tensor);
+    return createOutputTensorT<float>(tensor);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
     return createOutputTensorT<uint8_t>(tensor);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
