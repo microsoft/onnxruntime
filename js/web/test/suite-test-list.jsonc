@@ -1334,6 +1334,7 @@
       //"depth-to-space.jsonc",
       //"equal.jsonc",
       "exp.jsonc",
+      "expand.jsonc",
       "floor.jsonc",
       "gemm.jsonc",
       "global-average-pool.jsonc",
