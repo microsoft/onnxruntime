@@ -85,8 +85,8 @@ const createSkipLayerNormProgramInfo =
       const hasBetaInput = inputs.length > 3;
       const hasBiasInput = inputs.length > 4;
       const dataType = tensorTypeToWsglType(inputs[0].dataType);
-      // TODO: initialize isTraining from ComputeContext
-      const isTraining = false;
+      // TODO: initialize/verify isTraining from ComputeContext
+      const isTraining = outputCount > 2;  // mean and invStdDev are only used in training mode
       const hasMeanOutput = isTraining && outputCount > 1;
       const hasInvStdDevOutput = isTraining && outputCount > 2;
       const hasInputSkipBiasSumOutput = isTraining ? outputCount > 3 : outputCount > 1;
