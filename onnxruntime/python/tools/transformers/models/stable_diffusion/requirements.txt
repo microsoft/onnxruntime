@@ -9,5 +9,6 @@ protobuf==3.20.3
 psutil
 sympy
 # The following are for SDXL
+optimum>=1.11.1
 safetensors
 invisible_watermark

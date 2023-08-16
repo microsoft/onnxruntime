@@ -154,6 +154,12 @@ curl https://raw.githubusercontent.com/huggingface/diffusers/v0.15.1/scripts/con
 python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd_v1_5/fp32
 ```
 
+For SDXL, use optimum to export the model:
+```
+pip install optimum diffusers onnx onnxruntime-gpu
+optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task stable-diffusion-xl ./sd_xl_base_onnx
+```
+
 ### Optimize ONNX Pipeline
 
 Example to optimize the exported float32 ONNX models, and save to float16 models:
