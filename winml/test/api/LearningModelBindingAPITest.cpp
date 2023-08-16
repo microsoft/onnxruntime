@@ -69,7 +69,7 @@ static void CpuSqueezeNetBindInputTensorAsInspectable() {
 
 static void CastMapInt64() {
   WINML_EXPECT_NO_THROW(LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"castmap-int64.onnx"));
-    // TODO: Check Descriptor
+  // TODO: Check Descriptor
 }
 
 static void DictionaryVectorizerMapInt64() {
@@ -82,7 +82,7 @@ static void DictionaryVectorizerMapInt64() {
   WINML_EXPECT_TRUE(mapDescriptor.KeyKind() == TensorKind::Int64);
   WINML_EXPECT_TRUE(mapDescriptor.ValueDescriptor().Kind() == LearningModelFeatureKind::Tensor);
   auto tensorDescriptor = mapDescriptor.ValueDescriptor().as<TensorFeatureDescriptor>();
-    // empty size means tensor of scalar value
+  // empty size means tensor of scalar value
   WINML_EXPECT_TRUE(tensorDescriptor.Shape().Size() == 0);
   WINML_EXPECT_TRUE(tensorDescriptor.TensorKind() == TensorKind::Float);
 
@@ -95,7 +95,7 @@ static void DictionaryVectorizerMapInt64() {
 
   auto mapInputName = inputDescriptor.Name();
 
-    // Bind as IMap
+  // Bind as IMap
   auto abiMap = winrt::single_threaded_map(std::move(map));
   binding.Bind(mapInputName, abiMap);
   auto mapInputInspectable = abiMap.as<wf::IInspectable>();
@@ -104,7 +104,7 @@ static void DictionaryVectorizerMapInt64() {
   WINML_EXPECT_TRUE(first.Current().Value() == mapInputInspectable);
   WINML_EXPECT_TRUE(binding.Lookup(mapInputName) == mapInputInspectable);
 
-    // Bind as IMapView
+  // Bind as IMapView
   auto mapView = abiMap.GetView();
   binding.Bind(mapInputName, mapView);
   mapInputInspectable = mapView.as<wf::IInspectable>();
@@ -126,7 +126,7 @@ static void DictionaryVectorizerMapString() {
   WINML_EXPECT_TRUE(mapDescriptor.ValueDescriptor().Kind() == LearningModelFeatureKind::Tensor);
 
   auto tensorDescriptor = mapDescriptor.ValueDescriptor().as<TensorFeatureDescriptor>();
-    // empty size means tensor of scalar value
+  // empty size means tensor of scalar value
   WINML_EXPECT_TRUE(tensorDescriptor.Shape().Size() == 0);
   WINML_EXPECT_TRUE(tensorDescriptor.TensorKind() == TensorKind::Float);
 
@@ -169,7 +169,7 @@ static void RunZipMapInt64(winml::LearningModel model, OutputBindingStrategy bin
   std::vector<float> inputs = {0.5f, 0.25f, 0.125f};
   std::vector<int64_t> shape = {1, 3};
 
-    // Bind inputs
+  // Bind inputs
   auto inputTensor = TensorFloat::CreateFromArray(shape, winrt::array_view<const float>(std::move(inputs)));
   binding.Bind(winrt::hstring(L"X"), inputTensor);
 
@@ -177,21 +177,21 @@ static void RunZipMapInt64(winml::LearningModel model, OutputBindingStrategy bin
   typedef IVector<ABIMap> ABISequeneceOfMap;
 
   ABISequeneceOfMap abiOutput = nullptr;
-    // Bind outputs
+  // Bind outputs
   if (bindingStrategy == OutputBindingStrategy::Bound) {
     abiOutput = winrt::single_threaded_vector<ABIMap>();
     binding.Bind(winrt::hstring(L"Y"), abiOutput);
   }
 
-    // Evaluate
+  // Evaluate
   auto result = session.Evaluate(binding, L"0").Outputs();
 
   if (bindingStrategy == OutputBindingStrategy::Bound) {
-        // from output binding
+    // from output binding
     const auto& out1 = abiOutput.GetAt(0);
     const auto& out2 = result.Lookup(L"Y").as<IVectorView<ABIMap>>().GetAt(0);
     WINML_LOG_COMMENT((std::ostringstream() << "size: " << out1.Size()).str());
-        // check outputs
+    // check outputs
     auto iter1 = out1.First();
     auto iter2 = out2.First();
     for (uint32_t i = 0, size = (uint32_t)inputs.size(); i < size; ++i) {
@@ -231,7 +231,7 @@ static void ZipMapInt64Unbound() {
 }
 
 static void ZipMapString() {
-    // output constraint: "seq(map(string, float))" or "seq(map(int64, float))"
+  // output constraint: "seq(map(string, float))" or "seq(map(int64, float))"
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"zipmap-string.onnx", learningModel));
   auto outputs = learningModel.OutputFeatures();
@@ -263,11 +263,11 @@ static void ZipMapString() {
   binding.Bind(winrt::hstring(L"X"), inputTensor);
   binding.Bind(winrt::hstring(L"Y"), ABIOutput);
   auto result = session.Evaluate(binding, L"0").Outputs();
-    // from output binding
+  // from output binding
   const auto& out1 = ABIOutput.GetAt(0);
   const auto& out2 = result.Lookup(L"Y").as<IVectorView<ABIMap>>().GetAt(0);
   WINML_LOG_COMMENT((std::ostringstream() << "size: " << out1.Size()).str());
-    // single key,value pair for each map
+  // single key,value pair for each map
   auto iter1 = out1.First();
   auto iter2 = out2.First();
   for (uint32_t i = 0, size = (uint32_t)inputs.size(); i < size; ++i) {
@@ -323,30 +323,30 @@ static void ImageBindingDimensions() {
   LearningModelSession learningModelSession = nullptr;
   LearningModelDevice leraningModelDevice = nullptr;
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
-    // load a model with expected input size: 224 x 224
+  // load a model with expected input size: 224 x 224
   WINML_EXPECT_NO_THROW(leraningModelDevice = LearningModelDevice(LearningModelDeviceKind::Default));
   WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromFilePath(filePath));
   WINML_EXPECT_TRUE(learningModel != nullptr);
   WINML_EXPECT_NO_THROW(learningModelSession = LearningModelSession(learningModel, leraningModelDevice));
   WINML_EXPECT_NO_THROW(learningModelBinding = LearningModelBinding(learningModelSession));
 
-    // Create input images and execute bind
-    // Test Case 1: both width and height are larger than model expects
+  // Create input images and execute bind
+  // Test Case 1: both width and height are larger than model expects
   VideoFrame inputImage1(BitmapPixelFormat::Rgba8, 1000, 1000);
   ImageFeatureValue inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage1);
   WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"data_0", inputTensor));
 
-    // Test Case 2: only height is larger, while width is smaller
+  // Test Case 2: only height is larger, while width is smaller
   VideoFrame inputImage2(BitmapPixelFormat::Rgba8, 20, 1000);
   inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage2);
   WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"data_0", inputTensor));
 
-    // Test Case 3: only width is larger, while height is smaller
+  // Test Case 3: only width is larger, while height is smaller
   VideoFrame inputImage3(BitmapPixelFormat::Rgba8, 1000, 20);
   inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage3);
   WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"data_0", inputTensor));
 
-    // Test Case 4: both width and height are smaller than model expects
+  // Test Case 4: both width and height are smaller than model expects
   VideoFrame inputImage4(BitmapPixelFormat::Rgba8, 20, 20);
   inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage4);
   WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"data_0", inputTensor));
@@ -367,78 +367,51 @@ static void VerifyInvalidBindExceptions() {
   auto ensureWinmlSizeMismatch = std::bind(matchException, std::placeholders::_1, WINML_ERR_SIZE_MISMATCH);
   auto ensureWinmlInvalidBinding = std::bind(matchException, std::placeholders::_1, WINML_ERR_INVALID_BINDING);
 
-    /*
-        Verify tensor bindings throw correct bind exceptions
-    */
+  /*
+    Verify tensor bindings throw correct bind exceptions
+  */
 
-    // Bind invalid image as tensorfloat input
+  // Bind invalid image as tensorfloat input
   auto image = FileHelpers::LoadImageFeatureValue(L"227x227.png");
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"X", image), winrt::hresult_error, ensureWinmlSizeMismatch);
 
-    // Bind invalid map as tensorfloat input
+  // Bind invalid map as tensorfloat input
   std::unordered_map<float, float> map;
   auto abiMap = winrt::single_threaded_map(std::move(map));
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"X", abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-    // Bind invalid sequence as tensorfloat input
+  // Bind invalid sequence as tensorfloat input
   std::vector<uint32_t> sequence;
   auto abiSequence = winrt::single_threaded_vector(std::move(sequence));
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"X", abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-    // Bind invalid tensor size as tensorfloat input
+  // Bind invalid tensor size as tensorfloat input
   auto tensorBoolean = TensorBoolean::Create();
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"X", tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-    // Bind invalid tensor shape as tensorfloat input
+  // Bind invalid tensor shape as tensorfloat input
   auto tensorInvalidShape = TensorFloat::Create(std::vector<int64_t>{2, 3, 4});
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"X", tensorInvalidShape), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-    /*
-        Verify sequence bindings throw correct bind exceptions
-    */
+  /*
+    Verify sequence bindings throw correct bind exceptions
+  */
 
-    // Bind invalid image as sequence<map<int, float> output
+  // Bind invalid image as sequence<map<int, float> output
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", image), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-    // Bind invalid map as sequence<map<int, float> output
+  // Bind invalid map as sequence<map<int, float> output
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-    // Bind invalid sequence<int> as sequence<map<int, float> output
+  // Bind invalid sequence<int> as sequence<map<int, float> output
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-    // Bind invalid tensor as sequence<map<int, float> output
+  // Bind invalid tensor as sequence<map<int, float> output
   WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-    /*
-        Verify image bindings throw correct bind exceptions
-    */
-
-    // WINML_EXPECT_NO_THROW(LoadModel(L"fns-candy.onnx"));
-
-    // LearningModelSession imageSession(m_model);
-    // LearningModelBinding imageBinding(imageSession);
-
-    // auto inputName = m_model.InputFeatures().First().Current().Name();
-
-    // // Bind invalid map as image input
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
-
-  // // Bind invalid sequence as image input
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
-
-  // // Bind invalid tensor type as image input
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
-
-  // // Bind invalid tensor size as image input
-  // auto tensorFloat = TensorFloat::Create(std::vector<int64_t> { 1, 1, 100, 100 });
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, tensorFloat), winrt::hresult_error, ensureWinmlInvalidBinding);
-
-  // // Bind invalid tensor shape as image input
-  // WINML_EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, tensorInvalidShape), winrt::hresult_error, ensureWinmlInvalidBinding);
-
   /*
-        Verify map bindings throw correct bind exceptions
-    */
+    Verify map bindings throw correct bind exceptions
+  */
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"dictvectorizer-int64.onnx", learningModel));
 
   LearningModelSession mapSession(learningModel);
