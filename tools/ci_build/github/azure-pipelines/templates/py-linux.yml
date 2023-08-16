@@ -41,9 +41,6 @@ jobs:
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   steps:
-    - script: echo 'BASEIMAGE=${{ parameters.base_image }}'
-      displayName: 'Check BaseImage ${{ parameters.base_image }}'
-
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
