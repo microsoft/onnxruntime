@@ -28,7 +28,7 @@ import os
 import unittest
 
 import torch
-from parity_utilities import *  # noqa: F403
+from parity_utilities import export_onnx, optimize_onnx, parse_arguments, run_parity
 from torch import nn
 
 
@@ -36,7 +36,7 @@ class Gelu(nn.Module):
     def __init__(self, formula=4, fp32_gelu_op=False):
         super().__init__()
         self.formula = formula
-        self.fp32_gelu_op = True
+        self.fp32_gelu_op = fp32_gelu_op
 
     def gelu(self, x):
         if self.formula == 0:
@@ -226,9 +226,7 @@ class TestGeluParity(unittest.TestCase):
 
     def test_cuda(self):
         if not torch.cuda.is_available():
-            import pytest
-
-            pytest.skip("test requires GPU and torch+cuda")
+            self.skipTest("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
             for i in self.formula_to_test:
