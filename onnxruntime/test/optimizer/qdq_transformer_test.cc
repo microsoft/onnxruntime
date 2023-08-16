@@ -34,9 +34,6 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #endif  // #ifdef USE_NNAPI
 
-namespace onnxruntime {
-namespace test {
-
 struct QDQOpKeys {
   const char* quantize_linear;
   const char* dequantize_linear;
@@ -48,6 +45,9 @@ constexpr QDQOpKeys GetQDQOpKeys(bool use_contrib_qdq) {
   }
   return {"QuantizeLinear", "DequantizeLinear"};
 }
+
+namespace onnxruntime {
+namespace test {
 
 #if !defined(DISABLE_CONTRIB_OPS)
 

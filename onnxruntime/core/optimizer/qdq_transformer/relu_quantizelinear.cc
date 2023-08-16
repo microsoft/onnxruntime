@@ -3,6 +3,7 @@
 
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 
