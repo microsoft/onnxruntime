@@ -496,6 +496,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
       } else if (key == "cache_dir") {
         ov_options[key] = value;
+      } else if (key == "context") {
+        ov_options[key] = value;
       } else if (key == "num_streams") {
         if (std::stoi(value) <= 0 && std::stoi(value) > 8) {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_streams' should be in the range of 1-8 \n");

@@ -100,7 +100,7 @@ export const gather = (context: ComputeContext, attributes: GatherAttributes): v
   const metadata = {
     name: 'Gather',
     inputTypes: [GpuDataType.default, GpuDataType.default],
-    cacheHint: attributes.cacheKey + inputs[0].dataType.toString(10) + inputs[1].dataType.toString(10),
+    cacheHint: attributes.cacheKey,
   };
 
   context.compute(createGatherProgramInfo(metadata, context.inputs, attributes));
