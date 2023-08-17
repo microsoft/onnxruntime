@@ -336,7 +336,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
           // Case 2 (qnn_err > cpu_err):  QNN EP is less accurate, but the error difference is within 1
           //                              quantization unit (i.e., scale). This can occur due to rounding differences.
           const bool is_as_accurate_as_cpu_qdq = (qnn_err - cpu_err) <= (output_qparams[i].scale + fp32_abs_err);
-          if (is_as_accurate_as_cpu_qdq) {
+          if (!is_as_accurate_as_cpu_qdq) {
             ++error_count;
           }
 
