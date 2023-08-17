@@ -115,4 +115,36 @@ FakeRCTBlobManager *fakeBlobManager = nil;
   }
 }
 
+- (void)testOnnxruntimeModule_AppendCoreml {
+  NSBundle *bundle = [NSBundle bundleForClass:[OnnxruntimeModuleTest class]];
+  NSString *dataPath = [bundle pathForResource:@"test_types_float" ofType:@"ort"];
+  NSString *sessionKey = @"";
+
+  OnnxruntimeModule *onnxruntimeModule = [OnnxruntimeModule new];
+  [onnxruntimeModule setBlobManager:fakeBlobManager];
+
+  {
+    // test loadModel() with coreml options
+    NSMutableDictionary *options = [NSMutableDictionary dictionary];
+
+    // register coreml ep options
+    NSMutableArray *epList = [NSMutableArray array];
+    [epList addObject:@"coreml"];
+    NSArray *immutableEpList = [NSArray arrayWithArray:epList];
+    [options setObject:immutableEpList forKey:@"executionProviders"];
+
+    NSDictionary *resultMap = [onnxruntimeModule loadModel:dataPath options:options];
+
+    sessionKey = resultMap[@"key"];
+    NSArray *inputNames = resultMap[@"inputNames"];
+    XCTAssertEqual([inputNames count], 1);
+    XCTAssertEqualObjects(inputNames[0], @"input");
+    NSArray *outputNames = resultMap[@"outputNames"];
+    XCTAssertEqual([outputNames count], 1);
+    XCTAssertEqualObjects(outputNames[0], @"output");
+  }
+
+  { [onnxruntimeModule dispose:sessionKey]; }
+}
+
 @end

@@ -1,10 +1,10 @@
-﻿using System;
+﻿using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
-using Microsoft.ML.OnnxRuntime.Tensors;
 using Xunit;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
@@ -533,10 +533,188 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return nodeName;
         }
 
+        private const string keras_prelu_ImageNet_small_nodeName_Input = "p_re_lu_3_input";
+        private const string keras_prelu_ImageNet_small_nodeName_Output = "p_re_lu_3/add:0";
+
+        private void LoadInputData<T>(string opset, string modelName,
+            DirectoryInfo testDataDir,
+            InferenceSession session,
+            IList<T> inputContainer,
+            Func<string, string, NodeMetadata, T> loader)
+        {
+            var inMeta = session.InputMetadata;
+            foreach (var f in testDataDir.EnumerateFiles("input_*.pb"))
+            {
+                if (modelName == "keras_prelu_ImageNet_small" && opset == "opset9")
+                {
+                    // The model has 1 input, match all file names (they are different in each data set)
+                    // to the same input
+                    var nodeName = keras_prelu_ImageNet_small_nodeName_Input;
+                    var nodeMeta = inMeta[nodeName];
+                    inputContainer.Add(loader(f.FullName, nodeName, nodeMeta));
+                }
+                else if (modelName == "test_BERT_Squad" && opset == "opset8")
+                {
+                    string nodeName = MatchBertSquadInputs(f.Name);
+                    var nodeMeta = inMeta[nodeName];
+                    inputContainer.Add(loader(f.FullName, nodeName, nodeMeta));
+                }
+                else
+                {
+                    var nodeName = MatchInputOutputWithFile(f.Name, session, true, out NodeMetadata nodeMeta);
+                    inputContainer.Add(loader(f.FullName, nodeName, nodeMeta));
+                }
+            }
+        }
+
+        private void LoadOutputData<T>(string opset, string modelName,
+                                                DirectoryInfo testDataDir,
+                                                InferenceSession session,
+                                                IList<T> outputContainer,
+                                                Func<string, string, NodeMetadata, T> loader)
+        {
+            var outMeta = session.OutputMetadata;
+            foreach (var f in testDataDir.EnumerateFiles("output_*.pb"))
+            {
+                if (modelName == "keras_prelu_ImageNet_small" && opset == "opset9")
+                {
+                    // The model has 1 output, match all file names (they are different in each data set)
+                    // to the same output
+                    var nodeName = keras_prelu_ImageNet_small_nodeName_Output;
+                    var nodeMeta = outMeta[nodeName];
+                    outputContainer.Add(loader(f.FullName, nodeName, nodeMeta));
+                }
+                else if (modelName == "test_BERT_Squad" && opset == "opset8")
+                {
+                    string nodeName = MatchBertSquadOutputs(f.Name);
+                    var nodeMeta = outMeta[nodeName];
+                    outputContainer.Add(loader(f.FullName, nodeName, nodeMeta));
+                }
+                else
+                {
+                    // Otherwise, just match trailing filename number to the input name -> metadata
+                    var nodeName = MatchInputOutputWithFile(f.Name, session, false, out NodeMetadata nodeMeta);
+                    outputContainer.Add(loader(f.FullName, nodeName, nodeMeta));
+                }
+            }
+        }
+
+        private void RunPretrainedModel(InferenceSession session,
+                     IReadOnlyList<NamedOnnxValue> inputContainer, IReadOnlyList<NamedOnnxValue> outputContainer)
+        {
+            var outMeta = session.OutputMetadata;
+
+            var orderedOutputNames = new List<string>(outputContainer.Count);
+            foreach (var output in outputContainer)
+            {
+                orderedOutputNames.Add(output.Name);
+            }
+
+            using (var resultCollection = session.Run(inputContainer, orderedOutputNames))
+            {
+                Assert.Equal(outputContainer.Count, resultCollection.Count);
+                for (int i = 0; i < resultCollection.Count; ++i)
+                {
+                    var result = resultCollection[i];
+                    var outputValue = outputContainer[i];
+
+                    Assert.NotNull(outputValue);
+                    Assert.Equal(result.Name, outputValue.Name);
+
+                    var outputMeta = outMeta[outputValue.Name];
+                    if (outputMeta.OnnxValueType == OnnxValueType.ONNX_TYPE_OPTIONAL)
+                    {
+                        outputMeta = outputMeta.AsOptionalMetadata().ElementMeta;
+                    }
+
+                    Assert.Equal(outputValue.ValueType, outputMeta.OnnxValueType);
+
+                    switch (outputValue.ValueType)
+                    {
+                        case OnnxValueType.ONNX_TYPE_TENSOR:  // Only Dense tensors now
+                            {
+                                VerifyTensorResults(outputMeta.ElementDataType, result, outputValue);
+                            }
+                            break;
+                        case OnnxValueType.ONNX_TYPE_SEQUENCE:
+                            {
+                                VerifySequenceResults(result, outputValue, outputMeta);
+                            }
+                            break;
+                        default:
+                            Assert.True(false, $"TestPreTrainedModels cannot handle Onnxtype: {outputValue.ValueType}");
+                            break;
+                    }
+                }
+            }
+        }
+
+        private void RunPretrainedModel(InferenceSession session, RunOptions runOptions,
+                     IReadOnlyList<DisposableTestPair<OrtValue>> inputContainer,
+                     IReadOnlyList<DisposableTestPair<OrtValue>> outputContainer)
+        {
+            var outMeta = session.OutputMetadata;
+
+            var orderedInputNames = new List<string>(inputContainer.Count);
+            var orderdedInputs = new List<OrtValue>(inputContainer.Count);
+            foreach(var pair in inputContainer)
+            {
+                orderedInputNames.Add(pair.Key);
+                orderdedInputs.Add(pair.Value);
+            }
+
+            var orderedOutputNames = new List<string>(outputContainer.Count);
+            var orderedOutputs = new List<OrtValue>(outputContainer.Count);
+            foreach (var pair in outputContainer)
+            {
+                orderedOutputNames.Add(pair.Key);
+                orderedOutputs.Add(pair.Value);
+            }
+
+            using (var results = session.Run(runOptions, orderedInputNames, orderdedInputs, orderedOutputNames))
+            {
+                Assert.Equal(outMeta.Count, results.Count);
+                Assert.Equal(outputContainer.Count, results.Count);
+
+                for (int i = 0; i < outputContainer.Count; ++i)
+                {
+                    var resultValue = results[i];
+                    var expectedValue = outputContainer[i].Value;
+
+                    var outputMeta = outMeta[orderedOutputNames[i]];
+                    if (outputMeta.OnnxValueType == OnnxValueType.ONNX_TYPE_OPTIONAL)
+                    {
+                        outputMeta = outputMeta.AsOptionalMetadata().ElementMeta;
+                    }
+
+                    if (outputMeta.OnnxValueType == OnnxValueType.ONNX_TYPE_TENSOR)
+                    {
+                        VerifyTensorResults(outputMeta.ElementDataType, resultValue, expectedValue);
+                    }
+                    else if (outputMeta.OnnxValueType == OnnxValueType.ONNX_TYPE_SEQUENCE)
+                    {
+                        VerifySequenceResults(resultValue, expectedValue, outputMeta);
+                    }
+                    else
+                    {
+                        Assert.True(false, $"TestPreTrainedModels cannot handle Onnxtype: {outputMeta.OnnxValueType}");
+                    }
+                }
+            }
+        }
+
+        [Theory(DisplayName = "TestPretrainedModelsWithOrtValue")]
+        [MemberData(nameof(GetModelsForTest))]
+        [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
+        public void TestPretrainedModelsWithOrtValue(string opsetDir, string modelName)
+        {
+            TestPreTrainedModels(opsetDir, modelName, true);
+        }
+
         [Theory(DisplayName = "TestPreTrainedModels")]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
-        private void TestPreTrainedModels(string opsetDir, string modelName)
+        private void TestPreTrainedModels(string opsetDir, string modelName, bool useOrtValueAPIs = false)
         {
             var opsetDirInfo = new DirectoryInfo(opsetDir);
             var opset = opsetDirInfo.Name;
@@ -571,10 +749,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     throw new Exception($"Opset {opset} Model {modelName}. Can't determine model file name. Found these :{modelNamesList}");
                 }
 
+                using(var runOptions = new RunOptions())
                 using (var session = new InferenceSession(onnxModelFileName))
                 {
-                    var inMeta = session.InputMetadata;
-                    var outMeta = session.OutputMetadata;
                     string testDataDirNamePattern = "test_data*";
                     if (opset == "opset9" && modelName == "LSTM_Seq_lens_unpacked")
                     {
@@ -582,96 +759,23 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                     foreach (var testDataDir in modelDir.EnumerateDirectories(testDataDirNamePattern))
                     {
-                        var inputContainer = new List<NamedOnnxValue>(inMeta.Count);
-                        var outputContainer = new List<NamedOnnxValue>(outMeta.Count);
-                        foreach (var f in testDataDir.EnumerateFiles("input_*.pb"))
+                        if (useOrtValueAPIs)
                         {
-                            if (modelName == "keras_prelu_ImageNet_small" && opset == "opset9")
+                            using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
+                            using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
                             {
-                                // The model has 1 input, match all file names (they are different in each data set)
-                                // to the same input
-                                var nodeName = "p_re_lu_3_input";
-                                var nodeMeta = inMeta[nodeName];
-                                inputContainer.Add(TestDataLoader.LoadOnnxValueFromFilePb(f.FullName, nodeName, nodeMeta));
-                            }
-                            else if (modelName == "test_BERT_Squad" && opset == "opset8")
-                            {
-                                string nodeName = MatchBertSquadInputs(f.Name);
-                                var nodeMeta = inMeta[nodeName];
-                                inputContainer.Add(TestDataLoader.LoadOnnxValueFromFilePb(f.FullName, nodeName, nodeMeta));
-                            }
-                            else
-                            {
-                                var nodeName = MatchInputOutputWithFile(f.Name, session, true, out NodeMetadata nodeMeta);
-                                inputContainer.Add(TestDataLoader.LoadOnnxValueFromFilePb(f.FullName, nodeName, nodeMeta));
+                                LoadInputData(opset, modelName, testDataDir, session, inputOrtValues, TestDataLoader.LoadOrtValueFromFilePb);
+                                LoadOutputData(opset, modelName, testDataDir, session, outputOrtValues, TestDataLoader.LoadOrtValueFromFilePb);
+                                RunPretrainedModel(session, runOptions, inputOrtValues, outputOrtValues);
                             }
                         }
-                        foreach (var f in testDataDir.EnumerateFiles("output_*.pb"))
+                        else
                         {
-                            if (modelName == "keras_prelu_ImageNet_small" && opset == "opset9")
-                            {
-                                // The model has 1 output, match all file names (they are different in each data set)
-                                // to the same output
-                                var nodeName = "p_re_lu_3/add:0";
-                                var nodeMeta = outMeta[nodeName];
-                                outputContainer.Add(TestDataLoader.LoadOnnxValueFromFilePb(f.FullName, nodeName, nodeMeta));
-                            }
-                            else if (modelName == "test_BERT_Squad" && opset == "opset8")
-                            {
-                                string nodeName = MatchBertSquadOutputs(f.Name);
-                                var nodeMeta = outMeta[nodeName];
-                                outputContainer.Add(TestDataLoader.LoadOnnxValueFromFilePb(f.FullName, nodeName, nodeMeta));
-                            }
-                            else
-                            {
-                                // Otherwise, just match trailing filename number to the input name -> metadata
-                                var nodeName = MatchInputOutputWithFile(f.Name, session, false, out NodeMetadata nodeMeta);
-                                outputContainer.Add(TestDataLoader.LoadOnnxValueFromFilePb(f.FullName, nodeName, nodeMeta));
-                            }
-                        }
-
-                        using (var resultCollection = session.Run(inputContainer))
-                        {
-                            foreach (var result in resultCollection)
-                            {
-                                Assert.True(session.OutputMetadata.ContainsKey(result.Name));
-                                NamedOnnxValue outputValue = null;
-                                foreach (var o in outputContainer)
-                                {
-                                    if (o.Name == result.Name)
-                                    {
-                                        outputValue = o;
-                                        break;
-                                    }
-                                }
-
-                                Assert.NotNull(outputValue);
-
-                                var outputMeta = session.OutputMetadata[result.Name];
-                                if (outputMeta.OnnxValueType == OnnxValueType.ONNX_TYPE_OPTIONAL)
-                                {
-                                    outputMeta = outputMeta.AsOptionalMetadata().ElementMeta;
-                                }
-
-                                Assert.Equal(outputValue.ValueType, outputMeta.OnnxValueType);
-
-                                switch (outputValue.ValueType)
-                                {
-                                    case OnnxValueType.ONNX_TYPE_TENSOR:  // Only Dense tensors now
-                                        {
-                                            VerifyTensorResults(outputMeta.ElementDataType, result, outputValue);
-                                        }
-                                        break;
-                                    case OnnxValueType.ONNX_TYPE_SEQUENCE:
-                                        {
-                                            VerifySequenceResults(result, outputValue, outputMeta);
-                                        }
-                                        break;
-                                    default:
-                                        Assert.True(false, $"TestPreTrainedModels cannot handle Onnxtype: {outputValue.ValueType}");
-                                        break;
-                                }
-                            }
+                            var inputContainer = new List<NamedOnnxValue>(session.InputMetadata.Count);
+                            LoadInputData(opset, modelName, testDataDir, session, inputContainer, TestDataLoader.LoadOnnxValueFromFilePb);
+                            var outputContainer = new List<NamedOnnxValue>(session.OutputMetadata.Count);
+                            LoadOutputData(opset, modelName, testDataDir, session, outputContainer, TestDataLoader.LoadOnnxValueFromFilePb);
+                            RunPretrainedModel(session, inputContainer, outputContainer);
                         }
                     }
                 }
@@ -694,7 +798,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        private void VerifySequenceResults(NamedOnnxValue result, NamedOnnxValue expectedValue, NodeMetadata metaData)
+        private static void VerifySequenceResults(NamedOnnxValue result, NamedOnnxValue expectedValue, NodeMetadata metaData)
         {
             var meta = metaData.AsSequenceMetadata();
             var resultSequence = result.AsEnumerable<NamedOnnxValue>();
@@ -723,55 +827,236 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        private void VerifyTensorResults(TensorElementType elementType, NamedOnnxValue result, NamedOnnxValue outputValue)
+        private static void VerifyTensorResults(TensorElementType elementType, NamedOnnxValue result, NamedOnnxValue expectedValue)
         {
             switch (elementType)
             {
                 case TensorElementType.Float:
-                    Assert.Equal(result.AsTensor<float>(), outputValue.AsTensor<float>(), new FloatComparer());
+                    Assert.Equal(expectedValue.AsTensor<float>(), result.AsTensor<float>(), new FloatComparer());
                     break;
                 case TensorElementType.Double:
-                    Assert.Equal(result.AsTensor<double>(), outputValue.AsTensor<double>(), new DoubleComparer());
+                    Assert.Equal(expectedValue.AsTensor<double>(), result.AsTensor<double>(), new DoubleComparer());
                     break;
                 case TensorElementType.Int32:
-                    Assert.Equal(result.AsTensor<int>(), outputValue.AsTensor<int>(), new ExactComparer<int>());
+                    Assert.Equal(expectedValue.AsTensor<int>(), result.AsTensor<int>(), new ExactComparer<int>());
                     break;
                 case TensorElementType.UInt32:
-                    Assert.Equal(result.AsTensor<uint>(), outputValue.AsTensor<uint>(), new ExactComparer<uint>());
+                    Assert.Equal(expectedValue.AsTensor<uint>(), result.AsTensor<uint>(), new ExactComparer<uint>());
                     break;
                 case TensorElementType.Int16:
-                    Assert.Equal(result.AsTensor<short>(), outputValue.AsTensor<short>(), new ExactComparer<short>());
+                    Assert.Equal(expectedValue.AsTensor<short>(), result.AsTensor<short>(), new ExactComparer<short>());
                     break;
                 case TensorElementType.UInt16:
-                    Assert.Equal(result.AsTensor<ushort>(), outputValue.AsTensor<ushort>(), new ExactComparer<ushort>());
+                    Assert.Equal(expectedValue.AsTensor<ushort>(), result.AsTensor<ushort>(), new ExactComparer<ushort>());
                     break;
                 case TensorElementType.Int64:
-                    Assert.Equal(result.AsTensor<long>(), outputValue.AsTensor<long>(), new ExactComparer<long>());
+                    Assert.Equal(expectedValue.AsTensor<long>(), result.AsTensor<long>(), new ExactComparer<long>());
                     break;
                 case TensorElementType.UInt64:
-                    Assert.Equal(result.AsTensor<ulong>(), outputValue.AsTensor<ulong>(), new ExactComparer<ulong>());
+                    Assert.Equal(expectedValue.AsTensor<ulong>(), result.AsTensor<ulong>(), new ExactComparer<ulong>());
                     break;
                 case TensorElementType.UInt8:
-                    Assert.Equal(result.AsTensor<byte>(), outputValue.AsTensor<byte>(), new ExactComparer<byte>());
+                    Assert.Equal(expectedValue.AsTensor<byte>(), result.AsTensor<byte>(), new ExactComparer<byte>());
                     break;
                 case TensorElementType.Int8:
-                    Assert.Equal(result.AsTensor<sbyte>(), outputValue.AsTensor<sbyte>(), new ExactComparer<sbyte>());
+                    Assert.Equal(result.AsTensor<sbyte>(), result.AsTensor<sbyte>(), new ExactComparer<sbyte>());
                     break;
                 case TensorElementType.Bool:
-                    Assert.Equal(result.AsTensor<bool>(), outputValue.AsTensor<bool>(), new ExactComparer<bool>());
+                    Assert.Equal(expectedValue.AsTensor<bool>(), result.AsTensor<bool>(), new ExactComparer<bool>());
                     break;
                 case TensorElementType.Float16:
-                    Assert.Equal(result.AsTensor<Float16>(), outputValue.AsTensor<Float16>(), new Float16Comparer { tolerance = 2 });
+                    Assert.Equal(expectedValue.AsTensor<Float16>(), result.AsTensor<Float16>(), new Float16Comparer { tolerance = 2 });
                     break;
                 case TensorElementType.BFloat16:
-                    Assert.Equal(result.AsTensor<BFloat16>(), outputValue.AsTensor<BFloat16>(), new BFloat16Comparer { tolerance = 2 });
+                    Assert.Equal(expectedValue.AsTensor<BFloat16>(), result.AsTensor<BFloat16>(), new BFloat16Comparer { tolerance = 2 });
                     break;
                 case TensorElementType.String:
-                    Assert.Equal(result.AsTensor<string>(), outputValue.AsTensor<string>(), new ExactComparer<string>());
+                    Assert.Equal(expectedValue.AsTensor<string>(), result.AsTensor<string>(), new ExactComparer<string>());
                     break;
                 default:
                     Assert.True(false, "TestPreTrainedModels does not yet support output of type: " + elementType.ToString());
                     break;
+            }
+        }
+
+        private static void VerifySequenceResults(OrtValue resultSequence, OrtValue expectedSequence, NodeMetadata metaData)
+        {
+            var allocator = OrtAllocator.DefaultInstance;
+            Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, resultSequence.OnnxType);
+            Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, expectedSequence.OnnxType);
+
+            var elementMeta = metaData.AsSequenceMetadata().ElementMeta;
+
+            var resultCount = resultSequence.GetValueCount();
+            Assert.Equal(expectedSequence.GetValueCount(), resultCount);
+
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                for (int i = 0; i < resultCount; ++i)
+                {
+                    var resultItem = resultSequence.GetValue(i, allocator);
+                    cleanUp.Add(resultItem);
+
+                    var expectedItem = expectedSequence.GetValue(i, allocator);
+                    cleanUp.Add(expectedItem);
+
+                    Assert.Equal(elementMeta.OnnxValueType, expectedItem.OnnxType);
+                    Assert.Equal(elementMeta.OnnxValueType, resultItem.OnnxType);
+
+                    switch (elementMeta.OnnxValueType)
+                    {
+                        case OnnxValueType.ONNX_TYPE_TENSOR:
+                            VerifyTensorResults(elementMeta.ElementDataType, resultItem, expectedItem);
+                            break;
+                        case OnnxValueType.ONNX_TYPE_SEQUENCE:
+                            {
+                                VerifySequenceResults(resultItem, expectedItem, elementMeta);
+                            }
+                            break;
+                        default:
+                            Assert.True(false, $"VerifySequenceResults cannot handle Onnxtype: {elementMeta.OnnxValueType}");
+                            break;
+                    }
+                }
+            }
+        }
+
+        private static void VerifyTensorResults(TensorElementType expectedElementType, OrtValue result, OrtValue expectedValue)
+        {
+            Assert.True(result.IsTensor);
+            Assert.True(expectedValue.IsTensor);
+
+            var resultTypeShape = result.GetTensorTypeAndShape();
+            var expectedTypeShape = expectedValue.GetTensorTypeAndShape();
+            Assert.Equal(expectedElementType, resultTypeShape.ElementDataType);
+            Assert.Equal(expectedElementType, expectedTypeShape.ElementDataType);
+            Assert.Equal(expectedTypeShape.Shape, resultTypeShape.Shape);
+
+            if (expectedElementType == TensorElementType.String)
+            {
+                var resStrings = result.GetStringTensorAsArray();
+                var expStrings = expectedValue.GetStringTensorAsArray();
+                Assert.Equal(expStrings, resStrings);
+                return;
+            }
+
+            switch (expectedElementType)
+            {
+                case TensorElementType.Float:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<float>().ToArray(), result.GetTensorDataAsSpan<float>().ToArray(),
+                        new FloatComparer());
+                    break;
+                case TensorElementType.Double:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<double>().ToArray(), result.GetTensorDataAsSpan<double>().ToArray(),
+                        new DoubleComparer());
+                    break;
+                case TensorElementType.Int32:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<int>().ToArray(), result.GetTensorDataAsSpan<int>().ToArray(), new ExactComparer<int>());
+                    break;
+                case TensorElementType.UInt32:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<uint>().ToArray(), result.GetTensorDataAsSpan<uint>().ToArray(), new ExactComparer<uint>());
+                    break;
+                case TensorElementType.Int16:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<short>().ToArray(), result.GetTensorDataAsSpan<short>().ToArray(), new ExactComparer<short>());
+                    break;
+                case TensorElementType.UInt16:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<ushort>().ToArray(), result.GetTensorDataAsSpan<ushort>().ToArray(), new ExactComparer<ushort>());
+                    break;
+                case TensorElementType.Int64:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<long>().ToArray(), result.GetTensorDataAsSpan<long>().ToArray(), new ExactComparer<long>());
+                    break;
+                case TensorElementType.UInt64:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<ulong>().ToArray(), result.GetTensorDataAsSpan<ulong>().ToArray(), new ExactComparer<ulong>());
+                    break;
+                case TensorElementType.UInt8:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<byte>().ToArray(), result.GetTensorDataAsSpan<byte>().ToArray(), new ExactComparer<byte>());
+                    break;
+                case TensorElementType.Int8:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<sbyte>().ToArray(), result.GetTensorDataAsSpan<sbyte>().ToArray(), new ExactComparer<sbyte>());
+                    break;
+                case TensorElementType.Bool:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<bool>().ToArray(), result.GetTensorDataAsSpan<bool>().ToArray(), new ExactComparer<bool>());
+                    break;
+                case TensorElementType.Float16:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<Float16>().ToArray(), result.GetTensorDataAsSpan<Float16>().ToArray(),
+                        new Float16Comparer { tolerance = 2 });
+                    break;
+                case TensorElementType.BFloat16:
+                    Assert.Equal(expectedValue.GetTensorDataAsSpan<BFloat16>().ToArray(), result.GetTensorDataAsSpan<BFloat16>().ToArray(),
+                                               new BFloat16Comparer { tolerance = 2 });
+                    break;
+                default:
+                    Assert.True(false, "VerifyTensorResults cannot handle ElementType: " + expectedElementType.ToString());
+                    break;
+            }
+        }
+
+        private static void VerifyContainerContent(IReadOnlyList<OrtValue> results,
+            IReadOnlyList<NamedOnnxValue> expectedValues)
+        {
+            Assert.Equal(results.Count, expectedValues.Count);
+
+            for (int i = 0; i < expectedValues.Count; ++i)
+            {
+                var result = results[i];
+
+                var resultTypeShape = result.GetTensorTypeAndShape();
+
+                var expectedValue = expectedValues[i];
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, expectedValue.ValueType);
+
+                switch (resultTypeShape.ElementDataType)
+                {
+                    case TensorElementType.Float:
+                        Assert.Equal(result.GetTensorDataAsSpan<float>().ToArray(), expectedValue.AsTensor<float>().ToArray(),
+                            new ExactComparer<float>());
+                        break;
+                    case TensorElementType.Double:
+                        Assert.Equal(result.GetTensorDataAsSpan<double>().ToArray(), expectedValue.AsTensor<double>().ToArray(),
+                            new DoubleComparer());
+                        break;
+                    case TensorElementType.Int32:
+                        Assert.Equal(result.GetTensorDataAsSpan<int>().ToArray(), expectedValue.AsTensor<int>().ToArray(), new ExactComparer<int>());
+                        break;
+                    case TensorElementType.UInt32:
+                        Assert.Equal(result.GetTensorDataAsSpan<uint>().ToArray(), expectedValue.AsTensor<uint>().ToArray(), new ExactComparer<uint>());
+                        break;
+                    case TensorElementType.Int16:
+                        Assert.Equal(result.GetTensorDataAsSpan<short>().ToArray(), expectedValue.AsTensor<short>().ToArray(), new ExactComparer<short>());
+                        break;
+                    case TensorElementType.UInt16:
+                        Assert.Equal(result.GetTensorDataAsSpan<ushort>().ToArray(), expectedValue.AsTensor<ushort>().ToArray(), new ExactComparer<ushort>());
+                        break;
+                    case TensorElementType.Int64:
+                        Assert.Equal(result.GetTensorDataAsSpan<long>().ToArray(), expectedValue.AsTensor<long>().ToArray(), new ExactComparer<long>());
+                        break;
+                    case TensorElementType.UInt64:
+                        Assert.Equal(result.GetTensorDataAsSpan<ulong>().ToArray(), expectedValue.AsTensor<ulong>().ToArray(), new ExactComparer<ulong>());
+                        break;
+                    case TensorElementType.UInt8:
+                        Assert.Equal(result.GetTensorDataAsSpan<byte>().ToArray(), expectedValue.AsTensor<byte>().ToArray(), new ExactComparer<byte>());
+                        break;
+                    case TensorElementType.Int8:
+                        Assert.Equal(result.GetTensorDataAsSpan<sbyte>().ToArray(), expectedValue.AsTensor<sbyte>().ToArray(), new ExactComparer<sbyte>());
+                        break;
+                    case TensorElementType.Bool:
+                        Assert.Equal(result.GetTensorDataAsSpan<bool>().ToArray(), expectedValue.AsTensor<bool>().ToArray(), new ExactComparer<bool>());
+                        break;
+                    case TensorElementType.Float16:
+                        Assert.Equal(result.GetTensorDataAsSpan<Float16>().ToArray(), expectedValue.AsTensor<Float16>().ToArray(),
+                            new Float16Comparer { tolerance = 2 });
+                        break;
+                    case TensorElementType.BFloat16:
+                        Assert.Equal(result.GetTensorDataAsSpan<BFloat16>().ToArray(), expectedValue.AsTensor<BFloat16>().ToArray(),
+                                                   new BFloat16Comparer { tolerance = 2 });
+                        break;
+                    case TensorElementType.String:
+                        Assert.Equal(result.GetStringTensorAsArray(), expectedValue.AsTensor<string>().ToArray(), new ExactComparer<string>());
+                        break;
+                    default:
+                        Assert.True(false, $"VerifyTensorResults cannot handle ElementType: { resultTypeShape.ElementDataType}");
+                        break;
+                }
             }
         }
 

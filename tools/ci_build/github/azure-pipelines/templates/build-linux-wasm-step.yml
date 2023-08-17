@@ -1,0 +1,74 @@
+parameters:
+- name: WithCache
+  displayName: Build with Cache
+  type: boolean
+  default: false
+
+# if WithCahe is false, the following parameters are not used.
+- name: Today
+  type: string
+  default: ""
+
+- name: AdditionalKey
+  type: string
+  default: ""
+
+- name: CacheDir
+  type: string
+  default: ""
+
+- name: Arguments
+  type: string
+
+- name: DisplayName
+  type: string
+
+steps:
+  - task: Cache@2
+    inputs:
+      ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
+        key: ' "${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}  | merge '
+      ${{else}}:
+        key: '"${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}  | $(Build.SourceVersion) '
+      path: ${{parameters.CacheDir}}
+      restoreKeys: |
+        "${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}
+    displayName: Cache Task
+    condition: eq('${{parameters.WithCache}}', true)
+
+  - ${{if eq(parameters.WithCache, true)}}:
+    - script: |
+        pushd '$(Build.SourcesDirectory)/cmake/external/emsdk'
+        source ./emsdk_env.sh
+        export PATH=$(Build.SourcesDirectory)/cmake/external/emsdk/:$PATH
+        export PATH=$(Build.SourcesDirectory)/cmake/external/emsdk/ccache/git-emscripten_64bit/bin:$PATH
+        echo $PATH
+        ccache -s
+        ccache -z
+        export EM_CONFIG="$(Build.SourcesDirectory)/cmake/external/emsdk/.emscripten"
+
+        popd
+        pushd '$(Build.BinariesDirectory)'
+        python3 '$(Build.SourcesDirectory)/tools/ci_build/build.py' ${{parameters.Arguments}}
+        ret=$?
+        if [ $ret -ne 0 ]; then
+            echo "Build failed with error code $ret"
+            exit 1
+        fi
+        ccache -s
+        popd
+      displayName: ${{parameters.DisplayName}}
+      env:
+        CCACHE_SLOPPINESS: include_file_ctime,include_file_mtime,time_macros
+        CCACHE_DIR: ${{parameters.CacheDir}}
+        _EMCC_CCACHE: 1
+        EM_COMPILER_WRAPPER: ccache
+        EM_DIR: '$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten'
+
+  - ${{if eq(parameters.WithCache, false)}}:
+    - task: PythonScript@0
+      displayName: '${{parameters.DisplayName}}'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/build.py'
+        arguments: ${{parameters.Arguments}}
+        workingDirectory: '$(Build.BinariesDirectory)'

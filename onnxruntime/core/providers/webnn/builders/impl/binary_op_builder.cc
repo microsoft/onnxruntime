@@ -18,10 +18,6 @@ class BinaryOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
- private:
-  int GetMinSupportedOpSet(const Node& node) const override;
 };
 
 // Add operator related.
@@ -43,6 +39,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     output = model_builder.GetBuilder().call<emscripten::val>("div", input0, input1);
   } else if (op_type == "Pow") {
     output = model_builder.GetBuilder().call<emscripten::val>("pow", input0, input1);
+  } else if (op_type == "PRelu") {
+    output = model_builder.GetBuilder().call<emscripten::val>("prelu", input0, input1);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -52,15 +50,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   return Status::OK();
 }
 
-// Operator support related.
-
-int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // Add/Sub/Mul/Div/Pow opset 6- has broadcast attributes we do not support now.
-  return 7;
-}
-
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =
@@ -70,6 +61,7 @@ void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
           "Mul",
           "Div",
           "Pow",
+          "PRelu",
       };
 
   op_registrations.builders.push_back(std::make_unique<BinaryOpBuilder>());

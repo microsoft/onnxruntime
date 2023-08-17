@@ -26,7 +26,7 @@ class Node;
 
 #include "core/common/basic_types.h"
 #include "core/common/profiler_common.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/framework_provider_common.h"

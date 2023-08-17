@@ -332,7 +332,7 @@ struct TensorCheck<MLFloat16> {
                 << "i:" << i;
           }
           if (has_rel_err) {
-            EXPECT_NEAR(f_expected[i], f_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
+            EXPECT_NEAR(f_expected[i], f_actual[i], *(params.relative_error) * std::abs(static_cast<float>(cur_expected[i])))
                 << "i:" << i;
           }
         }

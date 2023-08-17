@@ -12,9 +12,13 @@ from packaging import version
 
 from onnxruntime import set_seed
 from onnxruntime.capi import build_and_package_info as ort_info
+from onnxruntime.capi._pybind_state import is_ortmodule_available
 
 from ._fallback import ORTModuleFallbackException, ORTModuleInitException, _FallbackPolicy, wrap_exception
 from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
+
+if not is_ortmodule_available():
+    raise RuntimeError("ORTModule is not supported on this platform.")
 
 
 def _defined_from_envvar(name, default_value, warn=True):
@@ -120,6 +124,7 @@ def _are_deterministic_algorithms_enabled():
     return ORTMODULE_IS_DETERMINISTIC
 
 
+from .graph_transformer_registry import register_graph_transformer  # noqa: E402, F401
 from .options import DebugOptions, LogLevel  # noqa: E402, F401
 
 # ORTModule must be loaded only after all validation passes

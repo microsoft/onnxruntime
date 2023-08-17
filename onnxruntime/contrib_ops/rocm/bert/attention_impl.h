@@ -31,7 +31,7 @@ size_t GetAttentionWorkspaceSize(
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
     RocmTuningContext* tuning_ctx,    // context for tuning
-    hipStream_t stream,               // Hip stream
+    Stream* stream,                   // ORT Stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor
     const int batch_size,             // Batch size (B)
@@ -160,6 +160,12 @@ class CompatRocblasMathModeSetter {
   }
 };
 
+enum AttentionType {
+  kAttention,
+  kMultiHeadAttention,
+  kDecoderMaskedMultiHeadAttention,
+};
+
 enum AttentionMode {
   // Q,K,V,PastK,PastV,PresentK,PresentV
   QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE,
@@ -185,7 +191,7 @@ struct RocmAttentionParameters : AttentionParameters {
   AttentionMode mode;
 };
 
-Status ClassifyAttentionMode(const std::string& op,
+Status ClassifyAttentionMode(AttentionType type,
                              RocmAttentionParameters* attn,
                              const std::vector<const Tensor*>& qkv,
                              const std::vector<const Tensor*>& past,

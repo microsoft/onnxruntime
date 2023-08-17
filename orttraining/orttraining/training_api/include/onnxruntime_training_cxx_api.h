@@ -194,7 +194,6 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
    * \param[in] input_values The user inputs to the training model.
    * \return A std::vector of Ort::Value objects that represents the output of the forward pass of the training model.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
   std::vector<Value> TrainStep(const std::vector<Value>& input_values);

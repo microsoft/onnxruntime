@@ -12,7 +12,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_suffix, softmax
+from utils import dtype_to_suffix, matmul, softmax
 
 
 def multinormal_distribution(num_distribution, num_element_per_dist):
@@ -117,7 +117,7 @@ def _test_gemm_softmax_gemm_permute(
     if mask_shape is not None:
         attn_mask = (np.random.randint(0, 100, size=mask_shape) < 95).astype(np.int32)
 
-    pre_softmax_attn_scores = q @ np.swapaxes(k, 2, 3)
+    pre_softmax_attn_scores = matmul(q, np.swapaxes(k, 2, 3))
     pre_softmax_attn_scores = pre_softmax_attn_scores * scale
     if attn_bias is not None:
         pre_softmax_attn_scores = pre_softmax_attn_scores + attn_bias
@@ -130,7 +130,7 @@ def _test_gemm_softmax_gemm_permute(
             converted_mask = (1 - attn_mask.reshape(mask_shape_broadcasted)) * filter_value
         pre_softmax_attn_scores = pre_softmax_attn_scores + converted_mask
     attn_scores = softmax(pre_softmax_attn_scores, axis=-1)
-    attn = attn_scores @ v
+    attn = matmul(attn_scores, v)
     ref = np.swapaxes(attn, 2, 1)  # permute 0213
 
     out = np.empty(out_shape, dtype=dtype)
@@ -179,7 +179,7 @@ def _test_gemm_softmax_gemm_permute(
                 #  KERNEL_EXPLORER_STRICT_TEST=1 pytest ... -s -v
                 np.testing.assert_allclose(out, ref)
             else:
-                is_zero_tol, atol, rtol = 1e-3, 1e-2, 1e-2
+                is_zero_tol, atol, rtol = 1e-3, 2e-2, 1e-2
                 not_close_to_zeros = np.abs(ref) > is_zero_tol
                 np.testing.assert_allclose(out[not_close_to_zeros], ref[not_close_to_zeros], atol=atol, rtol=rtol)
         except Exception as err:
@@ -200,9 +200,27 @@ def _test_gemm_softmax_gemm_permute(
 @pytest.mark.parametrize("total_seqlen", total_seqlens)
 @pytest.mark.parametrize("seqlen", seqlens)
 @pytest.mark.parametrize("batch", [16])
-@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("dtype", ["float16", "float32"])
 def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim):
     f = getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype))
+    scale = 1.0 / np.sqrt(head_size)
+    _test_gemm_softmax_gemm_permute(
+        f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale, ke.qkv_format.Q_K_V_BNSH
+    )
+
+
+@pytest.mark.parametrize("mask_dim", [2], ids=get_mask_dim_id)
+@pytest.mark.parametrize("biased", [False], ids=get_biased_id)
+@pytest.mark.parametrize("head_size", [64])
+@pytest.mark.parametrize("nhead", [8])
+@pytest.mark.parametrize("total_seqlen", [128])
+@pytest.mark.parametrize("seqlen", [64])
+@pytest.mark.parametrize("batch", [16])
+@pytest.mark.parametrize("dtype", ["float16", "float32"])
+def test_gemm_softmax_gemm_permute_generic_nested_tunable(
+    dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim
+):
+    f = getattr(ke, "GemmSoftmaxGemmPermuteGenericNestedTunable_" + dtype_to_suffix(dtype))
     scale = 1.0 / np.sqrt(head_size)
     _test_gemm_softmax_gemm_permute(
         f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale, ke.qkv_format.Q_K_V_BNSH

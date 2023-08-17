@@ -21,7 +21,7 @@ struct ProviderInfo_ROCM {
   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
 
   virtual std::unique_ptr<onnxruntime::IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<onnxruntime::IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<onnxruntime::IAllocator> CreateROCMPinnedAllocator(const char* name) = 0;
   virtual std::unique_ptr<onnxruntime::IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;

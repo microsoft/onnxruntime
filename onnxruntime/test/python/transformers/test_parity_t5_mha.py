@@ -491,7 +491,7 @@ class T5Attention(nn.Module):
         # attn_output = self.o(attn_output) # ORT places this matmul outside of MHA op
 
         present_key_value_state = (key_states, value_states) if (self.is_decoder and use_cache) else None
-        outputs = (attn_output,) + (present_key_value_state,)
+        outputs = (attn_output, present_key_value_state)
 
         return outputs
 
@@ -628,7 +628,7 @@ class T5Attention(nn.Module):
         if past_key_value is not None and self.is_static_kv:
             output = torch.tensor(ort_output)
         else:
-            output = (torch.tensor(ort_output[0]),) + ((torch.tensor(ort_output[1]), torch.tensor(ort_output[2])),)
+            output = (torch.tensor(ort_output[0]), (torch.tensor(ort_output[1]), torch.tensor(ort_output[2])))
 
         return output
 

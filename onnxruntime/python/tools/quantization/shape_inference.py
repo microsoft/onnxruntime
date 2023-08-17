@@ -9,6 +9,7 @@ import logging
 import tempfile
 import traceback
 from pathlib import Path
+from typing import Optional
 
 import onnx
 
@@ -32,7 +33,7 @@ def quant_pre_process(
     verbose: int = 0,
     save_as_external_data: bool = False,
     all_tensors_to_one_file: bool = False,
-    external_data_location: str = None,
+    external_data_location: Optional[str] = None,
     external_data_size_threshold: int = 1024,
 ) -> None:
     """Shape inference and model optimization, in preparation for quantization.
@@ -80,7 +81,17 @@ def quant_pre_process(
             if not skip_symbolic_shape:
                 # Need to save the inferenced model to file so as to run the optimizer
                 input_model_path = str(temp_path / "symbolic_shape_inferred.onnx")
-                onnx.save(model, input_model_path)
+                if save_as_external_data:
+                    onnx.save_model(
+                        model,
+                        input_model_path,
+                        save_as_external_data=True,
+                        all_tensors_to_one_file=all_tensors_to_one_file,
+                        size_threshold=external_data_size_threshold,
+                        convert_attribute=False,
+                    )
+                else:
+                    onnx.save(model, input_model_path)
                 model = None
 
             opt_model_path = str(temp_path / "optimized.onnx")

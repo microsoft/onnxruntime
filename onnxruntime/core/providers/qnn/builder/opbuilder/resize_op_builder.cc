@@ -357,9 +357,9 @@ Status ResizeOpBuilder::ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrap
     qnn_half_pixel.bool8Value = static_cast<uint8_t>(1);
   }
   QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
-                                          qnn_def::align_corners, qnn_align_corners);
+                                          QNN_OP_RESIZE_BILINEAR_PARAM_ALIGN_CORNERS, qnn_align_corners);
   QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
-                                       qnn_def::half_pixel_centers, qnn_half_pixel);
+                                       QNN_OP_RESIZE_BILINEAR_PARAM_HALF_PIXEL_CENTERS, qnn_half_pixel);
 
   std::vector<std::string> param_tensor_names;
   param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
@@ -398,7 +398,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_align_corners.dataType = QNN_DATATYPE_BOOL_8;
     qnn_align_corners.bool8Value = static_cast<uint8_t>(0);
     QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
-                                            qnn_def::align_corners, qnn_align_corners);
+                                            QNN_OP_RESIZE_BILINEAR_PARAM_ALIGN_CORNERS, qnn_align_corners);
     param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_align_corners_param));
 
@@ -407,7 +407,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_half_pixel.dataType = QNN_DATATYPE_BOOL_8;
     qnn_half_pixel.bool8Value = static_cast<uint8_t>(0);
     QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
-                                         qnn_def::half_pixel_centers, qnn_half_pixel);
+                                         QNN_OP_RESIZE_BILINEAR_PARAM_HALF_PIXEL_CENTERS, qnn_half_pixel);
     param_tensor_names.push_back(qnn_half_pixel_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_half_pixel_param));
   } else {
@@ -417,7 +417,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
     ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_coord_transf_modes, transformation_mode,
                                              "coordinate_transformation_mode", qnn_transformation_mode.uint32Value));
 
-    QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::transformation_mode,
+    QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_TRANSFORMATION_MODE,
                                                   qnn_transformation_mode);
     param_tensor_names.push_back(qnn_transformation_mode_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_transformation_mode_param));
@@ -427,7 +427,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_exclude_outside.dataType = QNN_DATATYPE_BOOL_8;
     qnn_exclude_outside.bool8Value = static_cast<uint8_t>(GetOnnxAttr(node_helper, onnx_exclude_outside_attr) != 0);
 
-    QnnParamWrapper qnn_exclude_outside_param(node_unit.Index(), node_unit.Name(), qnn_def::exclude_outside,
+    QnnParamWrapper qnn_exclude_outside_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_EXCLUDE_OUTSIDE,
                                               qnn_exclude_outside);
     param_tensor_names.push_back(qnn_exclude_outside_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_exclude_outside_param));
@@ -437,7 +437,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_interp_mode.dataType = QNN_DATATYPE_UINT_32;
     ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_modes, interp_mode, "mode", qnn_interp_mode.uint32Value));
 
-    QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::interpolation_mode,
+    QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_INTERPOLATION_MODE,
                                           qnn_interp_mode);
     param_tensor_names.push_back(qnn_interp_mode_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_interp_mode_param));
@@ -450,7 +450,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
       ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_nearest_modes, nearest_mode, "nearest_mode",
                                                qnn_nearest_mode.uint32Value));
 
-      QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::nearest_mode,
+      QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_NEAREST_MODE,
                                              qnn_nearest_mode);
       param_tensor_names.push_back(qnn_nearest_mode_param.GetParamTensorName());
       qnn_model_wrapper.AddParamWrapper(std::move(qnn_nearest_mode_param));

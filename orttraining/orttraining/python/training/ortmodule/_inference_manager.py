@@ -15,6 +15,9 @@ from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_alg
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
+from ._io import unflatten_user_output
+from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
+from ._utils import save_tuning_results, set_tuning_results
 from .options import DebugOptions, _SkipCheck
 
 
@@ -109,10 +112,12 @@ class InferenceManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
+                self.time_tracker.start(ORTModuleInitPhase.EndToEnd)
+
                 # Exporting module to ONNX for the first time
                 build_graph = self._export_model(*inputs, **kwargs)
                 if build_graph:
-                    # If model was exported, then initialize the graph builder
+                    # If model was exported, then initialize the graph builder.
                     self._initialize_graph_builder()
 
                 # Build the inference graph
@@ -121,10 +126,8 @@ class InferenceManager(GraphExecutionManager):
                     # Set the config according to input inspection.
                     self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
 
-                    # Build the gradient graph
+                    # Build the graph
                     self._build_graph(graph_transformer_config)
-
-                    self._log_feature_stats()
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -149,6 +152,9 @@ class InferenceManager(GraphExecutionManager):
                 # Create execution session creates the inference_session
                 self._create_execution_agent()
 
+                self.time_tracker.end(ORTModuleInitPhase.EndToEnd)
+                self._log_feature_stats()
+
             if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
@@ -171,7 +177,16 @@ class InferenceManager(GraphExecutionManager):
                 *prepared_input_list,
             )
 
-            return _io.unflatten_user_output(self._module_output_schema, user_outputs)
+            if (
+                create_execution_session
+                and self._runtime_options.enable_tuning
+                and self._runtime_options.tuning_results_path
+            ):
+                save_tuning_results(
+                    self._execution_agent._inference_session, False, self._runtime_options.tuning_results_path
+                )
+
+            return unflatten_user_output(self._module_output_schema, user_outputs)
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e, log_level=self._debug_options.logging.log_level)
@@ -187,6 +202,8 @@ class InferenceManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
+    @TrackTime(ORTModuleInitPhase.BUILD_GRAPH)
+    @SuppressLogs(ORTModuleInitPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
 
@@ -199,6 +216,8 @@ class InferenceManager(GraphExecutionManager):
                 self._export_mode,
             )
 
+    @TrackTime(ORTModuleInitPhase.CREATE_SESSION)
+    @SuppressLogs(ORTModuleInitPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 
@@ -206,3 +225,8 @@ class InferenceManager(GraphExecutionManager):
         self._execution_agent = InferenceAgent(
             self._onnx_models.optimized_model.SerializeToString(), session_options, providers, provider_options
         )
+
+        if not self._runtime_options.enable_tuning and self._runtime_options.tuning_results_path:
+            set_tuning_results(
+                self._execution_agent._inference_session, False, self._runtime_options.tuning_results_path
+            )

@@ -3,7 +3,6 @@
 
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {init as initJsep} from './jsep/init';
 import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
@@ -51,8 +50,13 @@ export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
   initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
 
-  // init JSEP if available
-  await initJsep(getInstance(), env);
+  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+    // init JSEP if available
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const initJsep = require('./jsep/init').init;
+    await initJsep(getInstance(), env);
+  }
 };
 
 /**

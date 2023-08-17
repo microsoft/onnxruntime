@@ -4,6 +4,7 @@
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include <memory>
+#include <ostream>
 #include <cstring>
 
 namespace onnxruntime {
@@ -332,7 +333,10 @@ bool QnnOpConfigWrapper::QnnGraphOpValidation(const QNN_INTERFACE_VER_TYPE& qnn_
                                               std::string& error_msg) {
   auto validation_status = qnn_interface.backendValidateOpConfig(backend_handle, op_config_);
   if (QNN_SUCCESS != validation_status) {
-    error_msg = "Validating node failed for: " + name_;
+    std::ostringstream oss;
+    oss << "QNN.backendValidateOpConfig() failed for node `" << name_ << "` of type `"
+        << type_name_ << "` with error code " << validation_status << std::endl;
+    error_msg = oss.str();
     return false;
   }
 
@@ -344,7 +348,10 @@ bool QnnOpConfigWrapper::CreateQnnGraphOp(const QNN_INTERFACE_VER_TYPE& qnn_inte
                                           std::string& error_msg) {
   auto status = qnn_interface.graphAddNode(graph, op_config_);
   if (QNN_GRAPH_NO_ERROR != status) {
-    error_msg = "Adding node failed for: " + name_;
+    std::ostringstream oss;
+    oss << "QNN.graphAddNode() failed for node `" << name_ << "` of type `" << type_name_
+        << "` with error code " << status << std::endl;
+    error_msg = oss.str();
     return false;
   }
 

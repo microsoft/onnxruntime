@@ -2,6 +2,7 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -65,7 +66,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
     const auto output_rank = input_rank + axes_data_span.size();
     std::transform(
         axes_data_span.begin(), axes_data_span.end(), std::back_inserter(axes_data),
-        [output_rank](int64_t axis) -> int32_t { return HandleNegativeAxis(axis, output_rank); });
+        [output_rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, output_rank)); });
   } else {
     NodeAttrHelper helper(node);
     if (helper.HasAttr("axes")) {
@@ -73,7 +74,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
       const auto output_rank = input_rank + axes.size();
       std::transform(
           axes.begin(), axes.end(), std::back_inserter(axes_data),
-          [output_rank](int64_t axis) -> int32_t { return HandleNegativeAxis(axis, output_rank); });
+          [output_rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, output_rank)); });
     }
   }
 
@@ -131,7 +132,7 @@ bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& in
 }
 
 void CreateSqueezeUnsqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =

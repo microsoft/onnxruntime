@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 
@@ -27,7 +26,7 @@ class CPUExecutionProvider : public IExecutionProvider {
  public:
   // delay_allocator_registration = true is used to allow sharing of allocators between different providers that are
   // associated with the same device
-  explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info, bool delay_allocator_registration = false);
+  explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info);
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;

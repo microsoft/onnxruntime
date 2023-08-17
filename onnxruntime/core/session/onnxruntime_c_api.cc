@@ -817,81 +817,56 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
 ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
-                    _In_reads_(output_names_len) const char* const* output_names1, size_t output_names_len,
+                    _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                     _Inout_updates_all_(output_names_len) OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
-  InlinedVector<std::string> feed_names;
-  feed_names.reserve(input_len);
-  InlinedVector<OrtValue> feeds;
-  feeds.reserve(input_len);
-
-  for (size_t i = 0; i != input_len; ++i) {
-    if (input_names[i] == nullptr || input_names[i][0] == '\0') {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input name cannot be empty");
-    }
-
-    if (!input[i]) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   MakeString("NULL input supplied for input ", input_names[i]).c_str());
-    }
-
-    feed_names.emplace_back(input_names[i]);
-    feeds.emplace_back(*input[i]);
-  }
-
-  // Create output feed
-  InlinedVector<std::string> output_names;
-  output_names.reserve(output_names_len);
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output_names1[i] == nullptr || output_names1[i][0] == '\0') {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "output name cannot be empty");
-    }
-    output_names.emplace_back(output_names1[i]);
-  }
-
-  std::vector<OrtValue> fetches;
-  fetches.reserve(output_names_len);
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output[i] != nullptr) {
-      fetches.emplace_back(*output[i]);
-    } else {
-      fetches.emplace_back();
-    }
-  }
+  gsl::span<const char* const> input_names_span(input_names, input_len);
+  gsl::span<const OrtValue* const> input_span(input, input_len);
+  gsl::span<const char* const> output_name_span(output_names, output_names_len);
+  gsl::span<OrtValue*> output_span(output, output_names_len);
 
   Status status;
-  if (run_options == nullptr) {
-    OrtRunOptions op;
-    status = session->Run(op, feed_names, feeds, output_names, &fetches, nullptr);
+  if (run_options) {
+    status = session->Run(*run_options,
+                          input_names_span,
+                          input_span,
+                          output_name_span,
+                          output_span);
   } else {
-    status = session->Run(*run_options, feed_names, feeds, output_names, &fetches, nullptr);
+    const RunOptions default_run_options;
+    status = session->Run(default_run_options,
+                          input_names_span,
+                          input_span,
+                          output_name_span,
+                          output_span);
   }
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
 
-  if (!status.IsOK())
-    return ToOrtStatus(status);
+ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
+                    _In_reads_(input_len) const char* const* input_names,
+                    _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
+                    _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
+                    _Inout_updates_all_(output_names_len) OrtValue** output,
+                    _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
-  // We do it in two loops to make sure copy __ctors does not throw
-  InlinedVector<std::unique_ptr<OrtValue>> output_unique_ptrs;
-  output_unique_ptrs.reserve(output_names_len);
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output[i] == nullptr) {
-      output_unique_ptrs.emplace_back(std::make_unique<OrtValue>(fetches[i]));
-    } else {
-      output_unique_ptrs.emplace_back();
-    }
-  }
+  gsl::span<const char* const> input_names_span(input_names, input_len);
+  gsl::span<const OrtValue* const> input_span(input, input_len);
+  gsl::span<const char* const> output_name_span(output_names, output_names_len);
+  gsl::span<OrtValue*> output_span(output, output_names_len);
 
-  assert(output_unique_ptrs.size() == output_names_len);
-
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output[i] == nullptr) {
-      assert(output_unique_ptrs[i] != nullptr);
-      output[i] = output_unique_ptrs[i].release();
-    }
-  }
-  return nullptr;
+  return ToOrtStatus(session->RunAsync(run_options,
+                                       input_names_span,
+                                       input_span,
+                                       output_name_span,
+                                       output_span,
+                                       run_async_callback,
+                                       user_data));
   API_IMPL_END
 }
 
@@ -2684,7 +2659,6 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::ReleaseKernelInfo,
     // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Start of Version 13 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::GetTrainingApi,
     &OrtApis::SessionOptionsAppendExecutionProvider_CANN,
     &OrtApis::CreateCANNProviderOptions,
@@ -2693,7 +2667,6 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::ReleaseCANNProviderOptions,
     // End of Version 13 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::MemoryInfoGetDeviceType,
     &OrtApis::UpdateEnvWithCustomLogLevel,
     &OrtApis::SetGlobalIntraOpThreadAffinity,
@@ -2710,7 +2683,6 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::GetSessionConfigEntry,
     // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Start of Version 15 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
     &OrtApis::CreateDnnlProviderOptions,
     &OrtApis::UpdateDnnlProviderOptions,
@@ -2729,12 +2701,19 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::GetBuildInfoString,
     // End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Start of Version 16 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::CreateROCMProviderOptions,
     &OrtApis::UpdateROCMProviderOptions,
     &OrtApis::GetROCMProviderOptionsAsString,
     &OrtApis::ReleaseROCMProviderOptions,
     &OrtApis::CreateAndRegisterAllocatorV2,
+    &OrtApis::RunAsync,
+    &OrtApis::UpdateTensorRTProviderOptionsWithValue,
+    &OrtApis::GetTensorRTProviderOptionsByName,
+    &OrtApis::UpdateCUDAProviderOptionsWithValue,
+    &OrtApis::GetCUDAProviderOptionsByName,
+    // End of Version 16 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::KernelContext_GetResource,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -2763,6 +2742,7 @@ static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size 
 static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
 static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 238, "Size of version 14 API cannot change");
 static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 254, "Size of version 15 API cannot change");
+static_assert(offsetof(OrtApi, GetCUDAProviderOptionsByName) / sizeof(void*) == 264, "Size of version 16 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.16.0",

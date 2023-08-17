@@ -736,7 +736,7 @@ Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   // We need to copy the 1d scales array for per-channel quantization
   Initializer unpacked_tensor(scale_tensor);
   auto scales = unpacked_tensor.DataAsSpan<float>();
-  const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+  const size_t scales_size = scale_tensor.dims().empty() ? 1 : narrow<size_t>(scale_tensor.dims()[0]);
   std::vector<float> scales_vec(scales.begin(), scales.begin() + scales_size);
   w_scales = onnxruntime::make_optional(std::move(scales_vec));
 
@@ -1182,7 +1182,7 @@ bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
     Initializer unpacked_tensor(zero_tensor, model_path);
     // Verify all onnx weight zero point(s) are 0(s)
     auto zero_points = unpacked_tensor.DataAsSpan<int8_t>();
-    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
+    for (size_t i = 0; i < unpacked_tensor.size(); i++) {
       if (zero_points[i] != 0) {
         LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
                               << "zero_points[" << i << "] has value: " << zero_points[i];

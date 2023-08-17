@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
@@ -428,7 +428,7 @@ class FusionEmbedLayerNoMask(Fusion):
         word_embedding_gather: NodeProto,
         position_embedding_gather: NodeProto,
         segment_embedding_gather: Union[None, NodeProto],
-        position_ids: str = None,
+        position_ids: Optional[str] = None,
         embedding_sum_output=False,
     ):
         """Create an EmbedLayerNormalization node. Note that segment embedding is optional.

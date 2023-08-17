@@ -344,10 +344,12 @@ ModelProto Model::ToProto() {
 }
 
 ModelProto Model::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                       const PathString& file_path,
                                                        size_t initializer_size_threshold) {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
+                                                                         file_path,
                                                                          initializer_size_threshold);
   return result;
 }
@@ -572,7 +574,7 @@ static Status SaveModelWithExternalInitializers(Model& model,
   ORT_RETURN_IF_ERROR(status);
 
   ORT_TRY {
-    status = Model::SaveWithExternalInitializers(model, fd, external_file_name,
+    status = Model::SaveWithExternalInitializers(model, fd, file_path, external_file_name,
                                                  initializer_size_threshold);
   }
   ORT_CATCH(const std::exception& ex) {
@@ -722,6 +724,7 @@ Status Model::Save(Model& model, int p_fd) {
 
 Status Model::SaveWithExternalInitializers(Model& model,
                                            int fd,
+                                           const PathString& file_path,
                                            const std::string& external_file_name,
                                            size_t initializer_size_threshold) {
   if (fd < 0) {
@@ -730,7 +733,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
 
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
-  auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, initializer_size_threshold);
+  auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold);
   google::protobuf::io::FileOutputStream output(fd);
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
-#include "core/framework/allocatormgr.h"
 #include "test_utils.h"
 
 #include "gmock/gmock.h"

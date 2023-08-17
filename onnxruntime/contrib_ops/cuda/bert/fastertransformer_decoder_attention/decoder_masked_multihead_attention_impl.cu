@@ -25,6 +25,7 @@
 // (2) When dealing with masked tokens, this kernel implementation deviates from FasterTransformer by applying
 // mask filter values. Appropriate commentary exists in the code below.
 
+#include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 #include "decoder_masked_multihead_attention_impl.h"
 #include "decoder_masked_multihead_attention_impl_utils.h"
 #include <cfloat>
@@ -198,6 +199,50 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
         k = add_vec(k, k_bias);
       }
+    }
+
+    if (params.rotary_embedding_dim > 0) {
+      const bool do_rotary = !is_masked && QK_VEC_SIZE * tidx < params.rotary_embedding_dim;
+
+      T* q_smem = reinterpret_cast<T*>(smem_);
+      T* k_smem = q_smem + params.rotary_embedding_dim;
+
+      const int half_rotary_dim = params.rotary_embedding_dim / 2;
+      const int half_idx = (tidx * QK_VEC_SIZE) / half_rotary_dim;
+      const int intra_half_idx = (tidx * QK_VEC_SIZE) % half_rotary_dim;
+      const int smem_pitch = half_rotary_dim;
+
+      assert(half_rotary_dim % QK_VEC_SIZE == 0);
+
+      if (do_rotary) {
+        *reinterpret_cast<Qk_vec_k*>(q_smem + half_idx * smem_pitch + intra_half_idx) = q;
+        *reinterpret_cast<Qk_vec_k*>(k_smem + half_idx * smem_pitch + intra_half_idx) = k;
+      }
+
+      __syncthreads();
+
+      const int transpose_idx = half_idx * (half_rotary_dim / 2) + intra_half_idx / 2;
+      constexpr int tidx_factor = (QK_VEC_SIZE > 1) ? QK_VEC_SIZE / 2 : 1;
+
+      if (do_rotary) {
+        vec_from_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
+        vec_from_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
+
+        apply_rotary_embedding(
+            q, k, transpose_idx / tidx_factor, params.rotary_embedding_dim, params.t_step);
+
+        write_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
+        write_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
+      }
+
+      __syncthreads();
+
+      if (do_rotary) {
+        q = *reinterpret_cast<Qk_vec_k*>(q_smem + half_idx * smem_pitch + intra_half_idx);
+        k = *reinterpret_cast<Qk_vec_k*>(k_smem + half_idx * smem_pitch + intra_half_idx);
+      }
+
+      __syncthreads();
     }
 
     if (!is_masked) {

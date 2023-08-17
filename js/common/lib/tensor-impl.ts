@@ -103,11 +103,24 @@ export class Tensor implements TensorInterface {
             // Throw error here because when user try to use number array as data,
             // e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
             // Uint16Array.from(arg1) which generates wrong data.
-            throw new TypeError(`Unsupported tensor type: ${arg0}.`);
+            throw new TypeError(
+                'Creating a float16 tensor from number array is not supported. Please use Uint16Array as data.');
+          } else if (arg0 === 'uint64' || arg0 === 'int64') {
+            // use 'as any' here because:
+            // 1. TypeScript's check on type of 'Array.isArray()' does not work with readonly arrays.
+            // see https://github.com/microsoft/TypeScript/issues/17002
+            // 2. TypeScript's check on union type of '(BigInt64ArrayConstructor|BigUint64ArrayConstructor).from()' does
+            // not accept parameter mapFn.
+            // 3. parameters of 'SupportedTypedArrayConstructors.from()' does not match the requirement of the union
+            // type.
+
+            // assume 'arg1' is of type "readonly number[]|readonly bigint[]" here.
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            data = (typedArrayConstructor as any).from(arg1, BigInt);
           } else {
-            // use 'as any' here because TypeScript's check on type of 'SupportedTypedArrayConstructors.from()' produces
-            // incorrect results.
-            // 'typedArrayConstructor' should be one of the typed array prototype objects.
+            // assume 'arg1' is of type "readonly number[]" here.
+
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             data = (typedArrayConstructor as any).from(arg1);
           }

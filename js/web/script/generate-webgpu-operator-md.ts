@@ -10,10 +10,12 @@ import path from 'path';
 const COMMENTS: Record<string, string> = {
   'AveragePool': 'need perf optimization; need implementing activation',
   'MaxPool': 'need perf optimization; need implementing activation',
-  'Conv': 'need perf optimization; conv3d not supported; need implementing activation',
+  'Conv': 'need perf optimization; conv3d is not supported; need implementing activation',
+  'ConvTranspose': 'need perf optimization; ConvTranspose3d is not supported; need implementing activation',
   'Transpose': 'need perf optimization',
   'Reshape': 'no GPU kernel',
   'Shape': 'no GPU kernel; an ORT warning is generated - need to fix',
+  'Resize': 'CoordinateTransformMode align_corners is not supported with downsampling',
 };
 
 /* eslint-disable max-len */
@@ -33,7 +35,8 @@ const ALL_REGISTERED_OPERATORS: Map < string, {
 
 // parse js_execution_provider.cc
 const JS_EXECUTION_PROVIDER_CONTENTS =
-    fs.readFileSync(path.join(__dirname, '../../../onnxruntime/core/providers/js/js_execution_provider.cc'), 'utf8');
+    fs.readFileSync(path.join(__dirname, '../../../onnxruntime/core/providers/js/js_execution_provider.cc'), 'utf8') +
+    fs.readFileSync(path.join(__dirname, '../../../onnxruntime/contrib_ops/js/js_contrib_kernels.cc'), 'utf8');
 MATCHERS.forEach(m => {
   for (const match of JS_EXECUTION_PROVIDER_CONTENTS.matchAll(m)) {
     const groups = match.groups!;
@@ -49,6 +52,9 @@ MATCHERS.forEach(m => {
         break;
       case 'kMSInternalNHWCDomain':
         domain = 'com.ms.internal.nhwc';
+        break;
+      case 'kMSDomain':
+        domain = 'com.microsoft';
         break;
       default:
         throw new Error(`not supported domain: ${opsetDomain}`);

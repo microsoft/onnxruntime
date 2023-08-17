@@ -57,33 +57,47 @@ void ModelBuilder::PreprocessInitializers() {
   }
 }
 
-emscripten::val GetClampOperator(
-    const emscripten::val& builder, float min_value, float max_value) {
-  emscripten::val options = emscripten::val::object();
-  options.set("minValue", min_value);
-  options.set("maxValue", max_value);
-  return builder.call<emscripten::val>("clamp", options);
-}
-
 void ModelBuilder::PreprocessActivations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     const auto& op_type(node->OpType());
 
-    if (op_type == "Relu") {
+    if (op_type == "Clip") {
+      float minValue, maxValue;
+      GetClipMinMax(GetInitializerTensors(), *node, minValue, maxValue, logger_);
+      emscripten::val options = emscripten::val::object();
+      options.set("minValue", minValue);
+      options.set("maxValue", maxValue);
+      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("clamp", options));
+    } else if (op_type == "Elu") {
+      NodeAttrHelper helper(*node);
+      emscripten::val options = emscripten::val::object();
+      options.set("alpha", helper.Get("alpha", 1.0f));
+      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("elu", options));
+    } else if (op_type == "HardSigmoid") {
+      NodeAttrHelper helper(*node);
+      emscripten::val options = emscripten::val::object();
+      options.set("alpha", helper.Get("alpha", 0.2f));
+      options.set("beta", helper.Get("beta", 0.5f));
+      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("hardSigmoid", options));
+    } else if (op_type == "HardSwish") {
+      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("hardSwish"));
+    } else if (op_type == "Relu") {
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("relu"));
     } else if (op_type == "LeakyRelu") {
       NodeAttrHelper helper(*node);
       emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", (float)0.0));
+      options.set("alpha", helper.Get("alpha", 0.0f));
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("leakyRelu", options));
     } else if (op_type == "Sigmoid") {
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("sigmoid"));
-    } else if (op_type == "Clip") {
-      float minValue, maxValue;
-      GetClipMinMax(GetInitializerTensors(), *node, minValue, maxValue, logger_);
-      activation_nodes_.emplace(node->Index(), GetClampOperator(wnn_builder_, minValue, maxValue));
+    } else if (op_type == "Softplus") {
+      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("softplus"));
+    } else if (op_type == "Softsign") {
+      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("softsign"));
+    } else if (op_type == "Tanh") {
+      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("tanh"));
     }
   }
 }

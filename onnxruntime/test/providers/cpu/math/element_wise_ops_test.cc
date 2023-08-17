@@ -15,7 +15,7 @@ namespace test {
 std::vector<MLFloat16> MakeMLFloat16(const std::initializer_list<float>& input) {
   std::vector<MLFloat16> output;
   std::transform(input.begin(), input.end(), std::back_inserter(output),
-                 [](float fl) { return MLFloat16(math::floatToHalf(fl)); });
+                 [](float fl) { return MLFloat16(fl); });
   return output;
 }
 
@@ -2652,8 +2652,8 @@ void TrigFloat16Test(OpTester& test, std::initializer_list<float> input) {
   std::vector<MLFloat16> float16_input;
   std::vector<MLFloat16> float16_output;
   for (auto v : input) {
-    float16_input.push_back(MLFloat16(math::floatToHalf(v)));
-    float16_output.push_back(MLFloat16(math::floatToHalf(op(v))));
+    float16_input.push_back(MLFloat16(v));
+    float16_output.push_back(MLFloat16(op(v)));
   }
 
   test.AddInput<MLFloat16>("X", dims, float16_input);

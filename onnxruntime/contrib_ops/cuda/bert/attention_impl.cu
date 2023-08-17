@@ -331,11 +331,12 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
                              batch_size, sequence_length, num_heads, qk_head_size,
                              data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
-                             3, parameters.do_rotary, parameters.original_past_sequence_length);
+                             3, parameters.do_rotary, parameters.past_sequence_length);
     }
   }
   // attention with past/present state
   else if (data.past_key != nullptr || data.present_key != nullptr) {
+    // Below logic does not support memory efficient attention with past (like pass_past_in_kv) but without bias
     if (data.bias == nullptr) {
       // cross attention with past state
       if (data.past_key != nullptr && data.present_key == nullptr) {
@@ -344,7 +345,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
         assert(data.key == nullptr);
         assert(data.value == nullptr);
         ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
-                                          max_threads_per_block, false, data.query, q));
+                                           max_threads_per_block, false, data.query, q));
       }
       // cross attention with present state or self attention with present state
       else if (data.past_key == nullptr && data.present_key != nullptr) {
@@ -356,13 +357,13 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
         // TODO: supporting packed qkv for self attention may benefit performance
         ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
-                            max_threads_per_block, false, data.query, q));
+                                           max_threads_per_block, false, data.query, q));
 
         // TODO: supporting packed kv for cross attention may benefit performance
         ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
-                            max_threads_per_block, false, data.key, data.present_key));
+                                           max_threads_per_block, false, data.key, data.present_key));
         ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
-                            max_threads_per_block, false, data.value, data.present_value));
+                                           max_threads_per_block, false, data.value, data.present_value));
       }
       // self attention with past and present state
       else {
@@ -375,11 +376,11 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
         assert(data.value != nullptr);
         // TODO: supporting packed qkv for self attention may benefit performance
         ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
-                            max_threads_per_block, false, data.query, q));
+                                           max_threads_per_block, false, data.query, q));
         ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
-                            max_threads_per_block, false, data.key, k));
+                                           max_threads_per_block, false, data.key, k));
         ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
-                            max_threads_per_block, false, data.value, v));
+                                           max_threads_per_block, false, data.value, v));
       }
       qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }
@@ -397,9 +398,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
       // query => q, temp_k_workspace => k, temp_v_workspace => v
       LaunchAddBias(stream, max_threads_per_block,
-              batch_size, sequence_length, kv_sequence_length,
-              num_heads, qk_head_size, v_head_size,
-              data.bias, data.query, data.temp_k_workspace, data.temp_v_workspace, q, k, v);
+                    batch_size, sequence_length, kv_sequence_length,
+                    num_heads, qk_head_size, v_head_size,
+                    data.bias, data.query, data.temp_k_workspace, data.temp_v_workspace, q, k, v);
 
       DUMP_TENSOR_D("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
       DUMP_TENSOR_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
@@ -419,11 +420,11 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
       // temp_k_workspace (BxSxNxH) => present_k (BxNxSxH)
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
-                          max_threads_per_block, false, data.temp_k_workspace, data.present_key));
+                                         max_threads_per_block, false, data.temp_k_workspace, data.present_key));
 
       // temp_v_workspace (BxSxNxH_v) => present_v (BxNxSxH_v)
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
-                          max_threads_per_block, false, data.temp_v_workspace, data.present_value));
+                                         max_threads_per_block, false, data.temp_v_workspace, data.present_value));
 
       DUMP_TENSOR_D("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
       DUMP_TENSOR_D("k(BSNH)", data.temp_k_workspace, batch_size * kv_sequence_length, num_heads, qk_head_size);
@@ -612,9 +613,10 @@ template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
-    cudaStream_t stream,
+    Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data) {
+  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   constexpr size_t element_size = sizeof(T);
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
@@ -687,8 +689,7 @@ Status QkvToContext(
         if (qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
           k = data.present_key;
           v = data.present_value;
-        }
-        else {
+        } else {
           assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
           k = data.temp_k_workspace;
           v = data.temp_v_workspace;
@@ -939,7 +940,7 @@ Status QkvToContext(
 
     T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place with masked score for persistent softmax.
     ORT_RETURN_IF_ERROR(
-        ComputeSoftmaxWithRawMask<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads,
+        ComputeSoftmaxWithRawMask<T>(ort_stream, total_sequence_length, sequence_length, batch_size, num_heads,
                                      mask_index, nullptr, data.relative_position_bias, parameters.broadcast_res_pos_bias,
                                      scratch1, scratch2, parameters.is_unidirectional, scale, mask_dimension,
                                      parameters.max_sequence_length, use_persistent_softmax, persistent_softmax_workspace,
@@ -980,7 +981,7 @@ Status QkvToContext(
 template <typename T>
 Status DecoderQkvToContext(
     const cudaDeviceProp& device_prop,
-    cudaStream_t stream,
+    Stream* ort_stream,
     cublasHandle_t& cublas,
     const size_t element_size,
     const int batch_size,
@@ -1011,6 +1012,7 @@ Status DecoderQkvToContext(
   const int v_buffer_offset = (sequence_length + kv_sequence_length) * BHN;
 
   T* temp_qkv_buffer = workspace_buffer;
+  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
 
   const T* q = qkv_buffer;
   // transpose q and copy them to qkv_buffer
@@ -1107,14 +1109,14 @@ Status DecoderQkvToContext(
   if (has_key_padding_mask) {
     constexpr int mask_dimension = 2;
     constexpr int max_sequence_length = 0;
-    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size,
+    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(ort_stream, kv_sequence_length, sequence_length, batch_size,
                                                      num_heads, nullptr, key_padding_mask, add_before_softmax,
-                                                     false/*broadcast rpb*/, scratch1, scratch2, is_unidirectional,
+                                                     false /*broadcast rpb*/, scratch1, scratch2, is_unidirectional,
                                                      1.0f, mask_dimension, max_sequence_length, false, nullptr,
                                                      mask_filter_value));
   } else {
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
-                                          add_before_softmax, false/*broadcast rpb*/, scratch1, scratch2,
+                                          add_before_softmax, false /*broadcast rpb*/, scratch1, scratch2,
                                           is_unidirectional));
   }
 
@@ -1142,7 +1144,7 @@ Status DecoderQkvToContext(
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& device_prop,
-    cudaStream_t stream,
+    Stream* stream,
     cublasHandle_t& cublas,
     const size_t element_size,
     const int batch_size,
@@ -1228,14 +1230,14 @@ template struct AttentionData<half>;
 template Status QkvToContext<float>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
-    cudaStream_t stream,
+    Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data);
 
 template Status QkvToContext<half>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
-    cudaStream_t stream,
+    Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
 

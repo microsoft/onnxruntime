@@ -393,6 +393,7 @@ Return Value:
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
                         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
+                        this->FpQ4GemmDispatch = &MlasFpQ4GemmDispatchAvx512;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -404,11 +405,12 @@ Return Value:
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
+                            this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
                         }
                     }
                 }
 
-#ifdef MLAS_AMX_SUPPORTED
+#ifndef __APPLE__
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
@@ -419,7 +421,7 @@ Return Value:
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
-#endif // MLAS_AMX_SUPPORTED
+#endif // __APPLE__
 
 #endif // ORT_MINIMAL_BUILD
 
@@ -449,10 +451,13 @@ Return Value:
 
 #if defined(_WIN32)
     HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#else
+#elif !defined(__APPLE__)  // The next few lines result in an EXC_BAD_INSTRUCTION runtime error on a M1 Mac so we
+                           // disable it there.
     uint64_t isar0_el1;
     asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
     HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
+#else
+    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #endif
 
     if (HasDotProductInstructions) {

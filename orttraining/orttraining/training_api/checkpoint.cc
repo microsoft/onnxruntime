@@ -79,7 +79,7 @@ Status OrtValueFromFlatbufferTensor(const fbs::Tensor& fbs_tensor,
   // This buffer is owned by the OrtValue.
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
-  AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];  // TODO(leca): review
+  AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
 
   std::unique_ptr<Tensor> ort_tensor = std::make_unique<Tensor>();
   ORT_RETURN_IF_ERROR(fbs::utils::LoadOrtTensorOrtFormat(fbs_tensor, cpu_allocator, tensor_name, *ort_tensor));

@@ -22,8 +22,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
-    "$(ONNXRUNTIME_ROOT}/core/quantization/*.h"
-    "$(ONNXRUNTIME_ROOT}/core/quantization/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/quantization/*.h"
+    "${ONNXRUNTIME_ROOT}/core/quantization/*.cc"
 )
 
 if(WIN32)
@@ -86,7 +86,10 @@ endif()
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
-
+if(WIN32)
+  set_property(TARGET onnxruntime_common PROPERTY CXX_STANDARD 23)
+  target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
+endif()
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
@@ -107,7 +110,16 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
   endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date_interface WIL::WIL)
+if (MSVC)
+    set(EIGEN_NATVIS_FILE ${eigen_SOURCE_DIR}/debug/msvc/eigen.natvis)
+    if (EXISTS ${EIGEN_NATVIS_FILE})
+      target_sources(
+          onnxruntime_common
+          INTERFACE $<BUILD_INTERFACE:${EIGEN_NATVIS_FILE}>)
+    endif()
+endif()
+
+onnxruntime_add_include_to_target(onnxruntime_common date_interface ${WIL_TARGET})
 target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
     # propagate include directories of dependencies that are part of public interface

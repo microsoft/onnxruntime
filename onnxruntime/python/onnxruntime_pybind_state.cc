@@ -12,6 +12,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/narrow.h"
 #include "core/common/optional.h"
 #include "core/common/path_string.h"
 #include "core/framework/arena_extend_strategy.h"
@@ -34,6 +35,8 @@
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
+
+#include <pybind11/functional.h>
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
@@ -73,6 +76,83 @@ static Env& platform_env = Env::Default();
 #pragma warning(push)
 #endif
 
+using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
+
+struct AsyncResource {
+  std::vector<OrtValue> feeds;
+  std::vector<const OrtValue*> feeds_raw;
+
+  std::vector<std::string> feed_names;
+  std::vector<const char*> feed_names_raw;
+
+  std::vector<OrtValue*> fetches_raw;
+
+  std::vector<std::string> fetch_names;
+  std::vector<const char*> fetch_names_raw;
+
+  RunOptions default_run_option;
+  PyCallback callback;
+  py::object user_data;
+
+  void ReserveFeeds(size_t sz) {
+    feeds.reserve(sz);
+    feeds_raw.reserve(sz);
+    feed_names.reserve(sz);
+    feed_names_raw.reserve(sz);
+  }
+
+  void ReserveFetches(size_t sz) {
+    fetches_raw.reserve(sz);
+    fetch_names.reserve(sz);
+    fetch_names_raw.reserve(sz);
+  }
+};
+
+void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr ort_status) {
+  ORT_ENFORCE(user_data, "user data must not be NULL for callback in python");
+
+  auto invoke_callback = [&]() {
+    std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
+    Ort::Status status(ort_status);
+
+    // return on error
+    if (!status.IsOK()) {
+      async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
+      return;
+    }
+
+    std::vector<py::object> rfetch;
+    rfetch.reserve(num_outputs);
+    size_t pos = 0;
+    for (size_t ith = 0; ith < num_outputs; ++ith) {
+      const auto& fet = *outputs[ith];
+      if (fet.IsAllocated()) {
+        if (fet.IsTensor()) {
+          rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+        } else if (fet.IsSparseTensor()) {
+          rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+        } else {
+          rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+        }
+      } else {
+        rfetch.push_back(py::none());
+      }
+      ++pos;
+    }
+    async_resource->callback(rfetch, async_resource->user_data, "");
+  };
+
+  if (PyGILState_Check()) {
+    invoke_callback();
+  } else {
+    // acquire GIL to safely:
+    // 1) invoke python callback
+    // 2) create, manipulate, and destory python objects
+    py::gil_scoped_acquire acquire;
+    invoke_callback();
+  }
+}
+
 template <typename T>
 static py::object AddNonTensor(const OrtValue& val,
                                const DataTransferManager* /*data_transfer_manager*/,
@@ -95,7 +175,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
   MLDataType dtype = rtensor.DataType();
   const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
   obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
-      shape.NumDimensions(), npy_dims.data(), numpy_type));
+      narrow<int>(shape.NumDimensions()), npy_dims.data(), numpy_type));
 
   void* out_ptr = static_cast<void*>(
       PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
@@ -380,6 +460,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             0,
             2,
             -1,
+            nullptr,
             nullptr,
             nullptr,
             nullptr,
@@ -699,56 +780,53 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    OrtOpenVINOProviderOptions params;
-    params.device_type = openvino_device_type.c_str();
-    std::string cache_dir;
-
+    ProviderOptions OV_provider_options_map;
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {
         if (option.first == "device_type") {
-          openvino_device_type = option.second;
-          params.device_type = openvino_device_type.c_str();
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "enable_vpu_fast_compile") {
-          if (option.second == "True") {
-            params.enable_vpu_fast_compile = true;
-          } else if (option.second == "False") {
-            params.enable_vpu_fast_compile = false;
-          } else {
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
           }
-
+          OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_opencl_throttling") {
-          if (option.second == "True") {
-            params.enable_opencl_throttling = true;
-          } else if (option.second == "False") {
-            params.enable_opencl_throttling = false;
-          } else {
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
           }
+          OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_dynamic_shapes") {
-          if (option.second == "True") {
-            params.enable_dynamic_shapes = true;
-          } else if (option.second == "False") {
-            params.enable_dynamic_shapes = false;
-          } else {
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
           }
+          OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "device_id") {
-          params.device_id = option.second.c_str();
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "num_of_threads") {
-          params.num_of_threads = std::stoi(option.second);
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "num_streams") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "cache_dir") {
-          cache_dir = option.second;
-          params.cache_dir = cache_dir.c_str();
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "context") {
-          params.context = (void*)(option.second.c_str());
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
       }
     }
-    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&params)) {
+    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
+            &OV_provider_options_map)) {
       auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
@@ -1166,6 +1244,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
+      .def_static("dml", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
@@ -1604,7 +1683,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           if (is_arg_file_name) {
             OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg));
           } else {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), arg.size()));
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), narrow<int>(arg.size())));
           }
         }
 
@@ -1676,6 +1755,53 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                ++pos;
              }
              return rfetch;
+           })
+      .def("run_async",
+           [](PyInferenceSession* sess,
+              std::vector<std::string> output_names,
+              std::map<std::string, py::object> pyfeeds,
+              PyCallback callback, py::object user_data = {},
+              RunOptions* run_options = nullptr)
+               -> void {
+             std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
+             async_resource->callback = callback;
+             async_resource->user_data = user_data;
+             // prepare feeds
+             async_resource->ReserveFeeds(pyfeeds.size());
+             for (auto feed : pyfeeds) {
+               if (!feed.second.is(py::none())) {
+                 OrtValue ml_value;
+                 auto px = sess->GetSessionHandle()->GetModelInputs();
+                 if (!px.first.IsOK() || !px.second) {
+                   throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+                 }
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
+                 ThrowIfPyErrOccured();
+                 async_resource->feeds.push_back(ml_value);
+                 async_resource->feeds_raw.push_back(&async_resource->feeds.back());
+                 async_resource->feed_names.push_back(feed.first);
+                 async_resource->feed_names_raw.push_back(async_resource->feed_names.back().c_str());
+               }
+             }
+             // prepare fetches
+             async_resource->ReserveFetches(output_names.size());
+             for (auto& output_name : output_names) {
+               async_resource->fetch_names.push_back(output_name);
+               async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
+               async_resource->fetches_raw.push_back({});
+             }
+             const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+             common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
+                                                                        gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
+                                                                        gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
+                                                                        gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
+                                                                        gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
+                                                                        AsyncCallback,
+                                                                        async_resource.get());
+             if (status.IsOK()) {
+               async_resource.release();
+             }
+             OrtPybindThrowIfError(status);
            })
       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
       /// and returns a list of python objects representing OrtValues. Each name may represent either

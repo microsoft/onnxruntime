@@ -11,7 +11,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_bytes
+from utils import dtype_to_bytes, standardization
 
 
 def get_bert_sizes_test():
@@ -38,10 +38,7 @@ def dtype_to_funcs(dtype):
 
 def skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon):
     val = input_x + skip + bias
-    x_u = np.mean(val, axis=(2,))
-    x_s = np.var(val, axis=(2,))
-    output = val - x_u[..., None]
-    output = output / np.sqrt(x_s + epsilon)[..., None]
+    output = standardization(val, 2, epsilon)
     output = output * gamma + beta
     return output, val
 
@@ -112,10 +109,10 @@ class SkipLayerNormMetric(ke.BandwidthMetric):
     hidden_size: int
 
     def report(self):
-        prefix = f"{self.name:<50} {self.dtype}  batch_size={self.batch_size:<4} seq_len={self.seq_len:<4} hidden_size={self.hidden_size:<4} "
+        common = f"{self.dtype}  batch_size={self.batch_size:<4} seq_len={self.seq_len:<4} hidden_size={self.hidden_size:<4} {self.name}"
         if self.duration > 0:
-            return prefix + f"{self.duration:.2f} us, {self.gbps:.2f} GB/s"
-        return prefix + "not supported or redundant"
+            return f"{self.duration:6.2f} us, {self.gbps:5.2f} GB/s " + common
+        return "not supported          " + common
 
 
 def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func, has_optional_output):

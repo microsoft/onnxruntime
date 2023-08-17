@@ -25,7 +25,7 @@ template <typename T>
 void SoftMaxCrossEntropyImpl(cudaStream_t stream, const T* log_prob, const T* label, size_t normalize_factor,
                              T* output_data, size_t count) {
   OpSoftmaxCrossEntropy<T> op(log_prob, label, static_cast<T>(normalize_factor));
-  LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count);
+  LaunchElementwiseKernel<T, decltype(op), CUDA_LONG>(stream, output_data, op, static_cast<CUDA_LONG>(count));
 }
 
 template void SoftMaxCrossEntropyImpl(cudaStream_t stream, const float* log_prob, const float* label,
@@ -53,7 +53,7 @@ template <typename T>
 void SoftMaxCrossEntropyGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const T* label,
                                  size_t normalize_factor, T* output_data, size_t count) {
   OpSoftmaxCrossEntropyGrad<T> op(dY, log_prob, label, static_cast<T>(normalize_factor));
-  LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count);
+  LaunchElementwiseKernel<T, decltype(op), CUDA_LONG>(stream, output_data, op, static_cast<CUDA_LONG>(count));
 }
 
 template void SoftMaxCrossEntropyGradImpl(cudaStream_t stream, const float* dY, const float* log_prob,
@@ -92,11 +92,11 @@ void SparseSoftmaxCrossEntropyImpl(cudaStream_t stream, const T* log_prob, const
   if (weight) {
     OpSparseSoftmaxCrossEntropy<T, Tin, true> op(log_prob, label, weight, normalize_factor,
                                                  static_cast<Tin>(label_depth));
-    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count);
+    LaunchElementwiseKernel<T, decltype(op), CUDA_LONG>(stream, output_data, op, static_cast<CUDA_LONG>(count));
   } else {
     OpSparseSoftmaxCrossEntropy<T, Tin, false> op(log_prob, label, nullptr, normalize_factor,
                                                   static_cast<Tin>(label_depth));
-    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count);
+    LaunchElementwiseKernel<T, decltype(op), CUDA_LONG>(stream, output_data, op, static_cast<CUDA_LONG>(count));
   }
 }
 
@@ -136,11 +136,13 @@ void SparseSoftmaxCrossEntropyGradImpl(cudaStream_t stream, const T* dY, const T
   if (weight) {
     OpSparseSoftmaxCrossEntropyGrad<T, Tin, true> op(dY, log_prob, label, weight, normalize_factor,
                                                      fast_divmod(static_cast<int>(label_depth)));
-    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count * label_depth);
+    LaunchElementwiseKernel<T, decltype(op), CUDA_LONG>(stream, output_data, op,
+                                                        static_cast<CUDA_LONG>(count * label_depth));
   } else {
     OpSparseSoftmaxCrossEntropyGrad<T, Tin, false> op(dY, log_prob, label, nullptr, normalize_factor,
                                                       fast_divmod(static_cast<int>(label_depth)));
-    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count * label_depth);
+    LaunchElementwiseKernel<T, decltype(op), CUDA_LONG>(stream, output_data, op,
+                                                        static_cast<CUDA_LONG>(count * label_depth));
   }
 }
 
