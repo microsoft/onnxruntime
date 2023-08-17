@@ -742,7 +742,7 @@ Currently, only self attention is supported which means that kv_sequence_length 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     DecoderMaskedSelfAttentionQuantKV, 1,
     OpSchema()
-        .SetDoc(DecoderMaskedSelfAttention_ver1_doc)
+        .SetDoc(DecoderMaskedSelfAttentionQuantKV_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("past_present_share_buffer",
               "Corresponding past and present are same tensor, its size is "
@@ -820,8 +820,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "When past_present_share_buffer is set, "
                "its shape is (2, batch_size, num_heads, max_sequence_length, head_size / qunatize_block_size). "
                "Note, no re-ordering apply to this tensor.",
-               "T",
-               OpSchema::Optional)
+               "T")
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
@@ -840,7 +839,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "its shape is (2, batch_size, num_heads, max_sequence_length, head_size / qunatize_block_size). "
                "Note, no re-ordering apply to this tensor.",
                "T")
-
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")

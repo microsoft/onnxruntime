@@ -182,8 +182,8 @@ Status DecoderMaskedSelfAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContex
   parameters.v_scale = present_scales_data + (present_scales->Shape().Size() / 2);
   parameters.quant_kv_block_size = quant_kv_block_size_;
 
-      // Scale
-      // If the scale is not provided - use `1/sqrt(head_size)`
+// Scale
+// If the scale is not provided - use `1/sqrt(head_size)`
   if (parameters.scale == 0.f) {
     parameters.scale = 1.f / sqrtf(static_cast<float>(parameters.head_size));
   }

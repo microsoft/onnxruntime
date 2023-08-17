@@ -773,11 +773,11 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 // template void __global__ masked_multihead_attention_quant_kv_kernel<float, 32, 1, 8, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp16 + head size = 32
-// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 4, 4, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 4, 4, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 2, 4, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 2, 4, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 1, 4, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 1, 4, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp32 + head size = 64
 // template void __global__ masked_multihead_attention_quant_kv_kernel<float, 64, 4, 16, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
@@ -787,11 +787,11 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 // template void __global__ masked_multihead_attention_quant_kv_kernel<float, 64, 1, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp16 + head size = 64
-// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 4, 8, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 4, 8, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 2, 8, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 2, 8, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp32 + head size = 128
 // template void __global__ masked_multihead_attention_quant_kv_kernel<float, 128, 4, 32, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
@@ -803,9 +803,9 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 // fp16 + head size = 128
 template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 4, 16, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -1517,7 +1517,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1, "block_size", "Int32 tensor for block size, its shape is [1] or [].", "B")
         .Output(0, "y", "N-D quantized output tensor. It has same shape as input 'x'.", "Q")
         .Output(1, "s", "Block Scale tensor with shape of [block_count], same type as x.", "F")
-        .TypeConstraint("F", {"tensor(float16), tensor(float)"}, "Constrain 'x' to half tensors.")
+        .TypeConstraint("F", {"tensor(float16)", "tensor(float)"}, "Constrain 'x' to half tensors.")
         .TypeConstraint("B", {"tensor(int32)"}, "Constrain block size to 32-bit integer tensors.")
         .TypeConstraint("Q", {"tensor(int8)"}, "Constrain 'y' to 8-bit integer tensors.")
         .SetDoc(BlockQuantize_ver1_doc)
