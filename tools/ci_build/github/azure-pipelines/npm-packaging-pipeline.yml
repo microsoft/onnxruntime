@@ -51,7 +51,7 @@ stages:
     BuildConfig: 'Release'
     PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     PackageName: 'onnxruntime-react-native'
-    BuildAndroidAARStageDependsOn: 'Extract_commit'
+    BuildAndroidAARStageDependsOn: 'Precheck_and_extract_commit'
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:

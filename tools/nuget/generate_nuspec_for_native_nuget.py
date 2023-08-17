@@ -1101,7 +1101,7 @@ def generate_files(line_list, args):
     files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "README.md") + '" target="README.md" />')
 
     # Process License, ThirdPartyNotices, Privacy
-    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE") + '" target="LICENSE" />')
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE") + '" target="LICENSE.txt" />')
     files_list.append(
         "<file src="
         + '"'
