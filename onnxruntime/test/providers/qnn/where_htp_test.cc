@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Function that builds a float32 model with an Where operator.
+// Function that builds a float32 model with a Where operator.
 GetTestModelFn BuildWhereTestCase(const TestInputDef<bool>& condition_def,
                                   const TestInputDef<float>& x_def,
                                   const TestInputDef<float>& y_def) {
@@ -30,13 +30,13 @@ GetTestModelFn BuildWhereTestCase(const TestInputDef<bool>& condition_def,
   };
 }
 
-// Function that builds a QDQ model with an Where operator.
+// Function that builds a QDQ model with a Where operator.
 template <typename QuantType>
 static GetTestQDQModelFn<QuantType> BuildQDQWhereTestCase(const TestInputDef<bool>& condition_def,
                                                           const TestInputDef<float>& x_def,
                                                           const TestInputDef<float>& y_def) {
   return [condition_def, x_def, y_def](ModelTestBuilder& builder,
-                                              std::vector<QuantParams<QuantType>>& output_qparams) {
+                                       std::vector<QuantParams<QuantType>>& output_qparams) {
     // condition
     NodeArg* condition = MakeTestInput(builder, condition_def);
 
@@ -70,9 +70,9 @@ static GetTestQDQModelFn<QuantType> BuildQDQWhereTestCase(const TestInputDef<boo
  */
 template <typename QuantType = uint8_t>
 static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
-                                   const TestInputDef<float>& x_def,
-                                   const TestInputDef<float>& y_def,
-                                   ExpectedEPNodeAssignment expected_ep_assignment) {
+                            const TestInputDef<float>& x_def,
+                            const TestInputDef<float>& y_def,
+                            ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -105,9 +105,9 @@ TEST_F(QnnHTPBackendTests, WhereQDQU8) {
 // Check QNN Where works with broadcast
 TEST_F(QnnHTPBackendTests, WhereBroadcastU8) {
   RunWhereQDQTest(TestInputDef<bool>({2}, false, {true, false}),
-                         TestInputDef<float>({4, 3, 2}, true, -2.0f, 2.0f),
-                         TestInputDef<float>({1}, true, {3.0f}),
-                         ExpectedEPNodeAssignment::All);
+                  TestInputDef<float>({4, 3, 2}, true, -2.0f, 2.0f),
+                  TestInputDef<float>({1}, true, {3.0f}),
+                  ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
