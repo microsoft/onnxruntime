@@ -25,24 +25,22 @@ struct ModelIdentifiers {
                    std::variant<std::optional<std::string>, gsl::span<const uint8_t>> optimzer_model)
       : train_model(training_model), eval_model(evaluation_model), optim_model(optimzer_model) {}
 
-  bool IsOptimizerModelAvailable() const {
-    if ((std::holds_alternative<std::optional<std::string>>(optim_model) &&
-         std::get<std::optional<std::string>>(optim_model).has_value()) ||
-        (std::holds_alternative<gsl::span<const uint8_t>>(optim_model) &&
-         std::get<gsl::span<const uint8_t>>(optim_model).size() > 0)) {
+  bool IsModelAvailable(const std::variant<std::optional<std::string>, gsl::span<const uint8_t>>& model) const {
+    if ((std::holds_alternative<std::optional<std::string>>(model) &&
+         std::get<std::optional<std::string>>(model).has_value()) ||
+        (std::holds_alternative<gsl::span<const uint8_t>>(model) &&
+         std::get<gsl::span<const uint8_t>>(model).size() > 0)) {
       return true;
     }
     return false;
   }
 
   bool IsEvalModelAvailable() const {
-    if ((std::holds_alternative<std::optional<std::string>>(eval_model) &&
-         std::get<std::optional<std::string>>(eval_model).has_value()) ||
-        (std::holds_alternative<gsl::span<const uint8_t>>(eval_model) &&
-         std::get<gsl::span<const uint8_t>>(eval_model).size() > 0)) {
-      return true;
-    }
-    return false;
+    return IsModelAvailable(eval_model);
+  }
+
+  bool IsOptimizerModelAvailable() const {
+    return IsModelAvailable(optim_model);
   }
 };
 
