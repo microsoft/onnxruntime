@@ -16,8 +16,9 @@ Introduction: ONNXRuntime-Extensions is a library that extends the capability of
 <img src="../../images/combine-ai-extensions-img.png" alt="Pre and post-processing custom operators for vision, text, and NLP models" width="100%"/>
 <sub>This image was created using <a href="https://github.com/sayanshaw24/combine" target="_blank">Combine.AI</a>, which is powered by Bing Chat, Bing Image Creator, and EdgeGPT.</sub>
 
-## Quickstart
+### Quickstart
 
+## Installation
 ### **Python installation**
 ```bash
 pip install onnxruntime-extensions
@@ -37,16 +38,23 @@ Please make sure the compiler toolkit like gcc(later than g++ 8.0) or clang are 
 python -m pip install git+https://github.com/microsoft/onnxruntime-extensions.git
 ```
 
+## Prepare the pre/post-processing ONNX model
+With onnxruntime-extensions Python package, you can easily get the ONNX processing graph by converting them from Huggingface transformer data processing classes such as in the following example:
+```python
+import onnxruntime as _ort
+from transformers import AutoTokenizer
+from onnxruntime_extensions import OrtPyFunction, gen_processing_models
 
-## Usage
+tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
+model = OrtPyFunction(gen_processing_models(tokenizer, pre_kwargs={})[0])
+```
 
-## 1. Generate the pre-/post- processing ONNX model
-With onnxruntime-extensions Python package, you can easily get the ONNX processing graph by converting them from Huggingface transformer data processing classes, check the following API for details.
+For more information, you can check API using the following:
 ```python
 help(onnxruntime_extensions.gen_processing_models)
 ```
 ### NOTE: These data processing model can be merged into other model [onnx.compose](https://onnx.ai/onnx/api/compose.html) if needed.
-## 2. Using Extensions for ONNX Runtime inference
+## Inference with ONNX Runtime Extensions
 
 ### Python
 There are individual packages for the following languages, please install it for the build.
@@ -57,9 +65,9 @@ from onnxruntime_extensions import get_library_path as _lib_path
 so = _ort.SessionOptions()
 so.register_custom_ops_library(_lib_path())
 
-# Run the ONNXRuntime Session, as ONNXRuntime docs suggested.
-# sess = _ort.InferenceSession(model, so)
-# sess.run (...)
+# Run the ONNXRuntime Session as per ONNXRuntime docs suggestions.
+sess = _ort.InferenceSession(model, so)
+sess.run (...)
 ```
 ### C++
 
@@ -87,6 +95,12 @@ options.RegisterOrtExtensions()
 session = new InferenceSession(model, options)
 ```
 
+## Tutorials
+
+Check out some end to end tutorials with our custom operators:
+- NLP: [An end-to-end BERT tutorial](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/bert_e2e.py)
+- Audio: [Using audio encoding and decoding for Whisper](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/whisper_e2e.py)
+- Vision: [The YOLO model with our DrawBoundingBoxes operator](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/yolo_e2e.py)
 
 ## Contributing
 
