@@ -149,40 +149,6 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     // const bool is_qdq_node = op_type == "QuantizeLinear" || op_type == "DequantizeLinear";
 
     const bool is_quantized_node = NodeUnit::Type::QDQGroup == node_unit.UnitType() || op_type == "QuantizeLinear" || op_type == "DequantizeLinear";
-    // Is NPU backend, is single node, case by case
-    // Q/DQ nodes -- supported
-    // Transpose nodes -- supported
-    // Cast nodes -- need to call CastOpBuilder::IsOpSupported
-    /*
-    if (is_npu_backend && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
-      if (is_qdq_node) {  // Qnn has Quantize & Dequantize Op
-        LOGS(logger, VERBOSE) << "Single Q/DQ node is supported for NPU backend. Node name: " << node_unit.Name();
-        return true;
-      }
-
-      // Tranpose only changes the data layout. NPU still supports it.
-      if ("Transpose" == op_type) {
-        LOGS(logger, VERBOSE) << "Single Transpose node is supported for NPU backend. Node name: " << node_unit.Name();
-        return true;
-      }
-
-      // For Cast, And, and Or, we need to call IsOpSupported (below) to validate input and output types.
-      // For other single non-qdq nodes, immediately return not supported.
-      if (op_type != "Cast" && op_type != "And" && op_type != "Or") {
-        LOGS(logger, WARNING) << "Non-QDQ " << node_unit.OpType()
-                              << " operators are not supported on HTP or DSP backends. " << node_unit.OpType()
-                              << " node `" << node_unit.Name() << " will not be assigned to QNN EP.";
-        return false;
-      }
-    }
-
-    // Non-NPU backend, quantized model not supported, but a QDQ node encountered
-    if (!is_npu_backend && is_qdq_node) {
-      LOGS(logger, ERROR) << "QDQ models are only supported on HTP or DSP backends. "
-                          << node_unit.OpType() << " node `" << node_unit.Name() << "` will not be assigned to QNN EP.";
-      return false;
-    }
-    */
 
     bool supported = false;
     const auto* op_builder = qnn::GetOpBuilder(op_type);
