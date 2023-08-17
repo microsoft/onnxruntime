@@ -235,7 +235,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
 #if USE_FLASH_ATTENTION
   if (nullptr == fused_runner && !disable_memory_efficient_attention_) {
     int sm = device_prop.major * 10 + device_prop.minor;
-    bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
+    bool is_good_for_rpb = !parameters.has_relative_position_bias; // || parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention = is_good_for_rpb &&
                                      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                      (parameters.head_size & 7) == 0 &&
