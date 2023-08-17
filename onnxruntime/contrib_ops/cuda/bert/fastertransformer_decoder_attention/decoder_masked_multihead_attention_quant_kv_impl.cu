@@ -36,15 +36,23 @@ namespace cuda {
 
 using namespace decoder_masked_self_attention_details;
 
-template <typename T>
-struct TFLoatTypeFrom;
+struct __align__(8) half4{
+  half x;
+  half y;
+  half z;
+  half w;
+};
 
-template<>
+template <typename T>
+struct TFloatTypeFrom{
+};
+
+template <>
 struct TFloatTypeFrom<float> {
   using Type = float;
 };
 
-template<>
+template <>
 struct TFloatTypeFrom<uint16_t> {
   using Type = half;
 };
@@ -57,8 +65,8 @@ inline __device__ __half2 Dequantize(char2 ch2, const half scale) {
   return h2;
 }
 
-inline __device__ __half4 Dequantize(char4 ch4, const half scale) {
-  __half4 h4;
+inline __device__ half4 Dequantize(char4 ch4, const half scale) {
+  half4 h4;
   h4.x = __short2half_rn((short)ch4.x) * scale;
   h4.y = __short2half_rn((short)ch4.y) * scale;
   h4.z = __short2half_rn((short)ch4.z) * scale;
@@ -71,7 +79,7 @@ inline __device__ TVec_kernel LoadQ8(const TVec_kernel* q8, half scale);
 
 template <>
 inline __device__ uint32_t LoadQ8(const uint32_t* q8, half scale) {
-  char2 ch2 = *(char2*)q8;
+  char2 ch2 = *(const char2*)q8;
   union {
     __half2 h2;
     uint32_t whole;
@@ -82,9 +90,9 @@ inline __device__ uint32_t LoadQ8(const uint32_t* q8, half scale) {
 
 template <>
 inline __device__ uint2 LoadQ8(const uint2* q8, half scale) {
-  char2 ch4 = *(char4*)q8;
-  union {
-    __half4 h4;
+  char4 ch4 = *(const char4*)q8;
+  union __align__(8) {
+    half4 h4;
     uint2 whole;
   } vec;
   vec.h4 = Dequantize(ch4, scale);
@@ -97,13 +105,13 @@ inline __device__ uint4 LoadQ8(const uint4* q8, half scale) {
     char4 first;
     char4 second;
   };
-  Char8 ch8 = *(Char8)q8;
-  union {
-    struct {
-      __half4 first;
-      __half4 second;
+  Char8 ch8 = *(const Char8*)q8;
+  union __align__(16) {
+    struct __align__(16) {
+      half4 first;
+      half4 second;
     };
-    uint32_t whole;
+    uint4 whole;
   } vec;
   vec.first = Dequantize(ch8.first, scale);
   vec.second = Dequantize(ch8.second, scale);
@@ -119,8 +127,8 @@ inline __device__ float MaxAbsFloat(const uint32_t v) {
     __half2 h2;
     uint32_t whole;
   } uvec;
-  float2 f2 = half22float2(uvec.h2);
-  return fabsf(fmaxf(f2.x f2.y));
+  float2 f2 = __half22float2(uvec.h2);
+  return fmaxf(fabsf(f2.x), fabsf(f2.y));
 }
 
 template <>
@@ -136,19 +144,19 @@ inline __device__ float MaxAbsFloat(const uint4 v) {
 }
 
 template <typename TVec>
-inline __device__ void QuantizeTo(int8_t* dst, TVec v, float scale);
+inline __device__ void QuantizeTo(int8_t* dst, TVec v, half scale);
 
 template <>
-inline __device__ void QuantizeTo(int8_t* dst, uint32_t v, float scale) {
+inline __device__ void QuantizeTo(int8_t* dst, uint32_t v, half scale) {
   union {
     uint32_t u;
-    half2 h2;
+    __half2 h2;
   } uh2;
   uh2.u = v;
   char2 q;
   if (scale) {
-    q.x = (char)(min(127, max(-128, int(uh2.h2.x / scale))));
-    q.y = (char)(min(127, max(-128, int(uh2.h2.y / scale))));
+    q.x = (char)(min(127, max(-127, int(uh2.h2.x / scale))));
+    q.y = (char)(min(127, max(-127, int(uh2.h2.y / scale))));
   } else {
     q.x = 0;
     q.y = 0;
@@ -157,38 +165,29 @@ inline __device__ void QuantizeTo(int8_t* dst, uint32_t v, float scale) {
 }
 
 template <>
-inline __device__ void QuantizeTo(int8_t* dst, uint2 v, float scale) {
+inline __device__ void QuantizeTo(int8_t* dst, uint2 v, half scale) {
   union {
     uint2 u2;
-    struct {
-      half xy;
-      half zw;
-    };
+    half4 h4;
   } uh4;
-  uh3.u2 = v;
-  char4 q;
+  uh4.u2 = v;
   if (scale) {
-    q.x = (char)(min(127, max(-128, int(uh4.xy.x / scale))));
-    q.y = (char)(min(127, max(-128, int(uh4.xy.y / scale))));
-    q.z = (char)(min(127, max(-128, int(uh4.zw.x / scale))));
-    q.w = (char)(min(127, max(-128, int(uh4.zw.y / scale))));
+    char4 q;
+    q.x = (char)(min(127, max(-127, int(uh4.h4.x / scale))));
+    q.y = (char)(min(127, max(-127, int(uh4.h4.y / scale))));
+    q.z = (char)(min(127, max(-127, int(uh4.h4.z / scale))));
+    q.w = (char)(min(127, max(-127, int(uh4.h4.w / scale))));
+    *(char4*)dst = q;
   } else {
-    q.x = 0;
-    q.y = 0;
-    q.z = 0;
-    q.w = 0;
+    *(int*)dst = 0;
   }
-  *(char4*)dst = q;
 }
 
 template <>
-inline __device__ void QuantizeTo(int8_t* dst, uint4 v, float scale) {
+inline __device__ void QuantizeTo(int8_t* dst, uint4 v, half scale) {
   QuantizeTo(dst, uint2{v.x, v.y}, scale);
   QuantizeTo(dst + 4, uint2{v.z, v.w}, scale);
 }
-
-// template <typename TVec>
-// inline __device__ void QuantizeTo(int8_t* dst, TVec v, float scale);
 
 template <
     // The type of the inputs. Supported types: float and half(uint16_t).
@@ -207,7 +206,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   (void)(params);
 #else
   using TQ8 = int8_t; // quantized value type for K V cache
-  using TFp = TFloatTypeFrom<T>::Type;
+  using TFp = typename TFloatTypeFrom<T>::Type;
 
   // Make sure the hidden dimension per head is a multiple of the number of threads per key.
   static_assert(head_size % THREADS_PER_KEY == 0, "");
@@ -410,14 +409,14 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     float max_abs_k = MaxAbsFloat(k);
     // Perform the final reduction to compute the max inside each warp.
-    int threads_per_scale = params.quant_kv_block_size / QK_VEC_SIZE;
-    if (threads_per_scale <= WARP_SIZE) {
-      for (int mask = threads_per_scale / 2; mask >= 1; mask /= 2) {
+    const int qk_threads_per_scale = params.quant_kv_block_size / QK_VEC_SIZE;
+    if (qk_threads_per_scale <= WARP_SIZE) {
+      for (int mask = qk_threads_per_scale / 2; mask >= 1; mask /= 2) {
         max_abs_k = fmaxf(max_abs_k, __shfl_xor_sync(uint32_t(-1), max_abs_k, mask));
       }
     } else {
-      constexpr int WARPS_PER_RED = (threads_per_scale + WARP_SIZE - 1) / WARP_SIZE;
-      max_abs_k = block_sum<WARPS_PER_RED>(&red_smem[WARPS_PER_RED], max_abs_k);
+      assert(qk_threads_per_scale / WARP_SIZE == 2);
+      max_abs_k = block_sum<2>(&red_smem[2], max_abs_k);
     }
     __syncthreads();
 
@@ -439,9 +438,9 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
                    tlength * QK_ELTS_IN_16B + ci;
       // Trigger the stores to global memory.
       QuantizeTo(&params_k_cache[offset], vec_conversion<Qk_vec_m, Qk_vec_k>(k), max_abs_k);
-      if (tidx % threads_per_scale == 0) {
-        const int scale_offset = (bhi * params.max_sequence_length + tlength) *scales_per_head + tidx / threads_per_scale;
-        *(((TFp*)parameters.k_scale) + scale_offset) = (TFp)max_abs_k;
+      if (tidx % qk_threads_per_scale == 0) {
+        const int scale_offset = (bhi * params.max_sequence_length + tlength) *scales_per_head + tidx / qk_threads_per_scale;
+        *(((TFp*)params.k_scale) + scale_offset) = (TFp)max_abs_k;
       }
 
       // Compute \sum_i Q[i] * K^T[i] for the current timestep.
@@ -530,8 +529,8 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
 
     const int mapped_bhi = (bbi * params.beam_width + mapped_beam_index) * params.num_heads + hi;
-    const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + ki / params.quant_kv_block_size;
-    float scale_of_k = (ti < tlength) ? (float)*(((TFp*)parameters.k_scale) + scale_offset) : 0.0f;
+    int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + ki / params.quant_kv_block_size;
+    float scale_of_k = (ti < tlength) ? (float)*(((TFp*)params.k_scale) + scale_offset) : 0.0f;
     int next_quant_block_ki = ((ki + params.quant_kv_block_size - 1) / params.quant_kv_block_size + 1) * params.quant_kv_block_size;
 
     // The keys loaded from the key cache.
@@ -545,7 +544,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
         if (ki + (ii * K_VEC_SIZE) >= next_quant_block_ki) {
           scale_offset++;
           next_quant_block_ki += params.quant_kv_block_size;
-          scale_of_k = (float)*(((TFp*)parameters.k_scale) + scale_offset);
+          scale_of_k = (float)*(((TFp*)params.k_scale) + scale_offset);
         }
         k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
             reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), scale_of_k));
@@ -688,7 +687,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     const int mapped_bhi = (bbi * params.beam_width + beam_offset) * params.num_heads + hi;
     const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + vi / params.quant_kv_block_size;
-    float scale_of_v = (float)*(((TFp*)parameters.v_scale) + scale_offset);
+    float scale_of_v = (float)*(((TFp*)params.v_scale) + scale_offset);
 
     // Load the values from the cache.
     // V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
@@ -727,7 +726,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     if (vi % params.quant_kv_block_size == 0) {
       const int scales_per_head = head_size / params.quant_kv_block_size;
       const int scale_offset = (bhi * params.max_sequence_length + tlength) * scales_per_head + vi / params.quant_kv_block_size;
-      *(((TFp*)parameters.v_scale) + scale_offset) = (TFp)max_abs_v;
+      *(((TFp*)params.v_scale) + scale_offset) = (TFp)max_abs_v;
     }
 
     // Initialize the output value with the current timestep.
@@ -767,46 +766,46 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 // Template instantiation(s)
 
 // fp32 + head size = 32
-template void __global__ masked_multihead_attention_quant_kv_kernel<float, 32, 4, 8, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<float, 32, 4, 8, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<float, 32, 2, 8, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<float, 32, 2, 8, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<float, 32, 1, 8, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<float, 32, 1, 8, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp16 + head size = 32
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 4, 4, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 4, 4, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 2, 4, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 2, 4, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 1, 4, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 1, 4, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp32 + head size = 64
-template void __global__ masked_multihead_attention_quant_kv_kernel<float, 64, 4, 16, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<float, 64, 4, 16, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<float, 64, 2, 16, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<float, 64, 2, 16, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<float, 64, 1, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<float, 64, 1, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp16 + head size = 64
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 4, 8, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 4, 8, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 2, 8, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 2, 8, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp32 + head size = 128
-template void __global__ masked_multihead_attention_quant_kv_kernel<float, 128, 4, 32, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<float, 128, 4, 32, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<float, 128, 2, 32, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<float, 128, 2, 32, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<float, 128, 1, 32, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<float, 128, 1, 32, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp16 + head size = 128
 template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 4, 16, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+// template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -11,13 +11,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-typedef struct __align__(8) {
+struct __align__(8) half4{
   half x;
   half y;
   half z;
   half w;
-}
-half4;
+};
 
 __device__ __forceinline__ float warpReduceMaxMultipleGroup(float max_value, const int width) {
   constexpr unsigned FULLMASK = 0xFFFFFFFF;
