@@ -4053,8 +4053,8 @@ Status Graph::InlineFunction(Node& callnode) {
         const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
         ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(inlined_node, model_path, *tensor, inlined_node.output(0)));
         auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
-        ORT_RETURN_IF_NOT(insert_result.second, "Constant node name: ", tensor->name(), " in inlined function: ",
-                          inlined_fp.name(), " conflicts with graph initializer");
+        ORT_ENFORCE(insert_result.second, "Constant node name: ", tensor->name(), " in inlined function: ",
+                    inlined_fp.name(), " conflicts with graph initializer. Check Specializing code.");
         TypeProto t{TypeProtoFromTensorProto(*tensor)};
         ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
       }
@@ -4118,8 +4118,8 @@ Status Graph::InlineFunction(Node& callnode) {
         const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
         ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, model_path, *tensor, subgraph_node_proto.output(0)));
         auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
-        ORT_RETURN_IF_NOT(insert_result.second, "Constant node name: ", tensor->name(), " in inlined subgraph: ",
-                          subgraph.Name(), " conflicts with graph initializer");
+        ORT_ENFORCE(insert_result.second, "Constant node name: ", tensor->name(), " in inlined subgraph: ",
+                    subgraph.Name(), " conflicts with graph initializer. Check Specializing code.");
         if (GetNodeArg(tensor->name()) == nullptr) {
           TypeProto t{TypeProtoFromTensorProto(*tensor)};
           ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
@@ -4132,8 +4132,8 @@ Status Graph::InlineFunction(Node& callnode) {
       *tensor = *init.second;
       tensor->set_name(tensor->name() + uniq_identifier);
       auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
-      ORT_RETURN_IF_NOT(insert_result.second, "Initializer name: ", tensor->name(), " in inlined subgraph: ",
-                        subgraph.Name(), " conflicts with graph initializer");
+      ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " in inlined subgraph: ",
+                  subgraph.Name(), " conflicts with graph initializer. Check Specializing code.");
       if (GetNodeArg(tensor->name()) == nullptr) {
         TypeProto t{TypeProtoFromTensorProto(*tensor)};
         ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
