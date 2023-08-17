@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <cstdlib>
-#include <cstring>
+#include <string>
 
 #ifndef USE_ONNXRUNTIME_DLL
 #ifdef __GNUC__
@@ -59,12 +60,14 @@ int TEST_MAIN(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     ortenv_setup();
 
-    // allow verbose logging to be enabled by setting this environment variable to 1
-    constexpr auto kEnableVerboseLoggingEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_ENABLE_VERBOSE_LOGGING";
-    if (const char* enable_verbose_logging_str = std::getenv(kEnableVerboseLoggingEnvironmentVariableName);
-        enable_verbose_logging_str != nullptr && std::strcmp(enable_verbose_logging_str, "1") == 0) {
-      std::cout << "Enabling verbose logging.\n";
-      ort_env->UpdateEnvWithCustomLogLevel(ORT_LOGGING_LEVEL_VERBOSE);
+    // allow verbose logging to be enabled by setting this environment variable to a numeric log level
+    constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
+    if (const char* log_level_str = std::getenv(kLogLevelEnvironmentVariableName); log_level_str != nullptr) {
+      const auto log_level = std::clamp(std::stoi(log_level_str),
+                                        static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
+                                        static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
+      std::cout << "Setting log level to " << log_level << "\n";
+      ort_env->UpdateEnvWithCustomLogLevel(static_cast<OrtLoggingLevel>(log_level));
     }
 
     status = RUN_ALL_TESTS();
