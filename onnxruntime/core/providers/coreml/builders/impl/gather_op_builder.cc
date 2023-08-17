@@ -5,7 +5,7 @@
 
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
-#include "core/providers/shared/utils/utils.h"  // for NodeAttrHelper
+#include "core/providers/shared/utils/utils.h"
 
 #if defined(__APPLE__)
 #include "core/providers/coreml/builders/model_builder.h"
@@ -23,6 +23,7 @@ class GatherOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
+  bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const override;
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
@@ -49,6 +50,22 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 #endif  // defined(__APPLE__)
 
 // Operator support related
+bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type, logger))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    LOGS(logger, VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
 bool GatherOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
                                         const logging::Logger& logger) const {
   std::vector<int64_t> data_shape, indices_shape;
