@@ -15,6 +15,8 @@ Abstract:
 
 --*/
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include "mlasi.h"
 #include "mlas_float16.h"
 
@@ -333,3 +335,5 @@ const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault = {
     MLAS_HALF_GEMM_KERNEL_DEFAULT::KernelMaxM,
     0
 };
+
+#endif
