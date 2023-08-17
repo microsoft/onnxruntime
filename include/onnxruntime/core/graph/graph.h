@@ -890,7 +890,6 @@ class Graph {
   @returns NodeArg reference.
   */
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
-
     auto insert_result = node_args_.emplace(name, nullptr);
     if (insert_result.second) {
       insert_result.first->second = std::make_unique<NodeArg>(name, p_arg_type);
