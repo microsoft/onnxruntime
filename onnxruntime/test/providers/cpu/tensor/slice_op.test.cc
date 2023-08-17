@@ -261,15 +261,25 @@ TEST(SliceTest, Slice3D) {
                        332.0f, 333.0f});
 }
 
-TEST(SliceTest, Slice1D_Int) {
-  RunSliceTest<int32_t>({6},
-                        {0L, 1L, 2L, 3L, 4L, 5L},
-                        {2},
-                        {4},
-                        {0},
-                        {},
-                        {2},
-                        {2L, 3L});
+template <typename TInt>
+static void TestSlice1DIntData() {
+  static_assert(std::is_integral_v<TInt>);
+  RunSliceTest<TInt>({6},
+                     {0, 1, 2, 3, 4, 5},
+                     {2},
+                     {4},
+                     {0},
+                     {},
+                     {2},
+                     {2, 3});
+}
+
+TEST(SliceTest, Slice1D_Int32) {
+  TestSlice1DIntData<int32_t>();
+}
+
+TEST(SliceTest, Slice1D_Int64) {
+  TestSlice1DIntData<int64_t>();
 }
 
 TEST(SliceTest, Slice1D_String) {
