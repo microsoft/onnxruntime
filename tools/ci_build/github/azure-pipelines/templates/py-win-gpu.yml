@@ -32,7 +32,7 @@ jobs:
           - checkout: self
             clean: true
             submodules: none
-           - task: UsePythonVersion@0
+          - task: UsePythonVersion@0
             inputs:
               versionSpec: 3.8
               addToPath: true
