@@ -1199,10 +1199,6 @@ constexpr bool HandleQuantizeDequantizeAxis(const api::GraphRef& graph, const st
   }
   
   return TransposeQuantizeDequantizeAxis(graph, perm, node);;
-    return TransposeQuantizeDequantizeAxis(graph, perm, node);
-  }
-
-  return true;
 }
 
 static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
