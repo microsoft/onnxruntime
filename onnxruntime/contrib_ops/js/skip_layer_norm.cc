@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "skip_layer_norm.h"
+#include "contrib_ops/js/skip_layer_norm.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace js {
 
-using namespace onnxruntime::js;
+using onnxruntime::js::JsKernel;
 
 class SkipLayerNorm final : public JsKernel {
  public:
