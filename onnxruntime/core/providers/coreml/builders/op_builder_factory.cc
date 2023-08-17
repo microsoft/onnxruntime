@@ -118,6 +118,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGatherOpBuilder("Gather", op_registrations);
   }
 
+  {  // Slice
+    CreateSliceOpBuilder("Slice", op_registrations);
+  }
+
   return op_registrations;
 }
 
