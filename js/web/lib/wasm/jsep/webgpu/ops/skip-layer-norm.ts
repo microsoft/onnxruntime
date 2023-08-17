@@ -181,11 +181,6 @@ export const skipLayerNorm = (context: ComputeContext, attributes: SkipLayerNorm
   if (context.outputCount > 1) {
     outputs.push(3);
   }
-  // The following condition is not expected to be hit in the inference flow.
-  // It is added to catch incorrect usage. To fail sooner than later.
-  if ((context.outputCount + context.inputs.length) > 8) {
-    throw new Error('Current WebGPU implementation only supports up to 8, inputs and outputs combined.');
-  }
   context.compute(createSkipLayerNormProgramInfoLoader(context.inputs, attributes, context.outputCount), {outputs});
 };
 
