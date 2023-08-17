@@ -51,9 +51,9 @@ Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
     launch_multi_tensor_functor<MTA_ADAMW_GROUP_SIZE, TFunctor>(
         Stream(ctx), MTA_ADAMW_CHUNK_SIZE, p.grouped_tensor_sizes, p.grouped_tensor_pointers, functor,
         alpha_, beta_, epsilon_, *lr_ptr, weight_decay_, adam_mode_, correct_bias_, *step_ptr);
-    *updated_flag_ptr = 1;
+    *updated_flag_ptr = true;
   } else {
-    *updated_flag_ptr = 0;
+    *updated_flag_ptr = false;
   }
 
   if (p.updated_weights != nullptr) {

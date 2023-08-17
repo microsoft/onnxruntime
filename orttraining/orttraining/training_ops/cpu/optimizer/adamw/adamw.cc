@@ -182,9 +182,9 @@ Status AdamWOptimizer<T>::Compute(OpKernelContext* ctx) const {
       }
     }
 
-    *updated_flag_ptr = 1;
+    *updated_flag_ptr = true;
   } else {
-    *updated_flag_ptr = 0;
+    *updated_flag_ptr = false;
   }
 
   if (p.updated_weights != nullptr) {

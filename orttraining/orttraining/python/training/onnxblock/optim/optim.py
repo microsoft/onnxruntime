@@ -64,12 +64,11 @@ class _OptimizerBase(blocks.Block):
     def __init__(self):
         super().__init__()
 
-    def build_optimizer_node(
+    def _build_optimizer_node(
         self,
         input_names: List[str],
         output_name: str,
         node_name: str,
-        node_domain: str,
         node_attributes: Dict,
     ) -> str:
         """
@@ -79,23 +78,20 @@ class _OptimizerBase(blocks.Block):
             input_names (list): List of input tensor names for the optimizer node.
             output_name (str): Output tensor name of the optimizer node.
             node_name (str): Name of the optimizer node.
-            node_domain (str): Domain of the optimizer node.
             node_attributes (dict): Additional attributes for the optimizer node.
 
         Returns:
             str: The output tensor name of the optimizer node.
         """
         onnx_model = self.base
-        optimizer_input_names = input_names
-        optimizer_output_names = [output_name]
 
         # add the optimizer node to the onnx model
         optimizer_node = onnx.helper.make_node(
             node_name,
-            optimizer_input_names,
-            optimizer_output_names,
+            input_names,
+            [output_name],
             name=_graph_utils.generate_graph_name(node_name),
-            domain=node_domain,
+            domain="com.microsoft",
             **node_attributes,
         )
 
@@ -128,11 +124,10 @@ class SGDOptimizer(_OptimizerBase):
 
         input_names = [learning_rate_name, gradients_name, params_name]
 
-        return self.build_optimizer_node(
+        return self._build_optimizer_node(
             input_names,
             _graph_utils.generate_graph_name("update_completed"),
             "SGDOptimizerV2",
-            "com.microsoft",
             {},
         )
 
@@ -195,11 +190,10 @@ class AdamWOptimizer(_OptimizerBase):
             "adam_mode": 1,  # adam mode (1 for hf/transformers/AdamW)
         }
 
-        return self.build_optimizer_node(
+        return self._build_optimizer_node(
             input_names,
             _graph_utils.generate_graph_name("adamw.updated_flag"),
             "AdamWOptimizer",
-            "com.microsoft",
             node_attributes,
         )
 
@@ -284,7 +278,6 @@ class AdamW(_Optimizer):
             )
         )
 
-        # ... Prepare tensor sequence inputs for AdamW
         updated_flag_name = self._adamw(
             learning_rate_name,
             step_name,
@@ -294,7 +287,7 @@ class AdamW(_Optimizer):
             second_order_moments_name,
         )
 
-        # ... Create graph outputs for AdamW
+        # Create graph outputs for AdamW
         onnx_model.graph.output.append(
             onnx.helper.make_tensor_value_info(updated_flag_name, onnx.TensorProto.BOOL, [1])
         )
@@ -319,7 +312,7 @@ class SGD(_Optimizer):
         onnx_model = self.base
         updated_flag_name = self._sgd(learning_rate_name, params_name, gradients_name)
 
-        # ... Create graph outputs for SGD
+        # Create graph outputs for SGD
         onnx_model.graph.output.append(
             onnx.helper.make_tensor_value_info(updated_flag_name, onnx.TensorProto.BOOL, [1])
         )
