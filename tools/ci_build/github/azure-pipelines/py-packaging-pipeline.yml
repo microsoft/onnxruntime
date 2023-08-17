@@ -5,7 +5,7 @@ parameters:
   default: true
 
 - name: enable_ubuntu_cpu
-  displayName: 'Whether Ubuntu CPU (manylinux_2_27) package is built.'
+  displayName: 'Whether Ubuntu CPU (manylinux_2_28) package is built.'
   type: boolean
   default: true
 
