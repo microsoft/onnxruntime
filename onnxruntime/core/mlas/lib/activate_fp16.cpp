@@ -14,7 +14,7 @@ Abstract:
 
 --*/
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "fp16_common.h"
 
@@ -886,4 +886,4 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
 
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
