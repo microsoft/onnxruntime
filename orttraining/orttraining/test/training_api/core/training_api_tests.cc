@@ -458,9 +458,7 @@ TEST(TrainingApiTest, OptimStep) {
       std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
-  size_t step = 0;
   std::string param_name = "fc2.weight";
-
   // before training, check if optim state is initialized to 0
   onnxruntime::training::api::OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
   onnxruntime::training::api::ParameterOptimizerState& param_state =
@@ -482,7 +480,6 @@ TEST(TrainingApiTest, OptimStep) {
   }
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
-    step += 1;
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
@@ -491,11 +488,11 @@ TEST(TrainingApiTest, OptimStep) {
     // get gradients and optim state and check if it is updated
     std::vector<float> grads;
 #if defined(USE_CUDA)
-  CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads);
-  CudaOrtValueToCpuVec(moment_1, moment_1_vec);
+    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads);
+    CudaOrtValueToCpuVec(moment_1, moment_1_vec);
 #else
-  CpuOrtValueToVec(model->NamedParameters().at(param_name)->Gradient(), grads);
-  CpuOrtValueToVec(moment_1, moment_1_vec);
+    CpuOrtValueToVec(model->NamedParameters().at(param_name)->Gradient(), grads);
+    CpuOrtValueToVec(moment_1, moment_1_vec);
 #endif
     for (size_t i = 0; i < moment_1_vec.size(); i++) {
       if (grads[i] != 0.0f) {
@@ -504,10 +501,10 @@ TEST(TrainingApiTest, OptimStep) {
     }
 
     std::vector<float> param_vec_after_optimizer_step;
-    #if defined(USE_CUDA)
-  CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
+#if defined(USE_CUDA)
+    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
 #else
-  CpuOrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
+    CpuOrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
 #endif
     for (size_t i = 0; i < param_vec_after_optimizer_step.size(); ++i) {
       if (grads[i] != 0.0f && moment_1_vec[i] != 0.0f) {
