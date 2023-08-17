@@ -22,7 +22,7 @@ parameters:
   default: ''
 
 jobs:
-  - ${{ if eq(parameters.PYTHON_VERSION, '3.8') }}:
+  ${{ if eq(parameters.PYTHON_VERSION, '3.8') }}:
     - job: Win_py_${{ parameters.EP_NAME }}_Wheels_StaticAnalysis
       timeoutInMinutes: 240
       workspace:
