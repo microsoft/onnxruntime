@@ -165,9 +165,8 @@ const createBinaryOpProgramInfo =
 const createBinaryOpProgramInfoLoader =
     (inputs: readonly TensorView[], name: string, funcCall: BinaryFunctionCall, additionalImplementation?: string,
      cacheKey?: string): ProgramInfoLoader => {
-      const cacheKeyWithType = cacheKey === undefined ? `${inputs[0].dataType}` : cacheKey + `_${inputs[0].dataType}`;
       const metadata:
-          ProgramMetadata = {name, inputTypes: [GpuDataType.default, GpuDataType.default], cacheHint: cacheKeyWithType};
+          ProgramMetadata = {name, inputTypes: [GpuDataType.default, GpuDataType.default], cacheHint: cacheKey};
       return {
         ...metadata,
         get: () => createBinaryOpProgramInfo(metadata, inputs[0], inputs[1], funcCall, additionalImplementation)
