@@ -278,7 +278,7 @@ class TunableOp {
         id = static_cast<int>(i);
       }
     }
-    ORT_ENFORCE(id >= 0, "Cannot found viable op");
+    ORT_ENFORCE(id >= 0, "Could not find viable op");
     LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
