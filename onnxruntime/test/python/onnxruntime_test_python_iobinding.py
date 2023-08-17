@@ -193,7 +193,7 @@ class TestIOBinding(unittest.TestCase):
         # Validate results
         self.assertTrue(np.array_equal(self.create_expected_output(), ort_output_vals))
 
-        # Validate if ORT actually wrote to pre-allocated buffer by copying the Torch allocated buffer
+        # Validate if ORT actually wrote to pre-allocated buffer by copying the allocated buffer
         # to the host and validating its contents
         ort_output_vals_in_cpu = output.numpy()
         # Validate results

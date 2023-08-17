@@ -77,6 +77,8 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer();
 
 AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id);
 
+void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes);
+
 #endif
 
 #ifdef USE_CANN

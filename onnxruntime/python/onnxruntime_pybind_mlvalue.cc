@@ -35,6 +35,8 @@ using Microsoft::WRL::ComPtr;
 #include "core/providers/dml/DmlExecutionProvider/src/DmlCommittedResourceAllocator.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/providers/dml/DmlExecutionProvider/src/BucketizedBufferAllocator.h"
+#include "core/providers/dml/DmlExecutionProvider/src/PooledUploadHeap.h"
+#include "core/providers/dml/DmlExecutionProvider/src/AllocationInfo.h"
 #endif
 
 namespace onnxruntime {
@@ -194,6 +196,10 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
 #endif
 
 #ifdef USE_DML
+
+constexpr GUID dml_execution_context_guid = { 0x50fd773b, 0x4462, 0x4b28, {0x98, 0x9e, 0x8c, 0xa0, 0x54, 0x05, 0xbd, 0x4a} };
+constexpr GUID dml_upload_heap_guid = { 0x125235f9, 0xef41, 0x4043, {0xa4, 0x9d, 0xdd, 0xc9, 0x61, 0xe7, 0xdb, 0xee} };
+
 AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded DML allocation work, including maintaining a per-thread DML allocator.
@@ -217,6 +223,9 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
 
     auto context = std::make_shared<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get());
 
+    // We leak the upload hep to keep it alive, just like the map
+    auto upload_heap = std::make_unique<Dml::PooledUploadHeap>(d3d12_device.Get(), context).release();
+
     auto dml_allocator = std::make_shared<Dml::BucketizedBufferAllocator>(
         d3d12_device.Get(),
         context,
@@ -228,10 +237,38 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
     dml_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
     context->SetAllocator(dml_allocator);
 
+    auto context_ptr = context.get();
+
+    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_execution_context_guid, sizeof(context_ptr), &context_ptr));
+    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_upload_heap_guid, sizeof(upload_heap), &upload_heap));
+
     hit = id_to_allocator_map->emplace(id, std::move(dml_allocator)).first;
   }
 
   return hit->second;
+}
+
+void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes) {
+  const auto* allocInfo = static_cast<const Dml::AllocationInfo*>(dst);
+  ID3D12Resource* dst_data = allocInfo->GetResource();
+
+  ComPtr<ID3D12Device> d3d12_device;
+  ORT_THROW_IF_FAILED(dst_data->GetDevice(IID_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+
+  Dml::ExecutionContext* context = nullptr;
+  uint32_t context_size = gsl::narrow_cast<uint32_t>(sizeof(context));
+  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(dml_execution_context_guid, &context_size, &context));
+
+  Dml::PooledUploadHeap* upload_heap = nullptr;
+  uint32_t upload_heap_size = gsl::narrow_cast<uint32_t>(sizeof(upload_heap));
+  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(dml_upload_heap_guid, &upload_heap_size, &upload_heap));
+
+  upload_heap->BeginUploadToGpu(dst_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, gsl::make_span(static_cast<const std::byte*>(src), num_bytes));
+  context->Flush();
+
+  // We don't use the same command queue as the execution provider, so we need to sync to make sure that all data has been uploaded to the resource.
+  // This function is usually called before inference just to upload initial data to the GPU, so it shouldn't be a bottleneck.
+  context->GetCurrentCompletionEvent().WaitForSignal();
 }
 
 #endif
