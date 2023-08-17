@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 
 import onnx
 
@@ -66,11 +66,11 @@ class _OptimizerBase(blocks.Block):
 
     def build_optimizer_node(
         self,
-        input_names: list,
+        input_names: List[str],
         output_name: str,
         node_name: str,
         node_domain: str,
-        node_attributes: dict,
+        node_attributes: Dict,
     ) -> str:
         """
         Build and append an optimizer node to the ONNX graph.
@@ -248,7 +248,7 @@ class _Optimizer(onnxblock_module.ForwardBlock):
         learning_rate_name: str,
         params_name: str,
         gradients_name: str,
-        trainable_parameters: Tuple,
+        trainable_parameters: Tuple[List[onnx.TensorProto], List[onnx.TensorProto]],
     ) -> str:
         raise NotImplementedError("Subclasses must implement _optimizer_specific_logic method.")
 
@@ -270,7 +270,7 @@ class AdamW(_Optimizer):
         learning_rate_name: str,
         params_name: str,
         gradients_name: str,
-        trainable_parameters: Tuple,
+        trainable_parameters: Tuple[List[onnx.TensorProto], List[onnx.TensorProto]],
     ) -> str:
         onnx_model = self.base
         step_name = "step"
@@ -314,7 +314,7 @@ class SGD(_Optimizer):
         learning_rate_name: str,
         params_name: str,
         gradients_name: str,
-        trainable_parameters: Tuple,
+        trainable_parameters: Tuple[List[onnx.TensorProto], List[onnx.TensorProto]],
     ) -> str:
         onnx_model = self.base
         updated_flag_name = self._sgd(learning_rate_name, params_name, gradients_name)
