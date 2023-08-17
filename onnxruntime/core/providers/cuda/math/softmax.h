@@ -46,11 +46,6 @@ class Softmax final : public CudaKernel {
     }
 
     log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
-
-    // We need to cast away the const as PerThreadCublasHandle() is currently a non-const method
-    // TODO: Clean up the CUDAExecutionProvider interface to avoid this
-    cuda_ep_ = const_cast<CUDAExecutionProvider*>(
-        static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -59,10 +54,6 @@ class Softmax final : public CudaKernel {
   int64_t axis_;
   bool log_softmax_;
   int opset_;
-
-  // We need to access to the CUDA EP instance to get the cublas handle to use
-  // for transposing(if applicable)
-  CUDAExecutionProvider* cuda_ep_;
 };
 
 }  // namespace cuda
