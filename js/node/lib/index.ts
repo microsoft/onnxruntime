@@ -8,4 +8,4 @@ import {version} from './version';
 
 registerBackend('cpu', onnxruntimeBackend, 100);
 
-env.versions.node = version;
+Object.defineProperty(env.versions, 'node', {value: version, enumerable: true});
