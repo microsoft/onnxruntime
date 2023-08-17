@@ -422,8 +422,7 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
-                                                                               qnn_backend_manager_.get(),
-                                                                               qnn_backend_manager_->IsNpuBackend());
+                                                                               qnn_backend_manager_.get());
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
@@ -440,7 +439,6 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
-  bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
 
   if (context_cache_enabled_) {
     ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support singel partition for context cache feature.");
@@ -455,8 +453,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     // Load and execute from cached context if exist
     if (load_from_cached_context) {
       std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
-                                                                                 qnn_backend_manager_.get(),
-                                                                                 is_npu_backend);
+                                                                                 qnn_backend_manager_.get());
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(*(qnn_model.get())));
       ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
       ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());

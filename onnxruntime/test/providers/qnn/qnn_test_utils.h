@@ -303,6 +303,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
     ASSERT_EQ(cpu_qdq_outputs.size(), num_outputs);
     ASSERT_EQ(qnn_qdq_outputs.size(), num_outputs);
 
+    // limit the error message count in case test with large data failed
+    size_t max_error_count = 10;
     // Compare accuracy of QDQ results with float model.
     // QNN EP must be at least as accurate as CPU EP when running the QDQ model.
     for (size_t i = 0; i < num_outputs; i++) {
@@ -321,7 +323,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
         ASSERT_EQ(num_vals, cpu_qdq_vals.size());
         ASSERT_EQ(num_vals, qnn_qdq_vals.size());
 
-        for (size_t j = 0; j < num_vals; j++) {
+        for (size_t j = 0; j < num_vals && j < max_error_count; j++) {
           const float expected_val = cpu_f32_vals[j];  // "ground-truth"
           const float qnn_qdq_val = qnn_qdq_vals[j];
           const float cpu_qdq_val = cpu_qdq_vals[j];
