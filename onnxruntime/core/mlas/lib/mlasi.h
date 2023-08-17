@@ -51,9 +51,9 @@ Abstract:
 #endif
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
-#if defined(__GNUC__) && __GNUC__ >= 12
+#if defined(__GNUC__) && __GNUC__ >= 12 && !defined(__arm__)
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized" // GCC 12 warns about uninitialized variables in immintrin.h.
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  // GCC 12 warns about uninitialized variables in immintrin.h.
 #include <immintrin.h>
 #pragma GCC diagnostic pop
 #else
