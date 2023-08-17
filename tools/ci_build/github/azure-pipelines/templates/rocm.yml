@@ -50,11 +50,8 @@ jobs:
       DockerBuildArgs: >-
         --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
         --build-arg BUILD_UID=$(id -u)
-        --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+        --network=host
         --build-arg ROCM_VERSION=${{ parameters.RocmVersion }}
-        --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
-        --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
-        --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
       Repository: onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }}
 
   - task: CmdLine@2
