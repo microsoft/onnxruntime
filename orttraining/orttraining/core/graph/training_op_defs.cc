@@ -4439,7 +4439,9 @@ Return true if all elements are true and false otherwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(ScaledSum)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("Compute scaled sum of multiple tensors in same shape (no broadcasting).")
+      .SetDoc(
+          "Compute scaled sum of multiple tensors in same shape (no broadcasting)."
+          "Formula: output = (input_0 * scale_0) + (input_1 * scale_1) + (input_2 * scale_2)")
       .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
       .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
       .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
@@ -4460,14 +4462,19 @@ Return true if all elements are true and false otherwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(BatchScale)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("Compute scaled sum of multiple tensors in same shape (no broadcasting).")
+      .SetDoc(
+          "Compute scaled input into outputs with different scaling factors (no broadcasting)."
+          "Formula:"
+          "    output_0 = input * scale_0"
+          "    output_1 = input * scale_1"
+          "    output_2 = input * scale_2")
       .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
       .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
       .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Input(0, "input", "output tensor", "T")
-      .Output(0, "output_0", "input tensor", "T")
-      .Output(1, "output_1", "input tensor", "T")
-      .Output(2, "output_2", "input tensor", "T", OpSchema::Optional)
+      .Input(0, "input", "input tensor", "T")
+      .Output(0, "output_0", "output tensor", "T")
+      .Output(1, "output_1", "output tensor", "T")
+      .Output(2, "output_2", "output tensor", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
