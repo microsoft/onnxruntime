@@ -1193,7 +1193,12 @@ bool TransposeQuantizeDequantizeAxis(const api::GraphRef& graph, const std::vect
 
 constexpr bool HandleQuantizeDequantizeAxis(const api::GraphRef& graph, const std::vector<int64_t>& perm,
                                             api::NodeRef& node, int64_t opset) {
-  if (opset >= 13) {
+  if (opset < 13) {
+    // no `axis` value until opset 13
+    return true;
+  }
+  
+  return TransposeQuantizeDequantizeAxis(graph, perm, node);;
     return TransposeQuantizeDequantizeAxis(graph, perm, node);
   }
 
