@@ -18,7 +18,7 @@ class QnnModel {
   QnnModel(const logging::Logger& logger,
            QnnBackendManager* qnn_backend_manager)
       : logger_(logger),
-        qnn_backend_manager_(qnn_backend_manager){
+        qnn_backend_manager_(qnn_backend_manager) {
   }
 
   ~QnnModel() = default;

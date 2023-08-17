@@ -92,10 +92,10 @@ static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
 TEST_F(QnnHTPBackendTests, WhereQDQU8) {
   RunWhereQDQTest(TestInputDef<bool>({4, 3, 2}, false,
-                  {true, false, true, false, true, false, 
-                   true, false, true, false, true, false,
-                   true, false, true, false, true, false,
-                   true, false, true, false, true, false}),
+                                     {true, false, true, false, true, false,
+                                      true, false, true, false, true, false,
+                                      true, false, true, false, true, false,
+                                      true, false, true, false, true, false}),
                   TestInputDef<float>({4, 3, 2}, true, -5.0f, 0.0f),
                   TestInputDef<float>({4, 3, 2}, true, 1.0f, 6.0),
                   ExpectedEPNodeAssignment::All);
