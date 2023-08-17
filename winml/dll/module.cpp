@@ -64,8 +64,7 @@ extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegis
 }
 CATCH_RETURN();
 
-__control_entrypoint(DllExport)
-STDAPI DllCanUnloadNow() {
+__control_entrypoint(DllExport) STDAPI DllCanUnloadNow() {
   // This dll should not be freed by
   // CoFreeUnusedLibraries since there can be outstanding COM object
   // references to many objects (AbiCustomRegistry, IMLOperatorKernelContext,
@@ -97,14 +96,16 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
     };
 
     std::wostringstream learning_model_builder_class;
-    learning_model_builder_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelBuilder";
+    learning_model_builder_class
+      << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelBuilder";
     if (requal(name, learning_model_builder_class.str())) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelBuilder>());
       return 0;
     }
 
     std::wostringstream learning_model_operator_class;
-    learning_model_operator_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelOperator";
+    learning_model_operator_class
+      << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelOperator";
     if (requal(name, learning_model_operator_class.str())) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelOperator>());
 
@@ -112,30 +113,38 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
     }
 
     std::wostringstream learning_model_session_experimental_class;
-    learning_model_session_experimental_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelSessionExperimental";
+    learning_model_session_experimental_class
+      << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelSessionExperimental";
     if (requal(name, learning_model_session_experimental_class.str())) {
-      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>());
+      *factory =
+        winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>());
       return 0;
     }
 
     std::wostringstream learning_model_experimental_class;
-    learning_model_experimental_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelExperimental";
+    learning_model_experimental_class
+      << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelExperimental";
     if (requal(name, learning_model_experimental_class.str())) {
-      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelExperimental>());
+      *factory =
+        winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelExperimental>());
       return 0;
     }
 
     std::wostringstream learning_model_join_options_class;
-    learning_model_join_options_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelJoinOptions";
+    learning_model_join_options_class
+      << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelJoinOptions";
     if (requal(name, learning_model_join_options_class.str())) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelJoinOptions>());
       return 0;
     }
 
     std::wostringstream learning_model_session_options_experimental_class;
-    learning_model_session_options_experimental_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelSessionOptionsExperimental";
+    learning_model_session_options_experimental_class
+      << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelSessionOptionsExperimental";
     if (requal(name, learning_model_session_options_experimental_class.str())) {
-      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionOptionsExperimental>());
+      *factory = winrt::detach_abi(
+        winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionOptionsExperimental>()
+      );
       return 0;
     }
 

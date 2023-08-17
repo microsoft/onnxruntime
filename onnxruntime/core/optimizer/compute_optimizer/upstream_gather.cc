@@ -138,20 +138,65 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
                              std::to_string(!info.is_scalar_slice));
 
   InlinedVector<NodeArg*> input_args;
-  input_args.reserve(slice_node.InputDefs().size());
+  input_args.resize(slice_node.InputDefs().size());
+
+  int axis_input_index = -1;  // -1 means axis is passed in attribute.
+  if (std::holds_alternative<int>(info.axis_attr_name_or_input_index)) {
+    axis_input_index = std::get<int>(info.axis_attr_name_or_input_index);
+  }
+
+  auto create_axes_input = [&info, new_axis, &graph]() -> NodeArg* {
+    InlinedVector<int64_t> dims;
+    if (info.rank_of_axis_value == 1) {
+      dims.push_back(1);
+    }
+    return CreateInitializerFromVector(graph, dims, {new_axis}, graph.GenerateNodeArgName("axes"));
+  };
+
   // The first slice op's data input should be current_node's current_node_input_index-th input.
   // For some cases when rank changes, slice op's slice input should also be adapted.
-  input_args.push_back(current_node.MutableInputDefs()[current_node_input_index]);
-  for (size_t i = 1; i < slice_node.InputDefs().size(); ++i) {
-    input_args.push_back(slice_node.MutableInputDefs()[i]);
+  int i = 0;
+  for (; i < static_cast<int>(slice_node.InputDefs().size()); ++i) {
+    if (i == info.GetDataInputIndex()) {
+      input_args[i] = current_node.MutableInputDefs()[current_node_input_index];
+    } else if (axis_input_index != -1 && i == axis_input_index) {
+      if (info.non_negative_axis == new_axis) {
+        input_args[i] = slice_node.MutableInputDefs()[i];
+      } else {
+        input_args[i] = create_axes_input();
+      }
+    } else {
+      input_args[i] = slice_node.MutableInputDefs()[i];
+    }
+  }
+
+  // It is possible axes input is null.
+  if (axis_input_index != -1 && info.non_negative_axis != new_axis) {
+    for (; i <= axis_input_index; ++i) {
+      if (i == axis_input_index) {
+        input_args.push_back(create_axes_input());
+      } else {
+        NodeArg& empty_input = graph.GetOrCreateNodeArg("", nullptr);
+        input_args.push_back(&empty_input);
+      }
+    }
   }
 
   // Update the axis attribute if new_axis is not the same as the original slicing axis (which happens when data
   // layout got changed by Transpose or Reshape ops)
   onnxruntime::NodeAttributes attributes = slice_node.GetAttributes();
-  if (info.non_negative_axis != new_axis) {
-    attributes[info.axis_attr_name] =
-        ONNX_NAMESPACE::MakeAttribute(info.axis_attr_name, static_cast<int64_t>(new_axis));
+
+  if (axis_input_index == -1 && info.non_negative_axis != new_axis) {
+    std::string attr_name = std::get<std::string>(info.axis_attr_name_or_input_index);
+    if (info.rank_of_axis_value == 0) {
+      attributes[attr_name] =
+          ONNX_NAMESPACE::MakeAttribute(attr_name, static_cast<int64_t>(new_axis));
+    } else if (info.rank_of_axis_value == 1) {
+      attributes[attr_name] =
+          ONNX_NAMESPACE::MakeAttribute(attr_name, std::vector<int64_t>{static_cast<int64_t>(new_axis)});
+    } else {
+      ORT_THROW("Unexpected rank of axis attribute value: " + std::to_string(info.rank_of_axis_value));
+    }
   }
 
   InlinedVector<NodeArg*> output_args;
@@ -183,7 +228,8 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
   auto new_slice_out_arg = new_slice_node->MutableOutputDefs()[new_slice_output_index_to_connect];
   UpdateSliceOutputShape(*new_slice_out_arg, new_axis, info.output_dim_on_axis);
 
-  auto new_slice_info = SliceInfo(graph, new_slice_node, info.is_scalar_slice, info.axis_attr_name, new_axis);
+  auto new_slice_info = SliceInfo(graph, new_slice_node, info.is_scalar_slice, info.axis_attr_name_or_input_index,
+                                  new_axis, info.rank_of_axis_value);
   new_slice_info.entry_node_name = info.entry_node_name;
   new_slice_info.entry_slice_arg_name = info.entry_slice_arg_name;
   return new_slice_info;
@@ -263,7 +309,8 @@ std::optional<SliceInfo> IsSupportedGatherND(Graph& graph, Node& node,
     return std::nullopt;
   }
 
-  return SliceInfo(graph, &node, false, "batch_dims", static_cast<int>(batch_dims), true);
+  return SliceInfo(graph, &node, false, "batch_dims", static_cast<int>(batch_dims),
+                   0 /* rank of axis attribute value */, true);
 }
 
 std::optional<SliceInfo> IsSupportedGather(Graph& graph, Node& node,
@@ -304,7 +351,7 @@ std::optional<SliceInfo> IsSupportedGather(Graph& graph, Node& node,
     }
   }
 
-  return SliceInfo(graph, &node, dim_size == 0, "axis", axis, true);
+  return SliceInfo(graph, &node, dim_size == 0, "axis", axis, 0 /* rank of axis attribute value */, true);
 }
 
 std::optional<SliceInfo> IsSupportedShrunkenGather(Graph& graph, Node& node,
@@ -342,7 +389,7 @@ std::optional<SliceInfo> IsSupportedShrunkenGather(Graph& graph, Node& node,
     return std::nullopt;
   }
 
-  return SliceInfo(graph, &node, false /*is_slice_scalar*/, "axis", axis, true);
+  return SliceInfo(graph, &node, false /*is_slice_scalar*/, "axis", axis, 0 /* rank of axis attribute value */, true);
 }
 
 /**
@@ -366,34 +413,37 @@ std::optional<SliceInfo> IsSupportedSlice(Graph& graph, Node& node,
   const NodeArg* axes_input = node.InputDefs().size() > 3 ? node.InputDefs()[3] : nullptr;
 
   if (data_input->Shape() == nullptr || starts_input->Shape() == nullptr || ends_input->Shape() == nullptr ||
-      (axes_input && axes_input->Shape() == nullptr)) {
+      (axes_input && axes_input->Exists() && axes_input->Shape() == nullptr)) {
     LOG_DEBUG_INFO(logger, "Skip Slice node " + node.Name() + " due to undefined shape.");
     return std::nullopt;
   }
 
   // Make sure starts/ends/axes/steps are all 1D tensors, since we only support single-dimension slicing.
   if (starts_input->Shape()->dim_size() != 1 || ends_input->Shape()->dim_size() != 1 ||
-      (axes_input && axes_input->Shape()->dim_size() != 1)) {
+      (axes_input && axes_input->Exists() && axes_input->Shape()->dim_size() != 1)) {
     LOG_DEBUG_INFO(logger, "Skip Slice node " + node.Name() + " due to unsupported dim size: " +
                                std::to_string(starts_input->Shape()->dim_size()) + ", " +
                                std::to_string(ends_input->Shape()->dim_size()) + ", " +
-                               std::to_string(axes_input ? axes_input->Shape()->dim_size() : 0));
+                               std::to_string(axes_input && axes_input->Exists() ? axes_input->Shape()->dim_size() : 0));
     return std::nullopt;
   }
 
   // Try to parse the 'axes' value.
   int axis = 0;
-  if (axes_input) {
+  if (axes_input && axes_input->Exists()) {
     InlinedVector<int64_t> axes_values;
     if (!graph_utils::IsConstantInitializer(graph, axes_input->Name()) ||
         !optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true) ||
         axes_values.size() != 1) {
+      LOG_DEBUG_INFO(logger, "Skip Slice node " + node.Name() + " due to unsupported axes value.");
       return std::nullopt;
     }
     axis = static_cast<int>(axes_values[0]);
   } else {
     // If 'axes' is not specified, then it is [0, .., r-1], so we force data rank to be 1.
     if (data_input->Shape()->dim_size() != 1) {
+      LOG_DEBUG_INFO(logger, "Skip Slice node " + node.Name() + " due to unsupported data rank: " +
+                                 std::to_string(data_input->Shape()->dim_size()));
       return std::nullopt;
     }
   }
@@ -401,7 +451,8 @@ std::optional<SliceInfo> IsSupportedSlice(Graph& graph, Node& node,
   if (axis < 0)
     axis += data_input->Shape()->dim_size();
 
-  return SliceInfo(graph, &node, false /*is_slice_scalar*/, "axis", axis, true);
+  return SliceInfo(graph, &node, false /*is_slice_scalar*/, 3 /* axis input index */, axis,
+                   1 /* rank of axes value */, true);
 }
 
 }  // namespace

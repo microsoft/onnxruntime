@@ -48,8 +48,6 @@ stages:
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
       ${{ if eq(parameters.EnableLto, true) }}:
         build_py_lto_flag: --enable_lto
-      ${{ if or(eq(parameters.AgentPool, 'onnxruntime-Win2019-GPU-dml-A10'), eq(parameters.AgentPool, 'onnxruntime-Win-CPU-2019')) }}:
-        vsVersion: '2019'
 
     steps:
       # Windows_CI_GPU_DML_Dev_arm64 build job still needs protobuf submodule
@@ -195,10 +193,7 @@ stages:
         - task: BatchScript@1
           displayName: 'Setup VS2022 env vars'
           inputs:
-            ${{ if eq(variables.vsVersion, '2019') }}:
-              filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-            ${{ else }}:
-              filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+            filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
             arguments: ${{ parameters.BuildArch }}
             modifyEnvironment: true
         # Esrp signing
@@ -240,10 +235,7 @@ stages:
         - task: BatchScript@1
           displayName: 'Setup VS env vars'
           inputs:
-            ${{ if eq(variables.vsVersion, '2019') }}:
-              filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-            ${{ else }}:
-              filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+            filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
             arguments: ${{ parameters.BuildArch }}
             modifyEnvironment: true
         - template: ../../templates/win-esrp-dll.yml
@@ -278,8 +270,6 @@ stages:
         - template: ../../templates/compliance.yml
           parameters :
             msbuildPlatform: ${{ parameters.sln_platform }}
-            ${{ if eq(variables.vsVersion, '2019') }}:
-              vs2022: false
 
       - template: ../../templates/component-governance-component-detection-steps.yml
         parameters :

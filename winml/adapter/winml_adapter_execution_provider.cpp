@@ -44,11 +44,15 @@ ORT_API_STATUS_IMPL(winmla::ExecutionProviderSync, _In_ OrtExecutionProvider* pr
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::GetProviderAllocator, _In_ OrtSession* session, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator) {
+ORT_API_STATUS_IMPL(
+  winmla::GetProviderAllocator, _In_ OrtSession* session, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator
+) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   const auto execution_provider = reinterpret_cast<onnxruntime::IExecutionProvider*>(provider);
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, execution_provider->GetOrtDeviceByMemType(::OrtMemType::OrtMemTypeDefault));
+  OrtMemoryInfo mem_info(
+    "", OrtAllocatorType::OrtDeviceAllocator, execution_provider->GetOrtDeviceByMemType(::OrtMemType::OrtMemTypeDefault)
+  );
   auto allocator_ptr = inference_session->GetAllocator(mem_info);
   *allocator = new (std::nothrow) OrtAllocatorWrapper(allocator_ptr);
   if (*allocator == nullptr) {

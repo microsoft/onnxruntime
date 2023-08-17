@@ -187,7 +187,7 @@ class AdamW(onnxblock_module.ForwardBlock):
 
         # Prepare the tensor sequence inputs for params and moments
         for input_name in [params_name, gradients_name, first_order_moments_name, second_order_moments_name]:
-            onnx_model.graph.input.append(  # noqa: PERF401
+            onnx_model.graph.input.append(
                 onnx.helper.make_tensor_sequence_value_info(input_name, trainable_parameters[0].data_type, None)
             )
 

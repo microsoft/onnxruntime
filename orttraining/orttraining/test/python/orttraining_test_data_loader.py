@@ -20,7 +20,7 @@ def ids_tensor(shape, vocab_size, rng=None, name=None):
 
     values = []
     for _ in range(total_dims):
-        values.append(rng.randint(0, vocab_size - 1))  # noqa: PERF401
+        values.append(rng.randint(0, vocab_size - 1))
 
     return torch.tensor(data=values, dtype=torch.long).view(shape).contiguous()
 
@@ -36,7 +36,7 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
 
     values = []
     for _ in range(total_dims):
-        values.append(rng.random() * scale)  # noqa: PERF401
+        values.append(rng.random() * scale)
 
     return torch.tensor(data=values, dtype=torch.float).view(shape).contiguous()
 

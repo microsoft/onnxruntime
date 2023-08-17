@@ -13,28 +13,28 @@ using namespace WEX::TestExecution;
     TEST_CLASS(test_class_name);
 
 #define WINML_TEST_CLASS_SETUP_CLASS(setup_class) \
-    TEST_CLASS_SETUP(TestClassSetup) {            \
-      getapi().setup_class();                     \
-      return true;                                \
-    }
+  TEST_CLASS_SETUP(TestClassSetup) {              \
+    getapi().setup_class();                       \
+    return true;                                  \
+  }
 
 #define WINML_TEST_CLASS_TEARDOWN_CLASS(teardown_class) \
-    TEST_CLASS_CLEANUP(TestClassCleanup) {              \
-      getapi().teardown_class();                        \
-      return true;                                      \
-    }
+  TEST_CLASS_CLEANUP(TestClassCleanup) {                \
+    getapi().teardown_class();                          \
+    return true;                                        \
+  }
 
 #define WINML_TEST_CLASS_SETUP_METHOD(setup_method) \
-    TEST_METHOD_SETUP(TestMethodSetup) {              \
-      getapi().setup_method();                        \
-      return true;                                    \
-    }
+  TEST_METHOD_SETUP(TestMethodSetup) {              \
+    getapi().setup_method();                        \
+    return true;                                    \
+  }
 
 #define WINML_TEST_CLASS_TEARDOWN_METHOD(teardown_method) \
-    TEST_METHOD_CLEANUP(TestClassCleanup) {               \
-      getapi().teardown_method();                         \
-      return true;                                        \
-    }
+  TEST_METHOD_CLEANUP(TestClassCleanup) {                 \
+    getapi().teardown_method();                           \
+    return true;                                          \
+  }
 
 #define WINML_TEST_CLASS_BEGIN_TESTS
 
@@ -47,11 +47,11 @@ using namespace WEX::TestExecution;
     getapi().test_name();                 \
   }
 
-#define WINML_SKIP_TEST(message)                                                                 \
-  WINML_SUPRESS_UNREACHABLE_BELOW(                                                               \
-    Log::Result(TestResults::Skipped,                                                            \
-                std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str()); \
-    return;)
+#define WINML_SKIP_TEST(message)                                                                                       \
+  WINML_SUPRESS_UNREACHABLE_BELOW(                                                                                     \
+    Log::Result(TestResults::Skipped, std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str()); \
+    return;                                                                                                            \
+  )
 
 #define WINML_EXPECT_NO_THROW(statement) VERIFY_NO_THROW(statement)
 #define WINML_EXPECT_TRUE(statement) VERIFY_IS_TRUE(statement)
@@ -63,7 +63,8 @@ using namespace WEX::TestExecution;
 #define WINML_LOG_COMMENT(message) \
   WEX::Logging::Log::Comment(std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str())
 #define WINML_EXPECT_HRESULT_SUCCEEDED(hresult_expression) VERIFY_SUCCEEDED(hresult_expression)
-#define WINML_EXPECT_THROW_SPECIFIC(statement, exception, condition) VERIFY_THROWS_SPECIFIC(statement, exception, condition)
+#define WINML_EXPECT_THROW_SPECIFIC(statement, exception, condition) \
+  VERIFY_THROWS_SPECIFIC(statement, exception, condition)
 #define WINML_EXPECT_HRESULT_FAILED(hresult_expression) VERIFY_FAILED(hresult_expression)
 
 static bool RuntimeParameterExists(std::wstring param) {

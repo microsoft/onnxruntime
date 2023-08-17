@@ -166,10 +166,15 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
+  const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
+
 #if USE_FLASH_ATTENTION
   bool is_long_sequence = sizeof(T) == 2 ||  // sequence length threshold is 0 for FP16
                           parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32 ||
                           parameters.kv_sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32;
+
+  // Exclude this case since PrepareQkv will convert the format to BNSH.
+  bool past_no_bias = (pass_key_value_as_past || past_key != nullptr || present_key != nullptr) && bias == nullptr;
 
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
 
@@ -177,6 +182,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         is_long_sequence &&
+                                        !past_no_bias &&
                                         (relative_position_bias == nullptr || is_good_for_rpb) &&
                                         (nullptr == key_padding_mask || is_mask_1d_key_seq_len_start) &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
@@ -226,7 +232,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
-  const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
   data.past_key = pass_key_value_as_past  ? reinterpret_cast<const CudaT*>(key->Data<T>())
                   : (nullptr == past_key) ? nullptr
                                           : reinterpret_cast<const CudaT*>(past_key->Data<T>());
@@ -251,7 +256,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   cublasHandle_t cublas = GetCublasHandle(context);
 
   return QkvToContext<CudaT>(
-      device_prop, cublas, Stream(context), parameters, data);
+      device_prop, cublas, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda

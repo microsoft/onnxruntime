@@ -294,7 +294,7 @@ class GraphLowering:
                 producers[output] = node
             for input in node.input:
                 if input in producers:
-                    precessors[node.name].append(producers[input])  # noqa: PERF401
+                    precessors[node.name].append(producers[input])
         for value in precessors.values():
             value.sort(key=sorted_nodes.index, reverse=True)
         for idx in range(len(sorted_nodes) - 1, -1, -1):
@@ -441,9 +441,7 @@ class GraphLowering:
                 assert isinstance(sub_nodes[nxt], ReduceForLoopEnd)
                 for reduce_node in sub_nodes[nxt].reduce_nodes:
                     if reduce_node.outputs[0].name in output_name_map:
-                        reduce_store_nodes.append(  # noqa: PERF401
-                            IONode(reduce_node.outputs[0], kernel_node.offset_calc, False)
-                        )
+                        reduce_store_nodes.append(IONode(reduce_node.outputs[0], kernel_node.offset_calc, False))
                 new_sub_nodes.append(sub_nodes[nxt])
                 nxt += 1
             cur = nxt

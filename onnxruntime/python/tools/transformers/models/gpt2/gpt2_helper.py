@@ -75,7 +75,7 @@ class MyGPT2Model(GPT2Model):
             for i in range(num_layer):
                 # Since transformers v4.*, past key and values are separated outputs.
                 # Here we concate them into one tensor to be compatible with Attention operator.
-                present.append(  # noqa: PERF401
+                present.append(
                     torch.cat(
                         (result[1][i][0].unsqueeze(0), result[1][i][1].unsqueeze(0)),
                         dim=0,

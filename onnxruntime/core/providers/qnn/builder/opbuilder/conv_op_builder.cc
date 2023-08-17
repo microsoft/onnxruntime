@@ -525,7 +525,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       dilations[1] = width_dilation;
     }
 
-    QnnParamWrapper dilation_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::dilation,
+    QnnParamWrapper dilation_paramwrapper(node_unit.Index(), node_unit.Name(), QNN_OP_CONV_2D_PARAM_DILATION,
                                           {SafeInt<uint32_t>(dilations.size())}, std::vector<uint32_t>(dilations));
     param_tensor_names.push_back(dilation_paramwrapper.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(dilation_paramwrapper));
@@ -542,7 +542,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       strides[1] = width_stride;
     }
 
-    QnnParamWrapper stride_amount_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::stride,
+    QnnParamWrapper stride_amount_paramwrapper(node_unit.Index(), node_unit.Name(), QNN_OP_CONV_2D_PARAM_STRIDE,
                                                {SafeInt<uint32_t>(strides.size())}, std::vector<uint32_t>(strides));
     param_tensor_names.push_back(stride_amount_paramwrapper.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(stride_amount_paramwrapper));
@@ -562,7 +562,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       output_padding[1] = width_out_pad;
     }
 
-    QnnParamWrapper output_padding_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::output_padding,
+    QnnParamWrapper output_padding_paramwrapper(node_unit.Index(), node_unit.Name(), QNN_OP_TRANSPOSE_CONV_2D_PARAM_OUTPUT_PADDING,
                                                 {static_cast<uint32_t>(output_padding.size())}, std::vector<uint32_t>(output_padding));
     param_tensor_names.push_back(output_padding_paramwrapper.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(output_padding_paramwrapper));
@@ -630,7 +630,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     }
 
     ReArranagePads(pads);
-    QnnParamWrapper pad_amount_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::pad_amount,
+    QnnParamWrapper pad_amount_paramwrapper(node_unit.Index(), node_unit.Name(), QNN_OP_CONV_2D_PARAM_PAD_AMOUNT,
                                             {2, 2}, std::move(pads));
     param_tensor_names.push_back(pad_amount_paramwrapper.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(pad_amount_paramwrapper));
@@ -648,7 +648,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     Qnn_Scalar_t group_qnn_scalar = QNN_SCALAR_INIT;
     group_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
     group_qnn_scalar.uint32Value = group;
-    QnnParamWrapper group_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::group, group_qnn_scalar);
+    QnnParamWrapper group_paramwrapper(node_unit.Index(), node_unit.Name(), QNN_OP_CONV_2D_PARAM_GROUP, group_qnn_scalar);
     param_tensor_names.push_back(group_paramwrapper.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(group_paramwrapper));
   } else {
@@ -681,7 +681,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                           std::vector<uint32_t>(output_shape_2d));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                      qnn_def::package_name,
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       output_node_type,
                                                       std::move(input_names),
                                                       {conv_output_name},
@@ -705,7 +705,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                           std::move(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                      qnn_def::package_name,
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       output_node_type,
                                                       std::move(input_names),
                                                       {output_name},

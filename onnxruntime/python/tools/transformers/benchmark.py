@@ -417,7 +417,7 @@ def run_pytorch(
                     result.update(get_latency_result(runtimes, batch_size))
                     logger.info(result)
                     results.append(result)
-                except RuntimeError as e:  # noqa: PERF203
+                except RuntimeError as e:
                     logger.exception(e)
                     torch.cuda.empty_cache()
 
@@ -572,7 +572,7 @@ def run_tensorflow(
                     result.update(get_latency_result(runtimes, batch_size))
                     logger.info(result)
                     results.append(result)
-                except RuntimeError as e:  # noqa: PERF203
+                except RuntimeError as e:
                     logger.exception(e)
                     from numba import cuda
 

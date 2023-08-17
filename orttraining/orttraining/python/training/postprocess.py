@@ -26,7 +26,7 @@ def find_input_node(model, arg):
     for node in model.graph.node:
         for output in node.output:
             if output == arg:
-                result.append(node)  # noqa: PERF401
+                result.append(node)
     return result[0] if len(result) == 1 else None
 
 
@@ -35,7 +35,7 @@ def find_output_node(model, arg):
     for node in model.graph.node:
         for input in node.input:
             if input == arg:
-                result.append(node)  # noqa: PERF401
+                result.append(node)
     return result[0] if len(result) == 1 else result
 
 
@@ -189,7 +189,7 @@ def find_nodes(graph, op_type):
     nodes = []
     for node in graph.node:
         if node.op_type == op_type:
-            nodes.append(node)  # noqa: PERF401
+            nodes.append(node)
     return nodes
 
 
@@ -382,7 +382,7 @@ def layer_norm_transform(model):
     all_nodes = []
     for node in graph.node:
         if node not in remove_nodes:
-            all_nodes.append(node)  # noqa: PERF401
+            all_nodes.append(node)
 
     for node in layer_norm_nodes:
         all_nodes.append(node)  # noqa: PERF402

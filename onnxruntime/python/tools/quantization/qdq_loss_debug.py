@@ -145,7 +145,7 @@ def collect_activations(
 
     intermediate_outputs = []
     for input_d in input_reader:
-        intermediate_outputs.append(inference_session.run(None, input_d))  # noqa: PERF401
+        intermediate_outputs.append(inference_session.run(None, input_d))
     if not intermediate_outputs:
         raise RuntimeError("No data is collected while running augmented model!")
 

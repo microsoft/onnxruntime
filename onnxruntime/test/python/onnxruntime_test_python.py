@@ -86,6 +86,7 @@ class TestInferenceSession(unittest.TestCase):
                 providers=["CPUExecutionProvider"],
             )
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            os.remove(so.optimized_model_filepath)
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -113,6 +114,8 @@ class TestInferenceSession(unittest.TestCase):
             )
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(external_initializers_file))
+            os.remove(so.optimized_model_filepath)
+            os.remove(external_initializers_file)
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -137,6 +140,36 @@ class TestInferenceSession(unittest.TestCase):
             onnxrt.InferenceSession(get_name("mnist.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
+            os.remove(so.optimized_model_filepath)
+            os.remove(os.path.join(directory, external_initializers_file))
+        except Fail as onnxruntime_error:
+            if (
+                str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
+                " compiled nodes. Please disable any execution providers which generate compiled nodes."
+            ):
+                pass
+            else:
+                raise onnxruntime_error
+
+    def test_model_serialization_with_original_external_initializers_to_directory(self):
+        try:
+            so = onnxrt.SessionOptions()
+            so.log_severity_level = 1
+            so.logid = "TestModelSerializationWithOriginalExternalInitializersToDirectory"
+            directory = "./testdata/"
+            so.optimized_model_filepath = os.path.join(directory, "model_opt_with_ext_data.onnx")
+            external_initializers_file = "model_opt_with_ext_data.bin"
+            so.add_session_config_entry(
+                "session.optimized_model_external_initializers_file_name", external_initializers_file
+            )
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            onnxrt.InferenceSession(
+                get_name("model_with_orig_ext_data.onnx"), sess_options=so, providers=["CPUExecutionProvider"]
+            )
+            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
+            os.remove(so.optimized_model_filepath)
+            os.remove(os.path.join(directory, external_initializers_file))
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -406,7 +439,7 @@ class TestInferenceSession(unittest.TestCase):
                     run_base_test2()
                     run_advanced_test()
 
-                except OSError:  # noqa: PERF203
+                except OSError:
                     continue
                 else:
                     break
@@ -552,6 +585,37 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+    def test_run_async(self):
+        event = threading.Event()
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+
+        class MyData:
+            def __init__(self, id):
+                self.__id = id
+
+            def get_id(self):
+                return self.__id
+
+        my_data = MyData(123456)
+
+        def callback(res: np.ndarray, data: MyData, err: str) -> None:
+            self.assertEqual(len(err), 0)
+            self.assertEqual(len(res), 1)
+            self.assertEqual(data.get_id(), 123456)
+            np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+            event.set()
+
+        so = onnxrt.SessionOptions()
+        so.intra_op_num_threads = 2
+
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so, providers=available_providers)
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        sess.run_async(["Y"], {"X": x}, callback, my_data)
+
+        event.wait(10)  # timeout in 10 sec
+        self.assertTrue(event.is_set())
 
     def test_run_model_from_bytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
@@ -879,6 +943,8 @@ class TestInferenceSession(unittest.TestCase):
                     self.assertTrue(tag in lines[i])
             self.assertTrue("]" in lines[-1])
 
+        os.remove(profile_file)
+
     def test_profiler_get_start_time_ns(self):
         def get_single_session_profiling_start_time():
             so = onnxrt.SessionOptions()
@@ -888,7 +954,9 @@ class TestInferenceSession(unittest.TestCase):
                 sess_options=so,
                 providers=onnxrt.get_available_providers(),
             )
-            return sess.get_profiling_start_time_ns()
+            start_time = sess.get_profiling_start_time_ns()
+            os.remove(sess.end_profiling())
+            return start_time
 
         # Get 1st profiling's start time
         start_time_1 = get_single_session_profiling_start_time()
@@ -1027,6 +1095,8 @@ class TestInferenceSession(unittest.TestCase):
             )  # from the ORT config
 
             self.assertEqual(session_options.enable_profiling, True)  # from the ORT config
+
+            os.remove(sess.end_profiling())
 
         except Exception:
             raise

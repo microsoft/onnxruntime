@@ -5,9 +5,30 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "[common] Launch Unit Tests",
+      "args": ["-u", "bdd", "--timeout", "999999", "--colors", "${workspaceFolder}/common/test/**/*.js"],
+      "internalConsoleOptions": "openOnSessionStart",
+      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+      "cwd": "${workspaceFolder}/common",
+      "request": "launch",
+      "skipFiles": ["<node_internals>/**"],
+      "type": "node",
+      "sourceMaps": true,
+      "preLaunchTask": "tsc: build - common/test/tsconfig.json"
+    },
+    {
+      "name": "[web] Launch Test Runner",
+      "program": "${workspaceFolder}/web/script/test-runner-cli.js",
+      "request": "launch",
+      "skipFiles": ["<node_internals>/**"],
+      "type": "node",
+      "cwd": "${workspaceFolder}/web",
+      "args": ["suite1"]
+    },
+    {
+      "name": "[web] Attach to Chrome",
       "type": "chrome",
       "request": "attach",
-      "name": "Attach to Chrome",
       "port": 9333,
       "webRoot": "${workspaceFolder}",
       "sourceMapPathOverrides": {
@@ -18,7 +39,7 @@
       "smartStep": true
     },
     {
-      "name": "Remote Browser via Webkit Adaptor",
+      "name": "[web] Remote Browser via Webkit Adaptor",
       "type": "chrome",
       "request": "attach",
       "port": 9000,

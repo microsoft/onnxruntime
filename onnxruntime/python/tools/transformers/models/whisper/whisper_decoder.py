@@ -167,10 +167,10 @@ class WhisperDecoderInputs:
 
             past = []
             for _ in range(2 * num_layers):
-                past.append(torch.rand(self_attention_past_shape, dtype=float_type, device=device))  # noqa: PERF401
+                past.append(torch.rand(self_attention_past_shape, dtype=float_type, device=device))
 
             for _ in range(2 * num_layers):
-                past.append(torch.rand(cross_attention_past_shape, dtype=float_type, device=device))  # noqa: PERF401
+                past.append(torch.rand(cross_attention_past_shape, dtype=float_type, device=device))
         else:
             past = None
 
