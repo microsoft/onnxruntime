@@ -61,12 +61,17 @@ jobs:
             displayName: 'Run the PREfast SDL Native Rules for MSBuild'
             inputs:
               msBuildArchitecture: amd64
-              setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --enable_pybind ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+              setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --enable_pybind ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON onnxruntime_ENABLE_LTO=OFF'
               msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\Debug\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=x64 /p:configuration=Debug /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
               excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files#C:\program files (x86)#C:\program files'
               rulesetName: Custom
               customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
               publishXML: true
+
+          - task: SdtReport@2
+            displayName: 'Create Security Analysis Report'
+            inputs:
+              SDLNativeRules: true
 
           - task: TSAUpload@2
             displayName: 'TSA upload'
@@ -207,7 +212,6 @@ jobs:
         inputs:
           AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
 
-
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
@@ -215,6 +219,13 @@ jobs:
          python onnx_backend_test_series.py
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
         displayName: 'Run Python Tests'
+
+      - task: TSAUpload@2
+        displayName: 'TSA upload'
+        condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        inputs:
+          GdnPublishTsaOnboard: false
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
 
       - template: component-governance-component-detection-steps.yml
         parameters:

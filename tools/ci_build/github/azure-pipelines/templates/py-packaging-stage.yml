@@ -253,6 +253,10 @@ stages:
           rulesetName: Custom
           customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
 
+      - task: SdtReport@2
+        displayName: 'Create Security Analysis Report'
+        inputs:
+          SDLNativeRules: true
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
