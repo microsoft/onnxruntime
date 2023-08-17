@@ -16,28 +16,6 @@ import {ShapeUtil} from '../../util';
  **/
 export const WORKGROUP_SIZE = 64;
 
-// interface IndicesHelperImplementations {
-//   /**
-//    * implementation of `offsetToIndices` function.
-//    */
-//   readonly offsetToIndices: string;
-
-//   /**
-//    * implementation of `indicesToOffset` function.
-//    */
-//   readonly indicesToOffset: string;
-
-//   /**
-//    * implementation of `set`, `setByIndices` and `setByOffset` function.
-//    */
-//   readonly set: string;
-
-//   /**
-//    * implementation of `get`, `getByIndices` and `getByOffset` function.
-//    */
-//   readonly get: string;
-// }
-
 interface IndicesHelperTypes {
   /**
    * WGSL type of indices expression
