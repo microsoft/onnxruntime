@@ -64,7 +64,14 @@ class _OptimizerBase(blocks.Block):
     def __init__(self):
         super().__init__()
 
-    def build_optimizer_node(self, input_names, output_name, node_name, node_domain, node_attributes):
+    def build_optimizer_node(
+        self,
+        input_names: list,
+        output_name: str,
+        node_name: str,
+        node_domain: str,
+        node_attributes: dict,
+    ) -> str:
         """
         Build and append an optimizer node to the ONNX graph.
 
@@ -101,7 +108,12 @@ class SGDOptimizer(_OptimizerBase):
     def __init__(self):
         super().__init__()
 
-    def build(self, learning_rate_name, gradients_name, params_name):
+    def build(
+        self,
+        learning_rate_name: str,
+        gradients_name: str,
+        params_name: str,
+    ) -> str:
         """
         Build an SGD optimizer node.
 
@@ -142,13 +154,13 @@ class AdamWOptimizer(_OptimizerBase):
 
     def build(
         self,
-        learning_rate_name,
-        step_name,
-        parameter_sequence_name,
-        gradient_sequence_name,
-        first_order_moment_sequence_name,
-        second_order_moment_sequence_name,
-    ):
+        learning_rate_name: str,
+        step_name: str,
+        parameter_sequence_name: str,
+        gradient_sequence_name: str,
+        first_order_moment_sequence_name: str,
+        second_order_moment_sequence_name: str,
+    ) -> str:
         """
         Build an AdamW optimizer node.
 
@@ -231,7 +243,13 @@ class _Optimizer(onnxblock_module.ForwardBlock):
 
         return updated_flag_name
 
-    def _optimizer_specific_logic(self, learning_rate_name, params_name, gradients_name, trainable_parameters):
+    def _optimizer_specific_logic(
+        self,
+        learning_rate_name: str,
+        params_name: str,
+        gradients_name: str,
+        trainable_parameters: Tuple,
+    ) -> str:
         raise NotImplementedError("Subclasses must implement _optimizer_specific_logic method.")
 
 
@@ -247,7 +265,13 @@ class AdamW(_Optimizer):
             weight_decay=weight_decay,
         )
 
-    def _optimizer_specific_logic(self, learning_rate_name, params_name, gradients_name, trainable_parameters):
+    def _optimizer_specific_logic(
+        self,
+        learning_rate_name: str,
+        params_name: str,
+        gradients_name: str,
+        trainable_parameters: Tuple,
+    ) -> str:
         onnx_model = self.base
         step_name = "step"
         first_order_moments_name = "first_order_moments"
@@ -285,7 +309,13 @@ class SGD(_Optimizer):
         super().__init__(clip_grad)
         self._sgd = SGDOptimizer()
 
-    def _optimizer_specific_logic(self, learning_rate_name, params_name, gradients_name, trainable_parameters):
+    def _optimizer_specific_logic(
+        self,
+        learning_rate_name: str,
+        params_name: str,
+        gradients_name: str,
+        trainable_parameters: Tuple,
+    ) -> str:
         onnx_model = self.base
         updated_flag_name = self._sgd(learning_rate_name, params_name, gradients_name)
 
