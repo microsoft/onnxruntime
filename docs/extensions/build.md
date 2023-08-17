@@ -1,10 +1,10 @@
 ---
-title: Development
+title: Build
 description: Instructions for building and developing ORT Extensions.
 parent: Extensions
-nav_order: 2
+nav_order: 3
 ---
-# Build and Development
+# Build from Source
 
 This project supports Python and can be built from source easily, or a simple cmake build without Python dependency.
 ## Python package
@@ -40,11 +40,47 @@ ONNXRuntime-Extensions will be built as a static library and linked with ONNXRun
 for any other cases, please run `build.bat` or `bash ./build.sh` to build the library. By default, the DLL or the library will be generated in the directory `out/<OS>/<FLAVOR>`. There is a unit test to help verify the build.
 
 
-**VC Runtime static linkage**  
+**VC Runtime static linkage**
 If you want to build the binary with VC Runtime static linkage, please add a parameter _-DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>"_ on running build.bat
 
 ## Copyright guidance
 check this link https://docs.opensource.microsoft.com/releasing/general-guidance/copyright-headers/ for source file copyright header.
+
+
+
+# Build ONNX Runtime with onnxruntime-extensions for Java package
+
+*The following step are demonstrated for Windows Platform only, the others like Linux and MacOS can be done similarly.*
+
+> Android build was supported as well; check [here](https://onnxruntime.ai/docs/build/android.html#cross-compiling-on-windows) for arguments to build AAR package.
+
+## Tools required
+1. install visual studio 2022 (with cmake, git, desktop C++)
+2. install miniconda to have Python support (for onnxruntime build)
+3. OpenJDK: https://docs.microsoft.com/en-us/java/openjdk/download
+		(OpenJDK 11.0.15 LTS)
+4. Gradle: https://gradle.org/releases/
+		(v6.9.2)
+
+## Commands
+Launch **Developer PowerShell for VS 2022** in Windows Tereminal
+```
+	. $home\miniconda3\shell\condabin\conda-hook.ps1
+	conda activate base
+
+	$env:JAVA_HOME="C:\Program Files\Microsoft\jdk-11.0.15.10-hotspot"
+	# clone ONNXRuntime
+	git clone -b rel-1.12.0 https://github.com/microsoft/onnxruntime.git onnxruntime
+
+	# clone onnxruntime-extensions
+	git clone https://github.com/microsoft/onnxruntime-extensions.git onnxruntime_extensions
+
+	# build JAR package in this folder
+	mkdir ortall.build
+	cd ortall.build
+	python ..\onnxruntime\tools\ci_build\build.py --config Release --cmake_generator "Visual Studio 17 2022" --build_java --build_dir .  --use_extensions --extensions_overridden_path "..\onnxruntime-extensions"
+```
+
 
 ## Dependencies
 

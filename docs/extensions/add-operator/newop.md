@@ -1,17 +1,18 @@
 ---
 title: New Operators
 description: Instructions to add a new custom operator
-parent: Extensions
-nav_order: 3
+parent: Add Operators
+grand_parent: Extensions
+nav_order: 2
 ---
-# Add a Custom Operator in ONNXRuntime-Extensions
+# Create a Custom Operator from Scratch
 
-Before implement a custom operator, you get the ONNX model with one or more ORT custom operators, created by ONNX converters, [ONNX-Script](https://github.com/microsoft/onnx-script), or [ONNX model API](https://onnx.ai/onnx/api/helper.html) and etc..
+Before implementing a custom operator, you need an ONNX model with one or more ORT custom operators, created by ONNX converters, [ONNX-Script](https://github.com/microsoft/onnx-script), or [ONNX model API](https://onnx.ai/onnx/api/helper.html) and etc..
 
 
 ## 1. Quick verification with PythonOp (optional)
 
-Before you actually develop a custom operator for the work, if you want to quickly verify the ONNX model with Python, you can wrap the custom operator with **[PyOp](./pyop.md)**.
+Before you actually develop a custom operator for your use case, if you want to quickly verify the ONNX model with Python, you can wrap the custom operator with **[PyOp](./pyop.md)**.
 
 ```python
 import numpy

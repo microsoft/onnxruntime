@@ -1,8 +1,9 @@
 ---
-title: Python Operator
+title: Create a Python Operator
 description: Instructions to create a custom operator using Python functions and ORT inference integration.
-parent: Extensions
-nav_order: 4
+parent: Add Operators
+grand_parent: Extensions
+nav_order: 1
 ---
 
 # Creating custom operators using Python functions
