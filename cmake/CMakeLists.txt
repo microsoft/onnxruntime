@@ -2,12 +2,7 @@
 # Licensed under the MIT License.
 
 # Minimum CMake required
-if(WIN32)
-  # TODO: actually we need cmake 3.26+ on Windows but QNN EP's build machine doesn't have it
-  cmake_minimum_required(VERSION 3.25)
-else()
-  cmake_minimum_required(VERSION 3.26)
-endif()
+cmake_minimum_required(VERSION 3.26)
 
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
@@ -19,13 +14,7 @@ cmake_policy(SET CMP0117 NEW)
 cmake_policy(SET CMP0104 OLD)
 
 # Enable Hot Reload for MSVC compilers if supported.
-if (POLICY CMP0141)
-  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
-    cmake_policy(SET CMP0141 NEW)
-  else()
-    cmake_policy(SET CMP0141 OLD)
-  endif()
-endif()
+cmake_policy(SET CMP0141 NEW)
 
 # Project
 project(onnxruntime C CXX ASM)

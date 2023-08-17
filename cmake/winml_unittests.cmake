@@ -180,7 +180,7 @@ add_dependencies(winml_test_common
   winml_dll
 )
 
-onnxruntime_add_include_to_target(winml_test_common onnx_proto gtest ${PROTOBUF_LIB} WIL::WIL safeint_interface ${GSL_TARGET})
+onnxruntime_add_include_to_target(winml_test_common onnx_proto gtest ${PROTOBUF_LIB} ${WIL_TARGET} safeint_interface ${GSL_TARGET})
 onnxruntime_add_static_library(winml_google_test_lib ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
 onnxruntime_add_include_to_target(winml_google_test_lib gtest)
 set_winml_target_properties(winml_google_test_lib)

@@ -545,7 +545,7 @@ if (onnxruntime_USE_CUDA)
       target_link_libraries(${target} PRIVATE cupti)
     endif()
 
-    if (onnxruntime_ENABLE_NVTX_PROFILE)
+    if (onnxruntime_ENABLE_NVTX_PROFILE AND NOT WIN32)
       target_link_libraries(${target} PRIVATE nvToolsExt)
     endif()
 
@@ -1276,7 +1276,7 @@ if (onnxruntime_USE_DML)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_dml
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface WIL::WIL
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${WIL_TARGET}
   )
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE
