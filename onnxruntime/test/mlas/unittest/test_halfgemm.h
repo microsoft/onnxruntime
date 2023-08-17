@@ -13,6 +13,7 @@ Abstract:
     Tests for MLAS half precision GEMM.
 
 --*/
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #pragma once
 
@@ -283,3 +284,5 @@ class MlasHalfGemmTest : public MlasTestBase {
     }
   }
 };
+
+#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

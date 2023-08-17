@@ -13,6 +13,7 @@ Abstract:
     Define fp16 type before it is available in all compilers
 
 --*/
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #pragma once
 
@@ -63,3 +64,5 @@ void SmallFloatFill(T* start, size_t size) {
     *FillAddress++ = T((MinimumFillValue + offset) / 16.0f);
   }
 }
+
+#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
