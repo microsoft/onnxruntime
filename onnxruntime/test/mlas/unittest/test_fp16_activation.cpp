@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include "test_fp16.h"
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -156,3 +158,4 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
 });
 
 #endif  // fp16 vector intrinsic supported
+#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

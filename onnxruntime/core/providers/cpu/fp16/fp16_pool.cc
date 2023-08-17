@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/mlas/inc/mlas.h"
 
@@ -292,4 +292,4 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 }  // namespace onnxruntime
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -6,8 +6,15 @@
 #include "core/framework/transpose_helper.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
+
+namespace {
+// reduce the supported types with any global or op specific lists
+using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                        Transpose, Input, 0);
+}  // namespace
 
 template <typename T>
 struct has_mlas_transpose : std::false_type {};
@@ -114,10 +121,17 @@ void TransposeSingleAxisOutwards(gsl::span<const size_t> permutations, const Ten
         dst_strides[permutations[dim]] = contig_dst_strides[dim];
       }
 
+#ifdef(ORT_MINIMAL_BUILD)
+      ORT_THROW_IF_ERROR(DispatchStridedCopy<EnabledDataTypes>(tp,
+                                                               output, 0, dst_strides,
+                                                               input_shape,
+                                                               input, 0, src_strides));
+#else
       ORT_THROW_IF_ERROR(DispatchStridedCopy<element_type_lists::All>(tp,
                                                                       output, 0, dst_strides,
                                                                       input_shape,
                                                                       input, 0, src_strides));
+#endif
     }
   }
 }
