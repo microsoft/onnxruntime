@@ -2,6 +2,7 @@
 title: Add Operators
 description: Instructions to add a new custom operator
 parent: Extensions
+has_children: true
 nav_order: 2
 ---
 # Add a Custom Operator in ONNX Runtime Extensions
