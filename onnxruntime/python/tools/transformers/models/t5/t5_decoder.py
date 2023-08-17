@@ -424,7 +424,7 @@ class T5DecoderHelper:
             if isinstance(model, T5DecoderInit):
                 for i in range(2 * num_decoder_layers):
                     max_diff = numpy.amax(
-                        numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[1 + 2 * num_decoder_layers+ i])
+                        numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[1 + 2 * num_decoder_layers + i])
                     )
                     logger.debug(f"cross attention past state {i} max_diff={max_diff}")
                     max_diff_all = max(max_diff_all, max_diff)
