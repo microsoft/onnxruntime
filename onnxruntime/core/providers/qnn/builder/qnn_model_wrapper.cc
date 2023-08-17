@@ -413,7 +413,7 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
                     "QNN EP: Failed to add output tensor for inserted Reshape.");
 
   ORT_RETURN_IF_NOT(CreateQnnNode(output_name,
-                                  qnn_def::package_name,
+                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
                                   QNN_OP_RESHAPE,
                                   {input_name},
                                   {output_name},
@@ -450,7 +450,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   std::vector<uint32_t> perm_dim{perm_size};
   std::vector<uint32_t> transpose_perm_copy = transpose_perm;
   const std::string& node_name = output_name;
-  QnnParamWrapper transpose_param(node_index, node_name, qnn_def::perm, std::move(perm_dim), std::move(transpose_perm_copy));
+  QnnParamWrapper transpose_param(node_index, node_name, QNN_OP_TRANSPOSE_PARAM_PERM, std::move(perm_dim), std::move(transpose_perm_copy));
   std::string param_tensor_name(transpose_param.GetParamTensorName());
   ORT_RETURN_IF_NOT(AddParamWrapper(std::move(transpose_param)), "Failed to add tensor.");
   Qnn_TensorType_t tensor_type = (false == is_for_output) ? QNN_TENSOR_TYPE_NATIVE : QNN_TENSOR_TYPE_APP_READ;
@@ -464,7 +464,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   const static std::string qnn_node_type = "Transpose";
 
   CreateQnnNode(output_name,
-                qnn_def::package_name,
+                QNN_OP_PACKAGE_NAME_QTI_AISW,
                 qnn_node_type,
                 {input_name},
                 {output_name},

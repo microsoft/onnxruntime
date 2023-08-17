@@ -61,6 +61,9 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("DequantizeLinear", *this);
 
     CreateSimpleOpBuilder("HardSwish", *this);
+
+    CreateSimpleOpBuilder("DepthToSpace", *this);
+    CreateSimpleOpBuilder("SpaceToDepth", *this);
   }
 
   {

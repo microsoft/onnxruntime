@@ -54,6 +54,18 @@ Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF(!is_quantized_model && output_data_type != float_elem_type, "QNN LayerNorm data type ", output_data_type->c_str(), " is not supported in CPU backend.");
   ORT_RETURN_IF(outputs.size() > 1, "QNN LayerNorm only support 1 output.");
 
+  // QNN Op validation can also do the same work, but the message is not so clear.
+  // Explicit check and provide clear message here
+  if (is_quantized_model) {
+    std::vector<uint32_t> input_shape;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0");
+    const size_t input_rank = input_shape.size();
+    int32_t default_axis = -1;
+    Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
+    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
+    ORT_RETURN_IF(static_cast<size_t>(default_axis) != input_rank - 1, "QNN LayerNorm for HTP only support axis with last input dimension");
+  }
+
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
 }
 

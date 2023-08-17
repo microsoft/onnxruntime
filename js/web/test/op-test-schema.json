@@ -1,0 +1,345 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "title": "Name",
+        "description": "the name of the test case"
+      },
+      "operator": {
+        "type": "string",
+        "pattern": "[A-Z][a-zA-Z]*",
+        "title": "Operator",
+        "description": "the operator to use for the test case"
+      },
+      "attributes": {
+        "type": "array",
+        "description": "the attributes to use for the test case",
+        "items": {
+          "type": "object",
+          "oneOf": [
+            {
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "the name of the attribute"
+                },
+                "type": {
+                  "const": "int",
+                  "description": "the type of the attribute"
+                },
+                "data": {
+                  "type": "integer",
+                  "description": "the value of the attribute"
+                }
+              },
+              "required": ["name", "data", "type"],
+              "additionalProperties": false
+            },
+            {
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "the name of the attribute"
+                },
+                "type": {
+                  "const": "ints",
+                  "description": "the type of the attribute"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "description": "the value of the attribute"
+                }
+              },
+              "required": ["name", "data", "type"],
+              "additionalProperties": false
+            },
+            {
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "the name of the attribute"
+                },
+                "type": {
+                  "const": "float",
+                  "description": "the type of the attribute"
+                },
+                "data": {
+                  "type": "number",
+                  "description": "the value of the attribute"
+                }
+              },
+              "required": ["name", "data", "type"],
+              "additionalProperties": false
+            },
+            {
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "the name of the attribute"
+                },
+                "type": {
+                  "const": "floats",
+                  "description": "the type of the attribute"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "description": "the value of the attribute"
+                }
+              },
+              "required": ["name", "data", "type"],
+              "additionalProperties": false
+            },
+            {
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "the name of the attribute"
+                },
+                "type": {
+                  "const": "string",
+                  "description": "the type of the attribute"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "the value of the attribute"
+                }
+              },
+              "required": ["name", "data", "type"],
+              "additionalProperties": false
+            },
+            {
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "the name of the attribute"
+                },
+                "type": {
+                  "const": "strings",
+                  "description": "the type of the attribute"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "the value of the attribute"
+                }
+              },
+              "required": ["name", "data", "type"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "opset": {
+        "type": "object",
+        "description": "opset is an optional field that specifies the opset to use for the test case. If not specified, the latest opset of \"\"(onnx.ai) is used.",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "the domain of the opset"
+          },
+          "version": {
+            "type": "integer",
+            "description": "the version of the opset"
+          }
+        },
+        "required": ["domain", "version"],
+        "additionalProperties": false
+      },
+      "cases": {
+        "type": "array",
+        "description": "the test cases",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "the name of the test case"
+            },
+            "inputs": {
+              "type": "array",
+              "description": "the test case inputs",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "float32",
+                          "float64",
+                          "int8",
+                          "int16",
+                          "int32",
+                          "int64",
+                          "uint8",
+                          "uint16",
+                          "uint32",
+                          "uint64",
+                          "bool",
+                          "string"
+                        ]
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": ["number", "string", "boolean"]
+                        }
+                      },
+                      "dims": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "required": ["type", "data", "dims"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "float32",
+                          "float64",
+                          "int8",
+                          "int16",
+                          "int32",
+                          "int64",
+                          "uint8",
+                          "uint16",
+                          "uint32",
+                          "uint64",
+                          "bool",
+                          "string"
+                        ]
+                      },
+                      "data": {
+                        "type": "null"
+                      }
+                    },
+                    "required": ["type", "data"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "outputs": {
+              "type": "array",
+              "description": "the test case outputs",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "float32",
+                          "float64",
+                          "int8",
+                          "int16",
+                          "int32",
+                          "int64",
+                          "uint8",
+                          "uint16",
+                          "uint32",
+                          "uint64",
+                          "bool",
+                          "string"
+                        ]
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": ["number", "string", "boolean"]
+                        }
+                      },
+                      "dims": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "required": ["type", "data", "dims"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "float32",
+                          "float64",
+                          "int8",
+                          "int16",
+                          "int32",
+                          "int64",
+                          "uint8",
+                          "uint16",
+                          "uint32",
+                          "uint64",
+                          "bool",
+                          "string"
+                        ]
+                      },
+                      "data": {
+                        "type": "null"
+                      }
+                    },
+                    "required": ["type", "data"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": ["name", "inputs", "outputs"],
+          "additionalProperties": false
+        }
+      },
+      "inputShapeDefinitions": {
+        "description": "inputShapeDefinitions is an optional field that specifies the shapes constraints for the test case inputs. It can be one of the following:\n - \"none\": no shape constraints for the test case inputs.\n - \"rankOnly\": the rank of the test case inputs are specified automatically, but not the shape.\n - \"static\": the shape of the test case inputs are fully specified automatically.\n - an array of shapes: the shapes constraints for the test case inputs. shape can be represented by an array, whose element is either a number for a static dimension or a string for a semantic(dynamic) dimension.",
+        "oneOf": [
+          {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": ["integer", "string"]
+                  }
+                },
+                { "type": "null" }
+              ]
+            }
+          },
+          {
+            "enum": ["none", "rankOnly", "static"]
+          }
+        ]
+      },
+      "platformCondition": {
+        "type": "string",
+        "description": "the condition for the test case, a regex string applied on platform name. If not specified, the test will run on all platforms. Otherwise, the test will only run on platforms that match the pattern. see https://github.com/bestiejs/platform.js/"
+      }
+    },
+    "required": ["name", "operator", "cases"],
+    "additionalProperties": false
+  }
+}

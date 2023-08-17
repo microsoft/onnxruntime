@@ -21,25 +21,20 @@ jobs:
     clean: all
   steps:
   - task: UsePythonVersion@0
-    inputs: 
+    inputs:
       versionSpec: '3.8'
       addToPath: true
       architecture: $(buildArch)
-
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
      python -m pip install -q setuptools wheel numpy flatbuffers
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
-  - powershell: |
-      azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+  - template: templates/jobs/set-winenv.yml
+    parameters:
+      EnvSetupScript: $(EnvSetupScript)
+      DownloadCUDA: true
 
   - task: PowerShell@2
     displayName: 'Install ONNX'
@@ -58,4 +53,3 @@ jobs:
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
-

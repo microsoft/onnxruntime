@@ -174,7 +174,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                    qnn_def::package_name,
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     qnn_op_type,  // Typically GetQnnOpType(), but can be overridden.
                                                     std::move(input_names),
                                                     std::move(output_names),
@@ -184,7 +184,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   for (const auto& cast_node_info : cast_node_info_vec) {
     // Insert cast node.
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
-                                                      qnn_def::package_name,
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       "Cast",
                                                       {cast_node_info.input_name},
                                                       {cast_node_info.output_name},

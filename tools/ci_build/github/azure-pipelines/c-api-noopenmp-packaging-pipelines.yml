@@ -58,7 +58,7 @@ parameters:
 - name: AdditionalBuildFlag
   displayName: Build flags to append to build command
   type: string
-  default: 'NONE'
+  default: '--use_azure'
 
 resources:
   repositories:
@@ -117,10 +117,7 @@ stages:
     ${{ else }}:
       OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
     AdditionalBuildFlags: ''
-    ${{ if eq(parameters.AdditionalBuildFlag, 'NONE') }}:
-      AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
-    ${{ else }}:
-      AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
+    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
     BuildVariant: 'default'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
@@ -190,7 +187,7 @@ stages:
 #CUDA without tensorrt
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-winbuild-T4'
+    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
@@ -198,7 +195,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -206,7 +203,7 @@ stages:
 # CUDA with Tensorrt
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: tensorrt
@@ -299,7 +296,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-gpu-winbuild-t4'
+    pool: 'onnxruntime-Win2022-GPU-T4'
     timeoutInMinutes: 60
     variables:
     - name: runCodesignValidationInjection
@@ -486,7 +483,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    pool: 'onnxruntime-Win2022-GPU-T4'
 
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
@@ -777,7 +774,7 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    AgentPool : 'onnxruntime-Win2022-GPU-T4'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
@@ -895,7 +892,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-gpu-winbuild-t4'
+    pool: 'onnxruntime-Win2022-GPU-T4'
 
     steps:
 

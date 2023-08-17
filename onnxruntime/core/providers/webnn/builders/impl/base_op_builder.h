@@ -41,7 +41,11 @@ class BaseOpBuilder : public IOpBuilder {
 
   // ONNX Runtime only *guarantees* support for models stamped
   // with opset version 7 or above for opset domain 'ai.onnx'.
-  virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 7; }
+  // WebNN EP ignores node support for opset less than 7 by
+  // default as which will be fallback earlier by ONNX Runtime.
+  // We still set the mininal supported opset to 1 as we couldn't
+  // get the model opset version at this stage.
+  virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
   virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 19; }
 
  private:

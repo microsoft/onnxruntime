@@ -110,7 +110,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
 
   // Extract the axes values from either the attribute or initializer input (depending on opset).
   if (opset < opset_axes_as_input) {  // Axes is in ONNX node attribute.
-    reduce_axes = node_helper.Get(qnn_def::axes, reduce_axes);
+    reduce_axes = node_helper.Get(QNN_OP_REDUCE_MAX_PARAM_AXES, reduce_axes);
   } else if (inputs.size() > 1) {  // Axes is in ONNX input[1] initializer.
     const auto& axes_input = inputs[1];
 
@@ -241,7 +241,7 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   std::transform(axes_set.begin(), axes_set.end(), axes_data.begin(),
                  [](AxesOnnxIntType item) { return SafeInt<AxesQnnIntType>(item); });
 
-  QnnParamWrapper axes_param(node_unit.Index(), node_unit.Name(), qnn_def::axes,
+  QnnParamWrapper axes_param(node_unit.Index(), node_unit.Name(), QNN_OP_REDUCE_MAX_PARAM_AXES,
                              std::move(axes_shape), std::move(axes_data));
   param_tensor_names.push_back(axes_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(axes_param));
@@ -253,7 +253,7 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
   scalar_param.dataType = QNN_DATATYPE_BOOL_8;
   scalar_param.bool8Value = static_cast<uint8_t>(onnx_keepdims == 0 ? 0 : 1);
-  QnnParamWrapper keep_dims_param(node_unit.Index(), node_unit.Name(), qnn_def::keep_dims, scalar_param);
+  QnnParamWrapper keep_dims_param(node_unit.Index(), node_unit.Name(), QNN_OP_REDUCE_MAX_PARAM_KEEP_DIMS, scalar_param);
   param_tensor_names.push_back(keep_dims_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(keep_dims_param));
 

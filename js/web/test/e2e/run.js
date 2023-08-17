@@ -5,8 +5,9 @@
 
 const path = require('path');
 const fs = require('fs-extra');
-const { spawn } = require('child_process');
+const {spawn} = require('child_process');
 const startServer = require('./simple-http-server');
+const minimist = require('minimist');
 
 // copy whole folder to out-side of <ORT_ROOT>/js/ because we need to test in a folder that no `package.json` file
 // exists in its parent folder.
@@ -31,13 +32,15 @@ function getNextUserDataDir() {
   return dir;
 }
 
-async function main() {
+// commandline arguments
+const BROWSER = minimist(process.argv.slice(2)).browser || 'Chrome_default';
 
+async function main() {
   // find packed package
   const {globbySync} = await import('globby');
 
   const ORT_COMMON_FOLDER = path.resolve(JS_ROOT_FOLDER, 'common');
-  const ORT_COMMON_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-common-*.tgz', { cwd: ORT_COMMON_FOLDER });
+  const ORT_COMMON_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-common-*.tgz', {cwd: ORT_COMMON_FOLDER});
 
   const PACKAGES_TO_INSTALL = [];
 
@@ -48,7 +51,7 @@ async function main() {
   }
 
   const ORT_WEB_FOLDER = path.resolve(JS_ROOT_FOLDER, 'web');
-  const ORT_WEB_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-web-*.tgz', { cwd: ORT_WEB_FOLDER });
+  const ORT_WEB_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-web-*.tgz', {cwd: ORT_WEB_FOLDER});
   if (ORT_WEB_PACKED_FILEPATH_CANDIDATES.length !== 1) {
     throw new Error('cannot find exactly single package for onnxruntime-web.');
   }
@@ -69,11 +72,11 @@ async function main() {
   await testAllNodejsCases();
 
   // test cases with self-host (ort hosted in same origin)
-  await testAllBrowserCases({ hostInKarma: true });
+  await testAllBrowserCases({hostInKarma: true});
 
   // test cases without self-host (ort hosted in same origin)
   startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
-  await testAllBrowserCases({ hostInKarma: false });
+  await testAllBrowserCases({hostInKarma: false});
 
   // no error occurs, exit with code 0
   process.exit(0);
@@ -101,27 +104,27 @@ async function testAllNodejsCases() {
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-prefix.js');
 }
 
-async function testAllBrowserCases({ hostInKarma }) {
-  await runKarma({ hostInKarma, main: './browser-test-webgl.js'});
-  await runKarma({ hostInKarma, main: './browser-test-webgl.js', ortMain: 'ort.webgl.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm.js', ortMain: 'ort.wasm.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-multi-session-create.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js', ortMain: 'ort.wasm-core.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-proxy.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-proxy-no-threads.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js', ortMain: 'ort.wasm.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js', ortMain: 'ort.wasm.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-image-tensor-image.js'});
+async function testAllBrowserCases({hostInKarma}) {
+  await runKarma({hostInKarma, main: './browser-test-webgl.js'});
+  await runKarma({hostInKarma, main: './browser-test-webgl.js', ortMain: 'ort.webgl.min.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm.js', ortMain: 'ort.wasm.min.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-multi-session-create.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-no-threads.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-no-threads.js', ortMain: 'ort.wasm-core.min.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-proxy.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-proxy-no-threads.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-path-override-filename.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-path-override-filename.js', ortMain: 'ort.wasm.min.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-path-override-prefix.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-path-override-prefix.js', ortMain: 'ort.wasm.min.js'});
+  await runKarma({hostInKarma, main: './browser-test-wasm-image-tensor-image.js'});
 }
 
-async function runKarma({ hostInKarma, main, browser = 'Chrome_default', ortMain = 'ort.min.js' }) {
+async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js'}) {
   const selfHostFlag = hostInKarma ? '--self-host' : '';
-  await runInShell(
-    `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${ortMain} --test-main=${main} --user-data=${getNextUserDataDir()}`);
+  await runInShell(`npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
+      ortMain} --test-main=${main} --user-data=${getNextUserDataDir()}`);
 }
 
 async function runInShell(cmd) {
@@ -130,8 +133,8 @@ async function runInShell(cmd) {
   console.log(' > ' + cmd);
   console.log('===============================================================');
   let complete = false;
-  const childProcess = spawn(cmd, { shell: true, stdio: 'inherit', cwd: TEST_E2E_RUN_FOLDER });
-  childProcess.on('close', function (code) {
+  const childProcess = spawn(cmd, {shell: true, stdio: 'inherit', cwd: TEST_E2E_RUN_FOLDER});
+  childProcess.on('close', function(code) {
     if (code !== 0) {
       process.exit(code);
     } else {
@@ -144,8 +147,8 @@ async function runInShell(cmd) {
 }
 
 async function delay(ms) {
-  return new Promise(function (resolve) {
-    setTimeout(function () {
+  return new Promise(function(resolve) {
+    setTimeout(function() {
       resolve();
     }, ms);
   });

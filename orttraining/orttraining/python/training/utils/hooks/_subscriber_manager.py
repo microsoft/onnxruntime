@@ -3,10 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-
 from collections import abc
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
+import onnx
 import torch
 
 from onnxruntime.training.ortmodule import ORTModule
@@ -112,6 +112,14 @@ class _InspectActivation(torch.autograd.Function):
 
         return None, None, None, grad_output.detach() if grad_output is not None else None
 
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
+
 
 class _IncrementStep(torch.autograd.Function):
     """
@@ -163,6 +171,14 @@ class _IncrementStep(torch.autograd.Function):
             ctx.run_ctx.reset_step_states()
 
         return None, grad_output.detach() if isinstance(grad_output, torch.Tensor) else grad_output
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
 
 
 class SubscriberManager:

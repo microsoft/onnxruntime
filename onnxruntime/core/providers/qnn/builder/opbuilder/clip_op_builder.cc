@@ -129,14 +129,14 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   Qnn_Scalar_t min_qnn_scalar = QNN_SCALAR_INIT;
   min_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
   min_qnn_scalar.floatValue = min_value_;
-  QnnParamWrapper min_value_param(node_unit.Index(), node_unit.Name(), qnn_def::min_value, min_qnn_scalar);
+  QnnParamWrapper min_value_param(node_unit.Index(), node_unit.Name(), QNN_OP_RELU_MIN_MAX_PARAM_MIN_VALUE, min_qnn_scalar);
   param_tensor_names.push_back(min_value_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(min_value_param));
 
   Qnn_Scalar_t max_qnn_scalar = QNN_SCALAR_INIT;
   max_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
   max_qnn_scalar.floatValue = max_value_;
-  QnnParamWrapper max_value_param(node_unit.Index(), node_unit.Name(), qnn_def::max_value, max_qnn_scalar);
+  QnnParamWrapper max_value_param(node_unit.Index(), node_unit.Name(), QNN_OP_RELU_MIN_MAX_PARAM_MAX_VALUE, max_qnn_scalar);
   param_tensor_names.push_back(max_value_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(max_value_param));
 

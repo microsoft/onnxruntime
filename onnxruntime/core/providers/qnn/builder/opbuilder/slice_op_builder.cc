@@ -206,7 +206,7 @@ Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
   }
   QnnParamWrapper ranges_paramwrapper(node_unit.Index(),
                                       node_unit.Name(),
-                                      qnn_def::ranges,
+                                      QNN_OP_STRIDED_SLICE_PARAM_RANGES,
                                       std::move(ranges_dims),
                                       std::move(ranges_data),
                                       true);
