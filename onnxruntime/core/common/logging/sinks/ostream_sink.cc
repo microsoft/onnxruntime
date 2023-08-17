@@ -7,6 +7,21 @@
 namespace onnxruntime {
 namespace logging {
 
+#ifndef ORT_MINIMAL_BUILD
+struct Color {
+  constexpr static const char* kWarn = "\e[0;93m";      // yellow
+  constexpr static const char* kError = "\e[1;31m";     // bold red
+  constexpr static const char* kFatal = "\e[1;37;41m";  // bold white on red background
+  constexpr static const char* kEnd = "\e[m";
+#ifdef _WIN32
+  constexpr static const char* kLWarn = L"\e[0;93m";      // yellow
+  constexpr static const char* kLError = L"\e[1;31m";     // bold red
+  constexpr static const char* kLFatal = L"\e[1;37;41m";  // bold white on red background
+  constexpr static const char* kLEnd = L"\e[m";
+#endif
+};
+#endif
+
 void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
   // operator for formatting of timestamp in ISO8601 format including microseconds
   using date::operator<<;
@@ -20,8 +35,26 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
 
   std::ostringstream msg;
 
+#ifndef ORT_MINIMAL_BUILD
+  if (message.Severity() == Severity::kWARNING) {
+    msg << Color::kWarn;
+  } else if (message.Severity() == Severity::kERROR) {
+    msg << Color::kError;
+  } else if (message.Severity() == Severity::kFATAL) {
+    msg << Color::kFatal;
+  }
+#endif
+
   msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
       << message.Location().ToString() << "] " << message.Message() << "\n";
+
+#ifndef ORT_MINIMAL_BUILD
+  if (message.Severity() == Severity::kWARNING ||
+      message.Severity() == Severity::kERROR ||
+      message.Severity() == Severity::kFATAL) {
+    msg << Color::kEnd;
+  }
+#endif
 
   (*stream_) << msg.str();
 
@@ -43,8 +76,26 @@ void WOStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logge
 
   std::wostringstream msg;
 
+#ifndef ORT_MINIMAL_BUILD
+  if (message.Severity() == Severity::kWARNING) {
+    msg << Color::kLWarn;
+  } else if (message.Severity() == Severity::kERROR) {
+    msg << Color::kLError;
+  } else if (message.Severity() == Severity::kFATAL) {
+    msg << Color::kLFatal;
+  }
+#endif
+
   msg << timestamp << L" [" << message.SeverityPrefix() << L":" << message.Category() << L":" << ToWideString(logger_id) << L", "
       << ToWideString(message.Location().ToString()) << L"] " << ToWideString(message.Message()) << L"\n";
+
+#ifndef ORT_MINIMAL_BUILD
+  if (message.Severity() == Severity::kWARNING ||
+      message.Severity() == Severity::kERROR ||
+      message.Severity() == Severity::kFATAL) {
+    msg << Color::kLEnd;
+  }
+#endif
 
   (*stream_) << msg.str();
 
