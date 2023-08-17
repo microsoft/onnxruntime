@@ -437,7 +437,7 @@ class Inliner {
     }
     auto& attributes = *n.mutable_attribute();
     const auto attr_map_end = attr_map_.cend();
-    for (auto attr_iter = attributes.begin(), end = attributes.end(); attr_iter != end;) {
+    for (auto attr_iter = attributes.begin(); attr_iter != attributes.end();) {
       auto& attr = *attr_iter;
       if (!attr.ref_attr_name().empty()) {
         // Attribute-references must be replaced by the corresponding attribute-value in the call-node
