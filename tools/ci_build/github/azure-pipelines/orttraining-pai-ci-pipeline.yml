@@ -1,5 +1,14 @@
 trigger: none
 
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 
 variables:
