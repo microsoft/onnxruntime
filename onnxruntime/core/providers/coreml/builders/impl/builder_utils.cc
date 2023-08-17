@@ -115,7 +115,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 }
 
 namespace {
-template<typename T>
+template <typename T>
 void CreateCoreMLWeightConvertingDataToFloats(CoreML::Specification::WeightParams& weight, gsl::span<const T> data) {
   google::protobuf::RepeatedField<float> weight_floats{};
   weight_floats.Reserve(narrow<int>(data.size()));
@@ -123,7 +123,7 @@ void CreateCoreMLWeightConvertingDataToFloats(CoreML::Specification::WeightParam
                  [](T v) { return narrow<float>(v); });
   *weight.mutable_floatvalue() = std::move(weight_floats);
 }
-}
+}  // namespace
 
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int32_t> data) {
   CreateCoreMLWeightConvertingDataToFloats(weight, data);
