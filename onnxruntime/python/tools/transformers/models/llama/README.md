@@ -4,7 +4,7 @@
 
 There are several ways to export LLaMA-2 models (using LLaMA-2 7B as an example).
 
-Option 1: from convert_to_onnx
+### Option 1: from convert_to_onnx
 ```
 # From source:
 $ git clone https://github.com/microsoft/onnxruntime
@@ -17,9 +17,31 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 
 To make this option compatible with [Hugging Face's Optimum](https://github.com/huggingface/optimum), you will need to create `config.json` and `generation_config.json` for your model and store them in the same directory as your ONNX models. For example, you can find those JSON files for LLaMA-2 7B on Hugging Face [here](https://huggingface.co/meta-llama/Llama-2-7b-hf).
 
-Option 2: from [Microsoft's custom export](https://github.com/microsoft/Llama-2-Onnx)
+### Option 2: from [Microsoft's custom export](https://github.com/microsoft/Llama-2-Onnx)
 
-Option 3: from [Hugging Face's Optimum](https://github.com/huggingface/optimum)
+Please follow the [README instructions](https://github.com/microsoft/Llama-2-Onnx#before-you-start) in the custom export of LLaMA-2.
+
+### Option 3: from [Hugging Face's Optimum](https://github.com/huggingface/optimum)
+
+First, log into the Hugging Face CLI in your terminal:
+
+```
+$ huggingface-cli login
+```
+
+Once authenticated, run the following Python code to export:
+
+```
+from optimum.onnxruntime import ORTModelForCausalLM
+
+name = "meta-llama/Llama-2-7b-hf"
+model = ORTModelForCausalLM.from_pretrained(
+    name,
+    export=True,
+    use_auth_token=True,
+)
+model.save_pretrained(name.split("/")[-1] + "-onnx")
+```
 
 ## Examples of Exporting LLaMA-2
 
@@ -39,19 +61,19 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 FP16:
 ```
 # From source:
-$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b --precision fp16
+$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b --precision fp16
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16
 ```
 
 INT8:
 ```
 # From source:
-$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b --precision int8 --smooth_quant
+$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --smooth_quant
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b --precision int8 --smooth_quant
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --smooth_quant
 ```
 
 Note: [Intel's Neural Compressor](https://github.com/intel/neural-compressor) takes time to run the SmoothQuant quantization algorithm on LLMs. On an [Azure Standard_NC24s_v3 VM](https://learn.microsoft.com/en-us/azure/virtual-machines/ncv3-series), it takes about ~30-45 min for each of the exported ONNX models.
@@ -108,7 +130,7 @@ python3 benchmark.py \
 ```
 python3 benchmark.py \
     --benchmark-type hf-ort \
-    --hf-ort-model-path ./llama2-7b/ \
+    --hf-ort-model-path ./llama2-7b-fp16/ \
     --model-name meta-llama/Llama-2-7b-hf \
     --model-size 7b \
     --precision fp16 \
@@ -122,7 +144,7 @@ python3 benchmark.py \
 ```
 python3 benchmark.py \
     --benchmark-type hf-ort \
-    --hf-ort-model-path ./llama2-7b/ \
+    --hf-ort-model-path ./llama2-7b-int8/ \
     --model-name meta-llama/Llama-2-7b-hf \
     --model-size 7b \
     --precision int8 \

@@ -80,7 +80,7 @@ def save_onnx_model(onnx_model: onnx.ModelProto, output_path: str, data_path: st
 # In other words, the value of `temp_path` should be set as the ONNX file path. You can open the issue in your browser to find
 # the location in ONNX Script where you have to make this change.
 #
-# Once the issue is resolved, we can modify the code below as follows for each export.
+# Once the issue is resolved, we hope to modify the code below as follows for each export.
 #
 # Before:
 # temp_dir = args.output
