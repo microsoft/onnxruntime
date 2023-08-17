@@ -74,22 +74,20 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const createSkipLayerNormProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SkipLayerNormAttributes,
-     outputCount: number): ProgramInfo => {
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number,
+     isTraining: boolean): ProgramInfo => {
       const inputShape = inputs[0].dims;
       const inputSize = ShapeUtil.size(inputShape);
       const outputShape = inputShape;
       const outputSize = inputSize;
       const hiddenSize = inputShape.slice(-1)[0];
-      const meanInvStdDevDim = inputShape.slice(0, -1).concat(1);
+      const meanInvStdDevDim = isTraining ? inputShape.slice(0, -1).concat(1) : [];
       const hasBetaInput = inputs.length > 3;
       const hasBiasInput = inputs.length > 4;
       const dataType = tensorTypeToWsglType(inputs[0].dataType);
-      // TODO: initialize/verify isTraining from ComputeContext
-      const isTraining = outputCount > 2;  // mean and invStdDev are only used in training mode
       const hasMeanOutput = isTraining && outputCount > 1;
       const hasInvStdDevOutput = isTraining && outputCount > 2;
-      const hasInputSkipBiasSumOutput = isTraining ? outputCount > 3 : outputCount > 1;
+      const hasInputSkipBiasSumOutput = outputCount > 3;
       let bindingNumber = 0;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       const hiddenSize: u32 = ${hiddenSize};
@@ -138,13 +136,13 @@ const createSkipLayerNormProgramInfo =
         }
       }`;
       const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
-      if (hasMeanOutput) {
+      if (outputCount > 1) {
         outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
       }
-      if (hasInvStdDevOutput) {
+      if (outputCount > 2) {
         outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
       }
-      if (hasInputSkipBiasSumOutput) {
+      if (outputCount > 3) {
         outputs.push({dims: inputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
       }
 
@@ -157,31 +155,38 @@ const createSkipLayerNormProgramInfo =
     };
 
 const createSkipLayerNormProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number): ProgramInfoLoader => {
-      const inputTypes = new Array(inputs.length).fill(GpuDataType.default);
-      const metadata: ProgramMetadata = {
-        name: 'SkipLayerNormalization',
-        inputTypes,
-        cacheHint: attributes.cacheKey,
-      };
-      return {...metadata, get: () => createSkipLayerNormProgramInfo(metadata, inputs, attributes, outputCount)};
-    };
+    (inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number, isTraining: boolean):
+        ProgramInfoLoader => {
+          const inputTypes = new Array(inputs.length).fill(GpuDataType.default);
+          const metadata: ProgramMetadata = {
+            name: 'SkipLayerNormalization',
+            inputTypes,
+            cacheHint: attributes.cacheKey,
+          };
+          return {
+            ...metadata,
+            get: () => createSkipLayerNormProgramInfo(metadata, inputs, attributes, outputCount, isTraining)
+          };
+        };
 
 export const skipLayerNorm = (context: ComputeContext, attributes: SkipLayerNormAttributes): void => {
+  // TODO: initialize isTraining from ComputeContext
+  const isTraining = false;
   validateInputs(context.inputs);
   // Mean and InvStdDev are only used in training mode and are not required for inference.
   // They are added here for completeness only.
   const outputs = [0];
+  if (context.outputCount > 1) {
+    outputs.push(isTraining ? 1 : -3);
+  }
   if (context.outputCount > 2) {
-    outputs.push(1);
+    outputs.push(isTraining ? 2 : -3);
   }
   if (context.outputCount > 3) {
-    outputs.push(2);
-  }
-  if (context.outputCount > 1) {
     outputs.push(3);
   }
-  context.compute(createSkipLayerNormProgramInfoLoader(context.inputs, attributes, context.outputCount), {outputs});
+  context.compute(
+      createSkipLayerNormProgramInfoLoader(context.inputs, attributes, context.outputCount, isTraining), {outputs});
 };
 
 export const parseSkipLayerNormAttributes = (attributes: Record<string, unknown>): SkipLayerNormAttributes => {
