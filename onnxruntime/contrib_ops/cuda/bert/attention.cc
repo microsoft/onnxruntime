@@ -158,14 +158,15 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if USE_FLASH_ATTENTION
   assert(!disable_memory_efficient_attention_);
-  bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
+  // bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
   // printf("size of ", sizeof(T));
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         // (nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
                                         nullptr == past &&
                                         nullptr == present &&
-                                        (nullptr == relative_position_bias || is_good_for_rpb) &&
+                                        // (nullptr == relative_position_bias || is_good_for_rpb) &&
+                                        relative_position_bias == nullptr &&
                                         (sizeof(T) == 2 ||  // sequence length threshold is 0 in FP16
                                          parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);

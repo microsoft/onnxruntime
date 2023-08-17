@@ -16,6 +16,7 @@
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
@@ -470,7 +471,7 @@ Status FusedScaledDotProductAttentionCutlass(
   LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
                          num_heads, qk_head_size, v_head_size,
-                         AttentionQkvFormat::Q_K_V_BSNH, data.token_offset,
+                         AttentionQkvFormat::Q_K_V_BSNH, data.token_offset, // AttentionQkvFormat wrong?
                          parameters.token_count, stream);
   DUMP_TENSOR_INIT();
 
@@ -516,7 +517,30 @@ Status FusedScaledDotProductAttentionCutlass(
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? accum_workspace : nullptr;
   p.stream = stream;
-  run_memory_efficient_attention(p);
+  // run_memory_efficient_attention(p);
+  cudaStreamSynchronize(stream);
+  ORT_RETURN_IF_ERROR(mha_varlen_fwd(
+    device_prop,
+    p.stream,
+    const_cast<void*>(p.query),
+    const_cast<void*>(p.key),
+    const_cast<void*>(p.value),
+    p.output,
+    p.seqstart_q_ptr,
+    p.seqstart_k_ptr,
+    reinterpret_cast<void*>(data.softmax_lse_buffer),
+    p.batch_size,
+    p.num_heads,
+    p.num_heads, //num_heads_k
+    p.qk_head_size,
+    p.v_head_size,
+    p.batch_size * p.sequence_length, // Total token count
+    p.sequence_length, // IS THIS MAX_SEQLEN_Q?
+    p.kv_sequence_length, // IS THIS MAX_SEQLEN_V
+    p.scale, // scale refer to softmax scale?
+    p.causal // is causal
+    ));
+  cudaStreamSynchronize(stream);
 
   DUMP_TENSOR("PackedAttention cutlass output", data.output, parameters.token_count, num_heads, v_head_size);
   return Status::OK();

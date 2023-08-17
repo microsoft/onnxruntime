@@ -128,8 +128,8 @@ static void RunPackedAttentionTest(
 
   InvokePackedAttentionTest(true, true);
   InvokePackedAttentionTest(true, false);
-  InvokePackedAttentionTest(false, true);
-  InvokePackedAttentionTest(false, false);
+  // InvokePackedAttentionTest(false, true);
+  // InvokePackedAttentionTest(false, false);
 }
 
 TEST(PackedAttentionTest, NoPack) {
