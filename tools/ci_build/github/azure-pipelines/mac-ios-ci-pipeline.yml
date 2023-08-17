@@ -10,7 +10,6 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -24,7 +23,6 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
 jobs:
 - job: iOS_CI_on_Mac
