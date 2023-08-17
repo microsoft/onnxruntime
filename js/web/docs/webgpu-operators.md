@@ -43,6 +43,7 @@ Do not modify directly.*
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
+| Log | ai.onnx(6-12,13+) |  |
 | MatMul | ai.onnx(1-12,13+) |  |
 | MaxPool | ai.onnx(1-7,8-9,10,11,12+); com.ms.internal.nhwc(11,12+) | need perf optimization; need implementing activation |
 | MemcpyFromHost | ai.onnx(1+) |  |
@@ -75,6 +76,7 @@ Do not modify directly.*
 | Squeeze | ai.onnx(1-10,11-12,13+) |  |
 | Sub | ai.onnx(7-12,13,14+) |  |
 | Tan | ai.onnx(7+) |  |
+| Tanh | ai.onnx(6-12,13+) |  |
 | ThresholdedRelu | ai.onnx(10+) |  |
 | Transpose | ai.onnx(1-12,13+) | need perf optimization |
 | Unsqueeze | ai.onnx(1-10,11-12,13+) |  |
