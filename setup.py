@@ -506,10 +506,9 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
 ]
-
-if not enable_training:
-    classifiers.extend(["Operating System :: Microsoft :: Windows", "Operating System :: MacOS"])
 
 if enable_training or enable_training_apis:
     packages.append("onnxruntime.training")
@@ -535,6 +534,10 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.utils",
                 "onnxruntime.training.utils.data",
                 "onnxruntime.training.utils.hooks",
+                "onnxruntime.training.api",
+                "onnxruntime.training.onnxblock",
+                "onnxruntime.training.onnxblock.loss",
+                "onnxruntime.training.onnxblock.optim",
             ]
         )
 
@@ -547,15 +550,6 @@ if enable_training or enable_training_apis:
             "*.cuh",
             "*.h",
         ]
-
-    packages.extend(
-        [
-            "onnxruntime.training.api",
-            "onnxruntime.training.onnxblock",
-            "onnxruntime.training.onnxblock.loss",
-            "onnxruntime.training.onnxblock.optim",
-        ]
-    )
 
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
@@ -588,6 +582,10 @@ if enable_training or enable_training_apis:
                 else:
                     # cpu version for documentation
                     local_version = "+cpu"
+        else:
+            if not (cuda_version or rocm_version):
+                # Training CPU package for ADO feeds is called onnxruntime-training-cpu
+                package_name = "onnxruntime-training-cpu"
 
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]

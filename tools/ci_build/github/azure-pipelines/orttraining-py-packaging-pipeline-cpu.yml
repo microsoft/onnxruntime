@@ -18,7 +18,7 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- stage: Python_Packaging
+- stage: Python_Packaging_Linux_Trainin_CPU
 
   jobs:
     - job: Linux_Training_CPU_Wheels
@@ -76,6 +76,8 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
+              -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
+              -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               onnxruntimetrainingcpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
@@ -85,7 +87,7 @@ stages:
                   --parallel \
                   --build_wheel \
                   --enable_onnx_tests \
-                  --enable_pybind --build_java --build_nodejs --enable_training
+                  --enable_pybind --enable_training
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -116,3 +118,15 @@ stages:
           condition: 'succeeded'
 
       - template: templates/clean-agent-build-directory-step.yml
+
+- template: templates/py-packaging-stage.yml
+  parameters:
+    build_py_parameters: --enable_training
+    enable_linux_gpu: false
+    enable_ubuntu_cpu: false
+    enable_linux_cpu: false
+    enable_windows_cpu: true
+    enable_windows_gpu: false
+    enable_mac_cpu: true
+    enable_mac_silicon: true
+    enable_linux_arm: false

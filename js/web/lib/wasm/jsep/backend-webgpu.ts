@@ -8,25 +8,25 @@ import {TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, GpuData, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 /**
- * get a unique key representing the program from the program info,input shapes and types.
+ * get a unique key representing the program from the program info, input shapes and types.
  *
  * @returns a unique key is a shorter string than the shader source, which contains all the information to identify a
  * program. if the key is the same, the program shader source should be the same, so we can reuse the program.
  *
  */
 const getProgramInfoUniqueKey =
-    (programInfo: ProgramInfo|ProgramInfoLoader, inputTensorShapes: ReadonlyArray<TensorView['dims']>,
-     inputGpuDataTypes: readonly GpuDataType[]): string => {
-      const inputTensorShapesToString = inputTensorShapes.map(d => `${d.join(',')}`).join('_');
-      const inputGpuDataTypesToString = inputGpuDataTypes.join('_');
+    (programInfo: ProgramInfo|ProgramInfoLoader, inputTensors: readonly TensorView[]): string => {
+      // final key format:
+      // <PROGRAM_NAME>[<PROGRAM_CUSTOM_CACHE_HINT>]:<INPUTS_INFO_0>|<INPUTS_INFO_1>|...
+      const inputInfos = inputTensors.map(tensor => `${tensor.dataType};${tensor.dims.join(',')}`).join('|');
       let key = programInfo.name;
       if (programInfo.cacheHint) {
         key += '[' + programInfo.cacheHint + ']';
       }
-      key += ':' + inputTensorShapesToString + ';' + inputGpuDataTypesToString;
+      key += ':' + inputInfos;
       return key;
     };
 
@@ -114,7 +114,12 @@ export class WebGpuBackend {
         maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
         maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
         maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-      }
+        maxBufferSize: adapter.limits.maxBufferSize,
+        maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
+        maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
+        maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
+        maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
+      },
     };
     // WebGPU Spec: Timestamp Queries Inside Passes
     // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
@@ -216,7 +221,7 @@ export class WebGpuBackend {
       inputDatas[i] = gpuData;
     }
 
-    const key = getProgramInfoUniqueKey(program, inputs.map(i => i.dims), inputDatas.map(i => i.type));
+    const key = getProgramInfoUniqueKey(program, inputs);
     let artifact = this.programManager.getArtifact(key);
     const programInfo = artifact ?
         artifact.programInfo :

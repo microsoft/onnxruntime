@@ -29,6 +29,7 @@
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
 #include "orttraining/core/optimizer/lstm_replacement.h"
+#include "orttraining/core/optimizer/gru_replacement.h"
 #ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
 #endif
@@ -1023,7 +1024,7 @@ TEST_P(LSTMReplacementTestsParameterized, CheckLSTMReplacement) {
 
   std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count1.count("LSTM") && op_to_count1["LSTM"] == 1);
-  ASSERT_FALSE(op_to_count1.count("LSTMTraining"));
+  ASSERT_FALSE(op_to_count1.count("com.microsoft.LSTMTraining"));
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("LSTMReplacement");
   ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<LSTMReplacement>()));
@@ -1049,6 +1050,88 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(2, false, true, false),
         std::make_tuple(3, false, false, true),
         std::make_tuple(3, true, true, true)));
+
+class GRUReplacementTestsParameterized : public GraphTransformationTests,
+                                         public ::testing::WithParamInterface<std::tuple<int, bool, bool>> {
+};
+
+TEST_P(GRUReplacementTestsParameterized, CheckGRUReplacement) {
+  Model model("GRUReplacement", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}}, {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor;
+  tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  onnxruntime::NodeArg X("X", &tensor);
+  onnxruntime::NodeArg W("W", &tensor);
+  onnxruntime::NodeArg R("R", &tensor);
+  onnxruntime::NodeArg B("B", &tensor);
+  onnxruntime::NodeArg SL("", nullptr);
+  onnxruntime::NodeArg H0("H0", &tensor);
+
+  onnxruntime::NodeArg HAll("HAll", &tensor);
+  onnxruntime::NodeArg HAllDummy("", nullptr);
+  onnxruntime::NodeArg Ht("Ht", &tensor);
+  onnxruntime::NodeArg HtDummy("", nullptr);
+
+  InlinedVector<onnxruntime::NodeArg*> outputs;
+  const int num_outputs = std::get<0>(GetParam());
+  outputs.reserve(num_outputs);
+  const bool output_hall = std::get<1>(GetParam());
+  const bool output_final_h = std::get<2>(GetParam());
+
+  if (num_outputs > 0) {
+    if (output_hall) {
+      outputs.push_back(&HAll);
+    } else {
+      outputs.push_back(&HAllDummy);
+    }
+  }
+
+  if (num_outputs > 1) {
+    if (output_final_h) {
+      outputs.push_back(&Ht);
+    } else {
+      outputs.push_back(&HtDummy);
+    }
+  }
+
+  Node& gru_node = graph.AddNode(
+      "gru", "GRU", "GRU operator",
+      {&X, &W, &R, &B, &SL, &H0}, outputs, nullptr);
+  gru_node.AddAttribute("hidden_size", static_cast<int64_t>(128));
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count1.count("GRU") && op_to_count1["GRU"] == 1);
+  ASSERT_FALSE(op_to_count1.count("com.microsoft.GRUTraining"));
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("GRUReplacement");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GRUReplacement>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count2 = CountOpsInGraph(graph);
+  ASSERT_FALSE(op_to_count2.count("GRU"));
+  ASSERT_TRUE(op_to_count2.count("com.microsoft.GRUTraining") && op_to_count2["com.microsoft.GRUTraining"] == 1);
+
+  const auto nodes = graph.Nodes();
+  ASSERT_FALSE(nodes.empty());
+  const auto& gru_outputs = nodes.begin()->OutputDefs();
+  ASSERT_EQ(gru_outputs.size(), 3U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    GRUReplacementTests,
+    GRUReplacementTestsParameterized,
+    ::testing::Values(
+        std::make_tuple(0, false, false),
+        std::make_tuple(1, true, false),
+        std::make_tuple(1, false, true),
+        std::make_tuple(2, true, true)));
 
 class QDQFusionTestsParameterized : public GraphTransformationTests,
                                     public ::testing::WithParamInterface<std::tuple<PathString>> {
