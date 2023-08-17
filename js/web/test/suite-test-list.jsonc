@@ -1341,7 +1341,7 @@
       //"greater.jsonc",
       //"less.jsonc",
       "log.jsonc",
-      //"matmul.jsonc", // <--- some tests fail (when input is 3D/4D/5D)
+      "matmul.jsonc",
       "mul.jsonc",
       //"neg.jsonc",
       //"not.jsonc",

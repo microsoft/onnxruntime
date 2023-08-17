@@ -27,7 +27,8 @@ const createMatmulProgramInfo =
             throw new Error('Can\'t use matmul on the given tensors');
           }
           const outputSize = ShapeUtil.size(outputShape);
-          // TODO: support broadcasting
+          const broadcastA = (aShape.length < outputShape.length || aShape[aShape.length - 2] === 1);
+          const broadcastB = (bShape.length < outputShape.length || bShape[bShape.length - 1] === 1);
 
           const dataType = 'f32';  // TODO: support other data type
           const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
@@ -54,12 +55,12 @@ const createMatmulProgramInfo =
     let n = global_idx % N;
     let m = mn / N;
 
-    let offsetA = stack * (M * K);
-    let offsetB = stack * (K * N);
+    let offsetA = ${broadcastA ? 'm * K' : 'stack * (M * K) + m * K'};
+    let offsetB = ${broadcastB ? 'n' : 'stack * (K * N) + n'};
 
     var value = ${dataType}(0);
     for (var k: u32 = 0u; k<${K}u; k++) {
-      value += a[offsetA + m * K + k] * b[offsetB + k * N + n];
+      value += a[offsetA + k] * b[offsetB + k * N];
     }
     ${applyActivation}
     output[global_idx] = value;
