@@ -29,7 +29,7 @@ if [ "$BUILD_CONFIG" == "Debug" ]; then
 else
     CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -O3 -pipe -Wl,--strip-all"
     CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -O3 -pipe -Wl,--strip-all"
-	BUILD_ARGS+=("--enable_lto")
+    BUILD_ARGS+=("--enable_lto")
 fi
 
 # Depending on how the compiler has been configured when it was built, sometimes "gcc -dumpversion" shows the full version.
