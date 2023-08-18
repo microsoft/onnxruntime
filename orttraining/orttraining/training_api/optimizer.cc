@@ -312,7 +312,7 @@ Status Optimizer::Step() {
   ORT_THROW_IF_ERROR(status);
 
   // Extract step output and update
-  if (utils::GetScalarFromOrtValue<int64_t>(outputs[0]) == 1LL) {
+  if (utils::GetScalarFromOrtValue<bool>(outputs[0]) == true) {
     optimizer_state_->step++;
   }
 
