@@ -162,6 +162,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // printf("size of ", sizeof(T));
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
+                                        parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH &&
                                         // (nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
                                         nullptr == past &&
                                         nullptr == present &&
@@ -233,7 +234,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
   auto stream = Stream(context);
-  // Use flash
+  data.use_flash_attention = false;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   // auto cumseqlen = new CumulatedSequenceLengthCache();
   // cumseqlen->Initialize(sequence_length, stream);
@@ -253,7 +254,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #if USE_FLASH_ATTENTION
   size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
   auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  data.softmax_lse_buffer = reinterpret_cast<CudaT*>(soft_buff.get());
+  data.softmax_lse_buffer = reinterpret_cast<float*>(soft_buff.get());
 #endif
 
   return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);

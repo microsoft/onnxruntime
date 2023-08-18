@@ -160,14 +160,15 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                void* k,                          // batch_size x seqlen_k x num_heads_k x head_size
                void* v,                          // batch_size x seqlen_k x num_heads_k x head_size
                void* out,                        // batch_size x seqlen_q x num_heads x head_size
+               float* softmax_lse,               // batch_size x num_heads x seqlen_q
                const int batch_size,
                const int num_heads,
                const int num_heads_k,
                const int head_size,
                const int v_head_size,
                const int total_q, //huh
-               const int max_seqlen_q_,
-               const int max_seqlen_k_,
+               const int seqlen_q,
+               const int seqlen_k,
                const float softmax_scale,
                const bool is_causal) {
   
@@ -212,21 +213,22 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   //at::cuda::CUDAGuard device_guard{(char)q.get_device()};
 
   ORT_ENFORCE(batch_size > 0);
-  ORT_ENFORCE((head_size % 8 == 0) && (head_size <= 128));
+  ORT_ENFORCE(num_heads % num_heads_k == 0); // Number of heads in key/value must divide number of heads in query
+  ORT_ENFORCE((head_size % 8 == 0) && (head_size <= 256));
 
-  bool loop = false;
-  int max_seqlen_k = get_max_seqlen_k(max_seqlen_k_, head_size, loop);
-  int max_seqlen_q = get_max_seqlen_q(max_seqlen_q_);
+  // bool loop = false;
+  // int max_seqlen_k = get_max_seqlen_k(seqlen_k, head_size, loop);
+  // int max_seqlen_q = get_max_seqlen_q(seqlen_q);
 
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
-  const int seqlen_q_rounded = round_multiple(max_seqlen_q, 128);
-  const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
+  const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
+  const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
 
   Flash_fwd_params params{};
   set_params_fprop(params,
                    batch_size,
-                   max_seqlen_q, max_seqlen_k,
+                   seqlen_q, seqlen_k,
                    seqlen_q_rounded, seqlen_k_rounded,
                    num_heads, num_heads_k,
                    head_size, v_head_size, head_size_rounded,
@@ -234,7 +236,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    /*cu_seqlens_q*/nullptr,
                    /*cu_seqlens_k*/nullptr,
                    nullptr,
-                   nullptr,
+                   softmax_lse,
                    softmax_scale,
                    is_causal);
   run_mha_fwd(params, stream);

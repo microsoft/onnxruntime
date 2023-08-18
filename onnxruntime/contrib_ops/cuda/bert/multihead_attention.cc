@@ -7,6 +7,7 @@
 #include "contrib_ops/cuda/bert/multihead_attention.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -121,6 +122,18 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool is_mask_1d_key_seq_len_start = false;
   // bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
 
+  bool use_flash_attention =  fused_runner == nullptr &&
+                              // !disable_memory_efficient_attention_ &&
+                              (nullptr == key_padding_mask || is_mask_1d_key_seq_len_start) &&
+                              // nullptr == past &&
+                              // nullptr == present &&
+                              // (nullptr == relative_position_bias || is_good_for_rpb) &&
+                              relative_position_bias == nullptr &&
+                              sizeof(T) == 2 &&
+                              // (sizeof(T) == 2 ||  // sequence length threshold is 0 in FP16
+                              //   parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
+                              has_memory_efficient_attention(sm, sizeof(T) == 2);
+
   bool use_fused_cross_attention = false;
   // bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
   //                                  nullptr == key_padding_mask &&
@@ -180,7 +193,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
 
-  bool use_memory_efficient_attention = fused_runner == nullptr &&
+  bool use_memory_efficient_attention = !use_flash_attention &&
+                                        fused_runner == nullptr &&
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         is_long_sequence &&
@@ -251,11 +265,16 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
+  data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.cumulated_sequence_length_q_cache = nullptr;//&(this->cumulated_sequence_length_q_cache_);
   data.cumulated_sequence_length_kv_cache = nullptr;//&(this->cumulated_sequence_length_kv_cache_);
 
   cublasHandle_t cublas = GetCublasHandle(context);
+
+  size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
+  auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+  data.softmax_lse_buffer = reinterpret_cast<float*>(soft_buff.get());
 
   return QkvToContext<CudaT>(
       device_prop, cublas, context->GetComputeStream(), parameters, data);

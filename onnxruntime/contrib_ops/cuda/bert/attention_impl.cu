@@ -633,7 +633,7 @@ Status QkvToContext(
   void* fused_runner = data.fused_runner;
 
   // At most one fused kernel is enabled.
-  assert(int(data.use_memory_efficient_attention) + int(fused_runner != nullptr) + int(data.fused_cross_attention_kernel != nullptr) <= 1);
+  assert(int(data.use_flash_attention) + int(data.use_memory_efficient_attention) + int(fused_runner != nullptr) + int(data.fused_cross_attention_kernel != nullptr) <= 1);
 
   const int batches = batch_size * num_heads;
 
@@ -852,6 +852,39 @@ Status QkvToContext(
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                                : parameters.scale;
+
+  if(data.use_flash_attention) {
+    assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
+
+    DUMP_TENSOR_D("attention q(BSNH)", q, batch_size * sequence_length, num_heads * qk_head_size);
+    DUMP_TENSOR_D("attention k(BSNH)", k, batch_size * sequence_length, num_heads * qk_head_size);
+    DUMP_TENSOR_D("attention v(BSNH)", v, batch_size * sequence_length, num_heads * v_head_size);
+
+    int total_token_count = batch_size * sequence_length;
+    cudaStreamSynchronize(stream);
+    ORT_RETURN_IF_ERROR(mha_fwd(
+      device_prop,
+      stream,
+      q,
+      k,
+      v,
+      reinterpret_cast<void*>(data.output),
+      data.softmax_lse_buffer, // TODO softmax buffer
+      batch_size,
+      num_heads,
+      num_heads, //num_heads_k
+      qk_head_size,
+      v_head_size,
+      total_token_count, // Total token count
+      sequence_length, // IS THIS MAX_SEQLEN_Q?
+      kv_sequence_length, // IS THIS MAX_SEQLEN_V
+      scale, // scale refer to softmax scale?
+      false // is causal
+      ));
+    cudaStreamSynchronize(stream);
+    DUMP_TENSOR("flash attention output", data.output, total_token_count, parameters.v_hidden_size);
+    return Status::OK();
+  }
 
 #if USE_FLASH_ATTENTION
   // assert(data.use_memory_efficient_attention);

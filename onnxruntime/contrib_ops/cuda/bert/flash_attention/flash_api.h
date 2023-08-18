@@ -35,10 +35,11 @@ namespace contrib {
 namespace cuda {
 Status mha_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
-               void* q,    // batch_size x seqlen_q x num_heads x head_size
-               void* k,    // batch_size x seqlen_k x num_heads_k x head_size
-               void* v,    // batch_size x seqlen_k x num_heads_k x head_size
-               void* out,  // batch_size x seqlen_q x num_heads x head_size
+               void* q,             // batch_size x seqlen_q x num_heads x head_size
+               void* k,             // batch_size x seqlen_k x num_heads_k x head_size
+               void* v,             // batch_size x seqlen_k x num_heads_k x head_size
+               void* out,           // batch_size x seqlen_q x num_heads x head_size
+               float* softmax_lse,  // batch_size x num_heads x seqlen_q
                const int batch_size,
                const int num_heads,
                const int num_heads_k,

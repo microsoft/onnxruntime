@@ -75,11 +75,12 @@ struct AttentionData {
   const void* fused_cross_attention_kernel;
 
   bool use_memory_efficient_attention;
+  bool use_flash_attention;
 
   mutable CumulatedSequenceLengthCache* cumulated_sequence_length_q_cache;
   mutable CumulatedSequenceLengthCache* cumulated_sequence_length_kv_cache;
 
-  void* softmax_lse_buffer;
+  float* softmax_lse_buffer;
 };
 
 template <typename T>
