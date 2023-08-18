@@ -38,22 +38,6 @@ class SliceOpBuilder : public BaseOpBuilder {
                          const logging::Logger& logger) const override;
 };
 
-// Add operator related
-#if defined(__APPLE__)
-
-void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
-  const auto& input_defs = node.InputDefs();
-
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());
-  model_builder.AddInitializerToSkip(input_defs[2]->Name());
-  if (input_defs.size() > 3 && input_defs[3]->Exists()) {
-    model_builder.AddInitializerToSkip(input_defs[3]->Name());
-  }
-  if (input_defs.size() > 4 && input_defs[4]->Exists()) {
-    model_builder.AddInitializerToSkip(input_defs[4]->Name());
-  }
-}
-
 namespace {
 Status PrepareSliceComputeMetadataFromConstantInitializers(const Node& slice_node,
                                                            const GraphViewer& graph_viewer,
@@ -122,6 +106,22 @@ bool ValidateSliceComputeMetadataForCoreML(const SliceOp::PrepareForComputeMetad
   return true;
 }
 }  // namespace
+
+// Add operator related
+#if defined(__APPLE__)
+
+void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  const auto& input_defs = node.InputDefs();
+
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());
+  model_builder.AddInitializerToSkip(input_defs[2]->Name());
+  if (input_defs.size() > 3 && input_defs[3]->Exists()) {
+    model_builder.AddInitializerToSkip(input_defs[3]->Name());
+  }
+  if (input_defs.size() > 4 && input_defs[4]->Exists()) {
+    model_builder.AddInitializerToSkip(input_defs[4]->Name());
+  }
+}
 
 Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                              const logging::Logger& logger) const {
