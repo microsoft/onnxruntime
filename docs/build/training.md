@@ -45,6 +45,10 @@ redirect_from: /docs/how-to/build/training
 
    Refer to the [macOS inference build instructions](./inferencing.md) and add the `--enable_training_apis` build flag.
 
+   e. For iOS
+
+    Refer to the [iOS build instructions](./ios.md) and add the ```--enable_training_apis``` build flag.
+
 > **Note**
 >
 > - To build the C# bindings, add the ```--build_nuget``` flag to the build command above.
