@@ -7,7 +7,6 @@
 #include "contrib_ops/cuda/bert/multihead_attention.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -118,68 +117,56 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
 
-  // bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-  bool is_mask_1d_key_seq_len_start = false;
-  // bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
+  bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
 
-  bool use_flash_attention =  fused_runner == nullptr &&
-                              // !disable_memory_efficient_attention_ &&
-                              (nullptr == key_padding_mask || is_mask_1d_key_seq_len_start) &&
-                              // nullptr == past &&
-                              // nullptr == present &&
-                              // (nullptr == relative_position_bias || is_good_for_rpb) &&
-                              relative_position_bias == nullptr &&
-                              sizeof(T) == 2 &&
-                              // (sizeof(T) == 2 ||  // sequence length threshold is 0 in FP16
-                              //   parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
-                              has_memory_efficient_attention(sm, sizeof(T) == 2);
+  bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
+                                   nullptr == key_padding_mask &&
+                                   nullptr == relative_position_bias &&
+                                   (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
+                                   key != nullptr &&
+                                   (value != nullptr || bias == nullptr) &&  // TODO: new kernel for adding bias to packed KV
+                                   parameters.hidden_size == parameters.v_hidden_size &&
+                                   has_fused_cross_attention_kernel(sm, parameters.head_size,
+                                                                    parameters.kv_sequence_length);
+  if (use_fused_cross_attention) {
+    if (fused_fp16_cross_attention_kernel_ == nullptr) {
+      fused_fp16_cross_attention_kernel_ = get_fused_cross_attention_kernels(sm);
+    }
 
-  bool use_fused_cross_attention = false;
-  // bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
-  //                                  nullptr == key_padding_mask &&
-  //                                  nullptr == relative_position_bias &&
-  //                                  (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
-  //                                  key != nullptr &&
-  //                                  (value != nullptr || bias == nullptr) &&  // TODO: new kernel for adding bias to packed KV
-  //                                  parameters.hidden_size == parameters.v_hidden_size &&
-  //                                  has_fused_cross_attention_kernel(sm, parameters.head_size,
-  //                                                                   parameters.kv_sequence_length);
-  // if (use_fused_cross_attention) {
-  //   if (fused_fp16_cross_attention_kernel_ == nullptr) {
-  //     fused_fp16_cross_attention_kernel_ = get_fused_cross_attention_kernels(sm);
-  //   }
+    // In case some kernel not loaded due to shared memory limit, we need to double check here.
+    // The kernel has no limit on sequence length, and this checks whether the kernel has been loaded.
+    if (fused_fp16_cross_attention_kernel_->isValid(sequence_length)) {
+      fused_cross_attention_kernel = fused_fp16_cross_attention_kernel_;
+    }
+  }
 
-  //   // In case some kernel not loaded due to shared memory limit, we need to double check here.
-  //   // The kernel has no limit on sequence length, and this checks whether the kernel has been loaded.
-  //   if (fused_fp16_cross_attention_kernel_->isValid(sequence_length)) {
-  //     fused_cross_attention_kernel = fused_fp16_cross_attention_kernel_;
-  //   }
-  // }
+  bool use_fused_runner = !disable_fused_self_attention_ &&
+                          fused_cross_attention_kernel == nullptr &&
+                          nullptr == relative_position_bias &&
+                          (value != nullptr || key == nullptr) &&
+                          (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
+                          (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
+                          parameters.hidden_size == parameters.v_hidden_size &&
+                          parameters.sequence_length == parameters.kv_sequence_length &&
+                          FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
+                                                             enable_trt_flash_attention_, false);
+  if (use_fused_runner) {
+    // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
+    if (nullptr == fused_fp16_runner_.get()) {
+      constexpr bool is_unidirectional = false;
+      fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(
+          num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_, parameters.scale);
+    }
 
-  // bool use_fused_runner = !disable_fused_self_attention_ &&
-  //                         fused_cross_attention_kernel == nullptr &&
-  //                         nullptr == relative_position_bias &&
-  //                         (value != nullptr || key == nullptr) &&
-  //                         (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
-  //                         (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
-  //                         parameters.hidden_size == parameters.v_hidden_size &&
-  //                         parameters.sequence_length == parameters.kv_sequence_length &&
-  //                         FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-  //                                                            enable_trt_flash_attention_, false);
-  // if (use_fused_runner) {
-  //   // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
-  //   if (nullptr == fused_fp16_runner_.get()) {
-  //     constexpr bool is_unidirectional = false;
-  //     fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(
-  //         num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_, parameters.scale);
-  //   }
+    // In case some kernel not loaded due to shared memory limit, we need to double check here.
+    const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
+    if (fused_fp16_runner_->isValid(S)) {
+      fused_runner = fused_fp16_runner_.get();
+    }
+  }
 
-  //   // In case some kernel not loaded due to shared memory limit, we need to double check here.
-  //   const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
-  //   if (fused_fp16_runner_->isValid(S)) {
-  //     fused_runner = fused_fp16_runner_.get();
-  //   }
-  // }
+  const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
 
   const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
 
@@ -193,8 +180,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
 
-  bool use_memory_efficient_attention = !use_flash_attention &&
-                                        fused_runner == nullptr &&
+  bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         is_long_sequence &&
@@ -264,17 +250,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
-  data.fused_cross_attention_kernel = nullptr;
-  data.use_flash_attention = use_flash_attention;
+  data.fused_cross_attention_kernel = fused_cross_attention_kernel;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
-  data.cumulated_sequence_length_q_cache = nullptr;//&(this->cumulated_sequence_length_q_cache_);
-  data.cumulated_sequence_length_kv_cache = nullptr;//&(this->cumulated_sequence_length_kv_cache_);
+  data.cumulated_sequence_length_q_cache = &(this->cumulated_sequence_length_q_cache_);
+  data.cumulated_sequence_length_kv_cache = &(this->cumulated_sequence_length_kv_cache_);
 
   cublasHandle_t cublas = GetCublasHandle(context);
-
-  size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
-  auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  data.softmax_lse_buffer = reinterpret_cast<float*>(soft_buff.get());
 
   return QkvToContext<CudaT>(
       device_prop, cublas, context->GetComputeStream(), parameters, data);

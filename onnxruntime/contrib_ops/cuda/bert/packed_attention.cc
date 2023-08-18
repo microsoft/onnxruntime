@@ -9,7 +9,6 @@
 #include "contrib_ops/cuda/bert/packed_attention_impl.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -287,7 +286,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 #if USE_FLASH_ATTENTION
   if (nullptr == fused_runner) {
     int sm = device_prop.major * 10 + device_prop.minor;
-    bool is_good_for_rpb = !parameters.has_relative_position_bias; // || parameters.sequence_length % (4 * sizeof(T)) == 0;
+    bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention = is_good_for_rpb &&
                                      sizeof(T) == 2 &&  // only enable for fp16
                                      (parameters.head_size & 7) == 0 &&
@@ -340,11 +339,6 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_memory_efficient_attention = use_memory_efficient_attention;
-#if USE_FLASH_ATTENTION
-  size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
-  auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  data.softmax_lse_buffer = reinterpret_cast<CudaT*>(soft_buff.get());
-#endif
 
   return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
 }

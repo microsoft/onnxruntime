@@ -230,17 +230,32 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   auto& device_prop = this->GetDeviceProp();
   MHARunner* fused_runner = this->GetFusedRunner(device_prop, parameters);
 
+  bool use_flash_attention = false;
+
+  if (nullptr == fused_runner) {
+    bool is_sm8x = device_prop.major == 8 && device_prop.minor >= 0;
+    bool is_sm90 = device_prop.major == 9 && device_prop.minor == 0;
+    use_flash_attention = !parameters.has_relative_position_bias &&
+                          sizeof(T) == 2 &&
+                          (parameters.head_size % 8 == 0) && 
+                          (parameters.head_size <= 256) &&
+                          (parameters.v_head_size % 8 == 0) && 
+                          (parameters.v_head_size <= 256) &&
+                          (is_sm8x || is_sm90);
+  }
+
   bool use_memory_efficient_attention = false;
 
 #if USE_FLASH_ATTENTION
   if (nullptr == fused_runner && !disable_memory_efficient_attention_) {
     int sm = device_prop.major * 10 + device_prop.minor;
-    bool is_good_for_rpb = !parameters.has_relative_position_bias; // || parameters.sequence_length % (4 * sizeof(T)) == 0;
-    use_memory_efficient_attention = is_good_for_rpb &&
+    bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
+    use_memory_efficient_attention = !use_flash_attention &&
+                                      is_good_for_rpb &&
                                      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                      (parameters.head_size & 7) == 0 &&
                                      (parameters.v_head_size & 7) == 0 &&
-                                     has_memory_efficient_attention(sm, sizeof(T) == 2);
+                                      has_memory_efficient_attention(sm, sizeof(T) == 2);
   }
 #endif
 
@@ -251,7 +266,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   constexpr size_t element_size = sizeof(T);
   // When the source and target format is same (like TN3H => TN3H, or TNH => TNH) and no bias, need not transpose qkv.
   const bool no_qkv_workspace = (fused_runner != nullptr && key == nullptr && bias == nullptr) ||
-                                (use_memory_efficient_attention && value != nullptr && bias == nullptr);
+                                ((use_memory_efficient_attention || use_flash_attention) && value != nullptr && bias == nullptr);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -259,7 +274,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
                                                    fused_runner,
-                                                   use_memory_efficient_attention,
+                                                   use_memory_efficient_attention || use_flash_attention,
                                                    no_qkv_workspace);
   auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
@@ -275,14 +290,15 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.cumulative_sequence_length = cumulative_sequence_length->Data<int32_t>();
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
+  data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.no_qkv_workspace = no_qkv_workspace;
   data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;
-#if USE_FLASH_ATTENTION
-  size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
-  auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  data.softmax_lse_buffer = reinterpret_cast<CudaT*>(soft_buff.get());
-#endif
+  if(use_flash_attention) {
+    size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
+    auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+    data.softmax_lse_buffer = reinterpret_cast<CudaT*>(soft_buff.get());
+  }
 
   return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }

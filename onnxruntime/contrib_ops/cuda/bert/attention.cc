@@ -7,10 +7,6 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
-#include "contrib_ops/cuda/bert/add_bias_transpose.h"
-#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
 using namespace onnxruntime::cuda;
@@ -45,7 +41,7 @@ template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
   disable_fused_self_attention_ = sizeof(T) != 2 ||
                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
-  
+
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
 
@@ -103,71 +99,66 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   MHARunner* fused_runner = nullptr;
 
-  // // Check whether we can use fused kernel
+  // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
-  // bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-  // bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
-  // bool is_mask_1d_seq_len = false;
+  bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
 
-  // if (is_unidirectional_ && enable_fused_causal_attention_) {  // GPT
-  //   // GPT fused kernels requires left side padding. mask can be:
-  //   //     none (no padding), 1D sequence lengths or 2d mask.
-  //   // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
-  //   // where past state is empty.
-  //   bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
-  //   bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
-  //                                  nullptr == relative_position_bias &&
-  //                                  parameters.past_sequence_length == 0 &&
-  //                                  parameters.hidden_size == parameters.v_hidden_size &&
-  //                                  FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-  //                                                                     enable_trt_flash_attention_, true);
-  //   if (use_causal_fused_runner) {
-  //     // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
-  //     if (nullptr == fused_fp16_runner_.get()) {
-  //       fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-  //                                                         enable_trt_flash_attention_, parameters.scale);
-  //     }
+  if (is_unidirectional_ && enable_fused_causal_attention_) {  // GPT
+    // GPT fused kernels requires left side padding. mask can be:
+    //     none (no padding), 1D sequence lengths or 2d mask.
+    // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
+    // where past state is empty.
+    bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
+    bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
+                                   nullptr == relative_position_bias &&
+                                   parameters.past_sequence_length == 0 &&
+                                   parameters.hidden_size == parameters.v_hidden_size &&
+                                   FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
+                                                                      enable_trt_flash_attention_, true);
+    if (use_causal_fused_runner) {
+      // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
+      if (nullptr == fused_fp16_runner_.get()) {
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                          enable_trt_flash_attention_, parameters.scale);
+      }
 
-  //     // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
-  //     fused_runner = fused_fp16_runner_.get();
-  //   }
-  // } else {  // BERT
-  //   bool use_fused_runner = !disable_fused_self_attention_ &&
-  //                           (nullptr == mask_index || is_mask_1d_seq_len) &&
-  //                           nullptr == past &&
-  //                           nullptr == present &&
-  //                           nullptr == relative_position_bias &&
-  //                           parameters.hidden_size == parameters.v_hidden_size &&
-  //                           FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-  //                                                              enable_trt_flash_attention_, false);
+      // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
+      fused_runner = fused_fp16_runner_.get();
+    }
+  } else {  // BERT
+    bool use_fused_runner = !disable_fused_self_attention_ &&
+                            (nullptr == mask_index || is_mask_1d_seq_len) &&
+                            nullptr == past &&
+                            nullptr == present &&
+                            nullptr == relative_position_bias &&
+                            parameters.hidden_size == parameters.v_hidden_size &&
+                            FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
+                                                               enable_trt_flash_attention_, false);
 
-  //   if (use_fused_runner) {
-  //     // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
-  //     if (nullptr == fused_fp16_runner_.get()) {
-  //       fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-  //                                                         enable_trt_flash_attention_, parameters.scale);
-  //     }
+    if (use_fused_runner) {
+      // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
+      if (nullptr == fused_fp16_runner_.get()) {
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                          enable_trt_flash_attention_, parameters.scale);
+      }
 
-  //     // In case some kernel not loaded due to shared memory limit, we need to double check here.
-  //     const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
-  //     if (fused_fp16_runner_->isValid(S)) {
-  //       fused_runner = fused_fp16_runner_.get();
-  //     }
-  //   }
-  // }
+      // In case some kernel not loaded due to shared memory limit, we need to double check here.
+      const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
+      if (fused_fp16_runner_->isValid(S)) {
+        fused_runner = fused_fp16_runner_.get();
+      }
+    }
+  }
 
 #if USE_FLASH_ATTENTION
-  assert(!disable_memory_efficient_attention_);
-  // bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
-  // printf("size of ", sizeof(T));
+  bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
-                                        parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH &&
-                                        // (nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
+                                        (nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
                                         nullptr == past &&
                                         nullptr == present &&
-                                        // (nullptr == relative_position_bias || is_good_for_rpb) &&
-                                        relative_position_bias == nullptr &&
+                                        (nullptr == relative_position_bias || is_good_for_rpb) &&
                                         (sizeof(T) == 2 ||  // sequence length threshold is 0 in FP16
                                          parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
@@ -233,29 +224,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_value = nullptr;
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
-  auto stream = Stream(context);
-  data.use_flash_attention = false;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
-  // auto cumseqlen = new CumulatedSequenceLengthCache();
-  // cumseqlen->Initialize(sequence_length, stream);
-  // data.cumulated_sequence_length_q_cache = cumseqlen;
-  // data.cumulated_sequence_length_kv_cache = cumseqlen; // TEMP, should be different
-  // if (use_memory_efficient_attention) {
-  //   const size_t cumulated_seq_len_elements = batch_size + 1;
-  //   auto cumulated_seq_len_buffer = GetScratchBuffer<int>(cumulated_seq_len_elements, context->GetComputeStream());
-  //   int* sequence_offset = reinterpret_cast<int*>(cumulated_seq_len_buffer.get());
-  //   LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
-  //   data.cumulated_sequence_length_q_cache = cumulated_seq_len_buffer;
-  //   data.cumulated_sequence_length_kv_cache = cumulated_seq_len_buffer;
-  // } else {
   data.cumulated_sequence_length_q_cache = nullptr;
   data.cumulated_sequence_length_kv_cache = nullptr;
-  // }
-#if USE_FLASH_ATTENTION
-  size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
-  auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  data.softmax_lse_buffer = reinterpret_cast<float*>(soft_buff.get());
-#endif
 
   return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);
 }

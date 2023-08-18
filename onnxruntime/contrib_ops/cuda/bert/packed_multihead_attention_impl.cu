@@ -586,6 +586,78 @@ Status FusedAttentionTrt(
   return Status::OK();
 }
 
+template <typename T>
+Status FlashAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    PackedAttentionParameters& parameters,
+    PackedMultiHeadAttentionData<T>& data) {
+  const int batch_size = parameters.batch_size;
+  const int sequence_length = parameters.sequence_length;
+  const int num_heads = parameters.num_heads;
+  const int qk_head_size = parameters.head_size;
+  const int v_head_size = parameters.v_head_size;
+
+  // Q, K and V pointers
+  const int model_dimension_qk = num_heads * qk_head_size;
+  const int model_dimension_v = num_heads * v_head_size;
+  const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_qk);
+  const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_v);
+
+  // When separated Q, K, V is used, we can directly use them in Cutlass FMHA. Otherwise, transpose BSN3H to 3BSNH
+  if (!data.no_qkv_workspace) {
+    LaunchTranspose(data.query, data.key, data.value, data.bias, data.workspace,
+                    batch_size, sequence_length,
+                    num_heads, qk_head_size, v_head_size,
+                    data.source_qkv_format, AttentionQkvFormat::Q_K_V_TNH,
+                    data.token_offset, parameters.token_count, stream);
+  }
+
+  MemoryEfficientAttentionParams p;
+  p.sm = device_prop.major * 10 + device_prop.minor;
+  p.is_half = sizeof(T) == 2;
+  float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
+                                     : parameters.scale;
+  int32_t* seqstart_q_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
+  int32_t* seqstart_k_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
+  void* query = data.no_qkv_workspace ? data.query : data.workspace;
+  void* key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
+  void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
+
+  cudaStreamSynchronize(stream);
+  ORT_RETURN_IF_ERROR(mha_varlen_fwd(
+    device_prop,
+    stream,
+    query, 
+    key, 
+    value,
+    data.output,
+    seqstart_q_ptr,
+    seqstart_k_ptr,
+    reinterpret_cast<void*>(data.softmax_lse_buffer),
+    batch_size,
+    num_heads,
+    num_heads, //num_heads_k
+    qk_head_size,
+    v_head_size,
+    batch_size * sequence_length, // Total token count
+    sequence_length,
+    sequence_length,
+    scale, // scale refer to softmax scale?
+    false // is causal
+    ));
+  cudaStreamSynchronize(stream);
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", reinterpret_cast<const T*>(query), parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedMHA cutlass k(BSNH)", reinterpret_cast<const T*>(key), parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedMHA cutlass v(BSNH)", reinterpret_cast<const T*>(value), parameters.token_count, num_heads * v_head_size);
+  DUMP_TENSOR_D("PackedMHA cutlass cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
+  DUMP_TENSOR("PackedMHA cutlass output", data.output, parameters.token_count, num_heads, v_head_size);
+
+  return Status::OK();
+}
+
 #if USE_FLASH_ATTENTION
 template <typename T>
 Status FusedAttentionCutlass(
@@ -632,41 +704,14 @@ Status FusedAttentionCutlass(
   p.query = data.no_qkv_workspace ? data.query : data.workspace;
   p.key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   p.value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
-  p.attn_bias = data.relative_position_bias; // TODO: where is this in flash?
+  p.attn_bias = data.relative_position_bias;
   p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float))
                     ? (data.workspace + (data.no_qkv_workspace ? 0 : (elements_qk + elements_qk + elements_v)))
                     : nullptr;
   p.stream = stream;
-
-  // size_t softmax_lse_bytes = get_softmax_lse_size(p.sequence_length, p.batch_size, parameters.num_heads);
-  // auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes);
-
-  // run_memory_efficient_attention(p);
-  cudaStreamSynchronize(stream);
-  ORT_RETURN_IF_ERROR(mha_varlen_fwd(
-    device_prop,
-    p.stream,
-    const_cast<void*>(p.query), 
-    const_cast<void*>(p.key), 
-    const_cast<void*>(p.value),
-    p.output,
-    p.seqstart_q_ptr,
-    p.seqstart_k_ptr,
-    reinterpret_cast<void*>(data.softmax_lse_buffer),
-    p.batch_size,
-    p.num_heads,
-    p.num_heads, //num_heads_k
-    p.qk_head_size,
-    p.v_head_size,
-    p.batch_size * p.sequence_length, // Total token count
-    p.sequence_length, // IS THIS MAX_SEQLEN_Q?
-    p.kv_sequence_length, // IS THIS MAX_SEQLEN_V
-    p.scale, // scale refer to softmax scale?
-    p.causal // is causal
-    ));
-  cudaStreamSynchronize(stream);
+  run_memory_efficient_attention(p);
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", reinterpret_cast<const T*>(p.query), parameters.token_count, num_heads * qk_head_size);
@@ -787,6 +832,10 @@ Status QkvToContext(
   void* fused_runner = data.fused_runner;
   if (nullptr != fused_runner) {
     return FusedAttentionTrt<T>(device_prop, stream, parameters, data);
+  }
+
+  if (data.use_flash_attention) {
+    return FlashAttention(device_prop, stream, parameters, data);
   }
 
 #if USE_FLASH_ATTENTION
