@@ -31,7 +31,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MyEP(c
 }
 
 struct MyEP_Provider : Provider {
-  GSL_SUPPRESS(c.35)
+  GSL_SUPPRESS(c .35)
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     ProviderOptions* options = (ProviderOptions*)(provider_options);
     MyProviderInfo info;
