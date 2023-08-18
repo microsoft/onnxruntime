@@ -174,7 +174,7 @@ TEST_F(GraphTransformationTests, DequantizeLinearNodeNotEliminated) {
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
-// Test that com.microsoft.DequantizeLinear is not eleminated in CommonSubexpressionElimination
+// Test that com.microsoft.DequantizeLinear is not eliminated in CommonSubexpressionElimination
 TEST_F(GraphTransformationTests, MsDomainDequantizeLinearNodeNotEliminated) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx";
   std::shared_ptr<Model> model;
