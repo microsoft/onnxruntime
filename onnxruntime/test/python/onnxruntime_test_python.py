@@ -1561,7 +1561,47 @@ class TestInferenceSession(unittest.TestCase):
         check_failure(["a", "b"], [{1: 2}])
 
         # provider options unsupported mixed specification
-        check_failure([("a", {1: 2})], [{3: 4}])    
+        check_failure([("a", {1: 2})], [{3: 4}])
+
+    def test_register_custom_e_ps_library(self):
+        from onnxruntime.capi import _pybind_state as C
+
+        available_eps = C.get_available_providers()
+        # skip amd gpu build
+        if "kRocmExecutionProvider" in available_eps:
+            return
+        if sys.platform.startswith("win"):
+            shared_library = "test_execution_provider.dll"
+
+        elif sys.platform.startswith("darwin"):
+            # exclude for macos
+            return
+
+        else:
+            shared_library = "./libtest_execution_provider.so"
+
+        if not os.path.exists(shared_library):
+            raise FileNotFoundError(f"Unable to find '{shared_library}'")
+
+        this = os.path.dirname(__file__)
+        custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
+        if not os.path.exists(custom_op_model):
+            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
+
+        session_options = C.get_default_session_options()
+        sess = C.InferenceSession(session_options, custom_op_model, True, True)
+        sess.initialize_session(
+            ["my_ep"],
+            [
+                {
+                    "shared_lib_path": shared_library,
+                    "device_id": "1",
+                    "some_config": "val",
+                }
+            ],
+            set(),
+        )
+        print("Create session with customize execution provider successfully!")
 
     def test_create_allocator(self):
         def verify_allocator(allocator, expected_config):
