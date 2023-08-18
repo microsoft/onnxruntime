@@ -41,7 +41,7 @@ redirect_from: /docs/how-to/build/training
 
    Refer to the [Android build instructions](./android.md) and add the ```--enable_training_apis``` build flag.
 
-   d. For macOS
+   d. For MacOS
 
    Refer to the [macOS inference build instructions](./inferencing.md) and add the `--enable_training_apis` build flag.
 
