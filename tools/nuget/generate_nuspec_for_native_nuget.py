@@ -178,7 +178,7 @@ def generate_icon(line_list, icon_file):
 
 
 def generate_license(line_list):
-    line_list.append('<license type="file">LICENSE.txt</license>')
+    line_list.append('<license type="file">LICENSE</license>')
 
 
 def generate_project_url(line_list, project_url):
