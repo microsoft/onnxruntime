@@ -268,8 +268,8 @@ Status AlgoIterator<T_Perf>::TryAll(const CUDAExecutionProvider* provider, const
   return Status::OK();
 }
 
-template struct AlgoIterator<T_BwdDataPerf>;
-template struct AlgoIterator<T_BwdFilterPerf>;
-template struct AlgoIterator<T_FwdPerf>;
+template class AlgoIterator<T_BwdDataPerf>;
+template class AlgoIterator<T_BwdFilterPerf>;
+template class AlgoIterator<T_FwdPerf>;
 
 }  // namespace onnxruntime::cuda
