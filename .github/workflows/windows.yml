@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - rel-*
+      - snnn/cuda_pipeline
   pull_request:
 
 concurrency:
