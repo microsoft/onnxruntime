@@ -6206,9 +6206,12 @@ def test_leakyrelu_gradient():
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
 
 
+@pytest.mark.skipif(
+    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
+)
 @pytest.mark.parametrize("use_fp16", [False, True])
 @pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
-def test_convtranspose_gradient(use_fp16, conv_algo_search):
+def test_conv_transpose_gradient(use_fp16, conv_algo_search):
     class ChainedTransposedConv(nn.Module):
         def __init__(self):
             super().__init__()
@@ -6275,8 +6278,11 @@ def test_convtranspose_gradient(use_fp16, conv_algo_search):
         del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
 
 
+@pytest.mark.skipif(
+    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
+)
 @pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
-def test_convtranspose_gradient_with_groups(conv_algo_search):
+def test_conv_transpose_gradient_with_groups(conv_algo_search):
     class TransposedConv3DWithGroups(nn.Module):
         def __init__(self):
             super().__init__()
@@ -6318,8 +6324,11 @@ def test_convtranspose_gradient_with_groups(conv_algo_search):
         del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
 
 
+@pytest.mark.skipif(
+    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
+)
 @pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
-def test_convtranspose_gradient_with_strides_padding_and_dilation(conv_algo_search):
+def test_conv_transpose_gradient_with_strides_padding_and_dilation(conv_algo_search):
     class ConvTransposeComplexModel(nn.Module):
         def __init__(self):
             super().__init__()
