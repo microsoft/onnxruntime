@@ -7,8 +7,8 @@ There are several ways to export Whisper with beam search (using Whisper tiny as
 ### Option 1: from source
 ```
 $ git clone https://github.com/microsoft/onnxruntime
-$ cd onnxruntime/onnxruntime/python/tools/transformers/models/whisper
-$ python3 convert_to_onnx.py -m openai/whisper-tiny --output whispertiny --use_external_data_format
+$ cd onnxruntime/onnxruntime/python/tools/transformers/
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format
 ```
 
 ### Option 2: from wheel
@@ -42,7 +42,7 @@ Here are some additional examples for exporting Whisper with beam search.
 Export with Forced Decoder Input Ids
 ```
 # From source:
-$ python3 convert_to_onnx.py -m openai/whisper-tiny --output whispertiny --use_external_data_format --use_forced_decoder_ids
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --use_forced_decoder_ids
 
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --use_forced_decoder_ids
@@ -51,7 +51,7 @@ $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/w
 Export + Optimize for FP32
 ```
 # From source:
-$ python3 convert_to_onnx.py -m openai/whisper-tiny --output whispertiny --use_external_data_format --optimize_onnx --precision fp32
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --optimize_onnx --precision fp32
 
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --optimize_onnx --precision fp32
@@ -60,7 +60,7 @@ $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/w
 Export + Optimize for FP16 and GPU
 ```
 # From source:
-$ python3 convert_to_onnx.py -m openai/whisper-tiny --output whispertiny --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda
 
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda
@@ -69,7 +69,7 @@ $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/w
 Export + Quantize for INT8
 ```
 # From source:
-$ python3 convert_to_onnx.py -m openai/whisper-tiny --output whispertiny --use_external_data_format --precision int8 --quantize_embedding_layer
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --precision int8 --quantize_embedding_layer
 
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --precision int8 --quantize_embedding_layer
@@ -83,7 +83,7 @@ Note: In the below examples, `PyTorch` refers to running in PyTorch without `tor
 
 1. PyTorch (without `torch.compile`), FP32
 ```
-python3 benchmark.py \
+python3 -m models.whisper.benchmark \
     --benchmark-type hf-pt \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v2 \
@@ -93,7 +93,7 @@ python3 benchmark.py \
 
 2. PyTorch 2.0 (with `torch.compile`), FP16
 ```
-python3 benchmark.py \
+python3 -m models.whisper.benchmark \
     --benchmark-type hf-pt2 \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v2 \
@@ -103,7 +103,7 @@ python3 benchmark.py \
 
 3. Optimum + ONNX Runtime, FP32, export via Optimum
 ```
-python3 benchmark.py \
+python3 -m models.whisper.benchmark \
     --benchmark-type hf-ort \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v2 \
@@ -114,7 +114,7 @@ python3 benchmark.py \
 
 4. ONNX Runtime, FP32, export via Olive or convert_to_onnx
 ```
-python3 benchmark.py \
+python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v2 \
@@ -125,7 +125,7 @@ python3 benchmark.py \
 
 5. ONNX Runtime, FP16, export via Olive or convert_to_onnx
 ```
-python3 benchmark.py \
+python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v2 \
@@ -136,7 +136,7 @@ python3 benchmark.py \
 
 6. ONNX Runtime, INT8, export via Olive or convert_to_onnx
 ```
-python3 benchmark.py \
+python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v2 \
