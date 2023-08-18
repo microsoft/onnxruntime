@@ -1763,10 +1763,8 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, const HandlerMap& exten
 
   if (IsOnnxDomain(domain)) {
     key = std::string(op_type);
-  } else if (IsMSDomain(domain)) {
-    key = onnxruntime::MakeString(domain, ".", op_type);
   } else {
-    return nullptr;
+    key = onnxruntime::MakeString(domain, ".", op_type);
   }
 
   // extended map is higher priority
