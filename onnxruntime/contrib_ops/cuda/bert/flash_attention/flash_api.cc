@@ -61,10 +61,10 @@ void set_params_fprop(Flash_fwd_params& params,
   params.is_bf16 = false;
 
   if (cu_seqlens_q_d == nullptr) {
-    params.q_batch_stride = batch_size * num_heads * head_size; // stride(0)
-    params.k_batch_stride = batch_size * num_heads_k * head_size;  // stride(0)
-    params.v_batch_stride = batch_size * num_heads * head_size;  // stride(0)
-    params.o_batch_stride = batch_size * num_heads * head_size;  // stride(0)
+    params.q_batch_stride = seqlen_q * num_heads * head_size; // stride(0)
+    params.k_batch_stride = seqlen_k * num_heads_k * head_size;  // stride(0)
+    params.v_batch_stride = seqlen_k * num_heads * head_size;  // stride(0)
+    params.o_batch_stride = seqlen_q * num_heads * head_size;  // stride(0)
   }
   else {
     params.q_batch_stride = 0;
@@ -112,34 +112,9 @@ void set_params_fprop(Flash_fwd_params& params,
   params.is_causal = is_causal;
 }
 
-int get_max_seqlen_k(int max_seqlen_k_, int head_size, bool& loop) {
-  int blocksize_c = head_size > 64 ? 128 : 256;
-  // Need to round max_seqlen_k to multiples of blocksize_c
-  int max_seqlen_k = ((max_seqlen_k_ + blocksize_c - 1) / blocksize_c) * blocksize_c;
-  if (max_seqlen_k <= 128) {
-    max_seqlen_k = 128;
-  } else if (max_seqlen_k <= 256) {
-    max_seqlen_k = 256;
-  }
-  loop = max_seqlen_k > blocksize_c;
-  return max_seqlen_k;
-}
-
-int get_max_seqlen_q(int max_seqlen_q_) {
-  return ((max_seqlen_q_ + 16 - 1) / 16) * 16;
-}
-
 size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads) {
-  int max_seqlen_q = get_max_seqlen_q(max_seqlen_q_);
   size_t bytes = sizeof(float) * batch_size * num_heads * max_seqlen_q;
-
   return bytes;
-}
-
-size_t get_o_tmp_size(int max_seqlen_k_, int total_q, int num_heads, int head_size) {
-  bool loop = false;
-  get_max_seqlen_k(max_seqlen_k_, head_size, loop);
-  return loop ? (sizeof(float) * total_q * num_heads * head_size) : 0;
 }
 
 void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream) {
