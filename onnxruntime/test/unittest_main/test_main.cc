@@ -31,7 +31,7 @@ void ortenv_setup() {
   ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
 }
 
-std::optional<std::string> GetEnvironmentVariable(const char* name) {
+static std::optional<std::string> GetEnvironmentVariable(const char* name) {
 #if !defined(_WIN32)
   const char* value = std::getenv(name);
   if (value) {
