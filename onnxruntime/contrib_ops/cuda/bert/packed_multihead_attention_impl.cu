@@ -600,9 +600,7 @@ Status FlashAttention(
 
   // Q, K and V pointers
   const int model_dimension_qk = num_heads * qk_head_size;
-  const int model_dimension_v = num_heads * v_head_size;
   const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_qk);
-  const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_v);
 
   // When separated Q, K, V is used, we can directly use them in Cutlass FMHA. Otherwise, transpose BSN3H to 3BSNH
   if (!data.no_qkv_workspace) {
@@ -613,24 +611,21 @@ Status FlashAttention(
                     data.token_offset, parameters.token_count, stream);
   }
 
-  MemoryEfficientAttentionParams p;
-  p.sm = device_prop.major * 10 + device_prop.minor;
-  p.is_half = sizeof(T) == 2;
   float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                      : parameters.scale;
   int32_t* seqstart_q_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
   int32_t* seqstart_k_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
-  void* query = data.no_qkv_workspace ? data.query : data.workspace;
-  void* key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
-  void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
+  const void* query = data.no_qkv_workspace ? data.query : data.workspace;
+  const void* key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
+  const void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
 
   cudaStreamSynchronize(stream);
   ORT_RETURN_IF_ERROR(mha_varlen_fwd(
     device_prop,
     stream,
-    query, 
-    key, 
-    value,
+    const_cast<void*>(query), 
+    const_cast<void*>(key), 
+    const_cast<void*>(value),
     data.output,
     seqstart_q_ptr,
     seqstart_k_ptr,

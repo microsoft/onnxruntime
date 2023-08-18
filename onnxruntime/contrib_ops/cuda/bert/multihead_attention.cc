@@ -168,8 +168,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
 
-  const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
-
 #if USE_FLASH_ATTENTION
   bool is_long_sequence = sizeof(T) == 2 ||  // sequence length threshold is 0 for FP16
                           parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32 ||
