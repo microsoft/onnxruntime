@@ -757,7 +757,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       return v_;
     }
 
-    bool operator==(Tag& other) const {
+    bool operator==(const Tag& other) const {
       return v_ == other.v_;
     }
 

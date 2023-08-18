@@ -160,7 +160,7 @@ build.bat --config Release --enable_pybind --build_wheel --skip_tests --parallel
 ```
 build.bat --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_tvm --skip_onnx_tests --cmake_generator "Visual Studio 17 2022" --llvm_config <path_to_llvm_root>/build/Release/bin/llvm-config.exe --use_cuda --cudnn_home “C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.*” --cuda_home “C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.*”
 ```
-In both cases (CPU, GPU) there are the following options for cmake generator: "Visual Studio 15 2017", "Visual Studio 16 2019", "Visual Studio 17 2022" and "Ninja". Also handshake mechanism can be switched on by `--use_tvm_hash` flag. At the latter case ipp-crypto library is built with dependencies, see details above.
+In both cases (CPU, GPU) there are the following options for cmake generator: "Visual Studio 17 2022" and "Ninja". Also handshake mechanism can be switched on by `--use_tvm_hash` flag. At the latter case ipp-crypto library is built with dependencies, see details above.
 - Install python wheel package for ONNX Runtime:<br>
 Default path to the package is `<path_to_onnxruntime_root>/build/Windows/Release/Release/dist`. Note that it is different in comparison with path to the package on Linux. Before installation check names of wheel packages and use corresponding one. It can be looked like the following:
 ```cmd
@@ -224,7 +224,7 @@ Currently, only precompiled models are supported in C# (see the related section 
 
 ```CSharp
 SessionOptions session_options = new SessionOptions{};
-string tvm_ep_options = 
+string tvm_ep_options =
   $"executor: {tvm_executor_type}, " +
   $"so_folder: {folder_with_pretuned_files}, " +
   $"check_hash: {check_hash}, " +

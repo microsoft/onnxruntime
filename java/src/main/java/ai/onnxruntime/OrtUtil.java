@@ -88,8 +88,6 @@ public final class OrtUtil {
   /**
    * Creates a new primitive boolean array of up to 8 dimensions, using the supplied shape.
    *
-   * <p>
-   *
    * @param shape The shape of array to create.
    * @return A boolean array.
    */
@@ -100,8 +98,6 @@ public final class OrtUtil {
 
   /**
    * Creates a new primitive byte array of up to 8 dimensions, using the supplied shape.
-   *
-   * <p>
    *
    * @param shape The shape of array to create.
    * @return A byte array.
@@ -114,8 +110,6 @@ public final class OrtUtil {
   /**
    * Creates a new primitive short array of up to 8 dimensions, using the supplied shape.
    *
-   * <p>
-   *
    * @param shape The shape of array to create.
    * @return A short array.
    */
@@ -126,8 +120,6 @@ public final class OrtUtil {
 
   /**
    * Creates a new primitive int array of up to 8 dimensions, using the supplied shape.
-   *
-   * <p>
    *
    * @param shape The shape of array to create.
    * @return A int array.
@@ -140,8 +132,6 @@ public final class OrtUtil {
   /**
    * Creates a new primitive long array of up to 8 dimensions, using the supplied shape.
    *
-   * <p>
-   *
    * @param shape The shape of array to create.
    * @return A long array.
    */
@@ -152,8 +142,6 @@ public final class OrtUtil {
 
   /**
    * Creates a new primitive float array of up to 8 dimensions, using the supplied shape.
-   *
-   * <p>
    *
    * @param shape The shape of array to create.
    * @return A float array.
@@ -166,8 +154,6 @@ public final class OrtUtil {
   /**
    * Creates a new primitive double array of up to 8 dimensions, using the supplied shape.
    *
-   * <p>
-   *
    * @param shape The shape of array to create.
    * @return A double array.
    */
@@ -178,8 +164,6 @@ public final class OrtUtil {
 
   /**
    * Creates a new String array of up to 8 dimensions, using the supplied shape.
-   *
-   * <p>
    *
    * @param shape The shape of array to create.
    * @return A double array.

@@ -247,10 +247,16 @@ stages:
         condition: and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8')))
         inputs:
           msBuildArchitecture: amd64
-          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-          msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
-          excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files'
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON onnxruntime_ENABLE_LTO=OFF'
+          msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\Debug\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files#C:\program files (x86)#C:\program files'
+          rulesetName: Custom
+          customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
 
+      - task: SdtReport@2
+        displayName: 'Create Security Analysis Report'
+        inputs:
+          SDLNativeRules: true
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
@@ -495,8 +501,7 @@ stages:
           devtoolset_rootpath: /opt/rh/devtoolset-10/root
           ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
 
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
       - template: py-linux.yml
@@ -507,8 +512,7 @@ stages:
           devtoolset_rootpath: /opt/rh/devtoolset-11/root
           ld_library_path_arg: /opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-11/root/usr/bin:'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
 
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
@@ -516,5 +520,4 @@ stages:
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          extra_build_arg: ${{ parameters.build_py_parameters }}

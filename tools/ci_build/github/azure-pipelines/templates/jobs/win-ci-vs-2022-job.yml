@@ -58,7 +58,7 @@ parameters:
 - name: OnnxruntimeTestGpuDeviceId
   type: number
   default: 0
-  
+
 
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
@@ -108,6 +108,7 @@ jobs:
       versionSpec: '16.x'
       force32bit: ${{ parameters.isX86 }}
 
+
   # Our build machine doesn't have java x86
   - ${{ if eq(parameters.buildArch, 'x64') }}:
       - task: JavaToolInstaller@0
@@ -116,12 +117,11 @@ jobs:
           jdkArchitectureOption: ${{ parameters.buildArch }}
           jdkSourceOption: 'PreInstalled'
 
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
+  - template: set-winenv.yml
+    parameters:
+      EnvSetupScript: ${{ parameters.EnvSetupScript }}
+      ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
+        DownloadCUDA: true
 
   - script: |
      set ORT_DOXY_SRC=$(Build.SourcesDirectory)
@@ -136,10 +136,6 @@ jobs:
      python -m pip install -q setuptools wheel numpy
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
-
-  - ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
-    - powershell: |
-       azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
 
   - ${{ if eq(parameters.WITH_CACHE, true) }}:
     - powershell: |
@@ -332,7 +328,7 @@ jobs:
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         inputs:
           msBuildArchitecture: amd64
-          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON onnxruntime_ENABLE_LTO=OFF'
           msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\RelWithDebInfo\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=${{ parameters.msbuildPlatform }} /p:configuration=RelWithDebInfo /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
           excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files#C:\program files (x86)#C:\program files'
           rulesetName: Custom
