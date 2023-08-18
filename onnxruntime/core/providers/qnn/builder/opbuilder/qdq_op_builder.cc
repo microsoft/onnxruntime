@@ -35,11 +35,11 @@ class QdqOpBuilder : public BaseOpBuilder {
 };
 
 Status QdqOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                    const NodeUnit& node_unit,
-                                    const logging::Logger& logger,
-                                    bool is_quantized_node,
-                                    std::vector<std::string>& input_names,
-                                    bool do_op_validation) const {
+                                   const NodeUnit& node_unit,
+                                   const logging::Logger& logger,
+                                   bool is_quantized_node,
+                                   std::vector<std::string>& input_names,
+                                   bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
   ORT_UNUSED_PARAMETER(is_quantized_node);
 
@@ -54,10 +54,10 @@ Status QdqOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 }
 
 Status QdqOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                  const NodeUnit& node_unit,
-                                                  std::vector<std::string>&& input_names,
-                                                  const logging::Logger& logger,
-                                                  bool is_quantized_node,
+                                                 const NodeUnit& node_unit,
+                                                 std::vector<std::string>&& input_names,
+                                                 const logging::Logger& logger,
+                                                 bool is_quantized_node,
                                                  bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(is_quantized_node);
   if (input_names.size() < 1) {
@@ -73,7 +73,6 @@ Status QdqOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                      GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
-
 
 void CreateQdqOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.AddOpBuilder(op_type, std::make_unique<QdqOpBuilder>());
