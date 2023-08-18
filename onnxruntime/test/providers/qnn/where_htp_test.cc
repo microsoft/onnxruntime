@@ -126,7 +126,7 @@ TEST_F(QnnHTPBackendTests, WhereLargeDataU8) {
 // QnnDsp <E> graph prepare failed 13
 // QnnDsp <E> Failed to finalize graph QNN_4851394333842096633_1 with err: 1002
 // QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
-TEST_F(QnnHTPBackendTests, WhereLargeDataBroadcastU8) {
+TEST_F(QnnHTPBackendTests, DISABLED_WhereLargeDataBroadcastU8) {
   RunWhereQDQTest(TestInputDef<bool>({5120}, false, false, true),
                   TestInputDef<float>({1, 16, 64, 5120}, true, 0.0f, 1.0f),
                   TestInputDef<float>({1}, true, {3.0f}),
