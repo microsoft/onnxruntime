@@ -4,6 +4,7 @@
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include <cassert>
 
 namespace onnxruntime {
 
@@ -45,22 +46,16 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
       self->OpType() != "DequantizeLinear" ||
       self->GetInputEdgesCount() != 1 ||
       self->GetOutputEdgesCount() != 1 ||
-      self->InputDefs().size() != InputIndex::TOTAL_COUNT ||
       graph.NodeProducesGraphOutput(*self)) {
     return false;
   }
 
-  // Only support either "tensor(uint8)" or "tensor(int8)"
-  const std::string& self_zp_type = *self->InputDefs()[InputIndex::ZERO_POINT_ID]->Type();
-
-  // child should be a Q, and have only one child, have the same type as self, and cannot be a graph output
+  // child should be a Q, and have only one child, and cannot be a graph output
   child_index = self->OutputEdgesBegin()->GetNode().Index();
   const Node* child = graph.GetNode(child_index);
   if (child == nullptr ||
       child->OpType() != "QuantizeLinear" ||
       child->GetOutputEdgesCount() != 1 ||
-      child->InputDefs().size() != InputIndex::TOTAL_COUNT ||
-      *child->InputDefs()[InputIndex::ZERO_POINT_ID]->Type() != self_zp_type ||
       graph.NodeProducesGraphOutput(*child)) {
     return false;
   }
@@ -82,19 +77,37 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
       grandchild->OpType() != "DequantizeLinear") {
     return false;
   }
+
   const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
     return graph.GetConstantInitializer(initializer_name, true);
   };
+
+  // Each QDQ pair (i.e., parent -> self, child -> grandchild) has to meet the following additional requirements:
+  // - Scalar/constant zero-point and scale.
+  // - Zero-point input must exist.
+  // - The DQ and Q ops within a pair must have the same scale and zero-point.
+  //   However, each pair is allowed to have different scales and zero-points.
   if (!QDQ::IsQDQPairSupported(*parent, *self, get_constant_initializer, graph.ModelPath()) ||
       !QDQ::IsQDQPairSupported(*child, *grandchild, get_constant_initializer, graph.ModelPath())) {
     return false;
   }
 
-  if (self_zp_type == "tensor(uint8)") {
+  const auto& self_input_defs = self->InputDefs();
+  const ONNX_NAMESPACE::TensorProto* self_zp_tensor_proto = graph.GetConstantInitializer(
+      self_input_defs[InputIndex::ZERO_POINT_ID]->Name(), true);
+
+  assert(self_zp_tensor_proto != nullptr);  // IsQDQPairSupported should have checked that this exists.
+
+  auto self_zp_type = self_zp_tensor_proto->data_type();
+
+  // The two QDQ pairs may have different zero-points and scales. Ex: Q1 -> DQ1 -> Q2 -> DQ2, where
+  // the first pair has (zp1, scale1) and the second pair has (zp2, scale2).
+  // After removing the middle two nodes, the zero point and scale of the final (outer) ops must be recomputed.
+  if (self_zp_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
     return ResetParentAndGrandchildZeroPointAndScale<uint8_t>(graph, *self, *child, *parent, *grandchild);
   }
 
-  if (self_zp_type == "tensor(int8)") {
+  if (self_zp_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
     return ResetParentAndGrandchildZeroPointAndScale<int8_t>(graph, *self, *child, *parent, *grandchild);
   }
 
