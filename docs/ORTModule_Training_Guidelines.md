@@ -115,15 +115,7 @@ The output directory of the onnx models by default is set to the current working
 	enable_custom_autograd_support(False)
 	```
 
-#### ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS
 
-- **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
-- **Description**: By default, this is empty. When user model's setup depends on libraries who might define multiple torch.autograd.Function classes of same name, though their python import paths (e.g. 'namespace') are different, while due to limitation of PyTorch exporter (https://github.com/microsoft/onnx-converters-private/issues/115), ORT backend cannot infer which one to call. So an exception will be thrown for this case.
-Before full qualified name can be got from exporter, this environment variables can be used to specify which torch.autograd.Function classes can be ignored. An example as below, be noted, full qualified name is needed here. If there are multiple classes to be ignored, use comma as the separator.
-
-	```bash
-	export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS="megatron.fp16.fp16.fused_kernels.GELUFunction"
-	```
 
 #### ORTMODULE_ENABLE_COMPUTE_OPTIMIZER
 

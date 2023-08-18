@@ -140,8 +140,8 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
     external_file_path = location;
   } else {
     if (tensor_proto_dir != nullptr) {
-      external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir,
-                                                                       external_data_info->GetRelPath());
+      external_file_path = onnxruntime::ConcatPathComponent(tensor_proto_dir,
+                                                            external_data_info->GetRelPath());
     } else {
       external_file_path = external_data_info->GetRelPath();
     }
@@ -1008,6 +1008,8 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const Path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name) {
+  ORT_RETURN_IF_NOT(node.attribute_size() > 0, "Constant node: ", node.name(), " has no data attributes");
+
   const AttributeProto& constant_attribute = node.attribute(0);
 
   switch (constant_attribute.type()) {
