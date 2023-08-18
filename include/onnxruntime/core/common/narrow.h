@@ -35,13 +35,14 @@ namespace detail {
 
 // narrow() : a checked version of narrow_cast() that terminates if the cast changed the value
 template <class T, class U, typename std::enable_if<std::is_arithmetic<T>::value>::type* = nullptr>
-GSL_SUPPRESS(type.1) constexpr T narrow(U u) noexcept {
+GSL_SUPPRESS(type.1)  // NO-FORMAT: attribute
+    constexpr T narrow(U u) noexcept {
   constexpr const bool is_different_signedness =
       (std::is_signed<T>::value != std::is_signed<U>::value);
 
-  GSL_SUPPRESS(es.103)                 // don't overflow
-  GSL_SUPPRESS(es.104)                 // don't underflow
-  GSL_SUPPRESS(p.2)                    // don't rely on undefined behavior
+  GSL_SUPPRESS(es.103)                 // NO-FORMAT: attribute // don't overflow
+  GSL_SUPPRESS(es.104)                 // NO-FORMAT: attribute // don't underflow
+  GSL_SUPPRESS(p.2)                    // NO-FORMAT: attribute // don't rely on undefined behavior
   const T t = gsl::narrow_cast<T>(u);  // While this is technically undefined behavior in some cases (i.e., if the source value is of floating-point type
                                        // and cannot fit into the destination integral type), the resultant behavior is benign on the platforms
                                        // that we target (i.e., no hardware trap representations are hit).
@@ -54,7 +55,8 @@ GSL_SUPPRESS(type.1) constexpr T narrow(U u) noexcept {
 }
 
 template <class T, class U, typename std::enable_if<!std::is_arithmetic<T>::value>::type* = nullptr>
-GSL_SUPPRESS(type.1) constexpr T narrow(U u) noexcept {
+GSL_SUPPRESS(type.1)  // NO-FORMAT: attribute
+    constexpr T narrow(U u) noexcept {
   const T t = gsl::narrow_cast<T>(u);
 
   if (static_cast<U>(t) != u) {
