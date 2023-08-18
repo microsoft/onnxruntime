@@ -9,7 +9,7 @@ There are several ways to export LLaMA-2 models (using LLaMA-2 7B as an example)
 # From source:
 $ git clone https://github.com/microsoft/onnxruntime
 $ cd onnxruntime/onnxruntime/python/tools/transformers/models/llama
-$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b
+$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b
 
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b
@@ -50,7 +50,7 @@ Here are some additional examples for exporting LLaMA.
 ### Export Saved Model on Disk
 ```
 # From source:
-$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
+$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
 
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
@@ -61,7 +61,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 FP16:
 ```
 # From source:
-$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16
+$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16
 
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16
@@ -70,7 +70,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 INT8:
 ```
 # From source:
-$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant
+$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant
 
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant
@@ -88,7 +88,7 @@ Note: In the below examples, `PyTorch` refers to running in PyTorch without `tor
 
 1. PyTorch (without `torch.compile`), FP32
 ```
-python3 benchmark.py \
+python3 -m models.llama.benchmark \
     --benchmark-type hf-pt \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp32 \
@@ -100,7 +100,7 @@ python3 benchmark.py \
 
 2. PyTorch 2.0 (with `torch.compile`), FP16
 ```
-python3 benchmark.py \
+python3 -m models.llama.benchmark \
     --benchmark-type hf-pt2 \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp16 \
@@ -112,7 +112,7 @@ python3 benchmark.py \
 
 3. Optimum + ONNX Runtime, FP32, export via Optimum or convert_to_onnx
 ```
-python3 benchmark.py \
+python3 -m models.llama.benchmark \
     --benchmark-type hf-ort \
     --hf-ort-model-path ./Llama-2-7b-hf-onnx/ \
     --model-name meta-llama/Llama-2-7b-hf \
@@ -125,7 +125,7 @@ python3 benchmark.py \
 
 4. Optimum + ONNX Runtime, FP16, export via convert_to_onnx
 ```
-python3 benchmark.py \
+python3 -m models.llama.benchmark \
     --benchmark-type hf-ort \
     --hf-ort-model-path ./llama2-7b-fp16/ \
     --model-name meta-llama/Llama-2-7b-hf \
@@ -138,7 +138,7 @@ python3 benchmark.py \
 
 5. Optimum + ONNX Runtime, INT8, export via convert_to_onnx
 ```
-python3 benchmark.py \
+python3 -m models.llama.benchmark \
     --benchmark-type hf-ort \
     --hf-ort-model-path ./llama2-7b-int8/ \
     --model-name meta-llama/Llama-2-7b-hf \
@@ -151,7 +151,7 @@ python3 benchmark.py \
 
 6. ONNX Runtime, FP32, Microsoft custom export
 ```
-python3 benchmark.py \
+python3 -m models.llama.benchmark \
     --benchmark-type ort \
     --ort-model-path llama-2-onnx/7B_float32/ONNX/LlamaV2_7B_float32.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
@@ -163,7 +163,7 @@ python3 benchmark.py \
 
 7. ONNX Runtime, FP16, Microsoft custom export
 ```
-python3 benchmark.py \
+python3 -m models.llama.benchmark \
     --benchmark-type ort \
     --ort-model-path ./llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
