@@ -1356,6 +1356,7 @@
       "pow.jsonc",
       "pow-big-number.jsonc",
       "reshape.jsonc",
+      "skip-layer-norm.jsonc",
       //"softmax.jsonc",
       "sin.jsonc",
       //"split.jsonc",
