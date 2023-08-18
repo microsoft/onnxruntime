@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <vector>
+
 #include "core/providers/js/js_kernel.h"
+#include "core/providers/js/operators/cast.h"
 
-#include "cast.h"
-
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace js {
 
@@ -15,7 +14,7 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
   // https://gpuweb.github.io/gpuweb/wgsl/#plain-types-section
   //
   static std::vector<MLDataType> types{
-      // TODO: support f16 when it's ready
+      // TODO(fs-eire): support f16 when it's ready
       // DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
       DataTypeImpl::GetTensorType<int32_t>(),
