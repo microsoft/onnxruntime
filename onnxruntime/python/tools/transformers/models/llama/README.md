@@ -173,4 +173,17 @@ python3 -m models.llama.benchmark \
     --device cuda
 ```
 
-You can also profile each of these variants by adding the `--profile` flag and providing one batch size and sequence length combination.
+You can profile a variant by adding the `--profile` flag and providing one batch size and sequence length combination.
+
+### Benchmark All
+You can use `benchmark_all.py` to benchmark across various platforms and automatically store the results in a CSV file. Here is an example.
+```
+python3 -m models.llama.benchmark_all \
+    --hf-ort-model-path ./llama2-7b-fp16/ \
+    --ort-model-path ./llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --precision fp16 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cuda
+```
