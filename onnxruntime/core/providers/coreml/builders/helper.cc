@@ -71,10 +71,10 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name,
   }
 
   // Limit input shape rank to 5.
-  // We have observed CoreML errors for input shapes with larger ranks. E.g., for Transpose, Reshape, and more.
+  // CoreML doesn't currently support shapes with rank greater that 5.
+  // https://github.com/apple/coremltools/issues/832
   if (shape.size() > 5) {
-    LOGS(logger, VERBOSE) << "CoreML EP doesn't allow input shapes with rank greater than 5. CoreML does not support "
-                             "this well. Input: "
+    LOGS(logger, VERBOSE) << "CoreML EP doesn't allow input shapes with rank greater than 5. Input: "
                           << input_name << ", shape: " << Shape2String(shape);
     return false;
   }
