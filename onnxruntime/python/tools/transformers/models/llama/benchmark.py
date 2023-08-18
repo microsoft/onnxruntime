@@ -398,8 +398,6 @@ def get_args():
     )
 
     # Args for choosing the model
-    parser.add_argument("-ms", "--model-size", required=True, type=str, default="7b", choices=["7b", "13b", "70b"])
-
     parser.add_argument(
         "-p",
         "--precision",

@@ -65,14 +65,6 @@ def get_args():
     )
 
     parser.add_argument(
-        "--model-size",
-        type=str,
-        required=True,
-        choices=["7b", "13b", "70b"],
-        help="Number of parameters in model",
-    )
-
-    parser.add_argument(
         "--precision",
         type=str,
         required=True,
@@ -111,6 +103,7 @@ def get_args():
 
     args = parser.parse_args()
 
+    setattr(args, "model_size", args.model_name.split("/")[-1].replace(".", "-"))  # noqa: B010
     log_folder_name = f"./{args.model_size}_{args.precision}"
     setattr(args, "log_folder", log_folder_name)  # noqa: B010
     os.makedirs(args.log_folder, exist_ok=True)
@@ -244,8 +237,6 @@ def main():
         "hf-pt",
         "--model-name",
         args.model_name,
-        "--model-size",
-        args.model_size,
         "--precision",
         args.precision,
         "--batch-sizes",
@@ -276,8 +267,6 @@ def main():
         "hf-pt2",
         "--model-name",
         args.model_name,
-        "--model-size",
-        args.model_size,
         "--precision",
         args.precision,
         "--batch-sizes",
@@ -311,8 +300,6 @@ def main():
             args.hf_ort_model_path,
             "--model-name",
             args.model_name,
-            "--model-size",
-            args.model_size,
             "--precision",
             args.precision,
             "--batch-sizes",
@@ -346,8 +333,6 @@ def main():
             args.ort_model_path,
             "--model-name",
             args.model_name,
-            "--model-size",
-            args.model_size,
             "--precision",
             args.precision,
             "--batch-sizes",

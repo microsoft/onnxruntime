@@ -70,10 +70,10 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 INT8:
 ```
 # From source:
-$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --smooth_quant
+$ python3 convert_to_onnx.py -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --smooth_quant
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant
 ```
 
 Note: [Intel's Neural Compressor](https://github.com/intel/neural-compressor) takes time to run the SmoothQuant quantization algorithm on LLMs. On an [Azure Standard_NC24s_v3 VM](https://learn.microsoft.com/en-us/azure/virtual-machines/ncv3-series), it takes about ~30-45 min for each of the exported ONNX models.
@@ -91,7 +91,6 @@ Note: In the below examples, `PyTorch` refers to running in PyTorch without `tor
 python3 benchmark.py \
     --benchmark-type hf-pt \
     --model-name meta-llama/Llama-2-7b-hf \
-    --model-size 7b \
     --precision fp32 \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \
@@ -104,7 +103,6 @@ python3 benchmark.py \
 python3 benchmark.py \
     --benchmark-type hf-pt2 \
     --model-name meta-llama/Llama-2-7b-hf \
-    --model-size 7b \
     --precision fp16 \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \
@@ -118,7 +116,6 @@ python3 benchmark.py \
     --benchmark-type hf-ort \
     --hf-ort-model-path ./Llama-2-7b-hf-onnx/ \
     --model-name meta-llama/Llama-2-7b-hf \
-    --model-size 7b \
     --precision fp32 \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \
@@ -132,7 +129,6 @@ python3 benchmark.py \
     --benchmark-type hf-ort \
     --hf-ort-model-path ./llama2-7b-fp16/ \
     --model-name meta-llama/Llama-2-7b-hf \
-    --model-size 7b \
     --precision fp16 \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \
@@ -146,7 +142,6 @@ python3 benchmark.py \
     --benchmark-type hf-ort \
     --hf-ort-model-path ./llama2-7b-int8/ \
     --model-name meta-llama/Llama-2-7b-hf \
-    --model-size 7b \
     --precision int8 \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \
@@ -160,7 +155,6 @@ python3 benchmark.py \
     --benchmark-type ort \
     --ort-model-path llama-2-onnx/7B_float32/ONNX/LlamaV2_7B_float32.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
-    --model-size 7b \
     --precision fp32 \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \
@@ -173,7 +167,6 @@ python3 benchmark.py \
     --benchmark-type ort \
     --ort-model-path ./llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
-    --model-size 7b \
     --precision fp16 \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \

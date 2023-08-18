@@ -31,8 +31,8 @@ def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
             # shape is (batch_size, sequence_length, vocab_size)
             dynamic_axes[name] = {0: "batch_size", 1: "sequence_length"}
         elif "present" in name:
-            # shape is (batch_size, num_heads, past_sequence_length + 1, head_size)
-            dynamic_axes[name] = {0: "batch_size", 2: "past_sequence_length + 1"}
+            # shape is (batch_size, num_heads, sequence_length, head_size)
+            dynamic_axes[name] = {0: "batch_size", 2: "sequence_length"}
         else:
             raise Exception("Unknown input or output name found")
     return dynamic_axes
@@ -296,7 +296,7 @@ def get_args():
     )
 
     parser.add_argument(
-        "-ep",
+        "-e",
         "--execution_provider",
         required=False,
         default="cpu",
@@ -304,15 +304,15 @@ def get_args():
         help="Execution provider to verify parity with",
     )
 
-    smooth_quant_group = parser.add_argument_group("smooth_quant")
-
-    smooth_quant_group.add_argument(
-        "--smooth_quant",
-        required=False,
-        action="store_true",
-        help="Run SmoothQuant quantization algorithm. Need to install extra packages in `requirements_quant.txt` \
-              first.",
+    parser.add_argument(
+        "-q",
+        "--quantization_method",
+        default="",
+        choices=["smooth_quant", "quantize_dynamic"],
+        help="Run a specific quantization algorithm. Need to install extra packages in `requirements-quant.txt` for SmoothQuant.",
     )
+
+    smooth_quant_group = parser.add_argument_group("smooth_quant")
 
     smooth_quant_group.add_argument(
         "--smooth_quant_alpha",
@@ -356,13 +356,6 @@ def get_args():
     )
 
     quantize_dynamic_group = parser.add_argument_group("quantize_dynamic")
-
-    quantize_dynamic_group.add_argument(
-        "--quantize_dynamic",
-        required=False,
-        action="store_true",
-        help="Use dynamic quantization to quantize model",
-    )
 
     quantize_dynamic_group.add_argument(
         "--quantize_embedding_layer",
@@ -474,7 +467,7 @@ def main():
             args.output, f"{args.model_name}_decoder_with_past_model_int8.onnx"
         )
 
-        if args.smooth_quant:
+        if args.quantization_method == "smooth_quant":
             from neural_compressor import PostTrainingQuantConfig
             from neural_compressor import quantization as intel_quantization
             from neural_compressor import set_workspace
@@ -534,7 +527,11 @@ def main():
             logger.info(f"Removing {args.nc_workspace}")
             os.system(f"rm -R {args.nc_workspace}")
 
-        elif args.quantize_dynamic:
+        elif args.quantization_method == "quantize_dynamic":
+            logger.warning(
+                "The `quantize_dynamic` method is deprecated in favor of `smooth_quant` instead. Precision loss may be high with `quantize_dynamic`."
+            )
+
             # Convert decoder_model.onnx to INT8
             ort_quantization.quantize_dynamic(
                 decoder_model_fp32_path,
@@ -560,6 +557,9 @@ def main():
                 use_external_data_format=True,
                 extra_options={"MatMulConstBOnly": True},
             )
+
+        else:
+            raise Exception(f"Could not recognize {args.quantization_method} as a quantization method")
 
     # Verify parity on all saved ONNX models
     del llama  # Delete LLaMA model from memory since it will be loaded again during parity check
