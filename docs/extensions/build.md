@@ -18,10 +18,9 @@ Test:
 - 'pip install -r requirements-dev.txt' to install pip packages for development.
 - run `pytest test` in the project root directory.
 
-For a complete list of verified build configurations see [here](./development.md#dependencies)
+For a complete list of verified build configurations see [here](./build.md#dependencies)
 
 ## Java package
-For instructions on building ONNX Runtime with onnxruntime-extensions for Java package, see [here](./custom-build.md)
 
 Run `bash ./build.sh -DOCOS_BUILD_JAVA=ON` to build jar package in out/<OS>/Release folder
 

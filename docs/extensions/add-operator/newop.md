@@ -1,6 +1,6 @@
 ---
-title: New Operators
-description: Instructions to add a new custom operator
+title: Add a New C++ Operator
+description: Instructions to add a new custom operator using C++
 parent: Add Operators
 grand_parent: Extensions
 nav_order: 2
@@ -49,6 +49,6 @@ the custom operator kernel C++ code example can be found [operators](https://git
 
 ## 3. Build and Test
 - The unit tests can be implemented as Python or C++, check [test](https://github.com/microsoft/onnxruntime-extensions/tree/main/test) folder for more examples
-- Check [build-package](./development.md) on how to build the different language package to be used for production.
+- Check [build-package](../build.md) on how to build the different language package to be used for production.
 
-Please check the [contribution](./index.md#contributing) to see if it is possible to contribute the custom operator to onnxruntime-extensions.
+Please check the [contribution](../index.md#contributing) to see if it is possible to contribute the custom operator to onnxruntime-extensions.
