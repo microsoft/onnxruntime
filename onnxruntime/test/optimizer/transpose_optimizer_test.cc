@@ -3531,7 +3531,9 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
   };
 
   test_case();
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case(kMSDomain);  // Use com.microsoft.QuantizeLinear
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
@@ -3566,7 +3568,9 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
   };
 
   test_case();
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case(kMSDomain);  // Use com.microsoft.QuantizeLinear
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
@@ -3601,7 +3605,9 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
   };
 
   test_case();
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case(kMSDomain);  // Use com.microsoft.QuantizeLinear
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearVectorUnknownRank) {
@@ -3636,7 +3642,9 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearVectorUnknownRank) {
   };
 
   test_case();
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case(kMSDomain);  // Use com.microsoft.QuantizeLinear
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearScalarOpset10) {
@@ -3699,7 +3707,9 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
   };
 
   test_case();
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case(kMSDomain);  // Use com.microsoft.DequantizeLinear
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestDequantizeLinearVector) {
@@ -3734,7 +3744,9 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearVector) {
   };
 
   test_case();
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case(kMSDomain);  // Use com.microsoft.DequantizeLinear
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
@@ -3813,7 +3825,9 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
   };
 
   test_case();
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case(kMSDomain);  // Use com.microsoft.DequantizeLinear
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestCast) {
