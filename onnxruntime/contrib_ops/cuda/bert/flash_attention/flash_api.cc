@@ -28,7 +28,6 @@ void set_params_fprop(Flash_fwd_params& params,
                       const size_t num_heads,
                       const size_t num_heads_k,
                       const size_t head_size,
-                      const size_t v_head_size,
                       const size_t head_size_rounded,
                       // device pointers
                       void* q,
@@ -53,20 +52,19 @@ void set_params_fprop(Flash_fwd_params& params,
   // All stride are in elements, not bytes.
   params.q_row_stride = num_heads * head_size;
   params.k_row_stride = num_heads_k * head_size;
-  params.v_row_stride = num_heads * v_head_size;
+  params.v_row_stride = num_heads * head_size;
   params.q_head_stride = head_size;
   params.k_head_stride = head_size;
-  params.v_head_stride = v_head_size;
-  params.o_row_stride = num_heads * v_head_size;
-  params.o_head_stride = v_head_size;
-  params.is_bf16 = false; // TODO: how can i determine this value?
+  params.v_head_stride = head_size;
+  params.o_row_stride = num_heads * head_size;
+  params.o_head_stride = head_size;
+  params.is_bf16 = false;
 
   if (cu_seqlens_q_d == nullptr) {
-    // TODO: confirm batch stride
     params.q_batch_stride = batch_size * num_heads * head_size; // stride(0)
     params.k_batch_stride = batch_size * num_heads_k * head_size;  // stride(0)
-    params.v_batch_stride = batch_size * num_heads * v_head_size;  // stride(0)
-    params.o_batch_stride = batch_size * num_heads * v_head_size;  // stride(0)
+    params.v_batch_stride = batch_size * num_heads * head_size;  // stride(0)
+    params.o_batch_stride = batch_size * num_heads * head_size;  // stride(0)
   }
   else {
     params.q_batch_stride = 0;
@@ -131,7 +129,6 @@ int get_max_seqlen_q(int max_seqlen_q_) {
   return ((max_seqlen_q_ + 16 - 1) / 16) * 16;
 }
 
-// TODO: is this correct still?
 size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads) {
   int max_seqlen_q = get_max_seqlen_q(max_seqlen_q_);
   size_t bytes = sizeof(float) * batch_size * num_heads * max_seqlen_q;
@@ -139,11 +136,10 @@ size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads) {
   return bytes;
 }
 
-// TODO: is this correct still?
-size_t get_o_tmp_size(int max_seqlen_k_, int total_q, int num_heads, int head_size, int v_head_size) {
+size_t get_o_tmp_size(int max_seqlen_k_, int total_q, int num_heads, int head_size) {
   bool loop = false;
   get_max_seqlen_k(max_seqlen_k_, head_size, loop);
-  return loop ? (sizeof(float) * total_q * num_heads * v_head_size) : 0;
+  return loop ? (sizeof(float) * total_q * num_heads * head_size) : 0;
 }
 
 void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream) {
@@ -165,60 +161,21 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const int num_heads,
                const int num_heads_k,
                const int head_size,
-               const int v_head_size,
-               const int total_q, //huh
+               const int total_q,
                const int seqlen_q,
                const int seqlen_k,
                const float softmax_scale,
                const bool is_causal) {
   
   ORT_UNUSED_PARAMETER(total_q);
-  // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
+
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
   bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
   ORT_ENFORCE(is_sm8x || is_sm90);
 
-  //TORCH_CHECK(is_sm90 || is_sm8x, "FlashAttention only supports Ampere GPUs or newer.");
-  // We will support Turing in the near future
-  // TORCH_CHECK(is_sm90 || is_sm8x || is_sm75, "FlashAttention only supports Turing GPUs or newer.");
-
-  //auto q_dtype = q.dtype();
-  //TORCH_CHECK(q_dtype == torch::kFloat16 || q_dtype == torch::kBFloat16,
-  //            "FlashAttention only support fp16 and bf16 data type");
-  //if (q_dtype == torch::kBFloat16) {
-  //  TORCH_CHECK(is_sm90 || is_sm8x, "bfloat16 is only supported on Ampere GPUs or newer");
-  //}
-  //TORCH_CHECK(k.dtype() == q_dtype, "query and key must have the same dtype");
-  //TORCH_CHECK(v.dtype() == q_dtype, "query and value must have the same dtype");
-
-  //TORCH_CHECK(q.is_cuda(), "Input tensor must be on CUDA device");
-  //TORCH_CHECK(k.is_cuda(), "Input tensor must be on CUDA device");
-  //TORCH_CHECK(v.is_cuda(), "Input tensor must be on CUDA device");
-
-  //TORCH_CHECK(q.stride(-1) == 1, "Input tensor must have contiguous last dimension");
-  //TORCH_CHECK(k.stride(-1) == 1, "Input tensor must have contiguous last dimension");
-  //TORCH_CHECK(v.stride(-1) == 1, "Input tensor must have contiguous last dimension");
-
-  //TORCH_CHECK(batch_size > 0, "batch size must be postive");
-  //TORCH_CHECK(head_size_og <= 256, "FlashAttention forward only supports head dimension at most 256");
-  //TORCH_CHECK(num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query");
-
-  //CHECK_SHAPE(q, batch_size, seqlen_q, num_heads, head_size_og);
-  //CHECK_SHAPE(k, batch_size, seqlen_k, num_heads_k, head_size_og);
-  //CHECK_SHAPE(v, batch_size, seqlen_k, num_heads_k, head_size_og);
-
-  // TODO: is this necessary?
-  // Otherwise the kernel will be launched from cuda:0 device
-  // Cast to char to avoid compiler warning about narrowing
-  //at::cuda::CUDAGuard device_guard{(char)q.get_device()};
-
   ORT_ENFORCE(batch_size > 0);
   ORT_ENFORCE(num_heads % num_heads_k == 0); // Number of heads in key/value must divide number of heads in query
   ORT_ENFORCE((head_size % 8 == 0) && (head_size <= 256));
-
-  // bool loop = false;
-  // int max_seqlen_k = get_max_seqlen_k(seqlen_k, head_size, loop);
-  // int max_seqlen_q = get_max_seqlen_q(seqlen_q);
 
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
@@ -231,7 +188,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    seqlen_q, seqlen_k,
                    seqlen_q_rounded, seqlen_k_rounded,
                    num_heads, num_heads_k,
-                   head_size, v_head_size, head_size_rounded,
+                   head_size, head_size_rounded,
                    q, k, v, out,
                    /*cu_seqlens_q*/nullptr,
                    /*cu_seqlens_k*/nullptr,
@@ -240,91 +197,38 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    softmax_scale,
                    is_causal);
   run_mha_fwd(params, stream);
-  return Status::OK(); // TODO: return from inside run_mha_fwd to make sure status is actually ok
-
-  //Tensor out_padded = out;
-  //if (head_size_og % 8 != 0) {
-  //  out = out.index({"...", torch::indexing::Slice(torch::indexing::None, head_size_og)}); // TODO: huh?
-  //  if (out_.has_value()) {
-  //    out_.value().copy_(out);
-  //  }
-  //}
-
-  //return {out, q_padded, k_padded, v_padded, out_padded, softmax_lse, p};
+  return Status::OK();
 }
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
                void* q,                // half (total_q, num_heads, head_size)
                void* k,                // half (total_k, num_heads, head_size)
-               void* v,                // half (total_k, num_heads, v_head_size)
-               void* out,              // half (total_q, num_heads, v_head_size)
-               int* cu_seqlens_q,  // int (batch_size + 1)
-               int* cu_seqlens_k,  // int (batch_size + 1)
+               void* v,                // half (total_k, num_heads, head_size)
+               void* out,              // half (total_q, num_heads, head_size)
+               int* cu_seqlens_q,      // int (batch_size + 1)
+               int* cu_seqlens_k,      // int (batch_size + 1)
                void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
-              //  void* o_tmp_buffer,        // NULL or float (total_q, num_heads, v_head_size)
                const int batch_size,
                const int num_heads,
                const int num_heads_k,
                const int head_size,
-               const int v_head_size,
                const int total_q,
                const int max_seqlen_q_,
                const int max_seqlen_k_,
                const float softmax_scale,
-               const bool is_causal/*,
-               const int num_splits,
-               const bool zero_tensors*/) {
+               const bool is_causal) {
   ORT_UNUSED_PARAMETER(total_q);
-  // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
+  
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
   bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
   ORT_ENFORCE(is_sm8x || is_sm90);
-  //TORCH_CHECK(is_sm90 || is_sm8x, "FlashAttention only supports Ampere GPUs or newer.");
-  // We will support Turing in the near future
-  // TORCH_CHECK(is_sm90 || is_sm8x || is_sm75, "FlashAttention only supports Turing GPUs or newer.");
-
-  //auto q_dtype = q.dtype();
-  //TORCH_CHECK(q_dtype == torch::kFloat16 || q_dtype == torch::kBFloat16,
-  //            "FlashAttention only support fp16 and bf16 data type");
-  //if (q_dtype == torch::kBFloat16) {
-  //  TORCH_CHECK(is_sm90 || is_sm8x, "bfloat16 is only supported on Ampere GPUs or newer");
-  //}
-  //TORCH_CHECK(k.dtype() == q_dtype, "query and key must have the same dtype");
-  //TORCH_CHECK(v.dtype() == q_dtype, "query and value must have the same dtype");
-  //TORCH_CHECK(cu_seqlens_q.dtype() == torch::kInt32, "cu_seqlens_q must have dtype int32");
-  //TORCH_CHECK(cu_seqlens_k.dtype() == torch::kInt32, "cu_seqlens_k must have dtype int32");
-
-  //TORCH_CHECK(q.is_cuda(), "Input tensor must be on CUDA device");
-  //TORCH_CHECK(k.is_cuda(), "Input tensor must be on CUDA device");
-  //TORCH_CHECK(v.is_cuda(), "Input tensor must be on CUDA device");
-  //TORCH_CHECK(cu_seqlens_q.is_cuda(), "cu_seqlens_q must be on CUDA device");
-  //TORCH_CHECK(cu_seqlens_k.is_cuda(), "cu_seqlens_k must be on CUDA device");
-
-  //TORCH_CHECK(q.stride(-1) == 1, "Input tensor must have contiguous last dimension");
-  //TORCH_CHECK(k.stride(-1) == 1, "Input tensor must have contiguous last dimension");
-  //TORCH_CHECK(v.stride(-1) == 1, "Input tensor must have contiguous last dimension");
-  //TORCH_CHECK(cu_seqlens_q.is_contiguous(), "cu_seqlens_q must be contiguous");
-  //TORCH_CHECK(cu_seqlens_k.is_contiguous(), "cu_seqlens_k must be contiguous");
-
-  // constexpr bool return_softmax = false;
-
-  //TORCH_CHECK(batch_size > 0, "batch size must be positive");
-  //TORCH_CHECK(head_size_og <= 256, "FlashAttention forward only supports head dimension at most 256");
-  //TORCH_CHECK(num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query");
-
-  //CHECK_SHAPE(q, total_q, num_heads, head_size_og);
-  //CHECK_SHAPE(k, total_k, num_heads_k, head_size_og);
-  //CHECK_SHAPE(v, total_k, num_heads_k, head_size_og);
-  //CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
-  //CHECK_SHAPE(cu_seqlens_k, batch_size + 1
 
   ORT_ENFORCE(batch_size > 0);
   ORT_ENFORCE((head_size % 8 == 0) && (head_size <= 128));
 
-  // bool loop = false;
-  int max_seqlen_k = max_seqlen_k_; //get_max_seqlen_k(max_seqlen_k_, head_size, loop);
-  int max_seqlen_q = max_seqlen_q_; //get_max_seqlen_q(max_seqlen_q_);
+  int max_seqlen_k = max_seqlen_k_;
+  int max_seqlen_q = max_seqlen_q_;
 
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
@@ -337,26 +241,16 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    max_seqlen_q, max_seqlen_k,
                    seqlen_q_rounded, seqlen_k_rounded,
                    num_heads, num_heads_k,
-                   head_size, v_head_size, head_size_rounded,
+                   head_size, head_size_rounded,
                    q, k, v, out,
                    cu_seqlens_q,
                    cu_seqlens_k,
-                   nullptr, //return_softmax ? o_tmp_buffer : nullptr,
-                   softmax_lse_buffer, //softmax_lse_buffer,
+                   nullptr, // o_tmp_buffer : nullptr,
+                   softmax_lse_buffer,
                    softmax_scale,
                    is_causal);
   run_mha_fwd(params, stream);
-  return Status::OK();  // TODO: return from inside run_mha_fwd to make sure status is actually ok
-
-  //Tensor out_padded = out;
-  //if (head_size_og % 8 != 0) {
-  //  out = out.index({"...", torch::indexing::Slice(torch::indexing::None, head_size_og)});
-  //  if (out_.has_value()) {
-  //    out_.value().copy_(out);
-  //  }
-  //}
-
-  //return {out, q_padded, k_padded, v_padded, out_padded, softmax_lse, p};
+  return Status::OK();
 }
 
 }  // namespace cuda

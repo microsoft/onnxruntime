@@ -236,11 +236,10 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
     const bool is_sm8x = device_prop.major >= 8;
     use_flash_attention = !parameters.has_relative_position_bias &&
                           sizeof(T) == 2 &&
-                          (parameters.head_size % 8 == 0) && 
-                          (parameters.head_size <= 256) &&
-                          (parameters.v_head_size % 8 == 0) && 
-                          (parameters.v_head_size <= 256) &&
-                          (is_sm8x);
+                          parameters.head_size % 8 == 0 && 
+                          parameters.head_size <= 256 &&
+                          parameters.head_size == parameters.v_head_size &&
+                          is_sm8x;
   }
 
   bool use_memory_efficient_attention = false;
@@ -296,7 +295,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   if(use_flash_attention) {
     size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
     auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-    data.softmax_lse_buffer = reinterpret_cast<CudaT*>(soft_buff.get());
+    data.softmax_lse_buffer = soft_buff.get();
   }
 
   return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
