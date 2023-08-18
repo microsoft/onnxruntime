@@ -16,6 +16,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
                               DataTypeImpl::GetTensorType<uint32_t>()})
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Tile);
 
@@ -28,6 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
                               DataTypeImpl::GetTensorType<uint32_t>()})
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Tile);
 }  // namespace js
