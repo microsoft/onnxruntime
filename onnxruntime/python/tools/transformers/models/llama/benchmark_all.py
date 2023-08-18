@@ -4,12 +4,9 @@ import json
 import logging
 import os
 import subprocess
-import sys
 
 import torch
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import setup_logger  # noqa: E402
+from benchmark_helper import setup_logger
 
 logger = logging.getLogger(__name__)
 

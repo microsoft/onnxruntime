@@ -1,17 +1,13 @@
 import argparse
-import os
-import sys
 
 import numpy as np
 import torch
+from benchmark_helper import create_onnxruntime_session
 from datasets import load_dataset
+from llama_inputs import get_position_ids
 from torch.nn.functional import pad
 from torch.utils.data import DataLoader
 from transformers import LlamaTokenizer
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import create_onnxruntime_session  # noqa: E402
-from llama_inputs import get_position_ids  # noqa: E402
 
 
 class QuantKVDataLoader:

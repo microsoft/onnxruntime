@@ -1,16 +1,13 @@
 import argparse
 import logging
 import os
-import sys
 from typing import List
 
 import numpy as np
 import torch
+from benchmark_helper import create_onnxruntime_session, setup_logger
+from llama_inputs import convert_inputs_for_ort, get_sample_inputs, get_sample_with_past_kv_inputs
 from transformers import LlamaConfig, LlamaForCausalLM
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import create_onnxruntime_session, setup_logger  # noqa: E402
-from llama_inputs import convert_inputs_for_ort, get_sample_inputs, get_sample_with_past_kv_inputs  # noqa: E402
 
 logger = logging.getLogger("")
 

@@ -10,6 +10,8 @@ import time
 import numpy as np
 import psutil
 import torch
+from benchmark_helper import setup_logger
+from llama_inputs import get_msft_sample_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
 from tqdm import trange
@@ -17,10 +19,6 @@ from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
 
 import onnxruntime as ort
 from onnxruntime.transformers.benchmark_helper import measure_memory
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import setup_logger  # noqa: E402
-from llama_inputs import get_msft_sample_inputs, get_sample_inputs, get_sample_with_past_kv_inputs  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

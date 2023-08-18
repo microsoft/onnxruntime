@@ -1,22 +1,19 @@
 import argparse
 import logging
 import os
-import sys
 import tempfile
 from itertools import chain
 from typing import List
 
 import onnx
 import torch
+from benchmark_helper import Precision, prepare_environment, setup_logger
+from llama_inputs import get_sample_inputs, get_sample_with_past_kv_inputs
+from llama_parity import main as parity_check
+from onnx_model import OnnxModel
 from transformers import LlamaConfig, LlamaForCausalLM
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import Precision, prepare_environment, setup_logger  # noqa: E402
-from llama_inputs import get_sample_inputs, get_sample_with_past_kv_inputs  # noqa: E402
-from llama_parity import main as parity_check  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-
-from onnxruntime import quantization as ort_quantization  # noqa: E402
+from onnxruntime import quantization as ort_quantization
 
 logger = logging.getLogger("")
 
