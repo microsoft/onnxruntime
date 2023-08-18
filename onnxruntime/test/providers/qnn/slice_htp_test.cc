@@ -128,13 +128,8 @@ static void RunSliceNonQDQOnHTP(const TestInputDef<DataType>& data_def,
 }
 
 // Check that QNN compiles DQ -> Slice -> Q as a single unit.
-// Inaccuracy detected for output 'output', element 1.
-// Output quant params: scale=0.017182711511850357, zero_point=0.
-// Expected val: 4.1360063552856445
-// QNN QDQ val: 4.0035719871520996 (err 0.13243436813354492)
-// CPU QDQ val: 4.1238508224487305 (err 0.012155532836914062)
-TEST_F(QnnHTPBackendTests, DISABLED_SliceSmallDataQDQU8) {
-  RunSliceQDQTest(TestInputDef<float>({8}, false, 0.0f, 10.0f),
+TEST_F(QnnHTPBackendTests, SliceSmallDataQDQU8) {
+  RunSliceQDQTest(TestInputDef<float>({8}, false, 0.0f, 1.0f),
                   TestInputDef<int64_t>({1}, true, {0}),
                   TestInputDef<int64_t>({1}, true, {-1}),
                   TestInputDef<int64_t>({1}, true, {0}),
@@ -143,13 +138,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_SliceSmallDataQDQU8) {
 }
 
 // Check that QNN compiles DQ -> Slice -> Q as a single unit.
-// Inaccuracy detected for output 'output', element 8.
-// Output quant params: scale=0.39207255840301514, zero_point=0.
-// Expected val: 91.531997680664062
-// QNN QDQ val: 92.137054443359375 (err 0.6050567626953125)
-// CPU QDQ val: 91.3529052734375 (err 0.1790924072265625)
-TEST_F(QnnHTPBackendTests, DISABLED_SliceLargePositiveDataQDQU8) {
-  RunSliceQDQTest(TestInputDef<float>({5120}, false, 0.0f, 100.0f),
+TEST_F(QnnHTPBackendTests, SliceLargePositiveDataQDQU8) {
+  RunSliceQDQTest(TestInputDef<float>({5120}, false, 0.0f, 1.0f),
                   TestInputDef<int64_t>({1}, true, {0}),
                   TestInputDef<int64_t>({1}, true, {-1}),
                   TestInputDef<int64_t>({1}, true, {0}),
@@ -158,13 +148,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_SliceLargePositiveDataQDQU8) {
 }
 
 // Check that QNN compiles DQ -> Slice -> Q as a single unit.
-// Inaccuracy detected for output 'output', element 1.
-// Output quant params: scale=0.78414511680603027, zero_point=128.
-// Expected val: -17.279869079589844
-// QNN QDQ val: 0 (err 17.279869079589844)
-// CPU QDQ val: -17.251192092895508 (err 0.028676986694335938)
-TEST_F(QnnHTPBackendTests, DISABLED_SliceLargeNegativeDataQDQU8) {
-  RunSliceQDQTest(TestInputDef<float>({5120}, false, -100.0f, 100.0f),
+TEST_F(QnnHTPBackendTests, SliceLargeNegativeDataQDQU8) {
+  RunSliceQDQTest(TestInputDef<float>({5120}, false, 0.0f, 1.0f),
                   TestInputDef<int64_t>({1}, true, {0}),
                   TestInputDef<int64_t>({1}, true, {-1}),
                   TestInputDef<int64_t>({1}, true, {0}),

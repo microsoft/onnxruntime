@@ -57,9 +57,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("MatMul", *this);
     CreateSimpleOpBuilder("Concat", *this);
 
-    CreateSimpleOpBuilder("QuantizeLinear", *this);
-    CreateSimpleOpBuilder("DequantizeLinear", *this);
-
     CreateSimpleOpBuilder("HardSwish", *this);
 
     CreateSimpleOpBuilder("DepthToSpace", *this);
@@ -147,6 +144,11 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateLRNOpBuilder("LRN", *this);
+  }
+
+  {
+    CreateQdqOpBuilder("QuantizeLinear", *this);
+    CreateQdqOpBuilder("DequantizeLinear", *this);
   }
 }
 

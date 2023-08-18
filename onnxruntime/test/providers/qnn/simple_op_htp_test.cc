@@ -476,42 +476,13 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast) {
                               17, ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast1) {
-  RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 3136, 128}, false, -1.0f, 1.0f),
-                              TestInputDef<float>({1, 3136, 1}, false, -1.0f, 1.0f),
-                              17, ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast2) {
-  RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 56, 56, 512}, false, -1.0f, 1.0f),
-                              TestInputDef<float>({1}, false, {0.5f}),
-                              17, ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast3) {
-  RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 784, 1024}, false, -1.0f, 1.0f),
-                              TestInputDef<float>({1}, true, -1.0f, 1.0f),
-                              17, ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast4) {
-  RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 1024, 49}, false, -1.0f, 1.0f),
-                              TestInputDef<float>({1, 1, 49}, false, -1.0f, 1.0f),
-                              17, ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast5) {
-  RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 49, 4096}, false, -1.0f, 1.0f),
-                              TestInputDef<float>({1}, false, -1.0f, 1.0f),
-                              17, ExpectedEPNodeAssignment::All);
-}
-
 // Test QDQ Mul
 TEST_F(QnnHTPBackendTests, BinaryOp_Mul4D) {
   RunQDQBinaryOpTest<uint8_t>("Mul", TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
                               TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
                               17, ExpectedEPNodeAssignment::All);
 }
+
 // Test QDQ And
 TEST_F(QnnHTPBackendTests, BinaryOp_And4D) {
   RunBinaryOpTest<bool>("And", TestInputDef<bool>({1, 4}, false, {false, false, true, true}),

@@ -290,7 +290,7 @@ bool QnnModelWrapper::ProcessOffset(const std::string& offset_name,
   std::vector<uint8_t> unpacked_tensor;
   ORT_THROW_IF_ERROR(UnpackInitializerData(*offset_tensor, unpacked_tensor));
   switch (onnx_data_type) {
-    // QNN use -offest for some reason
+    // QNN use -offset for some reason
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpacked_tensor));
       offset_value = -(int8_span.data()[0]);
