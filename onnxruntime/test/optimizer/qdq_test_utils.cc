@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "qdq_test_utils.h"
-#include <type_traits>
 #include "core/common/common.h"
+#include <type_traits>
+#include <utility>
 
 namespace onnxruntime {
 namespace test {

@@ -3513,7 +3513,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
 
       auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
       transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-      builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0}, q_domain);
+      builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0},
+                      q_domain);
       auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
       transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
     };
@@ -3548,8 +3549,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
 
       auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
       transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-      auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0},
-                                               q_domain);
+      auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg},
+                                               {quantizelinear_1_out_0}, q_domain);
       quantizelinear_1.AddAttribute("axis", (int64_t)10);
       auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
       transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
@@ -3585,8 +3586,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
 
       auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
       transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-      auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0},
-                                               q_domain);
+      auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg},
+                                               {quantizelinear_1_out_0}, q_domain);
       quantizelinear_1.AddAttribute("axis", (int64_t)0);
       auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
       transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
@@ -3622,8 +3623,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearVectorUnknownRank) {
 
       auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
       transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-      auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0},
-                                               q_domain);
+      auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg},
+                                               {quantizelinear_1_out_0}, q_domain);
       quantizelinear_1.AddAttribute("axis", (int64_t)1);
       auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
       transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
@@ -3687,8 +3688,8 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
 
       auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
       transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-      auto& dequantizelinear_1 = builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {dequantizelinear_1_out_0},
-                                                 dq_domain);
+      auto& dequantizelinear_1 = builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg},
+                                                 {dequantizelinear_1_out_0}, dq_domain);
       dequantizelinear_1.AddAttribute("axis", (int64_t)10);
       auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
       transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
@@ -3724,8 +3725,8 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearVector) {
 
       auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
       transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-      auto& dequantizelinear_1 = builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {dequantizelinear_1_out_0},
-                                                 dq_domain);
+      auto& dequantizelinear_1 = builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg},
+                                                 {dequantizelinear_1_out_0}, dq_domain);
       dequantizelinear_1.AddAttribute("axis", (int64_t)-4);
       auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
       transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});

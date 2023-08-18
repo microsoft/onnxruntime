@@ -93,7 +93,8 @@ GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input
 }
 
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
-GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
+GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape,
+                                      const std::vector<int64_t>& weights_shape,
                                       bool use_contrib_qdq = false) {
   return [input_shape, weights_shape, use_contrib_qdq](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
@@ -494,9 +495,12 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     auto* q_split_output_1 = builder.MakeOutput();
     auto* q_split_output_2 = builder.MakeOutput();
     auto* q_split_output_3 = builder.MakeOutput();
-    builder.AddQuantizeLinearNode<OutputType>(split_output_1, .003f, q_zp, q_split_output_1, use_contrib_qdq);  // Model input (node_token_1)
-    builder.AddQuantizeLinearNode<OutputType>(split_output_2, .003f, q_zp, q_split_output_2, use_contrib_qdq);  // Model input (node_token_2)
-    builder.AddQuantizeLinearNode<OutputType>(split_output_3, .003f, q_zp, q_split_output_3, use_contrib_qdq);
+    builder.AddQuantizeLinearNode<OutputType>(split_output_1, .003f, q_zp, q_split_output_1,
+                                              use_contrib_qdq);  // Model input (node_token_1)
+    builder.AddQuantizeLinearNode<OutputType>(split_output_2, .003f, q_zp, q_split_output_2,
+                                              use_contrib_qdq);  // Model input (node_token_2)
+    builder.AddQuantizeLinearNode<OutputType>(split_output_3, .003f, q_zp, q_split_output_3,
+                                              use_contrib_qdq);
   };
 }
 template <typename InputType>

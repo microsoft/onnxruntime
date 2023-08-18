@@ -842,9 +842,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithMsDomainDequantizeLinear) {
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["com.microsoft.QuantizeLinear"] == 1);
-  ASSERT_TRUE(op_to_count["com.microsoft.DequantizeLinear"] == 3);
-  ASSERT_TRUE(op_to_count["Conv"] == 1);
+  ASSERT_EQ(op_to_count["com.microsoft.QuantizeLinear"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 3);
+  ASSERT_EQ(op_to_count["Conv"], 1);
 
   std::unordered_map<std::string, int> expected_op_counts = {{"com.microsoft.QuantizeLinear", 1},
                                                              {"com.microsoft.DequantizeLinear", 3},
@@ -900,10 +900,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingMsDomainQDQNodeUnit) {
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["com.microsoft.QuantizeLinear"] == 3);
-  ASSERT_TRUE(op_to_count["com.microsoft.DequantizeLinear"] == 4);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 1);
-  ASSERT_TRUE(op_to_count["Transpose"] == 1);
+  ASSERT_EQ(op_to_count["com.microsoft.QuantizeLinear"], 3);
+  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 4);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 1);
+  ASSERT_EQ(op_to_count["Transpose"], 1);
 
   SessionOptions session_options;
 
@@ -944,9 +944,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingMsDomainQDQNodeUnitGraphOutput) 
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["com.microsoft.QuantizeLinear"] == 2);
-  ASSERT_TRUE(op_to_count["com.microsoft.DequantizeLinear"] == 3);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 1);
+  ASSERT_EQ(op_to_count["com.microsoft.QuantizeLinear"], 2);
+  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 3);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 1);
 
   std::unordered_map<std::string, int> expected_op_counts = {{"com.microsoft.QuantizeLinear", 2},
                                                              {"com.microsoft.DequantizeLinear", 3},

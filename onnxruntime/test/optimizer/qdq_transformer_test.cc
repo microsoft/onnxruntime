@@ -142,8 +142,8 @@ TEST(QDQTransformerTests, Conv_S8X8S8) {
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, int opset_version,
-                       bool use_contrib_qdq = false) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
+                       int opset_version, bool use_contrib_qdq = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
@@ -286,7 +286,8 @@ TEST(QDQTransformerTests, DQ_S8_to_U8) {
 
       // add QDQ activation
       typedef std::numeric_limits<uint8_t> Input1Limits;
-      auto* dq1_output = AddQDQNodePair<int8_t>(builder, input1_arg, .039f, (int8_t)((Input1Limits::max() + Input1Limits::min()) / 2 + 1),
+      auto* dq1_output = AddQDQNodePair<int8_t>(builder, input1_arg, .039f,
+                                                (int8_t)((Input1Limits::max() + Input1Limits::min()) / 2 + 1),
                                                 use_contrib_qdq);
 
       // add DQ weight
@@ -959,7 +960,8 @@ TEST(QDQTransformerTests, DoubleQDQ) {
                               float scale_1, float scale_2, float scale_3, float scale_4,
                               bool use_contrib_qdq = false) {
     TransformerTester(
-        BuildDoubleQDQTestCases<uint8_t, uint8_t, uint8_t, uint8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+        BuildDoubleQDQTestCases<uint8_t, uint8_t, uint8_t, uint8_t>(zp_1, zp_2, zp_3, zp_4,
+                                                                    scale_1, scale_2, scale_3, scale_4,
                                                                     use_contrib_qdq),
         succeed ? expect_succeed(use_contrib_qdq) : expect_fail(use_contrib_qdq),
         TransformerLevel::Default,
@@ -974,7 +976,8 @@ TEST(QDQTransformerTests, DoubleQDQ) {
                               float scale_1, float scale_2, float scale_3, float scale_4,
                               bool use_contrib_qdq = false) {
     TransformerTester(
-        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4,
+                                                                scale_1, scale_2, scale_3, scale_4,
                                                                 use_contrib_qdq),
         succeed ? expect_succeed(use_contrib_qdq) : expect_fail(use_contrib_qdq),
         TransformerLevel::Default,
@@ -983,7 +986,8 @@ TEST(QDQTransformerTests, DoubleQDQ) {
         (scale_1 + scale_3) / 2,
         0.01);
     TransformerTester(
-        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4,
+                                                                scale_1, scale_2, scale_3, scale_4,
                                                                 use_contrib_qdq),
         succeed ? expect_succeed(use_contrib_qdq) : expect_fail(use_contrib_qdq),
         TransformerLevel::Default,
@@ -992,7 +996,8 @@ TEST(QDQTransformerTests, DoubleQDQ) {
         (scale_1 + scale_3) / 2,
         0.01);
     TransformerTester(
-        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4,
+                                                                scale_1, scale_2, scale_3, scale_4,
                                                                 use_contrib_qdq),
         succeed ? expect_succeed(use_contrib_qdq) : expect_fail(use_contrib_qdq),
         TransformerLevel::Default,
@@ -1006,7 +1011,8 @@ TEST(QDQTransformerTests, DoubleQDQ) {
                                       float scale_1, float scale_2, float scale_3, float scale_4,
                                       bool use_contrib_qdq = false) {
     TransformerTester(
-        BuildDoubleQDQTestCases<uint8_t, uint8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4,
+        BuildDoubleQDQTestCases<uint8_t, uint8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4,
+                                                                  scale_1, scale_2, scale_3, scale_4,
                                                                   use_contrib_qdq),
         expect_fail(use_contrib_qdq),
         TransformerLevel::Default,
@@ -1014,37 +1020,50 @@ TEST(QDQTransformerTests, DoubleQDQ) {
   };
 
   // all unsigned type
-  test_case_all_u8(true, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
-  test_case_all_u8(true, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
-                   true);  // Use com.microsoft QDQ ops
+  test_case_all_u8(true, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2);
+  test_case_all_u8(true, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2, true);  // Use com.microsoft QDQ ops
+
   // all signed type
-  test_case_all_s8(true, good_s8_1, good_s8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
-  test_case_all_s8(true, good_s8_1, good_s8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
-                   true);  // Use com.microsoft QDQ ops
+  test_case_all_s8(true, good_s8_1, good_s8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2);
+  test_case_all_s8(true, good_s8_1, good_s8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2, true);  // Use com.microsoft QDQ ops
+
   // 2 signed, 2 unsigned
-  test_case_2u8_2s8_failed(good_u8_1, good_u8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
-  test_case_2u8_2s8_failed(good_u8_1, good_u8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
-                           true);  // Use com.microsoft QDQ ops
+  test_case_2u8_2s8_failed(good_u8_1, good_u8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1,
+                           good_float_point_2, good_float_point_2);
+  test_case_2u8_2s8_failed(good_u8_1, good_u8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1,
+                           good_float_point_2, good_float_point_2, true);  // Use com.microsoft QDQ ops
+
   //  different zero point within a pair
-  test_case_all_u8(false, good_u8_1, bad_u8, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
-  test_case_all_u8(false, good_u8_1, bad_u8, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
-                   true);  // Use com.microsoft QDQ ops
-  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, bad_u8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
-  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, bad_u8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
-                   true);  // Use com.microsoft QDQ ops
-  test_case_all_s8(false, good_s8_1, bad_s8, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
-  test_case_all_s8(false, good_s8_1, bad_s8, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
-                   true);  // Use com.microsoft QDQ ops
-  test_case_all_s8(false, good_s8_1, good_s8_1, good_s8_2, bad_s8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
-  test_case_all_s8(false, good_s8_1, good_s8_1, good_s8_2, bad_s8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2,
-                   true);  // Use com.microsoft QDQ ops
+  test_case_all_u8(false, good_u8_1, bad_u8, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, bad_u8, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2, true);  // Use com.microsoft QDQ ops
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, bad_u8, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, bad_u8, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2, true);  // Use com.microsoft QDQ ops
+  test_case_all_s8(false, good_s8_1, bad_s8, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2);
+  test_case_all_s8(false, good_s8_1, bad_s8, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2, true);  // Use com.microsoft QDQ ops
+  test_case_all_s8(false, good_s8_1, good_s8_1, good_s8_2, bad_s8, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2);
+  test_case_all_s8(false, good_s8_1, good_s8_1, good_s8_2, bad_s8, good_float_point_1, good_float_point_1,
+                   good_float_point_2, good_float_point_2, true);  // Use com.microsoft QDQ ops
+
   // different scale within a pair
-  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, bad_float_point, good_float_point_2, good_float_point_2);
-  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, bad_float_point, good_float_point_2, good_float_point_2,
-                   true);  // Use com.microsoft QDQ ops
-  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, bad_float_point, good_float_point_2);
-  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, bad_float_point, good_float_point_2,
-                   true);  // Use com.microsoft QDQ ops
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, bad_float_point,
+                   good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, bad_float_point,
+                   good_float_point_2, good_float_point_2, true);  // Use com.microsoft QDQ ops
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1,
+                   bad_float_point, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1,
+                   bad_float_point, good_float_point_2, true);  // Use com.microsoft QDQ ops
 }
 
 TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
@@ -1565,8 +1584,8 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
 }
 
 TEST(QDQTransformerTests, ConvRelu) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, bool is_zp_zero,
-                       bool use_contrib_qdq) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
+                       bool is_zp_zero, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
@@ -2772,8 +2791,8 @@ TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
       builder.AddNode("Reshape", {qdq_output, reshape_shape}, {reshape_output});
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(reshape_output, same_scale ? .004f : .0039f, same_zp ? 129 : 128, output_arg,
-                                             use_contrib_qdq);
+      builder.AddQuantizeLinearNode<uint8_t>(reshape_output, same_scale ? .004f : .0039f, same_zp ? 129 : 128,
+                                             output_arg, use_contrib_qdq);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
@@ -3255,7 +3274,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
       builder.AddQuantizeLinearNode<uint8_t>(concat_output, 0.05f, 128, q_concat_output, use_contrib_qdq);
 
       auto* output_arg = builder.MakeOutput();
-      Node& dq_node = builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg, use_contrib_qdq);
+      Node& dq_node = builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg,
+                                                               use_contrib_qdq);
 
       if (block_removal_of_last_dq) {
         // add another edge to the DQ node
@@ -3410,8 +3430,10 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
 
       auto* second_node_output = builder.MakeOutput();
 
-      is_q_dq ? builder.AddDequantizeLinearNode<uint8_t>(first_node_output, scale, zp, second_node_output, use_contrib_qdq)
-              : builder.AddQuantizeLinearNode<uint8_t>(first_node_output, scale, zp, second_node_output, use_contrib_qdq);
+      is_q_dq ? builder.AddDequantizeLinearNode<uint8_t>(first_node_output, scale, zp, second_node_output,
+                                                         use_contrib_qdq)
+              : builder.AddQuantizeLinearNode<uint8_t>(first_node_output, scale, zp, second_node_output,
+                                                       use_contrib_qdq);
     };
 
     // with the Q/DQ pair being dropped we should have inserted an Identity node

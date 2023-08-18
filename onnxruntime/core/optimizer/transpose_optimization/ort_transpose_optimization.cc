@@ -100,7 +100,8 @@ static bool HandleContribQuantizeDequantizeLinear(HandlerArgs& args) {
   return true;
 }
 
-constexpr HandlerInfo contrib_quantize_dequantize_linear_handler = {&FirstInput, &HandleContribQuantizeDequantizeLinear};
+constexpr HandlerInfo contrib_quantize_dequantize_linear_handler = {&FirstInput,
+                                                                    &HandleContribQuantizeDequantizeLinear};
 
 const HandlerMap& OrtHandlers() {
   static const HandlerMap extended_handler_map{

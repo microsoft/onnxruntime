@@ -152,8 +152,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, false)
         .Input(0, "x", "N-D full precision Input tensor to be quantized.", "T1")
         .Input(1, "y_scale",
-               "Scale for doing quantization to get 'y'. It can be a scalar, which means per-tensor/layer quantization, "
-               "or a 1-D tensor for per-axis quantization.",
+               "Scale for doing quantization to get 'y'. It can be a scalar, which means per-tensor/layer "
+               "quantization, or a 1-D tensor for per-axis quantization.",
                "T1")
         .Input(2, "y_zero_point",
                "Zero point for doing quantization to get 'y'. Shape must match y_scale. Default is "
@@ -203,8 +203,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
                                 .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int32)"},
-                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors or 32-bit signed "
-                                                "integer tensors.")
+                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors or 32-bit "
+                                                "signed integer tensors.")
                                 .TypeConstraint("T2", {"tensor(float16)", "tensor(float)"},
                                                 "Constrain 'y', 'x_scale' to float tensors.")
                                 .SetDoc(DequantizeLinear_ver1_doc)
