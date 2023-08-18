@@ -205,4 +205,4 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   return HalfGemmRegistLongExecute() > 0;
 });
 
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
