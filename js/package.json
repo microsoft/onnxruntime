@@ -17,6 +17,7 @@
     "fs-extra": "^11.1.0",
     "jszip": "^3.10.1",
     "mocha": "^10.2.0",
+    "node-loader": "^2.0.0",
     "node-polyfill-webpack-plugin": "^2.0.1",
     "npmlog": "^7.0.1",
     "prettier": "^3.0.0",

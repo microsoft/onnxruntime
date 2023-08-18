@@ -95,20 +95,26 @@ export class WebGpuBackend {
   profilingQueryData: GpuData;
   profilingTimeBase?: bigint;
 
-  env: Env;
+  constructor(public env: Env) {}
 
-  async initialize(env: Env): Promise<void> {
-    if (!navigator.gpu) {
-      // WebGPU is not available.
-      throw new Error('WebGpuBackend: WebGPU is not available.');
+  async initialize(): Promise<void> {
+    let adapter: GPUAdapter|null;
+    if (typeof process !== 'undefined' && process?.versions?.node) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+      adapter = await require('./dawn.node').create([]).requestAdapter();
+    } else {
+      if (!navigator.gpu) {
+        // WebGPU is not available.
+        throw new Error('WebGpuBackend: WebGPU is not available.');
+      }
+
+      adapter = await navigator.gpu.requestAdapter();
     }
 
-    const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) {
       throw new Error('WebGpuBackend: Failed to get GPU adapter.');
     }
 
-    this.env = env;
     const deviceDescriptor: GPUDeviceDescriptor = {
       requiredLimits: {
         maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
@@ -137,16 +143,19 @@ export class WebGpuBackend {
     this.kernelCustomData = new Map();
 
     // set up flags for logger
-    configureLogger(env.logLevel!, !!env.debug);
+    configureLogger(this.env.logLevel!, !!this.env.debug);
 
     // TODO: set up flags
 
-    this.device.onuncapturederror = ev => {
-      if (ev.error instanceof GPUValidationError) {
-        // eslint-disable-next-line no-console
-        console.error(`An uncaught WebGPU validation error was raised: ${ev.error.message}`);
-      }
-    };
+    // dawn node binding seems cannot work with this yet
+    if (typeof process === 'undefined' || !process?.versions?.node) {
+      this.device.onuncapturederror = ev => {
+        if (ev.error instanceof GPUValidationError) {
+          // eslint-disable-next-line no-console
+          console.error(`An uncaught WebGPU validation error was raised: ${ev.error.message}`);
+        }
+      };
+    }
 
     if (this.supportTimestampQuery) {
       this.profilingQuerySet = this.device.createQuerySet({
@@ -295,8 +304,8 @@ export class WebGpuBackend {
   async download(gpuDataId: number, getTargetBuffer: () => Uint8Array): Promise<void> {
     const arrayBuffer = await this.gpuDataManager.download(gpuDataId);
 
-    // the underlying buffer may be changed after the async function is called. so we use a getter function to make sure
-    // the buffer is up-to-date.
+    // the underlying buffer may be changed after the async function is called. so we use a getter function to make
+    // sure the buffer is up-to-date.
     const data = getTargetBuffer();
     data.set(new Uint8Array(arrayBuffer, 0, data.byteLength));
   }

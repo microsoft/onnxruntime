@@ -4,6 +4,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 const webpack = require('webpack');
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
@@ -93,6 +94,12 @@ function buildConfig({filename, format, target, mode, devtool, build_defs}) {
     node: false,
     devtool
   };
+
+  if (fs.existsSync(path.resolve(__dirname, 'lib/wasm/jsep/dawn.node'))) {
+    config.module.rules.push({test: /\.node$/, loader: 'node-loader', options: {name: '[name].[ext]'}});
+  } else {
+    config.resolve.alias['./dawn.node'] = false;
+  }
 
   if (useAnalyzer) {
     config.plugins.unshift(
@@ -199,7 +206,8 @@ function buildTestRunnerConfig({
     resolve: {
       alias: {
         // make sure to refer to original source files instead of generated bundle in test-main.
-        '..$': '../lib/index'
+        '..$': '../lib/index',
+        './dawn.node': false,
       },
       extensions: ['.ts', '.js'],
       fallback: {
@@ -294,7 +302,14 @@ module.exports = () => {
     case 'node':
       builds.push(
           // ort-web.node.js
-          buildOrtWebConfig({suffix: '.node', format: 'commonjs'}),
+          buildOrtWebConfig({
+            suffix: '.node',
+            format: 'commonjs',
+            build_defs: {
+              ...DEFAULT_BUILD_DEFS,
+              DISABLE_WEBGPU: false,
+            }
+          }),
       );
       break;
     case 'dev':

@@ -367,7 +367,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   //       and ChromeCanary is not in CI.
 
   const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
-  const nodejsBackends = ['cpu', 'wasm'];
+  const nodejsBackends = ['cpu', 'wasm', 'webgpu'];
   const backendArgs = args.backend || args.b;
   const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :
                                                       backendArgs.split(',');
