@@ -47,6 +47,7 @@ static std::optional<std::string> GetEnvironmentVariable(const char* name) {
     // just return nullopt if there's an error
     return std::nullopt;
   }
+  GSL_SUPPRESS(r.10)
   auto free_value = gsl::finally([value]() { if (value) { free(value); } });
   if (!value) {
     return std::nullopt;
