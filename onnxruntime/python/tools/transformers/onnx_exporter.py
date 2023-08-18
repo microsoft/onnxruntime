@@ -6,7 +6,6 @@
 
 import logging
 import os
-import sys
 from pathlib import Path
 
 import numpy
@@ -18,8 +17,11 @@ from quantize_helper import QuantizeHelper
 from torch_onnx_export_helper import torch_onnx_export
 from transformers import AutoConfig, AutoFeatureExtractor, AutoTokenizer, LxmertConfig, TransfoXLConfig
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState, TFGPT2ModelNoPastState  # noqa: E402
+from onnxruntime.transformers.models.gpt2.gpt2_helper import (
+    PRETRAINED_GPT2_MODELS,
+    GPT2ModelNoPastState,
+    TFGPT2ModelNoPastState,
+)
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 

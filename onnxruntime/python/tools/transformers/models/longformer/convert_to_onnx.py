@@ -33,22 +33,18 @@
 
 import argparse
 import inspect
-import os
-import sys
 from pathlib import Path
 
 import torch
 import transformers
 from longformer_helper import PRETRAINED_LONGFORMER_MODELS
 from onnx import load_model
+from onnx_model_bert import BertOnnxModel
 from packaging import version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import LongformerModel, LongformerSelfAttention
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from onnx_model_bert import BertOnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 # Supports format 0 or 1
 weight_bias_format = 0

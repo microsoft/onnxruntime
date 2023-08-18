@@ -45,7 +45,6 @@ import argparse
 import logging
 import math
 import os
-import sys
 import time
 from enum import Enum
 from pathlib import Path
@@ -54,9 +53,14 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import onnx
 import torch
-from benchmark_helper import Precision
+from benchmark_helper import Precision, setup_logger
 from fusion_utils import NumpyHelper
+from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
+from models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
+from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
+from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
 from onnx import GraphProto, ModelProto, TensorProto
+from onnx_model import OnnxModel
 from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
@@ -69,16 +73,6 @@ from transformers import (
 )
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
-from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
-from benchmark_helper import setup_logger  # noqa: E402
-from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
-from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
 
 logger = logging.getLogger("")
 

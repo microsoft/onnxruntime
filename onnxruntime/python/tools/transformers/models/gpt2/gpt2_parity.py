@@ -16,17 +16,13 @@ import datetime
 import json
 import logging
 import os
-import sys
 
 import onnx
 import scipy.stats
+from benchmark_helper import get_ort_environment_variables, setup_logger
 from convert_to_onnx import main
 from gpt2_helper import PRETRAINED_GPT2_MODELS, Gpt2Helper
 from onnx_model import OnnxModel
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from benchmark_helper import get_ort_environment_variables, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 
