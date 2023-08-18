@@ -8,6 +8,15 @@ set -e
 set -x
 export PATH=/opt/python/cp38-cp38/bin:$PATH
 
+EXTRA_ARG=""
+while getopts "x:" parameter_Option
+do case "${parameter_Option}"
+in
+x) EXTRA_ARG=(${OPTARG});;
+esac
+done
+
+
 ls /build
 ls /build/deps
 # build the AAR package, using the build settings under /home/onnxruntimedev/.build_settings/
@@ -19,14 +28,16 @@ if [ -f "/home/onnxruntimedev/.build_settings/include_ops_and_types.config" ]; t
         --android_sdk_path /android_home \
         --android_ndk_path /ndk_home \
         --include_ops_by_config /home/onnxruntimedev/.build_settings/include_ops_and_types.config \
-        /home/onnxruntimedev/.build_settings/build_settings.json
+        /home/onnxruntimedev/.build_settings/build_settings.json \
+        $EXTRA_ARG
 else
     python3 /onnxruntime_src/tools/ci_build/github/android/build_aar_package.py \
         --build_dir /build \
         --config $BUILD_CONFIG \
         --android_sdk_path /android_home \
         --android_ndk_path /ndk_home \
-        /home/onnxruntimedev/.build_settings/build_settings.json
+        /home/onnxruntimedev/.build_settings/build_settings.json \
+        $EXTRA_ARG
 fi
 
 # Copy the built artifacts to give folder for publishing
