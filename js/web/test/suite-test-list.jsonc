@@ -1258,8 +1258,8 @@
       "test_thresholdedrelu_default",
       "test_thresholdedrelu_example",
       "test_thresholdedrelu",
-      // // "test_tile_precomputed",
-      // // "test_tile",
+      "test_tile_precomputed",
+      "test_tile",
       // // "test_top_k_negative_axis",
       // // "test_top_k_smallest",
       // // "test_top_k",
@@ -1363,6 +1363,7 @@
       "sqrt.jsonc",
       "sub.jsonc",
       "tan.jsonc",
+      "tile.jsonc",
       "transpose.jsonc",
       "transpose_int32_uint32.jsonc"
       //"xor.jsonc"
