@@ -14,10 +14,10 @@ struct Color {
   constexpr static const char* kFatal = "\e[1;37;41m";  // bold white on red background
   constexpr static const char* kEnd = "\e[m";
 #ifdef _WIN32
-  constexpr static const char* kLWarn = L"\e[0;93m";      // yellow
-  constexpr static const char* kLError = L"\e[1;31m";     // bold red
-  constexpr static const char* kLFatal = L"\e[1;37;41m";  // bold white on red background
-  constexpr static const char* kLEnd = L"\e[m";
+  constexpr static const wchar_t* kLWarn = L"\e[0;93m";      // yellow
+  constexpr static const wchar_t* kLError = L"\e[1;31m";     // bold red
+  constexpr static const wchar_t* kLFatal = L"\e[1;37;41m";  // bold white on red background
+  constexpr static const wchar_t* kLEnd = L"\e[m";
 #endif
 };
 #endif
