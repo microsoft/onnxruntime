@@ -146,7 +146,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     return it->second;
   } else {
     const std::string& op_type = node_unit.OpType();
-    const bool is_quantized_node = NodeUnit::Type::QDQGroup == node_unit.UnitType() || op_type == "QuantizeLinear" || op_type == "DequantizeLinear";
+    const bool is_quantized_node = qnn::TreatAsQuantizedNode(node_unit.UnitType(), op_type);
 
     bool supported = false;
     const auto* op_builder = qnn::GetOpBuilder(op_type);

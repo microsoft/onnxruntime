@@ -13,6 +13,14 @@
 
 namespace onnxruntime {
 namespace qnn {
+
+inline bool TreatAsQuantizedNode(NodeUnit::Type node_unit_type, const std::string& op_type) {
+  return NodeUnit::Type::QDQGroup == node_unit_type ||
+         op_type == "QuantizeLinear" ||
+         op_type == "DequantizeLinear" ||
+         op_type == "Transpose";
+}
+
 class QnnModel {
  public:
   QnnModel(const logging::Logger& logger,
