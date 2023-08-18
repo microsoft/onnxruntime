@@ -52,7 +52,8 @@ DecoderMaskedMultiHeadAttentionQuantKV<T1, T2>::DecoderMaskedMultiHeadAttentionQ
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
   int64_t quantize_block_size = 0;
-  ORT_ENFORCE(info.GetAttr("quant_kv_block_size", &quantize_block_size).IsOK() && quantize_block_size > 0 && (quantize_block_size & -quantize_block_size) == 0);
+  ORT_ENFORCE(info.GetAttr("quant_kv_block_size", &quantize_block_size).IsOK());
+  ORT_ENFORCE((quantize_block_size > 0) && ((quantize_block_size & (quantize_block_size - 1)) == 0));
   quant_kv_block_size_ = static_cast<int>(quantize_block_size);
 }
 

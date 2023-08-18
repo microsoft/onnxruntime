@@ -127,6 +127,7 @@ inline __device__ float MaxAbsFloat(const uint32_t v) {
     __half2 h2;
     uint32_t whole;
   } uvec;
+  uvec.whole = v;
   float2 f2 = __half22float2(uvec.h2);
   return fmaxf(fabsf(f2.x), fabsf(f2.y));
 }
@@ -270,10 +271,10 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   // tion of the thread in that chunk.
 
   // The number of elements in a chunk of 16B (that's the x in the above formula).
-  constexpr int QK_ELTS_IN_16B = 16 / sizeof(TQ8); //sizeof(T);
+  constexpr int QK_ELTS_IN_16B = 16 / sizeof(T);
 
   // The number of K vectors in 16B.
-  constexpr int QK_VECS_IN_16B = 16 / sizeof(Qk_vec_m);
+  constexpr int QK_VECS_IN_16B = 16 / QK_VEC_SIZE;
 
   // The batch/beam idx
   const int bi = blockIdx.y;
@@ -712,14 +713,17 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     float max_abs_v = MaxAbsFloat(v);
     // Perform the final reduction to compute the max inside each warp.
     if (THREADS_PER_VALUE <= WARP_SIZE) {
+      const uint32_t lane_id = (uint32_t)(tidx & (WARP_SIZE - 1)); // THREADS_PER_VALUE is power of 2
+      const uint32_t group_id = lane_id / THREADS_PER_VALUE;
+      const uint32_t group_masks = ((1u << THREADS_PER_VALUE) - 1) << (group_id * THREADS_PER_VALUE);
       for (int mask = THREADS_PER_VALUE / 2; mask >= 1; mask /= 2) {
-        max_abs_v = fmaxf(max_abs_v, __shfl_xor_sync(uint32_t(-1), max_abs_v, mask));
+        max_abs_v = fmaxf(max_abs_v, __shfl_xor_sync(group_masks, max_abs_v, mask));
       }
     } else {
       constexpr int WARPS_PER_RED = (THREADS_PER_VALUE + WARP_SIZE - 1) / WARP_SIZE;
       max_abs_v = block_sum<WARPS_PER_RED>(&red_smem[WARPS_PER_RED], max_abs_v);
     }
-    __syncthreads();
+
     // Store the values with bias back to global memory in the cache for V.
     //*reinterpret_cast<V_vec_m*>(&v_cache[tlength * head_size]) = vec_conversion<V_vec_m, V_vec_k>(v);
     QuantizeTo(&v_cache[tlength * head_size], vec_conversion<V_vec_m, V_vec_k>(v), max_abs_v);
