@@ -1197,8 +1197,8 @@ constexpr bool HandleQuantizeDequantizeAxis(const api::GraphRef& graph, const st
     // no `axis` value until opset 13
     return true;
   }
-  
-  return TransposeQuantizeDequantizeAxis(graph, perm, node);;
+
+  return TransposeQuantizeDequantizeAxis(graph, perm, node);
 }
 
 static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {

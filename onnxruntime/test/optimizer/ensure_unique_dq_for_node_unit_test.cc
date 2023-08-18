@@ -124,7 +124,9 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodes) {
 
   // expected count = one for each explicit consumer node (3), reusing the original one = 3
   RunEnsureUniqueDQForNodeUnitTest(config, 3, false /*use_ms_domain_qdq_ops*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   RunEnsureUniqueDQForNodeUnitTest(config, 3, true /*use_ms_domain_qdq_ops*/);
+#endif
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithGraphOutput) {
@@ -135,7 +137,9 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithGraphOutput) {
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
   RunEnsureUniqueDQForNodeUnitTest(config, 4, false /*use_ms_domain_qdq_ops*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   RunEnsureUniqueDQForNodeUnitTest(config, 4, true /*use_ms_domain_qdq_ops*/);
+#endif
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumer) {
@@ -146,7 +150,9 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumer) {
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
   RunEnsureUniqueDQForNodeUnitTest(config, 4, false /*use_ms_domain_qdq_ops*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   RunEnsureUniqueDQForNodeUnitTest(config, 4, true /*use_ms_domain_qdq_ops*/);
+#endif
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumerAndGraphOutput) {
@@ -158,7 +164,9 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumerAndGr
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
   RunEnsureUniqueDQForNodeUnitTest(config, 4, false /*use_ms_domain_qdq_ops*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   RunEnsureUniqueDQForNodeUnitTest(config, 4, true /*use_ms_domain_qdq_ops*/);
+#endif
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputs) {
@@ -168,7 +176,9 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputs) {
 
   // expected count = one for each explicit consumer node input (2 * 5), reusing the original one = 10
   RunEnsureUniqueDQForNodeUnitTest(config, 10, false /*use_ms_domain_qdq_ops*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   RunEnsureUniqueDQForNodeUnitTest(config, 10, true /*use_ms_domain_qdq_ops*/);
+#endif
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithGraphOutput) {
@@ -179,7 +189,9 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithGraphOutput) {
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
   RunEnsureUniqueDQForNodeUnitTest(config, 11, false /*use_ms_domain_qdq_ops*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   RunEnsureUniqueDQForNodeUnitTest(config, 11, true /*use_ms_domain_qdq_ops*/);
+#endif
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer) {
@@ -190,7 +202,9 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
   RunEnsureUniqueDQForNodeUnitTest(config, 11, false /*use_ms_domain_qdq_ops*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   RunEnsureUniqueDQForNodeUnitTest(config, 11, true /*use_ms_domain_qdq_ops*/);
+#endif
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumerAndGraphOutput) {
@@ -202,7 +216,9 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
   RunEnsureUniqueDQForNodeUnitTest(config, 11, false /*use_ms_domain_qdq_ops*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   RunEnsureUniqueDQForNodeUnitTest(config, 11, true /*use_ms_domain_qdq_ops*/);
+#endif
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodes) {
