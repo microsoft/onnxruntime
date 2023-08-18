@@ -6,12 +6,14 @@ usage() { echo "Usage: $0 -S <source dir> -B <binary dir> -V <rocm version> [-H 
 
 ROCM_HOME=/opt/rocm
 
-while getopts S:B:V:H: parameter_Option; do
+while getopts S:B:V:H:I:P: parameter_Option; do
   case "${parameter_Option}" in
     S) SOURCE_DIR=${OPTARG};;
     B) BINARY_DIR=${OPTARG};;
     V) ROCM_VERSION=${OPTARG};;
     H) ROCM_HOME=${OPTARG};;
+    I) IMAGE=${OPTARG};;
+    P) PYTHON_BIN=${OPTARG};;
     *) usage ;;
   esac
 done
@@ -30,8 +32,8 @@ docker run --rm \
   --volume /data/models:/build/models:ro \
   --volume /data/onnx:/data/onnx:ro \
   --workdir /onnxruntime_src \
-  onnxruntimetrainingrocm-cibuild-rocm$ROCM_VERSION-build \
-  python /onnxruntime_src/tools/ci_build/build.py \
+  $IMAGE \
+  ${PYTHON_BIN:-python} /onnxruntime_src/tools/ci_build/build.py \
     --config Release \
     --build_dir /build \
     --parallel \
