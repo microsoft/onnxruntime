@@ -332,9 +332,11 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
           optimizer_state.optimizer_session_data_transfer_mgr,
           builder, momentums));
 
+      const auto fbs_param_name = builder.CreateString(param_name);
+      const auto fbs_momentums = builder.CreateVector(momentums);
       fbs::ParameterOptimizerStateBuilder optimizer_state_builder(builder);
-      optimizer_state_builder.add_param_name(builder.CreateString(param_name));
-      optimizer_state_builder.add_momentums(builder.CreateVector(momentums));
+      optimizer_state_builder.add_param_name(fbs_param_name);
+      optimizer_state_builder.add_momentums(fbs_momentums);
 
       flatbuffers::Offset<fbs::ParameterOptimizerState> fbs_optimizer_state = optimizer_state_builder.Finish();
       optimizer_states.push_back(fbs_optimizer_state);

@@ -424,11 +424,11 @@ TEST(TrainingApiTest, ModuleExportModelForInferencingCPU) {
 }
 
 #if defined(USE_CUDA)
-
 TEST(TrainingApiTest, ModuleExportModelForInferencingCUDA) {
   std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
   TestModuleExport(providers);
 }
+#endif
 
 TEST(TrainingApiTest, OptimStep) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
@@ -440,8 +440,10 @@ TEST(TrainingApiTest, OptimStep) {
 
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
-  std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
-  std::shared_ptr<IExecutionProvider> cuda_provider = providers.front();
+  std::vector<std::shared_ptr<IExecutionProvider>> providers;
+#if defined(USE_CUDA)
+  providers.push_back(onnxruntime::test::DefaultCudaExecutionProvider());
+#endif
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   auto model = std::make_unique<onnxruntime::training::api::Module>(
       ToUTF8String(model_uri), &state, session_option,
@@ -456,9 +458,7 @@ TEST(TrainingApiTest, OptimStep) {
       std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
-  size_t step = 0;
   std::string param_name = "fc2.weight";
-
   // before training, check if optim state is initialized to 0
   onnxruntime::training::api::OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
   onnxruntime::training::api::ParameterOptimizerState& param_state =
@@ -466,24 +466,34 @@ TEST(TrainingApiTest, OptimStep) {
   OrtValue& moment_1 = param_state.at("momentum0");
 
   std::vector<float> param_vec_before_optimizer_step;
-  CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);
   std::vector<float> moment_1_vec;
+#if defined(USE_CUDA)
+  CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);
   CudaOrtValueToCpuVec(moment_1, moment_1_vec);
+#else
+  CpuOrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);
+  CpuOrtValueToVec(moment_1, moment_1_vec);
+#endif
+
   for (size_t i = 0; i < moment_1_vec.size(); i++) {
     ASSERT_EQ(moment_1_vec[i], 0.0f);
   }
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
-    step += 1;
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
-    std::vector<float> grads;
-    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads);
     ASSERT_STATUS_OK(optim->Step());
 
-    // get optim state and check if it is updated
+    // get gradients and optim state and check if it is updated
+    std::vector<float> grads;
+#if defined(USE_CUDA)
+    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads);
     CudaOrtValueToCpuVec(moment_1, moment_1_vec);
+#else
+    CpuOrtValueToVec(model->NamedParameters().at(param_name)->Gradient(), grads);
+    CpuOrtValueToVec(moment_1, moment_1_vec);
+#endif
     for (size_t i = 0; i < moment_1_vec.size(); i++) {
       if (grads[i] != 0.0f) {
         ASSERT_NE(moment_1_vec[i], 0.0f);
@@ -491,7 +501,11 @@ TEST(TrainingApiTest, OptimStep) {
     }
 
     std::vector<float> param_vec_after_optimizer_step;
+#if defined(USE_CUDA)
     CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
+#else
+    CpuOrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
+#endif
     for (size_t i = 0; i < param_vec_after_optimizer_step.size(); ++i) {
       if (grads[i] != 0.0f && moment_1_vec[i] != 0.0f) {
         ASSERT_NE(param_vec_after_optimizer_step[i], param_vec_before_optimizer_step[i]);
@@ -499,8 +513,6 @@ TEST(TrainingApiTest, OptimStep) {
     }
   }
 }
-
-#endif
 
 }  // namespace test
 }  // namespace training
