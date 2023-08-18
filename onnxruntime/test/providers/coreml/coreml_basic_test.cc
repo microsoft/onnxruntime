@@ -147,6 +147,24 @@ TEST(CoreMLExecutionProviderTest, GatherWithScalarIndices) {
 #endif
 }
 
+TEST(CoreMLExecutionProviderTest, ShapeThenSliceAndGather) {
+  const auto model_file_name = ORT_TSTR("testdata/shape_then_slice_and_gather.onnx");
+
+#if defined(__APPLE__)
+  RandomValueGenerator gen{1234};
+  std::vector<int64_t> X_shape = {5, 3, 4, 1, 2};
+  std::vector<float> X_data = gen.Uniform<float>(X_shape, 0.0f, 1.0f);
+  OrtValue X = CreateInputOrtValueOnCPU<float>(X_shape, X_data);
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
+                            {{"X", X}},
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
