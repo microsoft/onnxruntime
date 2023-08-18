@@ -11,6 +11,7 @@ import numpy as np
 import psutil
 import torch
 import whisper
+from benchmark_helper import setup_logger
 from onnxruntime_extensions import get_library_path
 from optimum.onnxruntime import ORTModelForSpeechSeq2Seq
 from torch.profiler import ProfilerActivity, profile, record_function
@@ -19,9 +20,6 @@ from transformers import AutoModelForSpeechSeq2Seq, WhisperConfig, WhisperProces
 
 import onnxruntime as ort
 from onnxruntime.transformers.benchmark_helper import measure_memory
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import setup_logger  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

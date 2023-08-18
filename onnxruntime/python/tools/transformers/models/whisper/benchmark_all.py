@@ -4,13 +4,10 @@ import json
 import logging
 import os
 import subprocess
-import sys
 
 import torch
+from benchmark_helper import setup_logger
 from transformers import WhisperConfig, WhisperProcessor
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import setup_logger  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
