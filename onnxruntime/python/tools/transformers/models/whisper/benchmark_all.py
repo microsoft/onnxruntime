@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess
 
+import librosa
 import torch
 from benchmark_helper import setup_logger
 from transformers import WhisperConfig, WhisperProcessor
@@ -20,7 +21,7 @@ def get_args():
         "--audio-path",
         type=str,
         required=True,
-        help="Path to audio file for E2E evaluation",
+        help="Path to folder of audio files for E2E evaluation",
     )
 
     parser.add_argument(
@@ -181,16 +182,30 @@ def process_log_file(device_id, log_file, base_results):
                     usage = json.loads(peak)[device_id]["max_used_MB"]
                     memory = float(usage) / 1000
 
+                # Calculate real-time factor (RTF):
+                # RTF = total latency / audio duration
+                total_latency = (
+                    (load_audio_latency_s if load_audio_latency_s else 0)
+                    + (feat_ext_latency_s if feat_ext_latency_s else 0)
+                    + (latency_s if latency_s else 0)
+                )
+                audio_duration = base_results[-1]
+                rtf = total_latency / audio_duration
+                logger.info(f"Total latency: {total_latency}")
+                logger.info(f"Audio duration: {audio_duration}")
+                logger.info(f"Real-time factor: {rtf}")
+
                 # Append log entry to list of entries
                 entry = base_results + [  # noqa: RUF005
-                    load_audio_latency_s if load_audio_latency_s else -1,
-                    load_audio_throughput_s if load_audio_throughput_s else -1,
+                    load_audio_latency_s,
+                    load_audio_throughput_s,
                     feat_ext_latency_s if feat_ext_latency_s else -1,
                     feat_ext_throughput_s if feat_ext_throughput_s else -1,
-                    latency_s if latency_s else -1,
-                    per_token_latency_ms if per_token_latency_ms else -1,
-                    throughput if throughput else -1,
-                    memory if memory else -1,
+                    latency_s,
+                    per_token_latency_ms,
+                    throughput,
+                    memory,
+                    rtf,
                 ]
                 entries.append(entry)
 
@@ -207,6 +222,7 @@ def save_results(results, filename):
             "Precision",
             "Device",
             "Audio File",
+            "Duration (s)",
             "Load Audio Latency (s)",
             "Load Audio Throughput (qps)",
             "Feature Extractor Latency (s)",
@@ -215,10 +231,12 @@ def save_results(results, filename):
             "Per Token Latency (ms/token)",
             "Throughput (qps)",
             "Memory (GB)",
+            "Real Time Factor (RTF)",
         ],
     )
 
     # Set column types
+    df["Duration (s)"] = df["Duration (s)"].astype("float")
     df["Load Audio Latency (s)"] = df["Load Audio Latency (s)"].astype("float")
     df["Load Audio Throughput (qps)"] = df["Load Audio Throughput (qps)"].astype("float")
     df["Feature Extractor Latency (s)"] = df["Feature Extractor Latency (s)"].astype("float")
@@ -227,12 +245,13 @@ def save_results(results, filename):
     df["Per Token Latency (ms/token)"] = df["Per Token Latency (ms/token)"].astype("float")
     df["Throughput (qps)"] = df["Throughput (qps)"].astype("float")
     df["Memory (GB)"] = df["Memory (GB)"].astype("float")
+    df["Real Time Factor (RTF)"] = df["Real Time Factor (RTF)"].astype("float")
 
     df.to_csv(filename, index=False)
     logger.info(f"Results saved in {filename}!")
 
 
-def benchmark(args, benchmark_cmd, engine, audio_file):
+def benchmark(args, benchmark_cmd, engine, audio_file, duration):
     log_filename = f"{engine}_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}.log"
     log_path = os.path.join(args.log_folder, log_filename)
     with open(log_path, "w") as log_file:
@@ -244,7 +263,7 @@ def benchmark(args, benchmark_cmd, engine, audio_file):
 
     # Create entries for csv
     logger.info("Gathering data from log files...")
-    base_results = [engine, args.precision, args.device, audio_file]
+    base_results = [engine, args.precision, args.device, audio_file, duration]
     results = process_log_file(args.device_id, log_path, base_results)
 
     return results
@@ -274,6 +293,7 @@ def main():
     all_results = []
     for audio_file in os.listdir(args.audio_path):
         audio_path = os.path.join(args.audio_path, audio_file)
+        duration = librosa.get_duration(path=audio_path)
         logger.info(f"Testing {audio_path}...")
 
         # Benchmark PyTorch without torch.compile
@@ -300,7 +320,7 @@ def main():
             args.log_folder,
         ] + hf_decoder_input_ids_cmd
         logger.info("Benchmark PyTorch without torch.compile")
-        results = benchmark(args, benchmark_cmd, "pytorch", audio_file)
+        results = benchmark(args, benchmark_cmd, "pytorch", audio_file, duration)
         all_results.extend(results)
 
         # Benchmark PyTorch with torch.compile
@@ -327,7 +347,7 @@ def main():
             args.log_folder,
         ] + hf_decoder_input_ids_cmd
         logger.info("Benchmark PyTorch with torch.compile")
-        results = benchmark(args, benchmark_cmd, "pytorch-2", audio_file)
+        results = benchmark(args, benchmark_cmd, "pytorch-2", audio_file, duration)
         all_results.extend(results)
 
         # Benchmark Optimum + ONNX Runtime
@@ -357,7 +377,7 @@ def main():
                 args.log_folder,
             ] + hf_decoder_input_ids_cmd
             logger.info("Benchmark Optimum + ONNX Runtime")
-            results = benchmark(args, benchmark_cmd, "pytorch-ort", audio_file)
+            results = benchmark(args, benchmark_cmd, "pytorch-ort", audio_file, duration)
             all_results.extend(results)
 
         # Benchmark ONNX Runtime
@@ -387,7 +407,7 @@ def main():
                 args.log_folder,
             ] + ort_decoder_input_ids_cmd
             logger.info("Benchmark ONNX Runtime")
-            results = benchmark(args, benchmark_cmd, "onnxruntime", audio_file)
+            results = benchmark(args, benchmark_cmd, "onnxruntime", audio_file, duration)
             all_results.extend(results)
 
     csv_file = f"{args.model_size}-{args.precision}_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}.csv"
