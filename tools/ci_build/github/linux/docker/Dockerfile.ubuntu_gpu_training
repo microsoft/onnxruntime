@@ -7,6 +7,12 @@ ARG INSTALL_DEPS_EXTRA_ARGS
 ARG USE_CONDA=false
 
 ADD scripts /tmp/scripts
+
+# TODO: Remove. It's a workaround for issue where apt fails to fetch cuda repo packages
+# with the error "File has unexpected size (1127072 != 1126689). Mirror sync in progress?"
+# See: https://github.com/NVIDIA/cuda-repo-management/issues/10
+RUN rm -f /etc/apt/sources.list.d/cuda.list
+
 RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS
 
