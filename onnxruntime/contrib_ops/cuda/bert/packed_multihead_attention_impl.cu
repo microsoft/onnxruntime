@@ -634,7 +634,7 @@ Status FlashAttention(
     num_heads, //num_heads_k
     qk_head_size,
     v_head_size,
-    batch_size * sequence_length, // Total token count
+    parameters.token_count, // Total token count
     sequence_length,
     sequence_length,
     scale, // scale refer to softmax scale?

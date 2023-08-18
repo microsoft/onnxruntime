@@ -233,15 +233,14 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   bool use_flash_attention = false;
 
   if (nullptr == fused_runner) {
-    bool is_sm8x = device_prop.major == 8 && device_prop.minor >= 0;
-    bool is_sm90 = device_prop.major == 9 && device_prop.minor == 0;
+    const bool is_sm8x = device_prop.major >= 8;
     use_flash_attention = !parameters.has_relative_position_bias &&
                           sizeof(T) == 2 &&
                           (parameters.head_size % 8 == 0) && 
                           (parameters.head_size <= 256) &&
                           (parameters.v_head_size % 8 == 0) && 
                           (parameters.v_head_size <= 256) &&
-                          (is_sm8x || is_sm90);
+                          (is_sm8x);
   }
 
   bool use_memory_efficient_attention = false;
