@@ -82,7 +82,7 @@ elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     # keep the same name since AzureEP will release with CpuEP by default.
-    package_name = "onnxruntime"
+    pass
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     package_name = "onnxruntime-qnn"
 
@@ -582,6 +582,10 @@ if enable_training or enable_training_apis:
                 else:
                     # cpu version for documentation
                     local_version = "+cpu"
+        else:
+            if not (cuda_version or rocm_version):
+                # Training CPU package for ADO feeds is called onnxruntime-training-cpu
+                package_name = "onnxruntime-training-cpu"
 
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]
