@@ -17,7 +17,7 @@ in
 d) BUILD_DEVICE=${OPTARG};;
 p) PYTHON_EXES=(${OPTARG});;
 x) EXTRA_ARG=(${OPTARG});;
-c) BUILD_CONFIG=(${OPTARG});;
+c) BUILD_CONFIG=${OPTARG};;
 esac
 done
 

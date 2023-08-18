@@ -8,7 +8,7 @@ in
 i) DOCKER_IMAGE=${OPTARG};;
 d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
-c) BUILD_CONFIG=(${OPTARG});;
+c) BUILD_CONFIG=${OPTARG};;
 esac
 done
 
