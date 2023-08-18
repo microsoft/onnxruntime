@@ -27,23 +27,12 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 const createInstanceNormProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
       const xShape = inputs[0].dims;
-      const scale = inputs[1];
-      const bias = inputs[2];
-
       const outputShape = xShape;
       const outputSize = ShapeUtil.size(outputShape);
       const axis = 2;
-      const normCount = ShapeUtil.sizeToDimension(xShape, axis);
+      const normCount = xShape[0] * xShape[1];
       const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
       const C = xShape[1];
-
-      const scaleSize = ShapeUtil.size(scale.dims);
-      const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
-      if (scaleSize !== normSize || (bias && biasSize !== normSize)) {
-        throw new Error(`Size of X.shape()[axis:] == ${normSize}.
-             Size of scale and bias (if provided) must match this. 
-             Got scale size of ${scaleSize} and bias size of ${biasSize}`);
-      }
 
       const dataType = tensorTypeToWsglType(inputs[0].dataType);
 
@@ -60,7 +49,7 @@ const createInstanceNormProgramInfo =
 
   ${shaderHelper.mainStart()}
     let offset = global_idx * normSize;
-    if (offset + normSize >= ${outputSize}) { return; }
+    if (offset >= ${outputSize}) { return; }
     var mean: ${dataType} = 0;
 
     for (var h: u32 = 0u; h < normSize; h++) {
