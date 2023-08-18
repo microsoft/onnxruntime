@@ -148,6 +148,8 @@ TEST(CoreMLExecutionProviderTest, GatherWithScalarIndices) {
 }
 
 TEST(CoreMLExecutionProviderTest, ShapeThenSliceAndGather) {
+  // This is a simple test model that provides the output of Shape to Slice and Gather.
+  // We expect the CoreML EP to support shape manipulations like this.
   const auto model_file_name = ORT_TSTR("testdata/shape_then_slice_and_gather.onnx");
 
 #if defined(__APPLE__)
