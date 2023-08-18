@@ -177,7 +177,7 @@ To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https
     python3 tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
       --staging-dir /path/to/staging/dir \
       --include-ops-by-config /path/to/ops.config \
-      --build-settings-file /path/to/build_settings.json
+      --build-settings-file /path/to/build_settings.json \
       --variant Training # only include this to build a Training Pod
     ```
 
