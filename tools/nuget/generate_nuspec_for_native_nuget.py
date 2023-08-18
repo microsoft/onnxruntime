@@ -178,7 +178,7 @@ def generate_icon(line_list, icon_file):
 
 
 def generate_license(line_list):
-    line_list.append('<license type="file">LICENSE.txt</license>')
+    line_list.append('<license type="file">LICENSE</license>')
 
 
 def generate_project_url(line_list, project_url):
@@ -1101,7 +1101,7 @@ def generate_files(line_list, args):
     files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "README.md") + '" target="README.md" />')
 
     # Process License, ThirdPartyNotices, Privacy
-    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE.txt") + '" target="LICENSE.txt" />')
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE") + '" target="LICENSE" />')
     files_list.append(
         "<file src="
         + '"'
