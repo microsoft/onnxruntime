@@ -49,5 +49,3 @@ cd $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG
 # Restore file permissions
 xargs -a perms.txt chmod a+x
 python3 $BUILD_SOURCESDIRECTORY/tools/ci_build/build.py $BUILD_ARGS --ctest_path ''
-
-
