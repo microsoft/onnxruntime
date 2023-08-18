@@ -174,11 +174,9 @@ TEST(TensorOpTest, ReshapeSixDimNewShape) {
 }
 
 TEST(TensorOpTest, ReshapeSixDimInputShape) {
-  // CoreML has a 5D limit for the input shape when ANE is enabled. With the CoreML EP enabled, this should fall back
-  // to the CPU EP.
+  // CoreML has a 5D limit for the new shape. With the CoreML EP enabled, this should fall back to the CPU EP.
   OpTester test("Reshape", 14);
   test.AddInput<float>("data", {2, 4, 4, 2, 8, 1}, std::vector<float>(8 * 8 * 8, 1.0f));
-  test.AddShapeToTensorData(true, 0);
 
   const auto target_shape = std::vector<int64_t>{8, 8, 8};
   test.AddInput<int64_t>("shape", {static_cast<int64_t>(target_shape.size())}, target_shape, true);
