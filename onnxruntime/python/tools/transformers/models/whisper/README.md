@@ -2,18 +2,37 @@
 
 ## Exporting Whisper with Beam Search
 
-There are two ways to export Whisper with beam search (using Whisper tiny as an example).
+There are several ways to export Whisper with beam search (using Whisper tiny as an example).
 
-Option 1: from source
+### Option 1: from source
 ```
 $ git clone https://github.com/microsoft/onnxruntime
 $ cd onnxruntime/onnxruntime/python/tools/transformers/models/whisper
 $ python3 convert_to_onnx.py -m openai/whisper-tiny --output whispertiny --use_external_data_format
 ```
 
-Option 2: from wheel
+### Option 2: from wheel
 ```
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format
+```
+
+### Option 3: end-to-end model from [Olive](https://github.com/microsoft/Olive/tree/main/examples/whisper)
+
+Please follow the [README instructions](https://github.com/microsoft/Olive/tree/main/examples/whisper#prerequisites) in Olive.
+
+### Option 4: from [Hugging Face Optimum](https://github.com/huggingface/optimum)
+
+Run the following Python code to export:
+
+```
+from optimum.onnxruntime import ORTModelForSpeechSeq2Seq
+
+model_name = "openai/whisper-large"
+model = ORTModelForSpeechSeq2Seq.from_pretrained(
+    model_name,
+    export=True,
+)
+model.save_pretrained(model_name.split("/")[-1] + "-onnx")
 ```
 
 ## Exporting + Optimizing + Quantizing Whisper with Beam Search
@@ -62,160 +81,66 @@ Here are some examples of how you can benchmark Whisper across various end-to-en
 
 Note: In the below examples, `PyTorch` refers to running in PyTorch without `torch.compile` and `PyTorch 2.0` refers to running in PyTorch with `torch.compile`.
 
-### E2E variants
-
-1. PyTorch (without `torch.compile`), FP32, Hugging Face `pipeline` API
+1. PyTorch (without `torch.compile`), FP32
 ```
 python3 benchmark.py \
-    --benchmark-type "HF + PT" \
-    --hf-api pipeline \
+    --benchmark-type hf-pt \
     --audio-path 1272-141231-0002.mp3 \
+    --model-name openai/whisper-large-v2 \
     --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
     --device cpu
 ```
 
-2. PyTorch (without `torch.compile`), FP32, Hugging Face `generate()` and `decode()` API
+2. PyTorch 2.0 (with `torch.compile`), FP16
 ```
 python3 benchmark.py \
-    --benchmark-type "HF + PT" \
-    --hf-api gen-and-dec \
+    --benchmark-type hf-pt2 \
     --audio-path 1272-141231-0002.mp3 \
-    --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
-    --device cpu
+    --model-name openai/whisper-large-v2 \
+    --precision fp16 \
+    --device cuda
 ```
 
-3. PyTorch 2.0 (with `torch.compile`), FP32, Hugging Face `pipeline` API
+3. Optimum + ONNX Runtime, FP32, export via Optimum
 ```
 python3 benchmark.py \
-    --benchmark-type "HF + PT2" \
-    --hf-api pipeline \
-    --audio-path whisper/tests/jfk.flac \
-    --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
-    --device cpu
-```
-
-4. PyTorch 2.0 (with `torch.compile`), FP32, Hugging Face `generate()` and `decode()` API
-```
-python3 benchmark.py \
-    --benchmark-type "HF + PT2" \
-    --hf-api gen-and-dec \
-    --audio-path whisper/tests/jfk.flac \
-    --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
-    --device cpu
-```
-
-5. ONNX Runtime, FP32, Hugging Face `pipeline` API
-```
-python3 benchmark.py \
-    --benchmark-type "HF + ORT" \
-    --hf-api pipeline \
-    --audio-path whisper/tests/jfk.flac \
-    --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
-    --device cpu
-```
-
-6. ONNX Runtime, FP32, Hugging Face `generate()` and `decode()` API
-```
-python3 benchmark.py \
-    --benchmark-type "HF + ORT" \
-    --hf-api gen-and-dec \
-    --audio-path whisper/tests/jfk.flac \
-    --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
-    --device cpu
-```
-
-7. ONNX Runtime, FP32
-
-Note: This benchmark example can work for the ONNX model produced by `convert_to_onnx.py` or the E2E model produced by [Olive](https://github.com/microsoft/Olive).
-```
-python3 benchmark.py \
-    --benchmark-type ORT \
-    --ort-model-path wtiny_fp32/whisper-tiny_all.onnx \
+    --benchmark-type hf-ort \
     --audio-path 1272-141231-0002.mp3 \
+    --model-name openai/whisper-large-v2 \
+    --hf-ort-model-path ./whisper-large-v2-onnx/ \
     --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
     --device cpu
 ```
 
-### Individual component examples
-
-You can also benchmark individual model components in Whisper.
-
-1. "Whisper encoder" from Hugging Face Optimum export, FP32
+4. ONNX Runtime, FP32, export via Olive or convert_to_onnx
 ```
 python3 benchmark.py \
-    --benchmark-type "ORT" \
-    --ort-model-path hf-ort-optimum-whisper-tiny/fp32/encoder_model.onnx \
+    --benchmark-type ort \
+    --audio-path 1272-141231-0002.mp3 \
+    --model-name openai/whisper-large-v2 \
+    --ort-model-path ./wlarge-fp32/whisper-large_beamsearch.onnx \
     --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
     --device cpu
 ```
 
-2. "Whisper decoder" from Hugging Face Optimum export, FP32
+5. ONNX Runtime, FP16, export via Olive or convert_to_onnx
 ```
 python3 benchmark.py \
-    --benchmark-type "ORT" \
-    --ort-model-path hf-ort-optimum-whisper-tiny/fp32/decoder_model.onnx \
-    --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
-    --device cpu
+    --benchmark-type ort \
+    --audio-path 1272-141231-0002.mp3 \
+    --model-name openai/whisper-large-v2 \
+    --ort-model-path ./wlarge-fp32/whisper-large_all.onnx \
+    --precision fp16 \
+    --device cuda
 ```
 
-3. "Whisper decoder-with-past" from Hugging Face Optimum export, FP32
+6. ONNX Runtime, INT8, export via Olive or convert_to_onnx
 ```
 python3 benchmark.py \
-    --benchmark-type "ORT" \
-    --ort-model-path hf-ort-optimum-whisper-tiny/fp32/decoder_with_past_model.onnx \
+    --benchmark-type ort \
+    --audio-path 1272-141231-0002.mp3 \
+    --model-name openai/whisper-large-v2 \
+    --ort-model-path ./wlarge-fp32/whisper-large_all.onnx \
     --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
-    --device cpu
-```
-
-4. "Whisper encoder-decoder-init" from ONNX Runtime's custom export, FP32
-```
-python3 benchmark.py \
-    --benchmark-type "ORT" \
-    --ort-model-path wtiny_fp32/openai/whisper-tiny_encoder_decoder_init_fp32.onnx \
-    --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
-    --device cpu
-```
-
-5. "Whisper decoder-with-past" from ONNX Runtime's custom export, FP32
-```
-python3 benchmark.py \
-    --benchmark-type "ORT" \
-    --ort-model-path wtiny_fp32/openai/whisper-tiny_decoder_fp32.onnx \
-    --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
-    --device cpu
-```
-
-6. "Whisper with beam search op" from ONNX Runtime's export, FP32
-```
-python3 benchmark.py \
-    --benchmark-type "ORT" \
-    --ort-model-path wtiny_fp32/openai/whisper-tiny_beamsearch.onnx \
-    --precision fp32 \
-    --model-size tiny \
-    --batch-size 2 \
     --device cpu
 ```
