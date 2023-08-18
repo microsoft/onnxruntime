@@ -619,7 +619,6 @@ Status FlashAttention(
   const void* key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   const void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
 
-  cudaStreamSynchronize(stream);
   ORT_RETURN_IF_ERROR(mha_varlen_fwd(
     device_prop,
     stream,
@@ -641,7 +640,6 @@ Status FlashAttention(
     scale, // scale refer to softmax scale?
     false // is causal
     ));
-  cudaStreamSynchronize(stream);
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", reinterpret_cast<const T*>(query), parameters.token_count, num_heads * qk_head_size);
