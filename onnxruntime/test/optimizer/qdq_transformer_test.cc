@@ -2656,10 +2656,12 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, false /*use_contrib_qdq*/);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, true /*use_contrib_qdq*/);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true, false /*use_contrib_qdq*/);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false, false /*use_contrib_qdq*/);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true, false /*use_contrib_qdq*/);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, true /*use_contrib_qdq*/);
+#endif
 }
 
 TEST(QDQTransformerTests, QDQPropagation_DQForward) {
@@ -2743,13 +2745,15 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, false /*use_contrib_qdq*/);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, true /*use_contrib_qdq*/);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true, false /*use_contrib_qdq*/);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true, true /*use_contrib_qdq*/);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false, false /*use_contrib_qdq*/);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false, true /*use_contrib_qdq*/);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true, false /*use_contrib_qdq*/);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, true /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true, true /*use_contrib_qdq*/);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false, true /*use_contrib_qdq*/);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true, true /*use_contrib_qdq*/);
+#endif
 }
 
 TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
@@ -2790,16 +2794,17 @@ TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
   };
 
   test_case({1, 13, 13, 23}, false, false, false);
-  test_case({1, 13, 13, 23}, false, false, true);  // Use contrib QDQ ops
-
   test_case({1, 13, 13, 23}, false, true, false);
-  test_case({1, 13, 13, 23}, false, true, true);  // Use contrib QDQ ops
-
   test_case({1, 13, 13, 23}, true, false, false);
-  test_case({1, 13, 13, 23}, true, false, true);  // Use contrib QDQ ops
-
   test_case({1, 13, 13, 23}, true, true, false);
-  test_case({1, 13, 13, 23}, true, true, true);  // Use contrib QDQ ops
+
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use contrib QDQ ops
+  test_case({1, 13, 13, 23}, false, false, true);
+  test_case({1, 13, 13, 23}, false, true, true);
+  test_case({1, 13, 13, 23}, true, false, true);
+  test_case({1, 13, 13, 23}, true, true, true);
+#endif
 }
 
 TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
@@ -2836,7 +2841,9 @@ TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1}, false /*use_contrib_qdq*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case({1, 13, 13, 23}, {0, 2, 3, 1}, true /*use_contrib_qdq*/);
+#endif
 }
 
 TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
@@ -2874,7 +2881,9 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1}, false /*use_contrib_qdq*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case({1, 13, 13, 23}, {0, 2, 3, 1}, true /*use_contrib_qdq*/);
+#endif
 }
 
 TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
@@ -2924,7 +2933,9 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1}, false /*use_contrib_qdq*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case({1, 13, 13, 23}, {0, 2, 3, 1}, true /*use_contrib_qdq*/);
+#endif
 }
 
 TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
@@ -2959,7 +2970,9 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
   };
 
   test_case({1, 13, 13, 23}, false /*use_contrib_qdq*/);
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case({1, 13, 13, 23}, true /*use_contrib_qdq*/);
+#endif
 }
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
@@ -3145,7 +3158,9 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset12_19) {
   };
 
   test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case(true);  // Use contrib QDQ ops
+#endif
 }
 
 TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
@@ -3205,7 +3220,9 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
   };
 
   test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
   test_case(true);  // Use contrib QDQ ops
+#endif
 }
 
 // test removal of Q->DQ pairs by QDQFinalCleanupTransformer
@@ -3297,21 +3314,18 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
                       add_session_options);
   };
 
-  // Do not block removal.
-  test_case({{1, 2, 4}, {1, 3, 4}}, false, false);
-  test_case({{1, 2, 4}, {1, 3, 4}}, false, false, true);  // Use contrib QDQ ops
+  test_case({{1, 2, 4}, {1, 3, 4}}, false, false);  // Do not block removal
+  test_case({{1, 2, 4}, {1, 3, 4}}, true, false);   // Block removal of first dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, false, true);   // Block removal of last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, true, true);    // Block removal of first and last dq
 
-  // Block removal of first dq
-  test_case({{1, 2, 4}, {1, 3, 4}}, true, false);
-  test_case({{1, 2, 4}, {1, 3, 4}}, true, false, true);  // Use contrib QDQ ops
-
-  // Block removal of last dq
-  test_case({{1, 2, 4}, {1, 3, 4}}, false, true);
-  test_case({{1, 2, 4}, {1, 3, 4}}, false, true, true);  // Use contrib QDQ ops
-
-  // Block removal of first and last dq
-  test_case({{1, 2, 4}, {1, 3, 4}}, true, true);
-  test_case({{1, 2, 4}, {1, 3, 4}}, true, true, true);  // Use contrib QDQ ops
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use contrib QDQ ops
+  test_case({{1, 2, 4}, {1, 3, 4}}, false, false, true);  // Do not block removal
+  test_case({{1, 2, 4}, {1, 3, 4}}, true, false, true);   // Block removal of first dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, false, true, true);   // Block removal of last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, true, true, true);    // Block removal of first and last dq
+#endif
 }
 
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
@@ -3367,13 +3381,14 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
                       std::make_unique<QDQFinalCleanupTransformer>(false /*enable_q_dq_cleanup*/));
   };
 
-  // Matching QDQ params
-  test_case(true, false);
-  test_case(true, true);  // Use contrib QDQ ops
+  test_case(true, false);   // Matching QDQ params
+  test_case(false, false);  // Non-matching QDQ params
 
-  // Non-matching QDQ params
-  test_case(false, false);
-  test_case(false, true);  // Use contrib QDQ ops
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use contrib QDQ ops
+  test_case(true, true);   // Matching QDQ params
+  test_case(false, true);  // Non-matching QDQ params
+#endif
 }
 
 // test removal when we have graph input -> Q/DQ pair -> graph output
@@ -3453,13 +3468,14 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
                       add_session_options);
   };
 
-  // input -> Q -> DQ -> output
-  test_case(true, false);
-  test_case(true, true);  // Use contrib QDQ ops
+  test_case(true, false);   // input -> Q -> DQ -> output
+  test_case(false, false);  // input -> DQ -> Q -> output
 
-  // input -> DQ -> Q -> output
-  test_case(false, false);
-  test_case(false, true);  // Use contrib QDQ ops
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use contrib QDQ ops
+  test_case(true, true);   // input -> Q -> DQ -> output
+  test_case(false, true);  // input -> DQ -> Q -> output
+#endif
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
