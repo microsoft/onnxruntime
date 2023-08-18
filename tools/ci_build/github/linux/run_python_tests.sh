@@ -38,9 +38,11 @@ fi
 sudo rm -rf /build /onnxruntime_src
 sudo ln -s $BUILD_SOURCESDIRECTORY /onnxruntime_src
 python3 -m pip uninstall -y $PYTHON_PACKAGE_NAME ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
+# Install the packages that are needed for installing the onnxruntime python package
 python3 -m pip install -r $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/requirements.txt
+# Install the packages that are needed for running test scripts
 # Install the latest ONNX release which may contain not fixed bugs. However, it is what most people use.
-python3 -m pip install onnx
+python3 -m pip install onnx pytest
 # The "--no-index" flag is crucial. The local whl folder is just an additional source. Pypi's doc says "there is no 
 # ordering in the locations that are searched" if we don't disable the default one with "--no-index"
 python3 -m pip install --no-index --find-links $BUILD_BINARIESDIRECTORY/whl $PYTHON_PACKAGE_NAME
