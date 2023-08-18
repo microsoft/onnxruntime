@@ -82,7 +82,7 @@ jobs:
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -x "${{ parameters.extra_build_arg }}"
+              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} -x "${{ parameters.extra_build_arg }}"
             ${{ if eq(parameters.with_cache, 'true') }}:
               env:
                 ADDITIONAL_DOCKER_PARAMETER: "--volume $(ORT_CACHE_DIR):/cache -e CCACHE_DIR=/cache -e ORT_BUILD_WITH_CACHE=1"
