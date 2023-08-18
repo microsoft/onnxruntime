@@ -9,15 +9,15 @@ namespace logging {
 
 #ifndef ORT_MINIMAL_BUILD
 struct Color {
-  constexpr static const char* kWarn = "\e[0;93m";      // yellow
-  constexpr static const char* kError = "\e[1;31m";     // bold red
-  constexpr static const char* kFatal = "\e[1;37;41m";  // bold white on red background
-  constexpr static const char* kEnd = "\e[m";
+  constexpr static const char* kWarn = "\033[0;93m";      // yellow
+  constexpr static const char* kError = "\033[1;31m";     // bold red
+  constexpr static const char* kFatal = "\033[1;37;41m";  // bold white on red background
+  constexpr static const char* kEnd = "\033[m";
 #ifdef _WIN32
-  constexpr static const wchar_t* kLWarn = L"\e[0;93m";      // yellow
-  constexpr static const wchar_t* kLError = L"\e[1;31m";     // bold red
-  constexpr static const wchar_t* kLFatal = L"\e[1;37;41m";  // bold white on red background
-  constexpr static const wchar_t* kLEnd = L"\e[m";
+  constexpr static const wchar_t* kLWarn = L"\033[0;93m";      // yellow
+  constexpr static const wchar_t* kLError = L"\033[1;31m";     // bold red
+  constexpr static const wchar_t* kLFatal = L"\033[1;37;41m";  // bold white on red background
+  constexpr static const wchar_t* kLEnd = L"\033[m";
 #endif
 };
 #endif
