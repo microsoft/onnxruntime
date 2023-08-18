@@ -64,7 +64,7 @@ export const createTileProgramInfo =
       const output = outputVariable('output', dataType, outputShape);
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-      const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
+      const inputShape = ${input.indices(...inputShape)};
       ${shaderHelper.declareVariables(input, output)}
       ${output.impl('offsetToIndices')}
       ${input.impl('indicesToOffset', 'get')}
@@ -73,7 +73,9 @@ export const createTileProgramInfo =
       let outputIndices = ${output.offsetToIndices('global_idx')};
       var inputIndices: ${input.type.indices};
       for (var i = 0; i < ${inputShape.length}; i++) {
-        ${input.indicesSet('inputIndices', 'i', output.indicesGet('outputIndices', 'i').concat('% inputShape[i]'))}
+        let inputDimValue = ${output.indicesGet('outputIndices', 'i')}  % ${input.indicesGet('inputShape', 'i')};
+
+        ${input.indicesSet('inputIndices', 'i', 'inputDimValue')}
       }
       ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
     }`;
@@ -89,7 +91,7 @@ export const createTileProgramInfo =
 export const tile = (context: ComputeContext): void => {
   validateInputs(context.inputs);
   const repeats: readonly number[] = getRepeats(context.inputs[1]);
-  const cacheHint = context.inputs[0].dims.toString().concat(repeats.toString());
+  const cacheHint = repeats.toString();
   context.compute(
       {...tileProgramMetadata, cacheHint, get: () => createTileProgramInfo(tileProgramMetadata, context.inputs)},
       {inputs: [0]});
