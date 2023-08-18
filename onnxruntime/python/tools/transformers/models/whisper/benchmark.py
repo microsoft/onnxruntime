@@ -366,13 +366,18 @@ def run_ort_inference(args, inputs, model):
     # ORT evaluation
     logger.info("\nEvaluating ONNX Runtime...")
     time_fn(args, generate_fn, ort_inputs)
-    ort_outputs = generate_fn(ort_inputs).copy_outputs_to_cpu()[0]
+    ort_outputs = generate_fn(ort_inputs)
+    if args.device != "cpu":
+        ort_outputs = ort_outputs.copy_outputs_to_cpu()
+    ort_outputs = ort_outputs[0]
+
     if args.has_audio_stream:
         # ONNX E2E model from Olive produces transcribed output
-        logger.info(f"Transcription: {ort_outputs}")
+        logger.info(f"Transcription: {ort_outputs[0][0]}")
     else:
         # convert_to_onnx model produces generated ids
         logger.info(f"Generated token length: {len(ort_outputs[0][0])} tokens")
+
     measure_fn(args, generate_fn, ort_inputs)
 
 
