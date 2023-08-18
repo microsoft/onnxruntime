@@ -13,7 +13,6 @@
 #include "orttraining/test/training_api/core/data_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
-#include "test/util/include/asserts.h"
 
 namespace onnxruntime::training::test {
 
@@ -228,7 +227,10 @@ TEST(TrainingCApiTest, LoadModelsAndCreateSession) {
 
   Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
-  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, model_path);
+  Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                               Ort::SessionOptions(),
+                                                               checkpoint_state,
+                                                               model_path);
 }
 
 TEST(TrainingCApiTest, LoadModelsAndCreateSession_ORTFormat) {
@@ -238,7 +240,12 @@ TEST(TrainingCApiTest, LoadModelsAndCreateSession_ORTFormat) {
 
   Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(ORT_FORMAT_MODEL_FOLDER "checkpoint");
-  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, train_model_path, eval_train_model_path, optimizer_model_path);
+  Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                               Ort::SessionOptions(),
+                                                               checkpoint_state,
+                                                               train_model_path,
+                                                               eval_train_model_path,
+                                                               optimizer_model_path);
 }
 
 TEST(TrainingCApiTest, LoadONNXModelsFromBuffer) {
@@ -252,7 +259,10 @@ TEST(TrainingCApiTest, LoadONNXModelsFromBuffer) {
 
   Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
-  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, train_model_data);
+  Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                               Ort::SessionOptions(),
+                                                               checkpoint_state,
+                                                               train_model_data);
 }
 
 TEST(TrainingCApiTest, LoadORTFormatModelsFromBuffer) {
@@ -299,7 +309,10 @@ TEST(TrainingCApiTest, LoadModelsFromBufferThrows) {
 
   try {
     std::vector<uint8_t> train_model_data;
-    Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, train_model_data);
+    Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                                 Ort::SessionOptions(),
+                                                                 checkpoint_state,
+                                                                 train_model_data);
   } catch (const std::exception& ex) {
     ASSERT_THAT(ex.what(),
                 testing::HasSubstr("Training Session Creation failed. Train model data cannot be NULL."));

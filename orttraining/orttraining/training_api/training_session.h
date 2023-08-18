@@ -3,11 +3,11 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "module.h"
-#include "optimizer.h"
-#include "lr_scheduler.h"
-#include "checkpoint.h"
-#include "utils.h"
+#include "orttraining/training_api/module.h"
+#include "orttraining/training_api/optimizer.h"
+#include "orttraining/training_api/lr_scheduler.h"
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime {
 namespace training {

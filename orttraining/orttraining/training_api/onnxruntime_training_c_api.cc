@@ -37,10 +37,14 @@ static OrtStatus* CreateSessionAndLoadModel(_In_ const OrtEnv* env, _In_ const O
   using ProvidersType = std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>>;
   train_sess = std::make_unique<TrainingSession>(env->GetEnvironment(),
                                                  options == nullptr ? onnxruntime::SessionOptions() : options->value,
-                                                 options == nullptr ? ProvidersType() : CreateProviders(options->provider_factories),
+                                                 options == nullptr
+                                                     ? ProvidersType()
+                                                     : CreateProviders(options->provider_factories),
                                                  chkpt_state,
                                                  model_identifiers,
-                                                 options == nullptr ? gsl::span<OrtCustomOpDomain* const>() : options->custom_op_domains_);
+                                                 options == nullptr
+                                                     ? gsl::span<OrtCustomOpDomain* const>()
+                                                     : options->custom_op_domains_);
 
   return nullptr;
 }

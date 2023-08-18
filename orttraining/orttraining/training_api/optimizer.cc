@@ -11,7 +11,6 @@
 
 #include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/utils.h"
-#include "core/flatbuffers/flatbuffers_utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -81,7 +80,7 @@ std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
 #else
   ORT_UNUSED_PARAMETER(model);
 #endif
-    // TODO (baijumeswani): Figure out the best way to extract the optimizer type
+    // TODO(baijumeswani): Figure out the best way to extract the optimizer type
     // from the model (either onnx model or ort format model) or from the checkpoint.
     // For now, assume that the optimizer type is AdamWOptimizer when using ort format models.
     opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;

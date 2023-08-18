@@ -943,7 +943,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
         auto env = GetTrainingEnv().GetORTEnv();
         auto model_identifiers = onnxruntime::training::api::ModelIdentifiers(model_uri, eval_model_uri, std::nullopt);
-        return std::make_unique<onnxruntime::training::api::Module>(model_identifiers, state, session_options->value, *env, provider,
+        return std::make_unique<onnxruntime::training::api::Module>(model_identifiers,
+                                                                    state, session_options->value, *env, provider,
                                                                     session_options->custom_op_domains_);
       }))
       .def("train_step",

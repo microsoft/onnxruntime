@@ -306,7 +306,7 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   // Eval model validation
   // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
   // graphs, and all the weights present in both graphs match.
-  // TODO: Add the checks instead of making assumptions??
+  // TODO(askhade): Add the checks instead of making assumptions??
   InlinedVector<std::string> eval_user_input_names, eval_param_input_names;
   for (const auto& input_name : eval_input_names_) {
     if (state_->module_checkpoint_state.named_parameters.find(input_name) !=
@@ -328,7 +328,7 @@ Module::Module(const ModelIdentifiers& model_identifiers,
 
   // Keep a copy of the eval model path to be able to later export the model for inferencing.
   // The inference model will be reconstructed from the eval model.
-  // TODO [Ashwini]: Find a fix to export model for inference when the eval model is loaded from a buffer.
+  // TODO(askhade): Find a fix to export model for inference when the eval model is loaded from a buffer.
   if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
     eval_model_path_ = std::get<std::optional<std::string>>(model_identifiers.eval_model);
   }

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include "core/session/inference_session.h"
 #include "orttraining/training_api/utils.h"
 
