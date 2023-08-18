@@ -44,6 +44,15 @@ parameters:
   type: string
   default: '--use_azure'
 
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
 trigger: none
 
 resources:
@@ -66,3 +75,4 @@ stages:
     enable_mac_silicon: ${{ parameters.enable_mac_silicon }}
     enable_linux_arm: ${{ parameters.enable_linux_arm }}
     build_py_parameters: ${{ parameters.build_py_parameters }}
+    cmake_build_type: ${{ parameters.cmake_build_type }}

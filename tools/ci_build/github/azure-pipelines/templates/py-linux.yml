@@ -17,6 +17,15 @@ parameters:
 - name: prepend_path
   type: string
 
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
 - name: device
   type: string
   default: 'CPU'
@@ -88,4 +97,4 @@ jobs:
       displayName: 'Publish Test Binaries'
       inputs:
         artifactName: 'drop-linux-cpu-${{ parameters.arch }}'
-        targetPath: '$(Build.BinariesDirectory)/Release'
+        targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'
