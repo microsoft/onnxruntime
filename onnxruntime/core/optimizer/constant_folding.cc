@@ -128,8 +128,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // implementations for all ONNX ops. If the node/op is from a different op domain or if the CPU implementation
       // does not support the specific input type(s) required by the node (currently we only support a subset of
       // types in some CPU kernels) then we can't proceed with constant folding for the node.
-      auto ep_type = node->GetExecutionProviderType();
-      bool cpu_ep = ep_type == kCpuExecutionProvider;
+      auto& ep_type = node->GetExecutionProviderType();
+      bool cpu_ep = ep_type.empty() || ep_type == kCpuExecutionProvider;
       if (!cpu_ep && node->Domain() != kOnnxDomain) {
         continue;
       }
