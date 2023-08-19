@@ -44,29 +44,19 @@ TEST(TransposeOpTest, PermRankDoesNotMatchTensorRank) {
 // Those tests will fallback to other EPs.
 
 template <class T>
-void TransposeTest(std::vector<int64_t>& input_shape,
-                   std::vector<T>& input_vals,
-                   std::vector<int64_t>* p_perm,
-                   std::vector<int64_t> expected_shape,
-                   std::initializer_list<T>& expected_vals,
-                   bool is_tensorrt_supported = true,
-                   bool is_openvino_supported = true) {
+void TransposeTest(const std::vector<int64_t>& input_shape,
+                   const std::vector<T>& input_vals,
+                   const std::vector<int64_t>* p_perm,
+                   const std::vector<int64_t>& expected_shape,
+                   const std::vector<T>& expected_vals,
+                   const std::unordered_set<std::string>& excluded_provider_types = {}) {
   OpTester test("Transpose");
   if (nullptr != p_perm)
     test.AddAttribute("perm", *p_perm);
   test.AddInput<T>("X", input_shape, input_vals);
   test.AddOutput<T>("Y", expected_shape, expected_vals);
 
-  // Disable TensorRT on unsupported tests
-  std::unordered_set<std::string> excluded_providers;
-  if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);
-  }
-  if (!is_openvino_supported) {
-    excluded_providers.insert(kOpenVINOExecutionProvider);
-  }
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
 // Test 2 dimensional transpose, with no permutation attribute specified
@@ -77,12 +67,13 @@ TEST(TransposeOpTest, TwoDimNoAttr) {
       4.0f, 5.0f, 6.0f};
 
   std::vector<int64_t> expected_shape({3, 2});
-  auto expected_vals = {
+  std::vector<float> expected_vals = {
       1.0f, 4.0f,
       2.0f, 5.0f,
       3.0f, 6.0f};
 
-  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals, false);  // TensorRT: SegFault error
+  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: SegFault error
 }
 
 TEST(TransposeOpTest, TwoDimNoAttrStr) {
@@ -92,7 +83,7 @@ TEST(TransposeOpTest, TwoDimNoAttrStr) {
       "4", "5", "6"};
 
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<std::string> expected_vals = {
+  std::vector<std::string> expected_vals = {
       "1", "4",
       "2", "5",
       "3", "6"};
@@ -108,9 +99,9 @@ TEST(TransposeOpTest, TwoDim) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  auto expected_vals = {1.0f, 4.0f,
-                        2.0f, 5.0f,
-                        3.0f, 6.0f};
+  std::vector<float> expected_vals = {1.0f, 4.0f,
+                                      2.0f, 5.0f,
+                                      3.0f, 6.0f};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
@@ -122,9 +113,9 @@ TEST(TransposeOpTest, TwoDim_double) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<double> expected_vals = {1.0, 4.0,
-                                                 2.0, 5.0,
-                                                 3.0, 6.0};
+  std::vector<double> expected_vals = {1.0, 4.0,
+                                       2.0, 5.0,
+                                       3.0, 6.0};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
@@ -136,9 +127,9 @@ TEST(TransposeOpTest, TwoDim_int32) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<int32_t> expected_vals = {1, 4,
-                                                  2, 5,
-                                                  3, 6};
+  std::vector<int32_t> expected_vals = {1, 4,
+                                        2, 5,
+                                        3, 6};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
@@ -151,12 +142,12 @@ TEST(TransposeOpTest, TwoDim_int16) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<int16_t> expected_vals = {
+  std::vector<int16_t> expected_vals = {
       1, 4,
       2, 5,
       3, 6};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kOpenVINOExecutionProvider});
 }
 
 TEST(TransposeOpTest, TwoDim_mlfloat16) {
@@ -167,12 +158,12 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<MLFloat16> expected_vals =
+  std::vector<MLFloat16> expected_vals =
       {MLFloat16::FromBits(static_cast<uint16_t>(1)), MLFloat16::FromBits(static_cast<uint16_t>(4)),
        MLFloat16::FromBits(static_cast<uint16_t>(2)), MLFloat16::FromBits(static_cast<uint16_t>(5)),
        MLFloat16::FromBits(static_cast<uint16_t>(3)), MLFloat16::FromBits(static_cast<uint16_t>(6))};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 #if defined(USE_DNNL)
@@ -234,7 +225,7 @@ TEST(TransposeOpTest, Transpose021_bfloat16) {
 
   std::vector<int64_t> perm = {0, 2, 1};
   std::vector<int64_t> expected_shape({4, 3, 2});
-  auto expected_vals = {
+  std::vector<float> expected_vals = {
       1.0f, 4.0f,
       2.0f, 5.0f,
       3.0f, 6.0f,
@@ -269,11 +260,11 @@ TEST(TransposeOpTest, TwoDim_int8) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<int8_t> expected_vals = {1, 4,
-                                                 2, 5,
-                                                 3, 6};
+  std::vector<int8_t> expected_vals = {1, 4,
+                                       2, 5,
+                                       3, 6};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 TEST(TransposeOpTest, TwoDimStr) {
@@ -284,7 +275,7 @@ TEST(TransposeOpTest, TwoDimStr) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<std::string> expected_vals = {
+  std::vector<std::string> expected_vals = {
       "1", "4",
       "2", "5",
       "3", "6"};
@@ -310,7 +301,7 @@ TEST(TransposeOpTest, Transpose021) {
 
   std::vector<int64_t> perm = {0, 2, 1};
   std::vector<int64_t> expected_shape({4, 3, 2});
-  auto expected_vals = {
+  std::vector<float> expected_vals = {
       1.0f, 4.0f,
       2.0f, 5.0f,
       3.0f, 6.0f,
@@ -327,7 +318,8 @@ TEST(TransposeOpTest, Transpose021) {
       2.3f, 5.3f,
       3.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, Transpose120) {
@@ -347,7 +339,7 @@ TEST(TransposeOpTest, Transpose120) {
 
   std::vector<int64_t> perm = {1, 2, 0};
   std::vector<int64_t> expected_shape({2, 3, 4});
-  auto expected_vals = {
+  std::vector<float> expected_vals = {
       1.0f, 1.1f, 1.2f, 1.3f,
       2.0f, 2.1f, 2.2f, 2.3f,
       3.0f, 3.1f, 3.2f, 3.3f,
@@ -356,7 +348,8 @@ TEST(TransposeOpTest, Transpose120) {
       5.0f, 5.1f, 5.2f, 5.3f,
       6.0f, 6.1f, 6.2f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: illegal error
 }
 
 // test when the suffix size is > 1 (last dimension is not moved)
@@ -377,7 +370,7 @@ TEST(TransposeOpTest, Transpose102) {
 
   std::vector<int64_t> perm = {1, 0, 2};
   std::vector<int64_t> expected_shape({2, 4, 3});
-  auto expected_vals = {
+  std::vector<float> expected_vals = {
       1.0f, 2.0f, 3.0f,
       1.1f, 2.1f, 3.1f,
       1.2f, 2.2f, 3.2f,
@@ -388,7 +381,8 @@ TEST(TransposeOpTest, Transpose102) {
       4.2f, 5.2f, 6.2f,
       4.3f, 5.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, TransposeReshape) {
@@ -408,7 +402,7 @@ TEST(TransposeOpTest, TransposeReshape) {
 
   std::vector<int64_t> perm = {1, 3, 2, 4, 0};
   std::vector<int64_t> expected_shape({4, 1, 2, 3, 1});
-  auto expected_vals = {
+  std::vector<float> expected_vals = {
       1.0f, 2.0f, 3.0f,
       4.0f, 5.0f, 6.0f,
 
@@ -421,7 +415,8 @@ TEST(TransposeOpTest, TransposeReshape) {
       1.3f, 2.3f, 3.3f,
       4.3f, 5.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider});  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, ThreeDimStr) {
@@ -441,7 +436,7 @@ TEST(TransposeOpTest, ThreeDimStr) {
 
   std::vector<int64_t> perm = {0, 2, 1};
   std::vector<int64_t> expected_shape({4, 3, 2});
-  std::initializer_list<std::string> expected_vals = {
+  std::vector<std::string> expected_vals = {
       "1", "4",
       "2", "5",
       "3", "6",
@@ -461,6 +456,31 @@ TEST(TransposeOpTest, ThreeDimStr) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
 
+TEST(TransposeOpTest, SixDim) {
+  // CoreML has a 5D limit. With the CoreML EP enabled, this should fall back to the CPU EP.
+  const auto input_shape = std::vector<int64_t>{2, 2, 2, 2, 2, 2};
+  const auto input_vals = []() {
+    std::vector<float> v(64);
+    std::iota(v.begin(), v.end(), 0.0f);
+    return v;
+  }();
+
+  const auto perm = std::vector<int64_t>{1, 0, 2, 3, 4, 5};
+
+  const auto expected_shape = input_shape;  // all dimension values are the same
+  const auto expected_vals = []() {
+    std::vector<float> v(64);
+    std::iota(v.begin() + 0, v.begin() + 16, 0.f);
+    std::iota(v.begin() + 16, v.begin() + 32, 32.0f);
+    std::iota(v.begin() + 32, v.begin() + 48, 16.0f);
+    std::iota(v.begin() + 48, v.begin() + 64, 48.0f);
+    return v;
+  }();
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kQnnExecutionProvider});  // Error: Failed to finalize QNN graph.
+}
+
 template <typename T>
 static void NumericNCHW2NHWC() {
   std::vector<int64_t> input_shape({1, 3, 2, 2});
@@ -471,13 +491,14 @@ static void NumericNCHW2NHWC() {
 
   std::vector<int64_t> perm = {0, 2, 3, 1};
   std::vector<int64_t> expected_shape({1, 2, 2, 3});
-  std::initializer_list<T> expected_vals = {
+  std::vector<T> expected_vals = {
       1, 5, 9,
       2, 6, 10,
       3, 7, 11,
       4, 8, 12};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 TEST(TransposeOpTest, NCHW2NHWC) {
   NumericNCHW2NHWC<int8_t>();
@@ -495,13 +516,13 @@ TEST(TransposeOpTest, NCHW2NHWCStr) {
 
   std::vector<int64_t> perm = {0, 2, 3, 1};
   std::vector<int64_t> expected_shape({1, 2, 2, 3});
-  std::initializer_list<std::string> expected_vals = {
+  std::vector<std::string> expected_vals = {
       "1", "5", "9",
       "2", "6", "10",
       "3", "7", "11",
       "4", "8", "12"};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 template <typename T>
@@ -522,7 +543,7 @@ static void NumericNHWC2NCHW() {
 
   std::vector<int64_t> perm = {0, 3, 1, 2};
   std::vector<int64_t> expected_shape({2, 2, 2, 2});
-  std::initializer_list<T> expected_vals = {
+  std::vector<T> expected_vals = {
       1, 3,
       5, 7,
 
@@ -535,7 +556,8 @@ static void NumericNHWC2NCHW() {
       10, 12,
       14, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(TransposeOpTest, NHWC2NCHW) {
@@ -555,12 +577,12 @@ TEST(TransposeOpTest, NHWC2NCHW_String) {
 
   std::vector<int64_t> perm = {0, 3, 1, 2};
   std::vector<int64_t> expected_shape({1, 3, 2, 2});
-  std::initializer_list<std::string> expected_vals = {
+  std::vector<std::string> expected_vals = {
       "1", "4", "7", "10",
       "2", "5", "8", "11",
       "3", "6", "9", "12"};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 // test to cover memcpy from single axis moving inwards path
@@ -581,7 +603,7 @@ TEST(TransposeOpTest, SingleAxisMovingInwardsBlockCopy) {
 
   std::vector<int64_t> perm = {1, 2, 0, 3};
   std::vector<int64_t> expected_shape({2, 2, 2, 2});
-  std::initializer_list<uint64_t> expected_vals = {
+  std::vector<uint64_t> expected_vals = {
       1, 2,
       9, 10,
 
@@ -594,7 +616,7 @@ TEST(TransposeOpTest, SingleAxisMovingInwardsBlockCopy) {
       7, 8,
       15, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kTensorrtExecutionProvider});
 }
 
 TEST(TransposeOpTest, NDim) {
@@ -605,17 +627,17 @@ TEST(TransposeOpTest, NDim) {
                                    13.0f, 14.0f, 15.0f, 16.0f};
 
   std::vector<int64_t> perm = {1, 0, 2, 3};
-  auto expected_vals = {1.0f, 2.0f, 3.0f, 4.0f,
-                        9.0f, 10.0f, 11.0f, 12.0f,
-                        5.0f, 6.0f, 7.0f, 8.0f,
-                        13.0f, 14.0f, 15.0f, 16.0f};
+  std::vector<float> expected_vals = {1.0f, 2.0f, 3.0f, 4.0f,
+                                      9.0f, 10.0f, 11.0f, 12.0f,
+                                      5.0f, 6.0f, 7.0f, 8.0f,
+                                      13.0f, 14.0f, 15.0f, 16.0f};
   TransposeTest(input_shape, input_vals, &perm, input_shape, expected_vals);
 
   perm = {1, 0, 3, 2};
-  auto expected_vals2 = {1.0f, 3.0f, 2.0f, 4.0f,
-                         9.0f, 11.0f, 10.0f, 12.0f,
-                         5.0f, 7.0f, 6.0f, 8.0f,
-                         13.0f, 15.0f, 14.0f, 16.0f};
+  std::vector<float> expected_vals2 = {1.0f, 3.0f, 2.0f, 4.0f,
+                                       9.0f, 11.0f, 10.0f, 12.0f,
+                                       5.0f, 7.0f, 6.0f, 8.0f,
+                                       13.0f, 15.0f, 14.0f, 16.0f};
   TransposeTest(input_shape, input_vals, &perm, input_shape, expected_vals2);
 }
 
@@ -627,11 +649,11 @@ TEST(TransposeOpTest, DoTransposeImpl) {
   }
   std::vector<int64_t> perm = {2, 1, 0, 3};
   std::vector<int64_t> expected_shape({1, 2, 5, 3});
-  auto expected_vals = {0.0f, 1.0f, 2.0f, 6.0f, 7.0f, 8.0f,
-                        12.0f, 13.0f, 14.0f, 18.0f, 19.0f, 20.0f,
-                        24.0f, 25.0f, 26.0f, 3.0f, 4.0f, 5.0f,
-                        9.0f, 10.0f, 11.0f, 15.0f, 16.0f, 17.0f,
-                        21.0f, 22.0f, 23.0f, 27.0f, 28.0f, 29.0f};
+  std::vector<float> expected_vals = {0.0f, 1.0f, 2.0f, 6.0f, 7.0f, 8.0f,
+                                      12.0f, 13.0f, 14.0f, 18.0f, 19.0f, 20.0f,
+                                      24.0f, 25.0f, 26.0f, 3.0f, 4.0f, 5.0f,
+                                      9.0f, 10.0f, 11.0f, 15.0f, 16.0f, 17.0f,
+                                      21.0f, 22.0f, 23.0f, 27.0f, 28.0f, 29.0f};
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
 
@@ -643,11 +665,11 @@ TEST(TransposeOpTest, DoTransposeImplString) {
   }
   std::vector<int64_t> perm = {2, 1, 0, 3};
   std::vector<int64_t> expected_shape({1, 2, 5, 3});
-  std::initializer_list<std::string> expected_vals = {"n0", "n1", "n2", "n6", "n7", "n8",
-                                                      "n12", "n13", "n14", "n18", "n19", "n20",
-                                                      "n24", "n25", "n26", "n3", "n4", "n5",
-                                                      "n9", "n10", "n11", "n15", "n16", "n17",
-                                                      "n21", "n22", "n23", "n27", "n28", "n29"};
+  std::vector<std::string> expected_vals = {"n0", "n1", "n2", "n6", "n7", "n8",
+                                            "n12", "n13", "n14", "n18", "n19", "n20",
+                                            "n24", "n25", "n26", "n3", "n4", "n5",
+                                            "n9", "n10", "n11", "n15", "n16", "n17",
+                                            "n21", "n22", "n23", "n27", "n28", "n29"};
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
 
@@ -660,10 +682,10 @@ TEST(TransposeOpTest, DoTransposeEltWise) {
                                    13.0f, 14.0f, 15.0f, 16.0f};
 
   std::vector<int64_t> perm = {1, 0, 3, 2};
-  auto expected_vals2 = {1.0f, 3.0f, 2.0f, 4.0f,
-                         9.0f, 11.0f, 10.0f, 12.0f,
-                         5.0f, 7.0f, 6.0f, 8.0f,
-                         13.0f, 15.0f, 14.0f, 16.0f};
+  std::vector<float> expected_vals2 = {1.0f, 3.0f, 2.0f, 4.0f,
+                                       9.0f, 11.0f, 10.0f, 12.0f,
+                                       5.0f, 7.0f, 6.0f, 8.0f,
+                                       13.0f, 15.0f, 14.0f, 16.0f};
   TransposeTest(input_shape, input_vals, &perm, input_shape, expected_vals2);
 
   // Specific test which tests that function DoTransposeEltWise does not
@@ -797,7 +819,7 @@ TEST(TransposeOpTest, TransposeBigMLFloat16) {  // Exercises CanUse_cublasTransp
   const std::vector<int64_t> Y_dims{1, 1449, 1449, 3};
   TestTransposeMLFloat16(perm, X_dims, Y_dims);
 }
-#endif
+#endif  // defined(USE_CUDA) || defined(USE_ROCM)
 
 }  // namespace test
 }  // namespace onnxruntime

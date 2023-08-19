@@ -76,18 +76,17 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& perm_name = input_defs[1]->Name();
+  const auto& new_shape_name = input_defs[1]->Name();
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-  if (!Contains(initializers, perm_name)) {
+  if (!Contains(initializers, new_shape_name)) {
     LOGS(logger, VERBOSE) << "New shape of reshape must be a constant initializer";
     return false;
   }
 
-  const auto& perm_tensor = *initializers.at(perm_name);
-  Initializer unpacked_tensor(perm_tensor);
-  auto raw_perm = unpacked_tensor.DataAsSpan<int64_t>();
-  const auto& perm_dims = perm_tensor.dims();
-  if (perm_dims.empty() || perm_dims[0] == 0) {
+  const auto& new_shape_tensor = *initializers.at(new_shape_name);
+  Initializer unpacked_tensor(new_shape_tensor);
+  auto new_shape = unpacked_tensor.DataAsSpan<int64_t>();
+  if (new_shape.empty()) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";
     return false;
   }
@@ -101,15 +100,22 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
+  // CoreML reshape doesn't support new shape with more than 5 dimensions
+  if (new_shape.size() > 5) {
+    LOGS(logger, VERBOSE) << "Reshape does not support new shape with rank greater than 5. Input shape: "
+                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
+    return false;
+  }
+
   // CoreML reshape does not support 0 as dimension
   NodeAttrHelper helper(node);
   const bool allow_zero = helper.Get("allowzero ", 0) == 1;
   if (allow_zero) {
-    for (int64_t i = 0; i < perm_dims[0]; i++) {
-      if (raw_perm[i] == 0) {
-        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension when allowzero is enabled";
-        return false;
-      }
+    if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
+      LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0 as dimension when allowzero is enabled. "
+                               "Input shape: "
+                            << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
+      return false;
     }
   }
 
