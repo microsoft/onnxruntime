@@ -10,11 +10,6 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_ubuntu_cpu
-  displayName: 'Whether Ubuntu CPU (manylinux_2_27) package is built.'
-  type: boolean
-  default: true
-
 - name: enable_linux_gpu
   displayName: 'Whether Linux GPU package is built.'
   type: boolean
@@ -44,6 +39,17 @@ parameters:
   displayName: 'Whether Linux ARM package is built.'
   type: boolean
   default: true
+
+# TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
+- name: cmake_build_type
+  type: string
+  displayName: 'Linux packages cmake build type. Linux Only.'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
 
 stages:
 - stage: Python_Packaging
@@ -502,17 +508,19 @@ stages:
           ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
           extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
 
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
       - template: py-linux.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
+          machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
           base_image: 'centos:7'
           devtoolset_rootpath: /opt/rh/devtoolset-11/root
           ld_library_path_arg: /opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-11/root/usr/bin:'
           extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
 
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
@@ -521,3 +529,4 @@ stages:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
