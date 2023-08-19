@@ -198,14 +198,14 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
   ORT_RETURN_IF_NOT(nullptr == steps_tensor || start_tensor.Shape() == steps_tensor->Shape(),
                     "Starts and steps shape mismatch");
 
-  const auto size = start_tensor.Shape().Size();
-  input_starts.reserve(narrow<size_t>(size));
-  input_ends.reserve(narrow<size_t>(size));
+  const auto size = narrow<size_t>(start_tensor.Shape().Size());
+  input_starts.reserve(size);
+  input_ends.reserve(size);
   if (nullptr != axes_tensor)
-    input_axes.reserve(narrow<size_t>(size));
+    input_axes.reserve(size);
   // Slice V10
   if (nullptr != steps_tensor)
-    input_steps.reserve(narrow<size_t>(size));
+    input_steps.reserve(size);
 
   // check for type reduction of supported indices types
   constexpr bool int32_enabled = utils::HasType<EnabledIndicesTypes, int32_t>();

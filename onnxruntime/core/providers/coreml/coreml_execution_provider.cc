@@ -104,7 +104,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
         onnx_input_names[i] = input_defs[i]->Name();
       }
-      coreml_model->SetInputs(std::move(onnx_input_names));
+      coreml_model->SetOnnxInputs(std::move(onnx_input_names));
     }
 
     {
@@ -113,7 +113,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
         onnx_output_names[i] = output_defs[i]->Name();
       }
-      coreml_model->SetOutputs(std::move(onnx_output_names));
+      coreml_model->SetOnnxOutputs(std::move(onnx_output_names));
     }
 
     coreml_models_.emplace(fused_node.Name(), std::move(coreml_model));
@@ -136,8 +136,8 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       const size_t num_outputs = ctx.GetOutputCount();
 
       coreml::Model* model = reinterpret_cast<coreml::Model*>(state);
-      const auto& model_inputs = model->GetInputs();
-      const auto& model_outputs = model->GetOutputs();
+      const auto& model_inputs = model->GetOnnxInputs();
+      const auto& model_outputs = model->GetOnnxOutputs();
 
       ORT_RETURN_IF_NOT(model_inputs.size() <= num_inputs, "Inconsistent input sizes");
       ORT_RETURN_IF_NOT(model_outputs.size() == num_outputs, "Inconsistent output sizes");
@@ -146,14 +146,22 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       inputs.reserve(model_inputs.size());
       for (size_t i = 0; i < model_inputs.size(); i++) {
         const auto& input_name = model_inputs[i];
+        const auto* input_info = model->TryGetInputOutputInfo(input_name);
+        if (input_info == nullptr) {
+          // The CoreML model may not have an actual input that corresponds to this one.
+          // E.g., when the input is an initializer that already got copied to the CoreML model.
+          // If there's no CoreML model input, we don't need to provide this input to CoreML.
+          continue;
+        }
+
         auto input_tensor = ctx.GetInput(i);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
 
         // Disallow inputs with dynamic shape which actually have zero elements.
         // CoreML doesn't consistently handle this well (e.g., there may be runtime errors).
-        if (const auto* model_input_info = model->TryGetInputOutputInfo(input_name); model_input_info != nullptr) {
-          const auto& inferred_shape = model_input_info->shape;
+        {
+          const auto& inferred_shape = input_info->shape;
           ORT_RETURN_IF(!coreml::IsStaticShape(inferred_shape) && coreml::DoesShapeSpecifyZeroElements(shape),
                         "Input (", input_name, ") has a dynamic shape (", coreml::Shape2String(inferred_shape),
                         ") but the runtime shape (", coreml::Shape2String(shape),

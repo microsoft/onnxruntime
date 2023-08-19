@@ -99,10 +99,12 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   SessionOptions so;
   // Ignore the shape inference error so that we can hit the invalid index error.
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
-  test.Run(so, OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
-           // On Cuda it is impossible to dereference indices memory on CPU so the check can not run
-           {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kTensorrtExecutionProvider,
-            kNnapiExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider});
+  test
+      .Config(so)
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]")
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -121,7 +123,13 @@ TEST(GatherOpTest, Gather_invalid_index_gpu) {
                          0.0f, 0.0f, 0.0f, 0.0f});
 
   // On GPU, just set the value to 0 instead of report error. exclude all other providers
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kDnnlExecutionProvider, kTensorrtExecutionProvider});
+  test
+#if defined(USE_CUDA)
+      .ConfigEp(DefaultCudaExecutionProvider())
+#else
+      .ConfigEp(DefaultRocmExecutionProvider())
+#endif
+      .RunWithConfig();
 }
 #endif
 
@@ -262,90 +270,54 @@ TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
   test.Run();
 }
 
-TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
+template <typename TInt>
+static void TestGatherAxis1Indices2DIntData(const std::unordered_set<std::string>& excluded_provider_types = {}) {
+  static_assert(std::is_integral_v<TInt>, "TInt is not an integral type");
+
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<int32_t>("data", {3, 3},
-                         {0, 1, 2,
-                          10, 11, 12,
-                          20, 21, 22});
+  test.AddInput<TInt>("data", {3, 3},
+                      {0, 1, 2,
+                       10, 11, 12,
+                       20, 21, 22});
   test.AddInput<int32_t>("indices", {2, 2},
                          {1, 0,
                           2, 1});
-  test.AddOutput<int32_t>("output", {3, 2, 2},
-                          {1, 0, 2, 1,
-                           11, 10, 12, 11,
-                           21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+  test.AddOutput<TInt>("output", {3, 2, 2},
+                       {1, 0, 2, 1,
+                        11, 10, 12, 11,
+                        21, 20, 22, 21});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+}
+
+TEST(GatherOpTest, Gather_axis1_indices2d_int64) {
+  TestGatherAxis1Indices2DIntData<int64_t>();
+}
+
+TEST(GatherOpTest, Gather_axis1_indices2d_uint64) {
+  TestGatherAxis1Indices2DIntData<uint64_t>();
+}
+
+TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
+  TestGatherAxis1Indices2DIntData<int32_t>(
+      {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint32) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<uint32_t>("data", {3, 3},
-                          {0, 1, 2,
-                           10, 11, 12,
-                           20, 21, 22});
-  test.AddInput<int32_t>("indices", {2, 2},
-                         {1, 0,
-                          2, 1});
-  test.AddOutput<uint32_t>("output", {3, 2, 2},
-                           {1, 0, 2, 1,
-                            11, 10, 12, 11,
-                            21, 20, 22, 21});
-  test.Run();
+  TestGatherAxis1Indices2DIntData<uint32_t>();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int16) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<int16_t>("data", {3, 3},
-                         {0, 1, 2,
-                          10, 11, 12,
-                          20, 21, 22});
-  test.AddInput<int32_t>("indices", {2, 2},
-                         {1, 0,
-                          2, 1});
-  test.AddOutput<int16_t>("output", {3, 2, 2},
-                          {1, 0, 2, 1,
-                           11, 10, 12, 11,
-                           21, 20, 22, 21});
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  TestGatherAxis1Indices2DIntData<int16_t>({kOpenVINOExecutionProvider});
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint16) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<uint16_t>("data", {3, 3},
-                          {0, 1, 2,
-                           10, 11, 12,
-                           20, 21, 22});
-  test.AddInput<int32_t>("indices", {2, 2},
-                         {1, 0,
-                          2, 1});
-  test.AddOutput<uint16_t>("output", {3, 2, 2},
-                           {1, 0, 2, 1,
-                            11, 10, 12, 11,
-                            21, 20, 22, 21});
-  test.Run();
+  TestGatherAxis1Indices2DIntData<uint16_t>();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int8) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<int8_t>("data", {3, 3},
-                        {0, 1, 2,
-                         10, 11, 12,
-                         20, 21, 22});
-  test.AddInput<int32_t>("indices", {2, 2},
-                         {1, 0,
-                          2, 1});
-  test.AddOutput<int8_t>("output", {3, 2, 2},
-                         {1, 0, 2, 1,
-                          11, 10, 12, 11,
-                          21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Assertion `regionRanges != nullptr' failed
+  TestGatherAxis1Indices2DIntData<int8_t>(
+      {kTensorrtExecutionProvider});  // TensorRT: Assertion `regionRanges != nullptr' failed
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_string) {

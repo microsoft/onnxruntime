@@ -143,22 +143,28 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   if (IsStaticShape(shape)) {
     *multi_array->mutable_shape() = {shape.cbegin(), shape.cend()};
   } else {
-    auto& multi_array_shape_range = *multi_array->mutable_shaperange();
-    auto& multi_array_shape = *multi_array->mutable_shape();
+    if (is_input) {
+      auto& multi_array_shape_range = *multi_array->mutable_shaperange();
+      auto& multi_array_shape = *multi_array->mutable_shape();
 
-    for (const auto dim : shape) {
-      auto& multi_array_dim_size_range = *multi_array_shape_range.mutable_sizeranges()->Add();
-      if (dim == -1) {
-        multi_array_dim_size_range.set_lowerbound(0);
-        multi_array_dim_size_range.set_upperbound(-1);  // unbounded
+      for (const auto dim : shape) {
+        auto& multi_array_dim_size_range = *multi_array_shape_range.mutable_sizeranges()->Add();
+        if (dim == -1) {
+          multi_array_dim_size_range.set_lowerbound(0);
+          multi_array_dim_size_range.set_upperbound(-1);  // unbounded
 
-        multi_array_shape.Add(1);  // pick 1 as an arbitrary default dynamic dimension value
-      } else {
-        multi_array_dim_size_range.set_lowerbound(dim);
-        multi_array_dim_size_range.set_upperbound(dim);
+          multi_array_shape.Add(1);  // pick 1 as an arbitrary default dynamic dimension value
+        } else {
+          multi_array_dim_size_range.set_lowerbound(dim);
+          multi_array_dim_size_range.set_upperbound(dim);
 
-        multi_array_shape.Add(dim);
+          multi_array_shape.Add(dim);
+        }
       }
+    } else {
+      // Leave dynamic output shapes unspecified.
+      // If we specify an output shape that doesn't match the actual output shape at runtime, CoreML returns a 5D shape
+      // padded with ones.
     }
   }
 
@@ -167,7 +173,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     const auto* type_proto = node_arg.TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The  ", input_output_type, " of graph doesn't have elem_type: ", name);
+                             "The ", input_output_type, " of graph doesn't have elem_type: ", name);
     }
 
     data_type = type_proto->tensor_type().elem_type();
@@ -179,10 +185,10 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
         multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        // If we have an int64 input/output type, since COREML_SPEC:ArrayFeatureType does not support INT64
+        // we assign it to be INT32 here
+        multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
         if (!is_input) {
-          // If we have an int64 output type, since COREML_SPEC:ArrayFeatureType does not support INT64
-          // we assign it to be INT32 here
-          multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
           // Record the output names and we need to change them back to Int64 when CoreML EP returns these values to ORT
           AddInt64Output(name);
         }
@@ -190,7 +196,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       default: {
         // TODO: support other type
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The  ", input_output_type, " of graph doesn't have valid type, name: ", name,
+                               "The ", input_output_type, " of graph doesn't have valid type, name: ", name,
                                " type: ", type_proto->tensor_type().elem_type());
       }
     }

@@ -4,10 +4,12 @@
 // This file contains the functions compute the starts, steps (strides) and output shape
 // for Slice op, which can be called from other ops or EPs.
 #pragma once
-#include "core/providers/cpu/tensor/slice_compute_metadata.h"
+
 #include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/framework/ort_stl_allocator.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/tensor/slice_compute_metadata.h"
 
 namespace onnxruntime {
 

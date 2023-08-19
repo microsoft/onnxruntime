@@ -51,11 +51,11 @@ class Model {
   OrtMutex& GetMutex() { return mutex_; }
 
   // Input and output names in the onnx model's order
-  const std::vector<std::string>& GetInputs() const { return inputs_; }
-  void SetInputs(std::vector<std::string>&& inputs) { inputs_ = std::move(inputs); }
+  const std::vector<std::string>& GetOnnxInputs() const { return onnx_inputs_; }
+  void SetOnnxInputs(std::vector<std::string>&& inputs) { onnx_inputs_ = std::move(inputs); }
 
-  const std::vector<std::string>& GetOutputs() const { return outputs_; }
-  void SetOutputs(std::vector<std::string>&& outputs) { outputs_ = std::move(outputs); }
+  const std::vector<std::string>& GetOnnxOutputs() const { return onnx_outputs_; }
+  void SetOnnxOutputs(std::vector<std::string>&& outputs) { onnx_outputs_ = std::move(outputs); }
 
   const OnnxTensorInfo* TryGetInputOutputInfo(const std::string& name) const;
   const OnnxTensorInfo& GetInputOutputInfo(const std::string& name) const;
@@ -65,8 +65,8 @@ class Model {
   std::unordered_set<std::string> scalar_outputs_;
   std::unordered_set<std::string> int64_outputs_;
 
-  std::vector<std::string> inputs_;
-  std::vector<std::string> outputs_;
+  std::vector<std::string> onnx_inputs_;
+  std::vector<std::string> onnx_outputs_;
 
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
 
