@@ -27,7 +27,7 @@ Run the following Python code to export:
 ```
 from optimum.onnxruntime import ORTModelForSpeechSeq2Seq
 
-model_name = "openai/whisper-large"
+model_name = "openai/whisper-large-v2"
 model = ORTModelForSpeechSeq2Seq.from_pretrained(
     model_name,
     export=True,
@@ -81,6 +81,8 @@ Here are some examples of how you can benchmark Whisper across various end-to-en
 
 Note: In the below examples, `PyTorch` refers to running in PyTorch without `torch.compile` and `PyTorch 2.0` refers to running in PyTorch with `torch.compile`.
 
+### Variants
+
 1. PyTorch (without `torch.compile`), FP32
 ```
 python3 -m models.whisper.benchmark \
@@ -118,7 +120,7 @@ python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v2 \
-    --ort-model-path ./wlarge-fp32/whisper-large_beamsearch.onnx \
+    --ort-model-path ./wlarge-fp32/whisper-large-v2_beamsearch.onnx \
     --precision fp32 \
     --device cpu
 ```
@@ -140,7 +142,55 @@ python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v2 \
-    --ort-model-path ./wlarge-fp32/whisper-large_all.onnx \
+    --ort-model-path ./wlarge-fp32/whisper-large-v2_all.onnx \
     --precision fp32 \
     --device cpu
 ```
+
+You can profile a variant by adding the `--profile` flag.
+
+### Benchmark All
+
+You can use `benchmark_all.py` to benchmark across various platforms and automatically store the results in a CSV file. Here is an example.
+
+```
+python3 -m models.whisper.benchmark_all \
+    --audio-path ./whisper-test-audios/ \
+    --hf-ort-model-path ./whisper-large-v2-onnx/ \
+    --ort-model-path ./wlarge-fp32/whisper-large-v2_all.onnx \
+    --model-name openai/whisper-large-v2 \
+    --precision fp32 \
+    --device cpu
+```
+
+### Benchmarking on NVIDIA A100
+
+Here is a benchmark for an MP3 file with 20.7s of audio.
+
+#### FP16
+
+| Configuration | Size     | Per-Token Latency | Real-Time Factor |
+| ------------- | -------- | ----------------- | ---------------- |
+| PyTorch       | Tiny     | 4.697 ms/token    | 0.004697         |
+| PyTorch 2.0   | Tiny     | 3.406 ms/token    | 0.003406         |
+| ONNX Runtime  | Tiny     | 0.746 ms/token    | 0.000746         |
+| PyTorch       | Medium   | 17.837 ms/token   | 0.017387         |
+| PyTorch 2.0   | Medium   | 18.124 ms/token   | 0.018124         |
+| ONNX Runtime  | Medium   | 3.894 ms/token    | 0.003894         |
+| PyTorch       | Large v2 | 23.470 ms/token   | 0.023470         |
+| PyTorch 2.0   | Large v2 | 23.146 ms/token   | 0.023146         |
+| ONNX Runtime  | Large v2 | 6.262 ms/token    | 0.006262         |
+
+#### FP32
+
+| Configuration | Size     | Per-Token Latency | Real-Time Factor |
+| ------------- | -------- | ----------------- | ---------------- |
+| PyTorch       | Tiny     | 6.220 ms/token    | 0.006220         |
+| PyTorch 2.0   | Tiny     | 3.944 ms/token    | 0.003944         |
+| ONNX Runtime  | Tiny     | 1.545 ms/token    | 0.001545         |
+| PyTorch       | Medium   | 19.093 ms/token   | 0.019093         |
+| PyTorch 2.0   | Medium   | 20.459 ms/token   | 0.020459         |
+| ONNX Runtime  | Medium   | 9.440 ms/token    | 0.009440         |
+| PyTorch       | Large v2 | 25.844 ms/token   | 0.025844         |
+| PyTorch 2.0   | Large v2 | 26.397 ms/token   | 0.026397         |
+| ONNX Runtime  | Large v2 | 7.492 ms/token    | 0.007492         |

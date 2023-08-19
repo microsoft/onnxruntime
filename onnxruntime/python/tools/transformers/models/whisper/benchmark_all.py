@@ -190,13 +190,14 @@ def process_log_file(device_id, log_file, base_results):
                     + (latency_s if latency_s else 0)
                 )
                 audio_duration = base_results[-1]
-                rtf = total_latency / audio_duration
-                logger.info(f"Total latency: {total_latency}")
-                logger.info(f"Audio duration: {audio_duration}")
+                rtf = (total_latency / audio_duration) if audio_duration else -1
+                logger.info(f"Total latency: {total_latency} s")
+                logger.info(f"Audio duration: {audio_duration} s")
                 logger.info(f"Real-time factor: {rtf}")
 
                 # Append log entry to list of entries
                 entry = base_results + [  # noqa: RUF005
+                    token_length,
                     load_audio_latency_s,
                     load_audio_throughput_s,
                     feat_ext_latency_s if feat_ext_latency_s else -1,
@@ -223,6 +224,7 @@ def save_results(results, filename):
             "Device",
             "Audio File",
             "Duration (s)",
+            "Token Length",
             "Load Audio Latency (s)",
             "Load Audio Throughput (qps)",
             "Feature Extractor Latency (s)",
@@ -237,6 +239,7 @@ def save_results(results, filename):
 
     # Set column types
     df["Duration (s)"] = df["Duration (s)"].astype("float")
+    df["Token Length"] = df["Token Length"].astype("int")
     df["Load Audio Latency (s)"] = df["Load Audio Latency (s)"].astype("float")
     df["Load Audio Throughput (qps)"] = df["Load Audio Throughput (qps)"].astype("float")
     df["Feature Extractor Latency (s)"] = df["Feature Extractor Latency (s)"].astype("float")
@@ -293,13 +296,21 @@ def main():
     all_results = []
     for audio_file in os.listdir(args.audio_path):
         audio_path = os.path.join(args.audio_path, audio_file)
-        duration = librosa.get_duration(path=audio_path)
+        try:
+            duration = librosa.get_duration(path=audio_path)
+        except Exception as e:
+            duration = -1
+            logger.warning(f"An error occurred while trying to calculate the audio duration: {e}", exc_info=True)
+            logger.warning(
+                f"If you get an error that says:\n\tsoundfile.LibsndfileError: Error opening '{audio_file}': File contains data in an unknown format.\nyou may not have installed `ffmpeg` in addition to installing `librosa`."
+            )
         logger.info(f"Testing {audio_path}...")
 
         # Benchmark PyTorch without torch.compile
         benchmark_cmd = [  # noqa: RUF005
             "python3",
-            "benchmark.py",
+            "-m",
+            "models.whisper.benchmark",
             "--audio-path",
             audio_path,
             "--benchmark-type",
@@ -326,7 +337,8 @@ def main():
         # Benchmark PyTorch with torch.compile
         benchmark_cmd = [  # noqa: RUF005
             "python3",
-            "benchmark.py",
+            "-m",
+            "models.whisper.benchmark",
             "--audio-path",
             audio_path,
             "--benchmark-type",
@@ -354,7 +366,8 @@ def main():
         if args.hf_ort_model_path:
             benchmark_cmd = [  # noqa: RUF005
                 "python3",
-                "benchmark.py",
+                "-m",
+                "models.whisper.benchmark",
                 "--audio-path",
                 audio_path,
                 "--benchmark-type",
@@ -384,7 +397,8 @@ def main():
         if args.ort_model_path:
             benchmark_cmd = [  # noqa: RUF005
                 "python3",
-                "benchmark.py",
+                "-m",
+                "models.whisper.benchmark",
                 "--audio-path",
                 audio_path,
                 "--benchmark-type",

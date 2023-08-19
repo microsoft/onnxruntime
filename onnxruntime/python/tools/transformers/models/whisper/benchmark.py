@@ -81,7 +81,9 @@ def get_inputs(args: argparse.Namespace):
         inputs["input_features"] = input_features
         return inputs
 
-    inputs["inputs"] = input_features.to(args.target_device)
+    inputs["inputs"] = input_features.to(
+        dtype=torch.float16 if args.use_fp16 else torch.float32, device=args.target_device
+    )
     inputs["no_repeat_ngram_size"] = args.no_repeat_ngram_size
     inputs["early_stopping"] = True
     inputs["use_cache"] = True
@@ -253,7 +255,7 @@ def run_hf_inference(args, inputs, model):
     def get_pred_ids(inputs):
         # Inference pass with predicted token ids generation
         predicted_ids = model.generate(**inputs)
-        return predicted_ids
+        return predicted_ids, [""]
 
     def gen_and_dec(inputs):
         # Inference pass with generation and decoding
