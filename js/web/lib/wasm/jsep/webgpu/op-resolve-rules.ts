@@ -15,9 +15,11 @@ import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
+import {parseSkipLayerNormAttributes, skipLayerNorm} from './ops/skip-layer-norm';
 import {parseSliceAttributes, slice} from './ops/slice';
 import {parseSoftmaxAttributes, softmax} from './ops/softmax';
 import {parseSplitAttributes, split} from './ops/split';
+import {tile} from './ops/tile';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
@@ -85,6 +87,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Sin', [unaryOps.sin]],
   ['Sinh', [unaryOps.sinh]],
   ['Slice', [slice, parseSliceAttributes]],
+  ['SkipLayerNormalization', [skipLayerNorm, parseSkipLayerNormAttributes]],
   ['Split', [split, parseSplitAttributes]],
   ['Sqrt', [unaryOps.sqrt]],
   ['Softmax', [softmax, parseSoftmaxAttributes]],
@@ -92,5 +95,6 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Tan', [unaryOps.tan]],
   ['Tanh', [unaryOps.tanh]],
   ['ThresholdedRelu', [unaryOps.thresholdedRelu, unaryOps.parseAlphaAttributes]],
+  ['Tile', [tile]],
   ['Transpose', [transpose, parseTransposeAttributes]],
 ]);
