@@ -77,7 +77,7 @@ class ImageTests : public ::testing::Test {
     BitmapDecoder bitmap_decoder = BitmapDecoder::CreateAsync(stream).get();
     SoftwareBitmap software_bitmap = bitmap_decoder.GetSoftwareBitmapAsync().get();
 
-        // Convert the input image to PixelFormat specified
+    // Convert the input image to PixelFormat specified
     software_bitmap = SoftwareBitmap::Convert(software_bitmap, ImageTestHelper::GetPixelFormat(input_pixel_format));
 
     auto input_feature = m_model.InputFeatures().First();
@@ -139,7 +139,7 @@ class ImageTests : public ::testing::Test {
       WINML_EXPECT_NO_THROW(m_model_binding.Bind(output_data_binding_name, output_tensor));
     }
 
-        // Else for Unbound
+    // Else for Unbound
     return frame;
   }
 
@@ -186,7 +186,7 @@ class ImageTests : public ::testing::Test {
       WINML_EXPECT_NO_THROW(m_model_binding.Bind(output_data_binding_name, output_video_frames));
     }
 
-        // Else for Unbound
+    // Else for Unbound
     return output_video_frames;
   }
 
@@ -211,13 +211,13 @@ class ImageTests : public ::testing::Test {
   bool ShouldSkip(
     const std::wstring& model_file_name, const std::wstring& image_file_name, const InputImageSource input_image_source
   ) {
-        // Case that the tensor's shape doesn't match model's shape should be skiped
+    // Case that the tensor's shape doesn't match model's shape should be skiped
     if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) && (InputImageSource::FromGPUResource == input_image_source || InputImageSource::FromCPUResource == input_image_source)) {
       return true;
     }
 
-        // Case that the images's shape doesn't match model's shape which expects free dimension should be skiped.
-        // Because the fns-candy is not real model that can handle free dimensional input
+    // Case that the images's shape doesn't match model's shape which expects free dimension should be skiped.
+    // Because the fns-candy is not real model that can handle free dimensional input
     if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) && L"fns-candy_Bgr8_freeDimInput.onnx" == model_file_name) {
       return true;
     }
@@ -229,7 +229,7 @@ class ImageTests : public ::testing::Test {
     const std::wstring& path, BitmapAlphaMode expected_mode, BitmapPixelFormat expected_format, bool supported
   ) {
     WINML_EXPECT_NO_THROW(LoadModel(path));
-        //input does not have image metadata and output does
+    //input does not have image metadata and output does
 
     WINML_EXPECT_TRUE(m_model.OutputFeatures().First().HasCurrent());
 
@@ -255,7 +255,7 @@ class ImageTests : public ::testing::Test {
       WINML_EXPECT_EQUAL(image_descriptor.BitmapAlphaMode(), expected_mode);
       WINML_EXPECT_EQUAL(image_descriptor.BitmapPixelFormat(), expected_format);
     } else {
-            //not an image descriptor. a regular tensor
+      //not an image descriptor. a regular tensor
       WINML_EXPECT_THROW_SPECIFIC(
         m_model.OutputFeatures().First().Current().as(image_descriptor),
         winrt::hresult_no_interface,
@@ -264,7 +264,7 @@ class ImageTests : public ::testing::Test {
       TensorFeatureDescriptor tensor_descriptor = nullptr;
       WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(tensor_descriptor));
 
-            // Make sure we fail binding ImageFeatureValue
+      // Make sure we fail binding ImageFeatureValue
       LearningModelSession session(m_model);
       LearningModelBinding binding(session);
       auto ifv = FileHelpers::LoadImageFeatureValue(L"1080.jpg");
@@ -280,7 +280,7 @@ class ImageTests : public ::testing::Test {
     static const wchar_t* model_file_name = L"Add_ImageNet1920.onnx";
     std::wstring module_path = FileHelpers::GetModulePath();
 
-        // WinML model creation
+    // WinML model creation
     LearningModel model(nullptr);
     std::wstring full_model_path = module_path + model_file_name;
     WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(full_model_path));
@@ -288,7 +288,7 @@ class ImageTests : public ::testing::Test {
     LearningModelSession model_session(model, LearningModelDevice(device_kind));
     LearningModelBinding model_binding(model_session);
 
-        //Input Binding
+    //Input Binding
     auto feature = model.InputFeatures().First();
     WINML_EXPECT_NO_THROW(model_binding.Bind(feature.Current().Name(), image1));
     feature.MoveNext();
@@ -408,11 +408,11 @@ TEST_P(ImageTest, ImageTest) {
 
   EvaluateTest(param.evaluation_strategy);
 
-    // benchmark used to compare with the output from model
+  // benchmark used to compare with the output from model
   std::wstring benchmark_file_name =
     std::wstring(param.model_pixel_format + L'_' + param.input_pixel_format + L'_' + param.image_file_name);
 
-    // Verify the output by comparing with the benchmark image
+  // Verify the output by comparing with the benchmark image
   std::wstring bm_image_path = FileHelpers::GetModulePath() + L"groundTruth\\" + benchmark_file_name;
   if (OutputBindingStrategy::Unbound == param.output_binding_strategy) {
     std::wstring output_data_binding_name = std::wstring(m_model.OutputFeatures().First().Current().Name());
@@ -492,10 +492,10 @@ TEST_P(BatchTest, BatchSupport) {
     GPUTEST;
   }
 
-    // create model, device and session
+  // create model, device and session
   PrepareModelSessionBinding(param.model_file_name, param.device_kind, optimized_batch_size);
 
-    // create the input video_frames
+  // create the input video_frames
   std::vector<VideoFrame> input_frames = {};
   if (param.input_images.empty()) {
     for (int i = 0; i < param.batch_size; ++i) {
@@ -544,7 +544,7 @@ TEST_P(BatchTest, BatchSupport) {
 
   EvaluateTest(param.evaluation_strategy);
 
-    // benchmark used to compare with the output from model
+  // benchmark used to compare with the output from model
   if (OutputBindingStrategy::Unbound == param.output_binding_strategy) {
     std::wstring output_data_binding_name = std::wstring(m_model.OutputFeatures().First().Current().Name());
     output_video_frames = m_result.Outputs().Lookup(output_data_binding_name).try_as<IVector<VideoFrame>>();
