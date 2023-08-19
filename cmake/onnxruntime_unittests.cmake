@@ -23,7 +23,6 @@ function(AddTest)
   else()
     onnxruntime_add_executable(${_UT_TARGET} ${_UT_SOURCES})
   endif()
-
   if (_UT_DEPENDS)
     list(REMOVE_DUPLICATES _UT_DEPENDS)
   endif(_UT_DEPENDS)
@@ -209,6 +208,8 @@ function(AddTest)
       )
     endif()
   endif()
+  # Set test timeout to 3 hours.
+  set_target_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
 endfunction(AddTest)
 
 # general program entrypoint for C++ unit tests
