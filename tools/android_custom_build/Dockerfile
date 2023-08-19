@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
   unzip lsb-release
 
 # cmake
-RUN CMAKE_VERSION=3.26.3 && \
+RUN CMAKE_VERSION=3.27.3 && \
   aria2c -q -d /tmp -o cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz \
   --checksum=sha-256=28d4d1d0db94b47d8dfd4f7dec969a3c747304f4a28ddd6fd340f553f2384dc2 \
   https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
