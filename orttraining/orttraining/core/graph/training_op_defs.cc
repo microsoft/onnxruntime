@@ -1537,7 +1537,7 @@ void RegisterTrainingOpSchemas() {
              "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
              " in mixed precision training. ",
              "T_BOOL", OpSchema::Optional)
-      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
+      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T_BOOL")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
       .Output(3, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT", OpSchema::Optional)
