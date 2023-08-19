@@ -64,10 +64,19 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name,
     // input has dimension > 16384
     // See this issue, https://github.com/apple/coremltools/issues/1003
     if (dim > 16384) {
-      LOGS(logger, WARNING) << "CoreML does not support input dim > 16384, input:" << input_name
-                            << ", actual dim: " << dim;
+      LOGS(logger, WARNING) << "CoreML does not support input dim > 16384. Input:" << input_name
+                            << ", shape: " << Shape2String(shape);
       return false;
     }
+  }
+
+  // Limit input shape rank to 5.
+  // CoreML doesn't currently support shapes with rank greater that 5.
+  // https://github.com/apple/coremltools/issues/832
+  if (shape.size() > 5) {
+    LOGS(logger, VERBOSE) << "CoreML EP doesn't allow input shapes with rank greater than 5. Input: "
+                          << input_name << ", shape: " << Shape2String(shape);
+    return false;
   }
 
   return true;
