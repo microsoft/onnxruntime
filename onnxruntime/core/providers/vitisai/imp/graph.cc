@@ -195,6 +195,9 @@ Node& graph_fuse(Graph& graph, const std::string& name,
     *proto.mutable_name() = name;
     fused_node.AddAttribute("body", proto);
   }
+  for (auto&& o : fused_node.OutputDefs()) {
+    graph.UpdateProducerNode(o->Name(), fused_node.Index());
+  }
   return fused_node;
 }
 }  // namespace vaip

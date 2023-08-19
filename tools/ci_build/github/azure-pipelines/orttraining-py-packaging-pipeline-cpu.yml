@@ -76,6 +76,8 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
+              -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
+              -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               onnxruntimetrainingcpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
@@ -121,7 +123,6 @@ stages:
   parameters:
     build_py_parameters: --enable_training
     enable_linux_gpu: false
-    enable_ubuntu_cpu: false
     enable_linux_cpu: false
     enable_windows_cpu: true
     enable_windows_gpu: false

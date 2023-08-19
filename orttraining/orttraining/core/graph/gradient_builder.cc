@@ -2065,5 +2065,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
           NodeDef("Mul", {GO(0), IA("Neg_Square_O0")}, {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetLeakyReluGradient) {
+  return {NodeDef(OpDef{"LeakyReluGrad", kMSDomain, 1},
+                  {GO(0), O(0)}, {GI(0)}, SrcNodeAttributes())};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

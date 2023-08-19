@@ -1,3 +1,21 @@
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 resources:
   repositories:
   - repository: manylinux

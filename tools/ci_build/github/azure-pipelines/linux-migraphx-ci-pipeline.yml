@@ -1,5 +1,18 @@
 trigger: none
-
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'js/node'
+    - 'onnxruntime/core/providers/js'
 name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 
 # gid of video and render group on gcramdrr1-mi100-085 and -86
