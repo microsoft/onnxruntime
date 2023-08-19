@@ -229,25 +229,26 @@ int8_t quantize(float v, float scale) {
 // return [quantized_reordered_kv, past_kv_scales]
 template <typename T>
 static std::pair<std::vector<int8_t>, std::vector<T>>
-ReorderKVCacheQuantKV(const std::vector<T> & unordered_k_cache,
+ReorderKVCacheQuantKV(const std::vector<T> & unordered_kv_cache,
                       int batch_size, int num_heads, int sequence_length,
                       int head_size, int max_sequence_length,
                       int quant_kv_block_size,
                       int num_inner_elements) {
+  assert(quant_kv_block_size > num_inner_elements && (quant_kv_block_size % num_inner_elements == 0));
   assert(head_size % quant_kv_block_size == 0);
   int64_t BNS = int64_t(batch_size) * num_heads * max_sequence_length;
   std::vector<T> scales(2LL * BNS * (head_size / quant_kv_block_size), (T)0.0f);
-  std::vector<int8_t> ordered(unordered_k_cache.size(), 0);
+  std::vector<int8_t> ordered(unordered_kv_cache.size(), 0);
 
   auto amax = [](T a, T b) { return (T)fmaxf(fabsf((float)a), fabsf((float)b)); };
 
   // calc scales
-  const T* kv_data = unordered_k_cache.data();
+  const T* kv_data = unordered_kv_cache.data();
   int8_t* q_data = ordered.data();
   T* scale_data = scales.data();
   for (int64_t k_or_v = 0; k_or_v < 2; k_or_v++) {
     for (int64_t bns = 0; bns < BNS; bns++) {
-      int64_t s = (bns % (int64_t(batch_size) * num_heads));
+      int64_t s = (bns % max_sequence_length);
       for (int64_t hi = 0; hi < head_size; hi += quant_kv_block_size) {
         const T scale_value = (s >= sequence_length) ? (T)0.0f : std::reduce(kv_data, kv_data + quant_kv_block_size, (T)0.0f, amax);
         for (int i = 0; i < quant_kv_block_size; i++) {
@@ -259,6 +260,7 @@ ReorderKVCacheQuantKV(const std::vector<T> & unordered_k_cache,
   }
 
   std::vector<int8_t> tmp(ordered);
+  std::fill(ordered.begin(), ordered.begin() + (ordered.size() / 2), 0);
   // Now let us re-order K and copy it over to the final buffer
   assert(head_size % num_inner_elements == 0);
   int chunks = head_size / num_inner_elements;
@@ -929,6 +931,59 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
   }
 }
 
+// return the height of the axis that back to zero;
+int next_position(std::vector<int64_t>& pos, const std::vector<int64_t>& shape) {
+  int height = 0;
+  for (int axis = shape.size() - 1; axis >= 0; axis--) {
+    if (++pos[axis] >= shape[axis]) {
+      pos[axis] = 0;
+      ++height;
+    } else {
+      break;
+    }
+  }
+  return height;
+}
+
+template <typename T>
+static std::vector<T> RandomFloat(std::vector<int64_t> shape, std::function<bool(const std::vector<int64_t>&)> is_zero) {
+  auto sz = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
+  std::vector<T> vec(sz, (T)0.0f);
+
+
+  std::mt19937 rng(1968);
+  std::normal_distribution<> dist(0, 0.99f);
+
+  std::vector<int64_t> pos(shape.size(), 0LL);
+  for (int64_t i = 0; i < sz; i++) {
+    if (!is_zero(pos)) {
+      float rv = dist(rng);
+      vec[i] = (T)rv;
+    }
+    next_position(pos, shape);
+  }
+  return vec;
+}
+
+template <typename T>
+void print_vec(const char* name, const std::vector<T>& vec, std::vector<int64_t> shape) {
+  std::vector<int64_t> pos(shape.size(), 0LL);
+  int64_t sz = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
+  std::cout << "  ========  " << name << " ======== " << std::endl;
+  for (int64_t i = 0; i < sz; i++) {
+    if constexpr (std::is_same<T, MLFloat16>::value) {
+      std::cout << (float)vec[i] << ", ";
+    } else if constexpr (std::is_same<T, int8_t>::value) {
+      std::cout << (int)vec[i] << ", ";
+    } else {
+      std::cout << vec[i]<< ", ";
+    }
+    bool newline_height = next_position(pos, shape);
+    if (newline_height) std::cout << std::endl;
+  }
+  std::cout << std::endl;
+}
+
 TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
   // The kernel is only supported on CC 5.3 or higher GPUs
   if (NeedSkipIfCudaArchLowerThan(530)) {
@@ -980,16 +1035,24 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
         std::vector<int64_t> past_scales_dims = {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size};
         int past_present_size = 2 * batch_size * number_of_heads * max_sequence_length * head_size;
 
-        auto kv_cache = CreateRandom<MLFloat16>(past_present_size);
+        auto kv_cache = RandomFloat<MLFloat16>(
+                past_dims,
+                [past_sequence_length](const std::vector<int64_t>& dims) { return dims[3] >= past_sequence_length;}
+        );
         auto reordered_kv_cache = ReorderKVCache<MLFloat16>(kv_cache, batch_size,
                                                             number_of_heads, past_sequence_length, head_size, max_sequence_length);
 
         int chunk_size = 16 / sizeof(MLFloat16);
-        auto [reordered_past_kv, past_kv_scales] = ReorderKVCacheQuantKV<MLFloat16>(
+        auto [q_reordered_past_kv, past_kv_scales] = ReorderKVCacheQuantKV<MLFloat16>(
             kv_cache, batch_size, number_of_heads, past_sequence_length, head_size, max_sequence_length,
             head_size, chunk_size);
 
-        tester.AddInput<int8_t>("past", past_dims, reordered_past_kv);
+        print_vec("kv_cache", kv_cache, past_dims);
+        print_vec("reordered_kv_cache", reordered_kv_cache, past_dims);
+        print_vec("q_reordered_past_kv",q_reordered_past_kv, past_dims);
+        print_vec("past_kv_scales", past_kv_scales, {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size});
+
+        tester.AddInput<int8_t>("past", past_dims, q_reordered_past_kv);
 
         // Rel
         tester.AddOptionalInputEdge<MLFloat16>();
@@ -1035,15 +1098,21 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
                                              batch_size, number_of_heads,
                                              sequence_length, total_sequence_length,
                                              max_sequence_length, head_size);
+        // make the present as unordered, we haced here as max_sequence_length == total_sequence_length
+        std::copy(k_merged.begin(), k_merged.end(), present.begin());
 
-        auto [reordered_present_kv, present_kv_scales] = ReorderKVCacheQuantKV<MLFloat16>(
+        auto [q_reordered_present_kv, present_kv_scales] = ReorderKVCacheQuantKV<MLFloat16>(
             present, batch_size, number_of_heads, past_sequence_length + 1, head_size, max_sequence_length,
             head_size, chunk_size);
+
+        print_vec("present_kv_scales", present_kv_scales, {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size});
+        print_vec("q_reordered_present_kv", q_reordered_present_kv, past_dims);
+        print_vec("present", present, past_dims);
 
         // Output(s)
         tester.AddOutput<MLFloat16>("output", input_dims, output);
 
-        tester.AddOutput<int8_t>("present", past_dims, reordered_present_kv);
+        tester.AddOutput<int8_t>("present", past_dims, q_reordered_present_kv);
 
         tester.AddOutput<MLFloat16>("present_scales", past_scales_dims, present_kv_scales);
 
@@ -1052,7 +1121,9 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
         execution_providers.push_back(DefaultCudaExecutionProvider());
         tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
       }
+      break;
     }
+    break;
   }
 }
 

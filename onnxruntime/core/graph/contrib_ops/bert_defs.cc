@@ -855,14 +855,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
           if (ctx.getNumOutputs() > 1) {  // has present output
             if (hasInputShape(ctx, past_input_index)) {
-              auto& past_shape = getInputShape(ctx, past_input_index);
-              auto& past_dims = past_shape.dim();
               auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
-              auto attr_proto = ctx.getAttribute("quant_kv_block_size");
-              if (!((nullptr != attr_proto) && attr_proto->has_i())) {
-                fail_shape_inference("Attr quant_kv_block_size not found");
-              }
-              auto quant_kv_block_size = attr_proto->i();
+              // auto attr_proto = ctx.getAttribute("quant_kv_block_size");
+              // if (!((nullptr != attr_proto) && attr_proto->has_i())) {
+              //   fail_shape_inference("Attr quant_kv_block_size not found");
+              // }
+              // auto quant_kv_block_size = attr_proto->i();
 
               if (past_present_share_buffer) {
                 propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
@@ -1020,8 +1018,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("quant_kv_block_size",
               "block size when quantizing the present/past kv tensors"
               "It should be less or equal than kv head size, and must be power of 2.",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
+              AttributeProto::INT)
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,

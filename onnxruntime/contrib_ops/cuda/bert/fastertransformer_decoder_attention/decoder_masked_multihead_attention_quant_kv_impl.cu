@@ -145,19 +145,19 @@ inline __device__ float MaxAbsFloat(const uint4 v) {
 }
 
 template <typename TVec>
-inline __device__ void QuantizeTo(int8_t* dst, TVec v, half scale);
+inline __device__ void QuantizeTo(int8_t* dst, TVec v, float unit_scale);
 
 template <>
-inline __device__ void QuantizeTo(int8_t* dst, uint32_t v, half scale) {
+inline __device__ void QuantizeTo(int8_t* dst, uint32_t v, float unit_scale) {
   union {
     uint32_t u;
     __half2 h2;
   } uh2;
   uh2.u = v;
   char2 q;
-  if (scale) {
-    q.x = (char)(min(127, max(-127, int(uh2.h2.x / scale))));
-    q.y = (char)(min(127, max(-127, int(uh2.h2.y / scale))));
+  if (unit_scale) {
+    q.x = (char)(min(127, max(-127, int((float)uh2.h2.x / unit_scale))));
+    q.y = (char)(min(127, max(-127, int((float)uh2.h2.y / unit_scale))));
   } else {
     q.x = 0;
     q.y = 0;
@@ -166,18 +166,18 @@ inline __device__ void QuantizeTo(int8_t* dst, uint32_t v, half scale) {
 }
 
 template <>
-inline __device__ void QuantizeTo(int8_t* dst, uint2 v, half scale) {
+inline __device__ void QuantizeTo(int8_t* dst, uint2 v, float unit_scale) {
   union {
     uint2 u2;
     half4 h4;
   } uh4;
   uh4.u2 = v;
-  if (scale) {
+  if (unit_scale) {
     char4 q;
-    q.x = (char)(min(127, max(-127, int(uh4.h4.x / scale))));
-    q.y = (char)(min(127, max(-127, int(uh4.h4.y / scale))));
-    q.z = (char)(min(127, max(-127, int(uh4.h4.z / scale))));
-    q.w = (char)(min(127, max(-127, int(uh4.h4.w / scale))));
+    q.x = (char)(min(127, max(-127, int((float)uh4.h4.x / unit_scale))));
+    q.y = (char)(min(127, max(-127, int((float)uh4.h4.y / unit_scale))));
+    q.z = (char)(min(127, max(-127, int((float)uh4.h4.z / unit_scale))));
+    q.w = (char)(min(127, max(-127, int((float)uh4.h4.w / unit_scale))));
     *(char4*)dst = q;
   } else {
     *(int*)dst = 0;
@@ -185,9 +185,9 @@ inline __device__ void QuantizeTo(int8_t* dst, uint2 v, half scale) {
 }
 
 template <>
-inline __device__ void QuantizeTo(int8_t* dst, uint4 v, half scale) {
-  QuantizeTo(dst, uint2{v.x, v.y}, scale);
-  QuantizeTo(dst + 4, uint2{v.z, v.w}, scale);
+inline __device__ void QuantizeTo(int8_t* dst, uint4 v, float unit_scale) {
+  QuantizeTo(dst, uint2{v.x, v.y}, unit_scale);
+  QuantizeTo(dst + 4, uint2{v.z, v.w}, unit_scale);
 }
 
 template <
@@ -264,7 +264,8 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   // Make sure the hidden size per head is a multiple of the vector size.
   static_assert(head_size % QK_VEC_SIZE == 0, "");
 
-  constexpr int QK_VECS_PER_WARP = head_size / QK_VEC_SIZE;
+  constexpr int QK_THREAD_COUNT = head_size / QK_VEC_SIZE;
+  static_assert(QK_THREAD_COUNT <= THREADS_PER_BLOCK);
 
   // The layout of the cache is [B, H, head_size/x, L, x] with x == 4/8/16 for FP32/FP16/FP8. Since each thread
   // owns x elements, we have to decompose the linear index into chunks of x values and the posi-
@@ -274,7 +275,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   constexpr int QK_ELTS_IN_16B = 16 / sizeof(T);
 
   // The number of K vectors in 16B.
-  constexpr int QK_VECS_IN_16B = 16 / QK_VEC_SIZE;
+  constexpr int QK_VECS_IN_16B = QK_ELTS_IN_16B / QK_VEC_SIZE;
 
   // The batch/beam idx
   const int bi = blockIdx.y;
@@ -312,8 +313,8 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
   int tlength = params.is_cross_attention ? params.kv_sequence_length : params.past_sequence_length;
 
-  // First QK_VECS_PER_WARP load Q and K + the bias values for the current timestep.
-  const bool is_masked = tidx >= QK_VECS_PER_WARP;
+  // First QK_THREAD_COUNT load Q and K + the bias values for the current timestep.
+  const bool is_active_qk_thread = tidx < QK_THREAD_COUNT;
 
   // The offset in the Q and K buffer also accounts for the batch.
   int qk_offset = qkv_base_offset + tidx * QK_VEC_SIZE;
@@ -322,7 +323,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   Qk_vec_k q;
   zero(q);
 
-  if (!is_masked) {
+  if (is_active_qk_thread) {
     q = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q)[qk_offset]));
   }
 
@@ -330,7 +331,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
 
   // Trigger the loads from the Q and K bias buffers.
-  if (params.q_bias && !is_masked) {
+  if (params.q_bias && is_active_qk_thread) {
     Qk_vec_k q_bias;
 
     q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
@@ -342,7 +343,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
   const float inv_sqrt_dh = params.scale;
 
-  if (!is_masked) {
+  if (is_active_qk_thread) {
     // Store the Q values to shared memory.
     *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
   }
@@ -352,7 +353,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     zero(k);
 
-    if (!is_masked) {
+    if (is_active_qk_thread) {
       k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
 
       if (params.k_bias) {
@@ -365,7 +366,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     }
 
     if (params.rotary_embedding_dim > 0) {
-      const bool do_rotary = !is_masked && QK_VEC_SIZE * tidx < params.rotary_embedding_dim;
+      const bool do_rotary = is_active_qk_thread && QK_VEC_SIZE * tidx < params.rotary_embedding_dim;
 
       T* q_smem = reinterpret_cast<T*>(smem_);
       T* k_smem = q_smem + params.rotary_embedding_dim;
@@ -419,14 +420,15 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       assert(qk_threads_per_scale / WARP_SIZE == 2);
       max_abs_k = block_sum<2>(&red_smem[2], max_abs_k);
     }
-    __syncthreads();
 
-    if (!is_masked) {
+    if (is_active_qk_thread) {
       // Write the K values to the global memory cache.
       // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
       // system. We designed it this way as it allows much better memory loads (and there are many
       // more loads) + the stores are really "write and forget" since we won't need the ack before
       // the end of the kernel. There's plenty of time for the transactions to complete.
+
+      float unit_scale = max_abs_k / 127.0f;
 
       // The 16B chunk written by the thread.
       int co = tidx / QK_VECS_IN_16B;
@@ -438,7 +440,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       int offset = bhi * params.max_sequence_length * head_size + co * params.max_sequence_length * QK_ELTS_IN_16B +
                    tlength * QK_ELTS_IN_16B + ci;
       // Trigger the stores to global memory.
-      QuantizeTo(&params_k_cache[offset], vec_conversion<Qk_vec_m, Qk_vec_k>(k), max_abs_k);
+      QuantizeTo(&params_k_cache[offset], vec_conversion<Qk_vec_m, Qk_vec_k>(k), unit_scale);
       if (tidx % qk_threads_per_scale == 0) {
         const int scale_offset = (bhi * params.max_sequence_length + tlength) *scales_per_head + tidx / qk_threads_per_scale;
         *(((TFp*)params.k_scale) + scale_offset) = (TFp)max_abs_k;
@@ -448,16 +450,16 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       using Qk_vec_acum = Qk_vec_k;
       qk = dot<Qk_vec_acum, Qk_vec_k>(q, k);
 
-      if (QK_VECS_PER_WARP <= WARP_SIZE) {
+      if (QK_THREAD_COUNT <= WARP_SIZE) {
 #pragma unroll
-        for (int mask = QK_VECS_PER_WARP / 2; mask >= 1; mask /= 2) {
-          qk += __shfl_xor_sync(shfl_mask(QK_VECS_PER_WARP), qk, mask);
+        for (int mask = QK_THREAD_COUNT / 2; mask >= 1; mask /= 2) {
+          qk += __shfl_xor_sync(shfl_mask(QK_THREAD_COUNT), qk, mask);
         }
       }
     }
 
-    if (QK_VECS_PER_WARP > WARP_SIZE) {
-      constexpr int WARPS_PER_RED = (QK_VECS_PER_WARP + WARP_SIZE - 1) / WARP_SIZE;
+    if (QK_THREAD_COUNT > WARP_SIZE) {
+      constexpr int WARPS_PER_RED = (QK_THREAD_COUNT + WARP_SIZE - 1) / WARP_SIZE;
       qk = block_sum<WARPS_PER_RED>(&red_smem[WARPS_PER_RED], qk);
     }
 
@@ -726,7 +728,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     // Store the values with bias back to global memory in the cache for V.
     //*reinterpret_cast<V_vec_m*>(&v_cache[tlength * head_size]) = vec_conversion<V_vec_m, V_vec_k>(v);
-    QuantizeTo(&v_cache[tlength * head_size], vec_conversion<V_vec_m, V_vec_k>(v), max_abs_v);
+    QuantizeTo(&v_cache[tlength * head_size], vec_conversion<V_vec_m, V_vec_k>(v), max_abs_v / 127.0f);
     if (vi % params.quant_kv_block_size == 0) {
       const int scales_per_head = head_size / params.quant_kv_block_size;
       const int scale_offset = (bhi * params.max_sequence_length + tlength) * scales_per_head + vi / params.quant_kv_block_size;

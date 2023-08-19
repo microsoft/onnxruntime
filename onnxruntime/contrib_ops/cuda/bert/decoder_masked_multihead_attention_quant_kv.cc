@@ -235,6 +235,11 @@ Status DecoderMaskedMultiHeadAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelC
     parameters.cache_indir = cache_indir->Data<int32_t>();
   }
 
+
+  parameters.k_scale = present_key_scale->MutableDataRaw();
+  parameters.v_scale = present_value_scale->MutableDataRaw();
+  parameters.quant_kv_block_size = quant_kv_block_size_;
+
   switch (parameters.head_size) {
     case 32:
       mmha_quant_kv_launch_kernel<T2, 32>(parameters, cuda_stream);
