@@ -169,7 +169,7 @@ Here is a benchmark for an MP3 file with 20.7s of audio.
 
 #### FP16
 
-| Configuration | Size     | Per-Token Latency | Real-Time Factor |
+| Engine        | Size     | Per-Token Latency | Real-Time Factor |
 | ------------- | -------- | ----------------- | ---------------- |
 | PyTorch       | Tiny     | 4.697 ms/token    | 0.004697         |
 | PyTorch 2.0   | Tiny     | 3.406 ms/token    | 0.003406         |
@@ -183,7 +183,7 @@ Here is a benchmark for an MP3 file with 20.7s of audio.
 
 #### FP32
 
-| Configuration | Size     | Per-Token Latency | Real-Time Factor |
+| Engine        | Size     | Per-Token Latency | Real-Time Factor |
 | ------------- | -------- | ----------------- | ---------------- |
 | PyTorch       | Tiny     | 6.220 ms/token    | 0.006220         |
 | PyTorch 2.0   | Tiny     | 3.944 ms/token    | 0.003944         |
