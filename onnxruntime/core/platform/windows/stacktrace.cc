@@ -5,6 +5,11 @@
 #include <iostream>
 #include <mutex>
 #include <sstream>
+#ifdef __has_include
+#if __has_include(<stacktrace>)
+#include <stacktrace>
+#endif
+#endif
 #include <stacktrace>
 
 #include "core/common/logging/logging.h"
@@ -27,7 +32,7 @@ class CaptureStackTrace {
 std::vector<std::string> GetStackTrace() {
 #ifndef NDEBUG
 // TVM need to run with shared CRT, so won't work with debug helper now
-#if !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX)
+#if (defined __cpp_lib_stacktrace) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
   return detail::CaptureStackTrace().Trace();
 #else
   return {};
@@ -39,7 +44,7 @@ std::vector<std::string> GetStackTrace() {
 
 namespace detail {
 #ifndef NDEBUG
-#if !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX)
+#if (defined __cpp_lib_stacktrace) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
 
 std::vector<std::string> CaptureStackTrace::Trace() const {
   std::vector<std::string> stacktrace;
