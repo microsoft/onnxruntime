@@ -28,11 +28,13 @@ export class Tensor implements TensorInterface {
   /**
    * Construct a new CPU tensor object from the given type, data and dims.
    */
-  constructor(type: TensorType, data: TensorDataType|readonly number[]|readonly boolean[], dims?: readonly number[]);
+  constructor(
+      type: TensorType, data: TensorDataType|readonly string[]|readonly number[]|readonly boolean[],
+      dims?: readonly number[]);
   /**
    * Construct a new CPU tensor object from the given data and dims. Type is inferred from data.
    */
-  constructor(data: TensorDataType|readonly boolean[], dims?: readonly number[]);
+  constructor(data: TensorDataType|readonly string[]|readonly boolean[], dims?: readonly number[]);
   /**
    * Construct a new tensor object from the pinned CPU data with the given type and dims.
    *
@@ -62,9 +64,9 @@ export class Tensor implements TensorInterface {
    * implementation.
    */
   constructor(
-      arg0: TensorType|TensorDataType|readonly boolean[]|CpuPinnedConstructorParameters|TextureConstructorParameters|
-      GpuBufferConstructorParameters,
-      arg1?: TensorDataType|readonly number[]|readonly boolean[], arg2?: readonly number[]) {
+      arg0: TensorType|TensorDataType|readonly string[]|readonly boolean[]|CpuPinnedConstructorParameters|
+      TextureConstructorParameters|GpuBufferConstructorParameters,
+      arg1?: TensorDataType|readonly number[]|readonly string[]|readonly boolean[], arg2?: readonly number[]) {
     // perform one-time check for BigInt support
     checkBigInt();
 
