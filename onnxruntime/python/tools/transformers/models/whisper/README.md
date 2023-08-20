@@ -4,15 +4,15 @@
 
 There are several ways to export Whisper with beam search (using Whisper tiny as an example).
 
-### Option 1: from source
+### Option 1: from convert_to_onnx
+
 ```
+# From source
 $ git clone https://github.com/microsoft/onnxruntime
 $ cd onnxruntime/onnxruntime/python/tools/transformers/
 $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format
-```
 
-### Option 2: from wheel
-```
+# From wheel
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format
 ```
 
