@@ -16,11 +16,11 @@ $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output whis
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format
 ```
 
-### Option 3: end-to-end model from [Olive](https://github.com/microsoft/Olive/tree/main/examples/whisper)
+### Option 2: end-to-end model from [Olive](https://github.com/microsoft/Olive/tree/main/examples/whisper)
 
 Please follow the [README instructions](https://github.com/microsoft/Olive/tree/main/examples/whisper#prerequisites) in Olive.
 
-### Option 4: from [Hugging Face Optimum](https://github.com/huggingface/optimum)
+### Option 3: from [Hugging Face Optimum](https://github.com/huggingface/optimum)
 
 Run the following Python code to export:
 
