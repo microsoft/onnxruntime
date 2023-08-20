@@ -8,7 +8,7 @@ There are several ways to export LLaMA-2 models (using LLaMA-2 7B as an example)
 ```
 # From source:
 $ git clone https://github.com/microsoft/onnxruntime
-$ cd onnxruntime/onnxruntime/python/tools/transformers/models/llama
+$ cd onnxruntime/onnxruntime/python/tools/transformers/
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b
 
 # From wheel:
