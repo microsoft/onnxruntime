@@ -26,7 +26,8 @@ import {ConvTransposeAttributes} from '../conv-transpose';
 
 const createConvTranspose2DOpProgramShaderSource =
     (shaderHelper: ShaderHelper, inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
-     outputShape: readonly number[], hasBias: boolean, elementsPerThread: readonly number[]): string => {
+     outputShape: readonly number[], hasBias: boolean, elementsPerThread: readonly number[],
+     is1DimensionDispatch: boolean): string => {
       const isChannelsLast = attributes.format === 'NHWC';
       const rowDim = isChannelsLast ? 1 : 2;
       const colDim = isChannelsLast ? 2 : 3;
@@ -55,14 +56,15 @@ const createConvTranspose2DOpProgramShaderSource =
       return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
     }`;
       }
-      const w = inputVariable('W', inputs[1].dataType, inputs[1].dims);
-      const dy = inputVariable('Dy', inputs[0].dataType, inputs[0].dims);
-      const output = outputVariable('result', inputs[0].dataType, outputShape);
+      const components = isVec4 ? 4 : 1;
+      const w = inputVariable('W', inputs[1].dataType, inputs[1].dims, components);
+      const dy = inputVariable('Dy', inputs[0].dataType, inputs[0].dims, components);
+      const output = outputVariable('result', inputs[0].dataType, outputShape, components);
       const codeSnippet4 = `{
-        let batch: u32 = global_id.z / outShape[1];
-        let r = global_id.z % outShape[1];
-        let c = global_id.y * ${workPerThread};
-        let d1: u32 = global_id.x * 4;
+        let batch: u32 = ${is1DimensionDispatch ? 'global_id.z' : 'workgroup_id.z'} / outShape[1];
+        let r = ${is1DimensionDispatch ? 'global_id.z' : 'workgroup_id.z'} % outShape[1];
+        let c = ${is1DimensionDispatch ? 'global_id.y' : 'workgroup_id.y'} * ${workPerThread};
+        let d1: u32 = ${is1DimensionDispatch ? 'global_id.x' : 'workgroup_id.x'} * 4;
 
         let dyCorner = vec2<i32>(i32(r), i32(c)) - vec2<i32>(pads);
 
@@ -73,8 +75,8 @@ const createConvTranspose2DOpProgramShaderSource =
           dotProd[i] = vec4<f32>(0.0);
         }
         for (var wR: u32 = 0; wR < filterDims[0]; wR = wR + 1) {
-          var dyR = f32(dyCorner.x + wR) / f32(strides.x);
-          let wRPerm: u32= filterDims[0] - 1 - wR;
+          var dyR = (f32(dyCorner.x) + f32(wR)) / f32(strides.x);
+          let wRPerm = filterDims[0] - 1 - wR;
           if (dyR < 0.0 || dyR >= f32(outBackprop[1]) ||
               fract(dyR) > 0.0) {
             continue;
@@ -82,9 +84,9 @@ const createConvTranspose2DOpProgramShaderSource =
           let idyR: u32 = u32(dyR);
 
           for (var wC: u32 = 0; wC < filterDims[1]; wC = wC + 1) {
-            let dyC = f32(dyCorner.y + wC) / f32(strides.y);
-            let dyC2 = f32(dyCorner.y + 1 + wC) / f32(strides.y);
-            let wCPerm: u32 = filterDims[1] - 1 - wC;
+            let dyC = (f32(dyCorner.y) + f32(wC)) / f32(strides.y);
+            let dyC2 = (f32(dyCorner.y) + 1.0 + f32(wC)) / f32(strides.y);
+            let wCPerm = filterDims[1] - 1 - wC;
             var bDyCVal = true;
             var bDyCVal2 = true;
             if (dyC < 0.0 || dyC >= f32(outBackprop[2]) ||
@@ -101,57 +103,53 @@ const createConvTranspose2DOpProgramShaderSource =
             if (bDyCVal && bDyCVal2) {
               let d2Length = outBackprop[3];
               for (var d2 :u32 = 0; d2 < d2Length; d2 = d2 + 4) {
-                let wValue0 = ${w.get('d2', 'd1', 'wRPerm', 'wCPerm')};
-                let wValue1 = ${w.get('d2', 'd1 + 1', 'wRPerm', 'wCPerm')};
-                let wValue2 = ${w.get('d2', 'd1 + 2', 'wRPerm', 'wCPerm')};
-                let wValue3 = ${w.get('d2', 'd1 + 3', 'wRPerm', 'wCPerm')};
+                let wValue0 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1', 'd2')};
+                let wValue1 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 1', 'd2')};
+                let wValue2 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 2', 'd2')};
+                let wValue3 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 3', 'd2')};
 
-                var xValue = ${
-          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
-                let tmpval = vec4<f32>(xValue * wValue0,
-                                      xValue * wValue1,
-                                      xValue * wValue2,
-                                      xValue * wValue3);
+                var xValue = ${dy.get('batch', 'idyR', 'idyC', 'd2')};
+                let tmpval = vec4<f32>(dot(xValue, wValue0),
+                                      dot(xValue, wValue1),
+                                      dot(xValue, wValue2),
+                                      dot(xValue, wValue3));
                 dotProd[0] = dotProd[0] + tmpval;
 
-                xValue =  ${
-          isChannelsLast ? dy.get('batch', 'idyR', 'idyC2', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC2')};
+                xValue =  ${dy.get('batch', 'idyR', 'idyC2', 'd2')};
 
-                dotProd[1] = dotProd[1] + vec4<f32>(xValue * wValue0,
-                                                    xValue * wValue1,
-                                                    xValue * wValue2,
-                                                    xValue * wValue3);
+                dotProd[1] = dotProd[1] + vec4<f32>(dot(xValue, wValue0),
+                                                    dot(xValue, wValue1),
+                                                    dot(xValue, wValue2),
+                                                    dot(xValue, wValue3));
               }
             } else if (bDyCVal) {
-              let d2Length = outBackprop[3];
+              let d2Length = outBackprop[${channelDim}];
               for (var d2: u32 = 0; d2 < d2Length; d2 = d2 + 4) {
-                let wValue0 = ${w.get('d2', 'd1', 'wRPerm', 'wCPerm')};
-                let wValue1 = ${w.get('d2', 'd1 + 1', 'wRPerm', 'wCPerm')};
-                let wValue2 = ${w.get('d2', 'd1 + 2', 'wRPerm', 'wCPerm')};
-                let wValue3 = ${w.get('d2', 'd1 + 3', 'wRPerm', 'wCPerm')};
+                let wValue0 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1', 'd2')};
+                let wValue1 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 1', 'd2')};
+                let wValue2 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 2', 'd2')};
+                let wValue3 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 3', 'd2')};
 
-                var xValue = ${
-          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
-                let tmpval = vec4<f32>(xValue * wValue0,
-                                      xValue * wValue1,
-                                      xValue * wValue2,
-                                      xValue * wValue3);
+                var xValue = ${dy.get('batch', 'idyR', 'idyC', 'd2')};
+                let tmpval = vec4<f32>(dot(xValue, wValue0),
+                                      dot(xValue, wValue1),
+                                      dot(xValue, wValue2),
+                                      dot(xValue, wValue3));
                 dotProd[0] = dotProd[0] + tmpval;
               }
             } else if (bDyCVal2) {
               let d2Length = outBackprop[3];
               for (var d2: u32 = 0; d2 < d2Length; d2 = d2 + 4) {
-                let wValue0 = ${w.get('d2', 'd1', 'wRPerm', 'wCPerm')};
-                let wValue1 = ${w.get('d2', 'd1 + 1', 'wRPerm', 'wCPerm')};
-                let wValue2 = ${w.get('d2', 'd1 + 2', 'wRPerm', 'wCPerm')};
-                let wValue3 = ${w.get('d2', 'd1 + 3', 'wRPerm', 'wCPerm')};
+                let wValue0 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1', 'd2')};
+                let wValue1 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 1', 'd2')};
+                let wValue2 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 2', 'd2')};
+                let wValue3 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 3', 'd2')};
 
-                var xValue = ${
-          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
-                let tmpval = vec4<f32>(xValue * wValue0,
-                                      xValue * wValue1,
-                                      xValue * wValue2,
-                                      xValue * wValue3);
+                var xValue = ${dy.get('batch', 'idyR', 'idyC2', 'd2')};
+                let tmpval = vec4<f32>(dot(xValue, wValue0),
+                                      dot(xValue, wValue1),
+                                      dot(xValue, wValue2),
+                                      dot(xValue, wValue3));
                 dotProd[1] = dotProd[1] + tmpval;
               }
             }
@@ -159,14 +157,17 @@ const createConvTranspose2DOpProgramShaderSource =
         }
 
         for (var i: u32 = 0; i < ${workPerThread}; i = i + 1) {
-          ${output.set('batch', 'r', 'c+i', 'd1', 'dotProd[i]')};
+          let value = dotProd[i] + ${hasBias ? 'bias[c+i]' : '0.0'};
+          ${output.set('batch', 'r', 'c + i', 'd1', 'value')};
         }
       }`;
       const codeSnippet = `
           let outputIndices = ${output.offsetToIndices('global_idx')};
-          let batch = outputIndices[0];
-          let d1 = outputIndices[${channelDim}];
-          let dyCorner = vec2<i32>(i32(outputIndices[${rowDim}]), i32(outputIndices[${colDim}])) - pads;
+          let batch = ${output.indicesGet('outputIndices', 0)};
+          let d1 = ${output.indicesGet('outputIndices', channelDim)};
+          let r = ${output.indicesGet('outputIndices', rowDim)};
+          let c = ${output.indicesGet('outputIndices', colDim)};
+          let dyCorner = vec2<i32>(i32(r), i32(c)) - pads;
           let dyRCorner = dyCorner.x;
           let dyCCorner = dyCorner.y;
           // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
@@ -178,7 +179,7 @@ const createConvTranspose2DOpProgramShaderSource =
             }
             let dyR = (f32(dyRCorner) + f32(wR)) / f32(strides[0]);
             let wRPerm = filterDims.x - 1 - wR / dilations.x;
-            if (dyR < 0.0 || dyR >= f32(outBackprop[1]) || fract(dyR) > 0.0 ||
+            if (dyR < 0.0 || dyR >= f32(outBackprop[${rowDim}]) || fract(dyR) > 0.0 ||
                 wRPerm < 0) {
               continue;
             }
@@ -190,29 +191,30 @@ const createConvTranspose2DOpProgramShaderSource =
               }
               let dyC = (f32(dyCCorner) + f32(wC)) / f32(strides.y);
               let wCPerm = filterDims.y - 1 - wC / dilations.y;
-              if (dyC < 0.0 || dyC >= f32(outBackprop[2]) ||
+              if (dyC < 0.0 || dyC >= f32(outBackprop[${colDim}]) ||
                   fract(dyC) > 0.0 || wCPerm < 0) {
                 continue;
               }
               let idyC: u32 = u32(dyC);
 
-              for (var d2: u32 = 0; d2 < outBackprop[3]; d2 = d2 + 1) {
+              for (var d2: u32 = 0; d2 < outBackprop[${channelDim}]; d2 = d2 + 1) {
                 let xValue = ${
           isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
-                let wValue = ${w.get('d2', 'd1', 'wRPerm', 'wCPerm')};
+                let wValue = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1', 'd2')};
                 dotProd = dotProd + xValue * wValue;
               }
             }
           }
-          ${output.setByOffset('global_idx', 'dotProd')};
+          let value = dotProd + ${hasBias ? 'bias[c]' : '0.0'};
+          ${output.setByOffset('global_idx', 'value')};
         `;
 
       return `
   ${w.impl('indicesToOffset', 'get')}
   ${dy.impl('indicesToOffset', 'get')}
-  ${output.impl('offsetToIndices')}
+  ${output.impl('offsetToIndices', 'indicesToOffset', 'set')}
   ${declareFunctions}
-  ${declareInputs.join('\n')}
+    ${declareInputs.join('\n')}
   @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
   const outShape : vec4<u32> = vec4<u32>(${outputShape.join(',')});
   const outBackprop : vec4<u32> = vec4<u32>(${inputs[0].dims.join(',')});
@@ -225,15 +227,16 @@ const createConvTranspose2DOpProgramShaderSource =
           attributes.dilations[0] <= 1 ?
               0 :
               (attributes.kernelShape[isChannelsLast ? 1 : 2] - 1) * (attributes.dilations[0] - 1)},
-          ${
+                    ${
           attributes.dilations[1] <= 1 ?
               0 :
               (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)});
-  const pads : vec2<i32> = vec2<i32>(i32(effectiveFilterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]})/2,
-                                     i32(effectiveFilterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]})/2);
-    ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
-  ${isVec4 ? codeSnippet4 : codeSnippet}}`;
+  const pads: vec2<i32> = vec2<i32>(
+      i32(effectiveFilterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]}) / 2,
+      i32(effectiveFilterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]}) / 2);
+  ${shaderHelper.mainStart()}
+  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
+    ${isVec4 ? codeSnippet4 : codeSnippet}}`;
     };
 
 export const createConvTranspose2DProgramInfo =
@@ -247,7 +250,7 @@ export const createConvTranspose2DProgramInfo =
       const outHeight = outputShape[isChannelsLast ? 2 : 3];
       const outChannels = outputShape[isChannelsLast ? 3 : 1];
       const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
-      const isVec4 = inChannels % 4 === 0 && outChannels % 4 === 0;
+      const isVec4 = isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
 
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
@@ -271,6 +274,7 @@ export const createConvTranspose2DProgramInfo =
         }],
         dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
         getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
-            shaderHelper, inputs, attributes, outputShape, hasBias, elementsPerThread),
+            shaderHelper, inputs, attributes, outputShape, hasBias, elementsPerThread,
+            dispatch[1] === 1 && dispatch[2] === 1),
       };
     };
