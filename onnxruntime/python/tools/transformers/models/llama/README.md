@@ -21,7 +21,7 @@ To make this option compatible with [Hugging Face's Optimum](https://github.com/
 
 Please follow the [README instructions](https://github.com/microsoft/Llama-2-Onnx#before-you-start) in the custom export of LLaMA-2.
 
-### Option 3: from [Hugging Face's Optimum](https://github.com/huggingface/optimum)
+### Option 3: from [Hugging Face Optimum](https://github.com/huggingface/optimum)
 
 First, log into the Hugging Face CLI in your terminal:
 
@@ -47,7 +47,7 @@ model.save_pretrained(name.split("/")[-1] + "-onnx")
 
 Here are some additional examples for exporting LLaMA.
 
-### Export Saved Model on Disk
+Export Saved Model on Disk
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
@@ -56,9 +56,7 @@ $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
 ```
 
-### Export with Different Precision
-
-FP16:
+Export for FP16
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16
@@ -67,7 +65,7 @@ $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output l
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16
 ```
 
-INT8:
+Export for INT8
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant
