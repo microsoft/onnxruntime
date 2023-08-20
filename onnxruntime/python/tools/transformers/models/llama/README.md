@@ -45,7 +45,7 @@ model.save_pretrained(name.split("/")[-1] + "-onnx")
 
 ## Examples of Exporting LLaMA-2
 
-Here are some additional examples for exporting LLaMA.
+Here are some additional examples for exporting LLaMA-2.
 
 Export Saved Model on Disk
 ```
