@@ -8,8 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 template <class T>
-Status Dequantize4Bits(T* output, const uint8_t* quant_data, int K, int N, bool has_zero_point, cudaStream_t stream);
-
+Status Dequantize4Bits(T* output, const uint8_t* quant_data, int k, int n, int block_size, bool has_zero_point, cudaStream_t stream);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
