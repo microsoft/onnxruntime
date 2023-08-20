@@ -12,7 +12,6 @@ from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
-from datasets import load_dataset
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
@@ -270,6 +269,18 @@ class WhisperHelper:
         pt_model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path).to(device)
         processor = WhisperProcessor.from_pretrained(model_name_or_path)
         config = WhisperConfig.from_pretrained(model_name_or_path)
+
+        # Try to import `datasets` pip package
+        try:
+            from datasets import load_dataset
+        except Exception as e:
+            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)
+            install_cmd = "pip install datasets"
+            logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
+            os.system(install_cmd)
+
+        from datasets import load_dataset  # noqa: F811
+
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
 
