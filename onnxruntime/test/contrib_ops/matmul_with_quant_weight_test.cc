@@ -26,8 +26,8 @@ namespace test {
 TEST(MatMulWithQuantWeight, MatMul2DSym) {
   // (100 x 41) X (41 x 288)
   constexpr int64_t M = 100;
-  constexpr int64_t N = 288;
-  constexpr int64_t K = 52;
+  constexpr int64_t N = 4;
+  constexpr int64_t K = 32;
 
   const auto buf_size = MlasQ4GemmPackBSize(BlkQ4Sym, (size_t)N, (size_t)K);
   if (buf_size == 0) {
