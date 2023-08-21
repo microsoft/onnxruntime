@@ -108,7 +108,7 @@ Status MatMulWithQuantWeight<T>::ComputeInternal(OpKernelContext* ctx) const {
                                       SafeInt<int>(N_),
                                       SafeInt<int>(block_size_),
                                       static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
-
+  cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
   T* b_data_cpu = new T[K_ * N_];
   cudaMemcpy(b_data_cpu, b_data, K_ * N_ * sizeof(T), cudaMemcpyDeviceToHost);
 

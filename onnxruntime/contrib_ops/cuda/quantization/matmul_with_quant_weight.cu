@@ -46,18 +46,18 @@ __global__ void Dequantize4BitsKernel<half>(
   half scale = scale_data[id];
   half zero_point = zero_points ? static_cast<half>(float(zero_points[id])) : static_cast<half>(8.0);
 
-  int output_offset = n_idx * k + k_idx;
-  for (int i = 0; i < block_size / 2; i++) {
+  output = output + n_idx * k;
+  for (int i = k_idx; i < k_idx + block_size; i += 2) {
     uint8_t value = *(quant_data_cur++);
     half x0 = static_cast<half>(float(value & 0xF));
     half x1 = static_cast<half>(float(value >> 4));
-    if (k_idx++ < k) {
+    if (i < k) {
       x0 = scale * (x0 - zero_point);
-      output[output_offset++] = x0;
+      output[i] = x0;
     }
-    if (k_idx++ < k) {
+    if (i + 1 < k) {
       x1 = scale * (x1 - zero_point);
-      output[output_offset++] = x1;
+      output[i + 1] = x1;
     }
   }
 }
@@ -81,7 +81,7 @@ __global__ void Dequantize4BitsKernel<float>(
   float zero_point = zero_points ? float(zero_points[id]) : static_cast<float>(8.0);
 
   output = output + n_idx * k;
-  for (int i = k_idx; i < k_idx + block_size / 2; i++) {
+  for (int i = k_idx; i < k_idx + block_size; i+=2) {
     uint8_t value = *(quant_data_cur++);
     float x0 = static_cast<float>(float(value & 0xF));
     float x1 = static_cast<float>(float(value >> 4));
@@ -89,9 +89,9 @@ __global__ void Dequantize4BitsKernel<float>(
       x0 = scale * (x0 - zero_point);
       output[i] = x0;
     }
-    if (i + block_size / 2 < k) {
+    if (i + 1 < k) {
       x1 = scale * (x1 - zero_point);
-      output[i + block_size / 2] = x1;
+      output[i + 1] = x1;
     }
   }
 }
