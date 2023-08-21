@@ -84,9 +84,11 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
 
   // Each QDQ pair (i.e., parent -> self, child -> grandchild) has to meet the following additional requirements:
   // - Scalar/constant zero-point and scale.
-  // - Zero-point input must exist.
   // - The DQ and Q ops within a pair must have the same scale and zero-point.
   //   However, each pair is allowed to have different scales and zero-points.
+  //
+  // TODO: IsQDQPairSupported() requires an explicit zero-point input, but technically a default value of 0
+  // could be fine.
   if (!QDQ::IsQDQPairSupported(*parent, *self, get_constant_initializer, graph.ModelPath()) ||
       !QDQ::IsQDQPairSupported(*child, *grandchild, get_constant_initializer, graph.ModelPath())) {
     return false;
@@ -117,6 +119,8 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
 template <typename T>
 bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2,
                                                      float& new_scale, T& new_zero_point, bool& skip_reset) {
+  // TODO: Handle case where the zero-point input is not explicitly provided and defaults to 0.
+
   // scale & zero point share same initializer, no need to reset the value
   const std::string& node1_scale_name = node1.InputDefs()[InputIndex::SCALE_ID]->Name();
   const std::string& node2_scale_name = node2.InputDefs()[InputIndex::SCALE_ID]->Name();
