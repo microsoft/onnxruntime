@@ -279,7 +279,7 @@ def optimize_model(
 
     # Auto detect if input model has external data
     has_external_data_file = False
-    original_model = load_model(input, load_external_data=False)
+    original_model = load_model(input, load_external_data=True)
     for initializer in original_model.graph.initializer:
         if initializer.HasField("data_location") and initializer.data_location == TensorProto.EXTERNAL:
             has_external_data_file = True

@@ -27,11 +27,11 @@ class FusionSkipLayerNormalization(Fusion):
     ):
         super().__init__(model, fused_op_type, search_op_types)
         # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
-        self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
+        # self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
 
-        if self.shape_infer_helper is None:
-            # TODO(tianleiwu): support subgraph in shape inference or add broadcasting in SkipLayerNormalization op.
-            logger.warning("symbolic shape inference disabled or failed.")
+        # if self.shape_infer_helper is None:
+        #     # TODO(tianleiwu): support subgraph in shape inference or add broadcasting in SkipLayerNormalization op.
+        #     logger.warning("symbolic shape inference disabled or failed.")
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         add = self.model.get_parent(node, 0, output_name_to_node)
@@ -56,17 +56,17 @@ class FusionSkipLayerNormalization(Fusion):
         # Root Mean Square Layer Normalization
         simplified = node.op_type == "SimplifiedLayerNormalization"
 
-        if self.shape_infer_helper is not None:
-            if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
-                logger.debug(
-                    "skip SkipLayerNormalization fusion since shape of inputs (%s, %s) are not same",
-                    add.input[0],
-                    add.input[1],
-                )
-                return
-        else:
-            logger.debug("skip SkipLayerNormalization fusion since symbolic shape inference failed")
-            return
+        # if self.shape_infer_helper is not None:
+        #     if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
+        #         logger.debug(
+        #             "skip SkipLayerNormalization fusion since shape of inputs (%s, %s) are not same",
+        #             add.input[0],
+        #             add.input[1],
+        #         )
+        #         return
+        # else:
+        #     logger.debug("skip SkipLayerNormalization fusion since symbolic shape inference failed")
+        #     return
 
         gather_path = self.model.match_parent_path(add, ["Gather"], [None])
         if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:
