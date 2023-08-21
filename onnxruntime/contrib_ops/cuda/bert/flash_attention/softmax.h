@@ -1,6 +1,7 @@
 /******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
+#if USE_FLASH_ATTENTION
 
 #pragma once
 
@@ -272,3 +273,5 @@ inline __device__ void apply_dropout(Tensor<Engine, Layout>& tensor, uint8_t p_d
 }
 
 }  // namespace flash
+
+#endif  // USE_FLASH_ATTENTION

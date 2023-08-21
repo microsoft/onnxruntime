@@ -25,6 +25,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ******************************************************************************/
+#if USE_FLASH_ATTENTION
 
 #pragma once
 
@@ -78,3 +79,5 @@ size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif //  USE_FLASH_ATTENTION

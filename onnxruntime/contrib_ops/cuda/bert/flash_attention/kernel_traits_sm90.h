@@ -1,6 +1,7 @@
 /******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
+#if USE_FLASH_ATTENTION
 
 #pragma once
 
@@ -145,3 +146,5 @@ struct Flash_fwd_kernel_traits : public Base {
                                                   GmemLayoutAtomP{},
                                                   Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per store
 };
+
+#endif  // USE_FLASH_ATTENTION

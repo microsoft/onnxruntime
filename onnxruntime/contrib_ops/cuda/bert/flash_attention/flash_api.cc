@@ -5,6 +5,7 @@
 //#include <torch/extension.h>
 //#include <ATen/cuda/CUDAContext.h>
 //#include <c10/cuda/CUDAGuard.h>
+#if USE_FLASH_ATTENTION
 
 #include "core/providers/cuda/cuda_common.h"
 #include <cutlass/numeric_types.h>
@@ -222,3 +223,5 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif  // USE_FLASH_ATTENTION

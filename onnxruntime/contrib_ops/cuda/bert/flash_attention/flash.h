@@ -1,6 +1,7 @@
 /******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
+#if USE_FLASH_ATTENTION
 
 #pragma once
 
@@ -83,3 +84,5 @@ struct Flash_fwd_params : public Qkv_params {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T, int Headdim> void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);
+
+#endif  // USE_FLASH_ATTENTION

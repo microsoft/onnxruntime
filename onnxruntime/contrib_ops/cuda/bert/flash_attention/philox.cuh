@@ -1,4 +1,5 @@
 // Pytorch also has an implementation of Philox RNG: https://github.com/pytorch/pytorch/blob/8ca3c881db3e3510fcb7725389f6a0633c9b992c/torch/csrc/jit/tensorexpr/cuda_random.h
+#if USE_FLASH_ATTENTION
 #pragma once
 // Philox CUDA.
 
@@ -159,3 +160,5 @@ class Philox {
 };
 
 }  // namespace
+
+#endif  // USE_FLASH_ATTENTION

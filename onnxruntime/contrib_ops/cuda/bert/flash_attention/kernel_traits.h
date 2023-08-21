@@ -1,6 +1,7 @@
 /******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
+#if USE_FLASH_ATTENTION
 
 #pragma once
 
@@ -332,3 +333,4 @@ struct Flash_bwd_kernel_traits : public Base {
                                                                  cute::Layout<cute::Shape<_1, _1>>{}));  // Val layout, 1 val per store
 };
 
+#endif  // USE_FLASH_ATTENTION
