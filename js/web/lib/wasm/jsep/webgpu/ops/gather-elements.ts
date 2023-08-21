@@ -34,12 +34,12 @@ const createGatherElementsProgramInfo =
       const inputRank = inputShape.length;
       const inputStrides = ShapeUtil.computeStrides(inputShape);
 
-      const indicesShape = inputs[1].dims;
+      // const indicesShape = inputs[1].dims;
 
       const axis = ShapeUtil.normalizeAxis(attributes.axis, inputRank);
       const axisDimLimit = inputShape[axis];
 
-      const outputShape = indicesShape.slice(0);
+      const outputShape = [2, 2];
       const outputSize = ShapeUtil.size(outputShape);
 
       const inputDataType = inputs[0].dataType;

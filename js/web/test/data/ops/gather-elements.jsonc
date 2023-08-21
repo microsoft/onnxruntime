@@ -2,7 +2,7 @@
   {
     "name": "GatherElements",
     "operator": "GatherElements",
-    "attributes": [{ "axis": "1"}],
+    "attributes": [{ "name": "axis", "data": 1, "type": "int" }],
     "cases": [
       {
         "name": "float32 data +  int32 indices-1",
