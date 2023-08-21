@@ -26,65 +26,20 @@ __global__ void Dequantize4BitsKernel(
     int k,
     int k_block,
     int block_size,
-    int block_blob_size);
-
-template <>
-__global__ void Dequantize4BitsKernel<half>(
-    half* output,
-    const uint8_t* quant_data,
-    const half* scale_data,
-    const uint8_t* zero_points,
-    int k,
-    int k_block,
-    int block_size,
     int block_blob_size) {
   int id = blockIdx.x * blockDim.x + threadIdx.x;
   int n_idx = id / k_block;
   int k_block_idx = id % k_block;
   int k_idx = k_block_idx * block_size;
   const uint8_t* quant_data_cur = quant_data + id * block_blob_size;
-  half scale = scale_data[id];
-  half zero_point = zero_points ? static_cast<half>(float(zero_points[id])) : static_cast<half>(8.0);
+  T scale = *(scale_data + id);
+  T zero_point = static_cast<T>(zero_points ? float(zero_points[id]) : 8.f);
 
   output = output + n_idx * k;
   for (int i = k_idx; i < k_idx + block_size; i += 2) {
     uint8_t value = *(quant_data_cur++);
-    half x0 = static_cast<half>(float(value & 0xF));
-    half x1 = static_cast<half>(float(value >> 4));
-    if (i < k) {
-      x0 = scale * (x0 - zero_point);
-      output[i] = x0;
-    }
-    if (i + 1 < k) {
-      x1 = scale * (x1 - zero_point);
-      output[i + 1] = x1;
-    }
-  }
-}
-
-template <>
-__global__ void Dequantize4BitsKernel<float>(
-    float* output,
-    const uint8_t* quant_data,
-    const float* scale_data,
-    const uint8_t* zero_points,
-    int k,
-    int k_block,
-    int block_size,
-    int block_blob_size) {
-  int id = blockIdx.x * blockDim.x + threadIdx.x;
-  int n_idx = id / k_block;
-  int k_block_idx = id % k_block;
-  int k_idx = k_block_idx * block_size;
-  const uint8_t* quant_data_cur = quant_data + id * block_blob_size;
-  float scale = *(scale_data + id);
-  float zero_point = zero_points ? float(zero_points[id]) : static_cast<float>(8.0);
-
-  output = output + n_idx * k;
-  for (int i = k_idx; i < k_idx + block_size; i+=2) {
-    uint8_t value = *(quant_data_cur++);
-    float x0 = static_cast<float>(float(value & 0xF));
-    float x1 = static_cast<float>(float(value >> 4));
+    T x0 = static_cast<T>(float(value & 0xF));
+    T x1 = static_cast<T>(float(value >> 4));
     if (i < k) {
       x0 = scale * (x0 - zero_point);
       output[i] = x0;
