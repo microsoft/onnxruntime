@@ -3,6 +3,12 @@
  ******************************************************************************/
 #if USE_FLASH_ATTENTION
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
 #pragma once
 
 #include <cmath>
@@ -157,22 +163,22 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 
   cute::Tensor gQ = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.q_ptr) + row_offset_q),
                                 cute::Shape<cute::Int<kBlockM>, cute::Int<kHeadDim>>{},
-                          make_stride(params.q_row_stride, _1{}));
+                                make_stride(params.q_row_stride, _1{}));
   cute::Tensor gK = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.k_ptr) + row_offset_k),
                                 cute::Shape<cute::Int<kBlockN>, cute::Int<kHeadDim>>{},
-                          make_stride(params.k_row_stride, _1{}));
+                                make_stride(params.k_row_stride, _1{}));
   cute::Tensor gV = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.v_ptr) + row_offset_v),
                                 cute::Shape<cute::Int<kBlockN>, cute::Int<kHeadDim>>{},
-                          make_stride(params.v_row_stride, _1{}));
+                                make_stride(params.v_row_stride, _1{}));
   cute::Tensor gP = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.p_ptr) + row_offset_p),
                                 cute::Shape<cute::Int<kBlockM>, cute::Int<kBlockN>>{},
-                          make_stride(params.seqlen_k_rounded, _1{}));
+                                make_stride(params.seqlen_k_rounded, _1{}));
 
   cute::Tensor sQ = make_tensor(make_smem_ptr(reinterpret_cast<Element*>(smem_)),
-                          typename Kernel_traits::SmemLayoutQ{});
+                                typename Kernel_traits::SmemLayoutQ{});
   // Careful we're using the same smem for sQ and sK | sV if Share_Q_K_smem;
   cute::Tensor sK = make_tensor(sQ.data() + (Kernel_traits::Share_Q_K_smem ? 0 : cute::size(sQ)),
-                          typename Kernel_traits::SmemLayoutKV{});
+                                typename Kernel_traits::SmemLayoutKV{});
   cute::Tensor sV = make_tensor(sK.data() + cute::size(sK), typename Kernel_traits::SmemLayoutKV{});
   cute::Tensor sVt = make_tensor(sV.data(), typename Kernel_traits::SmemLayoutVtransposed{});
   cute::Tensor sVtNoSwizzle = make_tensor(sV.data(), typename Kernel_traits::SmemLayoutVtransposedNoSwizzle{});
@@ -190,8 +196,8 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 
   typename Kernel_traits::TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_thread_slice(tidx);
-  cute::Tensor tSrQ = thr_mma.partition_fragment_A(sQ);       // (MMA,MMA_M,MMA_K)
-  cute::Tensor tSrK = thr_mma.partition_fragment_B(sK);       // (MMA,MMA_N,MMA_K)
+  cute::Tensor tSrQ = thr_mma.partition_fragment_A(sQ);             // (MMA,MMA_M,MMA_K)
+  cute::Tensor tSrK = thr_mma.partition_fragment_B(sK);             // (MMA,MMA_N,MMA_K)
   cute::Tensor tOrVt = thr_mma.partition_fragment_B(sVtNoSwizzle);  // (MMA, MMA_K,MMA_N)
 
   cute::Tensor acc_o = partition_fragment_C(tiled_mma, cute::Shape<cute::Int<kBlockM>, cute::Int<kHeadDim>>{});  // MMA, MMA_M, MMA_K
@@ -218,11 +224,11 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   //
 
   // Construct identity layout for sQ and sK
-  cute::Tensor cQ = make_identity_tensor(make_shape(cute::size<0>(sQ), cute::size<1>(sQ)));  // (BLK_M,BLK_K) -> (blk_m,blk_k)
+  cute::Tensor cQ = make_identity_tensor(make_shape(cute::size<0>(sQ), cute::size<1>(sQ)));   // (BLK_M,BLK_K) -> (blk_m,blk_k)
   cute::Tensor cKV = make_identity_tensor(make_shape(cute::size<0>(sK), cute::size<1>(sK)));  // (BLK_N,BLK_K) -> (blk_n,blk_k)
 
   // Repeat the partitioning with identity layouts
-  cute::Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);  // (ACPY,ACPY_M,ACPY_K) -> (blk_m,blk_k)
+  cute::Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);     // (ACPY,ACPY_M,ACPY_K) -> (blk_m,blk_k)
   cute::Tensor tKVcKV = gmem_thr_copy_QKV.partition_S(cKV);  // (BCPY,BCPY_N,BCPY_K) -> (blk_n,blk_k)
 
   // Allocate predicate tensors for k
@@ -426,7 +432,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   // Partition sO to match the accumulator partitioning
   auto smem_thr_copy_O = make_tiled_copy_C(typename Kernel_traits::SmemCopyAtomO{}, tiled_mma).get_thread_slice(tidx);
   // auto smem_thr_copy_O = make_tiled_copy_C_warpcontiguousM<MMA_M>(typename Kernel_traits::SmemCopyAtomO{}, tiled_mma).get_thread_slice(tidx);
-  cute::Tensor taccOrO = smem_thr_copy_O.retile_S(rO);  // ((Atom,AtomNum), MMA_M, MMA_N)
+  cute::Tensor taccOrO = smem_thr_copy_O.retile_S(rO);     // ((Atom,AtomNum), MMA_M, MMA_N)
   cute::Tensor taccOsO = smem_thr_copy_O.partition_D(sO);  // ((Atom,AtomNum),PIPE_M,PIPE_N)
 
   // sO has the same size as sQ, so we don't need to sync here.
@@ -440,7 +446,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   const index_t row_offset_lse = (bidb * params.h + bidh) * params.seqlen_q + m_block * kBlockM;
   cute::Tensor gO = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.o_ptr) + row_offset_o),
                                 cute::Shape<cute::Int<kBlockM>, cute::Int<kHeadDim>>{},
-                          make_stride(params.o_row_stride, _1{}));
+                                make_stride(params.o_row_stride, _1{}));
   cute::Tensor gLSE = make_tensor(make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.softmax_lse_ptr) + row_offset_lse),
                                   cute::Shape<cute::Int<kBlockM>>{}, cute::Stride<_1>{});
 
@@ -454,7 +460,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   copy(gmem_thr_copy_O, tOsO, tOrO);
 
   cute::Tensor caccO = make_identity_tensor(cute::Shape<cute::Int<kBlockM>, cute::Int<kHeadDim>>{});  // (BLK_M,BLK_K) -> (blk_m,blk_k)
-  cute::Tensor taccOcO = thr_mma.partition_C(caccO);                                      // (MMA,MMA_M,MMA_K)
+  cute::Tensor taccOcO = thr_mma.partition_C(caccO);                                                  // (MMA,MMA_M,MMA_K)
   static_assert(decltype(cute::size<0>(taccOcO))::value == 4);
   // Convert to ((2, 2), MMA_M, MMA_K) then take only the row indices.
   cute::Tensor taccOcO_row = logical_divide(taccOcO, cute::Shape<_2>{})(make_coord(0, _), _, 0);
@@ -508,5 +514,9 @@ inline __device__ void compute_attn(const Params& params) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 }  // namespace flash
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #endif  // USE_FLASH_ATTENTION

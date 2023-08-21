@@ -8,14 +8,6 @@
 #include <cuda.h>
 #include <vector>
 
-//#ifdef OLD_GENERATOR_PATH
-//#include <ATen/CUDAGeneratorImpl.h>
-//#else
-//#include <ATen/cuda/CUDAGeneratorImpl.h>
-//#endif
-//
-//#include <ATen/cuda/CUDAGraphsUtils.cuh>
-
 constexpr int TOTAL_DIM = 0;
 constexpr int H_DIM = 1;
 constexpr int D_DIM = 2;
@@ -83,6 +75,7 @@ struct Flash_fwd_params : public Qkv_params {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename T, int Headdim> void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);
+template <typename T, int Headdim>
+void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);
 
 #endif  // USE_FLASH_ATTENTION

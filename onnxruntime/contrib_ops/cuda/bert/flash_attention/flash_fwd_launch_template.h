@@ -31,22 +31,22 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
   BOOL_SWITCH(is_even_N, IsEvenNConst, [&] {
     BOOL_SWITCH(is_even_K, IsEvenKConst, [&] {
       // Will only return softmax if dropout, to reduce compilation time.
-      auto kernel = &flash_fwd_kernel < Kernel_traits, Is_causal, IsEvenNConst, IsEvenKConst, false > ;
+      auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenNConst, IsEvenKConst, false>;
       // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenNConst, true, ReturnSoftmaxConst>;
       if (smem_size >= 48 * 1024) {
         cudaFuncSetAttribute(
             kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
-        //ORT_ENFORCE(cudaFuncSetAttribute(
-        //    kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+        // ORT_ENFORCE(cudaFuncSetAttribute(
+        //     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
       }
       int ctas_per_sm;
       cudaOccupancyMaxActiveBlocksPerMultiprocessor(
           &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
-      //cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-      //    &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
-      // printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);
+      // cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+      //     &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
+      //  printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);
       kernel<<<grid, Kernel_traits::kNThreads, smem_size, stream>>>(params);
-      //C10_CUDA_KERNEL_LAUNCH_CHECK();
+      // C10_CUDA_KERNEL_LAUNCH_CHECK();
     });
   });
 }
@@ -182,9 +182,9 @@ void run_mha_fwd_hdim224(Flash_fwd_params& params, cudaStream_t stream) {
   int max_smem_per_block;
   cudaDeviceGetAttribute(
       &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
-  //cudaError status_ = cudaDeviceGetAttribute(
-  //    &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
-  // printf("max_smem_per_block = %d\n", max_smem_per_block);
+  // cudaError status_ = cudaDeviceGetAttribute(
+  //     &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
+  //  printf("max_smem_per_block = %d\n", max_smem_per_block);
   BOOL_SWITCH(params.is_causal, Is_causal, [&] {
     if (max_smem_per_block >= 2 * Headdim * (128 + 2 * 64)) {  // 112 KB
       run_flash_fwd<Flash_fwd_kernel_traits<Headdim, 128, 64, 8, false, false, T>, Is_causal>(params, stream);
@@ -210,11 +210,11 @@ void run_mha_fwd_hdim256(Flash_fwd_params& params, cudaStream_t stream) {
       &max_smem_per_sm, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device);
   cudaDeviceGetAttribute(
       &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
-  //cudaError status_ = cudaDeviceGetAttribute(
-  //    &max_smem_per_sm, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device);
-  //status_ = cudaDeviceGetAttribute(
-  //    &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
-  // printf("max_smem_per_sm = %d, max_smem_per_block = %d\n", max_smem_per_sm, max_smem_per_block);
+  // cudaError status_ = cudaDeviceGetAttribute(
+  //     &max_smem_per_sm, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device);
+  // status_ = cudaDeviceGetAttribute(
+  //     &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
+  //  printf("max_smem_per_sm = %d, max_smem_per_block = %d\n", max_smem_per_sm, max_smem_per_block);
   BOOL_SWITCH(params.is_causal, Is_causal, [&] {
     // For A100, we want to run with 128 x 64 (128KB smem).
     // For H100 we want to run with 64 x 64 (96KB smem) since then we can get 2 CTAs per SM.
@@ -230,4 +230,4 @@ void run_mha_fwd_hdim256(Flash_fwd_params& params, cudaStream_t stream) {
   });
 }
 
-#endif
+#endif  // USE_FLASH_ATTENTION

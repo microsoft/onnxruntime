@@ -14,16 +14,16 @@
 ///     some_function<BoolConst>(...);
 /// });
 /// ```
-#define BOOL_SWITCH(COND, CONST_NAME, ...)                                           \
-    [&] {                                                                            \
-        if (COND) {                                                                  \
-            constexpr bool CONST_NAME = true;                                        \
-            return __VA_ARGS__();                                                    \
-        } else {                                                                     \
-            constexpr bool CONST_NAME = false;                                       \
-            return __VA_ARGS__();                                                    \
-        }                                                                            \
-    }()
+#define BOOL_SWITCH(COND, CONST_NAME, ...) \
+  [&] {                                    \
+    if (COND) {                            \
+      constexpr bool CONST_NAME = true;    \
+      return __VA_ARGS__();                \
+    } else {                               \
+      constexpr bool CONST_NAME = false;   \
+      return __VA_ARGS__();                \
+    }                                      \
+  }()
 
 #define FP16_SWITCH(COND, ...)         \
   [&] {                                \
@@ -32,33 +32,33 @@
     return __VA_ARGS__();              \
   }()
 
-#define FWD_HEADDIM_SWITCH(HEADDIM, ...)  \
-    [&] {                                 \
-        if (HEADDIM <= 32) {              \
-            constexpr int kHeadDim = 32;  \
-            return __VA_ARGS__();         \
-        } else if (HEADDIM <= 64) {       \
-            constexpr int kHeadDim = 64;  \
-            return __VA_ARGS__();         \
-        } else if (HEADDIM <= 96) {       \
-            constexpr int kHeadDim = 96;  \
-            return __VA_ARGS__();         \
-        } else if (HEADDIM <= 128) {      \
-            constexpr int kHeadDim = 128; \
-            return __VA_ARGS__();         \
-        } else if (HEADDIM <= 160) {      \
-            constexpr int kHeadDim = 160; \
-            return __VA_ARGS__();         \
-        } else if (HEADDIM <= 192) {      \
-            constexpr int kHeadDim = 192; \
-            return __VA_ARGS__();         \
-        } else if (HEADDIM <= 224) {      \
-            constexpr int kHeadDim = 224; \
-            return __VA_ARGS__();         \
-        } else if (HEADDIM <= 256) {      \
-            constexpr int kHeadDim = 256; \
-            return __VA_ARGS__();         \
-        }                                 \
-    }()
+#define FWD_HEADDIM_SWITCH(HEADDIM, ...) \
+  [&] {                                  \
+    if (HEADDIM <= 32) {                 \
+      constexpr int kHeadDim = 32;       \
+      return __VA_ARGS__();              \
+    } else if (HEADDIM <= 64) {          \
+      constexpr int kHeadDim = 64;       \
+      return __VA_ARGS__();              \
+    } else if (HEADDIM <= 96) {          \
+      constexpr int kHeadDim = 96;       \
+      return __VA_ARGS__();              \
+    } else if (HEADDIM <= 128) {         \
+      constexpr int kHeadDim = 128;      \
+      return __VA_ARGS__();              \
+    } else if (HEADDIM <= 160) {         \
+      constexpr int kHeadDim = 160;      \
+      return __VA_ARGS__();              \
+    } else if (HEADDIM <= 192) {         \
+      constexpr int kHeadDim = 192;      \
+      return __VA_ARGS__();              \
+    } else if (HEADDIM <= 224) {         \
+      constexpr int kHeadDim = 224;      \
+      return __VA_ARGS__();              \
+    } else if (HEADDIM <= 256) {         \
+      constexpr int kHeadDim = 256;      \
+      return __VA_ARGS__();              \
+    }                                    \
+  }()
 
 #endif  // USE_FLASH_ATTENTION

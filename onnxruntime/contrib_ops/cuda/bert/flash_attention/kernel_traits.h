@@ -3,6 +3,12 @@
  ******************************************************************************/
 #if USE_FLASH_ATTENTION
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
 #pragma once
 
 #include "cute/algorithm/copy.hpp"
@@ -75,7 +81,7 @@ struct Flash_fwd_kernel_traits : public Base {
   using TiledMma = TiledMMA<
       typename Base::MMA_Atom_Arch,
       cute::Layout<cute::Shape<cute::Int<kNWarps>, _1, _1>>,  // 4x1x1 or 8x1x1 thread group
-      typename Base::ValLayoutMNK>;         // 1x2x1 or 1x2x2 value group for 16x16x16 MMA and LDSM
+      typename Base::ValLayoutMNK>;                           // 1x2x1 or 1x2x2 value group for 16x16x16 MMA and LDSM
 
   using SmemLayoutAtomQ = decltype(composition(Swizzle<kSwizzle, 3, 3>{},
                                                // This has to be kBlockKSmem, using kHeadDim gives wrong results for d=128
@@ -195,7 +201,7 @@ struct Flash_bwd_kernel_traits : public Base {
   using TiledMmadQ = TiledMMA<
       typename Base::MMA_Atom_Arch,
       cute::Layout<cute::Shape<cute::Int<AtomLayoutMdQ>, cute::Int<kNWarps / AtomLayoutMdQ>, _1>>,  // 2x4x1 or 4x2x1 thread group
-      typename Base::ValLayoutMNK>;                                         // 1x2x1 or 1x2x2 value group for 16x16x16 MMA and LDSM
+      typename Base::ValLayoutMNK>;                                                                 // 1x2x1 or 1x2x2 value group for 16x16x16 MMA and LDSM
 
   using SmemLayoutAtomQdO = decltype(composition(Swizzle<kSwizzle, 3, 3>{},
                                                  cute::Layout<cute::Shape<_8, cute::Int<kBlockKSmem>>,
@@ -332,5 +338,9 @@ struct Flash_bwd_kernel_traits : public Base {
                                                                               cute::Stride<_32, _1>>{},
                                                                  cute::Layout<cute::Shape<_1, _1>>{}));  // Val layout, 1 val per store
 };
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #endif  // USE_FLASH_ATTENTION

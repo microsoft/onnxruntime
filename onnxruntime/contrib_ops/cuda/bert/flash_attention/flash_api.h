@@ -53,26 +53,27 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const bool is_causal);
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
-               cudaStream_t stream,
-               void* q,                // half (total_q, num_heads, head_size)
-               void* k,                // half (total_k, num_heads, head_size)
-               void* v,                // half (total_k, num_heads, v_head_size)
-               void* out,              // half (total_q, num_heads, v_head_size)
-               int* cu_seqlens_q,  // int (batch_size + 1)
-               int* cu_seqlens_k,  // int (batch_size + 1)
-               void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
-              //  void* o_tmp_buffer,        // NULL or float (total_q, num_heads, v_head_size)
-               const int batch_size,
-               const int num_heads,
-               const int num_heads_k,
-               const int head_size,
-               const int total_q,
-               const int max_seqlen_q_,
-               const int max_seqlen_k_,
-               const float softmax_scale,
-               const bool is_causal/*,
-               const int num_splits,
-               const bool zero_tensors*/);
+                      cudaStream_t stream,
+                      void* q,                   // half (total_q, num_heads, head_size)
+                      void* k,                   // half (total_k, num_heads, head_size)
+                      void* v,                   // half (total_k, num_heads, v_head_size)
+                      void* out,                 // half (total_q, num_heads, v_head_size)
+                      int* cu_seqlens_q,         // int (batch_size + 1)
+                      int* cu_seqlens_k,         // int (batch_size + 1)
+                      void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
+                                                 //  void* o_tmp_buffer,        // NULL or float (total_q, num_heads, v_head_size)
+                      const int batch_size,
+                      const int num_heads,
+                      const int num_heads_k,
+                      const int head_size,
+                      const int total_q,
+                      const int max_seqlen_q_,
+                      const int max_seqlen_k_,
+                      const float softmax_scale,
+                      const bool is_causal /*,
+                       const int num_splits,
+                       const bool zero_tensors*/
+);
 
 size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads);
 }  // namespace flash
@@ -80,4 +81,4 @@ size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads);
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif //  USE_FLASH_ATTENTION
+#endif  //  USE_FLASH_ATTENTION

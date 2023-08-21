@@ -2,18 +2,22 @@
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
 
-//#include <torch/extension.h>
-//#include <ATen/cuda/CUDAContext.h>
-//#include <c10/cuda/CUDAGuard.h>
+// #include <torch/extension.h>
+// #include <ATen/cuda/CUDAContext.h>
+// #include <c10/cuda/CUDAGuard.h>
 #if USE_FLASH_ATTENTION
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
 
 #include "core/providers/cuda/cuda_common.h"
 #include <cutlass/numeric_types.h>
 
 #include "flash.h"
 #include "static_switch.h"
-
-//#define CHECK_SHAPE(x, ...) TORCH_CHECK(x.sizes() == torch::IntArrayRef({__VA_ARGS__}), #x " must have shape (" #__VA_ARGS__ ")")
 
 namespace onnxruntime {
 namespace contrib {
@@ -42,9 +46,6 @@ void set_params_fprop(Flash_fwd_params& params,
                       void* softmax_lse_d,
                       float softmax_scale,
                       bool is_causal) {
-  // Reset the parameters
-  //memset(&params, 0, sizeof(params));
-
   // Set the pointers and strides.
   params.q_ptr = q;
   params.k_ptr = k;
@@ -63,12 +64,11 @@ void set_params_fprop(Flash_fwd_params& params,
   params.is_bf16 = false;
 
   if (cu_seqlens_q_d == nullptr) {
-    params.q_batch_stride = seqlen_q * num_heads * head_size; // stride(0)
+    params.q_batch_stride = seqlen_q * num_heads * head_size;    // stride(0)
     params.k_batch_stride = seqlen_k * num_heads_k * head_size;  // stride(0)
-    params.v_batch_stride = seqlen_k * num_heads * head_size;  // stride(0)
-    params.o_batch_stride = seqlen_q * num_heads * head_size;  // stride(0)
-  }
-  else {
+    params.v_batch_stride = seqlen_k * num_heads * head_size;    // stride(0)
+    params.o_batch_stride = seqlen_q * num_heads * head_size;    // stride(0)
+  } else {
     params.q_batch_stride = 0;
     params.k_batch_stride = 0;
     params.v_batch_stride = 0;
@@ -118,11 +118,11 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream) {
 
 Status mha_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
-               void* q,                          // batch_size x seqlen_q x num_heads x head_size
-               void* k,                          // batch_size x seqlen_k x num_heads_k x head_size
-               void* v,                          // batch_size x seqlen_k x num_heads_k x head_size
-               void* out,                        // batch_size x seqlen_q x num_heads x head_size
-               float* softmax_lse,               // batch_size x num_heads x seqlen_q
+               void* q,             // batch_size x seqlen_q x num_heads x head_size
+               void* k,             // batch_size x seqlen_k x num_heads_k x head_size
+               void* v,             // batch_size x seqlen_k x num_heads_k x head_size
+               void* out,           // batch_size x seqlen_q x num_heads x head_size
+               float* softmax_lse,  // batch_size x num_heads x seqlen_q
                const int batch_size,
                const int num_heads,
                const int num_heads_k,
@@ -132,7 +132,6 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const int seqlen_k,
                const float softmax_scale,
                const bool is_causal) {
-
   ORT_UNUSED_PARAMETER(total_q);
 
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
@@ -140,7 +139,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   ORT_ENFORCE(is_sm8x || is_sm90);
 
   ORT_ENFORCE(batch_size > 0);
-  ORT_ENFORCE(num_heads % num_heads_k == 0); // Number of heads in key/value must divide number of heads in query
+  ORT_ENFORCE(num_heads % num_heads_k == 0);  // Number of heads in key/value must divide number of heads in query
   ORT_ENFORCE((head_size % 8 == 0) && (head_size <= 256));
 
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
@@ -156,8 +155,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    num_heads, num_heads_k,
                    head_size, head_size_rounded,
                    q, k, v, out,
-                   /*cu_seqlens_q*/nullptr,
-                   /*cu_seqlens_k*/nullptr,
+                   /*cu_seqlens_q*/ nullptr,
+                   /*cu_seqlens_k*/ nullptr,
                    nullptr,
                    softmax_lse,
                    softmax_scale,
@@ -167,23 +166,23 @@ Status mha_fwd(const cudaDeviceProp& dprops,
 }
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
-               cudaStream_t stream,
-               void* q,                // half (total_q, num_heads, head_size)
-               void* k,                // half (total_k, num_heads, head_size)
-               void* v,                // half (total_k, num_heads, head_size)
-               void* out,              // half (total_q, num_heads, head_size)
-               int* cu_seqlens_q,      // int (batch_size + 1)
-               int* cu_seqlens_k,      // int (batch_size + 1)
-               void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
-               const int batch_size,
-               const int num_heads,
-               const int num_heads_k,
-               const int head_size,
-               const int total_q,
-               const int max_seqlen_q_,
-               const int max_seqlen_k_,
-               const float softmax_scale,
-               const bool is_causal) {
+                      cudaStream_t stream,
+                      void* q,                   // half (total_q, num_heads, head_size)
+                      void* k,                   // half (total_k, num_heads, head_size)
+                      void* v,                   // half (total_k, num_heads, head_size)
+                      void* out,                 // half (total_q, num_heads, head_size)
+                      int* cu_seqlens_q,         // int (batch_size + 1)
+                      int* cu_seqlens_k,         // int (batch_size + 1)
+                      void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
+                      const int batch_size,
+                      const int num_heads,
+                      const int num_heads_k,
+                      const int head_size,
+                      const int total_q,
+                      const int max_seqlen_q_,
+                      const int max_seqlen_k_,
+                      const float softmax_scale,
+                      const bool is_causal) {
   ORT_UNUSED_PARAMETER(total_q);
 
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
@@ -211,7 +210,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    q, k, v, out,
                    cu_seqlens_q,
                    cu_seqlens_k,
-                   nullptr, // o_tmp_buffer : nullptr,
+                   nullptr,  // o_tmp_buffer : nullptr,
                    softmax_lse_buffer,
                    softmax_scale,
                    is_causal);
@@ -223,5 +222,9 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #endif  // USE_FLASH_ATTENTION

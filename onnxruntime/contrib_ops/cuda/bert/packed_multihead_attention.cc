@@ -251,11 +251,11 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
     int sm = device_prop.major * 10 + device_prop.minor;
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention = !use_flash_attention &&
-                                      is_good_for_rpb &&
+                                     is_good_for_rpb &&
                                      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                      (parameters.head_size & 7) == 0 &&
                                      (parameters.v_head_size & 7) == 0 &&
-                                      has_memory_efficient_attention(sm, sizeof(T) == 2);
+                                     has_memory_efficient_attention(sm, sizeof(T) == 2);
   }
 #endif
 
@@ -296,7 +296,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;
 
 #if USE_FLASH_ATTENTION
-  if(use_flash_attention) {
+  if (use_flash_attention) {
     size_t softmax_lse_bytes = flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
     auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
     data.softmax_lse_buffer = soft_buff.get();
