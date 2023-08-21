@@ -37,6 +37,7 @@ class PagedAttention final : public CudaKernel {
   int32_t head_size_;                      // number of attention heads
   float scale_;                            // sqrt(head_size_)
   std::string mask_type_;                  // position embedding type
+  void* flash_attention_v2_kernel_ = nullptr;  // cuda kernel
 };
 
 }  // namespace cuda
