@@ -33,6 +33,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+namespace flash {
 Status mha_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
                void* q,             // batch_size x seqlen_q x num_heads x head_size
@@ -73,6 +74,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                const bool zero_tensors*/);
 
 size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads);
+}  // namespace flash
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

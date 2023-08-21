@@ -586,6 +586,7 @@ Status FusedAttentionTrt(
   return Status::OK();
 }
 
+#if USE_FLASH_ATTENTION
 template <typename T>
 Status FlashAttention(
     const cudaDeviceProp& device_prop,
@@ -619,11 +620,11 @@ Status FlashAttention(
   const void* key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   const void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
 
-  ORT_RETURN_IF_ERROR(mha_varlen_fwd(
+  ORT_RETURN_IF_ERROR(flash::mha_varlen_fwd(
     device_prop,
     stream,
-    const_cast<void*>(query), 
-    const_cast<void*>(key), 
+    const_cast<void*>(query),
+    const_cast<void*>(key),
     const_cast<void*>(value),
     data.output,
     seqstart_q_ptr,
@@ -649,8 +650,9 @@ Status FlashAttention(
 
   return Status::OK();
 }
+#endif
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
 template <typename T>
 Status FusedAttentionCutlass(
     const cudaDeviceProp& device_prop,
@@ -826,11 +828,13 @@ Status QkvToContext(
     return FusedAttentionTrt<T>(device_prop, stream, parameters, data);
   }
 
+#if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {
     return FlashAttention(device_prop, stream, parameters, data);
   }
+#endif
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
     return FusedAttentionCutlass(device_prop, stream, parameters, data);
   }

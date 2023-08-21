@@ -56,7 +56,7 @@ size_t GetAttentionWorkspaceSize(
     return qkv_bytes;
   }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (use_memory_efficient_attention) {
     size_t fmha_buffer_bytes = 0;
     if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
@@ -455,7 +455,7 @@ Status FusedScaledDotProductAttention(
   return Status::OK();
 }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
 template <typename T>
 Status FusedScaledDotProductAttentionCutlass(
     const cudaDeviceProp& device_prop,
@@ -635,7 +635,7 @@ Status QkvToContext(
     return FusedScaledDotProductAttention<T>(device_prop, stream, parameters, data);
   }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
     return FusedScaledDotProductAttentionCutlass(device_prop, stream, parameters, data);
   }

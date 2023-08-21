@@ -42,7 +42,7 @@ PackedMultiHeadAttention<T>::PackedMultiHeadAttention(const OpKernelInfo& info)
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   disable_memory_efficient_attention_ = onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
       attention::kDisableMemoryEfficientAttention, false);
 #else
@@ -232,19 +232,21 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
 
   bool use_flash_attention = false;
 
+#if USE_FLASH_ATTENTION
   if (nullptr == fused_runner) {
     const bool is_sm8x = device_prop.major >= 8;
     use_flash_attention = !parameters.has_relative_position_bias &&
                           sizeof(T) == 2 &&
-                          parameters.head_size % 8 == 0 && 
+                          parameters.head_size % 8 == 0 &&
                           parameters.head_size <= 256 &&
                           parameters.head_size == parameters.v_head_size &&
                           is_sm8x;
   }
+#endif
 
   bool use_memory_efficient_attention = false;
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (nullptr == fused_runner && !disable_memory_efficient_attention_) {
     int sm = device_prop.major * 10 + device_prop.minor;
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
@@ -292,11 +294,14 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.no_qkv_workspace = no_qkv_workspace;
   data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;
+
+#if USE_FLASH_ATTENTION
   if(use_flash_attention) {
-    size_t softmax_lse_bytes = get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
+    size_t softmax_lse_bytes = flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
     auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
     data.softmax_lse_buffer = soft_buff.get();
   }
+#endif
 
   return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }

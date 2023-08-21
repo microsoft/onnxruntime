@@ -48,7 +48,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
   enable_fused_causal_attention_ = sizeof(T) == 2 &&
                                    ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFusedCausalAttention, false);
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
 #else
   disable_memory_efficient_attention_ = true;
@@ -151,7 +151,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&

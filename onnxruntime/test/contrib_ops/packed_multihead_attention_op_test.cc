@@ -168,7 +168,7 @@ static void RunPackedMultiHeadAttentionTest(
     InvokePackedMultiHeadAttentionTest(true, false);
   }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (kernel_type == AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{

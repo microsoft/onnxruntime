@@ -17,12 +17,13 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+namespace flash {
 
 void set_params_fprop(Flash_fwd_params& params,
                       // sizes
                       const size_t batch_size,
                       const size_t seqlen_q,
-                      const size_t seqlen_k, 
+                      const size_t seqlen_k,
                       const size_t seqlen_q_rounded,
                       const size_t seqlen_k_rounded,
                       const size_t num_heads,
@@ -98,22 +99,11 @@ void set_params_fprop(Flash_fwd_params& params,
   params.scale_softmax = softmax_scale;
   params.scale_softmax_log2 = softmax_scale * M_LOG2E;
 
-  // Set this to probability of keeping an element to simplify things.
-  //params.p_dropout = 1.f - p_dropout;
-  // Convert p from float to int so we don't have to convert the random uint to float to compare.
-  // [Minor] We want to round down since when we do the comparison we use <= instead of <
-  // params.p_dropout_in_uint = uint32_t(std::floor(params.p_dropout * 4294967295.0));
-  // params.p_dropout_in_uint16_t = uint16_t(std::floor(params.p_dropout * 65535.0));
-  //params.p_dropout_in_uint8_t = uint8_t(std::floor(params.p_dropout * 255.0));
-  //params.rp_dropout = 1.f / params.p_dropout;
-  //params.scale_softmax_rp_dropout = params.rp_dropout * params.scale_softmax;
-  //TORCH_CHECK(p_dropout < 1.f);
-
   params.is_causal = is_causal;
 }
 
-size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads) {
-  size_t bytes = sizeof(float) * batch_size * num_heads * max_seqlen_q;
+size_t get_softmax_lse_size(int seqlen, int batch_size, int num_heads) {
+  size_t bytes = sizeof(float) * batch_size * num_heads * seqlen;
   return bytes;
 }
 
@@ -141,7 +131,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const int seqlen_k,
                const float softmax_scale,
                const bool is_causal) {
-  
+
   ORT_UNUSED_PARAMETER(total_q);
 
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
@@ -194,7 +184,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                const float softmax_scale,
                const bool is_causal) {
   ORT_UNUSED_PARAMETER(total_q);
-  
+
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
   bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
   ORT_ENFORCE(is_sm8x || is_sm90);
@@ -228,6 +218,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   return Status::OK();
 }
 
+}  // namespace flash
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

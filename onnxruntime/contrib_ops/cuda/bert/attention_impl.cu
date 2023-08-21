@@ -120,7 +120,7 @@ size_t GetAttentionWorkspaceSize(
   const size_t qkv_bytes = element_size * batch_size * num_heads *
                            ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (use_memory_efficient_attention) {
     size_t fmha_buffer_bytes = 0;
     if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
@@ -384,7 +384,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       }
       qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
     // When past_key/past_value are inputted directly as key/value and there is no present_key/present_value
     else if (use_memory_efficient_attention && data.past_key != nullptr && data.past_value != nullptr && parameters.pass_past_in_kv) {
       // Transpose past_key and past_value to use memory efficient attention
@@ -551,7 +551,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
       qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
     }
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
     else if (use_memory_efficient_attention) {
       LaunchAddBias(stream, max_threads_per_block,
                     batch_size, sequence_length, kv_sequence_length,
@@ -849,7 +849,7 @@ Status QkvToContext(
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                                : parameters.scale;
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.

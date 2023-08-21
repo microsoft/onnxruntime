@@ -1,6 +1,7 @@
 /******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
+#if USE_FLASH_ATTENTION
 
 #pragma once
 
@@ -228,3 +229,5 @@ void run_mha_fwd_hdim256(Flash_fwd_params& params, cudaStream_t stream) {
     // run_flash_fwd<Flash_fwd_kernel_traits<Headdim, 128, 32, 8, false, false, T>, Is_causal>(params, stream);
   });
 }
+
+#endif

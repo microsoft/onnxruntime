@@ -50,7 +50,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
 #else
   disable_memory_efficient_attention_ = true;
@@ -168,7 +168,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   bool is_long_sequence = sizeof(T) == 2 ||  // sequence length threshold is 0 for FP16
                           parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32 ||
                           parameters.kv_sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32;
