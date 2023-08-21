@@ -65,4 +65,4 @@ void SmallFloatFill(T* start, size_t size) {
   }
 }
 
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
