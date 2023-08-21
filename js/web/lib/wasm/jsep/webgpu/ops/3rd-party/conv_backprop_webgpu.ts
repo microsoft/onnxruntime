@@ -33,9 +33,11 @@ const createConvTranspose2DOpProgramShaderSource =
       const colDim = isChannelsLast ? 2 : 3;
       const channelDim = isChannelsLast ? 3 : 1;
       const outputSize = ShapeUtil.size(outputShape);
-      const outChannels = outputShape[isChannelsLast ? 3 : 1];
       const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
-      const isVec4 = inChannels % 4 === 0 && outChannels % 4 === 0;
+      // TODO Enable isVec4 for performance
+      // Disabled due to weight matrix layout issue
+      // const outChannels = outputShape[isChannelsLast ? 3 : 1];
+      const isVec4 = false;  // inChannels % 4 === 0 && outChannels % 4 === 0;
       const workPerThread = isVec4 ? 2 : 1;
 
       const innerElementSize = isVec4 ? (isChannelsLast && inChannels % 4 !== 0 ? 3 : 4) : elementsPerThread[0];
@@ -200,12 +202,12 @@ const createConvTranspose2DOpProgramShaderSource =
               for (var d2: u32 = 0; d2 < outBackprop[${channelDim}]; d2 = d2 + 1) {
                 let xValue = ${
           isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
-                let wValue = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1', 'd2')};
+                let wValue = ${w.get('d2', 'd1', 'u32(wRPerm)', 'u32(wCPerm)')};
                 dotProd = dotProd + xValue * wValue;
               }
             }
           }
-          let value = dotProd + ${hasBias ? 'bias[c]' : '0.0'};
+          let value = dotProd + ${hasBias ? 'bias[d1]' : '0.0'};
           ${output.setByOffset('global_idx', 'value')};
         `;
 
@@ -214,7 +216,7 @@ const createConvTranspose2DOpProgramShaderSource =
   ${dy.impl('indicesToOffset', 'get')}
   ${output.impl('offsetToIndices', 'indicesToOffset', 'set')}
   ${declareFunctions}
-    ${declareInputs.join('\n')}
+  ${declareInputs.join('\n')}
   @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
   const outShape : vec4<u32> = vec4<u32>(${outputShape.join(',')});
   const outBackprop : vec4<u32> = vec4<u32>(${inputs[0].dims.join(',')});
@@ -227,7 +229,7 @@ const createConvTranspose2DOpProgramShaderSource =
           attributes.dilations[0] <= 1 ?
               0 :
               (attributes.kernelShape[isChannelsLast ? 1 : 2] - 1) * (attributes.dilations[0] - 1)},
-                    ${
+          ${
           attributes.dilations[1] <= 1 ?
               0 :
               (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)});
