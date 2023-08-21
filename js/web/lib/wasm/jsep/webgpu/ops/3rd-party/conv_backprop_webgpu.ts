@@ -27,17 +27,13 @@ import {ConvTransposeAttributes} from '../conv-transpose';
 const createConvTranspose2DOpProgramShaderSource =
     (shaderHelper: ShaderHelper, inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
      outputShape: readonly number[], hasBias: boolean, elementsPerThread: readonly number[],
-     is1DimensionDispatch: boolean): string => {
+     is1DimensionDispatch: boolean, isVec4: boolean): string => {
       const isChannelsLast = attributes.format === 'NHWC';
       const rowDim = isChannelsLast ? 1 : 2;
       const colDim = isChannelsLast ? 2 : 3;
       const channelDim = isChannelsLast ? 3 : 1;
       const outputSize = ShapeUtil.size(outputShape);
       const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
-      // TODO Enable isVec4 for performance
-      // Disabled due to weight matrix layout issue
-      // const outChannels = outputShape[isChannelsLast ? 3 : 1];
-      const isVec4 = false;  // inChannels % 4 === 0 && outChannels % 4 === 0;
       const workPerThread = isVec4 ? 2 : 1;
 
       const innerElementSize = isVec4 ? (isChannelsLast && inChannels % 4 !== 0 ? 3 : 4) : elementsPerThread[0];
@@ -251,8 +247,10 @@ export const createConvTranspose2DProgramInfo =
       const outWidth = outputShape[isChannelsLast ? 1 : 2];
       const outHeight = outputShape[isChannelsLast ? 2 : 3];
       const outChannels = outputShape[isChannelsLast ? 3 : 1];
-      const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
-      const isVec4 = isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
+      // const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
+      // TODO Enable isVec4 for performance
+      // Disabled due to weight matrix layout issue
+      const isVec4 = false;  // isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
 
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
@@ -277,6 +275,6 @@ export const createConvTranspose2DProgramInfo =
         dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
         getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
             shaderHelper, inputs, attributes, outputShape, hasBias, elementsPerThread,
-            dispatch[1] === 1 && dispatch[2] === 1),
+            dispatch[1] === 1 && dispatch[2] === 1, isVec4),
       };
     };
