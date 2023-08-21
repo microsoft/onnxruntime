@@ -317,11 +317,11 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t 
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
 */
 int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
-                                             ort_run_options_handle_t options,
                                              ort_tensor_handle_t* inputs,
                                              size_t input_count,
                                              ort_tensor_handle_t* outputs,
-                                             size_t output_count);
+                                             size_t output_count,
+                                             ort_run_options_handle_t options = nullptr);
 
 /**
  * Retrieves the size of all parameters for the training state.
