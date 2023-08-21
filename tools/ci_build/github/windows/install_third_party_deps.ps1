@@ -95,9 +95,10 @@ $msbuild_path = &$vshwere_path -latest -requires Microsoft.Component.MSBuild -fi
 
 Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config  -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
 
+Install-Abseil -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
+
 Install-Protobuf -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
 
-# This is the python Protobuf version, which is different than the C++ version that is in deps.txt
 $protobuf_version="4.21.12"
 
 # ONNX doesn't allow us to specify CMake's path
