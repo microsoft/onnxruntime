@@ -155,7 +155,7 @@ export class WebGpuBackend {
       });
     }
 
-    Object.defineProperty(this.env.webgpu, 'device', {value: this.device, enumerable: true});
+    Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
   }
 
   dispose(): void {
