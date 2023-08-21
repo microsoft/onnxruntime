@@ -3,12 +3,6 @@
  ******************************************************************************/
 #if USE_FLASH_ATTENTION
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
 #pragma once
 
 #include "cute/algorithm/copy.hpp"
@@ -338,9 +332,5 @@ struct Flash_bwd_kernel_traits : public Base {
                                                                               cute::Stride<_32, _1>>{},
                                                                  cute::Layout<cute::Shape<_1, _1>>{}));  // Val layout, 1 val per store
 };
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 #endif  // USE_FLASH_ATTENTION

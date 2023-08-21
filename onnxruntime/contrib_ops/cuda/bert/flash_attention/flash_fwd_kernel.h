@@ -3,12 +3,6 @@
  ******************************************************************************/
 #if USE_FLASH_ATTENTION
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
 #pragma once
 
 #include <cmath>
@@ -514,9 +508,5 @@ inline __device__ void compute_attn(const Params& params) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 }  // namespace flash
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 #endif  // USE_FLASH_ATTENTION

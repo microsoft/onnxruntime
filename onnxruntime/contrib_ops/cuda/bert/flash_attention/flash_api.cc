@@ -7,12 +7,6 @@
 // #include <c10/cuda/CUDAGuard.h>
 #if USE_FLASH_ATTENTION
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
 #include "core/providers/cuda/cuda_common.h"
 #include <cutlass/numeric_types.h>
 
@@ -222,9 +216,5 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 #endif  // USE_FLASH_ATTENTION

@@ -3,12 +3,6 @@
  ******************************************************************************/
 #if USE_FLASH_ATTENTION
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
 #pragma once
 
 #include "cute/algorithm/copy.hpp"
@@ -152,9 +146,5 @@ struct Flash_fwd_kernel_traits : public Base {
                                                   GmemLayoutAtomP{},
                                                   Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per store
 };
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 #endif  // USE_FLASH_ATTENTION
