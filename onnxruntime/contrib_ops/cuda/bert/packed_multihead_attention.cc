@@ -42,6 +42,12 @@ PackedMultiHeadAttention<T>::PackedMultiHeadAttention(const OpKernelInfo& info)
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
+#if USE_FLASH_ATTENTION
+  disable_flash_attention_ = onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
+      attention::kDisableFlashAttention, false);
+#else
+  disable_flash_attention_ = true;
+#endif
 #if USE_MEMORY_EFFICIENT_ATTENTION
   disable_memory_efficient_attention_ = onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
       attention::kDisableMemoryEfficientAttention, false);
@@ -233,7 +239,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   bool use_flash_attention = false;
 
 #if USE_FLASH_ATTENTION
-  if (nullptr == fused_runner) {
+  if (!disable_flash_attention_) {
     const bool is_sm8x = device_prop.major >= 8;
     use_flash_attention = !parameters.has_relative_position_bias &&
                           sizeof(T) == 2 &&
@@ -241,17 +247,19 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                           parameters.head_size <= 256 &&
                           parameters.head_size == parameters.v_head_size &&
                           is_sm8x;
+    if(use_flash_attention) {
+      fused_runner = nullptr;
+    }
   }
 #endif
 
   bool use_memory_efficient_attention = false;
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-  if (nullptr == fused_runner && !disable_memory_efficient_attention_) {
+  if (!use_flash_attention && nullptr == fused_runner && !disable_memory_efficient_attention_) {
     int sm = device_prop.major * 10 + device_prop.minor;
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
-    use_memory_efficient_attention = !use_flash_attention &&
-                                     is_good_for_rpb &&
+    use_memory_efficient_attention = is_good_for_rpb &&
                                      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                      (parameters.head_size & 7) == 0 &&
                                      (parameters.v_head_size & 7) == 0 &&
