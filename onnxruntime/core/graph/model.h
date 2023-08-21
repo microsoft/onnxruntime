@@ -7,6 +7,9 @@
 #include <memory>
 #include <climits>
 #include <string>
+
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"
@@ -14,8 +17,6 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function_template.h"
 #endif
-
-#include "flatbuffers/flatbuffers.h"
 
 namespace onnxruntime {
 

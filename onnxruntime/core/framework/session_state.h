@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
@@ -42,8 +44,6 @@
 #ifdef ENABLE_TRAINING
 #include "core/framework/program_region.h"
 #endif
-
-#include "flatbuffers/flatbuffers.h"
 
 namespace onnxruntime {
 

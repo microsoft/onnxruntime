@@ -5,11 +5,11 @@
 
 #include <memory>
 
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/status.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/framework/tensor.h"
-
-#include "flatbuffers/flatbuffers.h"
 
 namespace ONNX_NAMESPACE {
 class AttributeProto;
