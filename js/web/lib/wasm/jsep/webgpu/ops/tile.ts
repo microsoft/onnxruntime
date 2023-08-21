@@ -67,7 +67,6 @@ export const createTileProgramInfo =
       const inputShape = ${input.indices(...inputShape)};
       ${shaderHelper.declareVariables(input, output)}
       ${output.impl('offsetToIndices')}
-      ${input.impl('indicesToOffset', 'get')}
       ${shaderHelper.mainStart()}
       ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
       let outputIndices = ${output.offsetToIndices('global_idx')};
