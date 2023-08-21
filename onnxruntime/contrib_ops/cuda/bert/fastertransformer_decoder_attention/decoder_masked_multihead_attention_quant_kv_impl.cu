@@ -271,11 +271,14 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   // owns x elements, we have to decompose the linear index into chunks of x values and the posi-
   // tion of the thread in that chunk.
 
+  static_assert(sizeof(T) <= 16);
+  static_assert(sizeof(Qk_vec_m) <= 16);
+
   // The number of elements in a chunk of 16B (that's the x in the above formula).
   constexpr int QK_ELTS_IN_16B = 16 / sizeof(T);
 
   // The number of K vectors in 16B.
-  constexpr int QK_VECS_IN_16B = QK_ELTS_IN_16B / QK_VEC_SIZE;
+  constexpr int QK_VECS_IN_16B = 16 / sizeof(Qk_vec_m);
 
   // The batch/beam idx
   const int bi = blockIdx.y;
@@ -294,6 +297,8 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
   // Combine the "beam-aware" batch idx and the head indices.
   const int bbhi = bbi * params.beam_width * params.num_heads + hi;
+
+  const int input_beam_index = bi % params.beam_width;
 
   // The thread in the block.
   const int tidx = threadIdx.x;
@@ -528,10 +533,10 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
     bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
-    const int mapped_beam_index = (has_beams && ti < tlength) ? beam_indices[ti] : 0;
+    const int mapped_beam_index = (has_beams && ti < tlength) ? beam_indices[ti] : input_beam_index;
     const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
 
-    const int mapped_bhi = (bbi * params.beam_width + mapped_beam_index) * params.num_heads + hi;
+    const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
     int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + ki / params.quant_kv_block_size;
     float scale_of_k = (ti < tlength) ? (float)*(((TFp*)params.k_scale) + scale_offset) : 0.0f;
     int next_quant_block_ki = ((ki + params.quant_kv_block_size - 1) / params.quant_kv_block_size + 1) * params.quant_kv_block_size;
@@ -685,10 +690,10 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   // Loop over the timesteps to compute the partial outputs.
   for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
     // Fetch offset based on cache_indir when beam sampling
-    const int beam_src = has_beams ? params.cache_indir[bi_max_seq_length + ti] : 0;
-    const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
+    const int mapped_beam_index = has_beams ? params.cache_indir[bi_max_seq_length + ti] : input_beam_index;
+    const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
 
-    const int mapped_bhi = (bbi * params.beam_width + beam_offset) * params.num_heads + hi;
+    const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
     const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + vi / params.quant_kv_block_size;
     float scale_of_v = (float)*(((TFp*)params.v_scale) + scale_offset);
 
@@ -712,18 +717,12 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       v = add_vec(v, v_bias);
     }
 
+    static_assert(THREADS_PER_VALUE <= WARP_SIZE);
     float max_abs_v = MaxAbsFloat(v);
-    // Perform the final reduction to compute the max inside each warp.
-    if (THREADS_PER_VALUE <= WARP_SIZE) {
-      const uint32_t lane_id = (uint32_t)(tidx & (WARP_SIZE - 1)); // THREADS_PER_VALUE is power of 2
-      const uint32_t group_id = lane_id / THREADS_PER_VALUE;
-      const uint32_t group_masks = ((1u << THREADS_PER_VALUE) - 1) << (group_id * THREADS_PER_VALUE);
-      for (int mask = THREADS_PER_VALUE / 2; mask >= 1; mask /= 2) {
-        max_abs_v = fmaxf(max_abs_v, __shfl_xor_sync(group_masks, max_abs_v, mask));
-      }
-    } else {
-      constexpr int WARPS_PER_RED = (THREADS_PER_VALUE + WARP_SIZE - 1) / WARP_SIZE;
-      max_abs_v = block_sum<WARPS_PER_RED>(&red_smem[WARPS_PER_RED], max_abs_v);
+    const uint32_t group_id = (tidx % WARP_SIZE) / THREADS_PER_VALUE;
+    const uint32_t group_masks = ((1u << THREADS_PER_VALUE) - 1) << (group_id * THREADS_PER_VALUE);
+    for (int mask = THREADS_PER_VALUE / 2; mask >= 1; mask /= 2) {
+      max_abs_v = fmaxf(max_abs_v, __shfl_xor_sync(group_masks, max_abs_v, mask));
     }
 
     // Store the values with bias back to global memory in the cache for V.

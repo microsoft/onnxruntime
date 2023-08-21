@@ -119,10 +119,10 @@ Status DecoderMaskedSelfAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContex
 
   auto cuda_stream = Stream(context);
 
-  auto* present_data = present->MutableData<int8_t>();
-  auto* present_scales_data = present_scales->MutableData<T1>();
   auto* past_data = past->Data<int8_t>();
+  auto* present_data = present->MutableData<int8_t>();
   auto* past_scales_data = past_scales->Data<T1>();
+  auto* present_scales_data = present_scales->MutableData<T1>();
 
   // No production use-case will incur this copy cost as the implementation of
   // GreedySearch/BeamSearch is written in such a way that the past and present buffers
