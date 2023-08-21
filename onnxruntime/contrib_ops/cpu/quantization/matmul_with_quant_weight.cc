@@ -54,10 +54,11 @@ Status MatMulWithQuantWeight::Compute(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<float>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
 
+  ORT_ENFORCE(nbits_ == 4, "only 4 bits is supported now");
+  ORT_ENFORCE(block_size_ == 32, "only block size 32 is supported now");
+
   const SubByteBlob<32, 4>* b_blob = reinterpret_cast<typename const SubByteBlob<32, 4>*>(b_data);
 
-  ORT_ENFORCE(nbits_ == 4, "only 4 bits is supported now");
-  // ORT_ENFORCE(block_size_ == 32, "only block size 32 is supported now");
 
   AllocatorPtr allocator;
   auto status = ctx->GetTempSpaceAllocator(&allocator);

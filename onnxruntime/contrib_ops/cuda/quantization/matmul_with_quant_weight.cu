@@ -18,23 +18,33 @@ namespace contrib {
 namespace cuda {
 
 template <class T>
-__global__ void Dequantize4BitsKernel(T* output, const uint8_t* quant_data, int k, int k_block, int block_size, bool has_zero_point, int block_blob_size);
+__global__ void Dequantize4BitsKernel(
+    T* output,
+    const uint8_t* quant_data,
+    const T* scale_data,
+    const uint8_t* zero_points,
+    int k,
+    int k_block,
+    int block_size,
+    int block_blob_size);
 
 template <>
-__global__ void Dequantize4BitsKernel<half>(half* output, const uint8_t* quant_data, int k, int k_block, int block_size, bool has_zero_point, int block_blob_size) {
+__global__ void Dequantize4BitsKernel<half>(
+    half* output,
+    const uint8_t* quant_data,
+    const half* scale_data,
+    const uint8_t* zero_points,
+    int k,
+    int k_block,
+    int block_size,
+    int block_blob_size) {
   int id = blockIdx.x * blockDim.x + threadIdx.x;
   int n_idx = id / k_block;
   int k_block_idx = id % k_block;
   int k_idx = k_block_idx * block_size;
   const uint8_t* quant_data_cur = quant_data + id * block_blob_size;
-  uint16_t scale_low = *(quant_data_cur++);
-  uint16_t scale_high = *(quant_data_cur++);
-  uint16_t scale_data = scale_high << 8 | scale_low;
-  half scale = *(reinterpret_cast<half*>(&scale_data));
-  half zero_point = static_cast<half>(8.0);
-  if (has_zero_point) {
-    zero_point = static_cast<half>(float(*(quant_data_cur++)));
-  }
+  half scale = scale_data[id];
+  half zero_point = zero_points ? static_cast<half>(float(zero_points[id])) : static_cast<half>(8.0);
 
   int output_offset = n_idx * k + k_idx;
   for (int i = 0; i < block_size / 2; i++) {
@@ -53,22 +63,22 @@ __global__ void Dequantize4BitsKernel<half>(half* output, const uint8_t* quant_d
 }
 
 template <>
-__global__ void Dequantize4BitsKernel<float>(float* output, const uint8_t* quant_data, int k, int k_block, int block_size, bool has_zero_point, int block_blob_size) {
+__global__ void Dequantize4BitsKernel<float>(
+    float* output,
+    const uint8_t* quant_data,
+    const float* scale_data,
+    const uint8_t* zero_points,
+    int k,
+    int k_block,
+    int block_size,
+    int block_blob_size) {
   int id = blockIdx.x * blockDim.x + threadIdx.x;
   int n_idx = id / k_block;
   int k_block_idx = id % k_block;
   int k_idx = k_block_idx * block_size;
   const uint8_t* quant_data_cur = quant_data + id * block_blob_size;
-  uint32_t scale_0 = *(quant_data_cur++);
-  uint32_t scale_1 = *(quant_data_cur++);
-  uint32_t scale_2 = *(quant_data_cur++);
-  uint32_t scale_3 = *(quant_data_cur++);
-  uint32_t scale_data = scale_3 << 24 | scale_2 << 16 | scale_1 << 8 | scale_0;
-  float scale = *(reinterpret_cast<float*>(&scale_data));
-  float zero_point = static_cast<float>(8.0);
-  if (has_zero_point) {
-    zero_point = float(*(quant_data_cur++));
-  }
+  float scale = *(scale_data + id);
+  float zero_point = zero_points ? float(zero_points[id]) : static_cast<float>(8.0);
 
   output = output + n_idx * k;
   for (int i = k_idx; i < k_idx + block_size / 2; i++) {
@@ -87,19 +97,51 @@ __global__ void Dequantize4BitsKernel<float>(float* output, const uint8_t* quant
 }
 
 template <class T>
-Status Dequantize4Bits(T* output, const uint8_t* quant_data, int k, int n, int block_size, bool has_zero_point, cudaStream_t stream) {
+Status Dequantize4Bits(
+    T* output,
+    const uint8_t* quant_data,
+    const T* scales_data,
+    const uint8_t* zero_points,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream) {
   int k_blocks = (k + block_size - 1) / block_size;
   int blocks_per_grid = static_cast<int>(CeilDiv(n * k_blocks, GridDim::maxThreadsPerBlock));
-  int k_block = (k + block_size - 1) / block_size;
-  int block_blob_size = block_size / 2 + sizeof(T) + (has_zero_point ? 1 : 0);
+  int block_blob_size = block_size / 2;
 
-  Dequantize4BitsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(output, quant_data, k, k_block, block_size, has_zero_point, block_blob_size);
+  Dequantize4BitsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      output,
+      quant_data,
+      scales_data,
+      zero_points,
+      k,
+      k_blocks,
+      block_size,
+      block_blob_size);
 
   return Status::OK();
 }
 
-template Status Dequantize4Bits<float>(float* output, const uint8_t* quant_data, int k, int n, int block_size, bool has_zero_point, cudaStream_t stream);
-template Status Dequantize4Bits<half>(half* output, const uint8_t* quant_data, int k, int n, int block_size, bool has_zero_point, cudaStream_t stream);
+template Status Dequantize4Bits<float>(
+    float* output,
+    const uint8_t* quant_data,
+    const float* scales_data,
+    const uint8_t* zero_points,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream);
+
+template Status Dequantize4Bits<half>(
+    half* output,
+    const uint8_t* quant_data,
+    const half* scales_data,
+    const uint8_t* zero_points,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

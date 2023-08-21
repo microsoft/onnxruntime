@@ -91,9 +91,7 @@ TEST(MatMulWithQuantWeight, MatMul2DSym) {
 
   test.AddOutput<float>("Y", {M, N}, expected_vals);
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatMulWithQuantWeight, MatMul2DBlkZp) {
@@ -164,9 +162,7 @@ TEST(MatMulWithQuantWeight, MatMul2DBlkZp) {
 
   test.AddOutput<float>("Y", {M, N}, expected_vals);
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 }  // namespace test
 }  // namespace onnxruntime

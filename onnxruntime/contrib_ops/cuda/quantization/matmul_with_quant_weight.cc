@@ -26,9 +26,6 @@ class MatMulWithQuantWeight final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
-    int64_t has_zero_point = 0;
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("has_zero_point", &has_zero_point));
-    has_zero_point_ = has_zero_point != 0;
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -38,7 +35,6 @@ class MatMulWithQuantWeight final : public CudaKernel {
   int64_t N_;
   int64_t block_size_;
   int64_t nbits_;
-  bool has_zero_point_;
 };
 
 // StridedBatchedGemm can be used for the following GEMM computation
@@ -88,27 +84,29 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
 template <typename T>
 Status MatMulWithQuantWeight<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
-
   const Tensor* b = ctx->Input<Tensor>(1);
-  const auto blob_shape = b->Shape();
-  ORT_ENFORCE(blob_shape.NumDimensions() == 1, "Second input of MatMulWithQuantWeight must be a 1D blob!");
-  const auto blob_len = blob_shape[0];
+  const Tensor* scales = ctx->Input<Tensor>(2);
+  const Tensor* zero_points = ctx->Input<Tensor>(3);
+
+  const auto* a_data = a->Data<T>();
+  const uint8_t* blob_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<T>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
 
   ORT_ENFORCE(nbits_ == 4, "only 4 bits is supported now");
   ORT_ENFORCE(block_size_ == 32, "only block size 32 is supported now");
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  const auto* a_data = a->Data<T>();
-  const auto* blob_data = b->Data<uint8_t>();
   IAllocatorUniquePtr<T> b_data_ptr = GetScratchBuffer<T>(K_ * N_, ctx->GetComputeStream());
   auto* b_data = b_data_ptr.get();
   ORT_RETURN_IF_ERROR(Dequantize4Bits(reinterpret_cast<CudaT*>(b_data),
                                       blob_data,
+                                      reinterpret_cast<const CudaT*>(scales_data),
+                                      zero_points_data,
                                       SafeInt<int>(K_),
                                       SafeInt<int>(N_),
                                       SafeInt<int>(block_size_),
-                                      has_zero_point_,
                                       static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
 
   T* b_data_cpu = new T[K_ * N_];
