@@ -336,4 +336,4 @@ const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault = {
     0
 };
 
-#endif
+#endif //  !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

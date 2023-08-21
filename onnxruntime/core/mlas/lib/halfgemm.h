@@ -30,9 +30,9 @@ Abstract:
         MLAS_HALF_GEMM_STRIDES Strides{128, 128, 128};
 --*/
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
 #pragma once
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include <cstdlib>
 #include <cassert>
@@ -516,4 +516,4 @@ MlasHalfGemmGetDispatch()
 #endif
 }
 
-#endif
+#endif //  !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -159,7 +159,7 @@ Status RegisterNchwcKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -316,7 +316,7 @@ Status RegisterCpuContribKernels(KernelRegistry& kernel_registry) {
 
   ORT_RETURN_IF_ERROR(RegisterQuantizationKernels(kernel_registry));
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   if (MlasFp16AccelerationSupported()) {
     ORT_RETURN_IF_ERROR(RegisterFp16Kernels(kernel_registry));
