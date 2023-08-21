@@ -315,7 +315,7 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t 
  * @param output_count number of user outputs expected from this eval step
  * @param outputs user outputs computed by the eval step
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
-*/
+ */
 int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
                                              ort_tensor_handle_t* inputs,
                                              size_t input_count,
