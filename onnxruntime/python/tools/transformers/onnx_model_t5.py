@@ -695,39 +695,41 @@ class FusionSimplifiedLayerNormalization(Fusion):
 
         sim_ln_nodes = self.model.match_parent_path(
             node,
-            ["Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Add"],
-            [1, 1, 1, 0, 0, 0, 0],
+            ["Cast", "Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Cast", "Add"],
+            [1, 0, 1, 1, 0, 0, 0, 0, 0],
         )
         if sim_ln_nodes is None:
             sim_ln_nodes = self.model.match_parent_path(
                 node,
-                ["Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Gather"],
-                [1, 1, 1, 0, 0, 0, 0],
+                ["Cast", "Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Cast", "Gather"],
+                [1, 0, 1, 1, 0, 0, 0, 0, 0],
             )
             if sim_ln_nodes is None:
                 return
 
-        pow_node = sim_ln_nodes[-2]
+        pow_node = sim_ln_nodes[-3]
         if self.model.find_constant_input(pow_node, 2.0) != 1:
             return
 
         root_input = pow_node.input[0]
+        root_cast_input = sim_ln_nodes[-2].input[0]
 
-        mul_node_1 = sim_ln_nodes[0]
+        mul_node_1 = sim_ln_nodes[1]
         if root_input != mul_node_1.input[0]:
             return
 
-        second_add_node = sim_ln_nodes[3]
+        second_add_node = sim_ln_nodes[4]
         i, add_weight = self.model.get_constant_input(second_add_node)
         if add_weight is None or add_weight <= 0 or add_weight > 1.0e-4:
             logger.warning(f"epsilon value is not expeced: {add_weight}")
             return
 
         self.nodes_to_remove.extend(sim_ln_nodes[:-1])
+        self.nodes_to_remove.append(node)
 
         normalize_node = helper.make_node(
             "SimplifiedLayerNormalization",
-            inputs=[root_input, node.input[0]],
+            inputs=[root_cast_input, node.input[0]],
             outputs=[node.output[0]],
             name=self.model.create_node_name("SimplifiedLayerNormalization", name_prefix="LayerNorm"),
         )
@@ -749,16 +751,17 @@ class FusionSkipSimplifiedLayerNormalization(FusionSkipLayerNormalization):
 class T5OnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
-        self.attention_mask = AttentionMask(self)
-        self.attention_fusion = FusionT5Attention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        # self.attention_mask = AttentionMask(self)
+        # self.attention_fusion = FusionT5Attention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.layer_norm_fusion = FusionSimplifiedLayerNormalization(self)
         self.skip_layer_norm_fusion = FusionSkipSimplifiedLayerNormalization(self)
         # TODO: consider retrive max_distance from model.
         # math.log(max_distance / (num_buckets // 2))
-        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128)
+        # self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128)
 
     def fuse_attention(self):
-        self.attention_fusion.apply()
+        # self.attention_fusion.apply()
+        pass
 
     def fuse_layer_norm(self):
         self.layer_norm_fusion.apply()
@@ -839,12 +842,14 @@ class T5OnnxModel(BertOnnxModel):
                 self.remove_nodes(nodes_to_remove)
 
     def preprocess(self):
-        self.adjust_reshape_and_expand()
-        self.rpb_fusion.apply()
+        # self.adjust_reshape_and_expand()
+        # self.rpb_fusion.apply()
+        pass
 
     def postprocess(self):
         # remove get_extended_attention_mask() since it generates all zeros.
-        self.remove_extended_mask_decoder_init()
-        self.remove_extended_mask_decoder()
+        # self.remove_extended_mask_decoder_init()
+        # self.remove_extended_mask_decoder()
 
-        self.prune_graph()
+        # self.prune_graph()
+        pass
