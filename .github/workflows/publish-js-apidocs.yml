@@ -23,9 +23,9 @@ jobs:
     name: Generate JS API docs
     runs-on: ubuntu-latest
     steps:
-      - name: Use Node.js
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
           node-version: 18
       - name: Generate JS docs 
