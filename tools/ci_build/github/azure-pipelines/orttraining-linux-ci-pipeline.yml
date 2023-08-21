@@ -60,7 +60,7 @@ jobs:
       versionSpec: '3.8'
       addToPath: true
 
-  - template: get-docker-image-steps.yml
+  - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2_28_cpu
       Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
