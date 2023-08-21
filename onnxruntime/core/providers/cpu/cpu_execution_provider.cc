@@ -2428,7 +2428,7 @@ Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 #endif
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 // Forward declarations of ml op kernels
 #ifndef DISABLE_ML_OPS
@@ -2612,7 +2612,7 @@ Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
     ORT_RETURN_IF_ERROR(RegisterFp16Kernels(kernel_registry));
   }
 #endif
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #ifndef DISABLE_ML_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::ml::RegisterOnnxMLOperatorKernels(kernel_registry));
 #endif

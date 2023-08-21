@@ -180,7 +180,7 @@ Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 #endif
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 Status RegisterQuantizationKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -322,7 +322,7 @@ Status RegisterCpuContribKernels(KernelRegistry& kernel_registry) {
     ORT_RETURN_IF_ERROR(RegisterFp16Kernels(kernel_registry));
   }
 #endif
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   return Status::OK();
 }
