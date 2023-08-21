@@ -743,7 +743,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Creates an OrtValue that contains a string tensor of specified shape, and
         /// containing empty strings. String tensors are always on CPU.
-        /// Use FillStringTensorElement to assign individual elements values.
+        /// Use StringTensorSetElementAt to assign individual elements values.
         /// </summary>
         /// <param name="allocator"></param>
         /// <returns>disposable OrtValue</returns>
