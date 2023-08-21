@@ -20,7 +20,7 @@
 
 #include "gtest/gtest.h"
 
-#include "core/common/gsl.h"
+#include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/util/thread_utils.h"
 #include "test/test_environment.h"
@@ -29,30 +29,6 @@ std::unique_ptr<Ort::Env> ort_env;
 void ortenv_setup() {
   OrtThreadingOptions tpo;
   ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
-}
-
-static std::optional<std::string> GetEnvironmentVariable(const char* name) {
-#if !defined(_WIN32)
-  const char* value = std::getenv(name);
-  if (value) {
-    return std::string{value};
-  }
-  return std::nullopt;
-#else
-  // Windows builds complain about std::getenv, so use the suggested replacement _dupenv_s
-  char* value;
-  size_t length;
-  errno_t err = _dupenv_s(&value, &length, name);
-  if (err) {
-    // just return nullopt if there's an error
-    return std::nullopt;
-  }
-  auto free_value = gsl::finally([value]() { if (value) { GSL_SUPPRESS(r.10) free(value); } });
-  if (!value) {
-    return std::nullopt;
-  }
-  return std::string(value, length);
-#endif
 }
 
 #ifdef USE_TENSORRT
@@ -88,12 +64,13 @@ int TEST_MAIN(int argc, char** argv) {
 
     // allow verbose logging to be enabled by setting this environment variable to a numeric log level
     constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
-    if (auto log_level_str = GetEnvironmentVariable(kLogLevelEnvironmentVariableName); log_level_str.has_value()) {
-      const auto log_level = std::clamp(std::stoi(*log_level_str),
-                                        static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
-                                        static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
-      std::cout << "Setting log level to " << log_level << "\n";
-      ort_env->UpdateEnvWithCustomLogLevel(static_cast<OrtLoggingLevel>(log_level));
+    if (auto log_level = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
+        log_level.has_value()) {
+      *log_level = std::clamp(*log_level,
+                              static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
+                              static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
+      std::cout << "Setting log level to " << *log_level << "\n";
+      ort_env->UpdateEnvWithCustomLogLevel(static_cast<OrtLoggingLevel>(*log_level));
     }
 
     status = RUN_ALL_TESTS();
