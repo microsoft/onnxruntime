@@ -70,49 +70,56 @@ auto GetGraphBuilder(const GraphConfig& config, bool use_ms_domain_qdq_ops) {
   };
 }
 
-void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq_count, bool use_ms_domain_qdq_ops) {
-  constexpr int opset_version = 12;
-  const char* dequantize_linear_key = use_ms_domain_qdq_ops ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
-  std::function<void(ModelTestBuilder&)> graph_builder_fn = GetGraphBuilder(config, use_ms_domain_qdq_ops);
+void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq_count) {
+  auto run_tests = [config, expected_dq_count](bool use_ms_domain_qdq_ops) {
+    constexpr int opset_version = 12;
+    const char* dequantize_linear_key = use_ms_domain_qdq_ops ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
+    std::function<void(ModelTestBuilder&)> graph_builder_fn = GetGraphBuilder(config, use_ms_domain_qdq_ops);
 
-  {
-    SCOPED_TRACE("test with standalone transformer");
+    {
+      SCOPED_TRACE("test with standalone transformer");
 
-    auto post_transform_check_fn = [expected_dq_count, dequantize_linear_key](const Graph& graph) {
-      const auto op_counts = CountOpsInGraph(graph);
-      const auto actual_dq_count = OpCount(op_counts, dequantize_linear_key);
-      ORT_RETURN_IF_NOT(actual_dq_count == expected_dq_count,
-                        "Expected DQ count: ", expected_dq_count, ", actual: ", actual_dq_count);
-      return Status::OK();
-    };
+      auto post_transform_check_fn = [expected_dq_count, dequantize_linear_key](const Graph& graph) {
+        const auto op_counts = CountOpsInGraph(graph);
+        const auto actual_dq_count = OpCount(op_counts, dequantize_linear_key);
+        ORT_RETURN_IF_NOT(actual_dq_count == expected_dq_count,
+                          "Expected DQ count: ", expected_dq_count, ", actual: ", actual_dq_count);
+        return Status::OK();
+      };
 
-    EXPECT_STATUS_OK(TestGraphTransformer(
-        graph_builder_fn,
-        opset_version,
-        DefaultLoggingManager().DefaultLogger(),
-        std::make_unique<EnsureUniqueDQForNodeUnit>(),
-        TransformerLevel::Level1,
-        5,
-        {},
-        post_transform_check_fn));
-  }
+      EXPECT_STATUS_OK(TestGraphTransformer(
+          graph_builder_fn,
+          opset_version,
+          DefaultLoggingManager().DefaultLogger(),
+          std::make_unique<EnsureUniqueDQForNodeUnit>(),
+          TransformerLevel::Level1,
+          5,
+          {},
+          post_transform_check_fn));
+    }
 
-  {
-    SCOPED_TRACE("test with basic transformers");
+    {
+      SCOPED_TRACE("test with basic transformers");
 
-    auto post_transform_check_fn = [expected_dq_count, dequantize_linear_key](const InferenceSessionWrapper& session) {
-      const auto& graph = session.GetGraph();
-      const auto op_counts = CountOpsInGraph(graph);
-      ASSERT_EQ(OpCount(op_counts, dequantize_linear_key), expected_dq_count);
-    };
+      auto post_transform_check_fn = [expected_dq_count, dequantize_linear_key](const InferenceSessionWrapper& session) {
+        const auto& graph = session.GetGraph();
+        const auto op_counts = CountOpsInGraph(graph);
+        ASSERT_EQ(OpCount(op_counts, dequantize_linear_key), expected_dq_count);
+      };
 
-    TransformerTester(
-        graph_builder_fn,
-        post_transform_check_fn,
-        TransformerLevel::Default,
-        TransformerLevel::Level1,
-        opset_version);
-  }
+      TransformerTester(
+          graph_builder_fn,
+          post_transform_check_fn,
+          TransformerLevel::Default,
+          TransformerLevel::Level1,
+          opset_version);
+    }
+  };
+
+  run_tests(false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  run_tests(true);  // Use contrib QDQ ops.
+#endif
 }
 
 }  // namespace
@@ -123,10 +130,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodes) {
   config.num_inputs_per_explicit_consumer_node = 1;
 
   // expected count = one for each explicit consumer node (3), reusing the original one = 3
-  RunEnsureUniqueDQForNodeUnitTest(config, 3, false /*use_ms_domain_qdq_ops*/);
-#if !defined(DISABLE_CONTRIB_OPS)
-  RunEnsureUniqueDQForNodeUnitTest(config, 3, true /*use_ms_domain_qdq_ops*/);
-#endif
+  RunEnsureUniqueDQForNodeUnitTest(config, 3);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithGraphOutput) {
@@ -136,10 +140,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithGraphOutput) {
   config.has_graph_output = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
-  RunEnsureUniqueDQForNodeUnitTest(config, 4, false /*use_ms_domain_qdq_ops*/);
-#if !defined(DISABLE_CONTRIB_OPS)
-  RunEnsureUniqueDQForNodeUnitTest(config, 4, true /*use_ms_domain_qdq_ops*/);
-#endif
+  RunEnsureUniqueDQForNodeUnitTest(config, 4);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumer) {
@@ -149,10 +150,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumer) {
   config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
-  RunEnsureUniqueDQForNodeUnitTest(config, 4, false /*use_ms_domain_qdq_ops*/);
-#if !defined(DISABLE_CONTRIB_OPS)
-  RunEnsureUniqueDQForNodeUnitTest(config, 4, true /*use_ms_domain_qdq_ops*/);
-#endif
+  RunEnsureUniqueDQForNodeUnitTest(config, 4);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumerAndGraphOutput) {
@@ -163,10 +161,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumerAndGr
   config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
-  RunEnsureUniqueDQForNodeUnitTest(config, 4, false /*use_ms_domain_qdq_ops*/);
-#if !defined(DISABLE_CONTRIB_OPS)
-  RunEnsureUniqueDQForNodeUnitTest(config, 4, true /*use_ms_domain_qdq_ops*/);
-#endif
+  RunEnsureUniqueDQForNodeUnitTest(config, 4);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputs) {
@@ -175,10 +170,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputs) {
   config.num_inputs_per_explicit_consumer_node = 5;
 
   // expected count = one for each explicit consumer node input (2 * 5), reusing the original one = 10
-  RunEnsureUniqueDQForNodeUnitTest(config, 10, false /*use_ms_domain_qdq_ops*/);
-#if !defined(DISABLE_CONTRIB_OPS)
-  RunEnsureUniqueDQForNodeUnitTest(config, 10, true /*use_ms_domain_qdq_ops*/);
-#endif
+  RunEnsureUniqueDQForNodeUnitTest(config, 10);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithGraphOutput) {
@@ -188,10 +180,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithGraphOutput) {
   config.has_graph_output = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
-  RunEnsureUniqueDQForNodeUnitTest(config, 11, false /*use_ms_domain_qdq_ops*/);
-#if !defined(DISABLE_CONTRIB_OPS)
-  RunEnsureUniqueDQForNodeUnitTest(config, 11, true /*use_ms_domain_qdq_ops*/);
-#endif
+  RunEnsureUniqueDQForNodeUnitTest(config, 11);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer) {
@@ -201,10 +190,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer
   config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
-  RunEnsureUniqueDQForNodeUnitTest(config, 11, false /*use_ms_domain_qdq_ops*/);
-#if !defined(DISABLE_CONTRIB_OPS)
-  RunEnsureUniqueDQForNodeUnitTest(config, 11, true /*use_ms_domain_qdq_ops*/);
-#endif
+  RunEnsureUniqueDQForNodeUnitTest(config, 11);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumerAndGraphOutput) {
@@ -215,10 +201,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer
   config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
-  RunEnsureUniqueDQForNodeUnitTest(config, 11, false /*use_ms_domain_qdq_ops*/);
-#if !defined(DISABLE_CONTRIB_OPS)
-  RunEnsureUniqueDQForNodeUnitTest(config, 11, true /*use_ms_domain_qdq_ops*/);
-#endif
+  RunEnsureUniqueDQForNodeUnitTest(config, 11);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodes) {
