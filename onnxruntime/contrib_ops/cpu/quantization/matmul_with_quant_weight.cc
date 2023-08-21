@@ -13,7 +13,8 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
-#include "core/mlas/inc/mlas_q4.h"
+#include "dequantize_blockwise_weight.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -44,33 +45,31 @@ Status MatMulWithQuantWeight::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   const Tensor* a = ctx->Input<Tensor>(0);
-
   const Tensor* b = ctx->Input<Tensor>(1);
-  const auto blob_shape = b->Shape();
-  ORT_ENFORCE(blob_shape.NumDimensions() == 1, "Second input of MatMulWithQuantWeight must be a 1D blob!");
-  const auto blob_len = blob_shape[0];
+  const Tensor* scales = ctx->Input<Tensor>(2);
+  const Tensor* zero_points = ctx->Input<Tensor>(3);
+
+  const auto* a_data = a->Data<float>();
+  const uint8_t* b_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<float>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
+
+  const SubByteBlob<32, 4>* b_blob = reinterpret_cast<typename const SubByteBlob<32, 4>*>(b_data);
 
   ORT_ENFORCE(nbits_ == 4, "only 4 bits is supported now");
-  ORT_ENFORCE(block_size_ == 32, "only block size 32 is supported now");
+  // ORT_ENFORCE(block_size_ == 32, "only block size 32 is supported now");
+
+  AllocatorPtr allocator;
+  auto status = ctx->GetTempSpaceAllocator(&allocator);
+  ORT_RETURN_IF_ERROR(status);
+  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
+  DequantizeBlockwiseWeight<float, 32, 4>(tmp_b_data_ptr.get(), b_blob, scales_data, zero_points_data, static_cast<int32_t>(N_), static_cast<int32_t>(K_), thread_pool);
 
   const Tensor* bshape_tr = ctx->Input<Tensor>(2);
-  TensorShape b_shape({K_, N_});
+  TensorShape b_shape({N_, K_});
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape));
-  const size_t max_len = helper.OutputOffsets().size();
-  const size_t M = static_cast<size_t>(helper.M());
-  const size_t N = static_cast<size_t>(helper.N());
-  const size_t K = static_cast<size_t>(helper.K());
-  const size_t lda = helper.Lda(false);
-
-  MLAS_BLK_QUANT_TYPE blk_quant_type = has_zero_point_ ? MLAS_BLK_QUANT_TYPE::BlkQ4Zp8 : MLAS_BLK_QUANT_TYPE::BlkQ4Sym;
-
-  auto buf_size = MlasQ4GemmPackBSize(blk_quant_type, N, K);
-  ORT_ENFORCE(buf_size > 0, "Operator MatMulWithQuantWeight not yet supported on this hardware platform.");
-  ORT_ENFORCE(
-      (size_t)blob_len == buf_size,
-      "Quantized and packed blob size differ from expected!");
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
 
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
@@ -78,19 +77,29 @@ Status MatMulWithQuantWeight::Compute(OpKernelContext* ctx) const {
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  const auto* a_data = a->Data<float>();
-  const auto* blob_data = b->Data<uint8_t>();
   auto* y_data = y->MutableData<float>();
 
-  std::vector<MLAS_Q4_GEMM_DATA_PARAMS> gemm_params(max_len);
+  const size_t max_len = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = helper.Lda(false);
+  const size_t ldb = helper.Ldb(true);
+
+  std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
   for (size_t i = 0; i < max_len; i++) {
-    gemm_params[i].A = a_data + helper.LeftOffsets()[i];
-    gemm_params[i].lda = lda;
-    gemm_params[i].B = blob_data;
-    gemm_params[i].C = y_data + helper.OutputOffsets()[i];
-    gemm_params[i].ldc = N;
+    data[i].BIsPacked = false;
+    data[i].A = a_data + helper.LeftOffsets()[i];
+    data[i].lda = lda;
+    data[i].B = tmp_b_data_ptr.get() + helper.RightOffsets()[i];
+    data[i].ldb = ldb;
+    data[i].C = y_data + helper.OutputOffsets()[i];
+    data[i].ldc = N;
+    data[i].alpha = 1.f;
+    data[i].beta = 0.0f;
   }
-  MlasQ4GemmBatch(blk_quant_type, M, N, K, max_len, gemm_params.data(), thread_pool);
+  MlasGemmBatch(CblasNoTrans, CblasTrans,
+                M, N, K, data.data(), max_len, thread_pool);
 
   return Status::OK();
 }
