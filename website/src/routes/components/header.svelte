@@ -75,9 +75,13 @@
 			</button>
 		</div>
 		<a href="/" class="btn btn-ghost normal-case text-xl">
-			<OnnxIcon width={32} height={32}/>
+			<div class="hidden lg:inline">
+				<OnnxIcon width={32} height={32}/>
+			</div>
 			ONNXRuntime
-			<img src={onnximage} class="w-8 h-8 lg:hidden" alt="ONNX Runtime logo" />
+			<div class="lg:hidden">
+				<OnnxIcon width={32} height={32}/>
+			</div>
 		</a>
 	</div>
 	<div class="navbar-center hidden lg:flex">

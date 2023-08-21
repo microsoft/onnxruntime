@@ -33,7 +33,7 @@
 	}
 </script>
 
-<div class="container mx-auto my-20">
+<div class="container mx-auto lg:my-20">
 	<h1 class="text-3xl my-5 text-center">Trusted By </h1>
 	<div class="divider" />
 	<div

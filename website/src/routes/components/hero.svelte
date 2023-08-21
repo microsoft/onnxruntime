@@ -125,7 +125,9 @@
 					<p class="text-lg mt-2">Don't see your favourite platform? </p><a href="https://" class="btn btn-secondary">Get Started with another</a>
 				</div> -->
 			</div>
-			<OnnxIcon width={233} height={220} />
+			<div class="hidden lg:inline">
+				<OnnxIcon width={233} height={220} />
+			</div>
 		</div>
 	</div>
 </div>

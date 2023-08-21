@@ -1,19 +1,13 @@
 <script>
-	import onnxicon from '../images/ONNX-Icon.svg';
+	import OnnxIcon from '../images/onnx-icon.svelte';
 </script>
 
 <div class="container mx-auto text-center">
-	<!-- <div class="grid grid-cols-3">
-		<h1 class="text-huge">4</h1>
-		<div class="items-center flex img mx-auto ">
-			<img class="" src={onnxicon} alt="ONNX Logo" />
-		</div>
-		<h1 class="text-huge">4</h1>
-	</div> -->
+	<!-- TODO: Fix 404 for mobile -->
     <div class="flex items-center justify-center">
         <h1 class="text-huge">4</h1>
-        <div class="img">
-            <img src={onnxicon} alt="ONNX Logo" />
+        <div>
+            <OnnxIcon width={165} height={165} />
         </div>
         <h1 class="text-huge">4</h1>
     </div>

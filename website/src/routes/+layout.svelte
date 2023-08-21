@@ -2,31 +2,13 @@
 	import '../app.css';
 	import Header from './components/header.svelte';
 	import Footer from './components/footer.svelte';
-	import { onMount } from 'svelte';
-	import IoIosClose from 'svelte-icons/io/IoIosClose.svelte';
-	import anime from 'animejs';
 	import oneLight from 'svelte-highlight/styles/one-light';
+	import { fade } from 'svelte/transition';
 
-	let removetoast = (e: any) => {
-		e.target.parentNode.parentNode.remove();
-	};
-	onMount(() => {
-	
-		anime({
-			targets: '.toast',
-			opacity: '1',
-			duration: 1000,
-			delay: 10000,
-			easing: 'easeInOutQuad',
-			begin: function () {
-				document.querySelector<HTMLElement>('.toast')!.style.display = 'block';
-			}
-		});
-	});
+	export let data;
 </script>
 
 <svelte:head>
-	
 	{@html oneLight}
 	<title>ONNX Runtime | Home</title>
 	<meta property="og:title" content="ONNX Runtime | Home" />
@@ -49,28 +31,12 @@
 	<meta property="og:url" content="https://onnxruntime.ai" />
 	<meta property="og:type" content="website" />
 </svelte:head>
-<div class="toast z-10 opacity-0 hidden">
-	<div class="alert alert-info">
-		<svg
-			xmlns="http://www.w3.org/2000/svg"
-			fill="none"
-			viewBox="0 0 24 24"
-			class="stroke-current shrink-0 w-6 h-6"
-			><path
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				stroke-width="2"
-				d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-			/></svg
-		>
-		<span
-			>Please help us improve ONNX Runtime <br class="md:hidden" />by participating in our
-			<a class="underline" href="https://ncv.microsoft.com/UySXuzobM9">customer survey</a>.</span
-		> <button aria-label="close" on:click={removetoast} class="w-8 h-8 pt-1"><IoIosClose /></button>
-	</div>
-</div>
 <div class="selection:bg-success">
 	<Header />
-	<slot />
+	{#key data.pathname}
+		<div in:fade={{ duration: 300, delay: 400 }} out:fade={{ duration: 300 }}>
+			<slot />
+		</div>
+	{/key}
 	<Footer />
 </div>
