@@ -6,7 +6,6 @@
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import List
@@ -14,13 +13,11 @@ from typing import List
 import numpy
 import onnx
 import torch
+from onnx_model import OnnxModel
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import WhisperConfig
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

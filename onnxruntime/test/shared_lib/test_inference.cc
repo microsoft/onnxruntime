@@ -121,7 +121,13 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     dnnl_options.use_arena = 1;
     dnnl_options.threadpool_args = nullptr;
     session_options.AppendExecutionProvider_Dnnl(dnnl_options);
-    std::cout << "Running simple inference with dnnl provider" << std::endl;
+#else
+    return;
+#endif
+  } else if (provider_type == 3) {
+#ifdef USE_ROCM
+    OrtROCMProviderOptions rocm_options;
+    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     return;
 #endif
@@ -1391,6 +1397,9 @@ TEST(CApiTest, test_custom_op_library) {
 #ifdef USE_CUDA
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 1, nullptr, lib_name.c_str());
+#elif USE_ROCM
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 3, nullptr, lib_name.c_str());
 #else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 0, nullptr, lib_name.c_str());
