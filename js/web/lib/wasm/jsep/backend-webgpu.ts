@@ -238,11 +238,15 @@ export class WebGpuBackend {
     const outputTensorViews: TensorView[] = [];
     const outputDatas: GpuData[] = [];
     for (let i = 0; i < programInfo.outputs.length; ++i) {
-      // value -1 and -2 are used for creating temporary and persistent outputs. so -2, -1 and 0, 1, 2, ... are valid
+      // value -1 and -2 are used for creating temporary and persistent outputs.
+      // value -3 is used for placeholder output. So -3, -2, -1 and 0, 1, 2, ... are valid
       // output indices. see type definition of ComputeContextInputsOutputsMapping for more details.
-      if (!Number.isInteger(validatedOutputIndices[i]) || validatedOutputIndices[i] < -2 ||
+      if (!Number.isInteger(validatedOutputIndices[i]) || validatedOutputIndices[i] < -3 ||
           validatedOutputIndices[i] >= programInfo.outputs.length) {
         throw new Error(`Invalid output index: ${validatedOutputIndices[i]}`);
+      }
+      if (validatedOutputIndices[i] === -3) {
+        continue;
       }
       const isTemporary = validatedOutputIndices[i] === -1;
       const isPersistent = validatedOutputIndices[i] === -2;

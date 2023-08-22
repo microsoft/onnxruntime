@@ -14,8 +14,8 @@ type ElementwiseCustomExpression = (expression: string) => string;
 type ElementwiseFunctionCall = BuiltinFunctionName|ElementwiseCustomExpression;
 
 const createElementwiseProgramShader =
-    (shaderHelper: ShaderHelper, datasize: number, funcCall: ElementwiseFunctionCall,
-     additionalImplementation?: string): string => {
+    (shaderHelper: ShaderHelper, datasize: number, inputDataType: number, outputDataType: number,
+     funcCall: ElementwiseFunctionCall, additionalImplementation?: string): string => {
       const vecSize = Math.ceil(datasize / 4);
 
       let expression = '';
@@ -25,8 +25,8 @@ const createElementwiseProgramShader =
         expression = funcCall('a');
       }
 
-      const input = inputVariable('inputData', DataType.float, [vecSize], 4);
-      const output = outputVariable('outputData', DataType.float, [vecSize], 4);
+      const input = inputVariable('inputData', inputDataType, [vecSize], 4);
+      const output = outputVariable('outputData', outputDataType, [vecSize], 4);
 
       return `
   ${shaderHelper.declareVariables(input, output)}
@@ -42,23 +42,23 @@ const createElementwiseProgramShader =
     };
 
 const createElementwiseProgramInfo =
-    (metadata: ProgramMetadata, input: TensorView, funcCall: ElementwiseFunctionCall,
+    (metadata: ProgramMetadata, input: TensorView, outputDataType: number, funcCall: ElementwiseFunctionCall,
      additionalImplementation?: string): ProgramInfo => ({
       ...metadata,
-      getShaderSource: shaderHelper =>
-          createElementwiseProgramShader(shaderHelper, ShapeUtil.size(input.dims), funcCall, additionalImplementation),
-      outputs: [{dims: input.dims, dataType: input.dataType, gpuDataType: GpuDataType.default}],
+      getShaderSource: shaderHelper => createElementwiseProgramShader(
+          shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall, additionalImplementation),
+      outputs: [{dims: input.dims, dataType: outputDataType, gpuDataType: GpuDataType.default}],
       dispatchGroup: (inputTensors) =>
           ({x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)})
     });
 
 const createElementwiseProgramInfoLoader =
     (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
-     cacheKey?: string): ProgramInfoLoader => {
+     cacheKey?: string, outputDataType: number = input.dataType): ProgramInfoLoader => {
       const metadata: ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: cacheKey};
       return {
         ...metadata,
-        get: () => createElementwiseProgramInfo(metadata, input, funcCall, additionalImplementation)
+        get: () => createElementwiseProgramInfo(metadata, input, outputDataType, funcCall, additionalImplementation)
       };
     };
 
@@ -87,6 +87,37 @@ export const atan = (context: ComputeContext): void => {
 };
 export const atanh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Atanh', 'atanh'));
+};
+
+export interface CastAttributes extends AttributeWithCacheKey {
+  readonly to: number;
+  readonly saturate?: boolean;
+}
+
+export const parseCastAttributes = (attributes: Record<string, unknown>): CastAttributes =>
+    createAttributeWithCacheKey(attributes as {to: number});
+
+
+export const cast = (context: ComputeContext, attributes: CastAttributes): void => {
+  let func: ElementwiseFunctionCall;
+  switch (attributes.to) {
+    case DataType.float:
+      func = 'vec4<f32>';
+      break;
+    case DataType.uint32:
+      func = 'vec4<u32>';
+      break;
+    case DataType.int32:
+      func = 'vec4<i32>';
+      break;
+    case DataType.bool:
+      func = 'vec4<bool>';
+      break;
+    default:
+      throw new RangeError(`not supported type (specified in attribute 'to' from 'Cast' operator): ${attributes.to}`);
+  }
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'Cast', func, undefined, attributes.cacheKey, attributes.to));
 };
 
 export interface ClipAttributes extends AttributeWithCacheKey {
