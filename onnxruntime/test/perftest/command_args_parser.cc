@@ -53,9 +53,8 @@ namespace perftest {
       "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
-      "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default). \n"
-      "\t-q: [CUDA only] use separate stream for copy. \n"
-      "\t-l: [CUDA only] specify preferred layout to be NHWC. \n"
+      "\t-d [CUDA only][cudnn_conv_algorithm]: Specify CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default). \n"
+      "\t-q [CUDA only] use separate stream for copy. \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
@@ -300,9 +299,6 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         break;
       case 'q':
         test_config.run_config.do_cuda_copy_in_separate_stream = true;
-        break;
-      case 'l':
-        test_config.run_config.prefer_nhwc = true;
         break;
       case 'z':
         test_config.run_config.set_denormal_as_zero = true;
