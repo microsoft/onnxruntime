@@ -146,7 +146,6 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     return it->second;
   } else {
     const std::string& op_type = node_unit.OpType();
-    const bool is_quantized_node = qnn::TreatAsQuantizedNode(node_unit.UnitType(), op_type);
 
     bool supported = false;
     const auto* op_builder = qnn::GetOpBuilder(op_type);
@@ -157,8 +156,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     } else {
       auto status = op_builder->IsOpSupported(qnn_model_wrapper,
                                               node_unit, logger,
-                                              is_npu_backend,
-                                              is_quantized_node);
+                                              is_npu_backend);
       if (Status::OK() != status) {
         LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
                               << "` is not supported: " << status.ErrorMessage();

@@ -252,8 +252,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth")) {
       return Status::OK();
     }
-  } else if (is_quantized_node && NodeUnit::Type::SingleNode == node_unit.UnitType() &&
-             op_type == "Transpose") {
+  } else if (NodeUnit::Type::SingleNode == node_unit.UnitType() && op_type == "Transpose") {
     LOGS(logger, VERBOSE) << "Add single Transpose node: " << node_unit.Name();
     return HandleSingleTransposeNode(qnn_model_wrapper, node_unit, std::move(input_names), is_quantized_node);
   }

@@ -20,14 +20,12 @@ class IOpBuilder {
   virtual Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node,
                                const logging::Logger& logger,
-                               bool is_npu_backend,
-                               bool is_quantized_node = true) const ORT_MUST_USE_RESULT = 0;
+                               bool is_npu_backend) const ORT_MUST_USE_RESULT = 0;
 
   // Add the operator to QNN model
   virtual Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnit& node,
                                    const logging::Logger& logger,
-                                   bool is_quantized_node = true,
                                    bool do_op_validation = false) const ORT_MUST_USE_RESULT = 0;
 
   virtual std::string GetOpBuilderType() const = 0;

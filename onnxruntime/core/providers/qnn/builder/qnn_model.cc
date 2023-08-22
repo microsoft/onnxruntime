@@ -128,10 +128,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
       continue;
     }
 
-    const bool is_quantized_node = TreatAsQuantizedNode(node_unit.UnitType(), op_type);
     if (const auto* op_builder = GetOpBuilder(op_type)) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_,
-                                                        is_quantized_node));
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_));
     }
   }
 

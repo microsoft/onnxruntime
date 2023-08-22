@@ -41,8 +41,7 @@ class ConvOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_npu_backend,
-                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -83,10 +82,9 @@ class ConvOpBuilder : public BaseOpBuilder {
 Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_npu_backend,
-                                    bool is_quantized_node) const {
+                                    bool is_npu_backend) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
 
   const auto& inputs = node_unit.Inputs();

@@ -54,8 +54,7 @@ class ReduceOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_npu_backend,
-                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -182,8 +181,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
 Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
-                                      bool is_npu_backend,
-                                      bool is_quantized_node) const {
+                                      bool is_npu_backend) const {
   ReduceOpType reduce_op_type = GetReduceOpType(node_unit.OpType());
   if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_UNKNOWN) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unknown reduce operator ", node_unit.OpType());
@@ -200,7 +198,7 @@ Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF(input_shape.size() > 4, "QNN EP: HTP backend does not support Reduce ops with rank > 4.");
   }
 
-  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
+  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
 }
 
 Status ReduceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,

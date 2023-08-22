@@ -24,13 +24,11 @@ class BaseOpBuilder : public IOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_npu_backend,
-                       bool is_quantized_node) const override ORT_MUST_USE_RESULT;
+                       bool is_npu_backend) const override ORT_MUST_USE_RESULT;
 
   Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
                            const NodeUnit& node_unit,
                            const logging::Logger& logger,
-                           bool is_quantized_node,
                            bool do_op_validation) const override final ORT_MUST_USE_RESULT;
 
   std::string GetOpBuilderType() const override;

@@ -22,8 +22,7 @@ class LayerNormOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_npu_backend,
-                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -41,25 +40,16 @@ class LayerNormOpBuilder : public BaseOpBuilder {
 Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                          const NodeUnit& node_unit,
                                          const logging::Logger& logger,
-                                         bool is_npu_backend,
-                                         bool is_quantized_node) const {
-  const auto float_elem_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float");
-
-  // Check input type is float for CPU.
-  const auto& inputs = node_unit.Inputs();
-  ONNX_NAMESPACE::DataType input_data_type = inputs[0].node_arg.Type();
-  ORT_RETURN_IF(!is_npu_backend && input_data_type != float_elem_type, "QNN LayerNorm data type ", input_data_type->c_str(), " is not supported in CPU backend.");
-
+                                         bool is_npu_backend) const {
   // Also check output type is float for CPU.
   const auto& outputs = node_unit.Outputs();
-  ONNX_NAMESPACE::DataType output_data_type = outputs[0].node_arg.Type();
-  ORT_RETURN_IF(!is_npu_backend && output_data_type != float_elem_type, "QNN LayerNorm data type ", output_data_type->c_str(), " is not supported in CPU backend.");
   ORT_RETURN_IF(outputs.size() > 1, "QNN LayerNorm only support 1 output.");
 
   // QNN Op validation can also do the same work, but the message is not so clear.
   // Explicit check and provide clear message here
   if (is_npu_backend) {
     std::vector<uint32_t> input_shape;
+    const auto& inputs = node_unit.Inputs();
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0");
     const size_t input_rank = input_shape.size();
     int32_t default_axis = -1;
@@ -68,7 +58,7 @@ Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF(static_cast<size_t>(default_axis) != input_rank - 1, "QNN LayerNorm for HTP only support axis with last input dimension");
   }
 
-  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
+  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
 }
 
 Status LayerNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,

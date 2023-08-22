@@ -21,8 +21,7 @@ class LRNOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_npu_backend,
-                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -51,10 +50,9 @@ const OnnxAttrInfo<int64_t> LRNOpBuilder::onnx_size_attr = {"size", 0};
 Status LRNOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnit& node_unit,
                                    const logging::Logger& logger,
-                                   bool is_npu_backend,
-                                   bool is_quantized_node) const {
+                                   bool is_npu_backend) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
 
   const auto float_elem_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float");

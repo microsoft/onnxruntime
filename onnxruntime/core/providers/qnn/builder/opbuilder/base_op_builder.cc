@@ -22,21 +22,20 @@ std::string BaseOpBuilder::GetOpBuilderType() const {
 Status BaseOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_npu_backend,
-                                    bool is_quantized_node) const {
+                                    bool is_npu_backend) const {
   ORT_UNUSED_PARAMETER(is_npu_backend);
-  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
+  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
 }
 
 // Add operator related
 Status BaseOpBuilder::AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
                                         const NodeUnit& node_unit,
                                         const logging::Logger& logger,
-                                        bool is_quantized_node,
                                         bool do_op_validation) const {
   LOGS(logger, VERBOSE) << "QNN node builder is trying to add node. Onnx node name: [" << node_unit.Name()
                         << "] onnx node type: [" << node_unit.OpType() << "].";
 
+  bool is_quantized_node = NodeUnit::Type::QDQGroup == node_unit.UnitType() || node_unit.OpType() == "Transpose";
   std::vector<std::string> input_names;
   // Inputs & output handling mostly same for most of the Ops, just node attributes are different
   ORT_RETURN_IF_ERROR(ProcessInputs(qnn_model_wrapper, node_unit, logger,

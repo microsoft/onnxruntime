@@ -22,8 +22,7 @@ class PoolOpBuilder : public BaseOpBuilder {
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_npu_backend,
-                       bool is_quantized_node) const override final ORT_MUST_USE_RESULT;
+                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -49,18 +48,15 @@ class PoolOpBuilder : public BaseOpBuilder {
 Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_npu_backend,
-                                    bool is_quantized_node) const {
+                                    bool is_npu_backend) const {
+  ORT_UNUSED_PARAMETER(logger);
+  ORT_UNUSED_PARAMETER(is_npu_backend);
+
   if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_node, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
 
   const auto& inputs = node_unit.Inputs();
-  ONNX_NAMESPACE::DataType input_data_type = inputs[0].node_arg.Type();
-  if (!is_npu_backend && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float")) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type " + *input_data_type + " is not supported in CPU backend.");
-  }
-
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
   if (input_shape.size() != 4) {
