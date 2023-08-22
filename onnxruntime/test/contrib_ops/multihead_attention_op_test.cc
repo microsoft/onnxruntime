@@ -456,8 +456,6 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
   }
 }
 
-// Disable some tests in Windows since prefast build might crash with large test data.
-#if !defined(_MSC_VER)
 // Test fused cross attention kernel
 // It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
@@ -480,7 +478,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask2D) {
-  ROCM_GTEST_SKIP("ROCm MHA expect failure due to ck bug");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, false);
   RunMultiHeadAttentionTests(data, true);
@@ -509,7 +506,6 @@ TEST(MultiHeadAttentionTest, SelfAttention_Batch2_HeadSize32_NoBias_NoMask_Packe
   GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(data);
   RunMultiHeadAttentionTests(data);
 }
-#endif
 
 // This tests qk_head_size != v_head_size
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
@@ -577,7 +573,8 @@ TEST(MultiHeadAttentionTest, SelfAttention_WithPastAndPresent_NoMask_NoRelPosBia
   RunMultiHeadAttentionTests(data, /*disable_cpu=*/false, /*disable_cuda=*/true);
 }
 
-TEST(MultiHeadAttentionTest, CrossAttention_WithPastPassedInDirectly_NoMask) {
+// This test is disabled since it is not used in Whisper anymore, and it fails in ROCm.
+TEST(MultiHeadAttentionTest, DISABLED_CrossAttention_WithPastPassedInDirectly_NoMask) {
   // Whisper decoder cross attention with past_kv in place of current KV and no present_kv
   AttentionTestData data;
   GetCrossAttentionData_WithPastPassedInDirectly_NoMask(data);

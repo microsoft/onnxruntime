@@ -35,6 +35,13 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
 )
 
+if (NOT onnxruntime_ORT_MINIMAL_BUILD)
+  target_sources(onnxruntime_mlas PRIVATE
+    ${MLAS_SRC_DIR}/q4_dq.cpp
+    ${MLAS_SRC_DIR}/q4gemm.cpp
+  )
+endif()
+
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
 #TODO: set MASM flags properly
@@ -186,6 +193,12 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/TanhKernelFma3.asm
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
+    if (NOT onnxruntime_ORT_MINIMAL_BUILD)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
+      )
+    endif()
+
   else()
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
@@ -526,16 +539,23 @@ else()
           ${mlas_platform_srcs_avx512core}
         )
 
-	if(NOT APPLE)
+        if (NOT onnxruntime_ORT_MINIMAL_BUILD)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
-	    ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
+            ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
+          )
+          set_source_files_properties(${MLAS_SRC_DIR}/q4gemm_avx512.cpp PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+        endif()
+        if(NOT APPLE)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+	        ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
             ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
             ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
             )
           set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
           set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-	endif()
+	    endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
           onnxruntime_add_static_library(onnxruntime_mlas_x86_64 ${mlas_platform_srcs})
@@ -571,4 +591,47 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+
+if (NOT onnxruntime_ORT_MINIMAL_BUILD)
+
+  #
+  # Command line tool for quantization and de-quantization of 2-D fp32 tensors
+  # based on block-wise quantization of int4
+  #
+
+  onnxruntime_add_executable(onnxruntime_mlas_q4dq
+    ${MLAS_SRC_DIR}/q4_dq_cli.cpp
+  )
+  target_include_directories(onnxruntime_mlas_q4dq PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${MLAS_SRC_DIR})
+  set_target_properties(onnxruntime_mlas_q4dq PROPERTIES FOLDER "ONNXRuntimeTest")
+
+  target_link_libraries(onnxruntime_mlas_q4dq PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
+  if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_link_libraries(onnxruntime_mlas_q4dq PRIVATE cpuinfo)
+  endif()
+  if(NOT WIN32)
+    target_link_libraries(onnxruntime_mlas_q4dq PRIVATE nsync::nsync_cpp ${CMAKE_DL_LIBS})
+  endif()
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    target_link_libraries(onnxruntime_mlas_q4dq PRIVATE ${android_shared_libs})
+  endif()
+
+  if(WIN32)
+    target_link_libraries(onnxruntime_mlas_q4dq PRIVATE debug Dbghelp Advapi32)
+  endif()
+  if (onnxruntime_LINK_LIBATOMIC)
+    target_link_libraries(onnxruntime_mlas_q4dq PRIVATE atomic)
+  endif()
+  target_link_libraries(onnxruntime_mlas_q4dq PRIVATE Threads::Threads)
+
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+      set_target_properties(onnxruntime_mlas_q4dq PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
+    else()
+      set_target_properties(onnxruntime_mlas_q4dq PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
+    endif()
+  endif()
+
 endif()

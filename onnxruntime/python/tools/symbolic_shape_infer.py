@@ -1859,8 +1859,11 @@ class SymbolicShapeInference:
         if (
             node.input[0] in self.sympy_data_
             and [0] == axes
+            and starts is not None
             and len(starts) == 1
+            and ends is not None
             and len(ends) == 1
+            and steps is not None
             and len(steps) == 1
         ):
             input_sympy_data = self.sympy_data_[node.input[0]]
@@ -2382,27 +2385,35 @@ class SymbolicShapeInference:
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
         assert output_tensor_ranks
 
-        # set the context output separately.
-        # The first output is autograd's context.
+        from onnxruntime.training.ortmodule._custom_autograd_function_exporter import PythonOpShapeInferStore
+
+        func_name = get_attribute(node, "func_name").decode()
+        shape_inferer = PythonOpShapeInferStore.get_shape_infer(func_name)
+
+        # Set the context output separately.
+        # The first output is torch.autograd.Function''s context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-        if get_attribute(node, "name").decode() in ["_InspectActivation", "_IncrementStep"]:
-            # PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
-            # PythonOp when execution. The only difference is that
-            # 1). those ops having same number of tensor inputs and tensor outputs;
-            # 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
-            # Be noted, the count of custom autograd function might be bigger than output count, because there might
-            # be other non-tensor constant inputs (string, object, int, tuple, etc). But we did not make those constant
-            # inputs as ONNX op's input, instead they are stored in the attributes.
-            assert len(node.output) == len(node.input) + 1  # The output contains one extra context info.
-            for input_index in range(len(node.output) - 1):
-                # Process the i-th tensor outputs.
-                vi = self.known_vi_[node.output[input_index + 1]]
+
+        if shape_inferer is not None:
+            input_shapes = []
+            input_dtypes = []
+            for input_index in range(len(node.input)):
                 shape = self._get_shape(node, input_index)
-                output_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
-                vi.CopyFrom(helper.make_tensor_value_info(node.output[input_index + 1], output_dtype, shape))
+                input_shapes.append(shape)
+                input_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
+                input_dtypes.append(input_dtype)
+            output_shapes, output_dtypes = shape_inferer(node, input_shapes, input_dtypes)
+            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1)
+            for i in range(len(node.output) - 1):
+                output_index = i + 1
+                vi = self.known_vi_[node.output[output_index]]
+                vi.CopyFrom(
+                    helper.make_tensor_value_info(node.output[output_index], output_dtypes[i], output_shapes[i])
+                )
         else:
-            # Outputs after autograd's context are tensors.
+            # General shape inference for PythonOp.
+            # Outputs after torch.autograd.Function's context are tensors.
             # We assume their ranks are fixed for different model inputs.
             for i in range(len(node.output) - 1):
                 # Process the i-th tensor outputs.

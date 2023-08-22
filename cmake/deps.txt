@@ -23,9 +23,9 @@ microsoft_gsl;https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip;cf36
 microsoft_wil;https://github.com/microsoft/wil/archive/5f4caba4e7a9017816e47becdd918fcc872039ba.zip;fd119887d0d17c37adf1fc227b054befa28158ad
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.79.0.zip;c8f04e378535ededbe5af52c8f969d2dedbe73d5
-onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.14.0.zip;3c6e43a36f94addc15afe939860127a1d74a9488
-#use the last commit of 8.6-GA branch (https://github.com/onnx/onnx-tensorrt/commit/6ba67d3428e05f690145373ca87fb8d32f98df45)
-onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/6ba67d3428e05f690145373ca87fb8d32f98df45.zip;805902b4f03f09f07151e03b5ccc49968c9cc896
+onnx;https://github.com/onnx/onnx/archive/e2525550194ce3d8a2c4a3af451c9d9b3ae6650e.zip;782f23d788185887f520a90535513e244218e928
+#use the commit of supporting all the plugins and TRT 8.6-GA (https://github.com/onnx/onnx-tensorrt/commit/0462dc31ae78f48744b6141ae376df1f96d3f459)
+onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/0462dc31ae78f48744b6141ae376df1f96d3f459.zip;5ff086361956cceb81ed17453a1fd8db2aa4328d
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
 protoc_win64;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win64.zip;b4521f7ada5b260380f94c4bd7f1b7684c76969a
 protoc_win32;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win32.zip;3688010318192c46ce73213cdfb6b3e5656da874

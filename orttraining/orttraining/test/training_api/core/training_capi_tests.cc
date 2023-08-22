@@ -30,7 +30,7 @@ TEST(TrainingCApiTest, SaveCheckpoint) {
   }
   onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
   PathString checkpoint_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
 
   Ort::CheckpointState::SaveCheckpoint(checkpoint_state, checkpoint_path);
 
@@ -59,7 +59,7 @@ TEST(TrainingCApiTest, LoadCheckpointFromBuffer) {
   }
   onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
   PathString new_checkpoint_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
 
   Ort::CheckpointState::SaveCheckpoint(checkpoint_state, new_checkpoint_path);
 
