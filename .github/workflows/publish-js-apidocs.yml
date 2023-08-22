@@ -35,8 +35,8 @@ jobs:
           cd common/
           npm ci
           npx typedoc
-      # - name: Log source commit
-      #   run: git rev-parse --short HEAD > js/ApiDocs/js/source-version.txt
+      - name: Log source commit
+        run: git rev-parse --short HEAD > js/common/docs/source-version.txt
       - name: Move JS docs into site
         run: |
           rm -rf _site/docs/api/js
