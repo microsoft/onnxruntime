@@ -1045,7 +1045,7 @@ class FusionAttentionUnet(Fusion):
             [another_input, 0, None, None, 0, 0, 0],
         )
         if qkv_nodes is None:
-            return
+            return None
 
         (_, _, _, reshape_qkv, transpose_qkv, _, matmul_qkv) = qkv_nodes
 
@@ -1053,7 +1053,7 @@ class FusionAttentionUnet(Fusion):
         v_nodes = self.model.match_parent_path(matmul_qkv, ["Reshape", "Transpose", "Reshape", "Add"], [1, 0, 0, 0])
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match LoRA v path")
-            return
+            return None
         (_, _, _, matmul_add_v) = v_nodes
 
         qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Mul", "MatMul"], [0, 0, 0])
@@ -1065,12 +1065,12 @@ class FusionAttentionUnet(Fusion):
                 (_softmax_qk, _add_zero, _mul_qk, matmul_qk) = qk_nodes
             else:
                 logger.debug("fuse_attention: failed to match LoRA qk path")
-                return
+                return None
 
         q_nodes = self.model.match_parent_path(matmul_qk, ["Reshape", "Transpose", "Reshape", "Add"], [0, 0, 0, 0])
         if q_nodes is None:
             logger.debug("fuse_attention: failed to match LoRA q path")
-            return
+            return None
         (_, _transpose_q, reshape_q, matmul_add_q) = q_nodes
 
         k_nodes = self.model.match_parent_path(
@@ -1078,7 +1078,7 @@ class FusionAttentionUnet(Fusion):
         )
         if k_nodes is None:
             logger.debug("fuse_attention: failed to match LoRA k path")
-            return
+            return None
 
         (_, _, _, _, matmul_add_k) = k_nodes
 
