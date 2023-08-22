@@ -462,6 +462,24 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
   return true;
 }
 
+bool LayerNormalizationGatherActor::PostProcess(Graph& /*graph*/, Node& current_node, const SliceInfo& info_without_node,
+                                                const logging::Logger& /*logger*/,
+                                                const std::unordered_map<int, int>& /*propagate_input_indices*/,
+                                                const std::unordered_map<int, std::vector<DimCompare>>& /*all_input_cmp_rets*/,
+                                                const std::unordered_map<int, SliceInfo>& /*new_gather_infos*/) {
+  // Update LayerNormalization's axis attribute if it is scalar slice.
+  if (info_without_node.is_scalar_slice) {
+    auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
+    axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
+    auto new_axis = axis - 1;
+
+    auto& attributes = current_node.GetMutableAttributes();
+    attributes["axis"] = ONNX_NAMESPACE::MakeAttribute("axis", static_cast<int64_t>(new_axis));
+  }
+
+  return true;
+}
+
 bool SoftmaxGatherActor::PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                                   const logging::Logger& logger,
                                   std::unordered_map<int, int>& propagate_input_indices,
@@ -477,6 +495,27 @@ bool SoftmaxGatherActor::PreCheck(const Graph& graph, const Node& current_node, 
 
   return SimplePointwiseGatherActor<true>::PreCheck(graph, current_node, info, logger,
                                                     propagate_input_indices, all_input_cmp_rets, shape_update_func);
+}
+
+bool SoftmaxGatherActor::PostProcess(Graph& graph, Node& current_node, const SliceInfo& info_without_node,
+                                     const logging::Logger& logger,
+                                     const std::unordered_map<int, int>& propagate_input_indices,
+                                     const std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
+                                     const std::unordered_map<int, SliceInfo>& new_gather_infos) {
+  SimplePointwiseGatherActor<true>::PostProcess(graph, current_node, info_without_node, logger,
+                                                propagate_input_indices, all_input_cmp_rets, new_gather_infos);
+
+  // Update Softmax's axis attribute if it is scalar slice.
+  if (info_without_node.is_scalar_slice) {
+    auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
+    axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
+    auto new_axis = axis - 1;
+
+    auto& attributes = current_node.GetMutableAttributes();
+    attributes["axis"] = ONNX_NAMESPACE::MakeAttribute("axis", static_cast<int64_t>(new_axis));
+  }
+
+  return true;
 }
 
 bool ReshapeGatherActor::PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
@@ -495,6 +534,12 @@ bool ReshapeGatherActor::PreCheck(const Graph& graph, const Node& current_node, 
 
   if (!graph_utils::IsConstantInitializer(graph, current_node.InputDefs()[1]->Name())) {
     LOG_DEBUG_INFO(logger, "Skip handle the Reshape, because the new shape is not constant.");
+    return false;
+  }
+
+  // TODO(pengwa): we should support scalar slice for Reshape.
+  if (info.is_scalar_slice) {
+    LOG_DEBUG_INFO(logger, "Skip handle the Reshape, because it is scalar slice.");
     return false;
   }
 
@@ -566,6 +611,11 @@ bool ReshapeGatherActor::PreCheck(const Graph& graph, const Node& current_node, 
     return true;
   }
 
+  LOG_DEBUG_INFO(logger, "Skip handle the Reshape, new_shape_const_values[info.non_negative_axis]:" +
+                             std::to_string(new_shape_const_values[info.non_negative_axis]) +
+                             ", info.output_dim_on_axis.has_dim_value(): " +
+                             std::to_string(info.output_dim_on_axis.has_dim_value()) + ".");
+
   return false;
 }
 
@@ -604,7 +654,7 @@ bool ReshapeGatherActor::PostProcess(
     return true;
   }
 
-  // If it selected shape is a dim value, we can update the shape tensor directory.
+  // If the selected shape is a dim value, we can update the shape tensor directory.
   if (info_without_node.output_dim_on_axis.has_dim_value()) {
     new_shape_const_values[slice_axis] = info_without_node.output_dim_on_axis.dim_value();
     auto new_shape_arg =
