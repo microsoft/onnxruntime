@@ -75,7 +75,7 @@ Both C++ and Python APIs are supported.  The following instructions assume that 
 
 **1. Verify Pre-requisites:**
 
-- Visual Studio = 2019
+- Visual Studio = 2022
 - cmake (version >= 3.26)
 - python (version >= 3.9) (Python 3.9.13 64bit recommended)
 - AMD IPU driver >= 10.105.5.38 installed
