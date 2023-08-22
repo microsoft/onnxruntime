@@ -29,21 +29,6 @@ pr:
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
-trigger: none
-pr:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    exclude:
-    - docs/**
-    - README.md
-    - CONTRIBUTING.md
-    - BUILD.md
-    - 'js/web'
-    - 'js/node'
-    - 'onnxruntime/core/providers/js'
 jobs:
 - job: Onnxruntime_Linux_GPU_TrainingAPIs
 

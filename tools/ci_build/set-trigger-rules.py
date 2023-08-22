@@ -27,13 +27,17 @@ skip_js_changes = ["android-arm64-v8a-QNN-crosscompile-ci-pipeline.yml",
                    "mac-coreml-ci-pipeline.yml",
                    "mac-ios-ci-pipeline.yml",
                    "mac-ios-packaging-pipeline.yml",
+                   "mac-react-native-ci-pipeline.yml",
                    "orttraining-linux-ci-pipeline.yml",
                    "orttraining-linux-gpu-ci-pipeline.yml",
                    "orttraining-linux-gpu-ortmodule-distributed-test-ci-pipeline.yml",
                    "orttraining-linux-gpu-training-apis.yml",
                    "orttraining-mac-ci-pipeline.yml",
                    "win-ci-pipeline.yml",
-                   "win-gpu-ci-pipeline.yml"]
+                   "win-gpu-ci-pipeline.yml",
+                   "win-gpu-tensorrt-ci-pipeline.yml",
+                   "win-qnn-arm64-ci-pipeline.yml",
+                   "win-qnn-ci-pipeline.yml",]
 
 def add_trigger_filter(file_name, trigger_lines):
     # Open the file and read its lines
