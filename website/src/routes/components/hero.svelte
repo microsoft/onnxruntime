@@ -95,7 +95,7 @@
 				<p class="text-xl my-4">In a rush? Get started easily:</p>
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 					<div class="grid grid-cols-6 bg-white">
-						<div class="col-span-5">
+						<div class="col-span-5 ">
 							<Highlight language={bash} code={pythonCode} />
 						</div>
 						<button

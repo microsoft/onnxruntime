@@ -34,6 +34,3 @@
 		<a class="link link-hover">APIs</a>
 	</div>
 </footer>
-
-<style>
-</style>

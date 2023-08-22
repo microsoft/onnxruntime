@@ -16,7 +16,7 @@
 	}
 </script>
 
-<div class="container mx-auto lg:-mt-20">
+<div class="container mx-auto px-10 lg:-mt-20">
 	<div class="lg:grid pb-10 gap-10 grid-cols-2">
 		<article on:mouseenter={handleEnter} on:mouseleave={handleLeave}  class="card bg-base-300 lg:mb-48 mb-10 grid md:grid-cols-3">
             <!-- Order-first and order-last classes makes for cleaner small device viewing -->
