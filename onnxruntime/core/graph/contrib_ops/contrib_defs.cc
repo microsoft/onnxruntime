@@ -2974,7 +2974,6 @@ zero_points shape: [dim_0, dim_1]
       .Attr("N", "size of each output feature", AttributeProto::INT)
       .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
       .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a multiplier of 8.", AttributeProto::INT)
-      .Attr("has_zero_point", "specify if the quantization has zero point", AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized", "T1")
       .Input(1, "B", "1-dimensional data blob", "T2")
       .Input(2, "scales", "quantization scale", "T1")

@@ -18,40 +18,32 @@ from .onnx_model import ONNXModel
 from .quant_utils import attribute_to_kwarg, load_model_with_shape_infer
 
 
-def __q4_block_size(quant_type: int) -> int:
+def __q4_block_size() -> int:
     # happens to be 32 for now, but future quantization types
     # may have bigger block size
     return 32
 
 
-def __q4_blob_size(quant_type: int) -> int:
-    if quant_type == MatMulWeight4Quantizer.BlkQ4Sym:
-        # 4b each value, with one fp32 scale
-        blob_size = 32 // 2 + 4
-    elif quant_type == MatMulWeight4Quantizer.BlkQ4Zp8:
-        # 4b each value, with one fp32 scale and one uint8 zero point
-        blob_size = 32 // 2 + 4 + 1
-    else:
-        raise ValueError(f"Unsupported quantization type: {quant_type}")
-    return blob_size
+def __q4_blob_size(block_size: int) -> int:
+    return block_size // 2
 
 
-def __q4_buf_size(quant_type: int, rows: int, cols: int) -> int:
-    block_size = __q4_block_size(quant_type)
-    blob_size = __q4_blob_size(quant_type)
+def __q4_buf_size(rows: int, cols: int) -> int:
+    block_size = __q4_block_size()
+    blob_size = __q4_blob_size(block_size)
     k_blocks = (rows + block_size - 1) // block_size
     return k_blocks * cols * blob_size
 
 
-def int4_block_quant(quant_type: int, fp32weight: npt.ArrayLike) -> np.ndarray:
+def int4_block_quant(fp32weight: npt.ArrayLike, symmetric: bool) -> np.ndarray:
     """4b quantize fp32 weight to a blob"""
 
     if len(fp32weight.shape) != 2:
         raise ValueError("Current int4 block quantization only supports 2D tensors!")
     rows, cols = fp32weight.shape
 
-    block_size = __q4_block_size(quant_type)
-    blob_size = __q4_blob_size(quant_type)
+    block_size = __q4_block_size()
+    blob_size = __q4_blob_size(block_size)
     k_blocks = (rows + block_size - 1) // block_size
     padded_rows = k_blocks * block_size
     pad_len = padded_rows - rows
@@ -61,14 +53,15 @@ def int4_block_quant(quant_type: int, fp32weight: npt.ArrayLike) -> np.ndarray:
     # block wise quantization, each block comes from a single column
     blob_idx = 0
     packed = np.zeros((cols * k_blocks, blob_size), dtype="uint8")
+    scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
+    zero_point = np.zeros((cols * k_blocks), dtype="uint8")
     for n in range(cols):
         ncol = fp32weight[:, n]
         blks = np.split(ncol, k_blocks)
         for blk in blks:
             packed_blob = packed[blob_idx]
-            blob_idx += 1
 
-            if quant_type == MatMulWeight4Quantizer.BlkQ4Sym:
+            if symmetric:
                 amax_idx = np.argmax(np.abs(blk))
                 bmax = blk[amax_idx]
                 scale = bmax / (-8)
@@ -85,23 +78,16 @@ def int4_block_quant(quant_type: int, fp32weight: npt.ArrayLike) -> np.ndarray:
                 zp = min(15, max(0, round(zero_point_fp)))
 
             reciprocal_scale = 1.0 / scale if scale != 0 else 0.0
-            bf = struct.pack("f", scale)
-            packed_blob[0] = bf[0]
-            packed_blob[1] = bf[1]
-            packed_blob[2] = bf[2]
-            packed_blob[3] = bf[3]
-            blob_offset = 4
-            if quant_type == MatMulWeight4Quantizer.BlkQ4Zp8:
-                packed_blob[4] = zp
-                blob_offset = 5
+            scales[blob_idx] = scale
+            zero_point[blob_idx] = zp
+            blob_idx += 1
 
-            num_segs = block_size // 32
             blk_int = np.clip(np.rint(blk * reciprocal_scale + zp), 0, 15).astype("uint8")
-            segs = np.split(blk_int, num_segs)
-            for seg in segs:
-                packed_blob[blob_offset : (blob_offset + 16)] = np.bitwise_or(seg[0:16], np.left_shift(seg[16:32], 4))
-                blob_offset += 16
-    return packed.reshape(-1)
+            for i in range(0, blob_size, 2):
+                packed_blob[i/2] = blk_int[i] | blk_int[i+1] << 4
+    return (packed.reshape((cols, k_blocks, blob_size)),
+            scales.reshape((cols, k_blocks)),
+            zero_point.reshape((cols, k_blocks)))
 
 
 class MatMulWeight4Quantizer:
@@ -130,7 +116,7 @@ class MatMulWeight4Quantizer:
                     return tensor, graph
         return None, None
 
-    def _q4_matmul_node_weight(self, node: NodeProto, graph_stack: List[GraphProto]) -> NodeProto:
+    def _q4_matmul_node_weight(self, node: NodeProto, graph_stack: List[GraphProto], symmetric) -> NodeProto:
         """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
 
         if node.op_type != "MatMul":
@@ -146,8 +132,7 @@ class MatMulWeight4Quantizer:
         if len(B_array.shape) != 2:
             return node  # can only process 2-D matrix
 
-        rows, cols = B_array.shape
-        packed = int4_block_quant(self.quant_type, B_array)
+        packed, scales, zero_points = int4_block_quant(B_array, symmetric)
         B_quant = onnx.numpy_helper.from_array(packed)  # noqa: N806
         B_quant.name = B.name + "_Q4"
         Bs_graph.initializer.remove(B)
@@ -156,15 +141,27 @@ class MatMulWeight4Quantizer:
                 Bs_graph.input.remove(input)
                 break
 
-        B_shape = onnx.numpy_helper.from_array(np.array([rows, cols]).astype(np.int64))  # noqa: N806
-        B_shape.name = B.name + "_shape"
-        Bs_graph.initializer.extend([B_quant, B_shape])
+        scales_tensor = onnx.numpy_helper.from_array(scales)  # noqa: N806
+        scales_tensor.name = B.name + "_scales"
+        Bs_graph.initializer.extend([B_quant, scales_tensor])
+
+        input_names = [node.input[0], B_quant.name, scales_tensor.name]
+        if not symmetric:
+            zp_tensor = onnx.numpy_helper.from_array(zero_points)  # noqa: N806
+            zp_tensor.name = B.name + "_zero_points"
+            Bs_graph.initializer.extend([B_quant, zp_tensor])
+            input_names.append(zp_tensor.name)
 
         kwargs = {}
-        kwargs["blk_quant_type"] = self.quant_type
+        rows, cols = B_array.shape
+        kwargs["K"] = rows
+        kwargs["N"] = cols
+        kwargs["bits"] = 4
+        kwargs["block_size"] = 32
+
         matmul_q4_node = onnx.helper.make_node(
-            "MatMulFpQ4",
-            inputs=[node.input[0], B_quant.name, B_shape.name],
+            "MatMulWithQuantWeight",
+            inputs=input_names,
             outputs=[node.output[0]],
             name=node.name + "_Q4" if node.name else "",
             domain="com.microsoft",
@@ -172,7 +169,7 @@ class MatMulWeight4Quantizer:
         )
         return matmul_q4_node
 
-    def _process_subgraph(self, graph_stack: List[GraphProto]):
+    def _process_subgraph(self, graph_stack: List[GraphProto], symmetric):
         new_nodes = []
         graph = graph_stack[-1]
 
@@ -188,13 +185,13 @@ class MatMulWeight4Quantizer:
                     if attr.type == onnx.AttributeProto.GRAPH:
                         # recursive call to take care of sub-graph
                         graph_stack.append(attr.g)
-                        kv = {attr.name: self._process_subgraph(graph_stack)}
+                        kv = {attr.name: self._process_subgraph(graph_stack, symmetric)}
                     elif attr.type == onnx.AttributeProto.GRAPH:
                         value = []
                         for subgraph in attr.graphs:
                             # recursive call to take care of sub-graph
                             graph_stack.append(subgraph)
-                            value.extend([self._process_subgraph(graph_stack)])
+                            value.extend([self._process_subgraph(graph_stack, symmetric)])
                         kv = {attr.name: value}
                     else:
                         kv = attribute_to_kwarg(attr)
@@ -203,14 +200,14 @@ class MatMulWeight4Quantizer:
                     node.op_type, node.input, node.output, name=node.name, **kwargs
                 )
 
-            new_nodes.append(self._q4_matmul_node_weight(node, graph_stack))
+            new_nodes.append(self._q4_matmul_node_weight(node, graph_stack, symmetric))
 
         graph.ClearField("node")
         graph.node.extend(new_nodes)
         graph_stack.pop()
         return graph
 
-    def process(self):
+    def process(self, symmetric=True):
         # use a stack to keep track of sub-graphs
         graph_stack = [self.model.graph()]
         opset_import = self.model.opset_import()
@@ -222,7 +219,7 @@ class MatMulWeight4Quantizer:
         if not has_ms_domain:
             opset_import.extend([onnx.helper.make_opsetid("com.microsoft", 1)])
 
-        self._process_subgraph(graph_stack)
+        self._process_subgraph(graph_stack, symmetric)
 
 
 def parse_args():
@@ -244,6 +241,9 @@ set of 4b integers with a scaling factor and an optional offset.
 (onnxruntime_mlas_q4dq) that is compiled with Onnxruntime native code.
 Path to this binary needs to be provided here.""",
     )
+    parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
+    parser.set_defaults(use_external_data_format=False)
+
     return parser.parse_args()
 
 
