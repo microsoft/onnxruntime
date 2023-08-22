@@ -94,6 +94,22 @@ class IKernelExplorer {
   int repeats_{100};
 };
 
+class WithMaxTuningDurationMs {
+ public:
+  WithMaxTuningDurationMs(TuningContextT* ctx, int ms) : ctx_(ctx) {
+    original_tuning_duration_ = ctx_->GetMaxTuningDurationMs();
+    ctx_->SetMaxTuningDurationMs(ms);
+  }
+
+  ~WithMaxTuningDurationMs() {
+    ctx_->SetMaxTuningDurationMs(original_tuning_duration_);
+  }
+
+ private:
+  TuningContextT* ctx_;
+  int original_tuning_duration_;
+};
+
 pybind11::module GetKernelExplorerModule();
 
 class KernelExplorerInit {
