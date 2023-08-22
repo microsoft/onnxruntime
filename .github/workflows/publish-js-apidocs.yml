@@ -37,14 +37,14 @@ jobs:
           npx typedoc
       # - name: Log source commit
       #   run: git rev-parse --short HEAD > js/ApiDocs/js/source-version.txt
-      # - name: Move JS docs into site
-      #   run: |
-      #     rm -rf _site/docs/api/js
-      #     mkdir -p _site/docs/api
-      #     mv ../docs/api/js/common/docs
-      # - name: Upload docs artifact
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: onnxruntime-node-apidocs
-      #     path: _site
-      #     retention-days: 60
+      - name: Move JS docs into site
+        run: |
+          rm -rf _site/docs/api/js
+          mkdir -p _site/docs/api
+          mv ../docs/api/js/common/docs
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: onnxruntime-node-apidocs
+          path: _site
+          retention-days: 60
