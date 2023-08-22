@@ -10,8 +10,8 @@ import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './comm
 
 export interface SplitAttributes extends AttributeWithCacheKey {
   readonly axis: number;
-  readonly numOutputs: number;
-  readonly splitSizes: number[];
+  numOutputs: number;
+  splitSizes: number[];
 }
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
@@ -25,6 +25,8 @@ const createSplitAttributesFromInputs =
       const splitSizes: number[] = [];
       if (inputs[1].dims[0] > 0) {
         inputs[1].getBigInt64Array().forEach(v => splitSizes.push(Number(v)));
+        attributes.splitSizes = splitSizes;
+        attributes.numOutputs = attributes.splitSizes.length;
       }
       return createAttributeWithCacheKey({numOutputs: attributes.numOutputs, axis: attributes.axis, splitSizes});
     };
