@@ -41,7 +41,7 @@ jobs:
         run: |
           rm -rf _site/docs/api/js
           mkdir -p _site/docs/api
-          mv ../docs/api/js/common/docs
+          mv docs/
       - name: Upload docs artifact
         uses: actions/upload-artifact@v3
         with:
