@@ -430,10 +430,10 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t 
 }
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingRunTrainStep(ort_training_session_handle_t training_handle,
-                                                 size_t input_count,
                                                  ort_tensor_handle_t* inputs,
-                                                 size_t output_count,
+                                                 size_t input_count,
                                                  ort_tensor_handle_t* outputs,
+                                                 size_t output_count,
                                                  ort_run_options_handle_t options) {
   return CHECK_TRAINING_STATUS(TrainStep, training_handle, options, input_count, inputs, output_count, outputs);
 }
@@ -444,11 +444,11 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t 
 }
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
-                                             const ort_run_options_handle_t options,
-                                             const ort_tensor_handle_t* inputs,
+                                             ort_tensor_handle_t* inputs,
                                              size_t input_count,
                                              ort_tensor_handle_t* outputs,
-                                             size_t output_count) {
+                                             size_t output_count,
+                                             ort_run_options_handle_t options) {
   return CHECK_TRAINING_STATUS(EvalStep, training_handle,
                                options, input_count, inputs, output_count, outputs);
 }
