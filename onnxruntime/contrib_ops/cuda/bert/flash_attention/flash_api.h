@@ -36,8 +36,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 namespace flash {
-Status mha_fwd(const cudaDeviceProp& dprops,
-               cudaStream_t stream,
+Status mha_fwd(cudaStream_t stream,
                void* q,             // batch_size x seqlen_q x num_heads x head_size
                void* k,             // batch_size x seqlen_k x num_heads_k x head_size
                void* v,             // batch_size x seqlen_k x num_heads_k x head_size
@@ -52,8 +51,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const float softmax_scale,
                const bool is_causal);
 
-Status mha_varlen_fwd(const cudaDeviceProp& dprops,
-                      cudaStream_t stream,
+Status mha_varlen_fwd(cudaStream_t stream,
                       void* q,                   // half (total_q, num_heads, head_size)
                       void* k,                   // half (total_k, num_heads, head_size)
                       void* v,                   // half (total_k, num_heads, v_head_size)
@@ -71,6 +69,8 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       const bool is_causal);
 
 size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads);
+
+bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, int num_heads_k);
 
 }  // namespace flash
 }  // namespace cuda

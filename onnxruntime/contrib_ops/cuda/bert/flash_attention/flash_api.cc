@@ -107,8 +107,7 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream) {
   });
 }
 
-Status mha_fwd(const cudaDeviceProp& dprops,
-               cudaStream_t stream,
+Status mha_fwd(cudaStream_t stream,
                void* q,             // batch_size x seqlen_q x num_heads x head_size
                void* k,             // batch_size x seqlen_k x num_heads_k x head_size
                void* v,             // batch_size x seqlen_k x num_heads_k x head_size
@@ -122,14 +121,6 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const int seqlen_k,
                const float softmax_scale,
                const bool is_causal) {
-  bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
-  bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
-  ORT_ENFORCE(is_sm8x || is_sm90);
-
-  ORT_ENFORCE(batch_size > 0);
-  ORT_ENFORCE(num_heads % num_heads_k == 0);  // Number of heads in key/value must divide number of heads in query
-  ORT_ENFORCE((head_size % 8 == 0) && (head_size <= 256));
-
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
@@ -153,8 +144,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   return Status::OK();
 }
 
-Status mha_varlen_fwd(const cudaDeviceProp& dprops,
-                      cudaStream_t stream,
+Status mha_varlen_fwd(cudaStream_t stream,
                       void* q,                   // half (total_q, num_heads, head_size)
                       void* k,                   // half (total_k, num_heads, head_size)
                       void* v,                   // half (total_k, num_heads, head_size)
@@ -170,14 +160,6 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       const int max_seqlen_k_,
                       const float softmax_scale,
                       const bool is_causal) {
-  bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
-  bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
-  ORT_ENFORCE(is_sm8x || is_sm90);
-
-  ORT_ENFORCE(batch_size > 0);
-  ORT_ENFORCE(num_heads % num_heads_k == 0);  // Number of heads in key/value must divide number of heads in query
-  ORT_ENFORCE((head_size % 8 == 0) && (head_size <= 128));
-
   int max_seqlen_k = max_seqlen_k_;
   int max_seqlen_q = max_seqlen_q_;
 
@@ -202,6 +184,12 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    is_causal);
   run_mha_fwd(params, stream);
   return Status::OK();
+}
+
+bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, int num_heads_k) {
+  bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
+  bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
+  return (is_sm8x || is_sm90) && (head_size % 8 == 0) && (head_size <= 256) && (num_heads % num_heads_k == 0);
 }
 
 }  // namespace flash

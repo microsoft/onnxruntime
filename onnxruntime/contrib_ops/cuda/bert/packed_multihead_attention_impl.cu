@@ -621,7 +621,6 @@ Status FlashAttention(
   const void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
 
   ORT_RETURN_IF_ERROR(flash::mha_varlen_fwd(
-    device_prop,
     stream,
     const_cast<void*>(query),
     const_cast<void*>(key),

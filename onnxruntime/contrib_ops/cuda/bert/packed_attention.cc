@@ -324,6 +324,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
                                                    fused_runner,
+                                                   false,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
   auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
