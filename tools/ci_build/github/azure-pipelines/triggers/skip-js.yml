@@ -1,4 +1,3 @@
-##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -27,14 +26,3 @@ pr:
     - 'js/web'
     - 'js/node'
     - 'onnxruntime/core/providers/js'
-#### end trigger ####
-
-jobs:
-- template: templates/linux-ci.yml
-  parameters:
-    AgentPool : 'Linux-CPU-2019'
-    JobName: 'Linux_CI_Dev'
-    RunDockerBuildArgs: '-o ubuntu20.04 -d openvino -v 2023.0.0 -x "--use_openvino CPU_FP32 --build_wheel"'
-    DoNugetPack:  'false'
-    ArtifactName: 'drop-linux'
-    TimeoutInMinutes: 120

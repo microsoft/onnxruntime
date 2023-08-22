@@ -1,3 +1,4 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -26,6 +27,8 @@ pr:
     - 'js/web'
     - 'js/node'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 resources:
   repositories:
   - repository: manylinux
@@ -42,7 +45,7 @@ jobs:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
   workspace:
     clean: all
-  pool: onnxruntime-tensorrt-linuxbuild-T4 
+  pool: onnxruntime-tensorrt-linuxbuild-T4
   steps:
   - checkout: self
     clean: true

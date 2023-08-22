@@ -1,4 +1,4 @@
-##### trigger Don't modified it manully ####
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -28,6 +28,7 @@ pr:
     - 'js/node'
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
+
 resources:
   repositories:
   - repository: manylinux
