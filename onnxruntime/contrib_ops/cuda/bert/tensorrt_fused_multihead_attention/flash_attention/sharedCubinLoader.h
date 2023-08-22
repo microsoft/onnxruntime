@@ -166,10 +166,9 @@ class TSharedCubinKernelFactory {
     auto const id = hashID(type, sm);
     auto const findIter = mKernels.find(id);
     if (findIter == mKernels.end()) {
-      GSL_SUPPRESS(r.11)
-      auto* newKernel = new TKernelList{pKernelList, nbKernels, type, sm};
+      auto newKernel = std::make_unique<TKernelList>(pKernelList, nbKernels, type, sm);
       newKernel->loadCubinKernels();
-      mKernels.insert(std::make_pair(id, std::unique_ptr<TKernelList>(newKernel)));
+      mKernels.insert(std::make_pair(id, std::move(newKernel)));
       return newKernel;
     }
     return findIter->second.get();
