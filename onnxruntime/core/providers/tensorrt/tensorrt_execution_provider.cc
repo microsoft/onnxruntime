@@ -2314,7 +2314,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             size_t engine_size = serializedModel->size();
             if (engine_decryption_enable_) {
               // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
-              if(engine_encryption_ != nullptr) {
+              if (engine_encryption_ != nullptr) {
                 if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
                   return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                          "TensorRT EP call to engine encryption library failed");
@@ -2679,7 +2679,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             size_t engine_size = serializedModel->size();
             if (trt_state->engine_decryption_enable) {
               // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
-              if(trt_state->engine_encryption != nullptr) {
+              if (trt_state->engine_encryption != nullptr) {
                 if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
                   return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                          "TensorRT EP could not call engine encryption function encrypt");
