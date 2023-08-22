@@ -33,8 +33,8 @@
 					{/each}
 				</div>
 			</div>
-			<figure>
-				<img src={imgsrc} alt={imgalt} />
+			<figure >
+				<img class="hidden md:inline" src={imgsrc} alt={imgalt} />
 			</figure>
 		</div>
 	</a>

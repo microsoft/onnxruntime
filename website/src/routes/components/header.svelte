@@ -37,7 +37,6 @@
 				<li>
 					<p>Community</p>
 					<ul class="p-2">
-						<li><a href="/about">About ORT</a></li>
 						<li><a href="/testimonials">Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime" target="_blank"
@@ -49,19 +48,6 @@
 							<a href="https://www.linkedin.com/company/onnxruntime/" target="_blank"
 								><div class="w-4 h-4"><FaLinkedinIn /></div>
 								LinkedIn</a
-							>
-						</li>
-						<li>
-							<a href="https://www.tiktok.com/@onnxruntimeai" target="_blank"
-								><svg
-									xmlns="http://www.w3.org/2000/svg"
-									height="1em"
-									viewBox="0 0 448 512"
-									fill="currentColor"
-									><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
-										d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"
-									/></svg
-								>TikTok</a
 							>
 						</li>
 					</ul>
@@ -93,7 +79,6 @@
 				<details class="z-[1]">
 					<summary>Community</summary>
 					<ul class="p-2">
-						<li><a href="/about">About ORT</a></li>
 						<li><a href="/testimonials">Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime" target="_blank"
@@ -105,19 +90,6 @@
 							<a href="https://www.linkedin.com/company/onnxruntime/" target="_blank"
 								><div class="w-4 h-4"><FaLinkedinIn /></div>
 								LinkedIn</a
-							>
-						</li>
-						<li>
-							<a href="https://www.tiktok.com/@onnxruntimeai" target="_blank"
-								><svg
-									xmlns="http://www.w3.org/2000/svg"
-									height="1em"
-									viewBox="0 0 448 512"
-									fill="currentColor"
-									><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
-										d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"
-									/></svg
-								>TikTok</a
 							>
 						</li>
 					</ul>

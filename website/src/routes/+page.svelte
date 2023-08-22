@@ -36,9 +36,9 @@
 <CodeBlocks/>
 <!-- <Stats/> -->
 <!-- <Table/> -->
-<Performance/>
-<CrossPlatform/>
 <GenerativeAi/>
+<CrossPlatform/>
+<Performance/>
 <TrainingInference/>
 <WebMobile/>
 

@@ -117,13 +117,12 @@
 						>
 					</div>
 				</div>
+				<!-- <p class="text-lg mt-2">
+					<a class="underline" href="http://">More interested in training? More info here.</a>
+				</p> -->
 				<p class="text-lg mt-2">
-					Don't see your favourite platform? We support <a class="underline" href="http://">many</a
-					>!
+					<a class="underline" href="http://">Don't see your favourite platform? We support many!</a>
 				</p>
-				<!-- <div class="grid grid-cols-2">
-					<p class="text-lg mt-2">Don't see your favourite platform? </p><a href="https://" class="btn btn-secondary">Get Started with another</a>
-				</div> -->
 			</div>
 			<div class="hidden lg:inline">
 				<OnnxIcon width={233} height={220} />

@@ -26,7 +26,7 @@
 					ONNX Runtime can be used to accelerate both large model training and on-device training.
 				</p>
 				<div class="card-actions">
-					<button class="btn btn-primary">Learn More →</button>
+					<a class="btn btn-primary">ORT Training Docs →</a>
 				</div>
 			</div>
 			<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
@@ -39,13 +39,13 @@
 		</article>
 		<article on:mouseenter={handleEnter} on:mouseleave={handleLeave}  class="card bg-base-300 lg:mt-48 grid md:grid-cols-3">
 			<div class="card-body col-span-2 order-last md:order-first">
-				<h2 class="card-title">ORT Inferencing</h2>
+				<h2 class="card-title">ORT Inference</h2>
 				<p>
 					ONNX Runtime Inference powers machine learning models in key Microsoft products and
 					services across Office, Azure, Bing, as well as dozens of community projects.
 				</p>
 				<div class="card-actions">
-					<button class="btn btn-primary">Learn More →</button>
+					<a class="btn btn-primary">Ort Inference Docs →</a>
 				</div>
 			</div>
 			<figure class="md:col-span-1 col-span-2 order-first sm:order-last">

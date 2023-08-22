@@ -13,6 +13,6 @@
 				performance for specific use cases and models..
 			</p>
 		</div>
-    <img class="mx-auto" src="https://placehold.co/600x400" alt="" />
+    <img class="m-auto" src="https://placehold.co/600x300" alt="" />
 	</div>
 </div>
