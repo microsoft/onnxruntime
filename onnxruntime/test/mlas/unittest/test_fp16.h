@@ -13,9 +13,9 @@ Abstract:
     Define fp16 type before it is available in all compilers
 
 --*/
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
 #pragma once
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "test_util.h"
 #include "mlas_float16.h"

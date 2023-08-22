@@ -13,9 +13,9 @@ Abstract:
     Tests for MLAS half precision GEMM.
 
 --*/
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
 #pragma once
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "test_fp16.h"
 
