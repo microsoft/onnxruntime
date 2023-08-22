@@ -937,9 +937,11 @@ TEST_F(GraphTransformationTests, ConstantFoldingQDQNodeUnitGraphOutput) {
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
-// Simple (com.microsoft) QDQ Node Unit but shouldn't be constant folded as the node in the middle produces a graph output
+// Simple (com.microsoft) QDQ Node Unit but shouldn't be constant folded as the node in the middle produces a
+// graph output
 TEST_F(GraphTransformationTests, ConstantFoldingMsDomainQDQNodeUnitGraphOutput) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx";
+  constexpr const ORTCHAR_T* model_uri =
+      MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();

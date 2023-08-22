@@ -203,8 +203,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // We currently constant fold using the CPU EP only.
       // If we can't find a CPU kernel for this node, then we can't proceed with constant folding.
       //
-      // TODO: Support constant folding with other execution providers. For example, we may be able to use
-      // a CUDA kernel to constant fold operators with data types not supported by the CPU EP kernel.
+      // TODO(adrianlizarraga): Support constant folding with other execution providers. For example, we may be able
+      // to use a CUDA kernel to constant fold operators with data types not supported by the CPU EP kernel.
       if (kernel == nullptr) {
         LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
                               << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";

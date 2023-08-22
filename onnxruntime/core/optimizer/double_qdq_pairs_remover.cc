@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/optimizer/double_qdq_pairs_remover.h"
-
+#include <cassert>
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include <cassert>
 
 namespace onnxruntime {
 
@@ -87,8 +86,8 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
   // - The DQ and Q ops within a pair must have the same scale and zero-point.
   //   However, each pair is allowed to have different scales and zero-points.
   //
-  // TODO: IsQDQPairSupported() requires an explicit zero-point input, but technically a default value of 0
-  // could be fine.
+  // TODO(adrianlizarraga): IsQDQPairSupported() requires an explicit zero-point input, but technically a default
+  // value of 0 could be fine.
   if (!QDQ::IsQDQPairSupported(*parent, *self, get_constant_initializer, graph.ModelPath()) ||
       !QDQ::IsQDQPairSupported(*child, *grandchild, get_constant_initializer, graph.ModelPath())) {
     return false;
@@ -119,7 +118,7 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
 template <typename T>
 bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2,
                                                      float& new_scale, T& new_zero_point, bool& skip_reset) {
-  // TODO: Handle case where the zero-point input is not explicitly provided and defaults to 0.
+  // TODO(adrianlizarraga): Handle case where the zero-point input is not explicitly provided and defaults to 0.
 
   // scale & zero point share same initializer, no need to reset the value
   const std::string& node1_scale_name = node1.InputDefs()[InputIndex::SCALE_ID]->Name();
