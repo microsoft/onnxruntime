@@ -2262,7 +2262,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + encrypted_engine_cache_path;
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
+                                   "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
           }
         } else {
           // Set INT8 per tensor dynamic range
@@ -2313,16 +2313,21 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
             size_t engine_size = serializedModel->size();
             if (engine_decryption_enable_) {
-              // Encrypt engine
-              if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                       "TensorRT EP could not call engine encryption function encrypt");
+              // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
+              if(engine_encryption_ != nullptr) {
+                if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
+                  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                         "TensorRT EP call to engine encryption library failed");
+                }
+                LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
+              } else {
+                LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. No cache is written to disk";
               }
             } else {
               std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
               file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
+              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized engine " + engine_cache_path;
             }
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized engine " + engine_cache_path;
           }
           // serialize and save timing cache
           if (timing_cache_enable_) {
@@ -2673,16 +2678,21 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
             size_t engine_size = serializedModel->size();
             if (trt_state->engine_decryption_enable) {
-              // Encrypt engine
-              if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                       "TensorRT EP could not call engine encryption function encrypt");
+              // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
+              if(trt_state->engine_encryption != nullptr) {
+                if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
+                  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                         "TensorRT EP could not call engine encryption function encrypt");
+                }
+                LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
+              } else {
+                LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. No cache is written to disk";
               }
             } else {
               std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
               file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
+              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
             }
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
           }
 
           // serialize and save timing cache
