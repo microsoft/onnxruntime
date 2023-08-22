@@ -28,7 +28,7 @@ const createSplitAttributesFromInputs =
         inputs[1].getBigInt64Array().forEach(v => splitSizes.push(Number(v)));
         numOutputs = splitSizes.length;
       }
-      return createAttributeWithCacheKey({numOutputs: numOutputs, axis: attributes.axis, splitSizes});
+      return createAttributeWithCacheKey({numOutputs, axis: attributes.axis, splitSizes});
     };
 
 const calculateOutputIndexImpl = (numberOfTensors: number): string => `
