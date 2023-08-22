@@ -25,7 +25,7 @@ Status LaunchSkipLayerNormKernel(
     int hidden_size,                // hidden size, it is the leading dimension (ld)
     int element_count,              // number of elements in input tensor
     bool skip_broadcasted,          // whether skip tensor is broadcasted
-    int skip_size,                  // size of skip tensor
+    int skip_size                   // size of skip tensor
 );
 
 }  // namespace rocm
