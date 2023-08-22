@@ -10,4 +10,4 @@ void run_mha_fwd_<cutlass::half_t, 32>(Flash_fwd_params& params, cudaStream_t st
   run_mha_fwd_hdim32<cutlass::half_t>(params, stream);
 }
 
-#endif // USE_FLASH_ATTENTION
+#endif

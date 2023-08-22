@@ -12,7 +12,7 @@
 #include <cutlass/cutlass.h>
 #include <cutlass/array.h>
 
-#include "utils.h"
+#include "contrib_ops/cuda/bert/flash_attention/utils.h"
 
 namespace flash {
 

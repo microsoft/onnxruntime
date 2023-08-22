@@ -5,10 +5,10 @@
 
 #if USE_FLASH_ATTENTION
 
-#include "cute/algorithm/copy.hpp"
+#include <cute/algorithm/copy.hpp>
 
-#include "cutlass/cutlass.h"
-#include "cutlass/layout/layout.h"
+#include <cutlass/cutlass.h>
+#include <cutlass/layout/layout.h>
 #include <cutlass/numeric_types.h>
 
 using namespace cute;
@@ -47,7 +47,8 @@ struct Flash_kernel_traits {
 };
 
 // If Share_Q_K_smem is true, that forces Is_Q_in_regs to be true
-template <int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_, bool Is_Q_in_regs_ = false, bool Share_Q_K_smem_ = false, typename elem_type = cutlass::half_t,
+template <int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_,
+          bool Is_Q_in_regs_ = false, bool Share_Q_K_smem_ = false, typename elem_type = cutlass::half_t,
           typename Base = Flash_kernel_traits<kHeadDim_, kBlockM_, kBlockN_, kNWarps_, elem_type>>
 struct Flash_fwd_kernel_traits : public Base {
   using Element = typename Base::Element;

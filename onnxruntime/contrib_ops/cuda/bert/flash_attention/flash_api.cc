@@ -4,11 +4,11 @@
 
 #if USE_FLASH_ATTENTION
 
-#include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include <cutlass/numeric_types.h>
-
-#include "flash.h"
-#include "static_switch.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash.h"
+#include "contrib_ops/cuda/bert/flash_attention/static_switch.h"
 
 namespace onnxruntime {
 namespace contrib {
