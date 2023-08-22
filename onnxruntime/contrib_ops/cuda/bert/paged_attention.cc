@@ -90,12 +90,15 @@ PagedAttention<T>::PagedAttention(const OpKernelInfo& info) : CudaKernel(info) {
   head_size_ = static_cast<int32_t>(head_size);
   ORT_ENFORCE(info.GetAttr("scale", &scale_).IsOK() && scale_ > 0);
   ORT_ENFORCE(info.GetAttr("mask_type", &mask_type_).IsOK() && (mask_type_ == "normal" || mask_type_ == "alibi" || mask_type_ == "RoPE"));
-  const std::string lib_path = ParseEnvironmentVariableWithDefault<std::string>("flash_attention_v2", "/home/jicwen/work/flash-attention/build/Debug/libflashattn.so");
+  const bool use_flash_attn_v2 = ParseEnvironmentVariableWithDefault<bool>("use_flash_attn_v2", true);
+  if (use_flash_attn_v2) {
+    const std::string lib_path = ParseEnvironmentVariableWithDefault<std::string>("flash_attention_v2", "/home/jicwen/work/flash-attention/build/Debug/libflashattn.so");
 
-  void* fd = dlopen(lib_path.c_str(), RTLD_LOCAL | RTLD_NOW);
+    void* fd = dlopen(lib_path.c_str(), RTLD_LOCAL | RTLD_NOW);
 
-  flash_attention_v2_kernel_ = dlsym(fd, "mha_varlen_fwd_c");
-  dlclose(fd);
+    flash_attention_v2_kernel_ = dlsym(fd, "mha_varlen_fwd_c");
+    //dlclose(fd);
+  }
 }
 
 void flash_attention_v2(const cudaDeviceProp& device_prop, cudaStream_t stream,
@@ -104,7 +107,6 @@ void flash_attention_v2(const cudaDeviceProp& device_prop, cudaStream_t stream,
                         Tensor* output, const InputMetadata* input_metadata,
                         PackedAttentionParameters params, void* flash_attention_v2_kernel) {
   int32_t sm = device_prop.major * 10 + device_prop.minor;
-  ORT_ENFORCE(sm >= 70);
   at::Tensor query_tensor = {1, query->DataRaw(), {input_metadata->num_prompt_tokens, params.num_heads, params.head_size}};
   at::Tensor key_tensor = {1, key->DataRaw(), {input_metadata->num_prompt_tokens, params.num_heads, params.head_size}};
   at::Tensor value_tensor = {1, value->DataRaw(), {input_metadata->num_prompt_tokens, params.num_heads, params.head_size}};
@@ -126,11 +128,10 @@ void flash_attention_v2(const cudaDeviceProp& device_prop, cudaStream_t stream,
                                 const at::Tensor& cu_seqlens_q,            // b+1
                                 const at::Tensor& cu_seqlens_k,            // b+1
                                 const int max_seqlen_q, const int max_seqlen_k,
-                                const float softmax_scale, const bool is_causal);
+                                const float softmax_scale, const bool is_causal,int sm);
   mha_varlen_fwd_c* func = reinterpret_cast<mha_varlen_fwd_c*>(flash_attention_v2_kernel);
-
   (*func)(stream, query_tensor, key_tensor, value_tensor, softmax_lse, output_tensor, cu_seqlens_q, cu_seqlens_q, input_metadata->attn_bias.q_seqinfo.max_seqlen,
-          input_metadata->attn_bias.q_seqinfo.max_seqlen, params.scale, true);
+          input_metadata->attn_bias.q_seqinfo.max_seqlen, params.scale, true, sm);
 }
 
 template <typename T>
@@ -221,10 +222,9 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   int64_t num_prompt_tokens = std::min(query->Shape()[0], input_metadata->num_prompt_tokens);
   if (num_prompt_tokens > 0) {
-    const bool use_flash_attn_v2 = ParseEnvironmentVariableWithDefault<bool>("use_flash_attn_v2", true);
-    if (use_flash_attn_v2 && device_prop.major * 10 + device_prop.minor >= 80) {
+    if (flash_attention_v2_kernel_ && device_prop.major >= 8) {
       auto workspace = GetScratchBuffer<float>(static_cast<size_t>(
-          input_metadata->attn_bias.batchsize * parameters.num_heads * input_metadata->attn_bias.q_seqinfo.max_seqlen),
+                                                   input_metadata->attn_bias.batchsize * parameters.num_heads * input_metadata->attn_bias.q_seqinfo.max_seqlen),
                                                context->GetComputeStream());
 
       flash_attention_v2(device_prop, Stream(context),
