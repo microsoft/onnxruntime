@@ -60,47 +60,47 @@ struct TFloatTypeFrom<uint16_t> {
 // TODO, optimize these inline functions
 inline __device__ __half2 Dequantize(char2 ch2, const float scale) {
   __half2 h2;
-  h2.x = __float2half_rn(scale * ch2.x);
-  h2.y = __float2half_rn(scale * ch2.y);
+  h2.x = __float2half_rn(scale * ch2.x / 127.0f);
+  h2.y = __float2half_rn(scale * ch2.y / 127.0f);
   return h2;
 }
 
 inline __device__ half4 Dequantize(char4 ch4, const float scale) {
   half4 h4;
-  h4.x = __float2half_rn(scale * ch4.x);
-  h4.y = __float2half_rn(scale * ch4.y);
-  h4.z = __float2half_rn(scale * ch4.z);
-  h4.w = __float2half_rn(scale * ch4.w);
+  h4.x = __float2half_rn(scale * ch4.x / 127.0f);
+  h4.y = __float2half_rn(scale * ch4.y / 127.0f);
+  h4.z = __float2half_rn(scale * ch4.z / 127.0f);
+  h4.w = __float2half_rn(scale * ch4.w / 127.0f);
   return h4;
 }
 
 template <typename TVec_kernel>
-inline __device__ TVec_kernel LoadQ8(const TVec_kernel* q8, const float unit_scale);
+inline __device__ TVec_kernel LoadQ8(const TVec_kernel* q8, const float scale);
 
 template <>
-inline __device__ uint32_t LoadQ8(const uint32_t* q8, const float unit_scale) {
+inline __device__ uint32_t LoadQ8(const uint32_t* q8, const float scale) {
   char2 ch2 = *(const char2*)q8;
   union {
     __half2 h2;
     uint32_t whole;
   } vec;
-  vec.h2 = Dequantize(ch2, unit_scale);
+  vec.h2 = Dequantize(ch2, scale);
   return vec.whole;
 }
 
 template <>
-inline __device__ uint2 LoadQ8(const uint2* q8, const float unit_scale) {
+inline __device__ uint2 LoadQ8(const uint2* q8, const float scale) {
   char4 ch4 = *(const char4*)q8;
   union __align__(8) {
     half4 h4;
     uint2 whole;
   } vec;
-  vec.h4 = Dequantize(ch4, unit_scale);
+  vec.h4 = Dequantize(ch4, scale);
   return vec.whole;
 }
 
 template <>
-inline __device__ uint4 LoadQ8(const uint4* q8, const float unit_scale) {
+inline __device__ uint4 LoadQ8(const uint4* q8, const float scale) {
   struct __align__(8) Char8 {
     char4 first;
     char4 second;
@@ -113,13 +113,13 @@ inline __device__ uint4 LoadQ8(const uint4* q8, const float unit_scale) {
     };
     uint4 whole;
   } vec;
-  vec.first = Dequantize(ch8.first, unit_scale);
-  vec.second = Dequantize(ch8.second, unit_scale);
+  vec.first = Dequantize(ch8.first, scale);
+  vec.second = Dequantize(ch8.second, scale);
   return vec.whole;
 }
 
 template <typename TVec>
-inline __device__ float MaxAbsFloat(TVec v);
+inline __device__ float MaxAbsFloat(const TVec v);
 
 template <>
 inline __device__ float MaxAbsFloat(const uint32_t v) {
@@ -145,19 +145,19 @@ inline __device__ float MaxAbsFloat(const uint4 v) {
 }
 
 template <typename TVec>
-inline __device__ void QuantizeTo(int8_t* dst, TVec v, float unit_scale);
+inline __device__ void QuantizeTo(int8_t* dst, const TVec v, const float scale);
 
 template <>
-inline __device__ void QuantizeTo(int8_t* dst, uint32_t v, float unit_scale) {
+inline __device__ void QuantizeTo(int8_t* dst, const uint32_t v, const float scale) {
   union {
     uint32_t u;
     __half2 h2;
   } uh2;
   uh2.u = v;
   char2 q;
-  if (unit_scale) {
-    q.x = (char)(min(127, max(-127, int((float)uh2.h2.x / unit_scale))));
-    q.y = (char)(min(127, max(-127, int((float)uh2.h2.y / unit_scale))));
+  if (scale) {
+    q.x = (char)(min(127, max(-127, int((float)uh2.h2.x / scale * 127.0f))));
+    q.y = (char)(min(127, max(-127, int((float)uh2.h2.y / scale * 127.0f))));
   } else {
     q.x = 0;
     q.y = 0;
@@ -166,18 +166,18 @@ inline __device__ void QuantizeTo(int8_t* dst, uint32_t v, float unit_scale) {
 }
 
 template <>
-inline __device__ void QuantizeTo(int8_t* dst, uint2 v, float unit_scale) {
+inline __device__ void QuantizeTo(int8_t* dst, const uint2 v, const float scale) {
   union {
     uint2 u2;
     half4 h4;
   } uh4;
   uh4.u2 = v;
-  if (unit_scale) {
+  if (scale) {
     char4 q;
-    q.x = (char)(min(127, max(-127, int((float)uh4.h4.x / unit_scale))));
-    q.y = (char)(min(127, max(-127, int((float)uh4.h4.y / unit_scale))));
-    q.z = (char)(min(127, max(-127, int((float)uh4.h4.z / unit_scale))));
-    q.w = (char)(min(127, max(-127, int((float)uh4.h4.w / unit_scale))));
+    q.x = (char)(min(127, max(-127, int((float)uh4.h4.x / scale * 127.0f))));
+    q.y = (char)(min(127, max(-127, int((float)uh4.h4.y / scale * 127.0f))));
+    q.z = (char)(min(127, max(-127, int((float)uh4.h4.z / scale * 127.0f))));
+    q.w = (char)(min(127, max(-127, int((float)uh4.h4.w / scale * 127.0f))));
     *(char4*)dst = q;
   } else {
     *(int*)dst = 0;
@@ -185,9 +185,9 @@ inline __device__ void QuantizeTo(int8_t* dst, uint2 v, float unit_scale) {
 }
 
 template <>
-inline __device__ void QuantizeTo(int8_t* dst, uint4 v, float unit_scale) {
-  QuantizeTo(dst, uint2{v.x, v.y}, unit_scale);
-  QuantizeTo(dst + 4, uint2{v.z, v.w}, unit_scale);
+inline __device__ void QuantizeTo(int8_t* dst, const uint4 v, const float scale) {
+  QuantizeTo(dst, uint2{v.x, v.y}, scale);
+  QuantizeTo(dst + 4, uint2{v.z, v.w}, scale);
 }
 
 template <
@@ -443,7 +443,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       int offset = bhi * params.max_sequence_length * head_size + co * params.max_sequence_length * QK_ELTS_IN_16B +
                    tlength * QK_ELTS_IN_16B + ci;
       // Trigger the stores to global memory.
-      QuantizeTo(&params_k_cache[offset], vec_conversion<Qk_vec_m, Qk_vec_k>(k), max_abs_k / 127.0f);
+      QuantizeTo(&params_k_cache[offset], vec_conversion<Qk_vec_m, Qk_vec_k>(k), max_abs_k);
       if (tidx % qk_threads_per_scale == 0) {
         const int scale_offset = (bhi * params.max_sequence_length + tlength) *scales_per_head + tidx / qk_threads_per_scale;
         *(((TFp*)params.k_scale) + scale_offset) = (TFp)max_abs_k;
@@ -536,7 +536,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
     int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + ki / params.quant_kv_block_size;
-    float scale_of_k = ((ti < tlength) ? (float)*(((TFp*)params.k_scale) + scale_offset) : 0.0f) / 127.0f;
+    float scale_of_k = ((ti < tlength) ? (float)*(((TFp*)params.k_scale) + scale_offset) : 0.0f);
     int next_quant_block_ki = ((ki + params.quant_kv_block_size - 1) / params.quant_kv_block_size + 1) * params.quant_kv_block_size;
 
     // The keys loaded from the key cache.
@@ -550,7 +550,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
         if (ki + (ii * K_VEC_SIZE) >= next_quant_block_ki) {
           scale_offset++;
           next_quant_block_ki += params.quant_kv_block_size;
-          scale_of_k = (float)*(((TFp*)params.k_scale) + scale_offset) / 127.0f;
+          scale_of_k = (float)*(((TFp*)params.k_scale) + scale_offset);
         }
         k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
             reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), scale_of_k));
@@ -693,7 +693,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
     const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + vi / params.quant_kv_block_size;
-    float scale_of_v = (float)*(((TFp*)params.v_scale) + scale_offset) / 127.0f;
+    float scale_of_v = (float)*(((TFp*)params.v_scale) + scale_offset);
 
     // Load the values from the cache.
     // V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
@@ -725,7 +725,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     // Store the values with bias back to global memory in the cache for V.
     //*reinterpret_cast<V_vec_m*>(&v_cache[tlength * head_size]) = vec_conversion<V_vec_m, V_vec_k>(v);
-    QuantizeTo(&v_cache[tlength * head_size], vec_conversion<V_vec_m, V_vec_k>(v), max_abs_v / 127.0f);
+    QuantizeTo(&v_cache[tlength * head_size], vec_conversion<V_vec_m, V_vec_k>(v), max_abs_v);
     if (vi % params.quant_kv_block_size == 0) {
       const int scales_per_head = head_size / params.quant_kv_block_size;
       const int scale_offset = (bhi * params.max_sequence_length + tlength) * scales_per_head + vi / params.quant_kv_block_size;

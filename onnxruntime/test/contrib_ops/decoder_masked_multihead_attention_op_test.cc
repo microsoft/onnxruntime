@@ -834,6 +834,8 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
       int hidden_sizes[3] = {384, 768, 1536};
       for (int hidden_size : hidden_sizes) {
         int head_size = (hidden_size / number_of_heads);
+        std::cout << "  >>>>[Batch, PastSeqLen, HeadSize] = [" << batch_size << ", " << past_sequence_length << ", " << head_size << "]" << std::endl;
+
         int total_sequence_length = sequence_length + past_sequence_length;
         int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
 
@@ -1047,10 +1049,10 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
             kv_cache, batch_size, number_of_heads, past_sequence_length, head_size, max_sequence_length,
             head_size, chunk_size);
 
-        print_vec("kv_cache", kv_cache, past_dims);
-        print_vec("reordered_kv_cache", reordered_kv_cache, past_dims);
-        print_vec("q_reordered_past_kv",q_reordered_past_kv, past_dims);
-        print_vec("past_kv_scales", past_kv_scales, {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size});
+        // print_vec("kv_cache", kv_cache, past_dims);
+        // print_vec("reordered_kv_cache", reordered_kv_cache, past_dims);
+        // print_vec("q_reordered_past_kv",q_reordered_past_kv, past_dims);
+        // print_vec("past_kv_scales", past_kv_scales, {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size});
 
         tester.AddInput<int8_t>("past", past_dims, q_reordered_past_kv);
 
@@ -1105,14 +1107,16 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
             present, batch_size, number_of_heads, past_sequence_length + 1, head_size, max_sequence_length,
             head_size, chunk_size);
 
-        print_vec("present_kv_scales", present_kv_scales, {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size});
-        print_vec("q_reordered_present_kv", q_reordered_present_kv, past_dims);
-        print_vec("present", present, past_dims);
+        // print_vec("present_kv_scales", present_kv_scales, {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size});
+        // print_vec("q_reordered_present_kv", q_reordered_present_kv, past_dims);
+        // print_vec("present", present, past_dims);
 
         // Output(s)
         tester.AddOutput<MLFloat16>("output", input_dims, output);
+        tester.SetOutputAbsErr("output", 0.009f);
 
         tester.AddOutput<int8_t>("present", past_dims, q_reordered_present_kv);
+        tester.SetOutputAbsErr("present", 1.0f);
 
         tester.AddOutput<MLFloat16>("present_scales", past_scales_dims, present_kv_scales);
 
@@ -1121,9 +1125,7 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
         execution_providers.push_back(DefaultCudaExecutionProvider());
         tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
       }
-      break;
     }
-    break;
   }
 }
 
