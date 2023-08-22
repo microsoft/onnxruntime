@@ -7,17 +7,14 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
 template <class T>
-Status MatMul4BitsWeight(
+Status Dequantize4Bits(
     T* output,
-    const T* a_data,
-    const uint8_t* b_data_quant,
+    const uint8_t* quant_data,
     const T* scales_data,
     const uint8_t* zero_points,
-    int m,
-    int n,
     int k,
+    int n,
     int block_size,
     cudaStream_t stream);
 

@@ -12,6 +12,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "matmul_with_quant_weight.cuh"
+#include "dequantize_blockwise.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -98,6 +99,36 @@ Status MatMulWithQuantWeight<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
+  bool transa = false;
+  bool transb = true;
+  MatMulComputeHelper helper;
+  TensorShape b_shape({N_, K_});
+  ORT_RETURN_IF_ERROR(
+      helper.Compute(a->Shape(), b_shape, transa, transb));
+
+  Tensor* Y = ctx->Output(0, helper.OutputShape());
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0) return Status::OK();
+
+  cudaMemsetAsync(
+      Y->MutableData<T>(),
+      0,
+      sizeof(T) * Y->Shape().Size(),
+      static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
+
+  ORT_RETURN_IF_ERROR(MatMul4BitsWeight(
+      reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+      reinterpret_cast<const CudaT*>(a_data),
+      blob_data,
+      reinterpret_cast<const CudaT*>(scales_data),
+      zero_points_data,
+      SafeInt<int>(helper.M()),
+      SafeInt<int>(helper.N()),
+      SafeInt<int>(helper.K()),
+      SafeInt<int>(block_size_),
+      static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+
+#if 0
   IAllocatorUniquePtr<T> b_data_ptr = GetScratchBuffer<T>(K_ * N_, ctx->GetComputeStream());
   auto* b_data = b_data_ptr.get();
   ORT_RETURN_IF_ERROR(Dequantize4Bits(reinterpret_cast<CudaT*>(b_data),
@@ -114,19 +145,8 @@ Status MatMulWithQuantWeight<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Ignore the transpose flag if rank of input being 1.
   // Be noted: numpy.transpose on vector does not change anything.
-  bool transa = false;
-  bool transb = true;
 
   delete[] b_data_cpu;
-
-  MatMulComputeHelper helper;
-  TensorShape b_shape({N_, K_});
-  ORT_RETURN_IF_ERROR(
-      helper.Compute(a->Shape(), b_shape, transa, transb));
-
-  Tensor* Y = ctx->Output(0, helper.OutputShape());
-  // Bail out early if the output is going to be empty
-  if (Y->Shape().Size() == 0) return Status::OK();
 
   const CudaT alpha = ToCudaType<T>::FromFloat(1.f);
   const CudaT zero = ToCudaType<T>::FromFloat(0.f);
@@ -178,6 +198,7 @@ Status MatMulWithQuantWeight<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           static_cast<int>(batch_count),
                                                           device_prop));
   }
+#endif
   return Status::OK();
 }
 

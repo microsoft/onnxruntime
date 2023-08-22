@@ -27,8 +27,8 @@ namespace test {
 TEST(MatMulWithQuantWeight, MatMul2DSym) {
   // (100 x 41) X (41 x 288)
   constexpr int64_t M = 100;
-  constexpr int64_t N = 4;
-  constexpr int64_t K = 32;
+  constexpr int64_t N = 288;
+  constexpr int64_t K = 41;
 
   OpTester test("MatMulWithQuantWeight", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", K);
