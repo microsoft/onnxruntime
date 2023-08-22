@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import copy
+import logging
 import os
 from typing import List, Optional, Set, Tuple, Union
 
@@ -74,6 +75,10 @@ def _gradient_model_for(
     options: Optional[SessionOptions] = None,
 ) -> onnx.ModelProto:
     """Builds the gradient graph on top of the given input forward only graph."""
+
+    logging.debug(
+        "The loss output is %s.\n The gradient graph will be built starting from %s_grad.", loss_name, loss_name
+    )
 
     builder = GradientGraphBuilder(model.SerializeToString(), {loss_name}, requires_grad, loss_name, options)
     builder.build()
