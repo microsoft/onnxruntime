@@ -401,10 +401,6 @@ class FusionAttentionUnet(Fusion):
         """
         is_self_attention = not self.is_cross_attention
 
-        # TODO (pavignol): Remove once error is figured out
-        # if not is_self_attention:
-        #     return None
-
         q_matmul = self.model.match_parent(q_matmul_add, "MatMul", 0)
         k_matmul = self.model.match_parent(k_matmul_add, "MatMul", 0)
         v_matmul = self.model.match_parent(v_matmul_add, "MatMul", 0)
@@ -657,7 +653,7 @@ class FusionAttentionUnet(Fusion):
                 )
                 self.nodes_to_remove.extend([q_matmul, k_matmul, v_matmul, q_matmul_add, k_matmul_add, v_matmul_add])
             else:
-                # TODO (pavignol): Support non-packed QKV
+                # TODO: Support non-packed QKV
                 return None
         else:  # cross attention
             attention_node_name = self.model.create_node_name("MultiHeadAttention")
@@ -800,7 +796,7 @@ class FusionAttentionUnet(Fusion):
                 )
                 self.nodes_to_remove.extend([k_matmul, v_matmul, k_matmul_add, v_matmul_add])
             else:
-                # TODO (pavignol): Support non-packed KV
+                # TODO: Support non-packed KV
                 return None
 
         # No bias, use zeros
@@ -817,13 +813,13 @@ class FusionAttentionUnet(Fusion):
 
         if is_self_attention:
             if not self.enable_packed_qkv:
-                # TODO (pavignol): Support non-packed QKV
+                # TODO: Support non-packed QKV
                 return None
             else:
                 attention_inputs = [attention_node_name + "_qkv_input"]
         else:
             if not self.enable_packed_kv:
-                # TODO (pavignol): Support non-packed QKV
+                # TODO: Support non-packed QKV
                 return None
             else:
                 attention_inputs = [
