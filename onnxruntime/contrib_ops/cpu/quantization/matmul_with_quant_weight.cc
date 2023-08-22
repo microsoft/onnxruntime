@@ -66,6 +66,9 @@ Status MatMulWithQuantWeight::Compute(OpKernelContext* ctx) const {
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
   DequantizeBlockwiseWeight<float, 32, 4>(tmp_b_data_ptr.get(), b_blob, scales_data, zero_points_data, static_cast<int32_t>(N_), static_cast<int32_t>(K_), thread_pool);
 
+  auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
+
+  MlasTranspose(tmp_b_data_ptr.get(), tm_b_data_ptr_trans.get(), N_, K_);
   const Tensor* bshape_tr = ctx->Input<Tensor>(2);
   TensorShape b_shape({N_, K_});
 

@@ -6,6 +6,7 @@
 #include "core/common/span_utils.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas_q4.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
@@ -25,10 +26,10 @@ namespace onnxruntime {
 namespace test {
 
 TEST(MatMulWithQuantWeight, MatMul2DSym) {
-  // (100 x 41) X (41 x 288)
+  // (100 x 52) X (52 x 288)
   constexpr int64_t M = 100;
   constexpr int64_t N = 288;
-  constexpr int64_t K = 41;
+  constexpr int64_t K = 52;
 
   OpTester test("MatMulWithQuantWeight", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", K);
@@ -56,6 +57,9 @@ TEST(MatMulWithQuantWeight, MatMul2DSym) {
       v = -8;
     }
   }
+
+  std::vector<float> input1_f_vals_trans(N * K);
+  MlasTranspose(input1_f_vals.data(), input1_f_vals_trans.data(), K, N);
 
   constexpr size_t number_of_blob = (K + 32 - 1) / 32 * N;
   constexpr size_t buf_size = number_of_blob * (32 * 4 / 8);
