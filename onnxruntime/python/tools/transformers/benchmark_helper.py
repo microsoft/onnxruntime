@@ -249,7 +249,7 @@ def output_summary(results, csv_filename, args):
                 data_names.append(f"b{batch_size}")
             else:
                 for sequence_length in args.sequence_lengths:
-                    data_names.append(f"b{batch_size}_s{sequence_length}")  # noqa: PERF401
+                    data_names.append(f"b{batch_size}_s{sequence_length}")
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
         csv_writer.writeheader()
@@ -386,7 +386,7 @@ def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):  # n
     # for each test run.
 
     for i in output_buffer_max_sizes:
-        output_buffers.append(torch.empty(i, dtype=torch.float32, device=device))  # noqa: PERF401
+        output_buffers.append(torch.empty(i, dtype=torch.float32, device=device))
 
 
 def set_random_seed(seed=123):

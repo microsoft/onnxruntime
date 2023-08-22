@@ -15,7 +15,7 @@ def get_gpu_lines(path):
         reader = csv.reader(f, delimiter=",")
         for row in reader:
             if row[2].find("TotalDurationNs") < 0:
-                lines.append(row)  # noqa: PERF401
+                lines.append(row)
         return lines
 
 

@@ -60,7 +60,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
   int32_t axis_value = 0;
   Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
   ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis_value));
-  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), qnn_def::axis, axis_qnn_scalar);
+  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_SPLIT_PARAM_AXIS, axis_qnn_scalar);
   param_tensor_names.push_back(axis_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
@@ -112,7 +112,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
 
   uint32_t split_size = static_cast<uint32_t>(split_index.size());
   std::vector<uint32_t> split_dim{split_size};
-  QnnParamWrapper split_param(node_unit.Index(), node_unit.Name(), qnn_def::split_index, std::move(split_dim),
+  QnnParamWrapper split_param(node_unit.Index(), node_unit.Name(), QNN_OP_SPLIT_PARAM_SPLIT_INDEX, std::move(split_dim),
                               std::move(split_index));
   param_tensor_names.push_back(split_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(split_param));

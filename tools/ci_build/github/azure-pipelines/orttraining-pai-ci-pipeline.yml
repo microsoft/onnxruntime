@@ -1,5 +1,14 @@
 trigger: none
 
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 
 variables:
@@ -8,7 +17,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 5.5
+    value: 5.6
   - name: BuildConfig
     value: Release
 
@@ -36,6 +45,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-build
 
   #- script: |-
@@ -130,7 +140,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test
 
   - task: Bash@3
@@ -176,13 +186,14 @@ jobs:
           --user onnxruntimedev \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          -e OPENBLAS_NUM_THREADS=1 \
+          -e OPENMP_NUM_THREADS=1 \
+          -e MKL_NUM_THREADS=1 \
+          -e KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig) \
+          -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
+          -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
-            /bin/bash -c "
-              set -ex; \
-              export KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig); \
-              export KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8; \
-              export KERNEL_EXPLORER_TEST_USE_CUPY=1; \
-              pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 8 --reruns 1 --durations=100"
+            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
     condition: succeededOrFailed()

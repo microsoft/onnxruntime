@@ -1263,7 +1263,29 @@ static ProviderLibrary s_library_rocm(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provi
 );
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_dnnl") LIBRARY_EXTENSION);
 static ProviderLibrary s_library_openvino(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_openvino") LIBRARY_EXTENSION);
-static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_tensorrt") LIBRARY_EXTENSION);
+static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_tensorrt") LIBRARY_EXTENSION
+#ifndef _WIN32
+                                          ,
+                                          /*
+                                           * unload - On CentOS if we unload the TensorRT shared provider we crash.
+                                           *
+                                           * The reason is TensorRT EP holds a thread local data which won't be destroyed
+                                           * until thread exits which happens after TRT EP destruction. Upon thread exits,
+                                           * the destructor of thread local data will be called but the address of destructor
+                                           * is invalid since the destructor is defined in TRT EP which is already been
+                                           * removed from the address space. Therefore, we will hit a segmentation fault.
+                                           * So, here we won't unload the TensorRT shared provider and leave the library around.
+                                           * This way the OS/CRT/etc doesn't ever clean up until the process exits.
+                                           *
+                                           * Interestingly, TensorRT shared library won't crash on Ubuntu and Windows when being unloaded.
+                                           * The destructor of thread local data can be successfully called upon thread exits.
+                                           * One thing worth attention is, on Unix, the function to unload a library is allowed to do nothing.
+                                           * Please see here: https://pubs.opengroup.org/onlinepubs/007904975/functions/dlclose.html
+                                           *
+                                           */
+                                          false
+#endif
+);
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
@@ -1404,8 +1426,44 @@ std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Creat
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+// Adapter to convert the legacy OrtOpenVINOProviderOptions to ProviderOptions
+ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const OrtOpenVINOProviderOptions* legacy_ov_options) {
+  ProviderOptions ov_options_converted_map;
+  if (legacy_ov_options->device_type != nullptr)
+    ov_options_converted_map["device_type"] = legacy_ov_options->device_type;
+
+  ov_options_converted_map["enable_vpu_fast_compile"] = legacy_ov_options->enable_vpu_fast_compile;
+
+  if (legacy_ov_options->device_id != nullptr)
+    ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
+
+  ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
+
+  if (legacy_ov_options->cache_dir != nullptr)
+    ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
+
+  std::stringstream context_string;
+
+  if (legacy_ov_options->context != nullptr)
+    context_string << legacy_ov_options->context;
+  ov_options_converted_map["context"] = context_string.str();
+
+  ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
+  ov_options_converted_map["enable_dynamic_shapes"] = legacy_ov_options->enable_dynamic_shapes;
+
+  // Add new provider option below
+  ov_options_converted_map["num_streams"] = "1";
+  return ov_options_converted_map;
+}
+
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const OrtOpenVINOProviderOptions* provider_options) {
-  return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options);
+  ProviderOptions ov_options_converted_map = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
+  return s_library_openvino.Get().CreateExecutionProviderFactory(&ov_options_converted_map);
+}
+
+std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions* provider_options_map) {
+  // std::cout << provider_options_map.at("num_streams") << std::endl;
+  return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
@@ -1826,6 +1884,49 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtT
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
+  if (strcmp(key, "user_compute_stream") == 0) {
+    tensorrt_options->has_user_compute_stream = 1;
+    tensorrt_options->user_compute_stream = value;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
+                    _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
+  if (strcmp(key, "user_compute_stream") == 0) {
+    *ptr = tensorrt_options->user_compute_stream;
+  } else {
+    *ptr = nullptr;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
 #ifdef USE_TENSORRT
   if (ptr != nullptr) {
@@ -1906,6 +2007,47 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAP
 #else
   ORT_UNUSED_PARAMETER(cuda_options);
   ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptionsWithValue,
+                    _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  API_IMPL_BEGIN
+#ifdef USE_CUDA
+  if (strcmp(key, "user_compute_stream") == 0) {
+    cuda_options->has_user_compute_stream = 1;
+    cuda_options->user_compute_stream = value;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
+                    _In_ const OrtCUDAProviderOptionsV2* cuda_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_CUDA
+  if (strcmp(key, "user_compute_stream") == 0) {
+    *ptr = cuda_options->user_compute_stream;
+  } else {
+    *ptr = nullptr;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(key);
   ORT_UNUSED_PARAMETER(ptr);
   return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
 #endif

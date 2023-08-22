@@ -51,7 +51,7 @@ class Split : public JsKernel, public SplitBase {
                                static_cast<int32_t>(axis_),
                                static_cast<int32_t>(num_outputs_),
                                gsl::narrow_cast<int32_t>(split_sizes.size()),
-                               reinterpret_cast<int32_t>((!split_sizes.empty() > 0) ? split_sizes.data() : nullptr) >> 2);
+                               reinterpret_cast<int32_t>((split_sizes.size() > 0) ? split_sizes.data() : nullptr) >> 2);
   }
 };
 

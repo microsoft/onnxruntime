@@ -4,6 +4,7 @@
  */
 package ai.onnxruntime;
 
+import ai.onnxruntime.platform.Fp16Conversions;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -163,7 +164,7 @@ public class OnnxTensorTest {
     for (int i = 0; i < input.length; i++) {
       for (int j = 0; j < input[0].length; j++) {
         short bits = (short) rng.nextInt();
-        input[i][j] = OrtUtil.bf16ToFloat(bits);
+        input[i][j] = Fp16Conversions.bf16ToFloat(bits);
         shortBuf.put(bits);
       }
     }
@@ -196,7 +197,7 @@ public class OnnxTensorTest {
     for (int i = 0; i < input.length; i++) {
       for (int j = 0; j < input[0].length; j++) {
         short bits = (short) rng.nextInt();
-        input[i][j] = OrtUtil.fp16ToFloat(bits);
+        input[i][j] = Fp16Conversions.fp16ToFloat(bits);
         shortBuf.put(bits);
       }
     }
@@ -232,7 +233,7 @@ public class OnnxTensorTest {
         int bits = rng.nextInt();
         input[i][j] = Float.intBitsToFloat(bits);
         floatBuf.put(input[i][j]);
-        shortBuf.put(OrtUtil.floatToFp16(input[i][j]));
+        shortBuf.put(Fp16Conversions.floatToFp16(input[i][j]));
       }
     }
     floatBuf.rewind();
@@ -247,7 +248,7 @@ public class OnnxTensorTest {
       // Check outbound Java side cast to fp32 works
       FloatBuffer castOutput = output.getFloatBuffer();
       float[] expectedFloatArr = new float[10 * 5];
-      OrtUtil.convertFp16BufferToFloatBuffer(shortBuf).get(expectedFloatArr);
+      Fp16Conversions.convertFp16BufferToFloatBuffer(shortBuf).get(expectedFloatArr);
       float[] actualFloatArr = new float[10 * 5];
       castOutput.get(actualFloatArr);
       Assertions.assertArrayEquals(expectedFloatArr, actualFloatArr);
@@ -279,7 +280,7 @@ public class OnnxTensorTest {
         int bits = rng.nextInt();
         input[i][j] = Float.intBitsToFloat(bits);
         floatBuf.put(input[i][j]);
-        shortBuf.put(OrtUtil.floatToBf16(input[i][j]));
+        shortBuf.put(Fp16Conversions.floatToBf16(input[i][j]));
       }
     }
     floatBuf.rewind();
@@ -294,7 +295,7 @@ public class OnnxTensorTest {
       // Check outbound Java side cast to fp32 works
       FloatBuffer castOutput = output.getFloatBuffer();
       float[] expectedFloatArr = new float[10 * 5];
-      OrtUtil.convertBf16BufferToFloatBuffer(shortBuf).get(expectedFloatArr);
+      Fp16Conversions.convertBf16BufferToFloatBuffer(shortBuf).get(expectedFloatArr);
       float[] actualFloatArr = new float[10 * 5];
       castOutput.get(actualFloatArr);
       Assertions.assertArrayEquals(expectedFloatArr, actualFloatArr);
@@ -314,8 +315,8 @@ public class OnnxTensorTest {
     for (int i = 0; i < 0xffff; i++) {
       // Round trip every value
       short curVal = (short) (0xffff & i);
-      float upcast = OrtUtil.mlasFp16ToFloat(curVal);
-      short output = OrtUtil.mlasFloatToFp16(upcast);
+      float upcast = Fp16Conversions.mlasFp16ToFloat(curVal);
+      short output = Fp16Conversions.mlasFloatToFp16(upcast);
       if (!Float.isNaN(upcast)) {
         // We coerce NaNs to the same value.
         Assertions.assertEquals(
@@ -331,8 +332,8 @@ public class OnnxTensorTest {
     for (int i = 0; i < 0xffff; i++) {
       // Round trip every value
       short curVal = (short) (0xffff & i);
-      float upcast = OrtUtil.bf16ToFloat(curVal);
-      short output = OrtUtil.floatToBf16(upcast);
+      float upcast = Fp16Conversions.bf16ToFloat(curVal);
+      short output = Fp16Conversions.floatToBf16(upcast);
       if (!Float.isNaN(upcast)) {
         // We coerce NaNs to the same value.
         Assertions.assertEquals(

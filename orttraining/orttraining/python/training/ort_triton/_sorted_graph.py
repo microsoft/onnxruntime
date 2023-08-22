@@ -110,7 +110,7 @@ class SortedGraph:
         for node_idx, node in enumerate(self._sorted_nodes):
             inputs = []
             for input in node.input:
-                inputs.append(name_map.get(input, input))  # noqa: PERF401
+                inputs.append(name_map.get(input, input))
             inputs_str = ",".join(inputs)
             outputs = []
             for idx, output in enumerate(node.output):
@@ -180,7 +180,7 @@ class SortedGraph:
             else:
                 input_infos = []
                 for input in node.input:
-                    input_infos.append(self._node_arg_infos[input])  # noqa: PERF401
+                    input_infos.append(self._node_arg_infos[input])
                 output_infos = TypeAndShapeInfer.infer(node, input_infos, self._graph)
                 for idx, output in enumerate(node.output):
                     self._node_arg_infos[output] = output_infos[idx]

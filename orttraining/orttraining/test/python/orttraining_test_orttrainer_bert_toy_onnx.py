@@ -112,7 +112,7 @@ def optimizer_parameters(model):
     no_decay_param_group = []
     for initializer in model.graph.initializer:
         if any(key in initializer.name for key in no_decay_keys):
-            no_decay_param_group.append(initializer.name)  # noqa: PERF401
+            no_decay_param_group.append(initializer.name)
     params = [
         {
             "params": no_decay_param_group,

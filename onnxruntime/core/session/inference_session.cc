@@ -1475,6 +1475,13 @@ common::Status InferenceSession::Initialize() {
       session_state_->UpdateAllocatorsWithEnvAllocators(environment_.GetRegisteredSharedAllocators());
     }
 
+    for (auto& ep : execution_providers_) {
+      auto tuning_ctx = ep->GetTuningContext();
+      if (nullptr != tuning_ctx) {
+        tuning_ctx->RegisterAllocatorsView(&session_state_->GetAllocators());
+      }
+    }
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
     session_state_->SetMemoryProfiler(&memory_profiler_);
@@ -2379,34 +2386,31 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
                                           RunAsyncCallbackFn callback,
                                           void* user_data) {
   size_t num_fetches = fetch_names.size();
-  if (!thread_pool_.get() || concurrency::ThreadPool::DegreeOfParallelism(thread_pool_.get()) < 2) {
+  auto* tp = GetIntraOpThreadPoolToUse();
+  if (!tp || concurrency::ThreadPool::DegreeOfParallelism(tp) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
   std::function<void()> run_fn = [=]() {
+    Status status = Status::OK();
     ORT_TRY {
-      Status status;
       if (run_options) {
         status = Run(*run_options, feed_names, feeds, fetch_names, fetches);
       } else {
         RunOptions default_run_options;
         status = Run(default_run_options, feed_names, feeds, fetch_names, fetches);
       }
-      if (status.IsOK()) {
-        callback(user_data, fetches.data(), num_fetches, ToOrtStatus(status));
-      } else {
-        callback(user_data, {}, 0, ToOrtStatus(status));
-      }
     }
     ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([=]() {
-        callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what())));
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
       });
     }
     ORT_CATCH(...) {
-      callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "unknown exception")));
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "unknown exception");
     }
+    callback(user_data, fetches.data(), status.IsOK() ? num_fetches : 0, ToOrtStatus(status));
   };  // run_fn
-  concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);
+  concurrency::ThreadPool::Schedule(tp, run_fn);
   return Status::OK();
 }
 

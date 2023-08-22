@@ -74,7 +74,7 @@ Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   int32_t default_axis_value = 0;
   Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
   ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis_value));
-  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), qnn_def::axis, axis_qnn_scalar);
+  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_ARGMAX_PARAM_AXIS, axis_qnn_scalar);
   param_tensor_names.push_back(axis_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
@@ -87,7 +87,7 @@ Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   Qnn_Scalar_t keep_dims_scalar = QNN_SCALAR_INIT;
   keep_dims_scalar.dataType = QNN_DATATYPE_BOOL_8;
   keep_dims_scalar.bool8Value = static_cast<uint8_t>(onnx_keepdims == 0 ? 0 : 1);
-  QnnParamWrapper keep_dims_param(node_unit.Index(), node_unit.Name(), qnn_def::keep_dims, keep_dims_scalar);
+  QnnParamWrapper keep_dims_param(node_unit.Index(), node_unit.Name(), QNN_OP_ARGMAX_PARAM_KEEP_DIMS, keep_dims_scalar);
   param_tensor_names.push_back(keep_dims_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(keep_dims_param));
 

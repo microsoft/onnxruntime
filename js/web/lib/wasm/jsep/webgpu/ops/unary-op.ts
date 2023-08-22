@@ -1,20 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type ElementwiseCustomExpression = (expression: string) => string;
 type ElementwiseFunctionCall = BuiltinFunctionName|ElementwiseCustomExpression;
 
 const createElementwiseProgramShader =
-    (shaderHelper: ShaderHelper, datasize: number, funcCall: ElementwiseFunctionCall,
-     additionalImplementation?: string): string => {
+    (shaderHelper: ShaderHelper, datasize: number, inputDataType: number, outputDataType: number,
+     funcCall: ElementwiseFunctionCall, additionalImplementation?: string): string => {
       const vecSize = Math.ceil(datasize / 4);
 
       let expression = '';
@@ -23,38 +24,41 @@ const createElementwiseProgramShader =
       } else {
         expression = funcCall('a');
       }
+
+      const input = inputVariable('inputData', inputDataType, [vecSize], 4);
+      const output = outputVariable('outputData', outputDataType, [vecSize], 4);
+
       return `
-  @group(0) @binding(0) var<storage, read> inputData : array<vec4<f32>>;
-  @group(0) @binding(1) var<storage, read_write> outputData : array<vec4<f32>>;
+  ${shaderHelper.declareVariables(input, output)}
 
   ${additionalImplementation ?? ''}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
 
-    let a = inputData[global_idx];
-    outputData[global_idx] = ${expression};
+    let a = ${input.getByOffset('global_idx')};
+    ${output.setByOffset('global_idx', expression)}
   }`;
     };
 
 const createElementwiseProgramInfo =
-    (metadata: ProgramMetadata, input: TensorView, funcCall: ElementwiseFunctionCall,
+    (metadata: ProgramMetadata, input: TensorView, outputDataType: number, funcCall: ElementwiseFunctionCall,
      additionalImplementation?: string): ProgramInfo => ({
       ...metadata,
-      getShaderSource: shaderHelper =>
-          createElementwiseProgramShader(shaderHelper, ShapeUtil.size(input.dims), funcCall, additionalImplementation),
-      outputs: [{dims: input.dims, dataType: input.dataType, gpuDataType: GpuDataType.default}],
+      getShaderSource: shaderHelper => createElementwiseProgramShader(
+          shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall, additionalImplementation),
+      outputs: [{dims: input.dims, dataType: outputDataType, gpuDataType: GpuDataType.default}],
       dispatchGroup: (inputTensors) =>
           ({x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)})
     });
 
 const createElementwiseProgramInfoLoader =
     (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
-     cacheKey?: string): ProgramInfoLoader => {
+     cacheKey?: string, outputDataType: number = input.dataType): ProgramInfoLoader => {
       const metadata: ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: cacheKey};
       return {
         ...metadata,
-        get: () => createElementwiseProgramInfo(metadata, input, funcCall, additionalImplementation)
+        get: () => createElementwiseProgramInfo(metadata, input, outputDataType, funcCall, additionalImplementation)
       };
     };
 
@@ -83,6 +87,37 @@ export const atan = (context: ComputeContext): void => {
 };
 export const atanh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Atanh', 'atanh'));
+};
+
+export interface CastAttributes extends AttributeWithCacheKey {
+  readonly to: number;
+  readonly saturate?: boolean;
+}
+
+export const parseCastAttributes = (attributes: Record<string, unknown>): CastAttributes =>
+    createAttributeWithCacheKey(attributes as {to: number});
+
+
+export const cast = (context: ComputeContext, attributes: CastAttributes): void => {
+  let func: ElementwiseFunctionCall;
+  switch (attributes.to) {
+    case DataType.float:
+      func = 'vec4<f32>';
+      break;
+    case DataType.uint32:
+      func = 'vec4<u32>';
+      break;
+    case DataType.int32:
+      func = 'vec4<i32>';
+      break;
+    case DataType.bool:
+      func = 'vec4<bool>';
+      break;
+    default:
+      throw new RangeError(`not supported type (specified in attribute 'to' from 'Cast' operator): ${attributes.to}`);
+  }
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'Cast', func, undefined, attributes.cacheKey, attributes.to));
 };
 
 export interface ClipAttributes extends AttributeWithCacheKey {
@@ -145,20 +180,23 @@ export const elu = (context: ComputeContext, attributes: AlphaAttributes): void 
       attributes.cacheKey));
 };
 
-export const erf = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Erf', a => `erf_vf32(${a})`, `
-  const r0: f32 = 0.3275911;
-  const r1: f32 = 0.254829592;
-  const r2: f32 = -0.284496736;
-  const r3: f32 = 1.421413741;
-  const r4: f32 = -1.453152027;
-  const r5: f32 = 1.061405429;
+export const erfImpl = (dataType: string) => `
+const r0: f32 = 0.3275911;
+const r1: f32 = 0.254829592;
+const r2: f32 = -0.284496736;
+const r3: f32 = 1.421413741;
+const r4: f32 = -1.453152027;
+const r5: f32 = 1.061405429;
 
-  fn erf_vf32(v: vec4<f32>) -> vec4<f32> {
-    let absv = abs(v);
-    let x = 1.0 / (1.0 + r0 * absv);
-    return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
-  }`));
+fn erf_vf32(v: ${dataType}) -> ${dataType} {
+  let absv = abs(v);
+  let x = 1.0 / (1.0 + r0 * absv);
+  return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
+}`;
+
+export const erf = (context: ComputeContext): void => {
+  context.compute(
+      createElementwiseProgramInfoLoader(context.inputs[0], 'Erf', a => `erf_vf32(${a})`, erfImpl('vec4<f32>')));
 };
 
 export const exp = (context: ComputeContext): void => {
@@ -167,6 +205,12 @@ export const exp = (context: ComputeContext): void => {
 
 export const floor = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Floor', 'floor'));
+};
+
+export const gelu = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'Gelu', a => `0.5 * ${a} * (1.0 + erf_vf32(${a} * 0.7071067811865475))`,
+      erfImpl('vec4<f32>')));
 };
 
 export const leakyRelu = (context: ComputeContext, attributes: AlphaAttributes): void => {
@@ -217,4 +261,8 @@ export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttrib
       context.inputs[0], 'ThresholdedRelu', a => `select(vec4<f32>(0.0), ${a}, ${a} > thresholded_relu_alpha_)`,
       `const thresholded_relu_alpha_: vec4<f32> = vec4<f32>(${attributes.alpha});`, attributes.cacheKey));
   return 0;
+};
+
+export const log = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Log', 'log'));
 };

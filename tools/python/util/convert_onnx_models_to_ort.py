@@ -165,7 +165,7 @@ def _convert(
             # new_size = os.path.getsize(ort_target_path)
             # print("Serialized {} to {}. Sizes: orig={} new={} diff={} new:old={:.4f}:1.0".format(
             #     onnx_target_path, ort_target_path, orig_size, new_size, new_size - orig_size, new_size / orig_size))
-        except Exception as e:  # noqa: PERF203
+        except Exception as e:
             print(f"Error converting {model}: {e}")
             if not allow_conversion_failures:
                 raise

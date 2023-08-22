@@ -48,5 +48,5 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
-        std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph = nullptr);
+        gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes);
 } // namespace Dml

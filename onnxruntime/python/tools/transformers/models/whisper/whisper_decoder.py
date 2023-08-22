@@ -6,7 +6,6 @@
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
@@ -14,15 +13,13 @@ from typing import List, Optional, Union
 import numpy
 import onnx
 import torch
+from io_binding_helper import TypeHelper
+from models.t5.past_helper import PastKeyValuesHelper
+from onnx_model import OnnxModel
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import WhisperConfig, file_utils
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from io_binding_helper import TypeHelper  # noqa: E402
-from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -167,10 +164,10 @@ class WhisperDecoderInputs:
 
             past = []
             for _ in range(2 * num_layers):
-                past.append(torch.rand(self_attention_past_shape, dtype=float_type, device=device))  # noqa: PERF401
+                past.append(torch.rand(self_attention_past_shape, dtype=float_type, device=device))
 
             for _ in range(2 * num_layers):
-                past.append(torch.rand(cross_attention_past_shape, dtype=float_type, device=device))  # noqa: PERF401
+                past.append(torch.rand(cross_attention_past_shape, dtype=float_type, device=device))
         else:
             past = None
 

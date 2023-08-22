@@ -77,7 +77,7 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
   uint32_t multiples_size = static_cast<uint32_t>(multiples.size());
   std::vector<uint32_t> multiples_dim{multiples_size};
-  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), qnn_def::multiples, std::move(multiples_dim),
+  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), QNN_OP_TILE_PARAM_MULTIPLES, std::move(multiples_dim),
                                   std::move(multiples));
   param_tensor_names.push_back(multiples_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));

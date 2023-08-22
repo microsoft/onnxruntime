@@ -48,7 +48,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   const HipT* input_buffer = reinterpret_cast<const HipT*>(input->Data<T>());
   const HipT* bias_buffer = (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr;
   return LaunchElementwiseKernel<functor::FastGeLU, HipT>(
-      GetTuningContext(), Stream(context),
+      GetTuningContext(), context->GetComputeStream(),
       input_buffer, static_cast<int>(input_length),
       bias_buffer, static_cast<int>(bias_length),
       reinterpret_cast<HipT*>(output->MutableData<T>()));

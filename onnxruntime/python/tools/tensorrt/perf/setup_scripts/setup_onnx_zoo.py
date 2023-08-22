@@ -75,7 +75,7 @@ def main():
 
     model_list = []
     for link in links:
-        model_list.append(get_model_info(link))  # noqa: PERF401
+        model_list.append(get_model_info(link))
     write_json(model_list)
 
 
