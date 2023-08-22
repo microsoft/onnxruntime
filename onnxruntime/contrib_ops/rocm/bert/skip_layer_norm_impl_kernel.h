@@ -26,7 +26,7 @@ half maybe2half(float x) {
 template <typename T, typename U, typename V, unsigned TPB, bool Simplified>
 __global__ void SkipLayerNormKernel(
     const int ld, const T* input, const T* skip, const V* beta, const V* gamma, const T* bias,
-    const U epsilon, V* output, T* skip_input_bias_add_output) {
+    const U epsilon, V* output, T* skip_input_bias_add_output, bool skip_broadcasted, int skip_size) {
   const U reverse_ld = U(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -36,7 +36,8 @@ __global__ void SkipLayerNormKernel(
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
-    const U val = (bias == nullptr) ? static_cast<U>(input[idx]) + static_cast<U>(skip[idx]) : static_cast<U>(input[idx]) + static_cast<U>(skip[idx]) + static_cast<U>(bias[i]);
+    const U skip_data = skip_broadcasted ? static_cast<U>(skip[idx % skip_size]) : static_cast<U>(skip[idx % skip_size]);
+    const U val = (bias == nullptr) ? static_cast<U>(input[idx]) + skip_data : static_cast<U>(input[idx]) + skip_data + static_cast<U>(bias[i]);
     const U rldval = reverse_ld * val;
     thread_data = pair_sum(thread_data, hipcub::KeyValuePair<U, U>(rldval, rldval * val));
 
@@ -60,7 +61,8 @@ template <typename T, typename U, typename V, unsigned TPB, int ILP, bool Simpli
 __global__ void SkipLayerNormKernelVec(
     const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
     const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output,
-    bool hasBias, bool hasSkipInputBiasAdditionOutput) {
+    bool hasBias, bool hasSkipInputBiasAdditionOutput,
+    bool skip_broadcasted, int skip_size) {
   const U reverse_ld = U(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -75,7 +77,7 @@ __global__ void SkipLayerNormKernelVec(
       int idx = offset + i;
 
       const VecT input_v = *reinterpret_cast<const VecT*>(input + idx);
-      const VecT skip_v = *reinterpret_cast<const VecT*>(skip + idx);
+      const VecT skip_v = skip_broadcasted ? *reinterpret_cast<const VecT*>(skip + idx % skip_size) : *reinterpret_cast<const VecT*>(skip + idx);
       const VecT bias_v = hasBias ? *reinterpret_cast<const VecT*>(bias + i) : VecT();
       VecT skip_input_bias_add_output_v, output_v;
 
@@ -112,7 +114,8 @@ template <typename T, typename U, typename V, unsigned TPB, int ILP, bool Simpli
 __global__ void SkipLayerNormKernelSmall(
     const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
     const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output,
-    bool hasBias, bool hasSkipInputBiasAdditionOutput) {
+    bool hasBias, bool hasSkipInputBiasAdditionOutput,
+    bool skip_broadcasted, int skip_size) {
   const U rld = U(1.f / ld);
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
@@ -122,7 +125,7 @@ __global__ void SkipLayerNormKernelSmall(
   VecT input_v;
   if (ILP * threadIdx.x < ld) {
     input_v = *reinterpret_cast<const VecT*>(input + idx);
-    const VecT skip_v = *reinterpret_cast<const VecT*>(skip + idx);
+    const VecT skip_v = skip_broadcasted ? *reinterpret_cast<const VecT*>(skip + idx % skip_size) : *reinterpret_cast<const VecT*>(skip + idx);
     const VecT bias_v = hasBias ? *reinterpret_cast<const VecT*>(bias + threadIdx.x * ILP) : VecT();
     VecT skip_input_bias_add_output_v;
 

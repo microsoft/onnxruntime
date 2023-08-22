@@ -22,8 +22,20 @@ template <typename T, typename V>
 struct SkipLayerNormParams : OpParams {
   SkipLayerNormParams(RocmTuningContext* tuning_ctx, onnxruntime::Stream* stream, V* output, T* skip_input_bias_add_output, const T* input,
                       const T* skip, const V* gamma, const V* beta,
-                      const T* bias, float epsilon, int ld, int element_count)
-      : OpParams(tuning_ctx, stream), output(output), skip_input_bias_add_output(skip_input_bias_add_output), input(input), skip(skip), gamma(gamma), beta(beta), bias(bias), epsilon(epsilon), ld(ld), element_count(element_count) {}
+                      const T* bias, float epsilon, int ld, int element_count, bool skip_broadcasted, int skip_size)
+      : OpParams(tuning_ctx, stream),
+        output(output),
+        skip_input_bias_add_output(skip_input_bias_add_output),
+        input(input),
+        skip(skip),
+        gamma(gamma),
+        beta(beta),
+        bias(bias),
+        epsilon(epsilon),
+        ld(ld),
+        element_count(element_count),
+        skip_broadcasted(skip_broadcasted),
+        skip_size(skip_size) {}
 
   std::string Signature() const override {
     std::string sig = std::to_string(ld) + "_" + std::to_string(element_count);
@@ -40,6 +52,8 @@ struct SkipLayerNormParams : OpParams {
   float epsilon;
   int ld;
   int element_count;
+  bool skip_broadcasted;
+  int skip_size;
 };
 
 template <typename T, typename U, typename V, int ThreadsPerBlock, int VecSize, bool Simplified>
@@ -54,7 +68,8 @@ Status SkipLayerNormSmallOp(const SkipLayerNormParams<T, V>* params) {
                                                                             0, params->StreamHandle()>>>(
       params->ld, params->input, params->skip,
       params->beta, params->gamma, params->bias, static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output,
-      (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);
+      (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true,
+      params->skip_broadcasted, params->skip_size);
   return HIP_CALL(hipGetLastError());
 }
 
@@ -69,7 +84,8 @@ Status SkipLayerNormRegularOp(const SkipLayerNormParams<T, V>* params) {
                                                                           0, params->StreamHandle()>>>(
       params->ld, params->input, params->skip,
       params->beta, params->gamma, params->bias, static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output,
-      (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);
+      (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true,
+      params->skip_broadcasted, params->skip_size);
   return HIP_CALL(hipGetLastError());
 }
 
@@ -85,7 +101,8 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T, V>* params) {
     SkipLayerNormKernelSmall<T, U, V, TPB, ILP, Simplified><<<grid_size, TPB, 0, params->StreamHandle()>>>( \
         params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,                 \
         static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output,                \
-        hasBias, hasSkipInputBiasAdditionOutput);                                                           \
+        hasBias, hasSkipInputBiasAdditionOutput,                                                            \
+        params->skip_broadcasted, params->skip_size);                                                       \
     break;                                                                                                  \
   }
   if (0 == (params->ld % 4)) {
@@ -99,7 +116,8 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T, V>* params) {
 
       SkipLayerNormKernel<T, U, V, block_size, Simplified><<<grid_size, block_size, 0, params->StreamHandle()>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output);
+          static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output,
+          params->skip_broadcasted, params->skip_size);
     } while (0);
   } else {
     do {
@@ -110,7 +128,8 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T, V>* params) {
 
       SkipLayerNormKernel<T, U, V, block_size, Simplified><<<grid_size, block_size, 0, params->StreamHandle()>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output);
+          static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output,
+          params->skip_broadcasted, params->skip_size);
     } while (0);
   }
   return HIP_CALL(hipPeekAtLastError());
