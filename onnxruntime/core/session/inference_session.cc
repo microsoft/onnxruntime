@@ -1440,6 +1440,44 @@ common::Status InferenceSession::Initialize() {
       execution_providers_.SetCpuProviderWasImplicitlyAdded(true);
     }
 
+    // compare the kernels in custom EP with those in CPU EP
+    // if op name & domain & sinceVersion matches, which means it is a standard op, type constraints in custom kernel
+    // will be cleaned and copy over type constraints from CPU kernel type constraints
+    // We probably need to move this logic to some other place (maybe InitializeSession() in onnxruntime_c_api.cc)
+    // where it is easy to check it has custom EP or not.
+    std::shared_ptr<KernelRegistry> cpu_kernels = execution_providers_.Get(onnxruntime::kCpuExecutionProvider)->GetKernelRegistry();
+    IExecutionProvider* custom_ep = execution_providers_.Get("customEp2");
+    if (custom_ep) {
+      std::shared_ptr<KernelRegistry> custom_kernels = custom_ep->GetKernelRegistry();
+      KernelCreateMap& kernelCreateMap = custom_kernels->GetKernelCreateMap();
+      for (auto it = kernelCreateMap.begin(); it != kernelCreateMap.end(); it++) {
+        std::string cpu_kernel_key = (*it).first.substr(0, (*it).first.find_last_of(' ')+1) + std::string{onnxruntime::kCpuExecutionProvider};
+        std::cout<<"cpu_kernel_key:"<<cpu_kernel_key<<"\n";
+        auto custom_ep_versions = it->second.kernel_def->SinceVersion();
+        auto range = cpu_kernels->GetKernelCreateMap().equal_range(cpu_kernel_key);
+        bool reconstruct_type_constraint = true;
+        for (auto i = range.first; i != range.second; ++i) {
+          auto cpu_ep_versions = i->second.kernel_def->SinceVersion();
+          if (custom_ep_versions.first == cpu_ep_versions.first && custom_ep_versions.second == cpu_ep_versions.second) {
+            if (reconstruct_type_constraint) {
+              reconstruct_type_constraint = false;
+              it->second.kernel_def->TypeConstraints().clear();
+            }
+            const std::unordered_map<std::string, std::vector<MLDataType>>& cpu_kernel_type_constraints = i->second.kernel_def->TypeConstraints();
+            for (auto kv : cpu_kernel_type_constraints) {
+              if (it->second.kernel_def->TypeConstraints().find(kv.first) == it->second.kernel_def->TypeConstraints().end()) {
+                it->second.kernel_def->TypeConstraints()[kv.first] = kv.second;
+              } else {
+                for (size_t j = 0; j < kv.second.size(); j++) {
+                  it->second.kernel_def->TypeConstraints()[kv.first].push_back(kv.second[j]);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // re-acquire mutex
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
 
