@@ -13,6 +13,7 @@ Abstract:
     Define fp16 type before it is available in all compilers
 
 --*/
+
 #pragma once
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
