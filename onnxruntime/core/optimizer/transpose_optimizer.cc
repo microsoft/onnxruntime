@@ -21,7 +21,7 @@ Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   auto api_graph = MakeApiGraph(graph, cpu_allocator_, /*new_node_ep*/ nullptr);
 
   OptimizeResult result = onnx_transpose_optimization::Optimize(*api_graph, "", /* default cost check*/ nullptr,
-                                                                OrtHandlers());
+                                                                OrtExtendedHandlers());
 
   if (result.error_msg) {
     // currently onnx_layout_transformation::Optimize only fails if we hit an unsupported opset.

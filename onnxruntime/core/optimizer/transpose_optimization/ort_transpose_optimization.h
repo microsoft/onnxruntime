@@ -8,13 +8,6 @@
 
 namespace onnxruntime {
 /// <summary>
-/// Get the ORT-specific handlers that should run for basic transpose optimization.
-/// These handlers may be aware of any EP specific limitations.
-/// </summary>
-/// <returns>HandlerMap</returns>
-const onnx_transpose_optimization::HandlerMap& OrtHandlers();
-
-/// <summary>
 /// Get the extended handlers for ORT specific transpose optimization.
 /// These include handlers for contrib ops, and where we have an NHWC version of a layout sensitive op.
 /// Extends the handlers returned by OrtHandlers.
