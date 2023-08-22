@@ -31,9 +31,6 @@ class SimpleOpBuilder : public BaseOpBuilder {
 
  private:
   Status ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
-  Status ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
-                              const NodeUnit& node_unit,
-                              std::vector<std::string>& param_tensor_names) const;
   Status ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                std::vector<std::string>& param_tensor_names) const;
@@ -65,36 +62,6 @@ Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF(axis != static_cast<int32_t>(input_shape.size() - 1),
                   "QNN Softmax only supports an `axis` attribute equal to input_rank-1 (or -1)");
   }
-
-  return Status::OK();
-}
-
-Status SimpleOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
-                                             const NodeUnit& node_unit,
-                                             std::vector<std::string>& param_tensor_names) const {
-  auto inputs = node_unit.Inputs();
-  std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
-  // set default perm
-  uint32_t rank = static_cast<uint32_t>(input_shape.size());
-  std::vector<int64_t> transpose_perm(rank);
-  for (uint32_t i = 0; i < rank; ++i) {
-    transpose_perm[i] = rank - 1 - i;
-  }
-
-  NodeAttrHelper node_helper(node_unit);
-  transpose_perm = node_helper.Get("perm", transpose_perm);
-  auto perm_size = static_cast<uint32_t>(transpose_perm.size());
-  std::vector<uint32_t> perm_shape{perm_size};
-  std::vector<uint32_t> perm_data;
-  perm_data.resize(perm_size);
-  std::transform(transpose_perm.begin(), transpose_perm.end(), perm_data.begin(),
-                 [](int64_t item) { return SafeInt<uint32_t>(item); });
-
-  QnnParamWrapper transpose_param(node_unit.Index(), node_unit.Name(), QNN_OP_TRANSPOSE_PARAM_PERM,
-                                  std::move(perm_shape), std::move(perm_data));
-  param_tensor_names.push_back(transpose_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(transpose_param));
 
   return Status::OK();
 }
@@ -186,54 +153,6 @@ Status SimpleOpBuilder::ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_
   return Status::OK();
 }
 
-// Support Transpose single node in QDQ model since it just change the data layout
-// Single node doesn't has any quantization parameters
-// Input tensors are created by the previous node. Output tensors are created by the next node,
-// unless the output is the graph's final output.
-Status SimpleOpBuilder::HandleSingleTransposeNode(QnnModelWrapper& qnn_model_wrapper,
-                                                  const NodeUnit& node_unit,
-                                                  std::vector<std::string>&& input_names,
-                                                  bool is_quantized_node) const {
-  std::vector<std::string> param_tensor_names;
-  ORT_RETURN_IF_ERROR(ProcessPermAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
-  const auto& outputs = node_unit.Outputs();
-  ORT_ENFORCE(outputs.size() == 1, "QNN Transpose node must have a single output.");
-  const auto& output = outputs[0];
-  auto& output_name = output.node_arg.Name();
-
-  const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
-
-  // Need to add output to the QNN model wrapper if this Transpose node's output is also
-  // the graph's output.
-  if (is_graph_output) {
-    const auto* type_proto = output.node_arg.TypeAsProto();
-    Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
-    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_node, type_proto, qnn_data_type));
-
-    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-    std::vector<uint32_t> output_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output.node_arg, output_shape),
-                      "Cannot get shape for QNN Transpose output");
-
-    QnnTensorWrapper output_tensorwrapper(output_name,
-                                          QNN_TENSOR_TYPE_APP_READ,
-                                          qnn_data_type,
-                                          quantize_param,
-                                          std::move(output_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)),
-                      "Failed to add output tensor for QNN Transpose");
-  }
-
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    GetQnnOpType(node_unit.OpType()),
-                                                    std::move(input_names),
-                                                    {output_name},
-                                                    std::move(param_tensor_names)),
-                    "Failed to add node.");
-  return Status::OK();
-}
-
 Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                     const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
@@ -252,9 +171,6 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth")) {
       return Status::OK();
     }
-  } else if (NodeUnit::Type::SingleNode == node_unit.UnitType() && op_type == "Transpose") {
-    LOGS(logger, VERBOSE) << "Add single Transpose node: " << node_unit.Name();
-    return HandleSingleTransposeNode(qnn_model_wrapper, node_unit, std::move(input_names), is_quantized_node);
   }
 
   std::vector<std::string> param_tensor_names;
@@ -279,10 +195,6 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     QnnParamWrapper transpose_in1_param(node_unit.Index(), node_unit.Name(), QNN_OP_MAT_MUL_PARAM_TRANSPOSE_IN1, scalar_param);
     param_tensor_names.push_back(transpose_in1_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(transpose_in1_param));
-  }
-
-  if (op_type == "Transpose") {
-    ORT_RETURN_IF_ERROR(ProcessPermAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
   if (op_type == "LeakyRelu") {
