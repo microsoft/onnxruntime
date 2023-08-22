@@ -5,7 +5,7 @@
 #include <string>
 
 #include "core/common/common.h"
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/function.h"
@@ -53,10 +53,10 @@ inline std::string GetFunctionIdentifier(std::string_view function_domain, std::
   return function_domain.data() + std::string(":") + function_name.data();
 }
 
-void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
-                const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix);
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto& calling_node,
+                const onnxruntime::NodeAttributes& attr_map, const std::string& unique_prefix);
 
-void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, Node& calling_node, std::string unique_prefix);
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const Node& calling_node, const std::string& unique_prefix);
 
 }  // namespace function_utils
 

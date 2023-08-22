@@ -377,7 +377,7 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   // The model path is structured like this "<opset>/<model_name>/model.onnx
   // The desired naming of the test is like this <model_name>_<opset>_<CPU/GPU>
   name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";  // model name
-  name += tokenizedModelPath[tokenizedModelPath.size() - 3];  // opset version
+  name += tokenizedModelPath[tokenizedModelPath.size() - 3];         // opset version
 
   // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
   std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];

@@ -20,21 +20,29 @@ static GetTestModelFn BuildArgMxxTestCase(const std::string& op_type, TestInputD
                                           const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
   return [op_type, input_def, attrs](ModelTestBuilder& builder) {
     auto* input = MakeTestInput(builder, input_def);
-    auto* output = builder.MakeOutput();
 
-    Node& argm_node = builder.AddNode(op_type, {input}, {output});
+    auto* argm_output = builder.MakeIntermediate();
+    Node& argm_node = builder.AddNode(op_type, {input}, {argm_output});
     for (const auto& attr : attrs) {
       argm_node.AddAttributeProto(attr);
     }
+
+    // Add cast to uint32
+    auto* output = builder.MakeOutput();
+    Node& cast_node = builder.AddNode("Cast", {argm_output}, {output});
+    const auto dst_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32;
+    cast_node.AddAttribute("to", static_cast<int64_t>(dst_type));
   };
 }
 
 // Builds a QDQ model with ArgMin/ArgMax and a Cast to uint32. The quantization parameters are computed from the provided
 // input definition.
 template <typename QType = uint8_t>
-static GetTestModelFn BuildQDQArgMxxTestCase(const std::string& op_type, TestInputDef<float> input_def,
-                                             const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [op_type, input_def, attrs](ModelTestBuilder& builder) {
+static GetTestQDQModelFn<QType> BuildQDQArgMxxTestCase(const std::string& op_type, TestInputDef<float> input_def,
+                                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
+  return [op_type, input_def, attrs](ModelTestBuilder& builder,
+                                     std::vector<QuantParams<QType>>& output_qparams) {
+    ORT_UNUSED_PARAMETER(output_qparams);
     QuantParams<QType> input_qparams = GetTestInputQuantParams(input_def);
 
     auto* input = MakeTestInput(builder, input_def);
@@ -75,8 +83,8 @@ static void RunCPUArgMxxOpTest(const std::string& op_type, TestInputDef<float> i
                   expected_ep_assignment);
 }
 
-// Runs an ArgMax/ArgMin model on the QNN CPU backend. Checks the graph node assignment, and that inference
-// outputs for QNN EP and CPU EP match.
+// Runs a QDQ ArgMax/ArgMin model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment, and that inference
+// running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP (when compared to the baseline float32 model).
 template <typename QType = uint8_t>
 static void RunQDQArgMxxOpTest(const std::string& op_type, TestInputDef<float> input_def,
                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
@@ -90,10 +98,12 @@ static void RunQDQArgMxxOpTest(const std::string& op_type, TestInputDef<float> i
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  RunQnnModelTest(BuildQDQArgMxxTestCase(op_type, input_def, attrs),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
+  TestQDQModelAccuracy(BuildArgMxxTestCase(op_type, input_def, attrs),            // baseline float32 model
+                       BuildQDQArgMxxTestCase<QType>(op_type, input_def, attrs),  // QDQ model
+                       provider_options,
+                       opset,
+                       expected_ep_assignment,
+                       1e-5f);
 }
 
 //

@@ -78,12 +78,11 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
   const int ldc = helper.Ldc();
   int64_t stride_A, stride_B, stride_C, batch_count;
 
-  auto hip_stream = static_cast<hipStream_t>(stream->GetHandle());
   auto rocblas_handle = op->GetRocblasHandle(static_cast<RocmStream*>(stream));
 
   if (helper.OutputOffsets().size() == 1) {
     return tunable::blas::column_major::Gemm(
-        op->GetTuningContext(), hip_stream, rocblas_handle,
+        op->GetTuningContext(), stream, rocblas_handle,
         transB, transA,
         helper.N(), helper.M(), helper.K(),
         alpha,
@@ -95,7 +94,7 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
                                       transa, transb, trans_batch_a, trans_batch_b,
                                       stride_A, stride_B, stride_C, batch_count)) {
     return tunable::blas::column_major::StridedBatchedGemm(
-        op->GetTuningContext(), hip_stream, rocblas_handle,
+        op->GetTuningContext(), stream, rocblas_handle,
         transB, transA,
         helper.N(), helper.M(), helper.K(),
         alpha,
@@ -127,7 +126,7 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
   // note that onnxruntime OrtValue is row major, while rocblas is column major,
   // so swap left/right operands
   return tunable::blas::column_major::BatchedGemm(
-      op->GetTuningContext(), hip_stream, rocblas_handle,
+      op->GetTuningContext(), stream, rocblas_handle,
       transB, transA,
       helper.N(), helper.M(), helper.K(),
       alpha,
