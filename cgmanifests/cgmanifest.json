@@ -570,7 +570,17 @@
             "git": {
                "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
                "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
-            }            
+            }
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "b252072409e69c25f2b9d473cc534e49b24decd2",
+               "repositoryUrl": "https://github.com/Dao-AILab/flash-attention"
+            },
+            "comments": "FlashAttention kernel source code."
          }
       }
    ],

@@ -31,8 +31,6 @@ struct PackedMultiHeadAttentionData {
 
   bool use_flash_attention;
   bool use_memory_efficient_attention;
-
-  void* softmax_lse_buffer;
 };
 
 template <typename T>

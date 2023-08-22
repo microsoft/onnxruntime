@@ -601,7 +601,9 @@ Status FlashAttention(
 
   // Q, K and V pointers
   const int model_dimension_qk = num_heads * qk_head_size;
+  const int model_dimension_v = num_heads * v_head_size;
   const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_qk);
+  const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_v);
 
   // When separated Q, K, V is used, we can directly use them in Cutlass FMHA. Otherwise, transpose BSN3H to 3BSNH
   if (!data.no_qkv_workspace) {
@@ -619,32 +621,36 @@ Status FlashAttention(
   const void* query = data.no_qkv_workspace ? data.query : data.workspace;
   const void* key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   const void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
+  void* softmax_lse_buffer = data.no_qkv_workspace ? data.workspace :
+                            (data.workspace + elements_qk + elements_qk + elements_v);
 
-  ORT_RETURN_IF_ERROR(flash::mha_varlen_fwd(
-    stream,
-    const_cast<void*>(query),
-    const_cast<void*>(key),
-    const_cast<void*>(value),
-    data.output,
-    cu_seqlens_q,
-    cu_seqlens_k,
-    reinterpret_cast<void*>(data.softmax_lse_buffer),
-    batch_size,
-    num_heads,
-    num_heads, //num_heads_k
-    qk_head_size,
-    sequence_length,
-    sequence_length,
-    scale,
-    false // is causal
-    ));
+  ORT_RETURN_IF_ERROR(
+    flash::mha_varlen_fwd(
+      stream,
+      const_cast<void*>(query),
+      const_cast<void*>(key),
+      const_cast<void*>(value),
+      data.output,
+      cu_seqlens_q,
+      cu_seqlens_k,
+      softmax_lse_buffer,
+      batch_size,
+      num_heads,
+      num_heads,  //num_heads_k
+      qk_head_size,
+      sequence_length,
+      sequence_length,
+      scale,
+      false  // is causal
+    )
+  );
 
   DUMP_TENSOR_INIT();
-  DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", reinterpret_cast<const T*>(query), parameters.token_count, num_heads * qk_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass k(BSNH)", reinterpret_cast<const T*>(key), parameters.token_count, num_heads * qk_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass v(BSNH)", reinterpret_cast<const T*>(value), parameters.token_count, num_heads * v_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
-  DUMP_TENSOR("PackedMHA cutlass output", data.output, parameters.token_count, num_heads, v_head_size);
+  DUMP_TENSOR_D("PackedMHA flash q(BSNH)", reinterpret_cast<const T*>(query), parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedMHA flash k(BSNH)", reinterpret_cast<const T*>(key), parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedMHA flash v(BSNH)", reinterpret_cast<const T*>(value), parameters.token_count, num_heads * v_head_size);
+  DUMP_TENSOR_D("PackedMHA flash cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
+  DUMP_TENSOR("PackedMHA flash output", data.output, parameters.token_count, num_heads, v_head_size);
 
   return Status::OK();
 }

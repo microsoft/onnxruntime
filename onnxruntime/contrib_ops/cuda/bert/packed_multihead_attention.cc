@@ -298,14 +298,6 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.no_qkv_workspace = no_qkv_workspace;
   data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;
 
-#if USE_FLASH_ATTENTION
-  if (use_flash_attention) {
-    size_t softmax_lse_bytes = flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
-    auto soft_buff = this->GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-    data.softmax_lse_buffer = soft_buff.get();
-  }
-#endif
-
   return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }
 

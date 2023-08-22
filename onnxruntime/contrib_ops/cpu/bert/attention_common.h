@@ -98,7 +98,7 @@ constexpr const char* kDisableTrtFlashAttention = "ORT_DISABLE_TRT_FLASH_ATTENTI
 // Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
 constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION";
 
-// Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
+// Environment variable to enable or disable flash attention. Default is 0 (enabled).
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
 
 // Minimum sequence length to enable memory efficient attention in FP32.
