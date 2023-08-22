@@ -25,8 +25,7 @@ class Split : public JsKernel, public SplitBase {
       if (num_outputs_ < 0) {
         num_outputs_ = split_sizes.size();
       }
-    }
-    else if (split_sizes_.size() == 0 && info.GetInputCount() < 2) {
+    } else if (split_sizes_.size() == 0 && info.GetInputCount() < 2) {
       // Compute split_sizes from input shape and num_outputs.
       // TODO: Shape might not be known at this point, better to handle this in javascript
       auto total_split_size = info.node().InputDefs()[0]->Shape()->dim(gsl::narrow_cast<int32_t>(axis_)).dim_value();
