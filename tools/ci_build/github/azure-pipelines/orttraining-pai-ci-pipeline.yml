@@ -186,13 +186,14 @@ jobs:
           --user onnxruntimedev \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          -e OPENBLAS_NUM_THREADS=1 \
+          -e OPENMP_NUM_THREADS=1 \
+          -e MKL_NUM_THREADS=1 \
+          -e KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig) \
+          -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
+          -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
-            /bin/bash -c "
-              set -ex; \
-              export KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig); \
-              export KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8; \
-              export KERNEL_EXPLORER_TEST_USE_CUPY=1; \
-              pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 8 --reruns 1 --durations=100"
+            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
     condition: succeededOrFailed()
