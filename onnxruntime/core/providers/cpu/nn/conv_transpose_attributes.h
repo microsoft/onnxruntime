@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 /* Modifications Copyright (c) Microsoft. */
+// Copyright (c) 2023 NVIDIA Corporation.
 
 #pragma once
 

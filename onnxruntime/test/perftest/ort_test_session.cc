@@ -1,3 +1,7 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 NVIDIA Corporation.
+// Licensed under the MIT License.
+
 #include "ort_test_session.h"
 #include <algorithm>
 #include <limits>
