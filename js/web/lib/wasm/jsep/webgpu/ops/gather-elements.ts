@@ -34,12 +34,12 @@ const createGatherElementsProgramInfo =
       const inputRank = inputShape.length;
       const inputStrides = ShapeUtil.computeStrides(inputShape);
 
-      // const indicesShape = inputs[1].dims;
+      const indicesShape = inputs[1].dims;
 
       const axis = ShapeUtil.normalizeAxis(attributes.axis, inputRank);
       const axisDimLimit = inputShape[axis];
 
-      const outputShape = [2, 2];
+      const outputShape = indicesShape.slice(0);
       const outputSize = ShapeUtil.size(outputShape);
 
       const inputDataType = inputs[0].dataType;
@@ -75,11 +75,11 @@ const createGatherElementsProgramInfo =
         idx = idx + ${axisDimLimit};
       }
 
-      let srcOffset = u32(0);
+      var srcOffset = u32(0);
 
       for (var i = 0; i < ${inputShape.length}; i++) {
         if (i == ${axis}) {
-          srcOffset +=  idx * inputStrides[i];
+          srcOffset +=  u32(idx) * inputStrides[i];
         } else {
           srcOffset += ${output.indicesGet('outputIndices', 'i')} * inputStrides[i];
         }
@@ -87,7 +87,7 @@ const createGatherElementsProgramInfo =
 
       // Should never hit this with valid values in indices
       // This is a guard against malicious data in the indices input
-      if (srcOffset >= ${inputSize}) {
+      if (srcOffset < 0 || srcOffset >= ${inputSize}) {
         return;
       }
 
