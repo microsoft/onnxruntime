@@ -2,9 +2,6 @@
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
 
-// #include <torch/extension.h>
-// #include <ATen/cuda/CUDAContext.h>
-// #include <c10/cuda/CUDAGuard.h>
 #if USE_FLASH_ATTENTION
 
 #include "core/providers/cuda/cuda_common.h"
@@ -45,7 +42,7 @@ void set_params_fprop(Flash_fwd_params& params,
   params.k_ptr = k;
   params.v_ptr = v;
   params.o_ptr = out;
-  params.p_ptr = p_d;
+
   // All stride are in elements, not bytes.
   params.q_row_stride = num_heads * head_size;
   params.k_row_stride = num_heads_k * head_size;
@@ -121,13 +118,10 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const int num_heads,
                const int num_heads_k,
                const int head_size,
-               const int total_q,
                const int seqlen_q,
                const int seqlen_k,
                const float softmax_scale,
                const bool is_causal) {
-  ORT_UNUSED_PARAMETER(total_q);
-
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
   bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
   ORT_ENFORCE(is_sm8x || is_sm90);
@@ -172,18 +166,16 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       const int num_heads,
                       const int num_heads_k,
                       const int head_size,
-                      const int total_q,
                       const int max_seqlen_q_,
                       const int max_seqlen_k_,
                       const float softmax_scale,
                       const bool is_causal) {
-  ORT_UNUSED_PARAMETER(total_q);
-
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
   bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
   ORT_ENFORCE(is_sm8x || is_sm90);
 
   ORT_ENFORCE(batch_size > 0);
+  ORT_ENFORCE(num_heads % num_heads_k == 0);  // Number of heads in key/value must divide number of heads in query
   ORT_ENFORCE((head_size % 8 == 0) && (head_size <= 128));
 
   int max_seqlen_k = max_seqlen_k_;
@@ -204,7 +196,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    q, k, v, out,
                    cu_seqlens_q,
                    cu_seqlens_k,
-                   nullptr,  // o_tmp_buffer : nullptr,
+                   nullptr,
                    softmax_lse_buffer,
                    softmax_scale,
                    is_causal);

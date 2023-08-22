@@ -1,9 +1,9 @@
 /******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
-#if USE_FLASH_ATTENTION
-
 #pragma once
+
+#if USE_FLASH_ATTENTION
 
 #include "cute/algorithm/copy.hpp"
 

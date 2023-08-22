@@ -1,9 +1,15 @@
 /******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
+#pragma once
+
 #if USE_FLASH_ATTENTION
 
-#pragma once
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
 
 #include <cmath>
 #include <cute/algorithm/copy.hpp>
@@ -18,7 +24,6 @@
 #include "contrib_ops/cuda/bert/flash_attention/kernel_traits.h"
 #include "contrib_ops/cuda/bert/flash_attention/utils.h"
 #include "contrib_ops/cuda/bert/flash_attention/softmax.h"
-#include "contrib_ops/cuda/bert/flash_attention/philox.cuh"
 
 namespace flash {
 using namespace cute;
@@ -508,5 +513,9 @@ inline __device__ void compute_attn(const Params& params) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 }  // namespace flash
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #endif  // USE_FLASH_ATTENTION

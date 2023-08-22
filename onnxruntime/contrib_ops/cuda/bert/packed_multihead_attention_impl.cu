@@ -614,8 +614,8 @@ Status FlashAttention(
 
   float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                      : parameters.scale;
-  int32_t* seqstart_q_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
-  int32_t* seqstart_k_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
+  int32_t* cu_seqlens_q = const_cast<int32_t*>(data.cumulative_sequence_length);
+  int32_t* cu_seqlens_k = const_cast<int32_t*>(data.cumulative_sequence_length);
   const void* query = data.no_qkv_workspace ? data.query : data.workspace;
   const void* key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   const void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
@@ -627,17 +627,16 @@ Status FlashAttention(
     const_cast<void*>(key),
     const_cast<void*>(value),
     data.output,
-    seqstart_q_ptr,
-    seqstart_k_ptr,
+    cu_seqlens_q,
+    cu_seqlens_k,
     reinterpret_cast<void*>(data.softmax_lse_buffer),
     batch_size,
     num_heads,
     num_heads, //num_heads_k
     qk_head_size,
-    parameters.token_count, // Total token count
     sequence_length,
     sequence_length,
-    scale, // scale refer to softmax scale?
+    scale,
     false // is causal
     ));
 

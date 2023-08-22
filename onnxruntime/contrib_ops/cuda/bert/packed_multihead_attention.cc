@@ -234,24 +234,22 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   Tensor* output = context->Output(0, output_shape);
 
   auto& device_prop = this->GetDeviceProp();
-  MHARunner* fused_runner = this->GetFusedRunner(device_prop, parameters);
 
   bool use_flash_attention = false;
-
 #if USE_FLASH_ATTENTION
   if (!disable_flash_attention_) {
-    const bool is_sm8x = device_prop.major >= 8;
+    const bool is_sm8x = device_prop.major == 8 && device_prop.minor >= 0;
+    const bool is_sm90 = device_prop.major == 9 && device_prop.minor == 0;
     use_flash_attention = !parameters.has_relative_position_bias &&
                           sizeof(T) == 2 &&
                           parameters.head_size % 8 == 0 &&
                           parameters.head_size <= 256 &&
                           parameters.head_size == parameters.v_head_size &&
-                          is_sm8x;
-    if(use_flash_attention) {
-      fused_runner = nullptr;
-    }
+                          (is_sm8x || is_sm90);
   }
 #endif
+
+  MHARunner* fused_runner = use_flash_attention ? nullptr : this->GetFusedRunner(device_prop, parameters);
 
   bool use_memory_efficient_attention = false;
 

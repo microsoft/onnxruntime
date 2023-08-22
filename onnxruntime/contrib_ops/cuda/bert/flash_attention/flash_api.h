@@ -25,9 +25,10 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ******************************************************************************/
-#if USE_FLASH_ATTENTION
 
 #pragma once
+
+#if USE_FLASH_ATTENTION
 
 #include "core/providers/cuda/cuda_common.h"
 
@@ -46,7 +47,6 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const int num_heads,
                const int num_heads_k,
                const int head_size,
-               const int total_q,  // huh
                const int seqlen_q,
                const int seqlen_k,
                const float softmax_scale,
@@ -61,21 +61,17 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       int* cu_seqlens_q,         // int (batch_size + 1)
                       int* cu_seqlens_k,         // int (batch_size + 1)
                       void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
-                                                 //  void* o_tmp_buffer,        // NULL or float (total_q, num_heads, v_head_size)
                       const int batch_size,
                       const int num_heads,
                       const int num_heads_k,
                       const int head_size,
-                      const int total_q,
                       const int max_seqlen_q_,
                       const int max_seqlen_k_,
                       const float softmax_scale,
-                      const bool is_causal /*,
-                       const int num_splits,
-                       const bool zero_tensors*/
-);
+                      const bool is_causal);
 
 size_t get_softmax_lse_size(int max_seqlen_q_, int batch_size, int num_heads);
+
 }  // namespace flash
 }  // namespace cuda
 }  // namespace contrib

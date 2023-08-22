@@ -1,15 +1,9 @@
 /******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
-#if USE_FLASH_ATTENTION
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
 #pragma once
+
+#if USE_FLASH_ATTENTION
 
 #include "contrib_ops/cuda/bert/flash_attention/static_switch.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash.h"
@@ -52,7 +46,6 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
       //     &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
       //  printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);
       kernel<<<grid, Kernel_traits::kNThreads, smem_size, stream>>>(params);
-      // C10_CUDA_KERNEL_LAUNCH_CHECK();
     });
   });
 }
@@ -235,9 +228,5 @@ void run_mha_fwd_hdim256(Flash_fwd_params& params, cudaStream_t stream) {
     // run_flash_fwd<Flash_fwd_kernel_traits<Headdim, 128, 32, 8, false, false, T>, Is_causal>(params, stream);
   });
 }
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 #endif  // USE_FLASH_ATTENTION
