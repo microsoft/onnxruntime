@@ -27,7 +27,7 @@ class TransposeOpBuilder : public BaseOpBuilder {
                                      bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-private:
+ private:
   Status ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
                               const NodeUnit& node_unit,
                               std::vector<std::string>& param_tensor_names) const;
@@ -64,11 +64,11 @@ Status TransposeOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapp
 }
 
 Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                 const NodeUnit& node_unit,
-                                                 std::vector<std::string>&& input_names,
-                                                 const logging::Logger& logger,
-                                                 bool is_quantized_node,
-                                                 bool do_op_validation) const {
+                                                       const NodeUnit& node_unit,
+                                                       std::vector<std::string>&& input_names,
+                                                       const logging::Logger& logger,
+                                                       bool is_quantized_node,
+                                                       bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(is_quantized_node);
   ORT_UNUSED_PARAMETER(logger);
 
