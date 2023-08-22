@@ -61,6 +61,9 @@ export interface ConvTransposeAttributes extends ConvAttributes {
 
 const getAdjustedConvTransposeAttributes =
     <T extends ConvTransposeAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
+      if (attributes.group !== 1) {
+        throw new Error('group > 1 is not supported');
+      }
       const kernelShape = attributes.kernelShape.slice();
       // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
       if (attributes.kernelShape.length === 0 || attributes.kernelShape.reduce((a, b) => a * b, 0) === 0) {
