@@ -3389,7 +3389,8 @@ TEST(ReductionOpTest, ReduceL1_noop_axes_input_initializer_opset_18) {
     {
       kTensorrtExecutionProvider,
       kOpenVINOExecutionProvider,
-      kDnnlExecutionProvider
+      kDnnlExecutionProvider,
+      kDmlExecutionProvider
     }
   );
 }
@@ -3421,7 +3422,8 @@ TEST(ReductionOpTest, ReduceL2_noop_axes_input_initializer_opset_18) {
     {
       kTensorrtExecutionProvider,
       kOpenVINOExecutionProvider,
-      kDnnlExecutionProvider
+      kDnnlExecutionProvider,
+      kDmlExecutionProvider
     }
   );
 }
@@ -3453,7 +3455,8 @@ TEST(ReductionOpTest, ReduceMax_noop_axes_input_initializer_opset_18) {
     {
       kTensorrtExecutionProvider,
       kOpenVINOExecutionProvider,
-      kDnnlExecutionProvider
+      kDnnlExecutionProvider,
+      kDmlExecutionProvider
     }
   );
 }
@@ -3485,7 +3488,8 @@ TEST(ReductionOpTest, ReduceMean_noop_axes_input_initializer_opset_18) {
     {
       kTensorrtExecutionProvider,
       kOpenVINOExecutionProvider,
-      kDnnlExecutionProvider
+      kDnnlExecutionProvider,
+      kDmlExecutionProvider
     }
   );
 }
@@ -3517,7 +3521,8 @@ TEST(ReductionOpTest, ReduceMin_noop_axes_input_initializer_opset_18) {
     {
       kTensorrtExecutionProvider,
       kOpenVINOExecutionProvider,
-      kDnnlExecutionProvider
+      kDnnlExecutionProvider,
+      kDmlExecutionProvider
     }
   );
 }
@@ -3549,7 +3554,8 @@ TEST(ReductionOpTest, ReduceProd_noop_axes_input_initializer_opset_18) {
     {
       kTensorrtExecutionProvider,
       kOpenVINOExecutionProvider,
-      kDnnlExecutionProvider
+      kDnnlExecutionProvider,
+      kDmlExecutionProvider
     }
   );
 }
@@ -3605,7 +3611,8 @@ TEST(ReductionOpTest, ReduceSumSquare_noop_axes_input_initializer_opset_18) {
     {
       kTensorrtExecutionProvider,
       kOpenVINOExecutionProvider,
-      kDnnlExecutionProvider
+      kDnnlExecutionProvider,
+      kDmlExecutionProvider
     }
   );
 }
