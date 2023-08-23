@@ -20,11 +20,6 @@ parameters:
   default: ""
 
 steps:
-  - ${{if eq(parameters.With_Cache, true)}}:
-    - script: |
-        mkdir -p ${{ parameters.CacheDir }}
-      displayName: Create Cache Dir
-
   - ${{ if eq(parameters.WITH_CACHE, true) }}:
     - task: Cache@2
       inputs:
