@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
+#include "core/providers/cpu/nn/batch_norm.h"  // for BATCHNORM_INCLUDE_TRAINING_SUPPORT
 #include "core/session/inference_session.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -846,7 +847,7 @@ TEST(BatchNormTest, BatchNorm2d_bfloat16) {
 #endif  //  USE_DNNL
 
 // TODO fix flaky test for CUDA
-#ifdef ENABLE_TRAINING_OPS
+#ifdef BATCHNORM_INCLUDE_TRAINING_SUPPORT
 TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
@@ -936,7 +937,7 @@ TEST(BatchNormTest, ForwardTrainingTestOpset15) {
            {kCudaExecutionProvider, kRocmExecutionProvider,
             kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
-#endif  // ENABLE_TRAINING_OPS
+#endif  // BATCHNORM_INCLUDE_TRAINING_SUPPORT
 
 }  // namespace test
 }  // namespace onnxruntime
