@@ -63,7 +63,7 @@ bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
   }
 
   if (IsQnnTensorWrapperExist(tensor_name) == true) {
-    LOGS(logger_, VERBOSE) << "Tensor eist already: " << tensor_name;
+    LOGS(logger_, VERBOSE) << "Tensor exist already: " << tensor_name;
     return true;
   }
 

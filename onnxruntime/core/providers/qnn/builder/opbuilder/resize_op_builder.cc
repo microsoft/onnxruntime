@@ -25,8 +25,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -179,8 +178,7 @@ static bool ArrayHasString(const std::array<std::string_view, N>& strings, std::
 // Need to do op validation in 1st call of GetCapability
 Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
-                                      const logging::Logger& logger,
-                                      bool is_npu_backend) const {
+                                      const logging::Logger& logger) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
@@ -196,6 +194,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   // currently use QNN's Resize op for quantized models and either ResizeBilinear or ResizeNearestNeighbor for
   // non-quantized models. This requires separate validation for quantized models.
   // TODO: Use only Resize once QNN's Resize op works in the QNN cpu backend.
+  bool is_npu_backend = qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::HTP || qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::DSP;
   return is_npu_backend ? ValidateQDQOp(qnn_model_wrapper, node_unit) : ValidateOp(qnn_model_wrapper, node_unit);
 }
 

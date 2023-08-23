@@ -20,8 +20,7 @@ class LRNOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -49,13 +48,11 @@ const OnnxAttrInfo<int64_t> LRNOpBuilder::onnx_size_attr = {"size", 0};
 // Therefore, we need to check the node domain to determine if the layout has been transformed.
 Status LRNOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnit& node_unit,
-                                   const logging::Logger& logger,
-                                   bool is_npu_backend) const {
+                                   const logging::Logger& logger) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
 
-  const auto float_elem_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float");
   const auto& inputs = node_unit.Inputs();
   const auto& outputs = node_unit.Outputs();
 
@@ -64,18 +61,6 @@ Status LRNOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   const auto& input = inputs[0];
   const auto& output = outputs[0];
-
-  // Check that the input type is float for CPU.
-  ONNX_NAMESPACE::DataType input_data_type = input.node_arg.Type();
-  ORT_RETURN_IF(!is_npu_backend && input_data_type != float_elem_type,
-                "QNN EP: LRN operator does not support the input type '", input_data_type->c_str(),
-                "' on the CPU backend.");
-
-  // Check that the output type is float for CPU.
-  ONNX_NAMESPACE::DataType output_data_type = output.node_arg.Type();
-  ORT_RETURN_IF(!is_npu_backend && output_data_type != float_elem_type,
-                "QNN EP: LRN operator does not support the input type '", input_data_type->c_str(),
-                "' on the CPU backend.");
 
   // Check that the input and output have the same shape.
   std::vector<uint32_t> input_shape;

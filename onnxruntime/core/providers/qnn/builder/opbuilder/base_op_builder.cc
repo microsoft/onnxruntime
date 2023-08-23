@@ -21,9 +21,7 @@ std::string BaseOpBuilder::GetOpBuilderType() const {
 // Add operator related
 Status BaseOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
-                                    const logging::Logger& logger,
-                                    bool is_npu_backend) const {
-  ORT_UNUSED_PARAMETER(is_npu_backend);
+                                    const logging::Logger& logger) const {
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
 }
 

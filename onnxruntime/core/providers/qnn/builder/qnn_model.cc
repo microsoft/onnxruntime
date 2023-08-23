@@ -102,7 +102,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       qnn_backend_manager_->GetQnnBackendHandle(),
                                                       model_input_index_map_,
                                                       model_output_index_map_,
-                                                      initializer_inputs_);
+                                                      initializer_inputs_,
+                                                      qnn_backend_manager_->GetQnnBackendType());
   bool rt = true;
   rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name);
   if (!rt) {

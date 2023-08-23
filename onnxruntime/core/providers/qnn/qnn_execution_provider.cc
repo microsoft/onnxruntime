@@ -15,6 +15,7 @@
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
 
@@ -139,7 +140,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                            std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
                                            const logging::Logger& logger) const {
-  bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
   // If we have visited one of the nodes in the node_unit, use the result directly
   const auto it = node_unit_supported_result.find(&node_unit);
   if (it != node_unit_supported_result.cend()) {
@@ -155,8 +155,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
                             << "` will not be assigned to QNN EP.";
     } else {
       auto status = op_builder->IsOpSupported(qnn_model_wrapper,
-                                              node_unit, logger,
-                                              is_npu_backend);
+                                              node_unit, logger);
       if (Status::OK() != status) {
         LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
                               << "` is not supported: " << status.ErrorMessage();
@@ -215,7 +214,8 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 qnn_backend_manager_->GetQnnBackendHandle(),
                                                 model_input_index_map,
                                                 model_output_index_map,
-                                                initializer_input_lookup);
+                                                initializer_input_lookup,
+                                                qnn_backend_manager_->GetQnnBackendType());
 
   for (const auto& node : graph_viewer.Nodes()) {
     const NodeUnit* node_unit = node_unit_map.at(&node);
@@ -263,8 +263,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return result;
   }
 
-  if (context_cache_enabled_ && !qnn_backend_manager_->IsNpuBackend()) {
-    LOGS(logger, ERROR) << "Qnn context cache only works for NPU backend.";
+  if (context_cache_enabled_ && IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
+    LOGS(logger, ERROR) << "Qnn context cache only works for HTP or DSP backend.";
     return result;
   }
 
@@ -437,7 +437,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
   const auto& logger = *GetLogger();
 
   if (context_cache_enabled_) {
-    ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support singel partition for context cache feature.");
+    ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support single partition for context cache feature.");
     Node& fused_node = fused_nodes_and_graphs[0].fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
     // The dumy_model_description won't be used since IsContextCacheFileExists call cached the result

@@ -21,8 +21,7 @@ class LayerNormOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -39,14 +38,14 @@ class LayerNormOpBuilder : public BaseOpBuilder {
 // Therefore, we need to check the node domain to determine if the layout has been transformed.
 Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                          const NodeUnit& node_unit,
-                                         const logging::Logger& logger,
-                                         bool is_npu_backend) const {
+                                         const logging::Logger& logger) const {
   // Also check output type is float for CPU.
   const auto& outputs = node_unit.Outputs();
   ORT_RETURN_IF(outputs.size() > 1, "QNN LayerNorm only support 1 output.");
 
   // QNN Op validation can also do the same work, but the message is not so clear.
   // Explicit check and provide clear message here
+  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   if (is_npu_backend) {
     std::vector<uint32_t> input_shape;
     const auto& inputs = node_unit.Inputs();
@@ -58,7 +57,12 @@ Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF(static_cast<size_t>(default_axis) != input_rank - 1, "QNN LayerNorm for HTP only support axis with last input dimension");
   }
 
-  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
+  // Continue Op validation if it's NHWC transformed
+  if (node_unit.Domain() == kMSInternalNHWCDomain) {
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
+  }
+
+  return Status::OK();
 }
 
 Status LayerNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,

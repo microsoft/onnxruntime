@@ -23,8 +23,7 @@ class BaseOpBuilder : public IOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_npu_backend) const override ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
                            const NodeUnit& node_unit,

@@ -22,8 +22,7 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_npu_backend) const override ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
  protected:
   Qnn_DataType_t GetSupportedOutputDataType(size_t index,
@@ -39,12 +38,12 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
 
 Status ArgMaxMinOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                          const NodeUnit& node_unit,
-                                         const logging::Logger& logger,
-                                         bool is_npu_backend) const {
+                                         const logging::Logger& logger) const {
   // ONNX ArgMax/ArgMin ops output int64 indices, but the equivalent QNN ops output uint32 indices.
   // The QNN HTP backend does not generally support the int64 type, but QNN EP can just use the uint32 type
   // for ArgMax/ArgMin ops within the graph. However, if the ArgMin/ArgMax op **generates** a graph output,
   // then we cannot support it on the HTP backend.
+  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   if (is_npu_backend) {
     const std::string& output_name = node_unit.Outputs()[0].node_arg.Name();
     ORT_RETURN_IF(qnn_model_wrapper.IsGraphOutput(output_name),

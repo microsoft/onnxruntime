@@ -21,8 +21,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -47,10 +46,8 @@ class PoolOpBuilder : public BaseOpBuilder {
 // TODO: Check if node domain == kMSInternalNHWCDomain to determine if the layout has been transformed.
 Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
-                                    const logging::Logger& logger,
-                                    bool is_npu_backend) const {
+                                    const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(is_npu_backend);
 
   if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);

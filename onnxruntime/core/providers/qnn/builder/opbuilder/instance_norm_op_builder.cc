@@ -21,8 +21,7 @@ class InstanceNormOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -39,10 +38,8 @@ class InstanceNormOpBuilder : public BaseOpBuilder {
 // Therefore, we need to check the node domain to determine if the layout has been transformed.
 Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                             const NodeUnit& node_unit,
-                                            const logging::Logger& logger,
-                                            bool is_npu_backend) const {
+                                            const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(is_npu_backend);
 
   // Check input type is float for CPU.
   const auto& inputs = node_unit.Inputs();
@@ -72,6 +69,11 @@ Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   const float epsilon = node_helper.Get("epsilon", 1e-05f);  // Default is 1e-05 according to ONNX spec.
   if (epsilon <= 0.0f) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm epsilon must be greater than 0.0");
+  }
+
+  // Continue Op validation if it's NHWC transformed
+  if (node_unit.Domain() == kMSInternalNHWCDomain) {
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
 
   return Status::OK();

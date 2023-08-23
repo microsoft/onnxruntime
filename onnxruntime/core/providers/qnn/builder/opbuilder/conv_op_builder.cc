@@ -40,8 +40,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_npu_backend) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -81,8 +80,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 // Need to do op validation in 1st call of GetCapability
 Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
-                                    const logging::Logger& logger,
-                                    bool is_npu_backend) const {
+                                    const logging::Logger& logger) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
@@ -98,6 +96,7 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
 
   ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
+  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   ORT_RETURN_IF(!is_npu_backend && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
                 "QNN EP: Data type ", input_data_type->c_str(),
                 " is not supported for Conv operator in CPU backend.");
