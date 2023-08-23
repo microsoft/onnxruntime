@@ -106,9 +106,9 @@
 	<div class="navbar-end">
 		<input
 			aria-label="toggle color theme"
-			data-toggle-theme="darkmode, lightmode"
+			data-toggle-theme="lightmode, darkmode"
 			type="checkbox"
-			class="toggle toggle-dark"
+			class="toggle"
 			checked
 		/>
 	</div>
