@@ -84,7 +84,7 @@ def int4_block_quant(fp32weight: npt.ArrayLike, symmetric: bool) -> np.ndarray:
 
             blk_int = np.clip(np.rint(blk * reciprocal_scale + zp), 0, 15).astype("uint8")
             for i in range(0, blob_size, 2):
-                packed_blob[i/2] = blk_int[i] | blk_int[i+1] << 4
+                packed_blob[i//2] = blk_int[i] | blk_int[i+1] << 4
     return (packed.reshape((cols, k_blocks, blob_size)),
             scales.reshape((cols, k_blocks)),
             zero_point.reshape((cols, k_blocks)))
@@ -234,13 +234,6 @@ set of 4b integers with a scaling factor and an optional offset.
 
     parser.add_argument("--input_model", required=True, help="Path to the input model file")
     parser.add_argument("--output_model", required=True, help="Path to the output model file")
-    parser.add_argument(
-        "--quant_bin_path",
-        required=True,
-        help="""Currently quantization code is implemented in a separate binary
-(onnxruntime_mlas_q4dq) that is compiled with Onnxruntime native code.
-Path to this binary needs to be provided here.""",
-    )
     parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
     parser.set_defaults(use_external_data_format=False)
 
@@ -252,7 +245,6 @@ if __name__ == "__main__":
 
     input_model_path = args.input_model
     output_model_path = args.output_model
-    q4dq_bin_path = args.quant_bin_path
 
     model = load_model_with_shape_infer(Path(input_model_path))
     quant = MatMulWeight4Quantizer(model, 0)

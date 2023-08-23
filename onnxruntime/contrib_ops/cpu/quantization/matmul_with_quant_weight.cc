@@ -57,7 +57,7 @@ Status MatMulWithQuantWeight::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(nbits_ == 4, "only 4 bits is supported now");
   ORT_ENFORCE(block_size_ == 32, "only block size 32 is supported now");
 
-  const SubByteBlob<32, 4>* b_blob = reinterpret_cast<typename const SubByteBlob<32, 4>*>(b_data);
+  const SubByteBlob<32, 4>* b_blob = reinterpret_cast<const SubByteBlob<32, 4>*>(b_data);
 
 
   AllocatorPtr allocator;
