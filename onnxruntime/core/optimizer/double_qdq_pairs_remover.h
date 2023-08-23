@@ -16,9 +16,6 @@ using QDQ::InputIndex;
 /**
  * @Class DoubleQDQPairsRemover
  * @brief Remove one pair of Q-DQ from Double Q-DQ pairs.
- * Specifically, this transformer converts the sequence Q1 -> DQ1 -> Q2 -> DQ2, where the first pair has (zp1, scale1)
- * and the second pair has (zp2, scale2), into the sequence Q1 -> DQ2 by removing the middle two nodes. The zero-point
- * and scale of the final QDQ pair is recomputed to preserve equality to the original sequence.
  */
 class DoubleQDQPairsRemover : public GraphTransformer {
  public:
@@ -53,10 +50,5 @@ class DoubleQDQPairsRemover : public GraphTransformer {
       Node& node,
       const InputIndex& index,
       T value);
-
-  template <typename ZeroPointType>
-  static bool ResetParentAndGrandchildZeroPointAndScale(Graph& graph, const Node& self,
-                                                        const Node& child, Node& parent,
-                                                        Node& grandchild);
 };
 }  // namespace onnxruntime
