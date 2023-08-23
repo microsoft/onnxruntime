@@ -17,15 +17,15 @@ namespace flash {
 
 void set_params_fprop(Flash_fwd_params& params,
                       // sizes
-                      const size_t batch_size,
-                      const size_t seqlen_q,
-                      const size_t seqlen_k,
-                      const size_t seqlen_q_rounded,
-                      const size_t seqlen_k_rounded,
-                      const size_t num_heads,
-                      const size_t num_heads_k,
-                      const size_t head_size,
-                      const size_t head_size_rounded,
+                      size_t batch_size,
+                      size_t seqlen_q,
+                      size_t seqlen_k,
+                      size_t seqlen_q_rounded,
+                      size_t seqlen_k_rounded,
+                      size_t num_heads,
+                      size_t num_heads_k,
+                      size_t head_size,
+                      size_t head_size_rounded,
                       // device pointers
                       void* q,
                       void* k,
@@ -57,7 +57,7 @@ void set_params_fprop(Flash_fwd_params& params,
   if (cu_seqlens_q_d == nullptr) {
     params.q_batch_stride = seqlen_q * num_heads * head_size;    // stride(0)
     params.k_batch_stride = seqlen_k * num_heads_k * head_size;  // stride(0)
-    params.v_batch_stride = seqlen_k * num_heads * head_size;    // stride(0)
+    params.v_batch_stride = seqlen_k * num_heads_k * head_size;  // stride(0)
     params.o_batch_stride = seqlen_q * num_heads * head_size;    // stride(0)
   } else {
     params.q_batch_stride = 0;
@@ -79,7 +79,7 @@ void set_params_fprop(Flash_fwd_params& params,
   params.b = batch_size;
   params.h = num_heads;
   params.h_k = num_heads_k;
-  params.h_h_k_ratio = head_size / num_heads_k;
+  params.h_h_k_ratio = num_heads / num_heads_k;
   params.seqlen_q = seqlen_q;
   params.seqlen_k = seqlen_k;
   params.seqlen_q_rounded = seqlen_q_rounded;
@@ -108,19 +108,19 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream) {
 }
 
 Status mha_fwd(cudaStream_t stream,
-               void* q,             // batch_size x seqlen_q x num_heads x head_size
-               void* k,             // batch_size x seqlen_k x num_heads_k x head_size
-               void* v,             // batch_size x seqlen_k x num_heads_k x head_size
-               void* out,           // batch_size x seqlen_q x num_heads x head_size
-               float* softmax_lse,  // batch_size x num_heads x seqlen_q
-               const int batch_size,
-               const int num_heads,
-               const int num_heads_k,
-               const int head_size,
-               const int seqlen_q,
-               const int seqlen_k,
-               const float softmax_scale,
-               const bool is_causal) {
+               void* q,            // batch_size x seqlen_q x num_heads x head_size
+               void* k,            // batch_size x seqlen_k x num_heads_k x head_size
+               void* v,            // batch_size x seqlen_k x num_heads_k x head_size
+               void* out,          // batch_size x seqlen_q x num_heads x head_size
+               void* softmax_lse,  // batch_size x num_heads x seqlen_q
+               int batch_size,
+               int num_heads,
+               int num_heads_k,
+               int head_size,
+               int seqlen_q,
+               int seqlen_k,
+               float softmax_scale,
+               bool is_causal) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
@@ -140,33 +140,31 @@ Status mha_fwd(cudaStream_t stream,
                    softmax_lse,
                    softmax_scale,
                    is_causal);
+
   run_mha_fwd(params, stream);
   return Status::OK();
 }
 
 Status mha_varlen_fwd(cudaStream_t stream,
-                      void* q,                   // half (total_q, num_heads, head_size)
-                      void* k,                   // half (total_k, num_heads, head_size)
-                      void* v,                   // half (total_k, num_heads, head_size)
-                      void* out,                 // half (total_q, num_heads, head_size)
-                      int* cu_seqlens_q,         // int (batch_size + 1)
-                      int* cu_seqlens_k,         // int (batch_size + 1)
-                      void* softmax_lse_buffer,  // float (batch_size, num_heads, max_seqlen_q)
-                      const int batch_size,
-                      const int num_heads,
-                      const int num_heads_k,
-                      const int head_size,
-                      const int max_seqlen_q_,
-                      const int max_seqlen_k_,
-                      const float softmax_scale,
-                      const bool is_causal) {
-  int max_seqlen_k = max_seqlen_k_;
-  int max_seqlen_q = max_seqlen_q_;
-
+                      void* q,            // half (total_q, num_heads, head_size)
+                      void* k,            // half (total_k, num_heads, head_size)
+                      void* v,            // half (total_k, num_heads, head_size)
+                      void* out,          // half (total_q, num_heads, head_size)
+                      int* cu_seqlens_q,  // int (batch_size + 1)
+                      int* cu_seqlens_k,  // int (batch_size + 1)
+                      void* softmax_lse,  // float (batch_size, num_heads, max_seqlen_q)
+                      int batch_size,
+                      int num_heads,
+                      int num_heads_k,
+                      int head_size,
+                      int max_seqlen_q,
+                      int max_seqlen_k,
+                      float softmax_scale,
+                      bool is_causal) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
-  const int seqlen_q_rounded = round_multiple(max_seqlen_q_, 128);
-  const int seqlen_k_rounded = round_multiple(max_seqlen_k_, 128);
+  const int seqlen_q_rounded = round_multiple(max_seqlen_q, 128);
+  const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
 
   Flash_fwd_params params;
   set_params_fprop(params,
@@ -179,7 +177,7 @@ Status mha_varlen_fwd(cudaStream_t stream,
                    cu_seqlens_q,
                    cu_seqlens_k,
                    nullptr,
-                   softmax_lse_buffer,
+                   softmax_lse,
                    softmax_scale,
                    is_causal);
   run_mha_fwd(params, stream);

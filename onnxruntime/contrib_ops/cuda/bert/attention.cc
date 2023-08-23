@@ -190,6 +190,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   constexpr size_t element_size = sizeof(T);
   constexpr bool use_fused_cross_attention = false;
+  constexpr bool use_flash_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -199,6 +200,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
                                                    fused_runner,
+                                                   use_flash_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
@@ -224,6 +226,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_value = nullptr;
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
+  data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.cumulated_sequence_length_q_cache = nullptr;
   data.cumulated_sequence_length_kv_cache = nullptr;

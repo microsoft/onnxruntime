@@ -174,8 +174,9 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present = context->Output(1, present_shape);
 
   void* fused_runner = nullptr;  // TODO(tianleiwu): use fused kernel to speed up
-  bool use_fused_cross_attention = false;
-  bool use_memory_efficient_attention = false;
+  constexpr bool use_fused_cross_attention = false;
+  constexpr bool use_memory_efficient_attention = false;
+  constexpr bool use_flash_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
                                                    parameters.num_heads,
@@ -185,6 +186,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
                                                    fused_runner,
+                                                   use_flash_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention);
 
