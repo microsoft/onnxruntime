@@ -143,6 +143,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (!string.IsNullOrEmpty(deviceIdStr) && int.TryParse(deviceIdStr, out int parsedValue) && parsedValue >= 0)
             {
                 deviceId = parsedValue;
+                output.WriteLine($"Parsed ID: {parsedValue}");
             }
 
             using (var cleanUp = new DisposableListTest<IDisposable>())
@@ -184,6 +185,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (!string.IsNullOrEmpty(deviceIdFromEnv) && int.TryParse(deviceIdFromEnv, out int deviceId) && deviceId >= 0)
             {
                 defaultDeviceId = deviceIdFromEnv;
+                output.WriteLine($"Parsed ID: {deviceIdFromEnv}");
             }
 
             using (var cleanUp = new DisposableListTest<IDisposable>())
