@@ -11,34 +11,39 @@ import os
 from os.path import abspath, dirname
 
 skip_doc_changes = ["web-ci-pipeline.yml"]
+# bothe changes in js/web and js/node are skipped
 skip_js_changes = [
+    "linux-gpu-ci-pipeline.yml",
+    "linux-gpu-tensorrt-ci-pipeline.yml",
+    "linux-migraphx-ci-pipeline.yml",
+    "linux-multi-gpu-tensorrt-ci-pipeline.yml",
+    "linux-qnn-ci-pipeline.yml",
+    "orttraining-linux-gpu-ci-pipeline.yml",
+    "orttraining-linux-gpu-ortmodule-distributed-test-ci-pipeline.yml",
+    "orttraining-linux-gpu-training-apis.yml",
+    "win-gpu-ci-pipeline.yml",
+    "win-gpu-tensorrt-ci-pipeline.yml",
+    "win-qnn-arm64-ci-pipeline.yml",
+    "win-qnn-ci-pipeline.yml",
+]
+# js/node is currently being tested in each CPU CI pipeline, not including QNN pipeline.
+# so only skip the js/web directory
+skip_js_web_changes = [
     "android-arm64-v8a-QNN-crosscompile-ci-pipeline.yml",
     "android-x86_64-crosscompile-ci-pipeline.yml",
     "linux-ci-pipeline.yml",
     "linux-cpu-aten-pipeline.yml",
     "linux-cpu-eager-pipeline.yml",
     "linux-dnnl-ci-pipeline.yml",
-    "linux-gpu-ci-pipeline.yml",
-    "linux-gpu-tensorrt-ci-pipeline.yml",
-    "linux-migraphx-ci-pipeline.yml",
-    "linux-multi-gpu-tensorrt-ci-pipeline.yml",
     "linux-openvino-ci-pipeline.yml",
-    "linux-qnn-ci-pipeline.yml",
     "mac-ci-pipeline.yml",
     "mac-coreml-ci-pipeline.yml",
     "mac-ios-ci-pipeline.yml",
     "mac-ios-packaging-pipeline.yml",
     "mac-react-native-ci-pipeline.yml",
     "orttraining-linux-ci-pipeline.yml",
-    "orttraining-linux-gpu-ci-pipeline.yml",
-    "orttraining-linux-gpu-ortmodule-distributed-test-ci-pipeline.yml",
-    "orttraining-linux-gpu-training-apis.yml",
     "orttraining-mac-ci-pipeline.yml",
     "win-ci-pipeline.yml",
-    "win-gpu-ci-pipeline.yml",
-    "win-gpu-tensorrt-ci-pipeline.yml",
-    "win-qnn-arm64-ci-pipeline.yml",
-    "win-qnn-ci-pipeline.yml",
 ]
 
 
@@ -69,7 +74,7 @@ def main():
     working_dir = os.path.join(dirname(abspath(__file__)), "github/azure-pipelines")
     os.chdir(working_dir)
 
-    trigger_rules = {"skip-docs.yml": skip_doc_changes, "skip-js.yml": skip_js_changes}
+    trigger_rules = {"skip-docs.yml": skip_doc_changes, "skip-js.yml": skip_js_changes, "skip-js-web.yml": skip_js_web_changes}
     for key in trigger_rules:
         trigger_file = os.path.join(working_dir, "triggers", key)
         with open(trigger_file) as f1:
