@@ -571,7 +571,6 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
     int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + ki / params.quant_kv_block_size;
     TFp scale_of_k = ((ti < tlength) ? *(((TFp*)params.k_scale) + scale_offset) : TFp{0.0});
-    int next_quant_block_ki = ((ki + params.quant_kv_block_size - 1) / params.quant_kv_block_size + 1) * params.quant_kv_block_size;
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
@@ -581,11 +580,6 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
         int jj = ii * params.max_sequence_length + ti;
 
-        if (ki + (ii * K_VEC_SIZE) >= next_quant_block_ki) {
-          scale_offset++;
-          next_quant_block_ki += params.quant_kv_block_size;
-          scale_of_k = (float)*(((TFp*)params.k_scale) + scale_offset);
-        }
         k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
             reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), __half2half2(scale_of_k)));
       }
