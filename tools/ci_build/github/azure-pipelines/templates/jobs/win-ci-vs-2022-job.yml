@@ -139,7 +139,7 @@ jobs:
 
   - template: win-ci-build-steps.yml
     parameters:
-      With_Cache: ${{ parameters.WITH_CACHE }}
+      WithCache: ${{ parameters.WITH_CACHE }}
       Today: $(TODAY)
       CacheDir: $(ORT_CACHE_DIR)
       AdditionalKey: " $(System.StageName) | ${{ parameters.BuildConfig }} "

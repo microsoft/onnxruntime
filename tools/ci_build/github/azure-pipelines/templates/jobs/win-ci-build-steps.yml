@@ -1,5 +1,5 @@
 parameters:
-- name: With_Cache
+- name: WithCache
   displayName: Build with Cache
   type: boolean
   default: false
@@ -20,7 +20,7 @@ parameters:
   default: ""
 
 steps:
-  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+  - ${{ if eq(parameters.WithCache, true) }}:
     - task: Cache@2
       inputs:
         ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
@@ -34,7 +34,7 @@ steps:
 
   - ${{ parameters.BuildSteps }}
 
-  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+  - ${{ if eq(parameters.WithCache, true) }}:
     - powershell: |
         ccache -sv
         ccache -z
