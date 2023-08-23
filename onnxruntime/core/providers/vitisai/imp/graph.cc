@@ -138,6 +138,7 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
     model_proto = model.ToProto();
   } else {
     model_proto = model.ToGraphProtoWithExternalInitializers(filename_dat,
+                                                             ToPathString(filename),
                                                              initializer_size_threshold);
   }
   auto& metadata = model.MetaData();
