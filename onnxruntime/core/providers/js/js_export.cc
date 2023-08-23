@@ -24,3 +24,8 @@ const void* JsepOutput(void* context, int index, void* data) {
   LOGF_DEFAULT(VERBOSE, "JsepOutput -- data=%zu", (size_t)(r));
   return r;
 }
+
+const void* JsepGetNodeName(void* kernel) {
+  auto& name = reinterpret_cast<onnxruntime::OpKernel*>(kernel)->Node().Name();
+  return name.c_str();
+}

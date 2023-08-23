@@ -4,13 +4,48 @@
 'use strict';
 
 // init JSEP
-Module["jsepInit"] = function (backend, alloc, free, copy, copyAsync, createKernel, releaseKernel, run) {
-    Module.jsepBackend = backend;
-    Module.jsepAlloc = alloc;
-    Module.jsepFree = free;
-    Module.jsepCopy = copy;
-    Module.jsepCopyAsync = copyAsync;
-    Module.jsepCreateKernel = createKernel;
-    Module.jsepReleaseKernel = releaseKernel;
-    Module.jsepRun = run;
+Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, releaseKernel, runKernel) => {
+  Module.jsepBackend = backend;
+  Module.jsepAlloc = alloc;
+  Module.jsepFree = free;
+  Module.jsepCopy = copy;
+  Module.jsepCopyAsync = copyAsync;
+  Module.jsepCreateKernel = createKernel;
+  Module.jsepReleaseKernel = releaseKernel;
+  Module.jsepRunKernel = runKernel;
+
+  Module['jsepOnRunStart'] = sessionId => {
+    Module['jsepRunPromise'] = new Promise(r => {
+      Module.jsepRunPromiseResolve = r;
+    });
+    Module.jsepSessionState = {
+      sessionId,
+      errors: []
+    };
+  };
+
+  Module['jsepOnRunEnd'] = sessionId => {
+    if (Module.jsepSessionState.sessionId !== sessionId) {
+      throw new Error('Session ID mismatch');
+    }
+
+    const errorPromises = Module.jsepSessionState.errors;
+    Module.jsepSessionState = null;
+
+    if (errorPromises.length > 0) {
+      const runPromise = Module['jsepRunPromise'];
+      Module['jsepRunPromise'] = new Promise((resolve, reject) => {
+        Promise.all(errorPromises).then(errors => {
+          errors = errors.filter(e => e);
+          if (errors.length > 0) {
+            reject(new Error(errors.join('\n')));
+          } else {
+            resolve(runPromise);
+          }
+        }, reason => {
+          reject(reason);
+        });
+      });
+    }
+  };
 };
