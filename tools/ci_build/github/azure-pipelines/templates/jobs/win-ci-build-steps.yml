@@ -40,4 +40,4 @@ steps:
         ccache -z
       displayName: cache stat
       env:
-        CCACHE_DIR: $(ORT_CACHE_DIR)
+        CCACHE_DIR: ${{parameters.CacheDir}}
