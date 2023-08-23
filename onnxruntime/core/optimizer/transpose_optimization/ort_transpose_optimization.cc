@@ -59,6 +59,7 @@ constexpr HandlerInfo q_linear_pool_op_handler = {&FirstInput, &HandleQLinearPoo
 static bool HandleMaxPool(HandlerArgs& args) {
 #if defined(DISABLE_CONTRIB_OPS)
   // Cannot convert MaxPool to com.microsoft.NhwcMaxPool if contrib ops are disabled in this build.
+  ORT_UNUSED_PARAMETER(args);
   return false;
 #else
   if (args.node.GetExecutionProviderType() != "CPUExecutionProvider") {
