@@ -180,22 +180,25 @@ def parse_arguments(argv=None):
         "--quantize_embedding_layer",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize MatMul, GEMM, and Gather.",
     )
+    parser.set_defaults(quantize_embedding_layer=False)
 
     parser.add_argument(
         "--quantize_per_channel",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize weights per each channel.",
     )
+    parser.set_defaults(quantize_per_channel=False)
 
     parser.add_argument(
         "--quantize_reduce_range",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize weights with 7 bits.",
     )
+    parser.set_defaults(quantize_reduce_range=False)
 
     parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
 
