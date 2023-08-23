@@ -12,7 +12,15 @@ namespace js {
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       Gemm,                                                                                \
       kOnnxDomain,                                                                         \
-      11,                                                                                  \
+      13,                                                                                  \
+      T,                                                                                   \
+      kJsExecutionProvider,                                                                \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Gemm<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Gemm,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 12,                                                                              \
       T,                                                                                   \
       kJsExecutionProvider,                                                                \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
