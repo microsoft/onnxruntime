@@ -1,0 +1,5 @@
+git+https://github.com/kunal-vaishnavi/optimum.git@kvaishnavi/llama-add-position-ids
+transformers>=4.28.1
+onnx>=1.14.0
+datasets>=2.8.0
+protobuf==3.20.2
