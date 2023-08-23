@@ -10,19 +10,22 @@ Models created with this script:
 - fusion/constant_folding_qdq_node_unit.qdq_contrib.onnx
 - fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx
 """
-import onnx
 import os
 import sys
 
+import onnx
+
+
 def print_usage(prog_name: str):
     print(f"Usage: {prog_name} <onnx model>")
+
 
 def main():
     prog_name, *argv = sys.argv
 
     if len(argv) != 1:
         print_usage(prog_name)
-        exit(1)
+        sys.exit(1)
 
     model = onnx.load(argv[0])
 
@@ -43,6 +46,6 @@ def main():
     base_model_name = os.path.splitext(argv[0])[0]
     onnx.save_model(model, base_model_name + ".qdq_contrib.onnx")
 
+
 if __name__ == "__main__":
     main()
-
