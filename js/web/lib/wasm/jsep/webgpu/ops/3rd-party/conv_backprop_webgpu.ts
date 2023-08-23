@@ -35,8 +35,11 @@ const createConvTranspose2DOpProgramShaderSource =
       const outputSize = ShapeUtil.size(outputShape);
       const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
       const workPerThread = isVec4 ? 2 : 1;
-
+      const group = attributes.group;
+      const outputChannelsPerGroup = outputShape[isChannelsLast? 3 : 1] / group;
       const innerElementSize = isVec4 ? (isChannelsLast && inChannels % 4 !== 0 ? 3 : 4) : elementsPerThread[0];
+      const wShape = inputs[1].dims;
+      const inputChannelsPerGroup = wShape[0] / group;
 
       const declareInputs = [
         `@group(0) @binding(0) var<storage, read> Dy: array<${
@@ -168,6 +171,8 @@ const createConvTranspose2DOpProgramShaderSource =
           let dyCorner = vec2<i32>(i32(r), i32(c)) - pads;
           let dyRCorner = dyCorner.x;
           let dyCCorner = dyCorner.y;
+          let groupId = d1 / ${outputChannelsPerGroup};
+          let wOutChannel = d1 - groupId * ${outputChannelsPerGroup};
           // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
           // ? = to be determined. : = across all values in that axis.
           var dotProd = 0.0;
@@ -195,10 +200,11 @@ const createConvTranspose2DOpProgramShaderSource =
               }
               let idyC: u32 = u32(dyC);
 
-              for (var d2: u32 = 0; d2 < outBackprop[${channelDim}]; d2 = d2 + 1) {
+              for (var d2: u32 = 0; d2 < ${inputChannelsPerGroup}; d2 = d2 + 1) {
+                let inputChannel = groupId * ${inputChannelsPerGroup} + d2;
                 let xValue = ${
-          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
-                let wValue = ${w.get('d2', 'd1', 'u32(wRPerm)', 'u32(wCPerm)')};
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'inputChannel') : dy.get('batch', 'inputChannel', 'idyR', 'idyC')};
+                let wValue = ${w.get('inputChannel', 'wOutChannel', 'u32(wRPerm)', 'u32(wCPerm)')};
                 dotProd = dotProd + xValue * wValue;
               }
             }
@@ -250,8 +256,8 @@ export const createConvTranspose2DProgramInfo =
       // const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
       // TODO Enable isVec4 for performance
       // Disabled due to weight matrix layout issue
-      const isVec4 = false;  // isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
-
+      // const isVec4 = attributes.grouping === 1 && isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
+      const isVec4 = false;
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
       const workGroupSize: [number, number, number] =
