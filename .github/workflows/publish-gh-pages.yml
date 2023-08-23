@@ -75,7 +75,7 @@ jobs:
       - name: Download JS apidocs artifact
         uses: dawidd6/action-download-artifact@v2
         with:
-          name: onnxruntime-js-apidocs
+          name: onnxruntime-node-apidocs
           workflow: publish-js-apidocs.yml
           branch: main
           path: apidocs
