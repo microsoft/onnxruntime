@@ -138,7 +138,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             
-            int deviceId = 1;
+            int deviceId = 0;
             string deviceIdStr = System.Environment.GetEnvironmentVariable("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
             if (!string.IsNullOrEmpty(deviceIdStr) && int.TryParse(deviceIdStr, out int parsedValue) && parsedValue >= 0)
             {
@@ -180,7 +180,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string calTablePath = "squeezenet_calibration.flatbuffers";
             string enginePath = "./";
             string engineDecrptLibPath = "engine_decryp";
-            string defaultDeviceId = "1";
+            string defaultDeviceId = "0";
             string deviceIdFromEnv = System.Environment.GetEnvironmentVariable("OnnxruntimeTestGpuDeviceId");
             if (!string.IsNullOrEmpty(deviceIdFromEnv) && int.TryParse(deviceIdFromEnv, out int deviceId) && deviceId >= 0)
             {
