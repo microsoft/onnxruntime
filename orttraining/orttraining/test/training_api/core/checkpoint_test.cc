@@ -331,9 +331,12 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
 #if defined(USE_CUDA)
   providers.push_back(onnxruntime::test::DefaultCudaExecutionProvider());
 #endif
-  auto model = std::make_unique<Module>(model_uri, &state, session_option,
+  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                           std::nullopt,
+                                           std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
+  auto model = std::make_unique<Module>(model_identifier, &state, session_option,
                                         *env, providers);
-  auto optimizer = std::make_unique<Optimizer>(optim_uri, &state, session_option,
+  auto optimizer = std::make_unique<Optimizer>(model_identifier, &state, session_option,
                                                *env, providers);
 
   // Remove the temporary directory if it already exists.
