@@ -5,7 +5,7 @@
 #include <string>
 
 #include "core/common/common.h"
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/function.h"
