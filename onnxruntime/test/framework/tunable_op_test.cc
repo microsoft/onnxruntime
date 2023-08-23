@@ -531,7 +531,7 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
 
   void PostTuning(const VecAddParams* params) override {
     if (params->beta != 0) {
-      GSL_SUPPRESS(i .11)
+      GSL_SUPPRESS(i.11)
       delete[] params->c;
       delete params;
     }

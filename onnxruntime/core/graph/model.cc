@@ -115,7 +115,7 @@ Model::Model(const std::string& graph_name,
   }
 
   // need to call private ctor so can't use make_shared
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
 }
@@ -238,7 +238,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   }
 
   // create instance. need to call private ctor so can't use make_unique
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
 }
@@ -390,7 +390,7 @@ Status Model::Load(const ModelProto& model_proto,
   }
 
   // need to call private ctor so can't use make_shared
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
 
   auto status = Status::OK();
   ORT_TRY {
@@ -430,7 +430,7 @@ Status Model::Load(ModelProto&& model_proto,
   }
 
   // need to call private ctor so can't use make_shared
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   auto status = Status::OK();
   ORT_TRY {
     model = std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger, options);
@@ -477,7 +477,7 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
   }
 
   if (!status.IsOK()) {
-    GSL_SUPPRESS(es .84)
+    GSL_SUPPRESS(es.84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
@@ -550,7 +550,7 @@ static Status SaveModel(Model& model, const T& file_path) {
     });
   }
   if (!status.IsOK()) {
-    GSL_SUPPRESS(es .84)
+    GSL_SUPPRESS(es.84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
@@ -583,7 +583,7 @@ static Status SaveModelWithExternalInitializers(Model& model,
     });
   }
   if (!status.IsOK()) {
-    GSL_SUPPRESS(es .84)
+    GSL_SUPPRESS(es.84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
@@ -595,8 +595,8 @@ Status Model::Load(const PathString& file_path,
   return LoadModel(file_path, model_proto);
 }
 
-GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
-GSL_SUPPRESS(r .35)
+GSL_SUPPRESS(r.30)  // spurious warnings. p_model is potentially reset in the internal call to Load
+GSL_SUPPRESS(r.35)
 Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger, const ModelOptions& options) {
