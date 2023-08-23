@@ -61,7 +61,7 @@ namespace MauiModelTester
             OrtValue ortValue = null;
 
             // special case for strings
-            if (tensorElementType == typeof(string))
+            if ((TensorElementType)tensorProto.DataType == TensorElementType.String)
             {
                 var numElements = tensorProto.Dims.Aggregate(1L, (x, y) => x * y);
                 ortValue = OrtValue.CreateTensorWithEmptyStrings(OrtAllocator.DefaultInstance,
@@ -120,6 +120,7 @@ namespace MauiModelTester
         }
 
         static OrtValue TensorProtoToOrtValue<T>(Onnx.TensorProto tensorProto)
+            where T : unmanaged
         {
             unsafe
             {
@@ -141,7 +142,7 @@ namespace MauiModelTester
             private delegate ReadOnlySpan<T> GetDataFn<T>(OrtValue ortValue);
 
             private static ReadOnlySpan<T> GetData<T>(OrtValue ortValue)
-                where T : struct
+                where T : unmanaged
             {
                 return ortValue.GetTensorDataAsSpan<T>();
             }
@@ -186,7 +187,7 @@ namespace MauiModelTester
 
             private static void CheckEqual<T>(string name, OrtValue expected, OrtValue actual,
                                               IEqualityComparer<T> comparer)
-                where T : struct
+                where T : unmanaged
             {
                 CheckEqual(name, expected, actual, comparer, GetData<T>);
             }
