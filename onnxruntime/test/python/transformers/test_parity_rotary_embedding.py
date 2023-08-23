@@ -4,7 +4,6 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import math
 import os
 import unittest
 
@@ -14,7 +13,7 @@ from parity_utilities import compare_outputs, create_ort_session, parse_argument
 from torch import nn
 
 
-class LlamaRotaryEmbedding(torch.nn.Module):
+class LlamaRotaryEmbedding(nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
         super().__init__()
 
@@ -91,7 +90,7 @@ class RotaryEmbedding(torch.autograd.Function):
             return g.op("com.microsoft::RotaryEmbedding", q, position_ids, cos_cache, sin_cache, past_key)
 
 
-class TestRotaryEmbedding(torch.nn.Module):
+class TestRotaryEmbedding(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.emb = LlamaRotaryEmbedding(dim)
