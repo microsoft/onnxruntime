@@ -294,5 +294,9 @@ inline ValType GetOnnxAttr(const NodeAttrHelper& node_helper, const OnnxAttrInfo
   return node_helper.Get(attr_info.name, attr_info.default_val);
 }
 
+// Layout sensitive op can't use Qnn Op validation API to verify Op support before layout transformation
+// Need to check this explicitly
+Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper, ONNX_NAMESPACE::DataType onnx_tensor_data_type);
+
 }  // namespace qnn
 }  // namespace onnxruntime

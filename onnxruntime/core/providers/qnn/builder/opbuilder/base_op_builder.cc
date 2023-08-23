@@ -264,5 +264,13 @@ Qnn_TensorType_t BaseOpBuilder::GetInputTensorType(const QnnModelWrapper& qnn_mo
   }
 }
 
+Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper, ONNX_NAMESPACE::DataType onnx_tensor_data_type) {
+  const auto float_elem_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float");
+  bool is_cpu_backend = (qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::CPU);
+  ORT_RETURN_IF(is_cpu_backend && onnx_tensor_data_type != float_elem_type, "QNN CPU backend only support float data type.");
+
+  return Status::OK();
+}
+
 }  // namespace qnn
 }  // namespace onnxruntime

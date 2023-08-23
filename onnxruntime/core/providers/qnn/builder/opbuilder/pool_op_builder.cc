@@ -54,6 +54,8 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
 
   const auto& inputs = node_unit.Inputs();
+  ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
+
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
   if (input_shape.size() != 4) {
@@ -63,7 +65,7 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   NodeAttrHelper node_helper(node_unit);
   auto dilation_values = node_helper.Get("dilations", std::vector<int32_t>{1, 1});
   if (dilation_values != std::vector<int32_t>{1, 1}) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN does not support Dialation attribute");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN does not support Dilation attribute");
   }
 
   if (node_unit.Outputs().size() > 1) {

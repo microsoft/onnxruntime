@@ -263,7 +263,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return result;
   }
 
-  if (context_cache_enabled_ && IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
+  if (context_cache_enabled_ && !IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
     LOGS(logger, ERROR) << "Qnn context cache only works for HTP or DSP backend.";
     return result;
   }

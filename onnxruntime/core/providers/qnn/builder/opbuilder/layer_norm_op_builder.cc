@@ -32,10 +32,6 @@ class LayerNormOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
-// Instance normalization op is sensitive to data layout.
-// The nodes from 1st call of GetCapability do not get layout transformer applied, so their shapes are still NCHW.
-// The nodes from 2nd call of GetCapability get their layout transformed to NHWC.
-// Therefore, we need to check the node domain to determine if the layout has been transformed.
 Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                          const NodeUnit& node_unit,
                                          const logging::Logger& logger) const {
@@ -57,12 +53,7 @@ Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF(static_cast<size_t>(default_axis) != input_rank - 1, "QNN LayerNorm for HTP only support axis with last input dimension");
   }
 
-  // Continue Op validation if it's NHWC transformed
-  if (node_unit.Domain() == kMSInternalNHWCDomain) {
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
-  }
-
-  return Status::OK();
+  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
 }
 
 Status LayerNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,

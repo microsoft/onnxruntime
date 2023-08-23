@@ -42,6 +42,9 @@ Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     const auto& inputs = node_unit.Inputs();
     ORT_ENFORCE(inputs.size() == 5, "5 input expected per BatchNorm Onnx Spec.");
 
+    // Check input type is float for CPU. Can't use Qnn Op validation API since it's before layout transformation
+    ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
+
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
     const size_t input_rank = input_shape.size();
