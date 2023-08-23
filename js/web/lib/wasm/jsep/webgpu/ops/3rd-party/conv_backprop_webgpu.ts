@@ -36,7 +36,7 @@ const createConvTranspose2DOpProgramShaderSource =
       const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
       const workPerThread = isVec4 ? 2 : 1;
       const group = attributes.group;
-      const outputChannelsPerGroup = outputShape[isChannelsLast? 3 : 1] / group;
+      const outputChannelsPerGroup = outputShape[isChannelsLast ? 3 : 1] / group;
       const innerElementSize = isVec4 ? (isChannelsLast && inChannels % 4 !== 0 ? 3 : 4) : elementsPerThread[0];
       const wShape = inputs[1].dims;
       const inputChannelsPerGroup = wShape[0] / group;
@@ -203,7 +203,8 @@ const createConvTranspose2DOpProgramShaderSource =
               for (var d2: u32 = 0; d2 < ${inputChannelsPerGroup}; d2 = d2 + 1) {
                 let inputChannel = groupId * ${inputChannelsPerGroup} + d2;
                 let xValue = ${
-          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'inputChannel') : dy.get('batch', 'inputChannel', 'idyR', 'idyC')};
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'inputChannel') :
+                           dy.get('batch', 'inputChannel', 'idyR', 'idyC')};
                 let wValue = ${w.get('inputChannel', 'wOutChannel', 'u32(wRPerm)', 'u32(wCPerm)')};
                 dotProd = dotProd + xValue * wValue;
               }
