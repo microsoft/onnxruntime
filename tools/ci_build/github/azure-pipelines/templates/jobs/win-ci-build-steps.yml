@@ -15,8 +15,12 @@ parameters:
   type: string
   default: ""
 
+- name: AdditionalKey
+  type: string
+  default: ""
+
 steps:
-  - ${{if eq(parameters.WithCache, true)}}:
+  - ${{if eq(parameters.With_Cache, true)}}:
     - script: |
         mkdir -p ${{ parameters.CacheDir }}
       displayName: Create Cache Dir
@@ -25,12 +29,12 @@ steps:
     - task: Cache@2
       inputs:
         ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
-          key: ' "$(TODAY)" |  $(System.StageName) | ${{ parameters.BuildConfig }} | merge '
+          key: ' "$(TODAY)" | ${{parameters.AdditionalKey}} | merge '
         ${{else}}:
-          key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} | $(Build.SourceVersion) '
+          key: '"$(TODAY)" | onnxruntime | ${{parameters.AdditionalKey}} | $(Build.SourceVersion) '
         path: $(ORT_CACHE_DIR)
         restoreKeys: |
-          "$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }}
+          "$(TODAY)" | onnxruntime | ${{parameters.AdditionalKey}}
       displayName: Cache Task
 
   - ${{ parameters.BuildStep }}

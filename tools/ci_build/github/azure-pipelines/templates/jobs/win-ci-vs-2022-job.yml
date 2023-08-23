@@ -142,6 +142,7 @@ jobs:
       With_Cache: ${{ parameters.WITH_CACHE }}
       Today: $(TODAY)
       CacheDir: $(ORT_CACHE_DIR)
+      AdditionalKey: " $(System.StageName) | ${{ parameters.BuildConfig }} "
       BuildSteps:
         - task: PythonScript@0
           displayName: 'Generate cmake config'
