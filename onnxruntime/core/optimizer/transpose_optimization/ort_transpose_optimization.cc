@@ -57,6 +57,11 @@ static bool HandleQLinearPoolOp(HandlerArgs& args) {
 constexpr HandlerInfo q_linear_pool_op_handler = {&FirstInput, &HandleQLinearPoolOp};
 
 static bool HandleMaxPool(HandlerArgs& args) {
+#if defined(DISABLE_CONTRIB_OPS)
+  // Cannot convert MaxPool to com.microsoft.NhwcMaxPool if contrib ops are disabled in this build.
+  ORT_UNUSED_PARAMETER(args);
+  return false;
+#else
   if (args.node.GetExecutionProviderType() != "CPUExecutionProvider") {
     return false;
   }
@@ -78,50 +83,16 @@ static bool HandleMaxPool(HandlerArgs& args) {
     return false;
   }
 
-  auto new_node = SwapNodeOpTypeDomainAndSinceVersion(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft", 1);
+  auto new_node = SwapNodeOpTypeDomainAndSinceVersion(args.ctx.graph, args.node, "NhwcMaxPool", kMSDomain, 1);
   new_node->ClearAttribute("storage_order");  // Only relevant for indices output. Prohibited for NhwcMaxPool.
   TransposeFirstInput(args.ctx, *new_node, args.perm_inv);
   TransposeOutputs(args.ctx, *new_node, args.perm);
   return true;
-}
-
-constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
-constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode};
-constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOps};
-
-// TODO: SHare with onnx_transpose_...
-static inline bool NormalizeAndValidateAxis(int64_t& axis, size_t rank) {
-  int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
-  if (axis < 0) {
-    axis += rank_int;
-  }
-
-  return axis >= 0 && axis < rank_int;
-}
-
-static bool HandleContribQuantizeDequantizeScale(const api::GraphRef& graph, const std::vector<int64_t>& perm,
-                                                 api::NodeRef& node, int64_t opset) {
-  ORT_UNUSED_PARAMETER(opset);
-  size_t rank = perm.size();
-
-  // Update axis if scale/zero_point are non-scalar
-  auto inputs = node.Inputs();
-
-  auto inp_shape = graph.GetValueInfo(inputs[1])->Shape();
-  bool scalar_params = inp_shape.has_value() && inp_shape->size() == 0;
-
-  if (!scalar_params) {
-    int64_t axis = node.GetAttributeIntDefault("axis", 1);
-    if (!NormalizeAndValidateAxis(axis, rank)) {
-      return false;
-    }
-    node.SetAttributeInt("axis", perm[gsl::narrow_cast<size_t>(axis)]);
-  }
-  return true;
+#endif  // defined(DISABLE_CONTRIB_OPS)
 }
 
 static bool HandleContribQuantizeDequantizeLinear(HandlerArgs& args) {
-  if (!HandleContribQuantizeDequantizeScale(args.ctx.graph, args.perm, args.node, args.ctx.opset)) {
+  if (!TransposeQuantizeDequantizeAxis(args.ctx.graph, args.perm, args.node)) {
     return false;
   }
 
@@ -131,22 +102,19 @@ static bool HandleContribQuantizeDequantizeLinear(HandlerArgs& args) {
   return true;
 }
 
-constexpr HandlerInfo contrib_quantize_dequantize_linear_handler = {&FirstInput, &HandleContribQuantizeDequantizeLinear};
-
-const HandlerMap& OrtHandlers() {
-  static const HandlerMap extended_handler_map{
-      {"com.microsoft.QuantizeLinear", contrib_quantize_dequantize_linear_handler},
-      {"com.microsoft.DequantizeLinear", contrib_quantize_dequantize_linear_handler},
-  };
-
-  return extended_handler_map;
-}
+constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
+constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode};
+constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOps};
+constexpr HandlerInfo contrib_quantize_dequantize_linear_handler = {&FirstInput,
+                                                                    &HandleContribQuantizeDequantizeLinear};
 
 // ORT contrib ops and special cased ONNX ops where we have EP specific handling
 const HandlerMap& OrtExtendedHandlers() {
   static const HandlerMap extended_handler_map = []() {
     HandlerMap map = {
         {"MaxPool", max_pool_op_handler},
+        {"com.microsoft.QuantizeLinear", contrib_quantize_dequantize_linear_handler},
+        {"com.microsoft.DequantizeLinear", contrib_quantize_dequantize_linear_handler},
         {"com.microsoft.QLinearAdd", q_linear_binary_op_handler},
         {"com.microsoft.QLinearAveragePool", q_linear_pool_op_handler},
         {"com.microsoft.QLinearConcat", q_linear_concat_handler},
@@ -156,9 +124,6 @@ const HandlerMap& OrtExtendedHandlers() {
         {"com.microsoft.QLinearReduceMean", reduce_op_handler},
         {"com.microsoft.QLinearSigmoid", node_1_inp_handler},
     };
-
-    const auto& base_handlers = OrtHandlers();
-    std::for_each(base_handlers.begin(), base_handlers.end(), [&map](const auto& entry) { map.insert(entry); });
 
     return map;
   }();

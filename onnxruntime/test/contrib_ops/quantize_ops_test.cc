@@ -69,6 +69,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint16_cpu) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// Test int32 DequantizeLinear with scalar zero-point & scale.
 TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int32_cpu) {
   OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{4};
@@ -76,11 +77,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int32_cpu) {
   test.AddInput<float>("scale", {}, {2.0f}, true);
   test.AddInput<int32_t>("zero_point", {}, {0}, true);
   test.AddOutput<float>("y", dims, {-600.0f, -60.0f, -2050.0f, 2540.0f});
-
-  // 16-bit DequantizeLinear is currently only implemented for CPU EP.
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider(false));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 #ifdef USE_CUDA

@@ -275,7 +275,11 @@ constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNorm
                                                     "RandomNormalLike", "Multinomial"};
 
 #ifdef ENABLE_TRAINING_OPS
-constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather"};
+// Operator types in the com.microsoft domain that are known to be deterministic.
+constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather", "QuantizeLinear", "DequantizeLinear"};
+#else
+// Operator types in the com.microsoft domain that are known to be deterministic.
+constexpr std::array kMSDomainDeterministicOps{"QuantizeLinear", "DequantizeLinear"};
 #endif
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
@@ -283,12 +287,12 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op) 
     auto iter = std::find(kOnnxDomainNonDeterministicOps.begin(), kOnnxDomainNonDeterministicOps.end(), op);
     return iter == kOnnxDomainNonDeterministicOps.end();
   }
-#ifdef ENABLE_TRAINING_OPS
+
   if (domain.compare(kMSDomain) == 0) {
     auto iter = std::find(kMSDomainDeterministicOps.begin(), kMSDomainDeterministicOps.end(), op);
     return iter != kMSDomainDeterministicOps.end();
   }
-#endif
+
   // Unknown domain. Assume the op is not deterministic.
   return false;
 }

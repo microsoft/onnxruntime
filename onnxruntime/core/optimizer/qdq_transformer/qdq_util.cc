@@ -101,14 +101,14 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-bool MatchQNode(const Node& node, bool allow_contrib_op) {
+bool MatchQNode(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {10, 13, 19}) ||
-         (allow_contrib_op && graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {1}, kMSDomain));
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {1}, kMSDomain);
 }
 
-bool MatchDQNode(const Node& node, bool allow_contrib_op) {
+bool MatchDQNode(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {10, 13, 19}) ||
-         (allow_contrib_op && graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {1}, kMSDomain));
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {1}, kMSDomain);
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

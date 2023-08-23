@@ -322,9 +322,8 @@ bool IsNodeSupported(const Node& node) {
   // the reason for skipping DQ is that the QDQ handling looks for QDQ node groups (DQ -> fp32 node -> Q node)
   // and does not allow for a DQ node to be used in multiple groups. coalescing multiple DQ nodes into one
   // would result in it having multiple consumers for its output, and it being used in multiple QDQ node groups.
-  const bool is_contrib_quant = node.Domain() == kMSDomain && node.OpType() == "QuantizeLinear";  // TODO: Move this logic into IsOperationDeterministic()
   return !node.ContainsSubgraph() &&
-         (optimizer_utils::IsOperationDeterministic(node.Domain(), node.OpType()) || is_contrib_quant) &&
+         optimizer_utils::IsOperationDeterministic(node.Domain(), node.OpType()) &&
          !(node.Domain() == kOnnxDomain && node.OpType() == "DequantizeLinear") &&
          !(node.Domain() == kMSDomain && node.OpType() == "DequantizeLinear");
 }

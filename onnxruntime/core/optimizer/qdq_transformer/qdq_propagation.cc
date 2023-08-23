@@ -76,7 +76,7 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                                                    zp_initializer_nodearg_ptr),
                                // outputs
                                {&q_to_dq_nodearg},
-                               nullptr,
+                               nullptr,  // attributes
                                domain);
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(q_node), "Failed to set op schema for added Q node.");
@@ -89,7 +89,7 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                                                     zp_initializer_nodearg_ptr),
                                 // outputs
                                 {&post_dq_nodearg},
-                                nullptr,
+                                nullptr,  // attributes
                                 domain);
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(dq_node), "Failed to set op schema for added DQ node.");
@@ -211,7 +211,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
 
     Node& dq_node = *dq_node_ptr;
 
-    if (!QDQ::MatchDQNode(dq_node, true) ||
+    if (!QDQ::MatchDQNode(dq_node) ||
         !graph_utils::IsSupportedProvider(dq_node, compatible_eps) ||
         !optimizer_utils::CheckOutputEdges(graph, dq_node, 1)) {
       continue;
@@ -237,7 +237,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
          curr_edge.has_value();
          curr_edge = GetNextPropagationEdge(graph, *curr_edge)) {
       if (const auto* dst_node = curr_edge->GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
-          dst_node && QDQ::MatchQNode(*dst_node, true)) {
+          dst_node && QDQ::MatchQNode(*dst_node)) {
         break;
       }
 
@@ -261,7 +261,7 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
 
     Node& q_node = *q_node_ptr;
 
-    if (!QDQ::MatchQNode(q_node, true) ||
+    if (!QDQ::MatchQNode(q_node) ||
         !graph_utils::IsSupportedProvider(q_node, compatible_eps)) {
       continue;
     }
@@ -286,7 +286,7 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
          curr_edge.has_value();
          curr_edge = GetPreviousPropagationEdge(graph, *curr_edge)) {
       if (auto* src_node = curr_edge->GetNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
-          src_node && QDQ::MatchDQNode(*src_node, true)) {
+          src_node && QDQ::MatchDQNode(*src_node)) {
         break;
       }
 
