@@ -73,13 +73,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
+            string defaultDeviceId = "0";
+            string deviceIdFromEnv = System.Environment.GetEnvironmentVariable("OnnxruntimeTestGpuDeviceId");
+            if (!string.IsNullOrEmpty(deviceIdFromEnv) && int.TryParse(deviceIdFromEnv, out int deviceId) && deviceId >= 0)
+            {
+                defaultDeviceId = deviceIdFromEnv;
+                output.WriteLine($"Parsed ID: {deviceIdFromEnv}");
+            }
+
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
                 var cudaProviderOptions = new OrtCUDAProviderOptions();
                 cleanUp.Add(cudaProviderOptions);
 
                 var providerOptionsDict = new Dictionary<string, string>();
-                providerOptionsDict["device_id"] = "0";
+                providerOptionsDict["device_id"] = defaultDeviceId;
                 // 256MB
                 providerOptionsDict["gpu_mem_limit"] = "268435456";
                 providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
