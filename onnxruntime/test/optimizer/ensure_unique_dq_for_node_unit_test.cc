@@ -101,7 +101,8 @@ void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq
     {
       SCOPED_TRACE("test with basic transformers");
 
-      auto post_transform_check_fn = [expected_dq_count, dequantize_linear_key](const InferenceSessionWrapper& session) {
+      auto post_transform_check_fn = [expected_dq_count,
+                                      dequantize_linear_key](const InferenceSessionWrapper& session) {
         const auto& graph = session.GetGraph();
         const auto op_counts = CountOpsInGraph(graph);
         ASSERT_EQ(OpCount(op_counts, dequantize_linear_key), expected_dq_count);
