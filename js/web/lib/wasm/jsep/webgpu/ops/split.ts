@@ -87,8 +87,6 @@ const createSplitProgramInfo =
       const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.declareVariables(input, ...outputs)}
-  ${input.impl('indicesToOffset', 'offsetToIndices', 'get')}
-  ${outputs.map(o => o.impl('indicesToOffset', 'set')).join('\n')}
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateOutputIndexImpl(sizeInConcatAxis.length)}
   ${writeBufferDataImpl(outputs)}
