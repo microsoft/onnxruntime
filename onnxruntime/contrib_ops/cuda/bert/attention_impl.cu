@@ -354,7 +354,6 @@ Status PrepareQkv_MHA_WithPast(contrib::AttentionParameters& parameters,
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
-  T* qkv = data.workspace;
 
   DUMP_TENSOR_INIT();
 

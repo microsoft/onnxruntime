@@ -213,6 +213,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   data.present_value = nullptr;
   data.fused_runner = fused_runner;
   data.fused_cross_attention_kernel = nullptr;
+  data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.cumulated_sequence_length_q_cache = nullptr;
   data.cumulated_sequence_length_kv_cache = nullptr;
