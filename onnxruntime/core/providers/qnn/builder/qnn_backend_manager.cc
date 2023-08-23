@@ -59,20 +59,20 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
     case QNN_BACKEND_ID_CPU:
       qnn_backend_type_ = QnnBackendType::CPU;
       break;
-    // TODO: update once it's ready for Widows
-    // case QNN_BACKEND_ID_GPU:
-    //  qnn_backend_type_ = QnnBackendType::GPU;
-    //  break;
-  case QNN_BACKEND_ID_DSP:
+      // TODO: update once it's ready for Widows
+      // case QNN_BACKEND_ID_GPU:
+      //  qnn_backend_type_ = QnnBackendType::GPU;
+      //  break;
+    case QNN_BACKEND_ID_DSP:
       qnn_backend_type_ = QnnBackendType::DSP;
       break;
-  case QNN_BACKEND_ID_HTP:
-    qnn_backend_type_ = QnnBackendType::HTP;
-    break;
-  default:
-    qnn_backend_type_ = QnnBackendType::CPU;
-    break;
-  } 
+    case QNN_BACKEND_ID_HTP:
+      qnn_backend_type_ = QnnBackendType::HTP;
+      break;
+    default:
+      qnn_backend_type_ = QnnBackendType::CPU;
+      break;
+  }
 }
 
 Status QnnBackendManager::LoadBackend() {
