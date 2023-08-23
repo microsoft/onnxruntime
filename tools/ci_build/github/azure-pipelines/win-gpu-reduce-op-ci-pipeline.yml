@@ -12,10 +12,8 @@ jobs:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
-    setVcvars: true
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 120
@@ -32,7 +30,7 @@ jobs:
       WithCache: true
       Today: $(Today)
 
-  - template: win-ci-build-steps.yml
+  - template: templates/jobs/win-ci-build-steps.yml
     parameters:
       WithCache: True
       Today: $(TODAY)

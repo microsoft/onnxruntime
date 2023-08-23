@@ -43,7 +43,7 @@ jobs:
       WithCache: true
       Today: $(Today)
 
-  - template: win-ci-build-steps.yml
+  - template: templates/jobs/win-ci-build-steps.yml
     parameters:
       WithCache: True
       Today: $(TODAY)
