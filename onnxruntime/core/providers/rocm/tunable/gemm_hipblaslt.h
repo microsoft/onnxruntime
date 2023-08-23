@@ -232,7 +232,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
                                                 &algo_i,
                                                 nullptr,
                                                 0,
-                                                params->stream));
+                                                params->StreamHandle()));
 
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescDestroy(matmul));
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutDestroy(mat_a));

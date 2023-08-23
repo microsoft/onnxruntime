@@ -8,10 +8,10 @@ import math
 import os
 import unittest
 
-import torch
-from parity_utilities import parse_arguments, create_ort_session, compare_outputs
-from torch import nn
 import numpy
+import torch
+from parity_utilities import compare_outputs, create_ort_session, parse_arguments
+from torch import nn
 
 
 class LlamaRotaryEmbedding(torch.nn.Module):
@@ -49,6 +49,7 @@ class LlamaRotaryEmbedding(torch.nn.Module):
             self.sin_cached[:, :, :seq_len, ...].to(dtype=x.dtype),
         )
 
+
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., : x.shape[-1] // 2]
@@ -65,14 +66,15 @@ def apply_rotary_pos_emb(q, cos, sin, position_ids):
     q_embed = (q * cos) + (rotate_half(q) * sin)
     return q_embed
 
+
 class RotaryEmbedding(torch.autograd.Function):
     @staticmethod
     def forward(ctx, q, position_ids, cos_cache, sin_cache, past_key) -> torch.Tensor:
         seq_len = q.shape[-2]
         if past_key is not None:
             seq_len += past_key.shape[-2]
-        cos = cos_cache[:,:,:seq_len,...].to(q.dtype)
-        sin = sin_cache[:,:,:seq_len,...].to(q.dtype)
+        cos = cos_cache[:, :, :seq_len, ...].to(q.dtype)
+        sin = sin_cache[:, :, :seq_len, ...].to(q.dtype)
 
         cos = cos.reshape(cos.shape[2], cos.shape[3])
         sin = sin.reshape(sin.shape[2], sin.shape[3])
@@ -81,13 +83,13 @@ class RotaryEmbedding(torch.autograd.Function):
         q_embed = (q * cos) + (rotate_half(q) * sin)
         return q_embed
 
-
     @staticmethod
     def symbolic(g: torch.Graph, q, position_ids, cos_cache, sin_cache, past_key) -> (torch.Value, torch.Value):
         if past_key is None:
-            return g.op('com.microsoft::RotaryEmbedding', q, position_ids, cos_cache, sin_cache)
+            return g.op("com.microsoft::RotaryEmbedding", q, position_ids, cos_cache, sin_cache)
         else:
-            return g.op('com.microsoft::RotaryEmbedding', q, position_ids, cos_cache, sin_cache, past_key)
+            return g.op("com.microsoft::RotaryEmbedding", q, position_ids, cos_cache, sin_cache, past_key)
+
 
 class TestRotaryEmbedding(torch.nn.Module):
     def __init__(self, dim):
@@ -104,14 +106,17 @@ def create_inputs(batch_size, num_heads, seqlen, hidden_size, dtype, device, pas
     inputs = {"x": in_tensor, "position_ids": position_ids}
     if past_seqlen > 0:
         past_key = torch.randn(batch_size, num_heads, past_seqlen, hidden_size).to(dtype)
-        inputs['past_key']=past_key
+        inputs["past_key"] = past_key
         seqlen_with_past = seqlen + past_seqlen
-        inputs['position_ids'] = torch.stack([torch.tensor([seqlen_with_past - 1], dtype=torch.int64) for _ in range(batch_size)]).to(device)
+        inputs["position_ids"] = torch.stack(
+            [torch.tensor([seqlen_with_past - 1], dtype=torch.int64) for _ in range(batch_size)]
+        ).to(device)
 
     return inputs
 
+
 def onnxruntime_inference(ort_session, inputs):
-    ort_inputs = {k: numpy.ascontiguousarray(v.cpu().numpy()) for k,v in inputs.items()}
+    ort_inputs = {k: numpy.ascontiguousarray(v.cpu().numpy()) for k, v in inputs.items()}
     ort_outputs = ort_session.run(None, ort_inputs)
     return ort_outputs
 
@@ -135,12 +140,22 @@ def run_parity(
     printed = False  # print only one sample
     ort_session = create_ort_session(onnx_model_path, device.type == "cuda", verbose=verbose)
     for _i in range(test_cases):
-        inputs = create_inputs(batch_size, num_heads, sequence_length, hidden_size, dtype=torch.float16 if float16 else torch.float32, device=device, past_seqlen=past_key_seqlen)
+        inputs = create_inputs(
+            batch_size,
+            num_heads,
+            sequence_length,
+            hidden_size,
+            dtype=torch.float16 if float16 else torch.float32,
+            device=device,
+            past_seqlen=past_key_seqlen,
+        )
 
         with torch.no_grad():
             torch_outputs = model(**inputs)
             if not isinstance(torch_outputs, (list, tuple)):
-                torch_outputs = [torch_outputs,]
+                torch_outputs = [
+                    torch_outputs,
+                ]
 
         ort_outputs = onnxruntime_inference(ort_session, inputs)
 
@@ -155,7 +170,7 @@ def run_parity(
             numpy.set_printoptions(precision=10, floatmode="fixed")
             torch.set_printoptions(precision=10)
             print("input", inputs)
-            print('diff: ', max_diff)
+            print("diff: ", max_diff)
             print("torch_outputs", torch_outputs)
             print("ort_outputs", ort_outputs)
 
@@ -164,6 +179,7 @@ def run_parity(
     success_flag = "[FAILED]" if passed_cases < test_cases else "[OK]"
     print(f"{success_flag} Passed_cases={passed_cases}/{test_cases}; Max_diff={max_diff}; Diff_count={diff_count}")
     return test_cases - passed_cases
+
 
 def run(
     batch_size,
@@ -185,7 +201,15 @@ def run(
     if float16:
         model.half()
 
-    inputs = create_inputs(batch_size, num_heads, sequence_length, hidden_size, dtype=torch.float16 if float16 else torch.float32, device=device, past_seqlen=past_key_seqlen)
+    inputs = create_inputs(
+        batch_size,
+        num_heads,
+        sequence_length,
+        hidden_size,
+        dtype=torch.float16 if float16 else torch.float32,
+        device=device,
+        past_seqlen=past_key_seqlen,
+    )
 
     # Do not re-use onnx file from previous test since weights of model are random.
     onnx_model_path = "./temp/rotary_emb_{}_{}.onnx".format(sequence_length, "fp16" if float16 else "fp32")
@@ -222,11 +246,12 @@ def run(
 
 class TestParity(unittest.TestCase):
     verbose = True
+
     def setUp(self):
         self.test_cases = 100  # Number of test cases per test run
         self.sequence_length = 2
         self.hidden_size = 768
-        self.num_heads=8
+        self.num_heads = 8
 
     def run_test(
         self,
@@ -255,7 +280,7 @@ class TestParity(unittest.TestCase):
             self.assertTrue(num_failure == 0, "Failed: " + test_name)
 
     def run_one(self, device, verbose=False):
-        for batch_size in [1,2,4]:
+        for batch_size in [1, 2, 4]:
             self.run_test(
                 batch_size,
                 float16=False,

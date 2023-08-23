@@ -9,21 +9,20 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      RotaryEmbedding,                                            \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kRocmExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+#define REGISTER_KERNEL_TYPED(T)                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      RotaryEmbedding,                                                  \
+      kMSDomain,                                                        \
+      1,                                                                \
+      T,                                                                \
+      kRocmExecutionProvider,                                           \
+      (*KernelDefBuilder::Create())                                     \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()), \
       RotaryEmbedding<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
-
 
 using namespace ONNX_NAMESPACE;
 
@@ -36,7 +35,7 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_key = context->Input<Tensor>(4);
 
   // input shape is [batch, num_head, seqlen, head_dim]
-  const TensorShape &in_shape = input->Shape();
+  const TensorShape& in_shape = input->Shape();
   int64_t batch_size = in_shape[0];
   int64_t num_heads = in_shape[1];
   int64_t seqlen = in_shape[2];
@@ -45,10 +44,9 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (past_key != nullptr) {
     // past_key with shape [batch, num_head, past_seqlen, head_dim]
-    const TensorShape &past_shape = past_key->Shape();
+    const TensorShape& past_shape = past_key->Shape();
     seqlen_with_past += past_shape[2];
   }
-
 
   Tensor* output = context->Output(0, input->Shape());
 

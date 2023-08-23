@@ -1376,7 +1376,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1, "position_ids", "2-d tensor with shape (batch_size, seq_len)", "M")
         .Input(2, "cos_cached", "tensor with shape (1, 1, max_seq_len, head_dim)", "T")
         .Input(3, "sin_cached", "tensor with shape (1, 1, max_seq_len, head_dim)", "T")
-        .Input(4, "past_key", "past key tensor with shape (batch_size, num_heads, past_seq_len, head_dim)", "T", OpSchema::Optional)
+        .Input(4,
+               "past_key",
+               "past key tensor with shape (batch_size, num_heads, past_seq_len, head_dim)",
+               "T",
+               OpSchema::Optional)
         .Output(0, "output", "output tensor with shape (batch_size, num_heads, seq_len, head_dim)", "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("M", {"tensor(int64)"}, "Constrain token_offset to integer types")
