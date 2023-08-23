@@ -137,9 +137,9 @@ jobs:
       nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
       restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
 
-  - template: templates/linux-build-step-with-cache.yml
+  - template: win-ci-build-steps.yml
     parameters:
-      WithCache: true
+      With_Cache: ${{ parameters.WITH_CACHE }}
       Today: $(TODAY)
       CacheDir: $(ORT_CACHE_DIR)
       BuildSteps:
