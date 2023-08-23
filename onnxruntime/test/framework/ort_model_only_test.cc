@@ -560,7 +560,7 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopyInitializersUseBuffer)
 // regression test for 2 issues covered by PR #17000 (internally reported issue).
 // 1) allocation planner broke in minimal build when subgraph had no nodes.
 // 2) usage of a sequence data type caused an exception due to IsSparseTensor() throwing
-//    instead of allowing the calling code to have #ifdef'd code to handle when IsSpareTensor
+//    instead of allowing the calling code to have #ifdef'd code to handle when IsSparseTensor
 //    returned true and sparse tensors were disabled.
 TEST(OrtModelOnlyTests, GithubIssue17000) {
   // need to run the model to
@@ -585,8 +585,8 @@ TEST(OrtModelOnlyTests, GithubIssue17000) {
   test_info.output_names = {"still_has_elements"};
   test_info.output_verifier = [](const std::vector<OrtValue>& fetches) {
     const auto& output = fetches[0].Get<Tensor>();
-    ASSERT_TRUE(output.Shape().Size() == 1);
-    ASSERT_TRUE(output.Data<bool>()[0] == true);  // removed one item from seq so should still have elements
+    ASSERT_EQ(output.Shape().Size(), 1);
+    ASSERT_EQ(output.Data<bool>()[0], true);  // removed one item from seq so should still have elements
   };
 
   RunOrtModel(test_info);

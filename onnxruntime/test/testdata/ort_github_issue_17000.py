@@ -1,6 +1,3 @@
-import os
-import sys
-
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
