@@ -3383,7 +3383,15 @@ TEST(ReductionOpTest, ReduceL1_noop_axes_input_initializer_opset_18) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
+  test.Run(
+    OpTester::ExpectResult::kExpectSuccess,
+    "",
+    {
+      kTensorrtExecutionProvider,
+      kOpenVINOExecutionProvider,
+      kDnnlExecutionProvider
+    }
+  );
 }
 
 TEST(ReductionOpTest, ReduceL1_empty_axes_input_initializer_opset_18) {
@@ -3407,7 +3415,15 @@ TEST(ReductionOpTest, ReduceL2_noop_axes_input_initializer_opset_18) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
+  test.Run(
+    OpTester::ExpectResult::kExpectSuccess,
+    "",
+    {
+      kTensorrtExecutionProvider,
+      kOpenVINOExecutionProvider,
+      kDnnlExecutionProvider
+    }
+  );
 }
 
 TEST(ReductionOpTest, ReduceL2_empty_axes_input_initializer_opset_18) {
@@ -3431,7 +3447,15 @@ TEST(ReductionOpTest, ReduceMax_noop_axes_input_initializer_opset_18) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
+  test.Run(
+    OpTester::ExpectResult::kExpectSuccess,
+    "",
+    {
+      kTensorrtExecutionProvider,
+      kOpenVINOExecutionProvider,
+      kDnnlExecutionProvider
+    }
+  );
 }
 
 TEST(ReductionOpTest, ReduceMax_empty_axes_input_initializer_opset_18) {
@@ -3455,7 +3479,15 @@ TEST(ReductionOpTest, ReduceMean_noop_axes_input_initializer_opset_18) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
+  test.Run(
+    OpTester::ExpectResult::kExpectSuccess,
+    "",
+    {
+      kTensorrtExecutionProvider,
+      kOpenVINOExecutionProvider,
+      kDnnlExecutionProvider
+    }
+  );
 }
 
 TEST(ReductionOpTest, ReduceMean_empty_axes_input_initializer_opset_18) {
@@ -3479,7 +3511,15 @@ TEST(ReductionOpTest, ReduceMin_noop_axes_input_initializer_opset_18) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
+  test.Run(
+    OpTester::ExpectResult::kExpectSuccess,
+    "",
+    {
+      kTensorrtExecutionProvider,
+      kOpenVINOExecutionProvider,
+      kDnnlExecutionProvider
+    }
+  );
 }
 
 TEST(ReductionOpTest, ReduceMin_empty_axes_input_initializer_opset_18) {
@@ -3503,7 +3543,15 @@ TEST(ReductionOpTest, ReduceProd_noop_axes_input_initializer_opset_18) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
+  test.Run(
+    OpTester::ExpectResult::kExpectSuccess,
+    "",
+    {
+      kTensorrtExecutionProvider,
+      kOpenVINOExecutionProvider,
+      kDnnlExecutionProvider
+    }
+  );
 }
 
 TEST(ReductionOpTest, ReduceProd_empty_axes_input_initializer_opset_18) {
@@ -3551,7 +3599,15 @@ TEST(ReductionOpTest, ReduceSumSquare_noop_axes_input_initializer_opset_18) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
+  test.Run(
+    OpTester::ExpectResult::kExpectSuccess,
+    "",
+    {
+      kTensorrtExecutionProvider,
+      kOpenVINOExecutionProvider,
+      kDnnlExecutionProvider
+    }
+  );
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_empty_axes_input_initializer_opset_18) {
