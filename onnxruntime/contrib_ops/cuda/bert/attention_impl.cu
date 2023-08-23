@@ -298,7 +298,7 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
   const int v_head_size = parameters.v_head_size;
   const bool past_present_share_buffer = parameters.past_present_share_buffer;
   void* fused_runner = data.fused_runner;
-  bool use_memory_efficient_attention = data.use_memory_efficient_attention;
+  bool use_flash_or_efficient_attention = data.use_flash_attention || data.use_memory_efficient_attention;
 
   T* qkv = data.workspace;
 
@@ -316,14 +316,14 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
     qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
   } else {
     // For fused TRT attention, transpose qkv to BxSxNx3xH (format 2)
-    // For memory efficient attention, transpose to 3xBxSxNxH (format 3)
+    // For flash or memory efficient attention, transpose to 3xBxSxNxH (format 3)
     // For unfused kernel, transpose to 3xBxNxSxH (format 1)
     // For fused causal kernel, use format 1 since we need have K and V to update present state,
     //   at the same time, we update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
-    const int format = (use_fused_kernel ? 2 : (use_memory_efficient_attention ? 3 : 1));
+    const int format = (use_fused_kernel ? 2 : (use_flash_or_efficient_attention ? 3 : 1));
     qkv_format = use_fused_kernel
                      ? AttentionQkvFormat::QKV_BSN3H
-                     : (use_memory_efficient_attention
+                     : (use_flash_or_efficient_attention
                             ? AttentionQkvFormat::Q_K_V_BSNH
                             : (use_fused_causal ? AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH : AttentionQkvFormat::Q_K_V_BNSH));
 
@@ -502,8 +502,6 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
   void* fused_runner = data.fused_runner;
-  const bool use_memory_efficient_attention = data.use_memory_efficient_attention;
-  const bool use_flash_attention = data.use_flash_attention;
 
   T* qkv = data.workspace;
 
@@ -515,7 +513,7 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
   DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("packed_qkv", data.query, batch_size * sequence_length, num_heads, 3, qk_head_size);
 
-  if (use_memory_efficient_attention || use_flash_attention) {
+  if (data.use_memory_efficient_attention || data.use_flash_attention) {
     // unpack qkv to BSNH. Note that there is no bias so we need not output query to q.
     constexpr int format = 4;
     T* qkv_add_bias = nullptr;
@@ -823,7 +821,7 @@ Status QkvToContext(
         v = data.present_value;
       }
     }
-  } else {
+  } else {  // past_present_share_buffer
     assert(qk_head_size == v_head_size);
     assert(data.fused_cross_attention_kernel == nullptr);
     assert(!use_fused_kernel);
