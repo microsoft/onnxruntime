@@ -344,10 +344,15 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
         std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> map_copy(model_local_functions.begin(),
                                                                                        model_local_functions.end());
         std::unordered_map<std::string, TensorShapeProto> empty_map;
-        ONNX_NAMESPACE::shape_inference::SymbolTableImpl symbolTable;
+
+        // https://github.com/microsoft/onnxruntime/issues/17061
+        // We are passing a nullptr for the symbol table, because symbol table must be global
+        // for all the shape inferencing to work correctly. Otherwise, unrelated shapes get
+        // the same symbolic shapes and are marked for memory re-use. This is a Temp fix.
+        constexpr ONNX_NAMESPACE::shape_inference::SymbolTableImpl* symbolTable = nullptr;
         ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version,
                                                                    schema_registry, ctx, options, map_copy,
-                                                                   &symbolTable, &empty_map);
+                                                                   symbolTable, &empty_map);
       });
 
   op_schema->Finalize();
