@@ -11,8 +11,6 @@
 #include "contrib_ops/cuda/bert/flash_attention/static_switch.h"
 
 namespace onnxruntime {
-namespace contrib {
-namespace cuda {
 namespace flash {
 
 void set_params_fprop(Flash_fwd_params& params,
@@ -191,8 +189,6 @@ bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, in
 }
 
 }  // namespace flash
-}  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime
 
 #endif  // USE_FLASH_ATTENTION

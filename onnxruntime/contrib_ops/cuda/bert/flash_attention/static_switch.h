@@ -2,8 +2,6 @@
 // and https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/Dispatch.h
 #pragma once
 
-#if USE_FLASH_ATTENTION
-
 /// @param COND       - a boolean expression to switch by
 /// @param CONST_NAME - a name given for the constexpr bool variable.
 /// @param ...       - code to execute for true and false
@@ -60,5 +58,3 @@
       return __VA_ARGS__();              \
     }                                    \
   }()
-
-#endif  // USE_FLASH_ATTENTION

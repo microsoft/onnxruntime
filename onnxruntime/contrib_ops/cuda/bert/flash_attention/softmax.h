@@ -3,8 +3,6 @@
  ******************************************************************************/
 #pragma once
 
-#if USE_FLASH_ATTENTION
-
 #include <cmath>
 
 #include <cute/tensor.hpp>
@@ -14,6 +12,7 @@
 
 #include "contrib_ops/cuda/bert/flash_attention/utils.h"
 
+namespace onnxruntime {
 namespace flash {
 
 using namespace cute;
@@ -201,5 +200,4 @@ inline __device__ void apply_mask_causal_w_idx(
 }
 
 }  // namespace flash
-
-#endif  // USE_FLASH_ATTENTION
+}  // namespace onnxruntime

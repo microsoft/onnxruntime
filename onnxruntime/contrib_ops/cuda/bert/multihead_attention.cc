@@ -140,7 +140,10 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                              nullptr == relative_position_bias &&
                              nullptr == key_padding_mask &&
                              parameters.head_size == parameters.v_head_size &&
-                             flash::is_supported(device_prop, parameters.head_size, parameters.num_heads, parameters.num_heads);
+                             onnxruntime::flash::is_supported(device_prop,
+                                                              parameters.head_size,
+                                                              parameters.num_heads,
+                                                              parameters.num_heads);
 #else
   constexpr bool use_flash_attention = false;
 #endif

@@ -33,8 +33,6 @@
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
-namespace contrib {
-namespace cuda {
 namespace flash {
 Status mha_fwd(cudaStream_t stream,
                void* q,            // batch_size x seqlen_q x num_heads x head_size
@@ -73,8 +71,6 @@ size_t get_softmax_lse_size(int max_seqlen_q, int batch_size, int num_heads);
 bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, int num_heads_k);
 
 }  // namespace flash
-}  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime
 
 #endif  //  USE_FLASH_ATTENTION

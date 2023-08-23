@@ -3,11 +3,12 @@
  ******************************************************************************/
 #pragma once
 
-#if USE_FLASH_ATTENTION
-
 #include "contrib_ops/cuda/bert/flash_attention/static_switch.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_fwd_kernel.h"
+
+namespace onnxruntime {
+namespace flash {
 
 template <typename Kernel_traits, bool Is_causal, bool Is_even_N, bool Is_even_K, bool Return_softmax>
 __global__ void flash_fwd_kernel(Flash_fwd_params params) {
@@ -229,4 +230,5 @@ void run_mha_fwd_hdim256(Flash_fwd_params& params, cudaStream_t stream) {
   });
 }
 
-#endif  // USE_FLASH_ATTENTION
+}  // namespace flash
+}  // namespace onnxruntime

@@ -3,8 +3,6 @@
  ******************************************************************************/
 #pragma once
 
-#if USE_FLASH_ATTENTION
-
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -24,6 +22,7 @@
 #include <cutlass/numeric_types.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+namespace onnxruntime {
 namespace flash {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -366,5 +365,4 @@ inline __device__ void copy(TiledCopy thr_copy, Tensor<Engine0, Layout0> const& 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 }  // namespace flash
-
-#endif  // USE_FLASH_ATTENTION
+}  // namespace onnxruntime

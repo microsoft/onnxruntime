@@ -3,10 +3,11 @@
  ******************************************************************************/
 #pragma once
 
-#if USE_FLASH_ATTENTION
-
 #include <cuda.h>
 #include <vector>
+
+namespace onnxruntime {
+namespace flash {
 
 constexpr int TOTAL_DIM = 0;
 constexpr int H_DIM = 1;
@@ -78,4 +79,5 @@ struct Flash_fwd_params : public Qkv_params {
 template <typename T, int Headdim>
 void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);
 
-#endif  // USE_FLASH_ATTENTION
+}  // namespace flash
+}  // namespace onnxruntime

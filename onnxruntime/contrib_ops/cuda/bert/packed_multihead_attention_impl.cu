@@ -625,7 +625,7 @@ Status FlashAttention(
                             (data.workspace + elements_qk + elements_qk + elements_v);
 
   ORT_RETURN_IF_ERROR(
-    flash::mha_varlen_fwd(
+    onnxruntime::flash::mha_varlen_fwd(
       stream,
       const_cast<void*>(query),
       const_cast<void*>(key),

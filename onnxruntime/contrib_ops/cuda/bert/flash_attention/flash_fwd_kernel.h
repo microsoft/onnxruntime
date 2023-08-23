@@ -3,8 +3,6 @@
  ******************************************************************************/
 #pragma once
 
-#if USE_FLASH_ATTENTION
-
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
@@ -25,6 +23,7 @@
 #include "contrib_ops/cuda/bert/flash_attention/utils.h"
 #include "contrib_ops/cuda/bert/flash_attention/softmax.h"
 
+namespace onnxruntime {
 namespace flash {
 using namespace cute;
 
@@ -513,9 +512,8 @@ inline __device__ void compute_attn(const Params& params) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 }  // namespace flash
+}  // namespace onnxruntime
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
-
-#endif  // USE_FLASH_ATTENTION

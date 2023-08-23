@@ -241,7 +241,10 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   if (!disable_flash_attention_) {
     use_flash_attention = !parameters.has_relative_position_bias &&
                           parameters.head_size == parameters.v_head_size &&
-                          flash::is_supported(device_prop, parameters.head_size, parameters.num_heads, parameters.num_heads);
+                          onnxruntime::flash::is_supported(device_prop,
+                                                           parameters.head_size,
+                                                           parameters.num_heads,
+                                                           parameters.num_heads);
   }
 #endif
 

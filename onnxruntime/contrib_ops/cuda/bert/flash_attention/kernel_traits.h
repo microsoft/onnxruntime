@@ -3,8 +3,6 @@
  ******************************************************************************/
 #pragma once
 
-#if USE_FLASH_ATTENTION
-
 #include <cute/algorithm/copy.hpp>
 
 #include <cutlass/cutlass.h>
@@ -12,6 +10,9 @@
 #include <cutlass/numeric_types.h>
 
 using namespace cute;
+
+namespace onnxruntime {
+namespace flash {
 
 template <int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_, typename elem_type = cutlass::half_t>
 struct Flash_kernel_traits {
@@ -334,4 +335,5 @@ struct Flash_bwd_kernel_traits : public Base {
                                                                  cute::Layout<cute::Shape<_1, _1>>{}));  // Val layout, 1 val per store
 };
 
-#endif  // USE_FLASH_ATTENTION
+}  // namespace flash
+}  // namespace onnxruntime

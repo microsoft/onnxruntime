@@ -124,7 +124,7 @@ size_t GetAttentionWorkspaceSize(
 
 #if USE_FLASH_ATTENTION
   if (use_flash_attention) {
-    return qkv_bytes + flash::get_softmax_lse_size(sequence_length, batch_size, num_heads);
+    return qkv_bytes + onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, num_heads);
   }
 #else
   ORT_UNUSED_PARAMETER(use_flash_attention);
@@ -976,10 +976,10 @@ Status QkvToContext(
     DUMP_TENSOR_D("v(BSNH)", v, batch_size, parameters.total_sequence_length, num_heads, v_head_size);
 
     constexpr bool is_causal = false;
-    ORT_RETURN_IF_ERROR(
-        flash::mha_fwd(stream, query, key, value, data.output, reinterpret_cast<void*>(scratch1),
-                       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
-                       parameters.sequence_length, parameters.total_sequence_length, scale, is_causal));
+    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
+        stream, query, key, value, data.output, reinterpret_cast<void*>(scratch1),
+        parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
+        parameters.sequence_length, parameters.total_sequence_length, scale, is_causal));
 
     DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, v_head_size);
 
