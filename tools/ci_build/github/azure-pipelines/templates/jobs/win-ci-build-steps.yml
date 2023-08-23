@@ -37,7 +37,7 @@ steps:
           "$(TODAY)" | onnxruntime | ${{parameters.AdditionalKey}}
       displayName: Cache Task
 
-  - ${{ parameters.BuildStep }}
+  - ${{ parameters.BuildSteps }}
 
   - ${{ if eq(parameters.WITH_CACHE, true) }}:
     - powershell: |
