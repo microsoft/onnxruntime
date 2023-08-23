@@ -1,0 +1,44 @@
+parameters:
+- name: With_Cache
+  displayName: Build with Cache
+  type: boolean
+  default: false
+
+- name: BuildSteps
+  type: stepList
+
+- name: Today
+  type: string
+  default: ""
+
+- name: CacheDir
+  type: string
+  default: ""
+
+steps:
+  - ${{if eq(parameters.WithCache, true)}}:
+    - script: |
+        mkdir -p ${{ parameters.CacheDir }}
+      displayName: Create Cache Dir
+
+  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - task: Cache@2
+      inputs:
+        ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
+          key: ' "$(TODAY)" |  $(System.StageName) | ${{ parameters.BuildConfig }} | merge '
+        ${{else}}:
+          key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} | $(Build.SourceVersion) '
+        path: $(ORT_CACHE_DIR)
+        restoreKeys: |
+          "$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }}
+      displayName: Cache Task
+
+  - ${{ parameters.BuildStep }}
+
+  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - powershell: |
+        ccache -sv
+        ccache -z
+      displayName: cache stat
+      env:
+        CCACHE_DIR: $(ORT_CACHE_DIR)
