@@ -50,8 +50,6 @@ const createBinaryOpProgramShader =
         };
 
         broadcastImpl = `
-  ${output.impl('offsetToIndices')}
-
   fn calcOffsetA(outputIndices: ${output.type.indices}) -> u32 {
     return ${calcOffsetImpl(dimsA)};
   }

@@ -114,7 +114,9 @@ export class ProgramManager {
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
     const device = this.backend.device;
 
-    const code = programInfo.getShaderSource(createShaderHelper(normalizedDispatchGroupSize));
+    const shaderHelper = createShaderHelper(normalizedDispatchGroupSize);
+    const userCode = programInfo.getShaderSource(shaderHelper);
+    const code = `${shaderHelper.additionalImplementations}\n${userCode}`;
     const shaderModule = device.createShaderModule({code});
     LOG_DEBUG('verbose', () => `[WebGPU] shader code: ${code}`);
 

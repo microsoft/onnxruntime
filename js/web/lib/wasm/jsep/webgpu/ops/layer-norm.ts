@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {ShaderHelper} from './common';
+import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
 export interface LayerNormAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -54,7 +54,7 @@ const createLayerNormProgramInfo =
             }
           }
 
-          const dataType = tensorTypeToWsglType(inputs[0].dataType);
+          const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
 
           const hasMeanDataOutput = outputCount > 1;
           const hasInvStdOutput = outputCount > 2;

@@ -85,9 +85,6 @@ export const createReduceProgramInfo =
       const getShaderSource = (shaderHelper: ShaderHelper) => `
         ${shaderHelper.declareVariables(input, output)}
 
-        ${output.impl('offsetToIndices')}
-        ${input.impl('indicesToOffset')}
-
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
           var inputIndices: ${input.type.indices};
