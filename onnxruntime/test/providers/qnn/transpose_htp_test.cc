@@ -123,8 +123,8 @@ TEST_F(QnnHTPBackendTests, TransposeInt32OnHTP) {
 // Check that QNN supports Transpose with float32 data input on HTP
 TEST_F(QnnHTPBackendTests, TransposeFloatOnHTP) {
   RunTransposeNonQDQOnHTP<float>(TestInputDef<float>({1, 3, 224, 128}, false, 0, 10.0f),
-                                   {utils::MakeAttribute("perm", std::vector<int64_t>{0, 2, 3, 1})},
-                                   ExpectedEPNodeAssignment::All);
+                                 {utils::MakeAttribute("perm", std::vector<int64_t>{0, 2, 3, 1})},
+                                 ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
