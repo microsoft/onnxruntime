@@ -1,6 +1,42 @@
 {
     "blogs": [
-        {
+  {
+            "title": "On-Device Training with ONNX Runtime: A deep dive",
+            "date": "July 5th, 2023",
+            "blurb": "This blog presents technical details of On-Device training with ONNX Runtime. It explains how On-Device Training works and what are the different steps and artifacts involved in the training process. This information will help you train your models on edge devices.",
+            "link": "https://cloudblogs.microsoft.com/opensource/2023/07/05/on-device-training-with-onnx-runtime-a-deep-dive/"
+        },
+	{
+	    "title": "On-Device Training: Efficient training on the edge with ONNX Runtime",
+            "date": "May 31st, 2023",
+            "blurb": "This blog introduces On-Device Training to enable training models on edge devices with the data available on-edge. It extends ORT Inference on edge to include federated learning and personalization scenarios.",
+            "link": "https://cloudblogs.microsoft.com/opensource/2023/05/31/on-device-training-efficient-training-on-the-edge-with-onnx-runtime/"
+        },
+	{
+            "title": "Unlocking the end-to-end Windows AI developer experience using ONNX runtime and Olive",
+            "date": "May 23th, 2023",
+            "blurb": "This blog reviews the new capabilities of ONNX Runtime and the Olive toolchain to support hybrid inferencing, NPU EPs, and hardware aware model optimizations on Windows and other platforms",
+            "link": "https://blogs.windows.com/windowsdeveloper/2023/05/23/unlocking-the-end-to-end-windows-ai-developer-experience-using-onnx-runtime-and-olive"
+        },
+	{
+            "title": "Bringing the power of AI to Windows 11 - unlocking a new era of productivity for customers and developers with Windows Copilot and Dev Home",
+            "date": "May 23th, 2023",
+            "blurb": "This blog reviews AI in Windows 11, including ONNX Runtime as the gateway to Windows AI and new ONNX Runtime capabilities on Windows",
+            "link": "https://blogs.windows.com/windowsdeveloper/2023/05/23/bringing-the-power-of-ai-to-windows-11-unlocking-a-new-era-of-productivity-for-customers-and-developers-with-windows-copilot-and-dev-home"
+        },
+	{
+            "title": "Optimize DirectML performance with Olive",
+            "date": "May 23th, 2023",
+            "blurb": "This blog shows how to use Olive to optimize models for DML EP in ONNX Runtime",
+            "link": "https://devblogs.microsoft.com/windowsai/optimize-directml-performance-with-olive"
+        },
+	{
+            "title": "DirectML ❤ Stable Diffusion",
+            "date": "May 23th, 2023",
+            "blurb": "This blog shows how to use the Stable Diffusion model on DML EP using Olive to optimize the Stable Diffusion model",
+            "link": "https://devblogs.microsoft.com/windowsai/dml-stable-diffusion/"
+        },    
+	{
             "title": "Accelerating Stable Diffusion Inference with ONNX Runtime",
             "date": "May 10th, 2023",
             "blurb": "This blog shows how to accelerate the Stable Diffusion models from Hugging Face on NVIDIA and AMD GPUs with ONNX Runtime. It includes benchmark results obtained on A100 and RTX3060 and MI250X.",

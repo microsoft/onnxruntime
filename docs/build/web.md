@@ -32,9 +32,9 @@ There are 2 steps to build ONNX Runtime Web:
   git clone --recursive https://github.com/Microsoft/onnxruntime
   cd onnxruntime
   ```
-- [Install](https://cmake.org/download/) cmake-3.24 or higher.
+- [Install](https://cmake.org/download/) cmake-3.26 or higher.
 
-- [Install](https://nodejs.org/) Node.js (16.0+)
+- [Install](https://nodejs.org/) Node.js (16.0+, 18.0+ is recommended)
 
   - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
@@ -70,7 +70,9 @@ This support is added/removed by appending the following flags to the build comm
 | `--enable_wasm_threads` | build with multi-thread support |
 | `--enable_wasm_simd`    | build with SIMD support         |
 
-A complete build for ONNX runtime WebAssembly artifacts will contain 4 ".wasm" files (ON/OFF configurations of the flags in the table above) with a few ".js" files.
+ONNX Runtime Web can be built with WebGPU support via JavaScript Execution Provider (JSEP). To build with JSEP support, use flag `--use_jsep`.
+
+A complete build for ONNX runtime WebAssembly artifacts will contain 6 ".wasm" files (ON/OFF configurations of the flags in the table above) with a few ".js" files.
 The build command below should be run for each of the configurations.
 
 in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
@@ -91,15 +93,21 @@ in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
 
 A full list of required build artifacts:
 
-| file name                   | `--enable_wasm_threads` | `--enable_wasm_simd` |
-| --------------------------- | ----------------------- | -------------------- |
-| ort-wasm.js                 | X                       | X                    |
-| ort-wasm.wasm               | X                       | X                    |
-| ort-wasm-threaded.js        | O                       | X                    |
-| ort-wasm-threaded.wasm      | O                       | X                    |
-| ort-wasm-threaded.worker.js | O                       | X                    |
-| ort-wasm-simd.wasm          | X                       | O                    |
-| ort-wasm-simd-threaded.wasm | O                       | O                    |
+| file name                   | file name (renamed)              | build flag used                                           |
+| --------------------------- | -------------------------------- | --------------------------------------------------------- |
+| ort-wasm.js                 |                                  |                                                           |
+| ort-wasm.wasm               |                                  |                                                           |
+| ort-wasm-threaded.js        |                                  | `--enable_wasm_threads`                                   |
+| ort-wasm-threaded.wasm      |                                  | `--enable_wasm_threads`                                   |
+| ort-wasm-threaded.worker.js |                                  | `--enable_wasm_threads`                                   |
+| ort-wasm-simd.wasm          |                                  | `--enable_wasm_simd`                                      |
+| ort-wasm-simd-threaded.wasm |                                  | `--enable_wasm_simd` `--enable_wasm_threads`              |
+| ort-wasm-simd.js            | ort-wasm-simd.jsep.js            | `--use_jsep` `--enable_wasm_simd`                         |
+| ort-wasm-simd.wasm          | ort-wasm-simd.jsep.wasm          | `--use_jsep` `--enable_wasm_simd`                         |
+| ort-wasm-simd-threaded.js   | ort-wasm-simd-threaded.jsep.js   | `--use_jsep` `--enable_wasm_simd` `--enable_wasm_threads` |
+| ort-wasm-simd-threaded.wasm | ort-wasm-simd-threaded.jsep.wasm | `--use_jsep` `--enable_wasm_simd` `--enable_wasm_threads` |
+
+NOTE: WebGPU is currently supported as experimental feature for ONNX Runtime Web. The build instructions may change. Please make sure to refer to latest documents from [this gist](https://gist.github.com/fs-eire/a55b2c7e10a6864b9602c279b8b75dce) for a detailed build/consume instruction for ORT Web WebGpu.
 
 ### Minimal Build Support
 
@@ -134,7 +142,7 @@ This is the last stage in the build process, please follow the sections in a seq
 
 ### Prerequisites
 
-- [Install](https://nodejs.org/) Node.js (16.0+)
+- [Install](https://nodejs.org/) Node.js (16.0+, 18.0+ is recommended)
 
   - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows)/[Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
@@ -154,7 +162,9 @@ This is the last stage in the build process, please follow the sections in a seq
 
    - Setup by script.
 
-     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest master branch from CI pipeline.
+     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest master branch from CI pipeline. Use `npm run pull:wasm help` to explore more usages.
+
+     NOTE: This script will overwrite your webaseembly build artifacts. If you build a part of the artifacts from source, a common practice is to run `npm run pull:wasm` to pull a full set of prebuilt artifacts and then copy your build artifacts (follow instructions below) to the target folder, so you don't need to build for 6 times.
 
    - Download artifacts from pipeline manually.
 
@@ -168,16 +178,20 @@ This is the last stage in the build process, please follow the sections in a seq
 
      2. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/` (create the folder if it does not exist):
 
-         * ort-wasm.wasm
-         * ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
-         * ort-wasm-simd.wasm (build with flag '--enable_wasm_simd')
-         * ort-wasm-simd-threaded.wasm (build with flags '--enable_wasm_threads --enable_wasm_simd')
+         * ort-wasm.wasm (build with default flag)
+         * ort-wasm-threaded.wasm (build with flag `--enable_wasm_threads`)
+         * ort-wasm-simd.wasm (build with flag `--enable_wasm_simd`)
+         * ort-wasm-simd-threaded.wasm (build with flags `--enable_wasm_threads --enable_wasm_simd`)
+         * ort-wasm-simd.jsep.wasm (renamed from file `ort-wasm-simd.wasm`, build with flags `--use_jsep --enable_wasm_simd`)
+         * ort-wasm-simd-threaded.jsep.wasm (renamed from file `ort-wasm-simd-threaded.wasm`, build with flags `--use_jsep --enable_wasm_simd --enable_wasm_threads`)
 
      3. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
 
-         * ort-wasm.js
-         * ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
-         * ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
+         * ort-wasm.js (build with default flag)
+         * ort-wasm-threaded.js (build with flag `--enable_wasm_threads`)
+         * ort-wasm-threaded.worker.js (build with flag `--enable_wasm_threads`)
+         * ort-wasm-simd.jsep.js (renamed from file `ort-wasm-simd.js`, build with flags `--use_jsep --enable_wasm_simd`)
+         * ort-wasm-simd-threaded.jsep.js (renamed from file `ort-wasm-simd-threaded.js`, build with flags `--use_jsep --enable_wasm_simd --enable_wasm_threads`)
 
 ### Finalizing onnxruntime build
 
@@ -185,3 +199,5 @@ Use following command in folder `<ORT_ROOT>/js/web` to build:
    ```
    npm run build
    ```
+
+This generates the final JavaScript bundle files to use. They are under folder `<ORT_ROOT>/js/web/dist`.

@@ -95,39 +95,42 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 {: .no_toc }
 
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 11.0/11.1/11.4/11.6 and cuDNN 8.0/cuDNN 8.2/cuDNN 8.4.
+   * The TensorRT execution provider for ONNX Runtime is built and tested up to CUDA 11.8 and cuDNN 8.9. Check [here](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements) for more version information.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
-   * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
+   * The path to the cuDNN installation (path to cudnn bin/include/lib) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
+     * On Windows, cuDNN requires [zlibwapi.dll](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-zlib-windows). Feel free to place this dll under `path_to_cudnn/bin`  
  * Install [TensorRT](https://developer.nvidia.com/tensorrt)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.4.1.5.
-   * To use different versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
-     * cd cmake/external/onnx-tensorrt
-     * git remote update
-     * git checkout 7.2.1
-     * build as usual (but add the --skip_submodule_sync command so it doesn't update the submodule)
+   * The TensorRT execution provider for ONNX Runtime is built and tested up to TensorRT 8.6.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
-   * ONNX Runtime also supports using TensorRT built-in parser library (instead of generating the parser library from onnx-tensorrt submodule). 
-     * To enable this build option, add additional `--use_tensorrt_builtin_parser` parameter next to the parameter `--use_tensorrt` in build commands below.
+   * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
+   * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
+       * The default version of open-sourced onnx-tensorrt parser is encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
+       * To specify a different version of onnx-tensorrt parser:
+         * Select the commit of [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/commits) that you preferred;
+         * Run `sha1sum` command with downloaded onnx-tensorrt zip file to acquire the SHA1 hash 
+         * Update [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) with updated onnx-tensorrt commit and hash info.
 
 ### Build Instructions
 {: .no_toc }
 
 #### Windows
-```
-.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home>
+```bash
+# to build with tensorrt built-in parser
+.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
+
+# to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
+.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
 ```
 
 #### Linux
 
-```
-# to build with the latest supported TensorRT version
+```bash
+# to build with tensorrt built-in parser
 ./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
-# to build with different version. e.g. TensorRT 7.2.1
-cd cmake/external/onnx-tensorrt
-git remote update
-git checkout 7.2.1
-./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> --skip_submodule_sync
+
+# to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
+./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#tensorrt)
@@ -232,46 +235,29 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 ### Prerequisites
 {: .no_toc }
 
-1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2022.2** for the appropriate OS and target hardware:
-   * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
-   * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
+1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2023.0** for the appropriate OS and target hardware:
+   * [Windows - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?ENVIRONMENT=RUNTIME&OP_SYSTEM=WINDOWS&VERSION=v_2023_0&DISTRIBUTION=ARCHIVE).
+   * [Linux - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?ENVIRONMENT=RUNTIME&OP_SYSTEM=LINUX&VERSION=v_2023_0&DISTRIBUTION=ARCHIVE)
 
-   Follow [documentation](https://docs.openvino.ai/latest/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvino.ai/2023.0/index.html) for detailed instructions.
 
-  *2022.2 is the recommended OpenVINO™ version. [OpenVINO™ 2021.4](https://docs.openvinotoolkit.org/2021.4/index.html) is minimal OpenVINO™ version requirement.*
-  *The minimum ubuntu version to support 2022.2 is 18.04.*
+  *2023.0 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/2022.1/index.html) is minimal OpenVINO™ version requirement.*
+  *The minimum ubuntu version to support 2023.0 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_ncs2.html#ncs-guide)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_ivad_vpu.html#vpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_ivad_vpu.html#vpu-guide). Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#linux)
+
 
 3. Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
-   * For Linux run till OpenVINO™ 2021.4 version:
+   * For Windows:
    ```
-      $ source <openvino_install_directory>/bin/setupvars.sh
+      C:\<openvino_install_directory>\setupvars.bat
    ```
-   * For Linux run from OpenVINO™ 2022.1 version:
+   * For Linux:
    ```
       $ source <openvino_install_directory>/setupvars.sh
    ```
-   * For Windows run till OpenVINO™ 2021.4 version:
-   ```
-      C:\ <openvino_install_directory>\bin\setupvars.bat
-   ```
-   * For Windows run from OpenVINO™ 2022.1 version:
-   ```
-      C:\ <openvino_install_directory>\setupvars.bat
-   ```
    **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles/Dockerfile.openvino).
-
-
-4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
-   * After setting the environment using setupvars script, follow these steps to change the default scheduler of VAD-M to Bypass:
-      * Edit the hddl_service.config file from $HDDL_INSTALL_DIR/config/hddl_service.config and change the field "bypass_device_number" to 8.
-      * Restart the hddl daemon for the changes to take effect.
-      * Note that if OpenVINO was installed with root permissions, this file has to be changed with the same permissions.
-
 
 ### Build Instructions
 {: .no_toc }
@@ -279,28 +265,32 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 #### Windows
 
 ```
-.\build.bat --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib
+.\build.bat --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib --build_wheel
 ```
 
-*Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
+*Note: The default Windows CMake Generator is Visual Studio 2019, but you can also use the newer Visual Studio 2022 by passing `--cmake_generator "Visual Studio 17 2022"` to `.\build.bat`*
 
 #### Linux
 
 ```bash
-./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib
+./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib --build_wheel
 ```
 
+* `--build_wheel` Creates python wheel file in dist/ folder. Enable it when building from source and/or while building with CXX11_ABI=1 of OpenVINO.
 * `--use_openvino` builds the OpenVINO™ Execution Provider in ONNX Runtime.
 * `<hardware_option>`: Specifies the default hardware target for building OpenVINO™ Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
+
+Refer to [Intel GPU device naming convention](https://docs.openvino.ai/2023.0/openvino_docs_OV_UG_supported_plugins_GPU.html#device-naming-convention) for specifying the correct hardware target in cases where both integrated and discrete GPU's co-exist.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
 | <code>CPU_FP32</code> | Intel<sup>®</sup> CPUs |
 | <code>GPU_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
 | <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
-| <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
-| <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
-| <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
+| <code>GPU.0_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
+| <code>GPU.0_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
+| <code>GPU.1_FP32</code> | Intel<sup>®</sup> Discrete Graphics |
+| <code>GPU.1_FP16</code> | Intel<sup>®</sup> Discrete Graphics with FP16 quantization of models |
 | <code>HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 | <code>MULTI:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 | <code>AUTO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
@@ -308,12 +298,12 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 Specifying Hardware Target for HETERO or Multi or AUTO device Build:
 
 HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...
-The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
+The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU']
 
 A minimum of two device's should be specified for a valid HETERO or MULTI or AUTO device build.
 
 ```
-Example's: HETERO:MYRIAD,CPU or AUTO:GPU,CPU or MULTI:MYRIAD,GPU,CPU
+Example's: HETERO:GPU,CPU or AUTO:GPU,CPU or MULTI:GPU,CPU
 ```
 
 #### Disable subgraph partition Feature
@@ -325,88 +315,10 @@ Example's: HETERO:MYRIAD,CPU or AUTO:GPU,CPU or MULTI:MYRIAD,GPU,CPU
 
 ```
 Usage: --use_openvino CPU_FP32_NO_PARTITION or --use_openvino GPU_FP32_NO_PARTITION or
-       --use_openvino GPU_FP16_NO_PARTITION or --use_openvino MYRIAD_FP16_NO_PARTITION or
-       --use_openvino VAD-F_FP32_NO_PARTITION or --use_openvino VAD-M_FP16_NO_PARTITION
+       --use_openvino GPU_FP16_NO_PARTITION 
 ```
 
 For more information on OpenVINO™ Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
-
----
-
-### Prerequisites
-{: .no_toc }
-
-* The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 9.0.0. Because of TVM's requirement when building with LLVM, you need to build LLVM from source. To build the debug flavor of ONNX Runtime, you need the debug build of LLVM.
-   * Windows (Visual Studio 2017):
-   ```
-   REM download llvm source code 9.0.0 and unzip to \llvm\source\path, then install to \llvm\install\path
-   cd \llvm\source\path
-   mkdir build
-   cd build
-   cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_DIA_SDK=OFF
-   msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
-   cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
-   ```
-
-*Note that following LLVM cmake patch is necessary to make the build work on Windows, Linux does not need to apply the patch.*
-The patch is to fix the linking warning LNK4199 caused by this [LLVM commit](https://github.com/llvm-mirror/llvm/commit/148f823e4845c9a13faea62e3105abb80b39e4bc)
-
-```
-diff --git "a/lib\\Support\\CMakeLists.txt" "b/lib\\Support\\CMakeLists.txt"
-index 7dfa97c..6d99e71 100644
---- "a/lib\\Support\\CMakeLists.txt"
-+++ "b/lib\\Support\\CMakeLists.txt"
-@@ -38,12 +38,6 @@ elseif( CMAKE_HOST_UNIX )
-   endif()
- endif( MSVC OR MINGW )
-
--# Delay load shell32.dll if possible to speed up process startup.
--set (delayload_flags)
--if (MSVC)
--  set (delayload_flags delayimp -delayload:shell32.dll -delayload:ole32.dll)
--endif()
--
- # Link Z3 if the user wants to build it.
- if(LLVM_WITH_Z3)
-   set(Z3_LINK_FILES ${Z3_LIBRARIES})
-@@ -187,7 +181,7 @@ add_llvm_library(LLVMSupport
-   ${LLVM_MAIN_INCLUDE_DIR}/llvm/ADT
-   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Support
-   ${Backtrace_INCLUDE_DIRS}
--  LINK_LIBS ${system_libs} ${delayload_flags} ${Z3_LINK_FILES}
-+  LINK_LIBS ${system_libs} ${Z3_LINK_FILES}
-   )
-
- set_property(TARGET LLVMSupport PROPERTY LLVM_SYSTEM_LIBS "${system_libs}")
-```
-   * Linux
-   Download llvm source code 9.0.0 and unzip to /llvm/source/path, then install to /llvm/install/path
-   ```
-   cd /llvm/source/path
-   mkdir build
-   cd build
-   cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release
-   make -j$(nproc)
-   cmake -DCMAKE_INSTALL_PREFIX=/llvm/install/path -DBUILD_TYPE=Release -P cmake_install.cmake
-   ```
-
-### Build Instructions
-{: .no_toc }
-
-#### Windows
-```
-.\build.bat --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
-```
-
-* These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
-
-#### Linux:
-```
-./build.sh --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
-```
-
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#nuphar).
-
 
 ---
 
@@ -483,7 +395,7 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 
 1. Configure ONNX Runtime with ACL support:
 ```
-cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
 ```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON```, ```-Donnxruntime_USE_ACL_1908=ON``` or ```-Donnxruntime_USE_ACL_2002=ON```;
@@ -617,7 +529,7 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 ---
 
 ## AMD Vitis AI
-See more information on the Vitis AI Execution Provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
+See more information on the Vitis AI Execution Provider [here](../execution-providers/Vitis-AI-ExecutionProvider.md).
 
 ### Windows
 {: .no_toc }
@@ -643,7 +555,7 @@ e.g.
 ### Linux
 {: .no_toc }
 
-Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md#amd-adaptable-soc-installation) for SoC targets.
+Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/Vitis-AI-ExecutionProvider.md#amd-adaptable-soc-installation) for SoC targets.
 
 ---
 

@@ -576,7 +576,7 @@ var ot_validCombos = {
     "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
     
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "pip install onnxruntime-training<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
@@ -631,6 +631,19 @@ var ot_validCombos = {
     
     "ot_android,ot_on_device,ot_java,ot_X64,ot_CPU":
     "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-training-android</a> using Maven/Gradle and refer to the instructions <a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here.</a>",
+
+    "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU":
+    "pip install onnxruntime-training<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+
+    "ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU":
+        "Add 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+    
+    "ot_ios,ot_on_device,ot_c,ot_X64,ot_CPU":
+        "Add 'onnxruntime-training-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+    
+    "ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
+        "Add 'onnxruntime-training-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+    
 };
 
 function ot_commandMessage(key) {
@@ -985,9 +998,6 @@ var validCombos = {
     "windows,Java,X64,DNNL":
         "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
-    "windows,Java,X64,NUPHAR":
-        "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
     "windows,Java,X64,OpenVINO":
         "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
@@ -995,9 +1005,6 @@ var validCombos = {
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "linux,Java,X64,DNNL":
-        "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-    "linux,Java,X64,NUPHAR":
         "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "linux,Java,X64,OpenVINO":
@@ -1242,27 +1249,27 @@ var validCombos = {
     "linux,Python,Power,DefaultCPU":
         "pip install onnxruntime-powerpc64le",
 
-     //SNPE
-    "windows,C-API,ARM64,SNPE":
-    "View installation instructions <a href='./winarm.html' target='_blank'>here</a>",
+     //QNN
+    "windows,C-API,ARM64,QNN":
+    "View installation instructions <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "windows,C++,ARM64,SNPE":
-    "View installation instructions <a href='./winarm.html' target='_blank'>here</a>",
+    "windows,C++,ARM64,QNN":
+    "View installation instructions <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
     
-    "windows,C#,ARM64,SNPE":
-    "View installation instructions <a href='./winarm.html' target='_blank'>here</a>",
+    "windows,C#,ARM64,QNN":
+    "View installation instructions <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "linux,C-API,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "linux,C-API,ARM64,QNN":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "linux,C++,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "linux,C++,ARM64,QNN":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "android,C-API,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "android,C-API,ARM64,QNN":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "android,C++,ARM64,SNPE":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "android,C++,ARM64,QNN":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
     //Xnnpack
     "ios,C-API,ARM64,XNNPACK":
