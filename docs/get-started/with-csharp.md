@@ -42,28 +42,82 @@ This is an [Azure Function](https://azure.microsoft.com/services/functions/) exa
 
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             dynamic data = JsonConvert.DeserializeObject(requestBody);
-            review = review ?? data?.review;
+            review ??= data.review;
+            Debug.Assert(!string.IsNullOrEmpty(review), "Expecting a string with a content");
 
             // Get path to model to create inference session.
-            var modelPath = "./model.onnx";
-
-            // create input tensor (nlp example)
-            var inputTensor = new DenseTensor<string>(new string[] { review }, new int[] { 1, 1 });
-
-            // Create input data for session.
-            var input = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<string>("input", inputTensor) };
+            const string modelPath = "./model.onnx";
 
             // Create an InferenceSession from the Model Path.
-            var session = new InferenceSession(modelPath);
+            // Creating and loading sessions are expensive per request.
+            // They better be cached
+            using var session = new InferenceSession(modelPath);
 
-            // Run session and send input data in to get inference output. Call ToList then get the Last item. Then use the AsEnumerable extension method to return the Value result as an Enumerable of NamedOnnxValue.
-            var output = session.Run(input).ToList().Last().AsEnumerable<NamedOnnxValue>();
+            // create input tensor (nlp example)
+            using var inputOrtValue = OrtValue.CreateTensorWithEmptyStrings(OrtAllocator.DefaultInstance, new long[] { 1, 1 });
+            inputOrtValue.StringTensorSetElementAt(review, 0);
 
-            // From the Enumerable output create the inferenceResult by getting the First value and using the AsDictionary extension method of the NamedOnnxValue.
-            var inferenceResult = output.First().AsDictionary<string, float>();
+            // Create input data for session. Request all outputs in this case.
+            var inputs = new Dictionary<string, OrtValue>
+            {
+                { "input", inputOrtValue }
+            };
+
+            using var runOptions = new RunOptions();
+
+            // We are getting a sequence of maps as output. We are interested in the first element (map) of the sequence.
+            // That result is a Sequence of Maps, and we only need the first map from there.
+            using var outputs = session.Run(runOptions, inputs, session.OutputNames);
+            Debug.Assert(outputs.Count > 0, "Expecting some output");
+
+            // We want the last output, which is the sequence of maps
+            var lastOutput = outputs[outputs.Count - 1];
+
+            // Optional code to check the output type
+            {
+                var outputTypeInfo = lastOutput.GetTypeInfo();
+                Debug.Assert(outputTypeInfo.OnnxType == OnnxValueType.ONNX_TYPE_SEQUENCE, "Expecting a sequence");
+
+                var sequenceTypeInfo = outputTypeInfo.SequenceTypeInfo;
+                Debug.Assert(sequenceTypeInfo.ElementType.OnnxType == OnnxValueType.ONNX_TYPE_MAP, "Expecting a sequence of maps");
+            }
+
+            var elementsNum = lastOutput.GetValueCount();
+            Debug.Assert(elementsNum > 0, "Expecting a non empty sequence");
+
+            // Get the first map in sequence
+            using var firstMap = lastOutput.GetValue(0, OrtAllocator.DefaultInstance);
+
+            // Optional code just checking
+            {
+                // Maps always have two elements, keys and values
+                // We are expecting this to be a map of strings to floats
+                var mapTypeInfo = firstMap.GetTypeInfo().MapTypeInfo;
+                Debug.Assert(mapTypeInfo.KeyType == TensorElementType.String, "Expecting keys to be strings");
+                Debug.Assert(mapTypeInfo.ValueType.OnnxType == OnnxValueType.ONNX_TYPE_TENSOR, "Values are in the tensor");
+                Debug.Assert(mapTypeInfo.ValueType.TensorTypeAndShapeInfo.ElementDataType == TensorElementType.Float, "Result map value is float");
+            }
+
+            var inferenceResult = new Dictionary<string, float>();
+            // Let use the visitor to read map keys and values
+            // Here keys and values are represented with the same number of corresponding entries
+            // string -> float
+            firstMap.ProcessMap((keys, values) => {
+                // Access native buffer directly
+                var valuesSpan = values.GetTensorDataAsSpan<float>();
+
+                var entryCount = (int)keys.GetTensorTypeAndShape().ElementCount;
+                inferenceResult.EnsureCapacity(entryCount);
+                for (int i = 0; i < entryCount; ++i)
+                {
+                    inferenceResult.Add(keys.GetStringElement(i), valuesSpan[i]);
+                }
+            }, OrtAllocator.DefaultInstance);
+
 
             // Return the inference result as json.
             return new JsonResult(inferenceResult);
+
         }
 ```
 ## Reuse input/output tensor buffers
