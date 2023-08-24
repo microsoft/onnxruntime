@@ -16,32 +16,20 @@ jobs:
     EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
     setVcvars: true
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 120
   workspace:
     clean: all
   steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.8'
-      addToPath: true
-      architecture: $(buildArch)
-
-  - script: |
-     python -m pip install -q setuptools wheel numpy flatbuffers
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Install python modules'
-
-  - template: templates/jobs/set-winenv.yml
+  - template: templates/jobs/win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: true
-
-  - task: PowerShell@2
-    displayName: 'Install ONNX'
-    inputs:
-      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-      workingDirectory: '$(Build.BinariesDirectory)'
-      arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
+      BuildArch: $(buildArch)
+      BuildConfig: $(BuildConfig)
+      MachinePool: 'onnxruntime-Win2022-GPU-T4'
+      WithCache: true
+      Today: $(Today)
 
   - task: PythonScript@0
     displayName: 'Build and test'

@@ -39,7 +39,7 @@ Do not modify directly.*
 | Gather | ai.onnx(1-10,11-12,13+) |  |
 | GatherElements | ai.onnx(1-10,11-12,13+) |  |
 | Gelu | com.microsoft(1+) |  |
-| Gemm | ai.onnx(7-8,9-10,11+) |  |
+| Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
