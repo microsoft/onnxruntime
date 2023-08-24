@@ -215,9 +215,7 @@ const createConvTranspose2DOpProgramShaderSource =
         `;
 
       return `
-  ${w.impl('indicesToOffset', 'get')}
-  ${dy.impl('indicesToOffset', 'get')}
-  ${output.impl('offsetToIndices', 'indicesToOffset', 'set')}
+  ${shaderHelper.declareVariables(dy, w, output)}
   ${declareFunctions}
   ${declareInputs.join('\n')}
   @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
@@ -236,12 +234,11 @@ const createConvTranspose2DOpProgramShaderSource =
           attributes.dilations[1] <= 1 ?
               0 :
               (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)});
-  const pads: vec2<i32> = vec2<i32>(
-      i32(effectiveFilterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]}) / 2,
-      i32(effectiveFilterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]}) / 2);
-  ${shaderHelper.mainStart()}
-  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
-    ${isVec4 ? codeSnippet4 : codeSnippet}}`;
+  const pads : vec2<i32> = vec2<i32>(i32(effectiveFilterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]})/2,
+                                     i32(effectiveFilterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]})/2);
+    ${shaderHelper.mainStart()}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
+  ${isVec4 ? codeSnippet4 : codeSnippet}}`;
     };
 
 export const createConvTranspose2DProgramInfo =

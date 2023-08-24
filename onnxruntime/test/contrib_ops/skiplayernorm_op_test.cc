@@ -698,8 +698,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_TokenCount) {
           true);
 }
 
-// SkipSimplifiedLayerNorm has not been enabled for ROCm and DML yet
-#if !defined(USE_ROCM) && !defined(USE_DML)
+// SkipSimplifiedLayerNorm has not been enabled for DML yet
+#if !defined(USE_DML)
 TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -735,7 +735,9 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
           true,
           true);
 }
+#endif
 
+#if !defined(USE_ROCM) && !defined(USE_DML)
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_No_Batch_Size) {
   int batch_size = 2;
   int sequence_length = 2;
