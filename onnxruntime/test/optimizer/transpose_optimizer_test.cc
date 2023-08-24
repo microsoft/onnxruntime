@@ -3538,7 +3538,7 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
-  auto test_case = [&](const std::string q_domain = "") {
+  auto test_case = [&](const std::string& q_domain = "") {
     auto build_test_case_1 = [&](ModelTestBuilder& builder) {
       auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
       auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
@@ -3575,7 +3575,7 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
-  auto test_case = [&](const std::string q_domain = "") {
+  auto test_case = [&](const std::string& q_domain = "") {
     auto build_test_case_1 = [&](ModelTestBuilder& builder) {
       auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
       auto* input1_arg = MakeInput<float>(builder, {{-1}}, {2}, {2.3f, 2.4f});
@@ -3612,7 +3612,7 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearVectorUnknownRank) {
-  auto test_case = [&](const std::string q_domain = "") {
+  auto test_case = [&](const std::string& q_domain = "") {
     auto build_test_case_1 = [&](ModelTestBuilder& builder) {
       auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
       auto* input1_arg = MakeInput<float>(builder, std::nullopt, {3}, {2.3f, 2.4f, 2.5f});
@@ -3677,7 +3677,7 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalarOpset10) {
 }
 
 TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
-  auto test_case = [&](const std::string dq_domain = "") {
+  auto test_case = [&](const std::string& dq_domain = "") {
     auto build_test_case_1 = [&](ModelTestBuilder& builder) {
       auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
       auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
@@ -3714,7 +3714,7 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
 }
 
 TEST(TransposeOptimizerTests, TestDequantizeLinearVector) {
-  auto test_case = [&](const std::string dq_domain = "") {
+  auto test_case = [&](const std::string& dq_domain = "") {
     auto build_test_case_1 = [&](ModelTestBuilder& builder) {
       auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
       auto* input1_arg = MakeInput<float>(builder, {{2}}, {2}, {2.3f, 2.4f});
@@ -3779,7 +3779,7 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
 }
 
 TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
-  auto test_case = [&](const std::string dq_domain = "") {
+  auto test_case = [&](const std::string& dq_domain = "") {
     auto build_test_case_1 = [&](ModelTestBuilder& builder) {
       auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
       auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
