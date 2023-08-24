@@ -153,8 +153,10 @@ void PythonOpBase::RunForward(OpKernelContext* context,
       inplace_ != 0,
       kernel_invoke_id_);
 
-  ORT_ENFORCE(1 + returned_ortvalues.size() == static_cast<size_t>(context->OutputCount()),
-              "Output count mismatch for PythonOp run");
+  const size_t returned_output_count = 1 + returned_ortvalues.size();
+  const size_t kernel_output_count = static_cast<size_t>(context->OutputCount());
+  ORT_ENFORCE(returned_output_count == kernel_output_count, "Output count mismatch for PythonOp run, ",
+              "returned_output_count: ", returned_output_count, ", expected kernel_output_count: ", kernel_output_count);
 }
 
 void PythonOpBase::SetOutputs(OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) const {

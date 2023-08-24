@@ -28,7 +28,8 @@ class PythonOpShapeInferStore:
 
     @classmethod
     def register(cls, kclass: torch.autograd.Function) -> None:
-        """Register a shape inference function for a torch.autograd.Function if there is staticmethod "infer_shape" defined.
+        """Register a shape inference function for a torch.autograd.Function if there is staticmethod
+        "infer_shape" defined.
 
         The signature of the shape inference function should be:
             @staticmethod
@@ -50,6 +51,11 @@ class PythonOpShapeInferStore:
         kclass_name = get_fully_qualified_class_name(kclass)
         if hasattr(kclass, "infer_shape") and kclass_name not in cls._CLASS_MAP:
             cls._CLASS_MAP[kclass_name] = kclass.infer_shape
+
+    @classmethod
+    def register_func(cls, name: str, func: Callable) -> None:
+        """Register a shape inference function for a torch.autograd.Function by name."""
+        cls._CLASS_MAP[name] = func
 
     @classmethod
     def get_shape_infer(cls, name: str) -> Optional[Callable]:
@@ -307,14 +313,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 _export = wrap_custom_export_function(_export_pt_1_10)
 
 
-def _post_process_after_export(exported_model: ModelProto, enable_custom_autograd_function: bool) -> ModelProto:
-    """Post process the exported model."""
-    if enable_custom_autograd_function:
-        exported_model = _post_process_enabling_autograd_function(exported_model)
-    return exported_model
-
-
-def _post_process_enabling_autograd_function(exported_model: ModelProto) -> ModelProto:
+def post_process_enabling_autograd_function(exported_model: ModelProto) -> ModelProto:
     # Loop all PythonOp, append "_ctx" as the first output.
     index = 0
     for node in exported_model.graph.node:
@@ -330,8 +329,7 @@ def _post_process_enabling_autograd_function(exported_model: ModelProto) -> Mode
                     op_name_prefix = kclass_name
                     break
 
-        if not node.name:
-            node.name = f"{op_name_prefix}_id_{index}"
-            index += 1
+        node.name = f"{op_name_prefix}_id_{index}"
+        index += 1
 
     return exported_model
