@@ -232,7 +232,7 @@ def call_python_forward_function(
 
         for arg_index, (grad_flag, tensor_flag, arg) in enumerate(zip(requires_grad_flags, tensor_type_flags, args)):
             if tensor_flag:
-                # Assume it's a DLPack tensor# and convert it to PyTorch tensor.
+                # Assume it's a DLPack tensor and convert it to PyTorch tensor.
                 # Note1:
                 #   If it's first-time kernel invocation, input_indices_to_save_in_ctx is None, we do the
                 #   copy for all tensor. Otherwise, we only copy the tensors whose indices are in

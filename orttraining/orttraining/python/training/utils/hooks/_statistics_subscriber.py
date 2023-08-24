@@ -7,11 +7,90 @@ import os
 import shutil
 import warnings
 from pathlib import Path
-from typing import Union
+from typing import List, Optional, Tuple, Union
 
+import onnx
 import torch
 
-from ._subscriber_base import SubscriberBase
+from ._subscriber_base import RuntimeStates, SubscriberBase
+
+
+class _InspectActivation(torch.autograd.Function):
+    """
+    This class is used to run the subscriber's forward and backward functions.
+    The function will be called by two kinds of callers:
+        1. SubscriberManager calls it for each registered nn.Module.
+        2. Users who want to inspect the activation tensor at any place of model definition code.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        activation_name: str,
+        module_idx: Optional[int],
+        run_ctx: RuntimeStates,
+        input_tensor: torch.Tensor,
+        module_post_forward,
+        module_pre_backward,
+    ):
+        """
+        Args:
+            ctx: context object to store intermediate information.
+            activation_name: the name of the activation tensor.
+            module_idx: unit id of the module (address of the module instance).
+            run_ctx: runtime context.
+                For call case 2 - need retrieve the runtime state from GlobalSubscriberManager.
+            input_tensor: the activation tensor.
+
+        Make sure there is a same number of `tensor` type inputs and outputs.
+        This is enforced by ORT's PythonOp's schema check.
+        """
+        depth = -1
+        if module_idx is not None:
+            depth = run_ctx.global_states.module_index_to_depth[module_idx]
+
+        input_tensor_copied = None
+        if input_tensor is None or not isinstance(input_tensor, torch.Tensor):
+            input_tensor_copied = input_tensor
+        else:
+            input_tensor_copied = input_tensor.detach().clone()
+
+        ctx.current_step = run_ctx.global_states.execution_step
+        ctx.name = activation_name
+        ctx.id = module_idx
+        ctx.depth = depth
+        ctx.module_pre_backward = module_pre_backward
+
+        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step)
+
+        return input_tensor.detach() if input_tensor is not None else None
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        val = None
+        if grad_output is None or not isinstance(grad_output, torch.Tensor):
+            val = grad_output
+        else:
+            val = grad_output.detach().clone()
+
+        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step)
+
+        return (
+            None,
+            None,
+            None,
+            grad_output.detach() if grad_output is not None else None,
+            None,
+            None,
+        )
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
 
 
 class StatisticsSubscriber(SubscriberBase):
@@ -67,6 +146,15 @@ class StatisticsSubscriber(SubscriberBase):
                     f"Output directory {self._output_dir} already exists. "
                     "Set override_output_dir=True for StatisticsSubscriber if this is the intention."
                 )
+
+    def post_forward_tensor_apply_impl(
+        self, run_rtx: RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
+    ) -> torch.Tensor:
+        module_index = run_rtx.global_states.module_to_module_index[module]
+        name = f"{module.__class__.__name__}_{module_index}_{tensor_index}th_output"
+        return _InspectActivation.apply(
+            name, module_index, run_rtx, tensor, self.module_post_forward_impl, self.module_pre_backward_impl
+        )
 
     def module_post_forward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
         output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")

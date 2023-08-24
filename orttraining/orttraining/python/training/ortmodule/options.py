@@ -288,6 +288,9 @@ class _RuntimeOptions:
         # Cache exported model
         self.ortmodule_cache_dir = ""
 
+        # Experimental features.
+        self.enable_zero_stage3_support = False  # Once enabled, cannot be disabled.
+
         # Override the feature config if it exists in os env.
         self._override_from_env_vars()
 
@@ -365,3 +368,7 @@ class _RuntimeOptions:
         if "ORTMODULE_CACHE_DIR" in os.environ:
             self._logger.info("ORTModule cache optimization is ON.")
             self.ortmodule_cache_dir = os.getenv("ORTMODULE_CACHE_DIR")
+
+        # Experimental features.
+        if "ORTMODULE_ENABLE_ZERO_STAGE3" in os.environ and int(os.getenv("ORTMODULE_ENABLE_ZERO_STAGE3")) == 1:
+            self.enable_zero_stage3_support = True

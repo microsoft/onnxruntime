@@ -539,6 +539,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(
     output_names = None
     output_dynamic_axes = None
     is_deepcopy = False
+    logger.info("Running model forward to infer output schema and dynamic axes...")
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*args, **kwargs)
