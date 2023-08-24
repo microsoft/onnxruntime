@@ -86,16 +86,14 @@ int main() {
 
 For custom ops running on CPUExecutionProvider, [span](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L40) and scalar as inputs are supported, please refer to more [examples](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L43) for usage.
 
-
 ## Legacy way for custom op development and registration
 
-The legacy way for developing custom op is still supported, please refer to the [example](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L119) for detail.
+The legacy way for developing custom op is still supported, please refer to the [examples](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/custom_op_utils.h) for detail.
 
 ## Create a library of custom operators
 Custom operators can be defined in a separate shared library (e.g., a .dll on Windows or a .so on Linux). A custom operator library must export and implement a `RegisterCustomOps` function. The `RegisterCustomOps` function adds a `Ort::CustomOpDomain` containing the library's custom operators to the provided session options.
 
 Please refer to the [example](https://github.com/microsoft/onnxruntime/tree/rel-1.16.0/onnxruntime/test/testdata/custom_op_library) for detail.
-
 
 ## Calling a native operator from custom operator
 To simplify implementation of custom operators, native onnxruntime operators can directly be invoked. For example, some custom ops might have to do GEMM or TopK in between other computations. 
@@ -104,7 +102,6 @@ within which the input and output could be cached and processed.
 
 This feature is supported from ONNX Runtime 1.12.0+. See: [API](https://github.com/microsoft/onnxruntime/blob/ced7c2deac958391414d2bbf951f86e2fc904b05/include/onnxruntime/core/session/onnxruntime_cxx_api.h#L1156)
 and [examples](https://github.com/microsoft/onnxruntime/blob/ced7c2deac958391414d2bbf951f86e2fc904b05/onnxruntime/test/shared_lib/custom_op_utils.cc#L210).
-
 
 ## Custom ops for CUDA and ROCM
 Since onnxruntime 1.16, customer op for CUDA and ROCM devices are supported.
@@ -143,7 +140,6 @@ void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
 ```
 Details could be found [here](https://github.com/microsoft/onnxruntime/tree/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/rocm).
 
-
 ## One op, varied types
 Since onnxruntime 1.16, a custom op is allowed to support varied data types:
 
@@ -163,8 +159,6 @@ int main() {
 Details could be found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L39).
 
 A unit test case could found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/test_inference.cc#L3272).
-
-
 
 ## Wrapping an external inference runtime in a custom operator
 A custom operator can wrap an entire model that is then inferenced with an external API or runtime. This can facilitate the integration of external inference engines or APIs with ONNX Runtime.
