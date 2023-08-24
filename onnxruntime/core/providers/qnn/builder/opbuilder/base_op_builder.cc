@@ -33,14 +33,13 @@ Status BaseOpBuilder::AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
   LOGS(logger, VERBOSE) << "QNN node builder is trying to add node. Onnx node name: [" << node_unit.Name()
                         << "] onnx node type: [" << node_unit.OpType() << "].";
 
-  bool is_quantized_node = NodeUnit::Type::QDQGroup == node_unit.UnitType();
   std::vector<std::string> input_names;
   // Inputs & output handling mostly same for most of the Ops, just node attributes are different
   ORT_RETURN_IF_ERROR(ProcessInputs(qnn_model_wrapper, node_unit, logger,
-                                    is_quantized_node, input_names, do_op_validation));
+                                    input_names, do_op_validation));
 
   ORT_RETURN_IF_ERROR(ProcessAttributesAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names),
-                                                  logger, is_quantized_node, do_op_validation));
+                                                  logger, do_op_validation));
 
   return Status::OK();
 }
@@ -48,7 +47,6 @@ Status BaseOpBuilder::AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
 Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnitIODef& input,
                                    const logging::Logger& logger,
-                                   bool is_quantized_node,
                                    std::vector<std::string>& input_names) const {
   const auto& input_name = input.node_arg.Name();
 
@@ -59,7 +57,7 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
   }
 
   OnnxInputInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(input, is_quantized_node, input_info));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(input, input_info));
 
   std::vector<uint8_t> unpacked_tensor;
   if (input_info.is_initializer) {
@@ -78,7 +76,6 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
 Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_quantized_node,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
@@ -86,7 +83,7 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   const auto& inputs = node_unit.Inputs();
   const auto input_count = GetInputCountQnnRequired(node_unit);
   for (size_t input_i = 0; input_i < input_count; ++input_i) {
-    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[input_i], logger, is_quantized_node, input_names));
+    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[input_i], logger, input_names));
   }
 
   return Status::OK();
@@ -96,15 +93,13 @@ Status BaseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
-                                                  bool is_quantized_node,
                                                   bool do_op_validation) const {
   if (input_names.size() < 1) {
     return Status::OK();
   }
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
-                                     logger, is_quantized_node, do_op_validation,
-                                     GetQnnOpType(node_unit.OpType())));
+                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
 
@@ -113,7 +108,6 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      std::vector<std::string>&& input_names,
                                      std::vector<std::string>&& param_tensor_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_node,
                                      bool do_op_validation,
                                      const std::string& qnn_op_type) const {
   ORT_UNUSED_PARAMETER(logger);
@@ -133,11 +127,12 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     const auto& output_name = outputs[output_i].node_arg.Name();
 
     Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-    utils::InitializeQuantizeParam(quantize_param, is_quantized_node);
+    bool is_quantized_tensor = outputs[output_i].quant_param.has_value();
+    utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
 
     const auto* type_proto = outputs[output_i].node_arg.TypeAsProto();
     Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
-    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_node, type_proto, qnn_data_type));
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(outputs[output_i].quant_param,
                                                                      quantize_param.scaleOffsetEncoding.scale,
                                                                      quantize_param.scaleOffsetEncoding.offset),

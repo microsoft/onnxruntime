@@ -28,7 +28,6 @@ class InstanceNormOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
@@ -86,7 +85,6 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
                                                           const NodeUnit& node_unit,
                                                           std::vector<std::string>&& input_names,
                                                           const logging::Logger& logger,
-                                                          bool is_quantized_node,
                                                           bool do_op_validation) const {
   NodeAttrHelper node_helper(node_unit);
   std::vector<std::string> param_tensor_names;
@@ -105,7 +103,7 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_node, do_op_validation, GetQnnOpType(node_unit.OpType())));
+                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

@@ -32,7 +32,6 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
@@ -67,7 +66,6 @@ Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
                                                        const NodeUnit& node_unit,
                                                        std::vector<std::string>&& input_names,
                                                        const logging::Logger& logger,
-                                                       bool is_quantized_node,
                                                        bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
   int32_t default_axis_value = 0;
@@ -93,7 +91,7 @@ Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_node, do_op_validation, GetQnnOpType(node_unit.OpType())));
+                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

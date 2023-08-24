@@ -117,7 +117,7 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
-  Status GetOnnxInputInfo(const NodeUnitIODef& input, bool is_quantized_node, OnnxInputInfo& input_info) const;
+  Status GetOnnxInputInfo(const NodeUnitIODef& input, OnnxInputInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,

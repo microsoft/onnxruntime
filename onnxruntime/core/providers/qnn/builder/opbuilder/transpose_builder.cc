@@ -24,7 +24,6 @@ class TransposeOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -67,9 +66,7 @@ Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
                                                        const NodeUnit& node_unit,
                                                        std::vector<std::string>&& input_names,
                                                        const logging::Logger& logger,
-                                                       bool is_quantized_node,
                                                        bool do_op_validation) const {
-  ORT_UNUSED_PARAMETER(is_quantized_node);
   ORT_UNUSED_PARAMETER(logger);
 
   if (input_names.size() < 1) {

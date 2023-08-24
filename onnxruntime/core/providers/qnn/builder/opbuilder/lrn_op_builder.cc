@@ -27,7 +27,6 @@ class LRNOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_node,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -97,7 +96,6 @@ Status LRNOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                                  const NodeUnit& node_unit,
                                                  std::vector<std::string>&& input_names,
                                                  const logging::Logger& logger,
-                                                 bool is_quantized_node,
                                                  bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
   NodeAttrHelper node_helper(node_unit);
@@ -161,7 +159,7 @@ Status LRNOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   }
 
   return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                        logger, is_quantized_node, do_op_validation, GetQnnOpType(node_unit.OpType()));
+                        logger, do_op_validation, GetQnnOpType(node_unit.OpType()));
 }
 
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
