@@ -635,7 +635,7 @@ def parse_arguments():
         "--disable_types",
         nargs="+",
         default=[],
-        choices=["float8", "float16", "optional", "sparsetensor"],
+        choices=["float8", "optional", "sparsetensor"],
         help="Disable selected data types (reduces binary size)",
     )
     parser.add_argument(
@@ -904,7 +904,6 @@ def generate_build_tree(
     types_to_disable = args.disable_types
     # enable/disable float 8 types
     disable_float8_types = args.use_rocm or args.android or ("float8" in types_to_disable)
-    disable_float16_types = "float16" in types_to_disable
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
 
@@ -1006,7 +1005,6 @@ def generate_build_tree(
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
         "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
-        "-Donnxruntime_DISABLE_FLOAT16_TYPES=" + ("ON" if disable_float16_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
     ]

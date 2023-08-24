@@ -14,8 +14,6 @@ Abstract:
 
 --*/
 
-#if !defined(DISABLE_FLOAT16_TYPES)
-
 #include "mlasi.h"
 #include "halfgemm.h"
 
@@ -187,5 +185,3 @@ const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon = {
     MLAS_HALF_GEMM_KERNEL_NEON::KernelMaxM,
     32 // kernel may read beyond buffer end by 32 bytes
 };
-
-#endif // !defined(DISABLE_FLOAT16_TYPES)
