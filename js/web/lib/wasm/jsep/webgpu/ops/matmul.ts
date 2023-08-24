@@ -85,7 +85,6 @@ fn mapIndices(outIndex: u32, k: u32, outShape: array<u32, ${maxDims}>, shapeA: a
       value += a[indices[0]] * b[indices[1]];
     }
     ${applyActivation}
-    let indices = mapIndices(global_idx, 0, outShape, aShape, bShape);
     output[global_idx] = value;
   }`;
     };
