@@ -11,7 +11,8 @@ import numpy as np
 import psutil
 import torch
 import whisper
-from benchmark_helper import setup_logger
+
+from benchmark_helper import setup_logger, measure_memory
 from onnxruntime_extensions import get_library_path
 from optimum.onnxruntime import ORTModelForSpeechSeq2Seq
 from torch.profiler import ProfilerActivity, profile, record_function
@@ -19,7 +20,6 @@ from tqdm import trange
 from transformers import AutoModelForSpeechSeq2Seq, WhisperConfig, WhisperProcessor
 
 import onnxruntime as ort
-from onnxruntime.transformers.benchmark_helper import measure_memory
 
 logger = logging.getLogger(__name__)
 
@@ -244,7 +244,7 @@ def measure_fn(args, fn, inputs):
     # Measure memory usage
     gc.collect()
     torch.cuda.empty_cache()
-    measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs))
+    measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs), monitor_type=args.monitor_type)
 
     # Flush output so memory usage is printed
     sys.stdout.flush()
@@ -255,7 +255,7 @@ def run_hf_inference(args, inputs, model):
     def get_pred_ids(inputs):
         # Inference pass with predicted token ids generation
         predicted_ids = model.generate(**inputs)
-        return predicted_ids, [""]
+        return predicted_ids
 
     def gen_and_dec(inputs):
         # Inference pass with generation and decoding
@@ -490,6 +490,7 @@ def parse_args():
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
+    args.monitor_type = args.device
     # Set runtime properties
     if "ort" in args.benchmark_type:
         args.execution_provider = f"{args.device.upper()}ExecutionProvider"
