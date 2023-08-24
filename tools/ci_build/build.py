@@ -1037,29 +1037,10 @@ def generate_build_tree(
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_cuda:
-        available_memory = None
         if args.nvcc_threads >= 0:
             nvcc_threads = args.nvcc_threads
-        elif is_linux():
-            # When flash attention is enabled (currently in Linux only), nvcc might be out of memory.
-            # Here we select number of threads to ensure each thread has enough memory (16 GB per thread).
-            # For example, Standard_NC4as_T4_v3 has 4 CPUs and 28 GB memory, and threads=1 is used in nvcc.
-            min_memory_per_thread = 16 * 1024 * 1024 * 1024
-            nvcc_threads = os.cpu_count()
-            try:
-                import psutil
-
-                available_memory = psutil.virtual_memory().available
-                if isinstance(available_memory, int) and available_memory > 0:
-                    while available_memory <= min_memory_per_thread * nvcc_threads and nvcc_threads >= 2:
-                        nvcc_threads = nvcc_threads - 1
-            except ImportError:
-                print("Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads.")
         else:
             nvcc_threads = args.parallel
-        print(
-            f"Set nvcc threads={nvcc_threads} based on --nvcc_threads={args.nvcc_threads}, --parallel={args.parallel}, os.cpu_count()={os.cpu_count()}, available_memory={available_memory} and is_linux={is_linux()}"
-        )
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
