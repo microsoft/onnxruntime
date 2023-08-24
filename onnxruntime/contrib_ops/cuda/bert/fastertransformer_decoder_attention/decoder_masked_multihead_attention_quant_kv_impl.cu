@@ -721,7 +721,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
     const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + vi / params.quant_kv_block_size;
-    float scale_of_v = (float)*(((TFp*)params.v_scale) + scale_offset);
+    TFp scale_of_v = *(((TFp*)params.v_scale) + scale_offset);
 
     // Load the values from the cache.
     // V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
