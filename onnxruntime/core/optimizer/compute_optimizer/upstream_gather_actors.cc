@@ -462,10 +462,12 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
   return true;
 }
 
-bool LayerNormalizationGatherActor::PostProcess(Graph& /*graph*/, Node& current_node, const SliceInfo& info_without_node,
+bool LayerNormalizationGatherActor::PostProcess(Graph& /*graph*/, Node& current_node,
+                                                const SliceInfo& info_without_node,
                                                 const logging::Logger& /*logger*/,
                                                 const std::unordered_map<int, int>& /*propagate_input_indices*/,
-                                                const std::unordered_map<int, std::vector<DimCompare>>& /*all_input_cmp_rets*/,
+                                                const std::unordered_map<int, std::vector<DimCompare>>&
+                                                /*all_input_cmp_rets*/,
                                                 const std::unordered_map<int, SliceInfo>& /*new_gather_infos*/) {
   // Update LayerNormalization's axis attribute if it is scalar slice.
   if (info_without_node.is_scalar_slice) {
@@ -654,7 +656,8 @@ bool ReshapeGatherActor::PostProcess(
   if (info_without_node.output_dim_on_axis.has_dim_value()) {
     new_shape_const_values[slice_axis] = info_without_node.output_dim_on_axis.dim_value();
     auto new_shape_arg =
-        CreateInitializerFromVector(graph, {static_cast<int64_t>(new_shape_const_values.size())}, new_shape_const_values,
+        CreateInitializerFromVector(graph, {static_cast<int64_t>(new_shape_const_values.size())},
+                                    new_shape_const_values,
                                     graph.GenerateNodeArgName(current_node.MutableInputDefs()[1]->Name()));
     graph_utils::ReplaceNodeInput(current_node, 1, *new_shape_arg);
     return true;

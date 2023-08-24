@@ -638,7 +638,8 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -737,7 +738,8 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnSecondLastDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -936,13 +938,18 @@ TEST(ComputeOptimizerTests, GatherLayerNormalization) {
 
             if (is_scalar_slice) {
               TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 2);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) && slice_out_shape->dim(0).dim_value() == 2);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) && slice_out_shape->dim(1).dim_value() == 256);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) &&
+                                 slice_out_shape->dim(0).dim_value() == 2);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) &&
+                                 slice_out_shape->dim(1).dim_value() == 256);
             } else {
               TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 3);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) && slice_out_shape->dim(0).dim_value() == 2);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) && slice_out_shape->dim(1).dim_value() == 1);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) && slice_out_shape->dim(2).dim_value() == 256);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) &&
+                                 slice_out_shape->dim(0).dim_value() == 2);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) &&
+                                 slice_out_shape->dim(1).dim_value() == 1);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) &&
+                                 slice_out_shape->dim(2).dim_value() == 256);
             }
 
           } else {
@@ -1099,15 +1106,22 @@ TEST(ComputeOptimizerTests, GatherSoftmax) {
 
             if (is_scalar_slice) {
               TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 3);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) && slice_out_shape->dim(0).dim_value() == 2);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) && slice_out_shape->dim(1).dim_value() == 32);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) && slice_out_shape->dim(2).dim_value() == 256);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) &&
+                                 slice_out_shape->dim(0).dim_value() == 2);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) &&
+                                 slice_out_shape->dim(1).dim_value() == 32);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) &&
+                                 slice_out_shape->dim(2).dim_value() == 256);
             } else {
               TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 4);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) && slice_out_shape->dim(0).dim_value() == 2);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) && slice_out_shape->dim(1).dim_value() == 1);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) && slice_out_shape->dim(2).dim_value() == 32);
-              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(3)) && slice_out_shape->dim(3).dim_value() == 256);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) &&
+                                 slice_out_shape->dim(0).dim_value() == 2);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) &&
+                                 slice_out_shape->dim(1).dim_value() == 1);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) &&
+                                 slice_out_shape->dim(2).dim_value() == 32);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(3)) &&
+                                 slice_out_shape->dim(3).dim_value() == 256);
             }
 
           } else {
@@ -1162,7 +1176,8 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnBatchDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -1255,7 +1270,8 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnBatchDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
