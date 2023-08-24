@@ -65,8 +65,8 @@ export interface OrtWasmModule extends EmscriptenModule {
 
   _OrtTrainingReleaseCheckpoint?(checkpointHandle: number): void;
 
-  _OrtTrainingCreateSession?(sessionOptionsHandle: number, checkpointHandle: number, trainOffset: number, trainLength: number,
-    evalOffset: number, evalLength: number, optimizerOffset: number, optimizerLength: number)
+  _OrtTrainingCreateSession?(sessionOptionsHandle: number, checkpointHandle: number, trainOffset: number,
+    trainLength: number, evalOffset: number, evalLength: number, optimizerOffset: number, optimizerLength: number)
     : number;
 
   _OrtTrainingLazyResetGrad?(trainingHandle: number): number;
@@ -81,9 +81,11 @@ export interface OrtWasmModule extends EmscriptenModule {
 
   _OrtTrainingGetParametersSize?(trainingHandle: number, paramSizeT: number, trainableOnly: boolean): number;
 
-  _OrtTrainingCopyParametersToBuffer?(trainingHandle: number, parametersBuffer: number, parameterCount: number, trainableOnly: boolean): number;
+  _OrtTrainingCopyParametersToBuffer?(trainingHandle: number, parametersBuffer: number, parameterCount: number,
+    trainableOnly: boolean): number;
 
-  _OrtTrainingCopyParametersFromBuffer?(trainingHandle: number, parametersBuffer: number, parameterCount: number, trainableOnly: boolean): number;
+  _OrtTrainingCopyParametersFromBuffer?(trainingHandle: number, parametersBuffer: number, parameterCount: number,
+    trainableOnly: boolean): number;
 
   _OrtTrainingReleaseSession?(trainingHandle: number): void;
   // #endregion
