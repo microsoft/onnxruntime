@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {getWgslValueType, outputVariable, ShaderHelper} from './common';
+import {outputVariable, ShaderHelper} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 3) {
@@ -27,7 +27,7 @@ const validateInputsContent = (start: number, limit: number, delta: number): voi
   const decreasingRangePositiveStep = start > limit && delta > 0;
 
   if (sameStartLimit || increasingRangeNegativeStep || decreasingRangePositiveStep) {
-    throw new Error('Range these inputs are invalid.');
+    throw new Error('Range these inputs\' contents are invalid.');
   }
 };
 
@@ -38,8 +38,7 @@ const createRangeProgramInfo =
       const outputSize = numElements;
 
       const output = outputVariable('output', dataType, outputShape);
-      const mappedType = getWgslValueType(dataType, 1);
-      const wgslType = typeof mappedType === 'string' ? mappedType : mappedType[1];
+      const wgslType = output.type.storage;
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.declareVariables(output)}
@@ -61,13 +60,13 @@ export const range = (context: ComputeContext): void => {
   let limit = 0;
   let delta = 0;
   if (context.inputs[0].dataType === DataType.int32) {
-    start = new Int32Array(context.downloadSync(context.inputs[0].data))[0];
-    limit = new Int32Array(context.downloadSync(context.inputs[1].data))[0];
-    delta = new Int32Array(context.downloadSync(context.inputs[2].data))[0];
+    start = context.inputs[0].getInt32Array()[0];
+    limit = context.inputs[1].getInt32Array()[0];
+    delta = context.inputs[2].getInt32Array()[0];
   } else if (context.inputs[0].dataType === DataType.float) {
-    start = new Float32Array(context.downloadSync(context.inputs[0].data))[0];
-    limit = new Float32Array(context.downloadSync(context.inputs[1].data))[0];
-    delta = new Float32Array(context.downloadSync(context.inputs[2].data))[0];
+    start = context.inputs[0].getFloat32Array()[0];
+    limit = context.inputs[1].getFloat32Array()[0];
+    delta = context.inputs[2].getFloat32Array()[0];
   }
   validateInputsContent(start, limit, delta);
 
