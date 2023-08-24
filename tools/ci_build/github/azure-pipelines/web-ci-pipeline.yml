@@ -1,12 +1,11 @@
 trigger:
-  branches:
+  branches: &branches
     include:
     - main
     - rel-*
-  paths:
+  paths: &paths
     include:
-    - 'js/web'
-    - 'js/node'
+    - 'js'
     - 'onnxruntime'
     - 'cmake'
     - 'include'
@@ -16,34 +15,17 @@ trigger:
     - 'build.*'
     - '.github'
     exclude:
-    - 'onnxruntime/core/providers/tensorrt'
-    - 'onnxruntime/core/providers/cuda'
-    - 'onnxruntime/core/providers/rocm'
-pr:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    include:
-    - 'js/web'
-    - 'js/node'
-    - 'onnxruntime'
-    - 'cmake'
-    - 'include'
-    - 'tool'
-    - '.gitmodules'
-    - 'setup.py'
-    - 'build.*'
-    - '.github'
-
-    exclude:
+    - 'js/react_native'
     - 'onnxruntime/core/providers/tensorrt'
     - 'onnxruntime/core/providers/cuda'
     - 'onnxruntime/core/providers/rocm'
     - '!onnxruntime/core/providers/rocm/rocm_provider_factory_creator.h'
     - '!onnxruntime/core/providers/cuda/cuda_provider_factory_creator.h'
     - '!onnxruntime/core/providers/tensorrt/tensorrt_provider_factory_creator.h'
+pr:
+  branches: *branches # same as trigger.branches
+  paths: *paths # same as trigger.paths
+
 parameters:
 - name: NpmPublish
   displayName: 'NPM packages publish configuration'
