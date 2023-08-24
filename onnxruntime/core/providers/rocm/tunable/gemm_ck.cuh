@@ -106,7 +106,7 @@ auto GetCKStreamKGemmTypeStringAndOps() {
   return ret;
 }
 
-template <typename T, typename ALayout, typename BLayout, int NumSplit>
+template <typename T, typename ALayout, typename BLayout>
 auto GetCKSplitKGemmTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemmSplitK<
@@ -116,30 +116,33 @@ auto GetCKSplitKGemmTypeStringAndOps() {
   using InstanceFactory = ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<DeviceGemm>;
 
   std::vector<std::pair<std::string, Op<GemmParams<T>>>> ret;
-  for (auto&& impl : InstanceFactory::GetInstances()) {
-    auto type_string = impl->GetTypeString();
-    auto invoker = impl->MakeInvokerPointer();
-    auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          params->k < 128 * NumSplit, "k is too small, it makes no sense to use this split-k gemm.");
+  for (auto num_split : {4, 16, 64}) {
+    auto instances = InstanceFactory::GetInstances();
+    for (auto&& impl : instances) {
+      auto type_string = impl->GetTypeString() + "_SplitK" + std::to_string(num_split);
+      auto invoker = impl->MakeInvokerPointer();
+      auto ck_gemm_op = [num_split, impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+            params->k < 128 * num_split, "k=", num_split," is too small, it makes no sense to use this split-k gemm.");
 
-      auto one = ToHipType<T>::FromFloat(1.0f);
-      auto zero = ToHipType<T>::FromFloat(0.0f);
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          params->alpha != one || params->beta != zero,
-          impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
+        auto one = ToHipType<T>::FromFloat(1.0f);
+        auto zero = ToHipType<T>::FromFloat(0.0f);
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+            params->alpha != one || params->beta != zero,
+            impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
 
-      auto nop = Nop{};
-      auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
-                                           params->m, params->n, params->k,
-                                           params->lda, params->ldb, params->ldc,
-                                           nop, nop, nop, NumSplit);
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
-      return Status::OK();
-    };
-    ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemm_op)));
+        auto nop = Nop{};
+        auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
+                                             params->m, params->n, params->k,
+                                             params->lda, params->ldb, params->ldc,
+                                             nop, nop, nop, num_split);
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
+                                                  impl->GetTypeString(), " does not support ", params->Signature());
+        invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
+        return Status::OK();
+      };
+      ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemm_op)));
+    }
   }
   return ret;
 }

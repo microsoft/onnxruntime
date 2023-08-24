@@ -64,15 +64,7 @@ class CKGemm : public IKernelExplorer {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
-    for (auto&& [type_string, op] : GetCKSplitKGemmTypeStringAndOps<T, ALayout, BLayout, /*NumSplit=*/4>()) {
-      type_strings_.emplace_back(std::move(type_string));
-      ops_.emplace_back(std::move(op));
-    }
-    for (auto&& [type_string, op] : GetCKSplitKGemmTypeStringAndOps<T, ALayout, BLayout, /*NumSplit=*/16>()) {
-      type_strings_.emplace_back(std::move(type_string));
-      ops_.emplace_back(std::move(op));
-    }
-    for (auto&& [type_string, op] : GetCKSplitKGemmTypeStringAndOps<T, ALayout, BLayout, /*NumSplit=*/64>()) {
+    for (auto&& [type_string, op] : GetCKSplitKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
