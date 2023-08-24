@@ -248,11 +248,8 @@ export const createConvTranspose2DProgramInfo =
       const outWidth = outputShape[isChannelsLast ? 1 : 2];
       const outHeight = outputShape[isChannelsLast ? 2 : 3];
       const outChannels = outputShape[isChannelsLast ? 3 : 1];
-      // const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
-      // TODO Enable isVec4 for performance
-      // Disabled due to weight matrix layout issue
-      // const isVec4 = attributes.grouping === 1 && isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
-      const isVec4 = false;
+      const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
+      const isVec4 = attributes.group === 1 && isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
       const workGroupSize: [number, number, number] =
