@@ -995,13 +995,13 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
   // Vary batch size
   for (int batch_size = 1; batch_size <= 5; batch_size += 2) {
     // Vary kv_lengths
-    int past_lens[] = {1, 30, 2000, 3000};
+    int past_lens[] = {1000, 1, 30, 3000};
     for (int past_sequence_length : past_lens) {
       int sequence_length = 1;
       int number_of_heads = 12;
 
       // Vary head_size / hidden_size
-      int head_sizes[3] = {32, 64, 128};
+      int head_sizes[3] = {128, 64, 32};
       for (int head_size : head_sizes) {
         for (int quant_kv_block_size = head_size; quant_kv_block_size >= 32; quant_kv_block_size /= 2) {
           std::cout << "  >>>>[Batch, PastSeqLen, HeadSize, quant_kv_block_size] = [";

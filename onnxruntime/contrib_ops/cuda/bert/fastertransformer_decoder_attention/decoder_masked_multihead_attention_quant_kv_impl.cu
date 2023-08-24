@@ -50,10 +50,20 @@ struct TFloatTypeFrom<uint16_t> {
   using Type = half;
 };
 
-// TODO, optimize these inline functions
-inline __device__ void Dequantize(__half2& h2, char2 ch2, const __half2 scale2) {
-  h2 = {ch2.x, ch2.y};
-  h2 = __h2div(__hmul2(h2, scale2), __half2{127, 127});
+inline __device__ __half2 DequantizeChar2(char2 ch2, const __half2 scale2) {
+  // For speed test, for nh=12, hs=128, batch=1, prompt=1000, max_seq_len=1024
+
+  // A100: avg inference time: 0.239 ms, (pure fp16: 0.161)
+  return __h2div(__hmul2(__half2{ch2.x, ch2.y}, scale2), __half2{127, 127});
+
+  // A100: avg inference time: 0.203,
+  // return __half2{ch2.x / 64.0f, ch2.y / 64.0f};
+
+  // below goes to 0.60 ms
+  // return __half2{ch2.x / 127.0f, ch2.y / 127.0f};
+
+  // below goes to 0.196 ms
+  // return __half2{ch2.x, ch2.x};
 }
 
 template <typename TVec_kernel>
@@ -66,7 +76,7 @@ inline __device__ uint32_t LoadQ8(const uint32_t* q8, const __half2 scale2) {
     __half2 h2;
     uint32_t whole;
   } vec;
-  Dequantize(vec.h2, ch2, scale2);
+  vec.h2 = DequantizeChar2(ch2, scale2);
   return vec.whole;
 }
 
@@ -85,10 +95,17 @@ inline __device__ uint2 LoadQ8(const uint2* q8, const __half2 scale2) {
     };
     uint2 whole;
   } vec;
-  Dequantize(vec.h2x, ch2x2.x, scale2);
-  Dequantize(vec.h2y, ch2x2.y, scale2);
+  vec.h2x = DequantizeChar2(ch2x2.x, scale2);
+  vec.h2y = DequantizeChar2(ch2x2.y, scale2);
   return vec.whole;
 }
+
+// template <>
+// inline __device__ uint4 LoadQ8(const uint4* q8, const __half2 scale2) {
+//   // for test speed, it got similar speed as pure fp16 code with this hack.
+//   uint2 u2 = *(const uint2*)q8;
+//   return uint4{u2.x, u2.y, u2.x, u2.y};
+// }
 
 template <>
 inline __device__ uint4 LoadQ8(const uint4* q8, const __half2 scale2) {
@@ -109,10 +126,10 @@ inline __device__ uint4 LoadQ8(const uint4* q8, const __half2 scale2) {
     };
     uint4 whole;
   } vec;
-  Dequantize(vec.h2x, ch2x4.x, scale2);
-  Dequantize(vec.h2y, ch2x4.y, scale2);
-  Dequantize(vec.h2z, ch2x4.z, scale2);
-  Dequantize(vec.h2w, ch2x4.w, scale2);
+  vec.h2x = DequantizeChar2(ch2x4.x, scale2);
+  vec.h2y = DequantizeChar2(ch2x4.y, scale2);
+  vec.h2z = DequantizeChar2(ch2x4.z, scale2);
+  vec.h2w = DequantizeChar2(ch2x4.w, scale2);
   return vec.whole;
 }
 
@@ -133,7 +150,7 @@ inline __device__ __half MaxAbsFloat(const uint32_t v) {
 template <>
 inline __device__ __half MaxAbsFloat(const uint2 v) {
   union __align__(8) {
-    struct {
+    struct __align__(8) {
       __half2 h2x;
       __half2 h2y;
     };
@@ -149,7 +166,7 @@ inline __device__ __half MaxAbsFloat(const uint2 v) {
 template <>
 inline __device__ __half MaxAbsFloat(const uint4 v) {
   union __align__(16) {
-    struct {
+    struct __align__(16) {
       __half2 h2x;
       __half2 h2y;
       __half2 h2z;
@@ -168,22 +185,17 @@ inline __device__ __half MaxAbsFloat(const uint4 v) {
   return __hmax(uvec.h2x.x, uvec.h2x.y);
 }
 
-inline __device__ void QuantizeHalf22Ch2(char2& ch2, const uint32_t v, const __half2 scale2) {
+// scale2.x == scale2.y, and not zero
+inline __device__ char2 QuantizeHalf2(const uint32_t v, const __half2 scale2) {
   union __align__(4) {
     uint32_t u;
     __half2 h2;
   } uh2;
 
-  if (scale2.x) {
-    const __half2 one_two_seven{127, 127};
-    uh2.u = v;
-    uh2.h2 = __hmul2(__h2div(uh2.h2, scale2), one_two_seven);
-  } else {
-    uh2.u = 0;
-  }
-  ch2.x = __half2char_rz(uh2.h2.x);
-  ch2.y = __half2char_rz(uh2.h2.y);
-  return;
+  const __half2 one_two_seven{127, 127};
+  uh2.u = v;
+  uh2.h2 = __hmul2(__h2div(uh2.h2, scale2), one_two_seven);
+  return char2{__half2char_rz(uh2.h2.x), __half2char_rz(uh2.h2.y)};
 }
 
 template <typename TVec>
@@ -191,36 +203,59 @@ inline __device__ void QuantizeTo(int8_t* dst, const TVec v, const __half2 scale
 
 template <>
 inline __device__ void QuantizeTo(int8_t* dst, const uint32_t v, const __half2 scale2) {
-  char2 q;
-  QuantizeHalf22Ch2(q, v, scale2);
-  *(char2*)dst = q;
+  union __align__(2) {
+    char2 ch2;
+    uint16_t whole;
+  } uvec;
+
+  if (scale2.x) {
+    uvec.ch2 = QuantizeHalf2(v, scale2);
+  } else {
+    uvec.whole = 0;
+  }
+  *(uint16_t*)dst = uvec.whole;
 }
 
 template <>
 inline __device__ void QuantizeTo(int8_t* dst, const uint2 v, const __half2 scale2) {
-  struct __align__(4) Char2x2 {
-    char2 x;
-    char2 y;
+  union __align__(4) Char2x2 {
+    struct __align__(4) {
+      char2 x;
+      char2 y;
+    };
+    uint32_t whole;
   } ch2x2;
 
-  QuantizeHalf22Ch2(ch2x2.x, v.x, scale2);
-  QuantizeHalf22Ch2(ch2x2.y, v.y, scale2);
-  *(Char2x2 *)dst = ch2x2;
+  if (scale2.x) {
+    ch2x2.x = QuantizeHalf2(v.x, scale2);
+    ch2x2.y = QuantizeHalf2(v.y, scale2);
+  } else {
+    ch2x2.whole = 0;
+  }
+  *(uint32_t *)dst = ch2x2.whole;
 }
 
 template <>
 inline __device__ void QuantizeTo(int8_t* dst, const uint4 v, const __half2 scale2) {
-  struct __align__(8) Char2x4 {
-    char2 x;
-    char2 y;
-    char2 z;
-    char2 w;
+  union __align__(8) Char2x4 {
+    struct __align__(8) {
+      char2 x;
+      char2 y;
+      char2 z;
+      char2 w;
+    };
+    uint2 whole;
   } ch2x4;
-  QuantizeHalf22Ch2(ch2x4.x, v.x, scale2);
-  QuantizeHalf22Ch2(ch2x4.y, v.y, scale2);
-  QuantizeHalf22Ch2(ch2x4.z, v.z, scale2);
-  QuantizeHalf22Ch2(ch2x4.w, v.w, scale2);
-  *(Char2x4 *)dst = ch2x4;
+
+  if (scale2.x) {
+    ch2x4.x = QuantizeHalf2(v.x, scale2);
+    ch2x4.y = QuantizeHalf2(v.y, scale2);
+    ch2x4.z = QuantizeHalf2(v.z, scale2);
+    ch2x4.w = QuantizeHalf2(v.w, scale2);
+  } else {
+    ch2x4.whole.x = ch2x4.whole.y = 0;
+  }
+  *(uint2 *)dst = ch2x4.whole;
 }
 
 template <
