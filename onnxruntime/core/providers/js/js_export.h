@@ -8,6 +8,6 @@
 #include <stddef.h>
 
 extern "C" {
-const void* EMSCRIPTEN_KEEPALIVE JsepOutput(void* context, int index, void* data);
-const void* EMSCRIPTEN_KEEPALIVE JsepGetNodeName(void* context);
+const void* EMSCRIPTEN_KEEPALIVE JsepOutput(void* context, int index, const void* data);
+const void* EMSCRIPTEN_KEEPALIVE JsepGetNodeName(const void* context);
 };
