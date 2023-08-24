@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {ShaderHelper} from './common';
+import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
 export interface SkipLayerNormAttributes extends AttributeWithCacheKey {
   epsilon: number;
@@ -84,7 +84,7 @@ const createSkipLayerNormProgramInfo =
       const meanInvStdDevDim = isTraining ? inputShape.slice(0, -1).concat(1) : [];
       const hasBetaInput = inputs.length > 3;
       const hasBiasInput = inputs.length > 4;
-      const dataType = tensorTypeToWsglType(inputs[0].dataType);
+      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
       const hasMeanOutput = isTraining && outputCount > 1;
       const hasInvStdDevOutput = isTraining && outputCount > 2;
       const hasInputSkipBiasSumOutput = outputCount > 3;
