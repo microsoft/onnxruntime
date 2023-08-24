@@ -43,7 +43,8 @@ int main() {
 ```
 
 Inputs are declared as const references, while outputs are required to be non-const references. The access of shape and data are all supported by
-[Ort::Custom::Tensor](https://github.com/microsoft/onnxruntime/blob/cbaa00839177650073da298d7693e7e42f6940e1/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L54).
+[Ort::Custom::Tensor](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L54C9-L54C9).
+
 
 For custom ops that bear attributes, structs are also supported：
 
@@ -83,11 +84,12 @@ int main() {
 }
 ```
 
-For custom ops running on CPUExecutionProvider, span and scalar as inputs are supported, please refer to more [examples](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc) for usage.
+For custom ops running on CPUExecutionProvider, [span](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L40) and scalar as inputs are supported, please refer to more [examples](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L43) for usage.
+
 
 ## Legacy way for custom op development and registration
 
-The legacy way for developing custom op is still supported, please refer to the [example](https://github.com/microsoft/onnxruntime/blob/cbaa00839177650073da298d7693e7e42f6940e1/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L134) for detail.
+The legacy way for developing custom op is still supported, please refer to the [example](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L119) for detail.
 
 ## Create a library of custom operators
 Custom operators can be defined in a separate shared library (e.g., a .dll on Windows or a .so on Linux). A custom operator library must export and implement a `RegisterCustomOps` function. The `RegisterCustomOps` function adds a `Ort::CustomOpDomain` containing the library's custom operators to the provided session options.
@@ -160,7 +162,7 @@ int main() {
 
 Details could be found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L39).
 
-A unit test case could found [here](https://github.com/microsoft/onnxruntime/blob/cbaa00839177650073da298d7693e7e42f6940e1/onnxruntime/test/shared_lib/test_inference.cc#L3272C6-L3272C33).
+A unit test case could found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/test_inference.cc#L3272).
 
 
 
