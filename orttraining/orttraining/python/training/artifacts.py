@@ -43,7 +43,6 @@ def generate_artifacts(
     loss: Optional[Union[LossType, onnxblock.Block]] = None,
     optimizer: Optional[OptimType] = None,
     artifact_directory: Optional[Union[str, bytes, os.PathLike]] = None,
-    add_logits: bool = False,  # New optional variable for adding logits to the models
     **extra_options,
 ) -> None:
     """Generates artifacts required for training with ORT training api.
@@ -66,6 +65,7 @@ def generate_artifacts(
         ort_format (bool): Whether to save the generated artifacts in ORT format or not. Default is False.
         custom_op_library (str | os.PathLike): The path to the custom op library.
                                                If not specified, no custom op library is used.
+        additional_output_names (List[str]): List of additional output names to be added to the training/eval model.
 
     Raises:
         RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
@@ -105,6 +105,13 @@ def generate_artifacts(
             self._loss = _loss
 
         def build(self, *inputs_to_loss):
+            if "additional_output_names" in extra_options:
+                loss_output = self._loss(*inputs_to_loss)
+                if isinstance(loss_output, tuple):
+                    return (*loss_output, *tuple(extra_options["additional_output_names"]))
+                else:
+                    return (loss_output, *tuple(extra_options["additional_output_names"]))
+
             return self._loss(*inputs_to_loss)
 
     training_block = _TrainingBlock(loss_block)
@@ -137,13 +144,6 @@ def generate_artifacts(
     ) if custom_op_library is not None else contextlib.nullcontext():
         _ = training_block(*[output.name for output in model.graph.output])
         training_model, eval_model = training_block.to_model_proto()
-
-        # If add_logits is True, add the logits output to the training and eval models.
-        if add_logits:
-            logits_output = model.graph.output[0]
-            training_model.graph.output.append(logits_output)
-            eval_model.graph.output.append(logits_output)
-
         model_params = training_block.parameters()
 
     def _export_to_ort_format(model_path, output_dir, extra_options):

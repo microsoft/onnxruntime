@@ -847,7 +847,7 @@ def test_grad_clipping_execution():
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
 
 
-def test_add_logits_generate_artifacts():
+def test_additional_output_names():
     class DropoutModel(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -867,9 +867,12 @@ def test_add_logits_generate_artifacts():
         # Make sure only loss is the output
         assert len(eval_model.graph.output) == 1
 
-        # Re-generate artifacts with add_logits=True
+        # Re-generate artifacts with additional output names
         artifacts.generate_artifacts(
-            onnx_model, loss=artifacts.LossType.CrossEntropyLoss, artifact_directory=temp_dir, add_logits=True
+            onnx_model,
+            loss=artifacts.LossType.CrossEntropyLoss,
+            artifact_directory=temp_dir,
+            additional_output_names=["output-0"],
         )
 
         # Make sure the eval model has two outputs
