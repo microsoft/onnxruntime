@@ -39,6 +39,10 @@ parameters:
 - name: BuildArch
   type: string
 
+- name: CacheArg
+  type: string
+  default: '/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
+
 steps:
   - ${{ if eq(parameters.WithCache, true) }}:
     - task: Cache@2
@@ -69,7 +73,7 @@ steps:
       platform: ${{parameters.Platform}}}
       configuration: ${{parameters.BuildConfig}}
       ${{ if eq(parameters.WithCache, true) }}:
-        msbuildArgs: "${{parameters.MsbuildArguments}} '/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'"
+        msbuildArgs: '${{parameters.MsbuildArguments}} ${{parameters.CacheArg}}}}'
       ${{ else }}:
         arguments: '${{parameters.CMakeArguments}}'
       msbuildArchitecture: ${{parameters.BuildArch}}
