@@ -16,7 +16,6 @@ ONNX Runtime provides options to run custom operators that are not official ONNX
 {:toc}
 
 ## Define and register a custom operator
-
 Since onnxruntime 1.16, custom op could simply be implemented as a function:
 
 ```c++
@@ -87,7 +86,6 @@ int main() {
 For custom ops running on CPUExecutionProvider, [span](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L40) and scalar as inputs are supported, please refer to more [examples](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L43) for usage.
 
 ## Legacy way for custom op development and registration
-
 The legacy way for developing custom op is still supported, please refer to the [examples](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/custom_op_utils.h) for detail.
 
 ## Create a library of custom operators
