@@ -671,7 +671,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         feature_map.append(
             (
-                "ZeRO Stage3 Compat",
+                "ZeRO Stage3 Support",
                 self._runtime_options.enable_zero_stage3_support,
                 "Enable/Disable with env ORTMODULE_ENABLE_ZERO_STAGE3=1/0",
             )

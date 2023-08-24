@@ -14,7 +14,7 @@ from torch.onnx import symbolic_helper
 
 from onnxruntime.capi._pybind_state import register_miscellaneous_const_input, register_torch_autograd_function
 from onnxruntime.training import ortmodule
-from onnxruntime.training.utils import pytorch_scalar_type_str_to_onnx
+from onnxruntime.training.utils import pytorch_dtype_to_onnx
 
 from ._custom_op_symbolic_registry import wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
@@ -169,7 +169,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = pytorch_scalar_type_str_to_onnx(arg.type().scalarType())
+                scalar_type = pytorch_dtype_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
                 continue
@@ -248,7 +248,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = pytorch_scalar_type_str_to_onnx(arg.type().scalarType())
+            scalar_type = pytorch_dtype_to_onnx(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 
