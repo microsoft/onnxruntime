@@ -192,7 +192,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   // currently use QNN's Resize op for quantized models and either ResizeBilinear or ResizeNearestNeighbor for
   // non-quantized models. This requires separate validation for quantized models.
   // TODO: Use only Resize once QNN's Resize op works in the QNN cpu backend.
-  bool is_npu_backend = qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::HTP || qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::DSP;
+  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   return is_npu_backend ? ValidateQDQOp(qnn_model_wrapper, node_unit) : ValidateOp(qnn_model_wrapper, node_unit);
 }
 
