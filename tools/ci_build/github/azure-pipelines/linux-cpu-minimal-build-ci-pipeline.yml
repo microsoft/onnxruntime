@@ -247,7 +247,7 @@ jobs:
               --parallel \
               --skip_tests \
               --disable_ml_ops \
-              --disable_types sparsetensor float8 float16 optioal \
+              --disable_types sparsetensor float8 float16 optional \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
               --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
