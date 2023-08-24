@@ -17,18 +17,19 @@ const createMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
   cacheHint
 });
 
-const getShaderSourceForComplexBroadcast = (aShape: readonly number[], bShape: readonly number[],
-  outputShape: readonly number[], activationAttributes: InternalActivationAttributes) => {
-  const maxDims = outputShape.length;
-  const outputSize = ShapeUtil.size(outputShape);
-  const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
-  const dataType = 'f32';
-  const K = aShape[aShape.length - 1];
+const getShaderSourceForComplexBroadcast =
+    (aShape: readonly number[], bShape: readonly number[], outputShape: readonly number[],
+     activationAttributes: InternalActivationAttributes) => {
+      const maxDims = outputShape.length;
+      const outputSize = ShapeUtil.size(outputShape);
+      const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
+      const dataType = 'f32';
+      const K = aShape[aShape.length - 1];
 
-  const aShapePadded = [...Array(maxDims - aShape.length).fill(1), ...aShape];
-  const bShapePadded = [...Array(maxDims - bShape.length).fill(1), ...bShape];
+      const aShapePadded = [...Array(maxDims - aShape.length).fill(1), ...aShape];
+      const bShapePadded = [...Array(maxDims - bShape.length).fill(1), ...bShape];
 
-  return (shaderHelper: ShaderHelper) => `
+      return (shaderHelper: ShaderHelper) => `
   const MAX_DIMS : u32 = ${maxDims};
   const aShape = array<u32, ${maxDims}>(${aShapePadded.join(',')});
   const bShape = array<u32, ${maxDims}>(${bShapePadded.join(',')});
@@ -44,7 +45,8 @@ fn coordToIndex(coord: array<u32, ${maxDims}>, shape: array<u32, ${maxDims}>) ->
     return index;
 }
 
-fn mapIndices(outIndex: u32, k: u32, outShape: array<u32, ${maxDims}>, shapeA: array<u32, ${maxDims}>, shapeB: array<u32, ${maxDims}>) -> vec2<u32> {
+fn mapIndices(outIndex: u32, k: u32, outShape: array<u32, ${maxDims}>, shapeA: array<u32, ${
+                 maxDims}>, shapeB: array<u32, ${maxDims}>) -> vec2<u32> {
     var coord = array<u32, ${maxDims}>(${outputShape.map(_ => 0).join(',')});
 
     var index = outIndex;
@@ -86,10 +88,9 @@ fn mapIndices(outIndex: u32, k: u32, outShape: array<u32, ${maxDims}>, shapeA: a
     let indices = mapIndices(global_idx, 0, outShape, aShape, bShape);
     output[global_idx] = value;
   }`;
-};
+    };
 
-export const getSimpleBroadcastAForMatMul = (aShape: readonly number[], bShape: readonly number[])
-  : string|null => {
+export const getSimpleBroadcastAForMatMul = (aShape: readonly number[], bShape: readonly number[]): string|null => {
   const rankA = aShape.length;
   const rankB = bShape.length;
 
@@ -126,7 +127,10 @@ export const createMatmulProgramInfo =
           // let's see if we can use simple broadcasting for given shapes
           if ((broadcastA && !simpleBroadcastA) || (broadcastB && bShape.length > 2)) {
             getShaderSource = getShaderSourceForComplexBroadcast(
-              aShape, bShape, outputShape, activationAttributes,
+                aShape,
+                bShape,
+                outputShape,
+                activationAttributes,
             );
           } else {
             const dataType = 'f32';  // TODO: support other data type
