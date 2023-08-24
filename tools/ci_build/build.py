@@ -632,6 +632,11 @@ def parse_arguments():
     # Please note in our CMakeLists.txt this is already default on. But in this file we reverse it to default OFF.
     parser.add_argument("--disable_rtti", action="store_true", help="Disable RTTI (reduces binary size)")
     parser.add_argument(
+        "--disable_types",
+        nargs="+",
+        default=[],
+        choices=["float8", "float16", "optional", "sparsetensor"], help="Disable selected data types (reduces binary size)")
+    parser.add_argument(
         "--disable_exceptions",
         action="store_true",
         help="Disable exceptions to reduce binary size. Requires --minimal_build.",
@@ -894,8 +899,12 @@ def generate_build_tree(
     if not use_dev_mode(args):
         cmake_args += ["--compile-no-warning-as-error"]
 
+    types_to_disable = args.disable_types
     # enable/disable float 8 types
-    disable_float8_types = args.use_rocm or args.android or args.minimal_build
+    disable_float8_types = args.use_rocm or args.android or ("float8" in types_to_disable)
+    disable_float16_types = "float16" in types_to_disable
+    disable_optional_type = "optional" in types_to_disable
+    disable_sparse_tensors = "sparsetensor" in types_to_disable
 
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
@@ -995,6 +1004,9 @@ def generate_build_tree(
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
         "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
+        "-Donnxruntime_DISABLE_FLOAT16_TYPES=" + ("ON" if disable_float16_types else "OFF"),
+        "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
+        "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
