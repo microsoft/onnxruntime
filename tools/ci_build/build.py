@@ -1042,9 +1042,9 @@ def generate_build_tree(
             nvcc_threads = args.nvcc_threads
         elif is_linux():
             # When flash attention is enabled (currently in Linux only), nvcc might be out of memory.
-            # Here we select number of threads to ensure each thread has enough memory (10 GB per thread).
-            # For example, Standard_NC4as_T4_v3 has 4 CPUs and 28 GB memory, and threads=2 is used in nvcc.
-            min_memory_per_thread = 10 * 1024 * 1024 * 1024
+            # Here we select number of threads to ensure each thread has enough memory (16 GB per thread).
+            # For example, Standard_NC4as_T4_v3 has 4 CPUs and 28 GB memory, and threads=1 is used in nvcc.
+            min_memory_per_thread = 16 * 1024 * 1024 * 1024
             nvcc_threads = os.cpu_count()
             try:
                 import psutil
