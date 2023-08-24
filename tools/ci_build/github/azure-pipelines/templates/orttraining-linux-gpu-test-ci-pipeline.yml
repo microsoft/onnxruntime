@@ -37,3 +37,18 @@ steps:
   displayName: 'Run orttraining_ortmodule_tests.py'
   condition: succeededOrFailed()
   timeoutInMinutes: 60
+
+# Entry point for all ort training api tests
+  - script: |
+      docker run \
+        --gpus all \
+        --shm-size=1024m \
+        --rm \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        ${{ parameters.DockerImageTag }} \
+          /build/launch_test.py \
+            --cwd /build --cmd_line_with_args "python orttraining_test_ort_apis.py --cwd /build" \
+    displayName: 'Run ORT Training APIs Tests'
+    condition: succeededOrFailed()
+    timeoutInMinutes: 120
