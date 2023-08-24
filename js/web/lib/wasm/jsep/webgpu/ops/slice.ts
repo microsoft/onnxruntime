@@ -153,8 +153,6 @@ const createSliceProgramInfo =
         const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});
         const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
 
-        ${output.impl('offsetToIndices')}
-        ${input.impl('indicesToOffset', 'get')}
         ${calculateInputIndicesImpl(input, output, inputShape, outputShape)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}

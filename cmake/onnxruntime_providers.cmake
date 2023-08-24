@@ -545,7 +545,7 @@ if (onnxruntime_USE_CUDA)
       target_link_libraries(${target} PRIVATE cupti)
     endif()
 
-    if (onnxruntime_ENABLE_NVTX_PROFILE)
+    if (onnxruntime_ENABLE_NVTX_PROFILE AND NOT WIN32)
       target_link_libraries(${target} PRIVATE nvToolsExt)
     endif()
 
@@ -693,6 +693,13 @@ if (onnxruntime_USE_TENSORRT)
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
   endif()
   set(CXX_VERSION_DEFINED TRUE)
+
+  # There is an issue when running "Debug build" TRT EP with "Release build" TRT builtin parser on Windows.
+  # We enforce following workaround for now until the real fix.
+  if (WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(onnxruntime_USE_TENSORRT_BUILTIN_PARSER OFF)
+    MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
+  endif()
 
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     # Add TensorRT library

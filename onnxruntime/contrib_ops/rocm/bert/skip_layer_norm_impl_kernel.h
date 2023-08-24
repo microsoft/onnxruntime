@@ -23,7 +23,7 @@ half maybe2half(float x) {
   return __float2half_rn(x);
 }
 
-template <typename T, typename U, typename V, unsigned TPB>
+template <typename T, typename U, typename V, unsigned TPB, bool Simplified>
 __global__ void SkipLayerNormKernel(
     const int ld, const T* input, const T* skip, const V* beta, const V* gamma, const T* bias,
     const U epsilon, V* output, T* skip_input_bias_add_output) {
@@ -47,11 +47,16 @@ __global__ void SkipLayerNormKernel(
     output[idx] = static_cast<V>(val);
   }
 
+  if constexpr (Simplified) {
+    SimplifiedLayerNorm<U, V, TPB>(thread_data.value, ld, offset, gamma, epsilon, output);
+    return;
+  }
+
   LayerNorm<U, V, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
 // Vectorized kernel
-template <typename T, typename U, typename V, unsigned TPB, int ILP>
+template <typename T, typename U, typename V, unsigned TPB, int ILP, bool Simplified>
 __global__ void SkipLayerNormKernelVec(
     const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
     const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output,
@@ -94,11 +99,16 @@ __global__ void SkipLayerNormKernelVec(
     }
   }
 
+  if constexpr (Simplified) {
+    SimplifiedLayerNormVec<U, V, TPB, ILP>(thread_data.value, ld, offset, gamma, epsilon, output);
+    return;
+  }
+
   LayerNormVec<U, V, TPB, ILP>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
 // Vectorized kernel
-template <typename T, typename U, typename V, unsigned TPB, int ILP>
+template <typename T, typename U, typename V, unsigned TPB, int ILP, bool Simplified>
 __global__ void SkipLayerNormKernelSmall(
     const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
     const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output,
@@ -138,6 +148,12 @@ __global__ void SkipLayerNormKernelSmall(
 
     thread_data = hipcub::KeyValuePair<U, U>(rldval_sum, rldvalsq_sum);
   }
+
+  if constexpr (Simplified) {
+    SimplifiedLayerNormSmall<T, U, V, TPB, ILP>(input_v.val, thread_data.value, ld, idx, gamma, epsilon, output);
+    return;
+  }
+
   LayerNormSmall<T, U, V, TPB, ILP>(input_v.val, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
