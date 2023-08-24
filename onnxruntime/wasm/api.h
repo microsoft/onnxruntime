@@ -286,8 +286,8 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t 
  * @param training_handle session handle of the specified session
  * @param inputs user inputs to the training model
  * @param input_count number of user inputs to the training model
- * @param outputs user outputs computed by train step
- * @param output_count number of user outputs expected from this train step
+ * @param outputs [out] user outputs computed by train step
+ * @param output_count [out] number of user outputs expected from this train step
  * @param run_options handle of the run options
  * @return int ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
@@ -312,8 +312,8 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t 
  * @param options run options for this eval step
  * @param input_count number of user inputs to the eval model
  * @param inputs the user inputs to the eval model
- * @param output_count number of user outputs expected from this eval step
- * @param outputs user outputs computed by the eval step
+ * @param output_count [out] number of user outputs expected from this eval step
+ * @param outputs [out] user outputs computed by the eval step
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
 int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
@@ -328,7 +328,7 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t train
  * When the trainable_only argument is true, the size is calculated for trainable params only.
  *
  * @param training_handle handle of the training session
- * @param param_size size of all parameter elements.
+ * @param param_size [out] size of all parameter elements
  * @param trainable_only skips non-trainable parameters when true.
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
@@ -343,7 +343,7 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(ort_training_session_handl
  * Parameter ordering is preserved.
  *
  * @param training_handle handle of the training session
- * @param parameters_buffer pre-allocated OrtValue buffer to copy onto. Must be same size as results of
+ * @param parameters_buffer [out] pre-allocated OrtValue buffer to copy onto. Must be same size as results of
  *                          GetParametersSize api call
  * @param parameter_count number of parameters expected in the parameters_buffer
  * @param trainable_only whether to skip non-trainable parameters
