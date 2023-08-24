@@ -74,8 +74,9 @@ Next, we will preprocess the image according to the [requirements of the model](
 var paddedHeight = (int)(Math.Ceiling(image.Height / 32f) * 32f);
 var paddedWidth = (int)(Math.Ceiling(image.Width / 32f) * 32f);
 var mean = new[] { 102.9801f, 115.9465f, 122.7717f };
-//Preprocessing image
-//We use Tensor for multi-dimensional access
+
+// Preprocessing image
+// We use DenseTensor for multi-dimensional access
 DenseTensor<float> input = new(new[] { 3, paddedHeight, paddedWidth });
 image.ProcessPixelRows(accessor =>
 {
@@ -94,15 +95,20 @@ image.ProcessPixelRows(accessor =>
 
 Here, we're creating a Tensor of the required size `(channels, paddedHeight, paddedWidth)`, accessing the pixel values, preprocessing them and finally assigning them to the tensor at the appropriate indicies.
 
+
 ### Setup inputs
+
+// Pin DenseTensor memory and use it directly in the OrtValue tensor
+// It will be unpinned on ortValue disposal
+
+```cs
+using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance,
+    input.Buffer, new long[] { 3, paddedHeight, paddedWidth });
+```
 
 Next, we will create the inputs to the model:
 
 ```cs
-// Pin tensor memory and use it directly
-// It will be unpinned on ortValue disposal
-using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance,
-    input.Buffer, new long[] { 3, paddedHeight, paddedWidth });
 
 var inputs = new Dictionary<string, OrtValue>
 {
