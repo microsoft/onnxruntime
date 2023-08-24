@@ -221,7 +221,7 @@ quantize(const Cli& cli)
 #if defined(__GNUC__) && __GNUC__ >= 12
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored \
-    "-Wdangling-pointer"  // suppress warning about dangling pointer until we have a fix
+    "-Wdangling-pointer"  // TODO: suppress warning about dangling pointer until we have a fix
         std::ostream stream(buf);
 #pragma GCC diagnostic pop
 #else
