@@ -39,10 +39,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
     throw new Error('inputs should be float type');
   }
-
-  if (inputs[0].dims.length !== inputs[1].dims.length) {
-    throw new Error('broadcast is not supported yet');
-  }
 };
 
 export const matMul = (context: ComputeContext): void => {

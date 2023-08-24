@@ -403,7 +403,7 @@ export const createMatmulProgramInfo =
       const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
       // TODO: fine tune size
-      const elementsPerThread = [4, 4, 1];
+      const elementsPerThread = dimAOuter <= 8 ? [4, 1, 1] : [4, 4, 1];
       const workgroupSize: [number, number, number] = [8, 8, 1];
       const dispatch = [
         Math.ceil(dimBOuter / workgroupSize[0] / elementsPerThread[0]),
