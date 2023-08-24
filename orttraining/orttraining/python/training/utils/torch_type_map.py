@@ -40,7 +40,7 @@ def pytorch_dtype_to_onnx(dtype_or_scalar_type: Union[torch.dtype, str]) -> torc
     if isinstance(dtype, str):
         if dtype not in _CAST_PYTORCH_TO_ONNX:
             raise RuntimeError(f"Unsupported dtype {dtype}")
-        return _CAST_PYTORCH_TO_ONNX[dtype][1]
+        return _CAST_PYTORCH_TO_ONNX[dtype][0]
 
     if dtype not in _DTYPE_TO_ONNX:
         raise RuntimeError(f"Unsupported dtype {dtype}")
