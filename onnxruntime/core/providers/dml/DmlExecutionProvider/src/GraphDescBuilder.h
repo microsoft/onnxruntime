@@ -21,7 +21,7 @@ namespace Dml
 
     namespace GraphDescBuilder
     {
-        const uint32_t minNodeCountToReuseCommandList = 5;
+        constexpr uint32_t minNodeCountToReuseCommandList = 5;
 
         // Gets a unique name for the node which survives recreation and graph manipulations between the point
         // that graph partitioning occurs and kernel creation happens

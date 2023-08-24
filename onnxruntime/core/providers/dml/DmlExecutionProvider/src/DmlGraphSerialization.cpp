@@ -2,6 +2,10 @@
 
 #pragma once
 #include "precomp.h"
+void SerializeAttributeDescs(
+    flatbuffers::FlatBufferBuilder& builder,
+    const AbstractOperatorDesc& operatorDesc,
+    /*out*/ std::vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>>& attributeDescs);
 
 flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation> serializeActivation(
     flatbuffers::FlatBufferBuilder& builder,
@@ -137,7 +141,7 @@ void SerializeAttributeDescs(
                 field.GetSchema()->Name,
                 dml::ir::operatorFieldTypes::AttributeFieldVariant_FloatArray,
                 dml::ir::operatorFieldTypes::CreateFloatArray(builder, builder.CreateVector(field.AsFloatArray())).Union());
-        }	
+        }
         else if (std::holds_alternative<OperatorFieldTypes::ScaleBias>(field.GetData()))
         {
             const OperatorFieldTypes::ScaleBias& scaleBias = field.AsScaleBias();

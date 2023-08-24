@@ -4,6 +4,9 @@
 #include "precomp.h"
 
 
+OperatorFieldVariant CreateAttribute(
+    const DML_SCHEMA_FIELD* schemaField,
+    const dml::ir::operatorFieldTypes::AttributeDesc* attributeDesc);
 
 void ConvertToUnorderedMap(
     const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>* list,

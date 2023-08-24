@@ -166,6 +166,8 @@ namespace Dml::GraphDescBuilder
     *   DmlGraph: a graph in DML currency converted from subGraph.
     *   operatorDmlGraph: a graph in DML currency for a given node or operator
     * DmlGraph aka mainDmlGraph to distinguish b/w operatorDmlGraph and DmlGraph.
+    * Main Points to note:
+    *   - GraphDesc will always has sequential indices for input and intermediate edges.
     */
     GraphDesc BuildDmlGraphDesc(
         const uint8_t* isConstGpuGraphInput,
@@ -326,7 +328,7 @@ namespace Dml::GraphDescBuilder
 
                     if (iter != subGraphInputNameToInputIndexMap.end())
                     {
-                        // If this constant input, then it will be an intermediate edge, otherwise
+                        // If this is a constant input, then it will be an intermediate edge, otherwise
                         // it will be a mainDmlGraphInputEdge.
                         const uint32_t mainDmlGraphInputIndex = iter->second;
 

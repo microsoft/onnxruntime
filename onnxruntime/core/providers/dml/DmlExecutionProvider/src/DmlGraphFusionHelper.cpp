@@ -169,7 +169,6 @@ namespace DmlGraphFusionHelper
 
                 std::unique_ptr<std::byte[]> unpackedTensor;
 
-                //auto& initializer = iter->second;
                 auto* initializer = iter->second.first;
 
                 // The tensor may be stored as raw data or in typed fields.
@@ -474,9 +473,16 @@ namespace DmlGraphFusionHelper
             providerImpl,
             serializedGraphInputIndexToMainGraphInputIndex,
             serializedGraphConstantNameToMainGraphInputIndex);
-
+        
+        const std::wstring modelName = GetModelName(graph.ModelPath());
         auto buffer = SerializeDmlGraph(serializedDmlGraphDesc);
-        WriteToFile("Partition_" + std::to_string(partitionIndex) + ".bin", buffer.data(), buffer.size());
+        const std::wstring partitionName = 
+            modelName +
+            (modelName.empty() ? L"" : L"_") +
+            L"Partition_" +
+            std::to_wstring(partitionIndex) +
+            L".bin";
+        WriteToFile(partitionName, buffer.data(), buffer.size());
 
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
         StackAllocator<1024> allocator; // Used for converting DmlSerializedGraphDesc to DML_GRAPH_DESC

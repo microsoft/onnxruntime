@@ -304,7 +304,7 @@ namespace SchemaHelpers
             const auto& values = field.AsUIntArray();
             arrayPtr = allocator->template Allocate<uint32_t>(values.size());
             std::copy(values.begin(), values.end(), arrayPtr);
-            
+
             dst->Write(arrayPtr);
         } break;
 
@@ -315,7 +315,7 @@ namespace SchemaHelpers
             const auto& values = field.AsIntArray();
             arrayPtr = allocator->template Allocate<int32_t>(values.size());
             std::copy(values.begin(), values.end(), arrayPtr);
-            
+
             dst->Write(arrayPtr);
         } break;
 
@@ -326,7 +326,7 @@ namespace SchemaHelpers
             const auto& values = field.AsFloatArray();
             arrayPtr = allocator->template Allocate<float>(values.size());
             std::copy(values.begin(), values.end(), arrayPtr);
-            
+
             dst->Write(arrayPtr);
         } break;
 

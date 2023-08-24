@@ -9,10 +9,6 @@ struct NodeIndex
     uint32_t nodeOutputIndex;
 };
 
-OperatorFieldVariant CreateAttribute(
-    const DML_SCHEMA_FIELD* schemaField,
-    const dml::ir::operatorFieldTypes::AttributeDesc* attributeDesc);
-
 DmlSerializedGraphDesc DeserializeDmlGraph(
     const uint8_t* flatbufferGraphDescBlob,
     /*out*/ std::vector<std::unique_ptr<std::byte[]>>& rawData);

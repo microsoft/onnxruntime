@@ -38,6 +38,7 @@
 #include <d3d12sdklayers.h>
 #include "External/D3DX12/d3dx12.h"
 #endif
+#include "flatbuffers/flatbuffers.h"
 
 #include "GraphicsUnknownHelper.h"
 
@@ -55,7 +56,6 @@
 #include "External/DirectMLHelpers/GeneratedSchemaHelpers.h"
 #include "External/DirectMLHelpers/DirectMLX.h"
 #include "External/DirectMLHelpers/DmlSerializedGraphDesc.h"
-#include "flatbuffers/flatbuffers.h"
 #include "External/DirectMLHelpers/DmlGraphSerialization.h"
 #include "External/DirectMLHelpers/DmlGraphDeserialization.h"
 
