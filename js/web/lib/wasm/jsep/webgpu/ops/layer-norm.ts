@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {ShaderHelper} from './common';
+import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
 export interface LayerNormAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -15,7 +15,7 @@ export interface LayerNormAttributes extends AttributeWithCacheKey {
 }
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
-  if (!inputs || inputs.length <= 2) {
+  if (!inputs || inputs.length < 2) {
     throw new Error('layerNorm requires at least 2 inputs.');
   }
 
@@ -41,7 +41,7 @@ const createLayerNormProgramInfo =
           const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
           if (scaleSize !== normSize || (bias && biasSize !== normSize)) {
             throw new Error(`Size of X.shape()[axis:] == ${normSize}.
-       Size of scale and bias (if provided) must match this. 
+       Size of scale and bias (if provided) must match this.
        Got scale size of ${scaleSize} and bias size of ${biasSize}`);
           }
 
@@ -54,21 +54,28 @@ const createLayerNormProgramInfo =
             }
           }
 
-          const dataType = tensorTypeToWsglType(inputs[0].dataType);
+          const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
 
           const hasMeanDataOutput = outputCount > 1;
           const hasInvStdOutput = outputCount > 2;
+          let bindingIndex = 0;
           const getShaderSource = (shaderHelper: ShaderHelper) => `
   const normSize: u32 = ${normSize};
   const normSizeTyped: ${dataType} = ${normSize};
   const epsilon: f32 = ${attributes.epsilon};
 
-  @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
-  @group(0) @binding(1) var<storage, read> scale : array<${dataType}>;
-  ${bias ? `@group(0) @binding(2) var<storage, read> bias : array<${dataType}>;` : ''}
-  @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
-  ${hasMeanDataOutput ? `@group(0) @binding(4) var<storage, read_write> meanDataOutput : array<${dataType}>` : ''};
-  ${hasInvStdOutput ? `@group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>` : ''};
+  @group(0) @binding(${bindingIndex++}) var<storage, read> x : array<${dataType}>;
+  @group(0) @binding(${bindingIndex++}) var<storage, read> scale : array<${dataType}>;
+  ${bias ? `@group(0) @binding(${bindingIndex++}) var<storage, read> bias : array<${dataType}>;` : ''}
+  @group(0) @binding(${bindingIndex++}) var<storage, read_write> output : array<${dataType}>;
+  ${
+              hasMeanDataOutput ?
+                  `@group(0) @binding(${bindingIndex++}) var<storage, read_write> meanDataOutput : array<${dataType}>` :
+                  ''};
+  ${
+              hasInvStdOutput ?
+                  `@group(0) @binding(${bindingIndex++}) var<storage, read_write> invStdOutput : array<${dataType}>` :
+                  ''};
 
   ${shaderHelper.mainStart()}
     let offset = global_idx * normSize;
@@ -118,7 +125,8 @@ export const layerNorm = (context: ComputeContext, attributes: LayerNormAttribut
 
   const metadata = {
     name: 'LayerNormalization',
-    inputTypes: [GpuDataType.default, GpuDataType.default, GpuDataType.default],
+    inputTypes: context.inputs.length === 2 ? [GpuDataType.default, GpuDataType.default] :
+                                              [GpuDataType.default, GpuDataType.default, GpuDataType.default],
     cacheHint: attributes.cacheKey + context.outputCount.toString(10) + context.inputs.length.toString(10),
   };
 

@@ -56,6 +56,10 @@ JSEP_KERNEL_IMPL(Sigmoid, Sigmoid)
 JSEP_ELEMENTWISE_VERSIONED_KERNEL(Sigmoid, 6, 12, float, Sigmoid)
 JSEP_ELEMENTWISE_KERNEL(Sigmoid, 13, float, Sigmoid)
 
+JSEP_KERNEL_IMPL(Log, Log)
+JSEP_ELEMENTWISE_VERSIONED_KERNEL(Log, 6, 12, float, Log)
+JSEP_ELEMENTWISE_KERNEL(Log, 13, float, Log)
+
 JSEP_KERNEL_IMPL(Sin, Sin)
 JSEP_ELEMENTWISE_KERNEL(Sin, 7, float, Sin)
 
@@ -88,6 +92,10 @@ JSEP_ELEMENTWISE_KERNEL(Acosh, 9, float, Acosh)
 
 JSEP_KERNEL_IMPL(Atanh, Atanh)
 JSEP_ELEMENTWISE_KERNEL(Atanh, 9, float, Atanh)
+
+JSEP_KERNEL_IMPL(Tanh, Tanh)
+JSEP_ELEMENTWISE_VERSIONED_KERNEL(Tanh, 6, 12, float, Tanh)
+JSEP_ELEMENTWISE_KERNEL(Tanh, 13, float, Tanh)
 
 // activation
 

@@ -2065,5 +2065,27 @@ IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
           NodeDef("Mul", {GO(0), IA("Neg_Square_O0")}, {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetLeakyReluGradient) {
+  return {NodeDef(OpDef{"LeakyReluGrad", kMSDomain, 1},
+                  {GO(0), O(0)}, {GI(0)}, SrcNodeAttributes())};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetConvTransposeGradient) {
+  std::vector<ArgDef> outputs;
+  for (int i = 0; i < GetSrcNodeInputSize(); i++) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      outputs.push_back(GI(i));
+    } else {
+      outputs.push_back(ArgDef("", nullptr));
+    }
+  }
+
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"ConvTransposeGrad", kMSDomain, 1},
+              {GO(0), I(0), I(1)},
+              outputs,
+              SrcNodeAttributes())};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

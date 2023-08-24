@@ -472,7 +472,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
     ORT_THROW("index out of bound");
   }
 
-  PATH_STRING_TYPE test_data_pb = ConcatPathComponent<PATH_CHAR_TYPE>(
+  PATH_STRING_TYPE test_data_pb = ConcatPathComponent(
       test_data_dirs_[id], (is_input ? ORT_TSTR("inputs.pb") : ORT_TSTR("outputs.pb")));
   int test_data_pb_fd;
   auto st = Env::Default().FileOpenRd(test_data_pb, test_data_pb_fd);
@@ -512,7 +512,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
             const std::basic_string<PATH_CHAR_TYPE> file_prefix =
                 is_input ? ORT_TSTR("input_") : ORT_TSTR("output_");
             if (!filename_str.compare(0, file_prefix.length(), file_prefix)) {
-              std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(dir_path, filename_str);
+              std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(dir_path, filename_str);
               test_data_pb_files.push_back(p);
             }
             return true;
@@ -693,7 +693,7 @@ OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_p
 
   // parse config
   std::basic_string<PATH_CHAR_TYPE> config_path =
-      ConcatPathComponent<PATH_CHAR_TYPE>(test_case_dir, ORT_TSTR("config.txt"));
+      ConcatPathComponent(test_case_dir, ORT_TSTR("config.txt"));
   /* Note: protobuf-lite doesn't support reading protobuf files as text-format. Config.txt is exactly that.
      That's the reason I've to parse the file in a different way to read the configs. Currently
      this affects 2 tests - fp16_tiny_yolov2 and fp16_inception_v1. It's not clear why we've to use protobuf
@@ -718,7 +718,7 @@ OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_p
   LoopDir(test_case_dir, [&test_case_dir, this](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
     if (filename[0] == '.') return true;
     if (f_type == OrtFileType::TYPE_DIR) {
-      std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(test_case_dir, filename);
+      std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(test_case_dir, filename);
       test_data_dirs_.push_back(p);
       debuginfo_strings_.push_back(ToUTF8String(p));
     }
@@ -739,7 +739,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
     LoopDir(node_data_root_path, [&](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
       if (filename[0] == '.') return true;
       if (f_type == OrtFileType::TYPE_DIR) {
-        std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename);
+        std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(node_data_root_path, filename);
         paths.push_back(p);
         return true;
       }
@@ -766,7 +766,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
       if (disabled_tests.find(test_case_name) != disabled_tests.end()) return true;
 
-      std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
+      std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(node_data_root_path, filename_str);
 
       std::unique_ptr<TestModelInfo> model_info;
 

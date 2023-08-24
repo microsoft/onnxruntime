@@ -8,7 +8,7 @@
 #include <utility>
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #include "core/common/gsl.h"

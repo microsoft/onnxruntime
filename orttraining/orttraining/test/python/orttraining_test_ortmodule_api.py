@@ -6096,7 +6096,6 @@ def test_ortmodule_log_level_control(log_level, caplog):
     found_missing_inference_log = False
     for record in caplog.records:
         msg = record.getMessage()
-        print(msg)
         if "The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing" in msg:
             found_missing_inference_log = True
             break
@@ -6162,7 +6161,7 @@ def test_reciprocal_gradient():
     pt_model = ReciprocalModel().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
-    pt_x = torch.zeros(3, 224, 224, requires_grad=True, device=device)
+    pt_x = torch.randn(3, 224, 224, requires_grad=True, device=device)
     with torch.no_grad():
         pt_x[pt_x <= 0] -= 0.2
         pt_x[pt_x > 0] += 0.2
@@ -6173,3 +6172,199 @@ def test_reciprocal_gradient():
     _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+def test_leakyrelu_gradient():
+    class LeakyReluModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.leakyrelu = nn.LeakyReLU(0.5)
+
+        def forward(self, x):
+            return self.leakyrelu(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = "cuda"
+    pt_model = LeakyReluModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(3, 224, 224, requires_grad=True, device=device)
+    with torch.no_grad():
+        pt_x[pt_x <= 0] -= 0.2
+        pt_x[pt_x > 0] += 0.2
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+@pytest.mark.skipif(
+    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
+)
+@pytest.mark.parametrize("use_fp16", [False, True])
+@pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
+def test_conv_transpose_gradient(use_fp16, conv_algo_search):
+    class ChainedTransposedConv(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+            # Transposed Convolution 1D
+            self.conv1d_transpose = nn.ConvTranspose1d(
+                in_channels=4, out_channels=2, kernel_size=3, stride=2, padding=1
+            )
+            self.relu1 = nn.ReLU()
+
+            # Transposed Convolution 2D
+            self.conv2d_transpose = nn.ConvTranspose2d(
+                in_channels=2, out_channels=3, kernel_size=3, stride=2, padding=1
+            )
+            self.relu2 = nn.ReLU()
+
+            # Transposed Convolution 3D
+            self.conv3d_transpose = nn.ConvTranspose3d(
+                in_channels=3, out_channels=4, kernel_size=3, stride=2, padding=1
+            )
+            self.relu3 = nn.ReLU()
+
+        def forward(self, x):
+            out1d = self.relu1(self.conv1d_transpose(x))
+            out2d = self.relu2(self.conv2d_transpose(out1d.unsqueeze(2)))
+            out3d = self.relu3(self.conv3d_transpose(out2d.unsqueeze(2)))
+            return out3d.squeeze(2)
+
+    if conv_algo_search is not None:
+        os.environ["ORTMODULE_CONV_ALGO_SEARCH"] = conv_algo_search
+
+    def run_step(model, x):
+        with amp.autocast(use_fp16):
+            loss = model(x).sum()
+        loss.backward()
+
+        return (
+            x.grad,
+            model.conv1d_transpose.weight.grad,
+            model.conv1d_transpose.bias.grad,
+            model.conv2d_transpose.weight.grad,
+            model.conv2d_transpose.bias.grad,
+            model.conv3d_transpose.weight.grad,
+            model.conv3d_transpose.bias.grad,
+        )
+
+    device = "cuda"
+    pt_model = ChainedTransposedConv().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(1, 4, 8, requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_grads = run_step(pt_model, pt_x)
+    ort_grads = run_step(ort_model, ort_x)
+
+    for pt_grad, ort_grad in zip(pt_grads, ort_grads):
+        if use_fp16:
+            assert torch.allclose(pt_grad, ort_grad, atol=1e-3, rtol=1e-3)
+        else:
+            assert torch.allclose(pt_grad, ort_grad)
+
+    if conv_algo_search is not None:
+        del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
+
+
+@pytest.mark.skipif(
+    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
+)
+@pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
+def test_conv_transpose_gradient_with_groups(conv_algo_search):
+    class TransposedConv3DWithGroups(nn.Module):
+        def __init__(self):
+            super().__init__()
+            # in_channels, out_channels, kernel_size, stride, padding
+            self.conv_transpose = nn.ConvTranspose3d(
+                in_channels=6, out_channels=4, kernel_size=3, stride=2, padding=1, groups=2
+            )
+
+        def forward(self, x):
+            return self.conv_transpose(x)
+
+    if conv_algo_search is not None:
+        os.environ["ORTMODULE_CONV_ALGO_SEARCH"] = conv_algo_search
+
+    def run_step(model, x):
+        loss = model(x).sum()
+        loss.backward()
+
+        return (
+            x.grad,
+            model.conv_transpose.weight.grad,
+            model.conv_transpose.bias.grad,
+        )
+
+    device = "cuda"
+    pt_model = TransposedConv3DWithGroups().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(1, 6, 8, 16, 16, requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_grads = run_step(pt_model, pt_x)
+    ort_grads = run_step(ort_model, ort_x)
+
+    for pt_grad, ort_grad in zip(pt_grads, ort_grads):
+        assert torch.allclose(pt_grad, ort_grad)
+
+    if conv_algo_search is not None:
+        del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
+
+
+@pytest.mark.skipif(
+    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
+)
+@pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
+def test_conv_transpose_gradient_with_strides_padding_and_dilation(conv_algo_search):
+    class ConvTransposeComplexModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.conv_transpose = nn.ConvTranspose3d(
+                16, 33, (3, 5, 2), stride=(2, 1, 1), padding=(0, 4, 2), dilation=(1, 2, 1)
+            )
+            self.param = nn.Parameter(torch.randn(20, 33, 21, 50, 97))
+
+        def forward(self, x):
+            return self.conv_transpose(x) * self.param
+
+    if conv_algo_search is not None:
+        os.environ["ORTMODULE_CONV_ALGO_SEARCH"] = conv_algo_search
+
+    def run_step(model, x):
+        loss = model(x).sum()
+        loss.backward()
+
+        return (
+            x.grad,
+            model.conv_transpose.weight.grad,
+            model.conv_transpose.bias.grad,
+        )
+
+    device = "cuda"
+    pt_model = ConvTransposeComplexModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model)).to(device)
+
+    pt_x = torch.randn(20, 16, 10, 50, 100, requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_grads = run_step(pt_model, pt_x)
+    ort_grads = run_step(ort_model, ort_x)
+
+    for pt_grad, ort_grad in zip(pt_grads, ort_grads):
+        assert torch.allclose(pt_grad, ort_grad, atol=1e-2, rtol=1e-2)
+
+    if conv_algo_search is not None:
+        del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]

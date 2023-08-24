@@ -119,6 +119,8 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("LSTMTraining", GetLSTMGradient);
   REGISTER_GRADIENT_BUILDER("GRUTraining", GetGRUGradient);
   REGISTER_GRADIENT_BUILDER("Reciprocal", GetReciprocalGradient);
+  REGISTER_GRADIENT_BUILDER("LeakyRelu", GetLeakyReluGradient);
+  REGISTER_GRADIENT_BUILDER("ConvTranspose", GetConvTransposeGradient);
 
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };
