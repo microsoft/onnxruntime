@@ -61,7 +61,6 @@ const createGatherElementsProgramInfo =
       @group(0) @binding(1) var<storage, read> inputIndices : array<i32>;
       @group(0) @binding(2) var<storage, read_write> output: array<u32>;
 
-      ${output.impl('offsetToIndices')}
       ${shaderHelper.mainStart()}
       ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
