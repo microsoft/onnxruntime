@@ -283,7 +283,13 @@ else()
     )
   endif()
 
-  set(target_name ort wasm)
+  set(target_name ort)
+
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND target_name "training")
+  endif()
+
+  list(APPEND target_name "wasm")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     list(APPEND target_name "simd")
@@ -291,10 +297,6 @@ else()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     list(APPEND target_name "threaded")
-  endif()
-
-  if (onnxruntime_ENABLE_TRAINING_APIS)
-    list(APPEND target_name "training")
   endif()
 
   list(JOIN target_name "-" target_name)
