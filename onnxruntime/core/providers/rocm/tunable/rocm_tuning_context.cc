@@ -81,12 +81,6 @@ std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
 #else
   oss << "USE_HIPBLASLT=" << 0 << "|";
 #endif
-
-#ifdef USE_TRITON_KERNEL
-  oss << "USE_TRITON_KERNEL=" << 1 << "|";
-#else
-  oss << "USE_TRITON_KERNEL=" << 0 << "|";
-#endif
   return oss.str();
 }
 
