@@ -104,7 +104,7 @@ This feature is supported from ONNX Runtime 1.12.0+. See: [API](https://github.c
 and [examples](https://github.com/microsoft/onnxruntime/blob/ced7c2deac958391414d2bbf951f86e2fc904b05/onnxruntime/test/shared_lib/custom_op_utils.cc#L210).
 
 
-## custom ops for CUDA and ROCM
+## Custom ops for CUDA and ROCM
 Since onnxruntime 1.16, customer op for CUDA and ROCM devices are supported.
 Device related resources could be directly accessed from within the op via a device related context.
 Take CUDA for example:
@@ -119,7 +119,7 @@ void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
   CUSTOM_ENFORCE(cuda_ctx.cudnn_handle, "failed to fetch cudnn handle");
   CUSTOM_ENFORCE(cuda_ctx.cublas_handle, "failed to fetch cublas handle");
   auto z_raw = Z.Allocate(input_shape);
-  cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream); // launch a cuda kernel
+  cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream); // launch a kernel inside
 }
 ```
 Details could be found [here](https://github.com/microsoft/onnxruntime/tree/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cuda).
@@ -136,15 +136,14 @@ void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
   CUSTOM_ENFORCE(rocm_ctx.miopen_handle, "failed to fetch miopen handle");
   CUSTOM_ENFORCE(rocm_ctx.rblas_handle, "failed to fetch rocblas handle");
   auto z_raw = Z.Allocate(input_shape);
-  rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), rocm_ctx.hip_stream);
+  rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), rocm_ctx.hip_stream); // launch a kernel inside
 }
 ```
 Details could be found [here](https://github.com/microsoft/onnxruntime/tree/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/rocm).
 
 
-## one custom op of varied implementations
-Since onnxruntime 1.16, a custom op is allowed to have multiple implementations supporting different data types.
-For example:
+## One op, varied types
+Since onnxruntime 1.16, a custom op is allowed to support varied data types:
 
 ```c++
 template <typename T>
@@ -160,6 +159,7 @@ int main() {
 ```
 
 Details could be found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L39).
+
 A unit test case could found [here](https://github.com/microsoft/onnxruntime/blob/cbaa00839177650073da298d7693e7e42f6940e1/onnxruntime/test/shared_lib/test_inference.cc#L3272C6-L3272C33).
 
 
