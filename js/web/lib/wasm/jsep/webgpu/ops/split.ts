@@ -23,10 +23,12 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 const createSplitAttributesFromInputs =
     (inputs: readonly TensorView[], attributes: SplitAttributes): SplitAttributes => {
       const splitSizes: number[] = [];
+      let numOutputs: number = attributes.numOutputs;
       if (inputs[1].dims[0] > 0) {
         inputs[1].getBigInt64Array().forEach(v => splitSizes.push(Number(v)));
+        numOutputs = splitSizes.length;
       }
-      return createAttributeWithCacheKey({numOutputs: attributes.numOutputs, axis: attributes.axis, splitSizes});
+      return createAttributeWithCacheKey({numOutputs, axis: attributes.axis, splitSizes});
     };
 
 const calculateOutputIndexImpl = (numberOfTensors: number): string => `
@@ -85,8 +87,6 @@ const createSplitProgramInfo =
       const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.declareVariables(input, ...outputs)}
-  ${input.impl('indicesToOffset', 'offsetToIndices', 'get')}
-  ${outputs.map(o => o.impl('indicesToOffset', 'set')).join('\n')}
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateOutputIndexImpl(sizeInConcatAxis.length)}
   ${writeBufferDataImpl(outputs)}
@@ -114,7 +114,7 @@ const createSplitProgramInfoLoader =
       const updatedAttributes = inputs.length === 1 ? attributes : createSplitAttributesFromInputs(inputs, attributes);
       const metadata:
           ProgramMetadata = {name: 'Split', inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
-      return {...metadata, get: () => createSplitProgramInfo(metadata, [inputs[0]], attributes)};
+      return {...metadata, get: () => createSplitProgramInfo(metadata, [inputs[0]], updatedAttributes)};
     };
 
 export const split = (context: ComputeContext, attributes: SplitAttributes): void => {

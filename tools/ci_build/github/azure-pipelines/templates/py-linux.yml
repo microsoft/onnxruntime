@@ -17,6 +17,15 @@ parameters:
 - name: prepend_path
   type: string
 
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
 - name: device
   type: string
   default: 'CPU'
@@ -73,7 +82,7 @@ jobs:
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -x "${{ parameters.extra_build_arg }}"
+              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} -x "${{ parameters.extra_build_arg }}"
             ${{ if eq(parameters.with_cache, 'true') }}:
               env:
                 ADDITIONAL_DOCKER_PARAMETER: "--volume $(ORT_CACHE_DIR):/cache -e CCACHE_DIR=/cache -e ORT_BUILD_WITH_CACHE=1"
@@ -88,4 +97,4 @@ jobs:
       displayName: 'Publish Test Binaries'
       inputs:
         artifactName: 'drop-linux-cpu-${{ parameters.arch }}'
-        targetPath: '$(Build.BinariesDirectory)/Release'
+        targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'

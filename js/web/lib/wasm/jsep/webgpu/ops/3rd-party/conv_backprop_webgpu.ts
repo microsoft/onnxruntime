@@ -159,7 +159,7 @@ const createConvTranspose2DOpProgramShaderSource =
         }
 
         for (var i: u32 = 0; i < ${workPerThread}; i = i + 1) {
-          ${output.set('batch', 'r', 'c+i', 'd1', 'dotProd[i]')}
+          ${output.set('batch', 'r', 'c+i', 'd1', 'dotProd[i]')};
         }
       }`;
       const codeSnippet = `
@@ -207,10 +207,7 @@ const createConvTranspose2DOpProgramShaderSource =
           ${output.setByOffset('global_idx', 'dotProd')};
         `;
 
-      return `
-  ${w.impl('indicesToOffset', 'get')}
-  ${dy.impl('indicesToOffset', 'get')}
-  ${output.impl('offsetToIndices')}
+      const shader = `
   ${declareFunctions}
   ${declareInputs.join('\n')}
   @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
@@ -234,6 +231,12 @@ const createConvTranspose2DOpProgramShaderSource =
     ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
   ${isVec4 ? codeSnippet4 : codeSnippet}}`;
+
+      // TODO: use shaderHelper.declareVariables() to declare variables so that those impl() calls can be removed.
+      return `  ${w.impl()}
+  ${dy.impl()}
+  ${output.impl()}
+  ${shader}`;
     };
 
 export const createConvTranspose2DProgramInfo =
