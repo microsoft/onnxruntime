@@ -166,6 +166,15 @@ def parse_arguments():
         help="Use parallel build. The optional value specifies the maximum number of parallel jobs. "
         "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.",
     )
+    parser.add_argument(
+        "--nvcc_threads",
+        nargs="?",
+        default=-1,
+        type=int,
+        help="Maximum number of NVCC threads to be used in parallel. "
+        "If the optional value is -1 or unspecified, it is deduced from OS type, number of CPUs and free memory size etc.",
+    )
+
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
     parser.add_argument(
@@ -1028,7 +1037,30 @@ def generate_build_tree(
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_cuda:
-        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(args.parallel))
+        available_memory = None
+        if args.nvcc_threads >= 0:
+            nvcc_threads = args.nvcc_threads
+        elif is_linux():
+            # When flash attention is enabled (currently in Linux only), nvcc might be out of memory.
+            # Here we select number of threads to ensure each thread has enough memory (10 GB per thread).
+            # For example, Standard_NC4as_T4_v3 has 4 CPUs and 28 GB memory, and threads=2 is used in nvcc.
+            min_memory_per_thread = 10 * 1024 * 1024 * 1024
+            nvcc_threads = os.cpu_count()
+            try:
+                import psutil
+
+                available_memory = psutil.virtual_memory().available
+                if isinstance(available_memory, int) and available_memory > 0:
+                    while available_memory <= min_memory_per_thread * nvcc_threads and nvcc_threads >= 2:
+                        nvcc_threads = nvcc_threads - 1
+            except ImportError:
+                print("Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads.")
+        else:
+            nvcc_threads = args.parallel
+        print(
+            f"Set nvcc threads={nvcc_threads} based on --nvcc_threads={args.nvcc_threads}, --parallel={args.parallel}, os.cpu_count()={os.cpu_count()}, available_memory={available_memory} and is_linux={is_linux()}"
+        )
+        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
@@ -2239,6 +2271,8 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
+
+    print(args)
 
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
