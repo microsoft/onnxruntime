@@ -33,25 +33,17 @@ const createConvTranspose2DOpProgramShaderSource =
       const colDim = isChannelsLast ? 2 : 3;
       const channelDim = isChannelsLast ? 3 : 1;
       const outputSize = ShapeUtil.size(outputShape);
-      const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
       const workPerThread = isVec4 ? 2 : 1;
       const group = attributes.group;
-      const outputChannelsPerGroup = outputShape[isChannelsLast ? 3 : 1] / group;
-      const innerElementSize = isVec4 ? (isChannelsLast && inChannels % 4 !== 0 ? 3 : 4) : elementsPerThread[0];
       const wShape = inputs[1].dims;
       const inputChannelsPerGroup = wShape[0] / group;
+      const outputChannelsPerGroup = wShape[1];
 
-      const declareInputs = [
-        `@group(0) @binding(0) var<storage, read> Dy: array<${
-            isVec4 && innerElementSize === 4 ? 'vec4<f32>' : 'f32'}>;`,
-        `@group(0) @binding(1) var<storage, read> W: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;`
-      ];
       let declareFunctions = `
   fn setOutputAtIndex(flatIndex : u32, value : ${isVec4 ? 'vec4<f32>' : 'f32'}) {
     result[flatIndex] = ${isVec4 ? 'vec4<f32>' : 'f32'}(value);
   }`;
       if (hasBias) {
-        declareInputs.push(`@group(0) @binding(2) var<storage, read> bias: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;`);
         declareFunctions += `
     fn getBiasByOutputCoords(coords : vec4<u32>) -> ${isVec4 ? 'vec4<f32>' : 'f32'} {
       return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
@@ -60,6 +52,10 @@ const createConvTranspose2DOpProgramShaderSource =
       const components = isVec4 ? 4 : 1;
       const w = inputVariable('W', inputs[1].dataType, inputs[1].dims, components);
       const dy = inputVariable('Dy', inputs[0].dataType, inputs[0].dims, components);
+      const inputVariables = [dy, w];
+      if (hasBias) {
+        inputVariables.push(inputVariable('bias', inputs[2].dataType, [outputShape[channelDim]], components));
+      }
       const output = outputVariable('result', inputs[0].dataType, outputShape, components);
       const codeSnippet4 = `{
         let batch: u32 = ${is1DimensionDispatch ? 'global_id.z' : 'workgroup_id.z'} / outShape[1];
@@ -79,7 +75,7 @@ const createConvTranspose2DOpProgramShaderSource =
           var dyR = (f32(dyCorner.x) + f32(wR)) / f32(strides.x);
           let wRPerm = filterDims[0] - 1 - wR;
           if (dyR < 0.0 || dyR >= f32(outBackprop[1]) ||
-              fract(dyR) > 0.0) {
+              fract(dyR) > 0.0 || wRPerm < 0) {
             continue;
           }
           let idyR: u32 = u32(dyR);
@@ -88,6 +84,9 @@ const createConvTranspose2DOpProgramShaderSource =
             let dyC = (f32(dyCorner.y) + f32(wC)) / f32(strides.y);
             let dyC2 = (f32(dyCorner.y) + 1.0 + f32(wC)) / f32(strides.y);
             let wCPerm = filterDims[1] - 1 - wC;
+            if (wCPerm < 0) {
+              continue;
+            }
             var bDyCVal = true;
             var bDyCVal2 = true;
             if (dyC < 0.0 || dyC >= f32(outBackprop[2]) ||
@@ -215,10 +214,8 @@ const createConvTranspose2DOpProgramShaderSource =
         `;
 
       return `
-  ${shaderHelper.declareVariables(dy, w, output)}
+  ${shaderHelper.declareVariables(...inputVariables, output)}
   ${declareFunctions}
-  ${declareInputs.join('\n')}
-  @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
   const outShape : vec4<u32> = vec4<u32>(${outputShape.join(',')});
   const outBackprop : vec4<u32> = vec4<u32>(${inputs[0].dims.join(',')});
   const strides : vec2<u32> = vec2<u32>(${attributes.strides[0]}, ${attributes.strides[1]});
