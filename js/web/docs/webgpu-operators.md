@@ -37,7 +37,7 @@ Do not modify directly.*
 | Flatten | ai.onnx(1-8,9-10,11-12,13+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
 | Gather | ai.onnx(1-10,11-12,13+) |  |
-| GatherElements | ai.onnx(1-10,11-12,13+) |  |
+| GatherElements | ai.onnx(11-12,13+) |  |
 | Gelu | com.microsoft(1+) |  |
 | Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
