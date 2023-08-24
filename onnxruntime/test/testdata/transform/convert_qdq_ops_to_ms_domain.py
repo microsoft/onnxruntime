@@ -16,8 +16,36 @@ import sys
 import onnx
 
 
+QDQ_OPS = ("QuantizeLinear", "DequantizeLinear")
+
+
 def print_usage(prog_name: str):
+    """
+    Prints the program's command-line arguments and usage.
+    """
+
     print(f"Usage: {prog_name} <onnx model>")
+
+
+def update_qdq_node_domains(graph):
+    """
+    Updates the domain of all QuantizeLinear and DequantizeLinear nodes
+    in a graph to 'com.microsoft'.
+    """
+
+    for node in graph.node:
+
+        # Handle subgraphs:
+        for attr in node.attribute:
+            if attr.type == onnx.AttributeProto.GRAPH:
+                update_qdq_node_domains(attr.g)
+            elif attr.type == onnx.AttributeProto.GRAPHS:
+                for subgraph in attr.graphs:
+                    update_qdq_node_domains(subgraph)
+
+        # Update Q/DQ domains
+        if node.op_type in QDQ_OPS:
+            node.domain = "com.microsoft"
 
 
 def main():
@@ -38,10 +66,7 @@ def main():
     if not has_ms_domain:
         model.opset_import.extend([onnx.helper.make_opsetid("com.microsoft", 1)])
 
-    for node in model.graph.node:
-        if node.op_type in ("QuantizeLinear", "DequantizeLinear"):
-            node.domain = "com.microsoft"
-
+    update_qdq_node_domains(model.graph)
     onnx.checker.check_model(model, True)
     base_model_name = os.path.splitext(argv[0])[0]
     onnx.save_model(model, base_model_name + ".qdq_contrib.onnx")
