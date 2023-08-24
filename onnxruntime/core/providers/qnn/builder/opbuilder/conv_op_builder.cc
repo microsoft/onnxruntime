@@ -40,33 +40,28 @@ class ConvOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
   Status ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
                              const NodeUnit& node_unit,
                              const logging::Logger& logger,
-                             bool is_quantized_model,
                              std::vector<std::string>& input_names,
                              bool do_op_validation) const ORT_MUST_USE_RESULT;
   Status ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
                              const NodeUnit& node_unit,
                              const logging::Logger& logger,
-                             bool is_quantized_model,
                              std::vector<std::string>& input_names,
                              bool do_op_validation) const ORT_MUST_USE_RESULT;
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -81,10 +76,9 @@ class ConvOpBuilder : public BaseOpBuilder {
 // Need to do op validation in 1st call of GetCapability
 Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
-                                    const logging::Logger& logger,
-                                    bool is_quantized_model) const {
+                                    const logging::Logger& logger) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
 
   const auto& inputs = node_unit.Inputs();
@@ -98,7 +92,8 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
 
   ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
-  ORT_RETURN_IF(!is_quantized_model && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
+  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  ORT_RETURN_IF(!is_npu_backend && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
                 "QNN EP: Data type ", input_data_type->c_str(),
                 " is not supported for Conv operator in CPU backend.");
 
@@ -140,7 +135,6 @@ Status ConvOpBuilder::GetInputChannelNumber(QnnModelWrapper& qnn_model_wrapper,
 Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_quantized_model,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
@@ -153,16 +147,15 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   const bool is_1d_conv = input0_shape.size() == 3;
 
   if (is_1d_conv) {
-    return ProcessConv1DInputs(qnn_model_wrapper, node_unit, logger, is_quantized_model, input_names, do_op_validation);
+    return ProcessConv1DInputs(qnn_model_wrapper, node_unit, logger, input_names, do_op_validation);
   }
 
-  return ProcessConv2DInputs(qnn_model_wrapper, node_unit, logger, is_quantized_model, input_names, do_op_validation);
+  return ProcessConv2DInputs(qnn_model_wrapper, node_unit, logger, input_names, do_op_validation);
 }
 
 Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
                                           const NodeUnit& node_unit,
                                           const logging::Logger& logger,
-                                          bool is_quantized_model,
                                           std::vector<std::string>& input_names,
                                           bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
@@ -175,7 +168,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   // Input 0
   //
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
   //
   // Input 1: weight
@@ -183,7 +176,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
   {
     const std::string& input1_name = inputs[1].node_arg.Name();
     OnnxInputInfo input_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], is_quantized_model, input_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], input_info));
 
     std::string actual_name = input_info.is_initializer ? input1_name : input1_name + "_ort_qnn_ep_transpose";
     input_names.push_back(actual_name);
@@ -250,7 +243,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
   // Input 2: bias
   //
   if (num_inputs == 3) {
-    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, is_quantized_model, input_names));
+    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, input_names));
   }
 
   return Status::OK();
@@ -259,7 +252,6 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
 Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
                                           const NodeUnit& node_unit,
                                           const logging::Logger& logger,
-                                          bool is_quantized_model,
                                           std::vector<std::string>& input_names,
                                           bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
@@ -276,7 +268,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
   {
     const std::string& input0_name = inputs[0].node_arg.Name();
     OnnxInputInfo input0_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], is_quantized_model, input0_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], input0_info));
 
     const std::string conv_input0_name = input0_info.is_initializer ? input0_name
                                                                     : input0_name + "_ort_qnn_ep_reshape";
@@ -327,7 +319,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
   {
     const std::string& input1_name = inputs[1].node_arg.Name();
     OnnxInputInfo input_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], is_quantized_model, input_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], input_info));
 
     std::string conv_weight_input_name = input_info.is_initializer ? input1_name : input1_name + "_ort_qnn_ep_transpose";
     input_names.push_back(conv_weight_input_name);
@@ -435,7 +427,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
   // Input 2: bias
   //
   if (num_inputs == 3) {
-    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, is_quantized_model, input_names));
+    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, input_names));
   }
 
   return Status::OK();
@@ -502,7 +494,6 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
-                                                  bool is_quantized_model,
                                                   bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
   OnnxConvType conv_type = {};
@@ -658,11 +649,12 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   const std::string& output_node_type = is_depthwise_conv2d ? QNN_OP_DEPTH_WISE_CONV_2D : GetQnnOpType(node_unit.OpType());
 
   Qnn_QuantizeParams_t output_quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  utils::InitializeQuantizeParam(output_quantize_param, is_quantized_model);
+  bool is_quantized_tensor = outputs[0].quant_param.has_value();
+  utils::InitializeQuantizeParam(output_quantize_param, is_quantized_tensor);
 
   const auto* type_proto = outputs[0].node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(outputs[0].quant_param,
                                                                    output_quantize_param.scaleOffsetEncoding.scale,
                                                                    output_quantize_param.scaleOffsetEncoding.offset),

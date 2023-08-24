@@ -21,15 +21,13 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -47,17 +45,15 @@ class PoolOpBuilder : public BaseOpBuilder {
 // TODO: Check if node domain == kMSInternalNHWCDomain to determine if the layout has been transformed.
 Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
-                                    const logging::Logger& logger,
-                                    bool is_quantized_model) const {
+                                    const logging::Logger& logger) const {
+  ORT_UNUSED_PARAMETER(logger);
+
   if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
 
   const auto& inputs = node_unit.Inputs();
-  ONNX_NAMESPACE::DataType input_data_type = inputs[0].node_arg.Type();
-  if (!is_quantized_model && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float")) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type " + *input_data_type + " is not supported in CPU backend.");
-  }
+  ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
@@ -68,7 +64,7 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   NodeAttrHelper node_helper(node_unit);
   auto dilation_values = node_helper.Get("dilations", std::vector<int32_t>{1, 1});
   if (dilation_values != std::vector<int32_t>{1, 1}) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN does not support Dialation attribute");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN does not support Dilation attribute");
   }
 
   if (node_unit.Outputs().size() > 1) {
@@ -129,7 +125,6 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
-                                                  bool is_quantized_model,
                                                   bool do_op_validation) const {
   NodeAttrHelper node_helper(node_unit);
   // Get the NCHW from input data, use HW for the pool filter size and pool stride
@@ -216,7 +211,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
+                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

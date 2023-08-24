@@ -22,7 +22,6 @@ class SliceOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
@@ -30,7 +29,6 @@ class SliceOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -81,14 +79,11 @@ void SliceOpBuilder::GetDataFromAttribute(const NodeUnit& node_unit,
 Status SliceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
                                      std::vector<std::string>& input_names,
                                      bool do_op_validation) const {
   if (do_op_validation) {
     ORT_RETURN_IF_ERROR(ExplictOpCheck(qnn_model_wrapper, node_unit));
   }
-  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  utils::InitializeQuantizeParam(quantize_param, is_quantized_model);
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   TensorShapeVector raw_starts;
   TensorShapeVector raw_ends;
@@ -116,12 +111,15 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       continue;
     }
 
+    bool is_quantized_tensor = inputs[input_i].quant_param.has_value();
     const auto* type_proto = inputs[input_i].node_arg.TypeAsProto();
-    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
 
+    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+    utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
     ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[input_i].quant_param,
                                                                      quantize_param.scaleOffsetEncoding.scale,
                                                                      quantize_param.scaleOffsetEncoding.offset),
@@ -195,7 +193,6 @@ Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                                                    const NodeUnit& node_unit,
                                                    std::vector<std::string>&& input_names,
                                                    const logging::Logger& logger,
-                                                   bool is_quantized_model,
                                                    bool do_op_validation) const {
   std::vector<uint32_t> ranges_dims{static_cast<uint32_t>(ranges_.size()), 3};
   std::vector<uint32_t> ranges_data;
@@ -217,7 +214,6 @@ Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                                      std::move(input_names),
                                      {param_tensor_name},
                                      logger,
-                                     is_quantized_model,
                                      do_op_validation, GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
