@@ -31,7 +31,6 @@ jobs:
     parameters:
       WithCache: True
       Today: $(TODAY)
-      CacheDir: $(ORT_CACHE_DIR)
       AdditionalKey: "gpu-reduced-ops | $(BuildConfig)"
       BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --build_wheel --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
       MsbuildArguments: $(MsbuildArguments)
