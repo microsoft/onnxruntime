@@ -16,28 +16,6 @@ import {ShapeUtil} from '../../util';
  **/
 export const WORKGROUP_SIZE = 64;
 
-interface IndicesHelperImplementations {
-  /**
-   * implementation of `offsetToIndices` function.
-   */
-  readonly offsetToIndices: string;
-
-  /**
-   * implementation of `indicesToOffset` function.
-   */
-  readonly indicesToOffset: string;
-
-  /**
-   * implementation of `set`, `setByIndices` and `setByOffset` function.
-   */
-  readonly set: string;
-
-  /**
-   * implementation of `get`, `getByIndices` and `getByOffset` function.
-   */
-  readonly get: string;
-}
-
 interface IndicesHelperTypes {
   /**
    * WGSL type of indices expression
@@ -96,12 +74,10 @@ interface IndicesHelperTypes {
  */
 export interface IndicesHelper {
   /**
-   * get WGSL code of function implementation for the util functions
+   * get WGSL code of function implementation for the util functions.
    *
-   * @param functions - a list of function names to get implementation for. If not specified, all functions will be
-   * returned.
    */
-  readonly impl: (...functions: ReadonlyArray<keyof IndicesHelperImplementations>) => string;
+  readonly impl: () => string;
 
   /**
    * get type info
@@ -215,9 +191,12 @@ export interface IndicesHelper {
   readonly shape: readonly number[];
 }
 
-const getWgslValueType = (type: number, components: 1|2|3|4): string|[string, string] => {
+const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, string] => {
   // return type is [ storage type, runtime type ] or a single string for both
   switch (type) {
+    // TODO: enable after "shader-f16" WSGL extension release
+    // case DataType.float16:
+    //   return components > 1 ? `vec${components}<f16>` : 'f16';
     case DataType.float:
       return components > 1 ? `vec${components}<f32>` : 'f32';
     case DataType.int32:
@@ -245,6 +224,11 @@ const getWgslValueType = (type: number, components: 1|2|3|4): string|[string, st
   }
 };
 
+export const tensorTypeToWsglStorageType = (type: DataType, components: 1|2|3|4 = 1) => {
+  const mappedType = getWgslMappedType(type, components);
+  return typeof mappedType === 'string' ? mappedType : mappedType[0];
+};
+
 /**
  * A helper function to get a IndicesHelper for a given input or output.
  *
@@ -260,12 +244,21 @@ const createIndicesHelper =
      components: 1|2|3|4): IndicesHelper => {
       const rank = shape.length;
       const indicesType = rank < 2 ? 'u32' : rank <= 4 ? `vec${rank}<u32>` : `array<u32, ${rank}>`;
-      const mappedType = getWgslValueType(tensorType, components);
+      const mappedType = getWgslMappedType(tensorType, components);
       const valueType = typeof mappedType === 'string' ? mappedType : mappedType[1];
       const storageType = typeof mappedType === 'string' ? mappedType : mappedType[0];
       const type = {indices: indicesType, value: valueType, storage: storageType, tensor: tensorType};
 
       const normalizeDim = (dim: number|string): string => typeof dim === 'string' ? dim : `${dim}u`;
+
+      const implementationUsed = {
+        offsetToIndices: false,
+        indicesToOffset: false,
+        set: false,
+        setByIndices: false,
+        get: false,
+        getByIndices: false,
+      };
 
       const strides = ShapeUtil.computeStrides(shape);
       let o2iSnippet = '';
@@ -287,7 +280,10 @@ const createIndicesHelper =
     return indices;
   }`;
 
-      const offsetToIndices = (varOffset: string) => rank < 2 ? varOffset : `o2i_${name}(${varOffset})`;
+      const offsetToIndices = (varOffset: string) => {
+        implementationUsed.offsetToIndices = true;
+        return rank < 2 ? varOffset : `o2i_${name}(${varOffset})`;
+      };
 
       const offsets: string[] = [];
       if (rank >= 2) {
@@ -301,7 +297,10 @@ const createIndicesHelper =
     return ${offsets.join('+')};
   }`;
 
-      const indicesToOffset = (varIndices: string) => rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
+      const indicesToOffset = (varIndices: string) => {
+        implementationUsed.indicesToOffset = true;
+        return rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
+      };
 
       const indices = (...init: ReadonlyArray<number|string>) =>
           rank === 0 ? '0u' : `${type.indices}(${init.map(normalizeDim).join(',')})`;
@@ -357,17 +356,18 @@ const createIndicesHelper =
         }
       })();
 
+      const getByIndicesImplementation = rank < 2 ? '' : `
+  fn get_${name}ByIndices(indices: ${type.indices}) -> ${valueType} {
+    return ${name}[i2o_${name}(indices)];
+  }`;
+
       const getImplementation = rank < 2 ? '' : (() => {
         const params = shape.map((_, i) => `d${i}: u32`).join(', ');
         const dims = shape.map((_, i) => `d${i}`).join(', ');
         return `
-  fn get_${name}ByIndices(indices: ${type.indices}) -> ${valueType} {
-    return ${name}[i2o_${name}(indices)];
-  }
   fn get_${name}(${params}) -> ${valueType} {
     return get_${name}ByIndices(${indices(dims)});
-  }
-  `;
+  }`;
       })();
 
       const get = (...indices: ReadonlyArray<number|string>) => {
@@ -376,14 +376,16 @@ const createIndicesHelper =
         }
 
         const normalizedIndices = indices.map(normalizeDim).join(',');
-        const funcName = `get_${name}`;
 
         if (rank === 0) {
           return getByOffset('0u');
         } else if (rank === 1) {
           return getByOffset(normalizedIndices[0]);
         } else {
-          return `${funcName}(${normalizedIndices})`;
+          implementationUsed.get = true;
+          implementationUsed.getByIndices = true;
+          implementationUsed.indicesToOffset = true;
+          return `get_${name}(${normalizedIndices})`;
         }
       };
 
@@ -391,21 +393,24 @@ const createIndicesHelper =
         if (rank < 2) {
           return getByOffset(varIndices);
         } else {
+          implementationUsed.getByIndices = true;
+          implementationUsed.indicesToOffset = true;
           return `get_${name}ByIndices(${varIndices})`;
         }
       };
+
+      const setByIndicesImplementation = rank < 2 ? '' : `
+  fn set_${name}ByIndices(indices: ${type.indices}, value: ${valueType}) {
+    ${setByOffset(`i2o_${name}(indices)`, 'value')}
+  }`;
 
       const setImplementation = rank < 2 ? '' : (() => {
         const params = shape.map((_, i) => `d${i}: u32`).join(', ');
         const dims = shape.map((_, i) => `d${i}`).join(', ');
         return `
-  fn set_${name}ByIndices(indices: ${type.indices}, value: ${valueType}) {
-    ${setByOffset(`i2o_${name}(indices)`, 'value')}
-  }
   fn set_${name}(${params}, value: ${valueType}) {
     set_${name}ByIndices(${indices(dims)}, value);
-  }
-  `;
+  }`;
       })();
 
       const set = (...indicesAndValue: ReadonlyArray<number|string>) => {
@@ -424,6 +429,9 @@ const createIndicesHelper =
         } else if (rank === 1) {
           return setByOffset(normalizedIndices[0], value);
         } else {
+          implementationUsed.set = true;
+          implementationUsed.setByIndices = true;
+          implementationUsed.indicesToOffset = true;
           return `set_${name}(${normalizedIndices}, ${value})`;
         }
       };
@@ -432,32 +440,34 @@ const createIndicesHelper =
         if (rank < 2) {
           return setByOffset(varIndices, value);
         } else {
+          implementationUsed.setByIndices = true;
+          implementationUsed.indicesToOffset = true;
           return `set_${name}ByIndices(${varIndices}, ${value});`;
         }
       };
 
-      const funcImpls = {
-        offsetToIndices: offsetToIndicesImplementation,
-        indicesToOffset: indicesToOffsetImplementation,
-        set: setImplementation,
-        get: getImplementation,
-      };
-      const impl = (...functions: Array<keyof IndicesHelperImplementations>) => {
+      const impl = () => {
         const impls = [];
-        if (functions.length === 0) {
-          functions.push('offsetToIndices', 'indicesToOffset', 'set', 'get');
+        if (implementationUsed.offsetToIndices) {
+          impls.push(offsetToIndicesImplementation);
         }
-        for (const func of functions) {
-          const impl = funcImpls[func];
-          if (impl === undefined) {
-            throw new Error(`unknown function ${func}`);
-          } else {
-            impls.push(impl);
-          }
+        if (implementationUsed.indicesToOffset) {
+          impls.push(indicesToOffsetImplementation);
+        }
+        if (implementationUsed.set) {
+          impls.push(setImplementation);
+        }
+        if (implementationUsed.setByIndices) {
+          impls.push(setByIndicesImplementation);
+        }
+        if (implementationUsed.get) {
+          impls.push(getImplementation);
+        }
+        if (implementationUsed.getByIndices) {
+          impls.push(getByIndicesImplementation);
         }
         return impls.join('\n');
       };
-      impl.toString = () => impl();
 
       return {
         impl,
@@ -552,6 +562,11 @@ export interface ShaderHelper {
    * @param variables - an array of IndicesHelper for the variables.
    */
   declareVariables(...variables: IndicesHelper[]): string;
+
+  /**
+   * Get additional implementation that needs to be added to the shader source.
+   */
+  readonly additionalImplementations: string;
 }
 
 class ShaderHelperImpl implements ShaderHelper {
@@ -585,6 +600,7 @@ class ShaderHelperImpl implements ShaderHelper {
   }
 
   declareVariable(variable: IndicesHelper, bindingIndex: number): string {
+    this.indicesHelpers.push(variable);
     const access = variable.usage === 'input' ? 'read' : 'read_write';
     const storageType = variable.type.storage;
     return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${storageType}>;`;
@@ -593,6 +609,12 @@ class ShaderHelperImpl implements ShaderHelper {
   declareVariables(...variables: IndicesHelper[]): string {
     let i = 0;
     return variables.filter(v => ShapeUtil.size(v.shape) > 0).map(v => this.declareVariable(v, i++)).join('\n');
+  }
+
+  private indicesHelpers: IndicesHelper[] = [];
+
+  get additionalImplementations(): string {
+    return this.indicesHelpers.map(i => i.impl()).join('\n');
   }
 }
 

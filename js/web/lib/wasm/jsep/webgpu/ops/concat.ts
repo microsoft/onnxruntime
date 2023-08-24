@@ -109,9 +109,6 @@ const createConcatProgramInfo =
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.declareVariables(...inputVars, output)}
 
-  ${inputVars.map(i => i.impl('indicesToOffset', 'get')).join('\n')}
-  ${output.impl('offsetToIndices')}
-
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
 
