@@ -109,6 +109,8 @@ def get_args():
         help="Number of mins to attempt the benchmark before moving on",
     )
 
+    parser.add_argument("--tune", default=False, action="store_true")
+
     args = parser.parse_args()
 
     setattr(args, "model_size", args.model_name.split("/")[-1].replace(".", "-"))  # noqa: B010
@@ -292,6 +294,7 @@ def main():
     ort_decoder_input_ids_cmd = (
         ["--decoder-input-ids", str(ort_forced_decoder_ids)] if args.language and args.task else []
     )
+    ort_tune_cmd = (["--tune"] if args.tune else [])
 
     all_results = []
     for audio_file in os.listdir(args.audio_path):
@@ -419,7 +422,7 @@ def main():
                 str(args.num_runs),
                 "--log-folder",
                 args.log_folder,
-            ] + ort_decoder_input_ids_cmd
+            ] + ort_decoder_input_ids_cmd + ort_tune_cmd
             logger.info("Benchmark ONNX Runtime")
             results = benchmark(args, benchmark_cmd, "onnxruntime", audio_file, duration)
             all_results.extend(results)

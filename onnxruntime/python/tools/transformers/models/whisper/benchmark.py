@@ -2,6 +2,7 @@ import argparse
 import ast
 import datetime
 import gc
+import json
 import logging
 import os
 import sys
@@ -11,8 +12,7 @@ import numpy as np
 import psutil
 import torch
 import whisper
-
-from benchmark_helper import setup_logger, measure_memory
+from benchmark_helper import measure_memory, setup_logger
 from onnxruntime_extensions import get_library_path
 from optimum.onnxruntime import ORTModelForSpeechSeq2Seq
 from torch.profiler import ProfilerActivity, profile, record_function
@@ -123,6 +123,9 @@ def get_model(args: argparse.Namespace):
         if args.verbose:
             sess_options.log_verbosity_level = 1
             sess_options.log_severity_level = 1
+            if args.tune:
+                ort.set_default_logger_severity(0)
+                ort.set_default_logger_verbosity(0)
 
     else:
         raise Exception(f"Cannot recognize {args.benchmark_type}")
@@ -159,6 +162,9 @@ def get_model(args: argparse.Namespace):
 
 
 def time_fn(args, fn, inputs):
+    warmup_inputs = inputs[0] if type(inputs) is tuple else inputs
+    benchmark_inputs = inputs[1] if type(inputs) is tuple else inputs
+
     # Warm up
     warmup_range = (
         range(args.warmup_runs)
@@ -167,11 +173,11 @@ def time_fn(args, fn, inputs):
     )
 
     if args.verbose:
-        outputs = fn(inputs)
+        outputs = fn(warmup_inputs)
         logger.info(outputs)
 
     for _ in warmup_range:
-        fn(inputs)
+        fn(warmup_inputs)
 
     # Benchmark
     if args.device != "cpu":
@@ -184,7 +190,7 @@ def time_fn(args, fn, inputs):
         else trange(args.num_runs, file=sys.stdout, desc="Benchmark")
     )
     for _ in bench_range:
-        fn(inputs)
+        fn(benchmark_inputs)
 
     if args.device != "cpu":
         torch.cuda.synchronize()
@@ -315,7 +321,7 @@ def run_hf_inference(args, inputs, model):
 
 
 def run_ort_inference(args, inputs, model):
-    def prepare_ort_inputs(inputs):
+    def prepare_ort_inputs(inputs, warmup=False):
         # Check that all model inputs will be provided
         model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
         user_inputs = set(inputs.keys())
@@ -323,6 +329,9 @@ def run_ort_inference(args, inputs, model):
         if len(missing_inputs):
             logger.error(f"The following model inputs are missing: {missing_inputs}")
             raise Exception("There are missing inputs to the model. Please add them and try again.")
+
+        if warmup and args.tune:
+            inputs["min_length"] = inputs["max_length"]
 
         # Remove unnecessary inputs from model inputs
         unnecessary_inputs = user_inputs - model_inputs
@@ -352,6 +361,13 @@ def run_ort_inference(args, inputs, model):
         outputs = model.run(None, inputs)
         return outputs
 
+    def handle_output(output):
+        if 50257 in output:
+            first_end = np.where(output == 50257)[0][0]
+            return output[: first_end + 1]
+
+        return output
+
     generate_fn = with_io_binding if args.device != "cpu" else without_io_binding
     ort_inputs = prepare_ort_inputs(inputs)
 
@@ -367,7 +383,12 @@ def run_ort_inference(args, inputs, model):
 
     # ORT evaluation
     logger.info("\nEvaluating ONNX Runtime...")
-    time_fn(args, generate_fn, ort_inputs)
+    ort_evaluate_inputs = ort_inputs
+    if args.tune:
+        ort_warmup_inputs = prepare_ort_inputs(inputs, warmup=True)
+        ort_evaluate_inputs = (ort_warmup_inputs, ort_inputs)
+
+    time_fn(args, generate_fn, ort_evaluate_inputs)
     ort_outputs = generate_fn(ort_inputs)
     if args.device != "cpu":
         ort_outputs = ort_outputs.copy_outputs_to_cpu()
@@ -378,7 +399,10 @@ def run_ort_inference(args, inputs, model):
         logger.info(f"Transcription: {ort_outputs[0][0]}")
     else:
         # convert_to_onnx model produces generated ids
-        logger.info(f"Generated token length: {len(ort_outputs[0][0])} tokens")
+        actual_output = handle_output(ort_outputs[0][0])
+        logger.info(f"Generated token length: {len(actual_output)} tokens")
+        transcription = args.processor.batch_decode(ort_outputs[0], skip_special_tokens=True)[0]
+        logger.info(f"Transcription: {transcription}")
 
     measure_fn(args, generate_fn, ort_inputs)
 
@@ -483,6 +507,7 @@ def parse_args():
     parser.add_argument("--pt-num-rows", type=int, default=1000, help="Number of rows for PyTorch profiler to display")
     parser.add_argument("--verbose", default=False, action="store_true")
     parser.add_argument("--log-folder", type=str, default=os.path.join("."), help="Folder to cache log files")
+    parser.add_argument("--tune", default=False, action="store_true")
 
     args = parser.parse_args()
 
@@ -497,7 +522,14 @@ def parse_args():
         if args.execution_provider == "CUDAExecutionProvider":
             args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
         elif args.execution_provider == "ROCMExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
+            args.execution_provider = (
+                args.execution_provider,
+                {
+                    "device_id": args.device_id,
+                    "tunable_op_enable": 1,
+                    "tunable_op_tuning_enable": 1 if args.tune else 0,
+                },
+            )
             args.device = "cuda"
 
     # Check that model paths have been specified for any benchmarking with ORT
