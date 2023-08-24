@@ -1,24 +1,36 @@
 #!/bin/bash
 set -e -x
+
+# This script invokes build.py
+
 mkdir -p /build/dist
-CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -O3 -pipe -Wl,--strip-all"
-CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -O3 -pipe -Wl,--strip-all"
 
-
-BUILD_DEVICE="CPU"
-BUILD_CONFIG="Release"
 EXTRA_ARG=""
 
-PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11")
-while getopts "d:p:x:" parameter_Option
+# Put 3.8 at the last because Ubuntu 20.04 use python 3.8 and we will upload the intermediate build files of this 
+# config to Azure DevOps Artifacts and download them to a Ubuntu 20.04 machine to run the tests.
+PYTHON_EXES=("/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp38-cp38/bin/python3.8")
+while getopts "d:p:x:c:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU or CPU.
 d) BUILD_DEVICE=${OPTARG};;
 p) PYTHON_EXES=(${OPTARG});;
 x) EXTRA_ARG=(${OPTARG});;
+c) BUILD_CONFIG=${OPTARG};;
 esac
 done
+
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--build_wheel")
+
+if [ "$BUILD_CONFIG" == "Debug" ]; then
+    CFLAGS="-ggdb3"
+    CXXFLAGS="-ggdb3"
+else
+    CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -O3 -pipe -Wl,--strip-all"
+    CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -O3 -pipe -Wl,--strip-all"
+    BUILD_ARGS+=("--enable_lto")
+fi
 
 # Depending on how the compiler has been configured when it was built, sometimes "gcc -dumpversion" shows the full version.
 GCC_VERSION=$(gcc -dumpversion | cut -d . -f 1)
@@ -34,8 +46,6 @@ if [ "$ARCH" == "x86_64" ] && [ "$GCC_VERSION" -ge 9 ]; then
     CFLAGS="$CFLAGS -fcf-protection"
     CXXFLAGS="$CXXFLAGS -fcf-protection"
 fi
-
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--enable_lto" "--build_wheel")
 
 echo "EXTRA_ARG:"
 echo $EXTRA_ARG

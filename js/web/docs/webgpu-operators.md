@@ -21,6 +21,7 @@ Do not modify directly.*
 | Atan | ai.onnx(7+) |  |
 | Atanh | ai.onnx(9+) |  |
 | AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(11+) | need perf optimization; need implementing activation |
+| Cast | ai.onnx(6-8,9-12,13-18,19+) |  |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
 | Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
@@ -37,7 +38,7 @@ Do not modify directly.*
 | Floor | ai.onnx(6-12,13+) |  |
 | Gather | ai.onnx(1-10,11-12,13+) |  |
 | Gelu | com.microsoft(1+) |  |
-| Gemm | ai.onnx(7-8,9-10,11+) |  |
+| Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |

@@ -76,9 +76,12 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
 
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(training_model_uri),
+                                           std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_uri)),
+                                           std::nullopt);
   auto model = std::make_unique<onnxruntime::training::api::Module>(
-      ToUTF8String(training_model_uri), &state, onnxruntime::SessionOptions(),
-      *env, providers, ToUTF8String(eval_model_uri));
+      model_identifier, &state, onnxruntime::SessionOptions(),
+      *env, providers);
 
   auto test_dir = ORT_TSTR("export_model_for_inferencing_test_dir");
   if (Env::Default().FolderExists(test_dir)) {
@@ -141,7 +144,9 @@ TEST(TrainingApiTest, ModuleParametersSize) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-  auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
+  auto model_identifiers = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                            std::nullopt, std::nullopt);
+  auto model = std::make_unique<onnxruntime::training::api::Module>(model_identifiers,
                                                                     &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   size_t params_size = 0;
@@ -164,7 +169,10 @@ TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-  auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
+  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                           std::nullopt,
+                                           std::nullopt);
+  auto model = std::make_unique<onnxruntime::training::api::Module>(model_identifier,
                                                                     &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   int64_t params_size = static_cast<int64_t>(model->GetParametersSize());
@@ -202,7 +210,10 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-  auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
+  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                           std::nullopt,
+                                           std::nullopt);
+  auto model = std::make_unique<onnxruntime::training::api::Module>(model_identifier,
                                                                     &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
@@ -274,8 +285,12 @@ TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
 
     ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
+    auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                             std::nullopt,
+                                             std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
+
     std::shared_ptr<Module> model = std::make_shared<Module>(
-        ToUTF8String(model_uri), &state, session_option,
+        model_identifier, &state, session_option,
         *env, providers);
 
     // Load state dict from faked optimizer checkpoint state.
@@ -285,7 +300,7 @@ TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
                                                              {"momentum0", "momentum1"},
                                                              external_optimizer_checkpoint_state));
     std::shared_ptr<Optimizer> optim = std::make_shared<Optimizer>(
-        ToUTF8String(optim_uri), &new_state, session_option, *env, providers);
+        model_identifier, &new_state, session_option, *env, providers);
 
     ASSERT_TRUE(optim.get() != nullptr);
   }
@@ -320,8 +335,12 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
 
     ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
+    auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                             std::nullopt,
+                                             std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
+
     std::shared_ptr<Module> model = std::make_shared<Module>(
-        ToUTF8String(model_uri), &state, session_option,
+        model_identifier, &state, session_option,
         *env, providers);
 
     OrtValue input, target;
@@ -351,7 +370,7 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
     }
 
     std::shared_ptr<Optimizer> optim = std::make_shared<Optimizer>(
-        ToUTF8String(optim_uri), &state, session_option,
+        model_identifier, &state, session_option,
         *env, providers);
 
     // KNOWN ISSUE: LinearLRScheduler by default use optim's states to calculate the first step's learning rate.
@@ -445,11 +464,15 @@ TEST(TrainingApiTest, OptimStep) {
   providers.push_back(onnxruntime::test::DefaultCudaExecutionProvider());
 #endif
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+
+  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                           std::nullopt,
+                                           std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
   auto model = std::make_unique<onnxruntime::training::api::Module>(
-      ToUTF8String(model_uri), &state, session_option,
+      model_identifier, &state, session_option,
       *env, providers);
   auto optim = std::make_unique<onnxruntime::training::api::Optimizer>(
-      ToUTF8String(optim_uri), &state, session_option,
+      model_identifier, &state, session_option,
       *env, providers);
 
   OrtValue input, target;

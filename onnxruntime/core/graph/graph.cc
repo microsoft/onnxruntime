@@ -1124,7 +1124,7 @@ void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_in
 //                        Version ir_version,
 //                        std::unique_ptr<Graph>& new_graph) {
 //  // create instance. need to call private ctor so can't use make_unique
-//  GSL_SUPPRESS(r .11)
+//  GSL_SUPPRESS(r.11)
 //  new_graph.reset(new Graph(nullptr, &graph_proto, domain_to_version, ir_version));
 //
 //  // as we just loaded from file we want to fully initialize/Resolve, but not let that change
@@ -1566,7 +1566,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
-GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
+GSL_SUPPRESS(es.84)  // ignoring return value from unordered_map::insert causes noisy complaint
 Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
@@ -1845,7 +1845,7 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
   }
 }
 
-GSL_SUPPRESS(es .84)  // noisy warning about ignoring return value from insert(...)
+GSL_SUPPRESS(es.84)  // noisy warning about ignoring return value from insert(...)
 Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
   nodes_in_topological_order_.clear();
   std::unordered_set<NodeIndex> downstream_nodes;  // nodes downstream of the node we're currently checking
@@ -2209,7 +2209,7 @@ Status Graph::UpdateShapeInference(Node& node) {
 }
 
 // Implementation of type-inference and type-checking for a single node
-GSL_SUPPRESS(f .23)  // spurious warning about inferred_type never being checked for null
+GSL_SUPPRESS(f.23)  // spurious warning about inferred_type never being checked for null
 Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const ResolveOptions& options) {
   auto& node_name = node.Name();
 
@@ -2650,7 +2650,7 @@ Status Graph::VerifyInputAndInitializerNames() {
   }
 
   for (auto& initializer_pair : name_to_initial_tensor_) {
-    GSL_SUPPRESS(es .84)
+    GSL_SUPPRESS(es.84)
     inputs_and_initializers.insert(initializer_pair.first);
     // Initializers are expected to be included in inputs (according to ONNX spec).
     // onnxruntime relaxes this constraint. No duplicate-name check here.
@@ -3314,7 +3314,7 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
     return false;
   }
 
-  GSL_SUPPRESS(es .84) {  // ignoring return from insert()
+  GSL_SUPPRESS(es.84) {  // ignoring return from insert()
     nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index]));
     nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index]));
     nodes_[dst_node_index]->MutableRelationships().control_inputs.insert(nodes_[src_node_index]->Name());
@@ -3651,7 +3651,7 @@ void Graph::ComputeOverridableInitializers() {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-GSL_SUPPRESS(es .84)  // warning about ignoring return value from insert(...)
+GSL_SUPPRESS(es.84)  // warning about ignoring return value from insert(...)
 Status Graph::SetGraphInputsOutputs() {
   // If loaded from a model file, we start from the specified inputs and
   // outputs set earlier by InitializeStateFromModelFileGraphProto().
@@ -3837,7 +3837,7 @@ Status Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes() {
 }
 
 // calling private ctor
-GSL_SUPPRESS(r .11)
+GSL_SUPPRESS(r.11)
 gsl::not_null<Node*> Graph::AllocateNode() {
   ORT_ENFORCE(nodes_.size() < static_cast<unsigned int>(std::numeric_limits<int>::max()));
   std::unique_ptr<Node> new_node(new Node(nodes_.size(), *this));
