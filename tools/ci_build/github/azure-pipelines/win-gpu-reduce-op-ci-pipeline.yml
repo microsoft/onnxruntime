@@ -12,9 +12,7 @@ jobs:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
-    ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-    MSBUILD_CACHE_ARG: '/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -34,16 +32,12 @@ jobs:
       WithCache: True
       Today: $(TODAY)
       CacheDir: $(ORT_CACHE_DIR)
-      AdditionalKey: "gpu-reduced-ops"
-      BuildSteps:
-        - task: PythonScript@0
-          displayName: 'Build and test'
-          inputs:
-            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --build_wheel --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config" --use_cache'
-            workingDirectory: '$(Build.BinariesDirectory)'
-          env:
-            CCACHE_DIR: $(ORT_CACHE_DIR)
+      AdditionalKey: "gpu-reduced-ops | $(BuildConfig)"
+      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --build_wheel --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
+      MsbuildArguments: $(MsbuildArguments)
+      BuildArch: $(buildArch)
+      Platform: 'x64'
+      BuildConfig: $(BuildConfig)
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
