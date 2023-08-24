@@ -635,7 +635,9 @@ def parse_arguments():
         "--disable_types",
         nargs="+",
         default=[],
-        choices=["float8", "float16", "optional", "sparsetensor"], help="Disable selected data types (reduces binary size)")
+        choices=["float8", "float16", "optional", "sparsetensor"],
+        help="Disable selected data types (reduces binary size)",
+    )
     parser.add_argument(
         "--disable_exceptions",
         action="store_true",
