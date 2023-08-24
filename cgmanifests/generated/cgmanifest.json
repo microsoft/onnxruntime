@@ -377,6 +377,16 @@
         },
         "comments": "extensions"
       }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d52ec01652b7d620386251db92455968d8d90bdc",
+          "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
+        },
+        "comments": "composable_kernel"
+      }
     }
   ]
 }

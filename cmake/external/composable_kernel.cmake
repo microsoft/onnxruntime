@@ -1,13 +1,10 @@
-set(composable_kernel_URL https://github.com/ROCmSoftwarePlatform/composable_kernel.git)
-set(composable_kernel_TAG d52ec01652b7d620386251db92455968d8d90bdc) # 2023-08-18 11:14:59 +0800
-
 set(PATCH ${PROJECT_SOURCE_DIR}/patches/composable_kernel/Fix_Clang_Build.patch)
 
 include(FetchContent)
 FetchContent_Declare(composable_kernel
-  GIT_REPOSITORY ${composable_kernel_URL}
-  GIT_TAG        ${composable_kernel_TAG}
-  PATCH_COMMAND  git apply --reverse --check ${PATCH} || git apply --ignore-space-change --ignore-whitespace ${PATCH}
+  URL ${DEP_URL_composable_kernel}
+  URL_HASH SHA1=${DEP_SHA1_composable_kernel}
+  PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH}
 )
 
 FetchContent_GetProperties(composable_kernel)
