@@ -1,17 +1,10 @@
 jobs:
 - job: j
-  pool:
-    vmImage: 'macOS-13'
+  pool: onnxruntime-mac-m1-cpu
   
   steps:
   - checkout: none
   - bash: |
-      python3 -m pip list
-
-  - bash: |
-      set -e -x
-
-      XCODE_DEVELOPER_DIR="/Applications/Xcode_14.3.app/Contents/Developer"
-      sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
-
-      xcrun simctl list --json -e
+      python3 --version
+      pwd
+      hostname
