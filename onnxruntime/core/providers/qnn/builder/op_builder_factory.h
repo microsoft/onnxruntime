@@ -86,8 +86,6 @@ void CreateLayerNormOpBuilder(const std::string& op_type, OpBuilderRegistrations
 
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
-void CreateQdqOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace qnn
