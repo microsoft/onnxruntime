@@ -51,7 +51,7 @@ steps:
           key: ' "$(TODAY)" | ${{parameters.AdditionalKey}} | merge '
         ${{else}}:
           key: '"$(TODAY)" | onnxruntime | ${{parameters.AdditionalKey}} | $(Build.SourceVersion) '
-        path: $(ORT_CACHE_DIR)
+        path: ${{parameters.CacheDir}}
         restoreKeys: |
           "$(TODAY)" | onnxruntime | ${{parameters.AdditionalKey}}
       displayName: Cache Task
