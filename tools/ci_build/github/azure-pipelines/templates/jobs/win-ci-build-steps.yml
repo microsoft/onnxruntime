@@ -69,11 +69,11 @@ steps:
   - task: VSBuild@1
     displayName: 'Build'
     inputs:
-      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-      platform: ${{parameters.Platform}}}
+      solution: '$(Build.BinariesDirectory)\${{parameters.BuildConfig}}\onnxruntime.sln'
+      platform: ${{parameters.Platform}}
       configuration: ${{parameters.BuildConfig}}
       ${{ if eq(parameters.WithCache, true) }}:
-        msbuildArgs: '${{parameters.MsbuildArguments}} ${{parameters.CacheArg}}}}'
+        msbuildArgs: '${{parameters.MsbuildArguments}} ${{parameters.CacheArg}}'
       ${{ else }}:
         arguments: '${{parameters.CMakeArguments}}'
       msbuildArchitecture: ${{parameters.BuildArch}}
