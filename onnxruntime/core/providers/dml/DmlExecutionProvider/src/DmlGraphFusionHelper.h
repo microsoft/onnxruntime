@@ -45,20 +45,19 @@ namespace DmlGraphFusionHelper
         gsl::span<std::unique_ptr<GraphPartition>> partitions
     );
 
-    template <size_t ALLOCATER_SIZE>
+    template <size_t ALLOCATOR_SIZE>
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
-        const uint32_t inputCount,
-        const uint32_t outputCount,
         IDMLDevice* device,
-        const std::unordered_map<uint32_t, uint32_t>& constantEdgeIdxToSubgraphInputArgIdxMap,
-        StackAllocator<ALLOCATER_SIZE>& allocator,
-        _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges,
-        _Inout_ std::vector<ComPtr<IDMLOperator>>& dmlOperators);
+        StackAllocator<ALLOCATOR_SIZE>& allocator,
+        std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
+        std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
+        std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
+        std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges,
+        std::vector<ComPtr<IDMLOperator>>& dmlOperators,
+        const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToMainGraphInputIndex = nullptr,
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphConstantNameToMainGraphInputIndex = nullptr);
 
     void CreateIDmlCompiledOperatorAndRegisterKernel(
         const uint32_t partitionIndex,

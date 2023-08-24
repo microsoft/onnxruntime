@@ -13,8 +13,8 @@ struct ConstantName
 
 struct ConstantData
 {
-    byte* data;
-    uint32_t size;
+    std::byte* data;
+    uint64_t dataSize;
 };
 
 using DmlSerializedGraphNodeConstantVariant = std::variant<
@@ -27,7 +27,7 @@ using DmlSerializedGraphNodeDescVariant = std::variant<
     DmlSerializedGraphNodeConstantVariant
 >;
 
-struct DmlSerializedGraphNode
+struct DmlSerializedGraphNode   
 {
     DmlSerializedGraphNodeDescVariant Desc;
     std::string Name; 
@@ -35,26 +35,26 @@ struct DmlSerializedGraphNode
 
 struct DmlInputSerializedGraphEdge
 {
-    UINT GraphInputIndex; 
-    UINT ToNodeIndex; 
-    UINT ToNodeInputIndex; 
+    uint32_t GraphInputIndex; 
+    uint32_t ToNodeIndex; 
+    uint32_t ToNodeInputIndex; 
     std::string Name; 
 };
 
 struct DmlOutputSerializedGraphEdge
 {
-    UINT FromNodeIndex; 
-    UINT FromNodeOutputIndex; 
-    UINT GraphOutputIndex; 
+    uint32_t FromNodeIndex; 
+    uint32_t FromNodeOutputIndex; 
+    uint32_t GraphOutputIndex; 
     std::string Name; 
 };
 
 struct DmlIntermediateSerializedGraphEdge
 {
-    UINT FromNodeIndex; 
-    UINT FromNodeOutputIndex; 
-    UINT ToNodeIndex; 
-    UINT ToNodeInputIndex; 
+    uint32_t FromNodeIndex; 
+    uint32_t FromNodeOutputIndex; 
+    uint32_t ToNodeIndex; 
+    uint32_t ToNodeInputIndex; 
     std::string Name; 
 };
 

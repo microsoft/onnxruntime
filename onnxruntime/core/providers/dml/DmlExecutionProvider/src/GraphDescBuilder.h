@@ -41,6 +41,7 @@ namespace Dml
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             IDMLDevice* device,
             const void* executionHandle,
-            std::unordered_map<uint32_t, uint32_t>& constantEdgeIdxToSubgraphInputArgIdxMap);
+            std::unordered_map<uint32_t, uint32_t>& serializedGraphInputIndexToMainGraphInputIndex,
+            std::unordered_map<std::string_view, uint32_t>& serializedGraphConstantNameToMainGraphInputIndex);
     }
 }

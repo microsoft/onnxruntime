@@ -133,8 +133,8 @@ struct ConstantRawData FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DATA = 4
   };
-  const flatbuffers::Vector<int8_t> *data() const {
-    return GetPointer<const flatbuffers::Vector<int8_t> *>(VT_DATA);
+  const flatbuffers::Vector<uint8_t> *data() const {
+    return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_DATA);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -148,7 +148,7 @@ struct ConstantRawDataBuilder {
   typedef ConstantRawData Table;
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_data(flatbuffers::Offset<flatbuffers::Vector<int8_t>> data) {
+  void add_data(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> data) {
     fbb_.AddOffset(ConstantRawData::VT_DATA, data);
   }
   explicit ConstantRawDataBuilder(flatbuffers::FlatBufferBuilder &_fbb)
@@ -165,7 +165,7 @@ struct ConstantRawDataBuilder {
 
 inline flatbuffers::Offset<ConstantRawData> CreateConstantRawData(
     flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int8_t>> data = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> data = 0) {
   ConstantRawDataBuilder builder_(_fbb);
   builder_.add_data(data);
   return builder_.Finish();
@@ -173,8 +173,8 @@ inline flatbuffers::Offset<ConstantRawData> CreateConstantRawData(
 
 inline flatbuffers::Offset<ConstantRawData> CreateConstantRawDataDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<int8_t> *data = nullptr) {
-  auto data__ = data ? _fbb.CreateVector<int8_t>(*data) : 0;
+    const std::vector<uint8_t> *data = nullptr) {
+  auto data__ = data ? _fbb.CreateVector<uint8_t>(*data) : 0;
   return dml::ir::CreateConstantRawData(
       _fbb,
       data__);
@@ -305,7 +305,8 @@ struct DmlBufferTensorDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table 
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DATATYPE = 4,
     VT_SIZES = 6,
-    VT_STRIDES = 8
+    VT_STRIDES = 8,
+    VT_TOTALTENSORSIZEINBYTES = 10
   };
   const flatbuffers::String *dataType() const {
     return GetPointer<const flatbuffers::String *>(VT_DATATYPE);
@@ -316,6 +317,9 @@ struct DmlBufferTensorDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table 
   const flatbuffers::Vector<uint32_t> *strides() const {
     return GetPointer<const flatbuffers::Vector<uint32_t> *>(VT_STRIDES);
   }
+  uint64_t totalTensorSizeInBytes() const {
+    return GetField<uint64_t>(VT_TOTALTENSORSIZEINBYTES, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DATATYPE) &&
@@ -324,6 +328,7 @@ struct DmlBufferTensorDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table 
            verifier.VerifyVector(sizes()) &&
            VerifyOffset(verifier, VT_STRIDES) &&
            verifier.VerifyVector(strides()) &&
+           VerifyField<uint64_t>(verifier, VT_TOTALTENSORSIZEINBYTES) &&
            verifier.EndTable();
   }
 };
@@ -341,6 +346,9 @@ struct DmlBufferTensorDescBuilder {
   void add_strides(flatbuffers::Offset<flatbuffers::Vector<uint32_t>> strides) {
     fbb_.AddOffset(DmlBufferTensorDesc::VT_STRIDES, strides);
   }
+  void add_totalTensorSizeInBytes(uint64_t totalTensorSizeInBytes) {
+    fbb_.AddElement<uint64_t>(DmlBufferTensorDesc::VT_TOTALTENSORSIZEINBYTES, totalTensorSizeInBytes, 0);
+  }
   explicit DmlBufferTensorDescBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -357,8 +365,10 @@ inline flatbuffers::Offset<DmlBufferTensorDesc> CreateDmlBufferTensorDesc(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::String> dataType = 0,
     flatbuffers::Offset<flatbuffers::Vector<uint32_t>> sizes = 0,
-    flatbuffers::Offset<flatbuffers::Vector<uint32_t>> strides = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<uint32_t>> strides = 0,
+    uint64_t totalTensorSizeInBytes = 0) {
   DmlBufferTensorDescBuilder builder_(_fbb);
+  builder_.add_totalTensorSizeInBytes(totalTensorSizeInBytes);
   builder_.add_strides(strides);
   builder_.add_sizes(sizes);
   builder_.add_dataType(dataType);
@@ -369,7 +379,8 @@ inline flatbuffers::Offset<DmlBufferTensorDesc> CreateDmlBufferTensorDescDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const char *dataType = nullptr,
     const std::vector<uint32_t> *sizes = nullptr,
-    const std::vector<uint32_t> *strides = nullptr) {
+    const std::vector<uint32_t> *strides = nullptr,
+    uint64_t totalTensorSizeInBytes = 0) {
   auto dataType__ = dataType ? _fbb.CreateString(dataType) : 0;
   auto sizes__ = sizes ? _fbb.CreateVector<uint32_t>(*sizes) : 0;
   auto strides__ = strides ? _fbb.CreateVector<uint32_t>(*strides) : 0;
@@ -377,7 +388,8 @@ inline flatbuffers::Offset<DmlBufferTensorDesc> CreateDmlBufferTensorDescDirect(
       _fbb,
       dataType__,
       sizes__,
-      strides__);
+      strides__,
+      totalTensorSizeInBytes);
 }
 
 struct OperatorNodeDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -464,11 +476,11 @@ inline flatbuffers::Offset<OperatorNodeDesc> CreateOperatorNodeDescDirect(
     const char *type = nullptr,
     const std::vector<flatbuffers::Offset<dml::ir::DmlBufferTensorDesc>> *inputs = nullptr,
     const std::vector<flatbuffers::Offset<dml::ir::DmlBufferTensorDesc>> *outputs = nullptr,
-    std::vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *attributes = nullptr) {
+    const std::vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *attributes = nullptr) {
   auto type__ = type ? _fbb.CreateString(type) : 0;
   auto inputs__ = inputs ? _fbb.CreateVector<flatbuffers::Offset<dml::ir::DmlBufferTensorDesc>>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<flatbuffers::Offset<dml::ir::DmlBufferTensorDesc>>(*outputs) : 0;
-  auto attributes__ = attributes ? _fbb.CreateVectorOfSortedTables<dml::ir::operatorFieldTypes::AttributeDesc>(attributes) : 0;
+  auto attributes__ = attributes ? _fbb.CreateVector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>>(*attributes) : 0;
   return dml::ir::CreateOperatorNodeDesc(
       _fbb,
       type__,

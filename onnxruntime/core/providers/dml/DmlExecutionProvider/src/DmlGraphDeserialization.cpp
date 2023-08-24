@@ -2,14 +2,21 @@
 
 #pragma once
 #include "precomp.h"
-//
+
+
+
 void ConvertToUnorderedMap(
     const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>* list,
-    /*out*/ std::unordered_map<std::string_view, uint32_t>& unorderedSet)
+    /*out*/ std::unordered_map<std::string_view, uint32_t>& nameToIndexMap)
 {
-    for (uint32_t idx = 0; idx < list->size(); idx++)
+    for (uint32_t index = 0; index < list->size(); index++)
     {
-        unorderedSet[list->Get(idx)->string_view()] = idx;
+        const flatbuffers::String* name = list->GetAsString(index);
+        if (name->size() == 0)
+        {
+            continue;
+        }
+        nameToIndexMap[name->string_view()] = index;
     }
 }
 
@@ -24,6 +31,10 @@ template <typename EdgeType> void PopulateEdges(
     for (flatbuffers::uoffset_t edgeIndex = 0; edgeIndex < edgeNames->size(); edgeIndex++)
     {
         const flatbuffers::String* edgeName = edgeNames->Get(edgeIndex);
+        if (edgeName->size() == 0)
+        {
+            continue;
+        }
         // edge can be graphInput or graphOutput
         if (edgeNameToIndexMap.find(edgeName->string_view()) != edgeNameToIndexMap.end())
         {
@@ -82,12 +93,7 @@ OperatorFieldTypes::TensorDesc CreateBufferTensorDesc(
     {
         bufferTensorDesc.strides = std::vector<uint32_t>(tensorDesc->strides()->begin(), tensorDesc->strides()->end());
     }
-    bufferTensorDesc.totalTensorSizeInBytes = DMLCalcBufferTensorSize(
-        bufferTensorDesc.dataType,
-        static_cast<uint32_t>(bufferTensorDesc.sizes.size()),
-        bufferTensorDesc.sizes.data(),
-        bufferTensorDesc.strides.has_value() ? bufferTensorDesc.strides.value().data() : nullptr
-    );
+    bufferTensorDesc.totalTensorSizeInBytes = tensorDesc->totalTensorSizeInBytes();
     return bufferTensorDesc;
 }
 
@@ -135,6 +141,18 @@ OperatorFieldVariant CreateActivation(
     return AbstractOperatorDesc(&activationSchema, std::move(activationOperatorFields));
 }
 
+OperatorFieldVariant CreateActivations(
+    const dml::ir::operatorFieldTypes::ActivationArray* activationDescs)
+{
+    std::vector<AbstractOperatorDesc> activations;
+    for (uint32_t index = 0; index < static_cast<uint32_t>(activationDescs->data()->size()); index++)
+    {
+        OperatorFieldVariant activation = CreateActivation(activationDescs->data()->Get(index));
+        activations.push_back(std::get<OperatorFieldTypes::FusedActivationOperatorDesc>(activation).value());
+    }
+    return activations;
+}
+
 OperatorFieldVariant CreateAttribute(
     const DML_SCHEMA_FIELD* schemaField,
     const dml::ir::operatorFieldTypes::AttributeDesc* attributeDesc)
@@ -143,8 +161,15 @@ OperatorFieldVariant CreateAttribute(
     {
         case DML_SCHEMA_FIELD_TYPE_OPERATOR_DESC:
         {
-            return attributeDesc == nullptr ? OperatorFieldTypes::FusedActivationOperatorDesc() : 
-                CreateActivation(attributeDesc->val_as_Activation());
+            return attributeDesc != nullptr && attributeDesc->val_as_Activation() != nullptr ?  
+                CreateActivation(attributeDesc->val_as_Activation()) : 
+                OperatorFieldTypes::FusedActivationOperatorDesc();
+        }
+        case DML_SCHEMA_FIELD_TYPE_OPERATOR_DESC_ARRAY:
+        {
+            return attributeDesc != nullptr && attributeDesc->val_as_ActivationArray() != nullptr ?  
+                CreateActivations(attributeDesc->val_as_ActivationArray()) : 
+                OperatorFieldTypes::FusedActivationOperatorDescArray();
         }
         case DML_SCHEMA_FIELD_TYPE_UINT:
         {
@@ -212,10 +237,10 @@ OperatorFieldVariant CreateAttribute(
         case DML_SCHEMA_FIELD_TYPE_SCALE_BIAS:
         {
             OperatorFieldTypes::ScaleBias scaleBias;
-            if (attributeDesc != nullptr)
+            const dml::ir::operatorFieldTypes::ScaleBias* scaleBiasAttribute = attributeDesc->val_as_ScaleBias();
+            if (scaleBiasAttribute != nullptr)
             {
-                scaleBias->Scale = attributeDesc->val_as_ScaleBias()->scale();
-                scaleBias->Bias = attributeDesc->val_as_ScaleBias()->bias();
+                scaleBias = {scaleBiasAttribute->scale(), scaleBiasAttribute->bias()};
             }
             return scaleBias;
         }
@@ -258,14 +283,21 @@ OperatorFieldVariant CreateAttribute(
 AbstractOperatorDesc CreateAbstractOperatorDesc(
     const dml::ir::OperatorNodeDesc* flatbufferOperatorNodeDesc,
     const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>* nodeInputNames,
+    const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>* nodeOutputNames,
     const std::unordered_set<std::string_view>& constantInputs)
 {
     DML_OPERATOR_TYPE type = ApiTraits::StringifyHelpers::FromString<DML_OPERATOR_TYPE>(flatbufferOperatorNodeDesc->type()->c_str());
     const DML_OPERATOR_SCHEMA& schema = SchemaHelpers::GetSchema(type);
     std::vector<OperatorField> operatorFields(schema.FieldCount);
-    uint32_t inputIndex = 0;
-    uint32_t outputIndex = 0;
+    
+    auto inputNameItr = nodeInputNames->begin();
+    uint32_t inputTensorDescIndex = 0;
+    
+    uint32_t outputTensorDescIndex = 0;
+    auto outputNameItr = nodeOutputNames->begin();
+
     uint32_t attributeIndex = 0;
+    
 
     for (uint32_t fieldIndex = 0; fieldIndex < schema.FieldCount; fieldIndex++)
     {
@@ -278,28 +310,29 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
             {
                 if (schemaField->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC)
                 {
-                    // This must be optional inputs
-                    if (inputIndex >= flatbufferOperatorNodeDesc->inputs()->size())
+                    const flatbuffers::String* inputName = *inputNameItr;
+                    inputNameItr++;
+                    if (inputName->size() == 0)
                     {
-                        field = std::optional<DmlBufferTensorDesc>();
+                        field = OperatorFieldTypes::TensorDesc();
                         break;
                     }
-                    const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->inputs()->Get(inputIndex);
-                    const char* inputName = nodeInputNames->Get(inputIndex)->c_str();
-                    bool isConstantTensor = !constantInputs.empty() && constantInputs.find(inputName) != constantInputs.end();
+                    bool isConstantTensor = !constantInputs.empty() && constantInputs.find(inputName->c_str()) != constantInputs.end();
+
+                    const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->inputs()->Get(inputTensorDescIndex++);
                     field = CreateBufferTensorDesc(tensorDesc, isConstantTensor);
-                    inputIndex++;
                 }
                 else if (schemaField->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC_ARRAY)
                 {
                     std::vector<DmlBufferTensorDesc> tensors;
-                    while (inputIndex < static_cast<uint32_t>(flatbufferOperatorNodeDesc->inputs()->size()))
+                    while (inputTensorDescIndex < static_cast<uint32_t>(flatbufferOperatorNodeDesc->inputs()->size()))
                     {
-                        const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->inputs()->Get(inputIndex);
-                        const char* inputName = nodeInputNames->Get(inputIndex)->c_str();
-                        bool isConstantTensor = !constantInputs.empty() && constantInputs.find(inputName) != constantInputs.end();
+                        const flatbuffers::String* inputName = *inputNameItr;
+                        inputNameItr++;
+                        bool isConstantTensor = !constantInputs.empty() && constantInputs.find(inputName->c_str()) != constantInputs.end();
+                        
+                        const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->inputs()->Get(inputTensorDescIndex++);
                         tensors.push_back(CreateBufferTensorDesc(tensorDesc, isConstantTensor).value());
-                        inputIndex++;
                     }
                     field = tensors;
                 }
@@ -309,21 +342,24 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
             {
                 if (schemaField->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC)
                 {
-                    // This must be optional outputs
-                    if (outputIndex >= flatbufferOperatorNodeDesc->outputs()->size())
+                    const flatbuffers::String* outputName = *outputNameItr;
+                    outputNameItr++;
+
+                    if (outputName->size() == 0)
                     {
-                        field = std::optional<DmlBufferTensorDesc>();
+                        field = OperatorFieldTypes::TensorDesc();
                         break;
                     }
-                    const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->outputs()->Get(outputIndex++);
+
+                    const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->outputs()->Get(outputTensorDescIndex++);
                     field = CreateBufferTensorDesc(tensorDesc);
                 }
                 else if (schemaField->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC_ARRAY)
                 {
                     std::vector<DmlBufferTensorDesc> tensors;
-                    while (outputIndex < static_cast<uint32_t>(flatbufferOperatorNodeDesc->outputs()->size()))
+                    while (outputTensorDescIndex < static_cast<uint32_t>(flatbufferOperatorNodeDesc->outputs()->size()))
                     {
-                        const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->outputs()->Get(outputIndex++);
+                        const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->outputs()->Get(outputTensorDescIndex++);
                         tensors.push_back(CreateBufferTensorDesc(tensorDesc).value());
                     }
                     field = tensors;
@@ -347,7 +383,9 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
     return AbstractOperatorDesc(&schema, std::move(operatorFields));
 }
 
-DmlSerializedGraphDesc DeserializeDmlGraph(const uint8_t* flatbufferGraphDescBlob)
+DmlSerializedGraphDesc DeserializeDmlGraph(
+    const uint8_t* flatbufferGraphDescBlob,
+    /*out*/ std::vector<std::unique_ptr<std::byte[]>>& rawData)
 {
     const dml::ir::DmlGraphDesc* flatbufferGraphDesc = dml::ir::GetDmlGraphDesc(flatbufferGraphDescBlob);
     
@@ -395,7 +433,19 @@ DmlSerializedGraphDesc DeserializeDmlGraph(const uint8_t* flatbufferGraphDescBlo
             }
             else if (flatbufferConstantNode->data_type() == dml::ir::ConstantNodeDescDetail_ConstantRawData)
             {
-                //TODO: implement constant node raw data
+                
+                uint32_t rawDataSize = flatbufferConstantNode->data_as_ConstantRawData()->data()->size();
+                rawData.push_back(std::make_unique<std::byte[]>(rawDataSize));
+                std::transform(
+                    flatbufferConstantNode->data_as_ConstantRawData()->data()->begin(),
+                    flatbufferConstantNode->data_as_ConstantRawData()->data()->end(),
+                    rawData.back().get(),
+                    [](uint8_t b) {return static_cast<std::byte>(b);});
+
+                ConstantData constantData = {};
+                constantData.dataSize = rawDataSize;
+                constantData.data = rawData.back().get();
+                node.Desc = constantData;
             }
 
             // output of this node will part of constantInputs list
@@ -412,6 +462,7 @@ DmlSerializedGraphDesc DeserializeDmlGraph(const uint8_t* flatbufferGraphDescBlo
             node.Desc = CreateAbstractOperatorDesc(
                 flatbufferOperatorNodeDesc,
                 flatbufferNode->inputNames(),
+                flatbufferNode->outputNames(),
                 constantInputs);
         }
 

@@ -3,7 +3,7 @@
 #pragma once
 #include "precomp.h"
 
-flatbuffers::Offset<void> serializeActivation(
+flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation> serializeActivation(
     flatbuffers::FlatBufferBuilder& builder,
     const AbstractOperatorDesc& activationOperatorDesc)
 {
@@ -14,7 +14,7 @@ flatbuffers::Offset<void> serializeActivation(
         builder,
         activationOperatorDesc.schema->OperatorName,
         &attributeDescs);
-    return offset.Union();
+    return offset;
 }
 
 void SerializeAttributeDescs(
@@ -36,13 +36,51 @@ void SerializeAttributeDescs(
             const OperatorFieldTypes::FusedActivationOperatorDesc& fusedActivation = field.AsFusedActivationOperatorDesc();
             if (!fusedActivation.has_value())
             {
-                continue;
+                offset = dml::ir::operatorFieldTypes::CreateAttributeDescDirect(
+                    builder,
+                    nullptr,
+                    dml::ir::operatorFieldTypes::AttributeFieldVariant_Activation);
             }
-            offset = dml::ir::operatorFieldTypes::CreateAttributeDescDirect(
-                builder,
-                field.GetSchema()->Name,
-                dml::ir::operatorFieldTypes::AttributeFieldVariant_Activation,
-                serializeActivation(builder, fusedActivation.value()));
+            else
+            {
+                offset = dml::ir::operatorFieldTypes::CreateAttributeDescDirect(
+                    builder,
+                    field.GetSchema()->Name,
+                    dml::ir::operatorFieldTypes::AttributeFieldVariant_Activation,
+                    serializeActivation(builder, fusedActivation.value()).Union());
+            }
+        }
+        else if (std::holds_alternative<OperatorFieldTypes::FusedActivationOperatorDescArray>(field.GetData()))
+        {
+            const OperatorFieldTypes::FusedActivationOperatorDescArray& fusedActivations = 
+                field.AsFusedActivationOperatorDescArray();
+            if (!fusedActivations.has_value())
+            {
+                offset = dml::ir::operatorFieldTypes::CreateAttributeDescDirect(
+                    builder,
+                    nullptr,
+                    dml::ir::operatorFieldTypes::AttributeFieldVariant_ActivationArray);
+            }
+            else
+            {
+                std::vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> fbActivations;
+
+                for (AbstractOperatorDesc activationOpDesc : fusedActivations.value())
+                {
+                    flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation> fbActivation = 
+                        serializeActivation(builder, activationOpDesc);
+                    fbActivations.push_back(fbActivation);
+                }
+
+                flatbuffers::Offset<dml::ir::operatorFieldTypes::ActivationArray> activationOffset = 
+                    dml::ir::operatorFieldTypes::CreateActivationArrayDirect(builder, &fbActivations);
+                
+                offset = dml::ir::operatorFieldTypes::CreateAttributeDescDirect(
+                    builder,
+                    field.GetSchema()->Name,
+                    dml::ir::operatorFieldTypes::AttributeFieldVariant_ActivationArray,
+                    activationOffset.Union());
+            }
         }
         else if (std::holds_alternative<OperatorFieldTypes::UInt>(field.GetData()))
         {
@@ -105,14 +143,20 @@ void SerializeAttributeDescs(
             const OperatorFieldTypes::ScaleBias& scaleBias = field.AsScaleBias();
             if (!scaleBias.has_value())
             {
-                continue;
+                offset = dml::ir::operatorFieldTypes::CreateAttributeDescDirect(
+                    builder,
+                    nullptr,
+                    dml::ir::operatorFieldTypes::AttributeFieldVariant_ScaleBias);
             }
-            offset = dml::ir::operatorFieldTypes::CreateAttributeDescDirect(
-                builder,
-                field.GetSchema()->Name,
-                dml::ir::operatorFieldTypes::AttributeFieldVariant_ScaleBias,
-                builder.CreateStruct(
-                    dml::ir::operatorFieldTypes::ScaleBias(scaleBias.value().Scale, scaleBias.value().Bias)).Union());
+            else
+            {
+                dml::ir::operatorFieldTypes::ScaleBias fbScaleBias(scaleBias.value().Scale, scaleBias.value().Bias);
+                offset = dml::ir::operatorFieldTypes::CreateAttributeDescDirect(
+                    builder,
+                    field.GetSchema()->Name,
+                    dml::ir::operatorFieldTypes::AttributeFieldVariant_ScaleBias,
+                    builder.CreateStruct(fbScaleBias).Union());
+            }
         }
         else if (std::holds_alternative<OperatorFieldTypes::Size2D>(field.GetData()))
         {
@@ -125,11 +169,18 @@ void SerializeAttributeDescs(
         }
         else if (std::holds_alternative<OperatorFieldTypes::ScalarUnion>(field.GetData()))
         {
+            OperatorFieldTypes::ScalarUnion scalarUnion = field.AsScalarUnion();
+            dml::ir::operatorFieldTypes::ByteArray byteArr;
+            for (uint32_t index = 0; index < static_cast<uint32_t>(sizeof(scalarUnion.Bytes)); index++)
+            {
+                byteArr.mutable_data()->Mutate(index, scalarUnion.Bytes[index]);
+            }
+
             flatbuffers::Offset<dml::ir::operatorFieldTypes::ScalarUnionData> scalarUnionOffset = 
                 dml::ir::operatorFieldTypes::CreateScalarUnionData(
                     builder,
                     dml::ir::operatorFieldTypes::ScalarVariant_ByteArray,
-                    builder.CreateVector(field.AsScalarUnion().Bytes, 8).Union());
+                    builder.CreateStruct(byteArr).Union());
 
             offset = dml::ir::operatorFieldTypes::CreateAttributeDescDirect(
                 builder,
@@ -168,7 +219,8 @@ flatbuffers::Offset<dml::ir::DmlBufferTensorDesc> SerializeDmlTensorDesc(
         builder,
         ApiTraits::StringifyHelpers::ToString(tensorDesc->dataType),
         &tensorDesc->sizes,
-        strides);
+        strides,
+        tensorDesc->totalTensorSizeInBytes);
     return offset;
 }
 
@@ -234,7 +286,16 @@ flatbuffers::Offset<void> SerializeConstantNodeDesc(
     else
     {
         auto& constantData = std::get<ConstantData>(constantNodeDesc);
-        // TODO: copy the raw bytes.
+        std::vector<uint8_t> rawBytes;
+        std::transform(constantData.data, constantData.data + constantData.dataSize, std::back_inserter(rawBytes), [](std::byte b) {return static_cast<uint8_t>(b); });
+        flatbuffers::Offset<dml::ir::ConstantRawData> constantDataOffset = dml::ir::CreateConstantRawDataDirect(
+            builder,
+            &rawBytes);
+
+        offset = dml::ir::CreateConstantNodeDesc(
+            builder,
+            dml::ir::ConstantNodeDescDetail_ConstantRawData,
+            constantDataOffset.Union());
     }
     
     return offset.Union();
@@ -276,14 +337,14 @@ template <typename Edge>
 void PopulateEdgeIndexToNameMap(
     const std::vector<Edge>& edges,
     flatbuffers::FlatBufferBuilder& builder,
-    const std::string& prefix,
-    /*out*/ std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>>& edgeIndexToNameMap)
+    /*out*/ std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>>& edgeIndexToNameMap,
+    /*out*/ uint32_t& maxIndex)
 {
     // If an edge has a name, then use that. Otherwise assign default 
     // name to all unassigned inputs.
     for (auto& edge : edges)
     {
-        int index;
+        uint32_t index;
         if constexpr (std::is_same_v<Edge, DmlInputSerializedGraphEdge>)
         {
             index = edge.GraphInputIndex;
@@ -292,9 +353,10 @@ void PopulateEdgeIndexToNameMap(
         {
             index = edge.GraphOutputIndex;
         }
+        maxIndex = std::max(index, maxIndex);
         if (edge.Name.empty())
         {
-            THROW_HR_MSG(E_INVALIDARG, "Some input/output edges don't have name.");
+            THROW_IF_FAILED(E_INVALIDARG);
         }
         if (edgeIndexToNameMap.find(index) == edgeIndexToNameMap.end())
         {
@@ -303,26 +365,48 @@ void PopulateEdgeIndexToNameMap(
     }
 }
 
+void VerifyNodeInputOutputMaxIndex(
+    const std::vector<DmlSerializedGraphNode>& nodes,
+    std::vector<uint32_t>& nodeInputCounts,
+    std::vector<uint32_t>& nodeOutputCounts)
+{
+    for (uint32_t nodeIndex = 0; nodeIndex < static_cast<uint32_t>(nodes.size()); nodeIndex++)
+    {
+        auto& node = nodes[nodeIndex];
+        if (std::holds_alternative<AbstractOperatorDesc>(node.Desc))
+        {
+            auto& operatorNode = std::get<AbstractOperatorDesc>(node.Desc);
+            nodeInputCounts[nodeIndex] = std::max(
+                nodeInputCounts[nodeIndex], 
+                static_cast<uint32_t>(operatorNode.GetInputTensors().size()));
+
+            nodeOutputCounts[nodeIndex] = std::max(
+                nodeOutputCounts[nodeIndex], 
+                static_cast<uint32_t>(operatorNode.GetOutputTensors().size()));
+        }
+    }
+}
+
 template <typename Edge>
-void PopulateNodeInputOutputCount(
+void PopulateNodeInputOutputMaxIndex(
     const std::vector<Edge>& edges,
-    /*out*/std::vector<uint32_t>& nodeInputCounts,
-    /*out*/std::vector<std::unordered_set<uint32_t>>& nodeOutputCounts)
+    /*out*/std::vector<uint32_t>& maxInputIndexForNodes,
+    /*out*/std::vector<uint32_t>& maxOutputIndexForNodes)
 {
     for (auto& edge : edges)
     {
         if constexpr (std::is_same<Edge, DmlInputSerializedGraphEdge>::value)
         {
-            nodeInputCounts[edge.ToNodeIndex]++;
+            maxInputIndexForNodes[edge.ToNodeIndex] = std::max(maxInputIndexForNodes[edge.ToNodeIndex], edge.ToNodeInputIndex + 1);
         }
         else if constexpr (std::is_same<Edge, DmlOutputSerializedGraphEdge>::value)
         {
-            nodeOutputCounts[edge.FromNodeIndex].insert(edge.FromNodeOutputIndex);
+            maxOutputIndexForNodes[edge.FromNodeIndex] = std::max(maxInputIndexForNodes[edge.FromNodeIndex], edge.FromNodeOutputIndex + 1);
         }
         else if constexpr (std::is_same<Edge, DmlIntermediateSerializedGraphEdge>::value)
         {
-            nodeInputCounts[edge.ToNodeIndex]++;
-            nodeOutputCounts[edge.FromNodeIndex].insert(edge.FromNodeOutputIndex);
+            maxInputIndexForNodes[edge.ToNodeIndex] = std::max(maxInputIndexForNodes[edge.ToNodeIndex], edge.ToNodeInputIndex + 1);
+            maxOutputIndexForNodes[edge.FromNodeIndex] = std::max(maxInputIndexForNodes[edge.FromNodeIndex], edge.FromNodeOutputIndex + 1);
         }
     }
 }
@@ -346,9 +430,9 @@ void PopulateNodeInputOutputNames(
     }
 
     std::unordered_map<uint32_t, std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>>> intermediateEdgeNames;
-    for (uint32_t edgeIdx = 0; edgeIdx < static_cast<uint32_t>(graphDesc.IntermediateEdges.size()); edgeIdx++)
+    for (uint32_t edgeIndex = 0; edgeIndex < static_cast<uint32_t>(graphDesc.IntermediateEdges.size()); edgeIndex++)
     {
-        auto& edge = graphDesc.IntermediateEdges[edgeIdx];
+        auto& edge = graphDesc.IntermediateEdges[edgeIndex];
         flatbuffers::Offset<flatbuffers::String> edgeName;
         
         if (intermediateEdgeNames.find(edge.FromNodeIndex) != intermediateEdgeNames.end() &&
@@ -360,7 +444,7 @@ void PopulateNodeInputOutputNames(
         {
             if (edge.Name.empty())
             {
-                THROW_HR_MSG(E_INVALIDARG, "Some intermediate edges don't have name");
+                THROW_IF_FAILED(E_INVALIDARG);
             }
             edgeName = builder.CreateString(edge.Name.c_str());
             intermediateEdgeNames[edge.FromNodeIndex][edge.FromNodeOutputIndex] = edgeName;
@@ -374,33 +458,46 @@ flatbuffers::DetachedBuffer SerializeDmlGraph(const DmlSerializedGraphDesc& grap
 {
 
     flatbuffers::FlatBufferBuilder builder(1024);
-    if (graphDesc.Nodes.size() == 0)
+    if (graphDesc.Nodes.empty())
     {
-        builder.Release();
+        return builder.Release();
     }
 
     // Set graphInputIndexToNameMap
     std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>> graphInputIndexToNameMap;
-    PopulateEdgeIndexToNameMap<DmlInputSerializedGraphEdge>(graphDesc.InputEdges, builder, "GraphInput", graphInputIndexToNameMap);
+    uint32_t maxInputIndex = 0;
+    PopulateEdgeIndexToNameMap<DmlInputSerializedGraphEdge>(
+        graphDesc.InputEdges,
+        builder,
+        graphInputIndexToNameMap,
+        maxInputIndex);
 
     // Set graphOutputIndexToNameMap
     std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>> graphOutputIndexToNameMap;
-    PopulateEdgeIndexToNameMap<DmlOutputSerializedGraphEdge>(graphDesc.OutputEdges, builder, "GraphOutput", graphOutputIndexToNameMap);
+    uint32_t maxOutputIndex = 0;
+    PopulateEdgeIndexToNameMap<DmlOutputSerializedGraphEdge>(
+        graphDesc.OutputEdges,
+        builder,
+        graphOutputIndexToNameMap,
+        maxOutputIndex);
 
     // Calculate number of input/output for each operator to allocate
     // appropriate amount of memory for each node to store input/output names.
-    std::vector<uint32_t> nodeInputCounts(graphDesc.Nodes.size());
-    std::vector<std::unordered_set<uint32_t>> nodeOutputCounts(graphDesc.Nodes.size());
+    std::vector<uint32_t> nodeInputCounts(graphDesc.Nodes.size(), 0);
+    std::vector<uint32_t> nodeOutputCounts(graphDesc.Nodes.size(), 0);
     std::vector<std::vector<flatbuffers::Offset<flatbuffers::String>>> nodeToInputNames(graphDesc.Nodes.size());
     std::vector<std::vector<flatbuffers::Offset<flatbuffers::String>>> nodeToOutputNames(graphDesc.Nodes.size());
     
-    PopulateNodeInputOutputCount<DmlInputSerializedGraphEdge>(graphDesc.InputEdges, nodeInputCounts, nodeOutputCounts);
-    PopulateNodeInputOutputCount<DmlOutputSerializedGraphEdge>(graphDesc.OutputEdges, nodeInputCounts, nodeOutputCounts);
-    PopulateNodeInputOutputCount<DmlIntermediateSerializedGraphEdge>(graphDesc.IntermediateEdges, nodeInputCounts, nodeOutputCounts);
+    // we need this for constant nodes
+    PopulateNodeInputOutputMaxIndex<DmlInputSerializedGraphEdge>(graphDesc.InputEdges, nodeInputCounts, nodeOutputCounts);
+    PopulateNodeInputOutputMaxIndex<DmlOutputSerializedGraphEdge>(graphDesc.OutputEdges, nodeInputCounts, nodeOutputCounts);
+    PopulateNodeInputOutputMaxIndex<DmlIntermediateSerializedGraphEdge>(graphDesc.IntermediateEdges, nodeInputCounts, nodeOutputCounts);
+    VerifyNodeInputOutputMaxIndex(graphDesc.Nodes, nodeInputCounts, nodeOutputCounts);
+
     for (uint32_t nodeIndex = 0; nodeIndex < static_cast<uint32_t>(graphDesc.Nodes.size()); nodeIndex++)
     {
-        nodeToInputNames[nodeIndex] = std::vector<flatbuffers::Offset<flatbuffers::String>>(nodeInputCounts[nodeIndex]);
-        nodeToOutputNames[nodeIndex] = std::vector<flatbuffers::Offset<flatbuffers::String>>(static_cast<uint32_t>(nodeOutputCounts[nodeIndex].size()));
+        nodeToInputNames[nodeIndex] = std::vector<flatbuffers::Offset<flatbuffers::String>>(nodeInputCounts[nodeIndex], builder.CreateString(nullptr, 0));
+        nodeToOutputNames[nodeIndex] = std::vector<flatbuffers::Offset<flatbuffers::String>>(nodeOutputCounts[nodeIndex], builder.CreateString(nullptr, 0));
     }
     PopulateNodeInputOutputNames(builder, graphDesc, graphInputIndexToNameMap, graphOutputIndexToNameMap, nodeToInputNames, nodeToOutputNames);
 
@@ -415,17 +512,17 @@ flatbuffers::DetachedBuffer SerializeDmlGraph(const DmlSerializedGraphDesc& grap
                             nodeToOutputNames[nodeIndex]);
     }
 
-    std::vector<flatbuffers::Offset<flatbuffers::String>> graphInputNames;
-    std::vector<flatbuffers::Offset<flatbuffers::String>> graphOutputNames;
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graphInputNames(graphDesc.InputCount, builder.CreateString(nullptr, 0));
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graphOutputNames(graphDesc.OutputCount, builder.CreateString(nullptr, 0));
     
     for (const auto& [key, value] : graphInputIndexToNameMap)
     {
-        graphInputNames.push_back(value);
+        graphInputNames[key] = value;
     }
 
     for (const auto& [key, value] : graphOutputIndexToNameMap)
     {
-        graphOutputNames.push_back(value);
+        graphOutputNames[key] = value;
     }
 
     flatbuffers::Offset<dml::ir::DmlGraphDesc> dmlGraphDescOffset = dml::ir::CreateDmlGraphDescDirect(

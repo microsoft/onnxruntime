@@ -176,7 +176,8 @@ namespace Dml::GraphDescBuilder
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
         const void* executionHandle,
-        /*in_out*/std::unordered_map<uint32_t, uint32_t>& constantEdgeIdxToSubgraphInputArgIdxMap)
+        std::unordered_map<uint32_t, uint32_t>& serializedGraphInputIndexToMainGraphInputIndex,
+        std::unordered_map<std::string_view, uint32_t>& serializedGraphConstantNameToMainGraphInputIndex)
     {
         const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
         const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
@@ -222,6 +223,10 @@ namespace Dml::GraphDescBuilder
         //   then ORT node's output names will become output edges for the operatorDmlGraph.
         // - This map will be populated for those output edges.
         std::unordered_map<std::string, NodeAndIndex> outputEdgeNameToDmlGraphNodeAndIndexMap;
+        
+        // This map will be used to re-index an subGraphInputIndex to sequential input index for
+        // DmlGraph
+        std::unordered_map<uint32_t, uint32_t> subGraphInputIndexToDmlGraphInputIndex;
         
         std::vector<DmlSerializedGraphNode> dmlGraphNodes;
         std::vector<DmlInputSerializedGraphEdge> dmlGraphInputEdges;
@@ -342,16 +347,23 @@ namespace Dml::GraphDescBuilder
                             edge.ToNodeIndex = mainDmlGraphNodeIndex;
                             edge.ToNodeInputIndex = operatorDmlGraphInputEdge.ToNodeInputIndex;
                             edge.Name = arg->Name();
-                            constantEdgeIdxToSubgraphInputArgIdxMap[static_cast<uint32_t>(dmlGraphIntermediateEdges.size())] = mainDmlGraphInputIndex;
+                            serializedGraphConstantNameToMainGraphInputIndex[iter->first] = mainDmlGraphInputIndex;
                             dmlGraphIntermediateEdges.push_back(edge);
                         }
                         else
                         {
                             DmlInputSerializedGraphEdge edge = {};
-                            edge.GraphInputIndex = mainDmlGraphInputIndex;
+                            if (subGraphInputIndexToDmlGraphInputIndex.find(mainDmlGraphInputIndex) == subGraphInputIndexToDmlGraphInputIndex.end())
+                            {
+                                subGraphInputIndexToDmlGraphInputIndex[mainDmlGraphInputIndex] = static_cast<uint32_t>(subGraphInputIndexToDmlGraphInputIndex.size());
+                            }
+                            
+                            edge.GraphInputIndex = subGraphInputIndexToDmlGraphInputIndex[mainDmlGraphInputIndex];
                             edge.ToNodeIndex = mainDmlGraphNodeIndex;
                             edge.ToNodeInputIndex = operatorDmlGraphInputEdge.ToNodeInputIndex;  // ?? might need to point inputIndex
                             edge.Name = arg->Name();
+                            
+                            serializedGraphInputIndexToMainGraphInputIndex[edge.GraphInputIndex] = mainDmlGraphInputIndex;
                             dmlGraphInputEdges.push_back(edge);
                         }
 

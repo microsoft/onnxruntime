@@ -16,6 +16,9 @@ struct AttributeDescBuilder;
 struct Activation;
 struct ActivationBuilder;
 
+struct ActivationArray;
+struct ActivationArrayBuilder;
+
 struct UInt8;
 
 struct UInt16;
@@ -59,25 +62,27 @@ struct Bool;
 enum AttributeFieldVariant {
   AttributeFieldVariant_NONE = 0,
   AttributeFieldVariant_Activation = 1,
-  AttributeFieldVariant_UInt32 = 2,
-  AttributeFieldVariant_UInt64 = 3,
-  AttributeFieldVariant_Int32 = 4,
-  AttributeFieldVariant_Float32 = 5,
-  AttributeFieldVariant_UIntArray = 6,
-  AttributeFieldVariant_IntArray = 7,
-  AttributeFieldVariant_FloatArray = 8,
-  AttributeFieldVariant_ScaleBias = 9,
-  AttributeFieldVariant_Size2D = 10,
-  AttributeFieldVariant_ScalarUnionData = 11,
-  AttributeFieldVariant_Bool = 12,
+  AttributeFieldVariant_ActivationArray = 2,
+  AttributeFieldVariant_UInt32 = 3,
+  AttributeFieldVariant_UInt64 = 4,
+  AttributeFieldVariant_Int32 = 5,
+  AttributeFieldVariant_Float32 = 6,
+  AttributeFieldVariant_UIntArray = 7,
+  AttributeFieldVariant_IntArray = 8,
+  AttributeFieldVariant_FloatArray = 9,
+  AttributeFieldVariant_ScaleBias = 10,
+  AttributeFieldVariant_Size2D = 11,
+  AttributeFieldVariant_ScalarUnionData = 12,
+  AttributeFieldVariant_Bool = 13,
   AttributeFieldVariant_MIN = AttributeFieldVariant_NONE,
   AttributeFieldVariant_MAX = AttributeFieldVariant_Bool
 };
 
-inline const AttributeFieldVariant (&EnumValuesAttributeFieldVariant())[13] {
+inline const AttributeFieldVariant (&EnumValuesAttributeFieldVariant())[14] {
   static const AttributeFieldVariant values[] = {
     AttributeFieldVariant_NONE,
     AttributeFieldVariant_Activation,
+    AttributeFieldVariant_ActivationArray,
     AttributeFieldVariant_UInt32,
     AttributeFieldVariant_UInt64,
     AttributeFieldVariant_Int32,
@@ -94,9 +99,10 @@ inline const AttributeFieldVariant (&EnumValuesAttributeFieldVariant())[13] {
 }
 
 inline const char * const *EnumNamesAttributeFieldVariant() {
-  static const char * const names[14] = {
+  static const char * const names[15] = {
     "NONE",
     "Activation",
+    "ActivationArray",
     "UInt32",
     "UInt64",
     "Int32",
@@ -125,6 +131,10 @@ template<typename T> struct AttributeFieldVariantTraits {
 
 template<> struct AttributeFieldVariantTraits<dml::ir::operatorFieldTypes::Activation> {
   static const AttributeFieldVariant enum_value = AttributeFieldVariant_Activation;
+};
+
+template<> struct AttributeFieldVariantTraits<dml::ir::operatorFieldTypes::ActivationArray> {
+  static const AttributeFieldVariant enum_value = AttributeFieldVariant_ActivationArray;
 };
 
 template<> struct AttributeFieldVariantTraits<dml::ir::operatorFieldTypes::UInt32> {
@@ -299,6 +309,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(1) UInt8 FLATBUFFERS_FINAL_CLASS {
   uint8_t data() const {
     return flatbuffers::EndianScalar(data_);
   }
+  void mutate_data(uint8_t _data) {
+    flatbuffers::WriteScalar(&data_, _data);
+  }
 };
 FLATBUFFERS_STRUCT_END(UInt8, 1);
 
@@ -315,6 +328,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(2) UInt16 FLATBUFFERS_FINAL_CLASS {
   }
   uint16_t data() const {
     return flatbuffers::EndianScalar(data_);
+  }
+  void mutate_data(uint16_t _data) {
+    flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(UInt16, 2);
@@ -333,6 +349,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) UInt32 FLATBUFFERS_FINAL_CLASS {
   uint32_t data() const {
     return flatbuffers::EndianScalar(data_);
   }
+  void mutate_data(uint32_t _data) {
+    flatbuffers::WriteScalar(&data_, _data);
+  }
 };
 FLATBUFFERS_STRUCT_END(UInt32, 4);
 
@@ -349,6 +368,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(8) UInt64 FLATBUFFERS_FINAL_CLASS {
   }
   uint64_t data() const {
     return flatbuffers::EndianScalar(data_);
+  }
+  void mutate_data(uint64_t _data) {
+    flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(UInt64, 8);
@@ -367,6 +389,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(1) Int8 FLATBUFFERS_FINAL_CLASS {
   int8_t data() const {
     return flatbuffers::EndianScalar(data_);
   }
+  void mutate_data(int8_t _data) {
+    flatbuffers::WriteScalar(&data_, _data);
+  }
 };
 FLATBUFFERS_STRUCT_END(Int8, 1);
 
@@ -383,6 +408,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(2) Int16 FLATBUFFERS_FINAL_CLASS {
   }
   int16_t data() const {
     return flatbuffers::EndianScalar(data_);
+  }
+  void mutate_data(int16_t _data) {
+    flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(Int16, 2);
@@ -401,6 +429,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) Int32 FLATBUFFERS_FINAL_CLASS {
   int32_t data() const {
     return flatbuffers::EndianScalar(data_);
   }
+  void mutate_data(int32_t _data) {
+    flatbuffers::WriteScalar(&data_, _data);
+  }
 };
 FLATBUFFERS_STRUCT_END(Int32, 4);
 
@@ -417,6 +448,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(8) Int64 FLATBUFFERS_FINAL_CLASS {
   }
   int64_t data() const {
     return flatbuffers::EndianScalar(data_);
+  }
+  void mutate_data(int64_t _data) {
+    flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(Int64, 8);
@@ -435,6 +469,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) Float32 FLATBUFFERS_FINAL_CLASS {
   float data() const {
     return flatbuffers::EndianScalar(data_);
   }
+  void mutate_data(float _data) {
+    flatbuffers::WriteScalar(&data_, _data);
+  }
 };
 FLATBUFFERS_STRUCT_END(Float32, 4);
 
@@ -451,6 +488,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(8) Float64 FLATBUFFERS_FINAL_CLASS {
   }
   double data() const {
     return flatbuffers::EndianScalar(data_);
+  }
+  void mutate_data(double _data) {
+    flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(Float64, 8);
@@ -471,8 +511,14 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) ScaleBias FLATBUFFERS_FINAL_CLASS {
   float scale() const {
     return flatbuffers::EndianScalar(scale_);
   }
+  void mutate_scale(float _scale) {
+    flatbuffers::WriteScalar(&scale_, _scale);
+  }
   float bias() const {
     return flatbuffers::EndianScalar(bias_);
+  }
+  void mutate_bias(float _bias) {
+    flatbuffers::WriteScalar(&bias_, _bias);
   }
 };
 FLATBUFFERS_STRUCT_END(ScaleBias, 8);
@@ -493,8 +539,14 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) Size2D FLATBUFFERS_FINAL_CLASS {
   uint32_t width() const {
     return flatbuffers::EndianScalar(width_);
   }
+  void mutate_width(uint32_t _width) {
+    flatbuffers::WriteScalar(&width_, _width);
+  }
   uint32_t height() const {
     return flatbuffers::EndianScalar(height_);
+  }
+  void mutate_height(uint32_t _height) {
+    flatbuffers::WriteScalar(&height_, _height);
   }
 };
 FLATBUFFERS_STRUCT_END(Size2D, 8);
@@ -509,6 +561,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(1) ByteArray FLATBUFFERS_FINAL_CLASS {
   }
   const flatbuffers::Array<uint8_t, 8> *data() const {
     return reinterpret_cast<const flatbuffers::Array<uint8_t, 8> *>(data_);
+  }
+  flatbuffers::Array<uint8_t, 8> *mutable_data() {
+    return reinterpret_cast<flatbuffers::Array<uint8_t, 8> *>(data_);
   }
 };
 FLATBUFFERS_STRUCT_END(ByteArray, 8);
@@ -527,6 +582,9 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(1) Bool FLATBUFFERS_FINAL_CLASS {
   bool data() const {
     return flatbuffers::EndianScalar(data_) != 0;
   }
+  void mutate_data(bool _data) {
+    flatbuffers::WriteScalar(&data_, static_cast<uint8_t>(_data));
+  }
 };
 FLATBUFFERS_STRUCT_END(Bool, 1);
 
@@ -540,11 +598,8 @@ struct AttributeDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::String *name() const {
     return GetPointer<const flatbuffers::String *>(VT_NAME);
   }
-  bool KeyCompareLessThan(const AttributeDesc *o) const {
-    return *name() < *o->name();
-  }
-  int KeyCompareWithValue(const char *val) const {
-    return strcmp(name()->c_str(), val);
+  flatbuffers::String *mutable_name() {
+    return GetPointer<flatbuffers::String *>(VT_NAME);
   }
   dml::ir::operatorFieldTypes::AttributeFieldVariant val_type() const {
     return static_cast<dml::ir::operatorFieldTypes::AttributeFieldVariant>(GetField<uint8_t>(VT_VAL_TYPE, 0));
@@ -555,6 +610,9 @@ struct AttributeDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   template<typename T> const T *val_as() const;
   const dml::ir::operatorFieldTypes::Activation *val_as_Activation() const {
     return val_type() == dml::ir::operatorFieldTypes::AttributeFieldVariant_Activation ? static_cast<const dml::ir::operatorFieldTypes::Activation *>(val()) : nullptr;
+  }
+  const dml::ir::operatorFieldTypes::ActivationArray *val_as_ActivationArray() const {
+    return val_type() == dml::ir::operatorFieldTypes::AttributeFieldVariant_ActivationArray ? static_cast<const dml::ir::operatorFieldTypes::ActivationArray *>(val()) : nullptr;
   }
   const dml::ir::operatorFieldTypes::UInt32 *val_as_UInt32() const {
     return val_type() == dml::ir::operatorFieldTypes::AttributeFieldVariant_UInt32 ? static_cast<const dml::ir::operatorFieldTypes::UInt32 *>(val()) : nullptr;
@@ -589,9 +647,12 @@ struct AttributeDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const dml::ir::operatorFieldTypes::Bool *val_as_Bool() const {
     return val_type() == dml::ir::operatorFieldTypes::AttributeFieldVariant_Bool ? static_cast<const dml::ir::operatorFieldTypes::Bool *>(val()) : nullptr;
   }
+  void *mutable_val() {
+    return GetPointer<void *>(VT_VAL);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyOffsetRequired(verifier, VT_NAME) &&
+           VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
            VerifyField<uint8_t>(verifier, VT_VAL_TYPE) &&
            VerifyOffset(verifier, VT_VAL) &&
@@ -602,6 +663,10 @@ struct AttributeDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 template<> inline const dml::ir::operatorFieldTypes::Activation *AttributeDesc::val_as<dml::ir::operatorFieldTypes::Activation>() const {
   return val_as_Activation();
+}
+
+template<> inline const dml::ir::operatorFieldTypes::ActivationArray *AttributeDesc::val_as<dml::ir::operatorFieldTypes::ActivationArray>() const {
+  return val_as_ActivationArray();
 }
 
 template<> inline const dml::ir::operatorFieldTypes::UInt32 *AttributeDesc::val_as<dml::ir::operatorFieldTypes::UInt32>() const {
@@ -669,7 +734,6 @@ struct AttributeDescBuilder {
   flatbuffers::Offset<AttributeDesc> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = flatbuffers::Offset<AttributeDesc>(end);
-    fbb_.Required(o, AttributeDesc::VT_NAME);
     return o;
   }
 };
@@ -708,8 +772,14 @@ struct Activation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::String *type() const {
     return GetPointer<const flatbuffers::String *>(VT_TYPE);
   }
+  flatbuffers::String *mutable_type() {
+    return GetPointer<flatbuffers::String *>(VT_TYPE);
+  }
   const flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *attributes() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *>(VT_ATTRIBUTES);
+  }
+  flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *mutable_attributes() {
+    return GetPointer<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *>(VT_ATTRIBUTES);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -757,13 +827,69 @@ inline flatbuffers::Offset<Activation> CreateActivation(
 inline flatbuffers::Offset<Activation> CreateActivationDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const char *type = nullptr,
-    std::vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *attributes = nullptr) {
+    const std::vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *attributes = nullptr) {
   auto type__ = type ? _fbb.CreateString(type) : 0;
-  auto attributes__ = attributes ? _fbb.CreateVectorOfSortedTables<dml::ir::operatorFieldTypes::AttributeDesc>(attributes) : 0;
+  auto attributes__ = attributes ? _fbb.CreateVector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>>(*attributes) : 0;
   return dml::ir::operatorFieldTypes::CreateActivation(
       _fbb,
       type__,
       attributes__);
+}
+
+struct ActivationArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ActivationArrayBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_DATA = 4
+  };
+  const flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *data() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *>(VT_DATA);
+  }
+  flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *mutable_data() {
+    return GetPointer<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *>(VT_DATA);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_DATA) &&
+           verifier.VerifyVector(data()) &&
+           verifier.VerifyVectorOfTables(data()) &&
+           verifier.EndTable();
+  }
+};
+
+struct ActivationArrayBuilder {
+  typedef ActivationArray Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_data(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>>> data) {
+    fbb_.AddOffset(ActivationArray::VT_DATA, data);
+  }
+  explicit ActivationArrayBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ActivationArrayBuilder &operator=(const ActivationArrayBuilder &);
+  flatbuffers::Offset<ActivationArray> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ActivationArray>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ActivationArray> CreateActivationArray(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>>> data = 0) {
+  ActivationArrayBuilder builder_(_fbb);
+  builder_.add_data(data);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<ActivationArray> CreateActivationArrayDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *data = nullptr) {
+  auto data__ = data ? _fbb.CreateVector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>>(*data) : 0;
+  return dml::ir::operatorFieldTypes::CreateActivationArray(
+      _fbb,
+      data__);
 }
 
 struct UIntArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -773,6 +899,9 @@ struct UIntArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   };
   const flatbuffers::Vector<uint32_t> *data() const {
     return GetPointer<const flatbuffers::Vector<uint32_t> *>(VT_DATA);
+  }
+  flatbuffers::Vector<uint32_t> *mutable_data() {
+    return GetPointer<flatbuffers::Vector<uint32_t> *>(VT_DATA);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -826,6 +955,9 @@ struct IntArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<int32_t> *data() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_DATA);
   }
+  flatbuffers::Vector<int32_t> *mutable_data() {
+    return GetPointer<flatbuffers::Vector<int32_t> *>(VT_DATA);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DATA) &&
@@ -877,6 +1009,9 @@ struct FloatArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   };
   const flatbuffers::Vector<float> *data() const {
     return GetPointer<const flatbuffers::Vector<float> *>(VT_DATA);
+  }
+  flatbuffers::Vector<float> *mutable_data() {
+    return GetPointer<flatbuffers::Vector<float> *>(VT_DATA);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -967,6 +1102,9 @@ struct ScalarUnionData FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   const dml::ir::operatorFieldTypes::Float64 *data_as_Float64() const {
     return data_type() == dml::ir::operatorFieldTypes::ScalarVariant_Float64 ? static_cast<const dml::ir::operatorFieldTypes::Float64 *>(data()) : nullptr;
+  }
+  void *mutable_data() {
+    return GetPointer<void *>(VT_DATA);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -1060,6 +1198,10 @@ inline bool VerifyAttributeFieldVariant(flatbuffers::Verifier &verifier, const v
     }
     case AttributeFieldVariant_Activation: {
       auto ptr = reinterpret_cast<const dml::ir::operatorFieldTypes::Activation *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case AttributeFieldVariant_ActivationArray: {
+      auto ptr = reinterpret_cast<const dml::ir::operatorFieldTypes::ActivationArray *>(obj);
       return verifier.VerifyTable(ptr);
     }
     case AttributeFieldVariant_UInt32: {

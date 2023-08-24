@@ -75,8 +75,7 @@ namespace SchemaHelpers
         OperatorFieldTypes::UIntArray field;
         if (values && count != 0)
         {
-            field.resize(count);
-            std::copy_n(values, count, field.begin());
+            field.assign(values, values + count);
         }
         return field;
     }
@@ -86,8 +85,7 @@ namespace SchemaHelpers
         OperatorFieldTypes::IntArray field;
         if (values && count != 0)
         {
-            field.resize(count);
-            std::copy_n(values, count, field.begin());
+            field.assign(values, values + count);
         }
         return field;
     }
@@ -97,8 +95,7 @@ namespace SchemaHelpers
         OperatorFieldTypes::FloatArray field;
         if (values && count != 0)
         {
-            field.resize(count);
-            std::copy_n(values, count, field.begin());
+            field.assign(values, values + count);
         }
         return field;
     }
