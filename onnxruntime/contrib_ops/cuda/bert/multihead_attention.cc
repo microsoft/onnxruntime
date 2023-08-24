@@ -207,6 +207,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                         fused_runner == nullptr &&
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&
+                                        (parameters.head_size & 7) == 0 &&
+                                        (parameters.v_head_size & 7) == 0 &&
                                         is_long_sequence &&
                                         !past_no_bias &&
                                         (relative_position_bias == nullptr || is_good_for_rpb) &&

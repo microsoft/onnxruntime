@@ -181,6 +181,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                         !disable_memory_efficient_attention_ &&
                                         nullptr == past &&
                                         nullptr == present &&
+                                        (parameters.head_size & 7) == 0 &&
+                                        (parameters.v_head_size & 7) == 0 &&
                                         (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
                                         (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
