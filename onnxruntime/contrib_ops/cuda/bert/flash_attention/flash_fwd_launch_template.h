@@ -75,11 +75,7 @@ void run_mha_fwd_hdim64(Flash_fwd_params& params, cudaStream_t stream) {
 template <typename T>
 void run_mha_fwd_hdim96(Flash_fwd_params& params, cudaStream_t stream) {
   constexpr int Headdim = 96;
-  int device;
-  cudaGetDevice(&device);
-  struct cudaDeviceProp* dprops = NULL;
-  cudaGetDeviceProperties(dprops, device);
-  bool is_sm8x = dprops->major == 8 && dprops->minor > 0;
+  const bool is_sm8x = params.dprops->major == 8 && params.dprops->minor > 0;
   BOOL_SWITCH(params.is_causal, Is_causal, [&] {
     // For sm86 or sm89, 64 x 64 is the fastest for causal (because it's square),
     if (is_sm8x) {
@@ -102,11 +98,7 @@ void run_mha_fwd_hdim96(Flash_fwd_params& params, cudaStream_t stream) {
 template <typename T>
 void run_mha_fwd_hdim128(Flash_fwd_params& params, cudaStream_t stream) {
   constexpr int Headdim = 128;
-  int device;
-  cudaGetDevice(&device);
-  struct cudaDeviceProp* dprops = NULL;
-  cudaGetDeviceProperties(dprops, device);
-  bool is_sm8x = dprops->major == 8 && dprops->minor > 0;
+  const bool is_sm8x = params.dprops->major == 8 && params.dprops->minor > 0;
   BOOL_SWITCH(params.is_causal, Is_causal, [&] {
     // For sm86 or sm89, 64 x 64 is the fastest for causal (because it's square),
     // and 128 x 32 (48 KB smem) is the fastest for non-causal since we get 2 CTAs per SM.
@@ -133,11 +125,7 @@ void run_mha_fwd_hdim128(Flash_fwd_params& params, cudaStream_t stream) {
 template <typename T>
 void run_mha_fwd_hdim160(Flash_fwd_params& params, cudaStream_t stream) {
   constexpr int Headdim = 160;
-  int device;
-  cudaGetDevice(&device);
-  struct cudaDeviceProp* dprops = NULL;
-  cudaGetDeviceProperties(dprops, device);
-  bool is_sm8x = dprops->major == 8 && dprops->minor > 0;
+  const bool is_sm8x = params.dprops->major == 8 && params.dprops->minor > 0;
   BOOL_SWITCH(params.is_causal, Is_causal, [&] {
     // For A100, H100, 128 x 32 is the fastest.
     // For sm86 or sm89, 64 x 64 is the fastest for causal (because it's square),
@@ -176,17 +164,12 @@ void run_mha_fwd_hdim192(Flash_fwd_params& params, cudaStream_t stream) {
 
 template <typename T>
 void run_mha_fwd_hdim224(Flash_fwd_params& params, cudaStream_t stream) {
-  constexpr int Headdim = 224;
-  int device;
-  cudaGetDevice(&device);
-  int max_smem_per_block;
-  cudaDeviceGetAttribute(
-      &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
-  // cudaError status_ = cudaDeviceGetAttribute(
-  //     &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
+  constexpr size_t Headdim = 224;
+  constexpr size_t threshold = 2 * Headdim * (128 + 2 * 64);
+  size_t max_smem_per_block = params.dprops->sharedMemPerBlockOptin;
   //  printf("max_smem_per_block = %d\n", max_smem_per_block);
   BOOL_SWITCH(params.is_causal, Is_causal, [&] {
-    if (max_smem_per_block >= 2 * Headdim * (128 + 2 * 64)) {  // 112 KB
+    if (max_smem_per_block >= threshold) {  // 112 KB
       run_flash_fwd<Flash_fwd_kernel_traits<Headdim, 128, 64, 8, false, false, T>, Is_causal>(params, stream);
     } else {
       run_flash_fwd<Flash_fwd_kernel_traits<Headdim, 64, 64, 4, false, false, T>, Is_causal>(params, stream);
@@ -202,23 +185,16 @@ void run_mha_fwd_hdim224(Flash_fwd_params& params, cudaStream_t stream) {
 
 template <typename T>
 void run_mha_fwd_hdim256(Flash_fwd_params& params, cudaStream_t stream) {
-  constexpr int Headdim = 256;
-  int device;
-  cudaGetDevice(&device);
-  int max_smem_per_sm, max_smem_per_block;
-  cudaDeviceGetAttribute(
-      &max_smem_per_sm, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device);
-  cudaDeviceGetAttribute(
-      &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
-  // cudaError status_ = cudaDeviceGetAttribute(
-  //     &max_smem_per_sm, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device);
-  // status_ = cudaDeviceGetAttribute(
-  //     &max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
+  constexpr size_t Headdim = 256;
+  constexpr size_t min_threshold = 2 * Headdim * (128 + 2 * 64);
+  constexpr size_t max_threshold = 4 * Headdim * (64 + 2 * 64);
+  size_t max_smem_per_sm = params.dprops->sharedMemPerMultiprocessor;
+  size_t max_smem_per_block = params.dprops->sharedMemPerBlockOptin;
   //  printf("max_smem_per_sm = %d, max_smem_per_block = %d\n", max_smem_per_sm, max_smem_per_block);
   BOOL_SWITCH(params.is_causal, Is_causal, [&] {
     // For A100, we want to run with 128 x 64 (128KB smem).
     // For H100 we want to run with 64 x 64 (96KB smem) since then we can get 2 CTAs per SM.
-    if (max_smem_per_block >= 2 * Headdim * (128 + 2 * 64) && max_smem_per_sm < 4 * Headdim * (64 + 2 * 64)) {
+    if (max_smem_per_block >= min_threshold && max_smem_per_sm < max_threshold) {
       run_flash_fwd<Flash_fwd_kernel_traits<Headdim, 128, 64, 8, false, false, T>, Is_causal>(params, stream);
     } else {
       run_flash_fwd<Flash_fwd_kernel_traits<Headdim, 64, 64, 4, false, false, T>, Is_causal>(params, stream);

@@ -34,7 +34,8 @@
 
 namespace onnxruntime {
 namespace flash {
-Status mha_fwd(cudaStream_t stream,
+Status mha_fwd(const cudaDeviceProp& dprops,
+               cudaStream_t stream,
                void* q,            // batch_size x seqlen_q x num_heads x head_size
                void* k,            // batch_size x seqlen_k x num_heads_k x head_size
                void* v,            // batch_size x seqlen_k x num_heads_k x head_size
@@ -49,7 +50,8 @@ Status mha_fwd(cudaStream_t stream,
                float softmax_scale,
                bool is_causal);
 
-Status mha_varlen_fwd(cudaStream_t stream,
+Status mha_varlen_fwd(const cudaDeviceProp& dprops,
+                      cudaStream_t stream,
                       void* q,            // half (total_q, num_heads, head_size)
                       void* k,            // half (total_k, num_heads, head_size)
                       void* v,            // half (total_k, num_heads, v_head_size)

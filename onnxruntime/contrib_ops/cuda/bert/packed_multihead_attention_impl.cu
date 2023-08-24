@@ -621,6 +621,7 @@ Status FlashAttention(
 
   ORT_RETURN_IF_ERROR(
       onnxruntime::flash::mha_varlen_fwd(
+          device_prop,
           stream,
           const_cast<void*>(query),
           const_cast<void*>(key),

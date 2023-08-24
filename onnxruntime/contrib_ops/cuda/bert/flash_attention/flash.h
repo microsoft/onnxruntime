@@ -72,6 +72,8 @@ struct Flash_fwd_params : public Qkv_params {
 
   bool is_bf16 = false;
   bool is_causal;
+
+  const cudaDeviceProp* dprops;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

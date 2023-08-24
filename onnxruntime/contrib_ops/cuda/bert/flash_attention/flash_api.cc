@@ -105,7 +105,8 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream) {
   });
 }
 
-Status mha_fwd(cudaStream_t stream,
+Status mha_fwd(const cudaDeviceProp& dprops,
+               cudaStream_t stream,
                void* q,            // batch_size x seqlen_q x num_heads x head_size
                void* k,            // batch_size x seqlen_k x num_heads_k x head_size
                void* v,            // batch_size x seqlen_k x num_heads_k x head_size
@@ -124,7 +125,8 @@ Status mha_fwd(cudaStream_t stream,
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
 
-  Flash_fwd_params params{};
+  Flash_fwd_params params;
+  params.dprops = &dprops;
   set_params_fprop(params,
                    batch_size,
                    seqlen_q, seqlen_k,
@@ -143,7 +145,8 @@ Status mha_fwd(cudaStream_t stream,
   return Status::OK();
 }
 
-Status mha_varlen_fwd(cudaStream_t stream,
+Status mha_varlen_fwd(const cudaDeviceProp& dprops,
+                      cudaStream_t stream,
                       void* q,            // half (total_q, num_heads, head_size)
                       void* k,            // half (total_k, num_heads, head_size)
                       void* v,            // half (total_k, num_heads, head_size)
@@ -165,6 +168,7 @@ Status mha_varlen_fwd(cudaStream_t stream,
   const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
 
   Flash_fwd_params params;
+  params.dprops = &dprops;
   set_params_fprop(params,
                    batch_size,
                    max_seqlen_q, max_seqlen_k,

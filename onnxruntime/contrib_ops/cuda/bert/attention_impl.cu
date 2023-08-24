@@ -974,7 +974,7 @@ Status QkvToContext(
 
     constexpr bool is_causal = false;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
-        stream, query, key, value, data.output, reinterpret_cast<void*>(scratch1),
+        device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(scratch1),
         parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
         parameters.sequence_length, parameters.total_sequence_length, scale, is_causal));
 
