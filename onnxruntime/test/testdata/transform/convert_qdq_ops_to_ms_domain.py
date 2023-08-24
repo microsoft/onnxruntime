@@ -15,7 +15,6 @@ import sys
 
 import onnx
 
-
 QDQ_OPS = ("QuantizeLinear", "DequantizeLinear")
 
 
@@ -34,7 +33,6 @@ def update_qdq_node_domains(graph):
     """
 
     for node in graph.node:
-
         # Handle subgraphs:
         for attr in node.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
