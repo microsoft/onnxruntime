@@ -470,7 +470,8 @@ bool LayerNormalizationGatherActor::PostProcess(Graph& /*graph*/, Node& current_
   // Update LayerNormalization's axis attribute if it is scalar slice.
   if (info_without_node.is_scalar_slice) {
     auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
-    axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
+    auto original_ln_input_rank = info_without_node.input_rank;
+    axis = axis < 0 ? axis + original_ln_input_rank : axis;
     auto new_axis = axis - 1;
 
     auto& attributes = current_node.GetMutableAttributes();
@@ -508,7 +509,8 @@ bool SoftmaxGatherActor::PostProcess(Graph& graph, Node& current_node, const Sli
   // Update Softmax's axis attribute if it is scalar slice.
   if (info_without_node.is_scalar_slice) {
     auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
-    axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
+    auto original_ln_input_rank = info_without_node.input_rank;
+    axis = axis < 0 ? axis + original_ln_input_rank : axis;
     auto new_axis = axis - 1;
 
     auto& attributes = current_node.GetMutableAttributes();
@@ -534,12 +536,6 @@ bool ReshapeGatherActor::PreCheck(const Graph& graph, const Node& current_node, 
 
   if (!graph_utils::IsConstantInitializer(graph, current_node.InputDefs()[1]->Name())) {
     LOG_DEBUG_INFO(logger, "Skip handle the Reshape, because the new shape is not constant.");
-    return false;
-  }
-
-  // TODO(pengwa): we should support scalar slice for Reshape.
-  if (info.is_scalar_slice) {
-    LOG_DEBUG_INFO(logger, "Skip handle the Reshape, because it is scalar slice.");
     return false;
   }
 

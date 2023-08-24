@@ -855,9 +855,15 @@ TEST(ComputeOptimizerTests, GatherLayerNormalization) {
       {true, 0, 0, false},
       {true, 1, 1, false},
       {true, 2, 1, true},
+      {true, -3, -3, false},
+      {true, -2, -2, false},
+      {true, -1, 1, true},
       {false, 0, 0, false},
       {false, 1, 1, false},
       {false, 2, 2, true},
+      {false, -3, -3, false},
+      {false, -2, -2, false},
+      {false, -1, -1, true},
   };
 
   constexpr static int64_t gather_axis = 1;
@@ -1009,10 +1015,18 @@ TEST(ComputeOptimizerTests, GatherSoftmax) {
       {true, 1, 1, false},
       {true, 2, 1, true},
       {true, 3, 2, true},
+      {true, -4, -4, false},
+      {true, -3, -3, false},
+      {true, -2, 1, true},
+      {true, -1, 2, true},
       {false, 0, 0, false},
       {false, 1, 1, false},
       {false, 2, 2, true},
       {false, 3, 3, true},
+      {false, -4, -4, false},
+      {false, -3, -3, false},
+      {false, -2, -2, true},
+      {false, -1, -1, true},
   };
 
   constexpr static int64_t gather_axis = 1;
