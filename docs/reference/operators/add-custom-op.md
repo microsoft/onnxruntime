@@ -16,6 +16,77 @@ ONNX Runtime provides options to run custom operators that are not official ONNX
 {:toc}
 
 ## Define and register a custom operator
+
+Since onnxruntime 1.16, custom op could simply be implemented as a function:
+
+```c++
+void KernelOne(const Ort::Custom::Tensor<float>& X,
+               const Ort::Custom::Tensor<float>& Y,
+               Ort::Custom::Tensor<float>& Z) {
+  auto input_shape = X.Shape();
+  auto x_raw = X.Data();
+  auto y_raw = Y.Data();
+  auto z_raw = Z.Allocate(input_shape);
+  for (int64_t i = 0; i < Z.NumberOfElement(); ++i) {
+    z_raw[i] = x_raw[i] + y_raw[i];
+  }
+}
+
+int main() {
+  Ort::CustomOpDomain v1_domain{"v1"};
+  std::unique_ptr<OrtLiteCustomOp> custom_op_one{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CPUExecutionProvider", KernelOne)};
+  v1_domain.Add(custom_op_one.get());
+  Ort::SessionOptions session_options;
+  session_options.Add(v1_domain);
+  ...
+}
+```
+
+Inputs are declared as const references, while outputs are required to be non-const references. The access of shape and data are all supported by
+[Ort::Custom::Tensor](https://github.com/microsoft/onnxruntime/blob/cbaa00839177650073da298d7693e7e42f6940e1/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L54).
+
+For custom ops that bear attributes, structs are also supported：
+
+```c++
+struct Merge {
+  Merge(const OrtApi* ort_api, const OrtKernelInfo* info) {
+    int64_t reverse;
+    ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "reverse", &reverse) == nullptr);
+    reverse_ = reverse != 0;
+  }
+  void Compute(const Ort::Custom::Tensor<std::string_view>& strings_in,
+               std::string_view string_in,
+               Ort::Custom::Tensor<std::string>* strings_out) {
+    std::vector<std::string> string_pool;
+    for (const auto& s : strings_in.Data()) {
+      string_pool.emplace_back(s.data(), s.size());
+    }
+    string_pool.emplace_back(string_in.data(), string_in.size());
+    if (reverse_) {
+      for (auto& str : string_pool) {
+        std::reverse(str.begin(), str.end());
+      }
+      std::reverse(string_pool.begin(), string_pool.end());
+    }
+    strings_out->SetStringOutput(string_pool, {static_cast<int64_t>(string_pool.size())});
+  }
+  bool reverse_ = false;
+};
+
+int main() {
+  Ort::CustomOpDomain v2_domain{"v2"};
+  std::unique_ptr<Ort::Custom::OrtLiteCustomOp> mrg_op_ptr{Ort::Custom::CreateLiteCustomOp<Merge>("Merge", "CPUExecutionProvider")};
+  v2_domain.Add(mrg_op_ptr.get());
+  Ort::SessionOptions session_options;
+  session_options.Add(v2_domain);
+  ...
+}
+```
+
+Note that for custom ops running on CPUExecutionProvider, span and scalar as inputs are supported, please refer to more [examples](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc) for usage.
+
+
+## Define and register a custom operator (legacy)
 A custom operator class inherits from `Ort::CustomOpBase` and provides implementations for member functions that define the operator's characteristics and functionality. For example, the following snippet shows the class definition for a basic custom operator named "MyCustomOp" with 2 inputs and 1 output.
 
 ```c++
