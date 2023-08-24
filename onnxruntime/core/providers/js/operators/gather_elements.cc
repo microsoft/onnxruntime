@@ -11,22 +11,13 @@ namespace js {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     GatherElements,
     kOnnxDomain,
-    1,
-    10,
-    kJsExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedDataTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
-    GatherElements);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    GatherElements,
-    kOnnxDomain,
     11,
     12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<uint32_t>()})
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
     GatherElements);
 
@@ -36,7 +27,9 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<uint32_t>()})
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
     GatherElements);
 

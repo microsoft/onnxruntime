@@ -35,6 +35,7 @@ const createGatherElementsProgramInfo =
       const inputStrides = ShapeUtil.computeStrides(inputShape);
 
       const indicesShape = inputs[1].dims;
+      const indicesElementSize = inputs[1].dataType === DataType.int64 ? 2 : 1;
 
       const axis = ShapeUtil.normalizeAxis(attributes.axis, inputRank);
       const axisDimLimit = inputShape[axis];
@@ -42,9 +43,6 @@ const createGatherElementsProgramInfo =
       const outputShape = indicesShape.slice(0);
       const outputSize = ShapeUtil.size(outputShape);
 
-      const inputDataType = inputs[0].dataType;
-      const elementSize = [DataType.int64, DataType.uint64, DataType.double].includes(inputDataType) ? 2 : 1;
-      const indicesElementSize = inputs[1].dataType === DataType.int64 ? 2 : 1;
 
       const inputSize = ShapeUtil.size(inputShape);
 
@@ -55,7 +53,6 @@ const createGatherElementsProgramInfo =
       // That assumption is safe as it's not possible to allocate >2gb buffer for input tensor
       // Input data will be treated as u32 or two u32 for 8-byte tensors
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-      const elementSize: u32 = ${elementSize};
       const indicesElementSize: u32 = ${indicesElementSize};
 
       const inputStrides = array<u32, ${inputStrides.length}>(${inputStrides.map(i => `${i}u`).join(',')});
@@ -91,7 +88,7 @@ const createGatherElementsProgramInfo =
         return;
       }
 
-    output[global_idx * elementSize] = input[srcOffset * elementSize];
+      output[global_idx] = input[srcOffset];
   }`;
 
       return {
