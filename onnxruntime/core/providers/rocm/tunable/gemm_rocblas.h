@@ -141,8 +141,12 @@ auto GetRocBlasGemmTypeStringAndOps() {
 
   ROCBLAS_CALL_THROW(rocblas_destroy_handle(handle));
 
+  // Sort the solutions in ascending order to make the solution vector deterministic across runs
+  std::sort(solutions.begin(), solutions.end());
+
   std::vector<std::pair<std::string, Op<GemmParams<T>>>> ret;
-  for (auto solution : solutions) {
+  for (size_t i = 0; i < solutions.size(); ++i) {
+    auto solution = solutions[i];
     auto rocblas_gemm_op = [=](const GemmParams<T>* params) -> Status {
       auto h_a = DoCastForHalfOrBfloat16(params->alpha);
       auto h_b = DoCastForHalfOrBfloat16(params->beta);
@@ -163,14 +167,17 @@ auto GetRocBlasGemmTypeStringAndOps() {
           rocblas_gemm_flags_none);
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status == rocblas_status_invalid_size, "Solution ", solution, " not supported: INVALID VALUE.");
+          status == rocblas_status_invalid_size,
+          "[rocBLAS] Solution #", i, " (original ", solution, ") not supported: INVALID VALUE.");
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status != rocblas_status_success, "Solution ", solution, " failed: ", rocblas_status_to_string(status));
+          status != rocblas_status_success,
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
 
       return Status::OK();
     };
-    ret.emplace_back(std::make_pair(onnxruntime::MakeString("RocBlasGemm_", solution), std::move(rocblas_gemm_op)));
+    ret.emplace_back(std::make_pair(
+        onnxruntime::MakeString("RocBlasGemm_", i, "_sol", solution), std::move(rocblas_gemm_op)));
   }
   return ret;
 }
@@ -206,8 +213,12 @@ auto GetRocBlasBatchedGemmTypeStringAndOps() {
 
   ROCBLAS_CALL_THROW(rocblas_destroy_handle(handle));
 
+  // Sort the solutions in ascending order to make the solution vector deterministic across runs
+  std::sort(solutions.begin(), solutions.end());
+
   std::vector<std::pair<std::string, Op<BatchedGemmParams<T>>>> ret;
-  for (auto solution : solutions) {
+  for (size_t i = 0; i < solutions.size(); ++i) {
+    auto solution = solutions[i];
     auto rocblas_gemm_op = [=](const BatchedGemmParams<T>* params) -> Status {
       auto h_a = DoCastForHalfOrBfloat16(params->alpha);
       auto h_b = DoCastForHalfOrBfloat16(params->beta);
@@ -229,15 +240,17 @@ auto GetRocBlasBatchedGemmTypeStringAndOps() {
           rocblas_gemm_flags_none);
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status == rocblas_status_invalid_size, "Solution ", solution, " not supported: INVALID VALUE.");
+          status == rocblas_status_invalid_size,
+          "[rocBLAS] Solution #", i, " (original ", solution, ") not supported: INVALID VALUE.");
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status != rocblas_status_success, "Solution ", solution, " failed: ", rocblas_status_to_string(status));
+          status != rocblas_status_success,
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
 
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(
-        onnxruntime::MakeString("RocBlasBatchedGemm_", solution), std::move(rocblas_gemm_op)));
+        onnxruntime::MakeString("RocBlasBatchedGemm_", i, "_sol", solution), std::move(rocblas_gemm_op)));
   }
   return ret;
 }
@@ -273,8 +286,12 @@ auto GetRocBlasStridedBatchedGemmTypeStringAndOps() {
 
   ROCBLAS_CALL_THROW(rocblas_destroy_handle(handle));
 
+  // Sort the solutions in ascending order to make the solution vector deterministic across runs
+  std::sort(solutions.begin(), solutions.end());
+
   std::vector<std::pair<std::string, Op<StridedBatchedGemmParams<T>>>> ret;
-  for (auto solution : solutions) {
+  for (size_t i = 0; i < solutions.size(); ++i) {
+    auto solution = solutions[i];
     auto rocblas_gemm_op = [=](const StridedBatchedGemmParams<T>* params) -> Status {
       auto h_a = DoCastForHalfOrBfloat16(params->alpha);
       auto h_b = DoCastForHalfOrBfloat16(params->beta);
@@ -296,15 +313,17 @@ auto GetRocBlasStridedBatchedGemmTypeStringAndOps() {
           rocblas_gemm_flags_none);
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status == rocblas_status_invalid_size, "Solution ", solution, " not supported: INVALID VALUE.");
+          status == rocblas_status_invalid_size,
+          "[rocBLAS] Solution #", i, " (original ", solution, ") not supported: INVALID VALUE.");
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status != rocblas_status_success, "Solution ", solution, " failed: ", rocblas_status_to_string(status));
+          status != rocblas_status_success,
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
 
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(
-        onnxruntime::MakeString("RocBlasStridedBatchedGemm_", solution), std::move(rocblas_gemm_op)));
+        onnxruntime::MakeString("RocBlasStridedBatchedGemm_", i, "_sol", solution), std::move(rocblas_gemm_op)));
   }
   return ret;
 }

@@ -119,10 +119,18 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
                                                   heuristic_result));
   HIPBLASLT_CALL_THROW(hipblasLtDestroy(handle));
 
+  // Sort heuristic_result by algo index to make sure the order of returned algos is deterministic.
+  std::sort(heuristic_result.begin(),
+            heuristic_result.end(),
+            [](const hipblasLtMatmulHeuristicResult_t& a, const hipblasLtMatmulHeuristicResult_t& b) {
+              return hipblaslt_ext::getIndexFromAlgo(a.algo) < hipblaslt_ext::getIndexFromAlgo(b.algo);
+            });
+
   int returned_algo_count = heuristic_result.size();
   std::vector<std::pair<std::string, Op<ParamsT>>> ret;
   for (int i = 0; i < returned_algo_count; i++) {
     hipblasLtMatmulAlgo_t algo = heuristic_result[i].algo;
+    int algo_index = hipblaslt_ext::getIndexFromAlgo(algo);
     auto hipblaslt_gemm_op = [=](const ParamsT* params) -> Status {
       hipblasLtHandle_t op_handle;
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtCreate(&op_handle));
@@ -212,7 +220,8 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
                                                          workspace_size);
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status != HIPBLAS_STATUS_SUCCESS, "hipBLASLt find_all: algo not supported, index ", std::to_string(i));
+          status != HIPBLAS_STATUS_SUCCESS,
+          "[hipBLASLt] Solution #", i, " failed: algo ", algo_index, " not supported");
 
       IAllocatorUniquePtr<void> workspace_buffer;
       if (workspace_size > 0) {
@@ -243,7 +252,8 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtDestroy(op_handle));
       return Status::OK();
     };
-    std::string type_string = onnxruntime::MakeString(TypeStringFor<T, ParamsT>(), "HipBlasLt_", i);
+    std::string type_string = onnxruntime::MakeString(
+        TypeStringFor<T, ParamsT>(), "HipBlasLt_", i, "_algo", algo_index);
     ret.emplace_back(type_string, std::move(hipblaslt_gemm_op));
   }
   return ret;
