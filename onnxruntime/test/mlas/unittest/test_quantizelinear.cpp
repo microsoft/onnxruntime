@@ -13,8 +13,8 @@ class MlasQuantizeLinearTest : public MlasTestBase {
   void GenerateReference(const float* Input, QuantInt* OutputReference, size_t N, float Scale, QuantInt ZeroPoint) {
     for (size_t n = 0; n < N; n++) {
       float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
-      FloatValue = std::max(FloatValue, float(std::numeric_limits<QuantInt>::min()));
-      FloatValue = std::min(FloatValue, float(std::numeric_limits<QuantInt>::max()));
+      FloatValue = std::max(FloatValue, static_cast<float>(std::numeric_limits<QuantInt>::min()));
+      FloatValue = std::min(FloatValue, static_cast<float>(std::numeric_limits<QuantInt>::max()));
       OutputReference[n] = (QuantInt)FloatValue;
     }
   }
@@ -34,7 +34,8 @@ class MlasQuantizeLinearTest : public MlasTestBase {
 
     float Scale = (MaximumValue - MinimumValue) / 512.f;
 
-    std::uniform_int_distribution<int32_t> zp_distribution(std::numeric_limits<QuantInt>::min(), std::numeric_limits<QuantInt>::max());
+    std::uniform_int_distribution<int32_t> zp_distribution(std::numeric_limits<QuantInt>::min(),
+                                                           std::numeric_limits<QuantInt>::max());
     QuantInt ZeroPoint = static_cast<QuantInt>(zp_distribution(generator));
 
     std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
