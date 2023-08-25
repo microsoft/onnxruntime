@@ -187,6 +187,8 @@ class QLinearConv(QuantOperatorBase):
         quantized_bias_name = ""
         bias_present = False
         if len(node.input) == 3:
+            if self.quantizer.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+                raise RuntimeError("Quantization to FLOAT8E4M3FN for operator Conv is not supported.")
             quantized_bias_name = self.quantizer.quantize_bias_static(node.input[2], node.input[0], node.input[1])
             bias_present = True
 

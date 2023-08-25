@@ -1760,8 +1760,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   std::vector<NodeDef> result;
   auto src_attrs = SrcNodeAttributes();
   std::vector<AttributeProto> attrs;
-  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
-  attrs.push_back(MakeAttribute("name", src_attrs.at("name").s()));
+  ORT_ENFORCE(src_attrs.count("func_name") > 0, "func_name attribute is missing.");
+  ORT_ENFORCE(utils::HasString(src_attrs.at("func_name")));
+  attrs.push_back(MakeAttribute("func_name", src_attrs.at("func_name").s()));
   attrs.push_back(MakeAttribute("output_convention", src_attrs.at("input_convention").s()));
   attrs.push_back(MakeAttribute("inplace", src_attrs.at("inplace").i()));
 
@@ -1992,6 +1993,98 @@ IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
   }
 
   return {NodeDef(OpDef{"LSTMGrad", kMSDomain, 1}, input_args, output_args, SrcNodeAttributes())};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetGRUGradient) {
+  std::vector<ArgDef> input_args;
+
+  // Add inputs of the GRUTraining node as inputs of the GRUGrad node
+  // Add inputs from the source node for X, W, R, B, SL, H0
+  // Add empty argdef for non existing inputs
+  for (int i = 0; i < GetSrcNodeInputSize(); i++) {
+    if (I(i).Exists()) {
+      input_args.push_back(I(i));
+    } else {
+      input_args.push_back(ArgDef());
+    }
+  }
+
+  ORT_ENFORCE(GetSrcNodeOutputSize() >= 3,
+              "GRUTraining node must generate the outputs all hidden states (index 0), "
+              "and zrh gate copmutations (index 2) so that gradients can be computed.");
+
+  if (O(0).Exists()) {
+    input_args.push_back(O(0));  // all hidden states output of the GRUTraining node
+  } else {
+    input_args.push_back(ArgDef());
+  }
+
+  if (O(2).Exists()) {
+    input_args.push_back(O(2));  // z, r, h gate computations output of the GRUTraining node
+  } else {
+    input_args.push_back(ArgDef());
+  }
+
+  // Add gradients of the outputs of the GRUTraining node as inputs to the GRUGrad node
+  // Gradients of the outputs of the GRUTraining node include grad_HAll, grad_HFinal
+  for (int o = 0; o < 2; ++o) {
+    if (GO(o).Exists() && IsGradientAvailableForSrcNodeOutput(o)) {
+      input_args.push_back(GO(o));
+    } else {
+      input_args.push_back(ArgDef());
+    }
+  }
+
+  // Add gradients of the GRUTraining inputs as outputs of the GRUGrad node
+  // Outputs are gradients of:
+  //   1) X (input tensor)
+  //   2) W (weight tensor)
+  //   3) R (recurrence weight tensor)
+  //   4) B (bias tensor)
+  //   5) H0 (initial hidden state tensor)
+  std::vector<ArgDef> output_args;
+  constexpr int sequence_length_input_index = 4;
+  for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
+    if (sequence_length_input_index == i) continue;
+    if (I(i).Exists() && IsGradientRequiredForSrcNodeInput(i)) {
+      output_args.push_back(GI(i));
+    } else {
+      output_args.push_back(ArgDef());
+    }
+  }
+
+  return {NodeDef(OpDef{"GRUGrad", kMSDomain, 1}, input_args, output_args, SrcNodeAttributes())};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetReciprocalGradient) {
+  // y = 1 / x
+  // dy/dx = -1 / x^2
+  // dL/dx = dL/dy * dy/dx = dL/dy * (-1 / x^2)
+  return {NodeDef("Mul", {O(0), O(0)}, {IA("Square_O0")}),
+          NodeDef("Neg", {IA("Square_O0")}, {IA("Neg_Square_O0")}),
+          NodeDef("Mul", {GO(0), IA("Neg_Square_O0")}, {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetLeakyReluGradient) {
+  return {NodeDef(OpDef{"LeakyReluGrad", kMSDomain, 1},
+                  {GO(0), O(0)}, {GI(0)}, SrcNodeAttributes())};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetConvTransposeGradient) {
+  std::vector<ArgDef> outputs;
+  for (int i = 0; i < GetSrcNodeInputSize(); i++) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      outputs.push_back(GI(i));
+    } else {
+      outputs.push_back(ArgDef("", nullptr));
+    }
+  }
+
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"ConvTransposeGrad", kMSDomain, 1},
+              {GO(0), I(0), I(1)},
+              outputs,
+              SrcNodeAttributes())};
 }
 
 }  // namespace training

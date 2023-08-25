@@ -842,6 +842,8 @@ if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 if (UNIX AND onnxruntime_USE_TENSORRT)
+    # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+    # simply ignore them for TensorRT EP build
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
 endif()
 
@@ -1243,6 +1245,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_providers_snpe)
       endif()
     endif()
+    if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      list(APPEND onnxruntime_shared_lib_test_LIBS cpuinfo)
+    endif()
     if (onnxruntime_USE_CUDA)
       list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_test_cuda_ops_lib cudart)
     endif()
@@ -1274,6 +1279,12 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${TEST_DATA_SRC}
         $<TARGET_FILE_DIR:onnxruntime_shared_lib_test>/testdata)
+    endif()
+
+    if (UNIX AND onnxruntime_USE_TENSORRT)
+        # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+        # simply ignore them for TensorRT EP build
+        set_property(TARGET onnxruntime_shared_lib_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
     endif()
 
     # test inference using global threadpools
@@ -1442,19 +1453,40 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+
+  set(custom_op_src_patterns
+    "${TEST_SRC_DIR}/testdata/custom_op_library/*.h"
+    "${TEST_SRC_DIR}/testdata/custom_op_library/*.cc"
+    "${TEST_SRC_DIR}/testdata/custom_op_library/cpu/cpu_ops.*"
+  )
+
+  set(custom_op_lib_include ${REPO_ROOT}/include)
+  set(custom_op_lib_option)
+  set(custom_op_lib_link ${GSL_TARGET})
+
   if (onnxruntime_USE_CUDA)
-    onnxruntime_add_shared_library(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
-                                                     ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
-    target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    list(APPEND custom_op_src_patterns
+        "${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu"
+        "${TEST_SRC_DIR}/testdata/custom_op_library/cuda/cuda_ops.*")
+    list(APPEND custom_op_lib_include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDNN_HOME}/include)
     if (HAS_QSPECTRE)
-      target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
+      list(APPEND custom_op_lib_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
     endif()
-  else()
-    onnxruntime_add_shared_library(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
   endif()
 
-  target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
-  target_link_libraries(custom_op_library PRIVATE ${GSL_TARGET})
+  if (onnxruntime_USE_ROCM)
+    list(APPEND custom_op_src_patterns
+        "${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/rocm_ops.hip"
+        "${TEST_SRC_DIR}/testdata/custom_op_library/rocm/rocm_ops.*")
+    list(APPEND custom_op_lib_include ${onnxruntime_ROCM_HOME}/include)
+    list(APPEND custom_op_lib_option "-D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1")
+  endif()
+
+  file(GLOB custom_op_src ${custom_op_src_patterns})
+  onnxruntime_add_shared_library(custom_op_library ${custom_op_src})
+  target_compile_options(custom_op_library PRIVATE ${custom_op_lib_option})
+  target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include ${custom_op_lib_include})
+  target_link_libraries(custom_op_library PRIVATE ${GSL_TARGET} ${custom_op_lib_link})
 
   if(UNIX)
     if (APPLE)
@@ -1514,6 +1546,12 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             ${ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR}/test_registercustomops.cc)
 
     set(onnxruntime_customopregistration_test_LIBS custom_op_library onnxruntime_common onnxruntime_test_utils)
+    if (NOT WIN32)
+      list(APPEND onnxruntime_customopregistration_test_LIBS nsync::nsync_cpp)
+    endif()
+    if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      list(APPEND onnxruntime_customopregistration_test_LIBS cpuinfo)
+    endif()
     if (onnxruntime_USE_TENSORRT)
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
@@ -1531,6 +1569,13 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         ${TEST_DATA_SRC}
         $<TARGET_FILE_DIR:onnxruntime_customopregistration_test>/testdata)
     endif()
+
+    if (UNIX AND onnxruntime_USE_TENSORRT)
+        # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+        # simply ignore them for TensorRT EP build
+        set_property(TARGET onnxruntime_customopregistration_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+    endif()
+
   endif()
 endif()
 
