@@ -16,7 +16,8 @@ One use case for Azure Execution Provider is for small-big models. E.g. A smalle
 while a bigger model can be deployed on Azure for higher precision. Using the Azure Execution Provider, switching between the two can be easily achieved (assuming same inputs and outputs). 
 
 Azure Execution Provider is in preview stage, and all API(s) and usage are subject to change.
-For onnxruntime 1.16, three operators are available:
+
+Till onnxruntime 1.16, three operators are available:
 
 - [OpenAIAudioToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#openaiaudiototext)
 - [AzureTextToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretexttotext)
@@ -29,10 +30,10 @@ For onnxruntime 1.16, three operators are available:
 {:toc}
 
 ## Install
-Since onnxruntime 1.16, Azure Execution Provider releases with default onnxruntime python and nuget packages.
+Azure Execution Provider releases with default onnxruntime python and nuget packages.
 
 ## Requirements
-Since onnxruntime 1.16, all Azure Execution Provider operators are released with onnxruntime extension (>=v0.9.0) python and nuget packages.
+For onnxruntime 1.16, all Azure Execution Provider operators are released with onnxruntime extension (>=v0.9.0) python and nuget packages.
 Please ensure the installation of correct onnxruntime extension packages beforehand.
 
 ## Build
@@ -44,6 +45,11 @@ For build instructions, please see the [BUILD page](../build/eps.md#azure).
 ### Python
 
 ```python
+
+# ---------------------------------------------------------------------------------------
+# Demo: running two models simultaneously - one on edge and the other remotely by a proxy,
+#       compare and pick better result in the end.
+# ---------------------------------------------------------------------------------------
 import os
 import onnx
 from onnx import helper, TensorProto
