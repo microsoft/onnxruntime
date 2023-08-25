@@ -45,11 +45,10 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #if !defined(ORT_MINIMAL_BUILD)
   std::unique_ptr<NodeSelector> selector_disallow_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
   std::unique_ptr<Action> action_disallow_16bit = std::make_unique<MergeIntoTarget>(
-      std::vector<NodeAndMoveInfo>(moves)  // Copy before std::move(moves)
-  );
+      std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
   qdq_selector_action_registry.RegisterSelectorAndAction("drop_no_int16_support",
-                                                         {{"MaxPool", {12}},  // int16 not supported by ONNX specification.
-                                                          {"Resize", {}}},    // int16 not supported by ORT implementation.
+                                                         {{"MaxPool", {12}},  // int16 unsupported by ONNX specification
+                                                          {"Resize", {}}},    // int16 unsupported by ORT implementation
                                                          std::move(selector_disallow_16bit),
                                                          std::move(action_disallow_16bit));
 
@@ -142,7 +141,8 @@ void VariadicOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // QLinearConcat does not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::InputVariadicSelector>(false /* int16_uint16_allowed */);
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::InputVariadicSelector>(
+      false /* int16_uint16_allowed */);
 
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Concat", {}}},
@@ -233,7 +233,8 @@ void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // QLinearWhere does not yet support 16bit integer types, so disable action for 16bit QDQ node groups.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::WhereSelector>(false /* int16_uint16_allowed */);
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::WhereSelector>(
+      false /* int16_uint16_allowed */);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Where", {}}},
                                                          std::move(selector),
