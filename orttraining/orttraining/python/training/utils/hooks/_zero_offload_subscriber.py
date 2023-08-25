@@ -167,9 +167,9 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         # For PyTorch runs, the sizes are all 0, it does not need a gradient because
         # param._detach().requires_grad_(False) is called.
         # But for ORT runs, the sizes are all [1], as output of weight retrieval function.
-        # So we keep track of the shapes and dtypes of the passed in tensors, then generate the grads in backward.
+        # So we keep track of the shapes and dtypes of the passed-in tensors, then generate the grads in backward.
         # While for both PyTorch and ORT runs, the grad is not important because they are not param grads
-        # any more, they are only used for completing the full backward propagation.
+        # anymore, they are only used for completing the full backward propagation.
         passed_in_param_tensors = tensor_list[args_tensor_count + kwargs_tensor_count :]
         ctx.shapes = [p.shape for p in passed_in_param_tensors]
         ctx.dtypes = [p.dtype for p in passed_in_param_tensors]
@@ -225,7 +225,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
                     raise RuntimeError(f"param {p} has no grad, this should not happen.")
                 # Param gradient accumulation is triggered here, along with the attached hooks, done by PyTorch.
                 assert p.shape == g.shape, f"param_index: {param_index} - param shape {p.shape} != grad shape {g.shape}"
-                p.backward(updated_grads[param_index + param_start_offset])
+                p.backward(g)
 
         # At this point, the **real** param grads are already updated, the following grads are only used for
         # completing the full backward propagation, will not affect parameter updates.
@@ -234,7 +234,6 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
             for shape, dtype, device in zip(ctx.shapes, ctx.dtypes, ctx.devices)
         ]
 
-        # nones = (None, ) * len(ctx.partitioned_params)
         zero_grads = updated_grads[:input_count] + tuple(passed_in_param_grad)
 
         return (None, None, None, None, None, None, *zero_grads)
@@ -401,6 +400,9 @@ class ZeROOffloadSubscriber(SubscriberBase):
         # Don't require grad for passed-in parameter, otherwise it will be treated as a leaf node, in backward
         # returned 0-sized grad did not match the param's gradient accumulator function's input shape metadata,
         # PyTorch run will fail during backward.
+        # This will not harm parameter gradient build either in ORT or PyTorch, imagine the weights are used by
+        # computation anyway, so the gradient will be built. This hook only references the parameter, but won't
+        # generate a gradient path for it.
         detached_partitioned_params = [p.detach().requires_grad_(False) for p in partitioned_params]
 
         all_tensors = args_tensors + kwargs_tensors + detached_partitioned_params
