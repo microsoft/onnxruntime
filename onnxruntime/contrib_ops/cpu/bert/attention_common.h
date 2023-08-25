@@ -103,7 +103,7 @@ constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFF
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
 
 // Minimum sequence length to enable memory efficient attention in FP32.
-constexpr int kMinSequenceLengthForMemoryEfficientAttentionFp32 = 256;
+constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
 
 }  // namespace attention
 

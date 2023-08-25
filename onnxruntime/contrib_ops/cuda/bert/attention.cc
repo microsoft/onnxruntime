@@ -40,24 +40,29 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
-  disable_fused_self_attention_ = sizeof(T) != 2 ||
-                                  ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
+  disable_fused_self_attention_ =
+      sizeof(T) != 2 ||
+      ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
-  enable_trt_flash_attention_ = sizeof(T) == 2 &&
-                                !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
+  enable_trt_flash_attention_ =
+      sizeof(T) == 2 &&
+      !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
 
-  enable_fused_causal_attention_ = sizeof(T) == 2 &&
-                                   ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFusedCausalAttention, false);
+  enable_fused_causal_attention_ =
+      sizeof(T) == 2 &&
+      ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFusedCausalAttention, false);
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-  disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
+  disable_memory_efficient_attention_ =
+      ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
 #else
   disable_memory_efficient_attention_ = true;
 #endif
 
 #if USE_FLASH_ATTENTION
-  disable_flash_attention_ = sizeof(T) != 2 || onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
-                                                   attention::kDisableFlashAttention, false);
+  disable_flash_attention_ =
+      sizeof(T) != 2 ||
+      onnxruntime::ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
 #else
   disable_flash_attention_ = true;
 #endif
@@ -176,16 +181,18 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-  bool use_memory_efficient_attention = !use_flash_attention &&
-                                        fused_runner == nullptr &&
-                                        !disable_memory_efficient_attention_ &&
-                                        nullptr == past &&
-                                        nullptr == present &&
-                                        (parameters.head_size & 7) == 0 &&
-                                        (parameters.v_head_size & 7) == 0 &&
-                                        (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
-                                        (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
-                                        has_memory_efficient_attention(sm, sizeof(T) == 2);
+  bool use_memory_efficient_attention =
+      !use_flash_attention &&
+      fused_runner == nullptr &&
+      !disable_memory_efficient_attention_ &&
+      nullptr == past &&
+      nullptr == present &&
+      (parameters.head_size & 7) == 0 &&
+      (parameters.v_head_size & 7) == 0 &&
+      (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
+      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
+      has_memory_efficient_attention(sm, sizeof(T) == 2);
+      
   if (use_memory_efficient_attention) {
     bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention = (nullptr == relative_position_bias || is_good_for_rpb);
@@ -243,7 +250,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.past = (nullptr == past) ? nullptr : reinterpret_cast<const CudaT*>(past->Data<T>());
   data.past_key = nullptr;
   data.past_value = nullptr;
-  data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  data.relative_position_bias = (nullptr == relative_position_bias)
+                                    ? nullptr
+                                    : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());

@@ -617,7 +617,9 @@ Status FlashAttention(
   const void* query = data.no_qkv_workspace ? data.query : data.workspace;
   const void* key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   const void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
-  void* softmax_lse_buffer = data.no_qkv_workspace ? data.workspace : (data.workspace + elements_qk + elements_qk + elements_v);
+  void* softmax_lse_buffer = data.no_qkv_workspace
+                                 ? data.workspace
+                                 : (data.workspace + elements_qk + elements_qk + elements_v);
 
   ORT_RETURN_IF_ERROR(
       onnxruntime::flash::mha_varlen_fwd(
@@ -641,10 +643,10 @@ Status FlashAttention(
           ));
 
   DUMP_TENSOR_INIT();
-  DUMP_TENSOR_D("PackedMHA flash q(BSNH)", reinterpret_cast<const T*>(query), parameters.token_count, num_heads, qk_head_size);
-  DUMP_TENSOR_D("PackedMHA flash k(BSNH)", reinterpret_cast<const T*>(key), parameters.token_count, num_heads, qk_head_size);
-  DUMP_TENSOR_D("PackedMHA flash v(BSNH)", reinterpret_cast<const T*>(value), parameters.token_count, num_heads, v_head_size);
-  DUMP_TENSOR_D("PackedMHA flash cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
+  DUMP_TENSOR_D("q(BSNH)", reinterpret_cast<const T*>(query), parameters.token_count, num_heads, qk_head_size);
+  DUMP_TENSOR_D("k(BSNH)", reinterpret_cast<const T*>(key), parameters.token_count, num_heads, qk_head_size);
+  DUMP_TENSOR_D("v(BSNH)", reinterpret_cast<const T*>(value), parameters.token_count, num_heads, v_head_size);
+  DUMP_TENSOR_D("cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
   DUMP_TENSOR("PackedMHA flash output", data.output, parameters.token_count, num_heads, v_head_size);
 
   return Status::OK();
@@ -707,10 +709,10 @@ Status FusedAttentionCutlass(
   run_memory_efficient_attention(p);
 
   DUMP_TENSOR_INIT();
-  DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", reinterpret_cast<const T*>(p.query), parameters.token_count, num_heads, qk_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass k(BSNH)", reinterpret_cast<const T*>(p.key), parameters.token_count, num_heads, qk_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass v(BSNH)", reinterpret_cast<const T*>(p.value), parameters.token_count, num_heads, v_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
+  DUMP_TENSOR_D("q(BSNH)", reinterpret_cast<const T*>(p.query), parameters.token_count, num_heads, qk_head_size);
+  DUMP_TENSOR_D("k(BSNH)", reinterpret_cast<const T*>(p.key), parameters.token_count, num_heads, qk_head_size);
+  DUMP_TENSOR_D("v(BSNH)", reinterpret_cast<const T*>(p.value), parameters.token_count, num_heads, v_head_size);
+  DUMP_TENSOR_D("cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
   DUMP_TENSOR("PackedMHA cutlass output", data.output, parameters.token_count, num_heads, v_head_size);
 
   return Status::OK();
@@ -773,10 +775,10 @@ Status UnfusedAttention(
 
   // Q, K and V are ready now
   DUMP_TENSOR_INIT();
-  DUMP_TENSOR_D("PackedMHA unfused q (BNSH)", q, batch_size, num_heads, sequence_length, qk_head_size);
-  DUMP_TENSOR_D("PackedMHA unfused k (BNSH)", k, batch_size, num_heads, sequence_length, qk_head_size);
-  DUMP_TENSOR_D("PackedMHA unfused v (BNSH)", v, batch_size, num_heads, sequence_length, v_head_size);
-  DUMP_TENSOR_D("PackedMHA unfused QK", scaled_qk, batch_size, num_heads, sequence_length, sequence_length);
+  DUMP_TENSOR_D("q (BNSH)", q, batch_size, num_heads, sequence_length, qk_head_size);
+  DUMP_TENSOR_D("k (BNSH)", k, batch_size, num_heads, sequence_length, qk_head_size);
+  DUMP_TENSOR_D("v (BNSH)", v, batch_size, num_heads, sequence_length, v_head_size);
+  DUMP_TENSOR_D("QK", scaled_qk, batch_size, num_heads, sequence_length, sequence_length);
 
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length);
@@ -793,7 +795,7 @@ Status UnfusedAttention(
       num_heads,
       attention_score, stream));
 
-  DUMP_TENSOR_D("PackedMHA unfused Softmax", attention_score, batch_size, num_heads, sequence_length, sequence_length);
+  DUMP_TENSOR_D("Softmax", attention_score, batch_size, num_heads, sequence_length, sequence_length);
 
   // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
   T* temp_output = qkv;

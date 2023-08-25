@@ -198,8 +198,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   bool is_long_sequence = sizeof(T) == 2 ||  // sequence length threshold is 0 for FP16
-                          parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32 ||
-                          parameters.kv_sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32;
+                          parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32 ||
+                          parameters.kv_sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32;
 
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
 

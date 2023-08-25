@@ -172,7 +172,7 @@ def parse_arguments():
         default=-1,
         type=int,
         help="Maximum number of NVCC threads to be used in parallel. "
-        "If the optional value is -1 or unspecified, it is deduced from OS type, number of CPUs and free memory size etc.",
+        "If the optional value is negative or unspecified, the value of --parallel is used.",
     )
 
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
