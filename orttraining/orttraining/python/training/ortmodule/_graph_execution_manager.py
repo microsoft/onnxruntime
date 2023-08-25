@@ -618,9 +618,15 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._runtime_inspector.enable_memory_inspector(self._original_module)
 
     def _append_pull_weight_trigger_as_input(self, kwargs: Dict, device: torch.device):
-        from ._zero_stage3_compatibility import STAGE3_PULL_WEIGHT_TRIGGER_NAME
+        from ._zero_stage3_compatibility import (
+            STAGE3_PULL_WEIGHT_TRIGGER_NAME,
+            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
+            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+        )
 
-        kwargs[STAGE3_PULL_WEIGHT_TRIGGER_NAME] = torch.zeros([1], dtype=torch.float32, device=device).requires_grad_()
+        kwargs[STAGE3_PULL_WEIGHT_TRIGGER_NAME] = torch.zeros(
+            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE, dtype=STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE, device=device
+        ).requires_grad_()
 
         return kwargs
 

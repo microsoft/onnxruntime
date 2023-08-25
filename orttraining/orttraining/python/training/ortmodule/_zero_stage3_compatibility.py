@@ -15,6 +15,8 @@ from ._custom_autograd_function_exporter import PythonOpShapeInferStore
 from ._utils import get_fully_qualified_class_name
 
 STAGE3_PULL_WEIGHT_TRIGGER_NAME = "pull_weight_trigger"
+STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE = TensorProto.FLOAT
+STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE = [1]
 
 
 def post_processing_enable_zero_stage3_compat(
@@ -31,7 +33,7 @@ def post_processing_enable_zero_stage3_compat(
     """
 
     # Register symbolic shape inference functions for PythonOp used in DeepSpeed ZeRO stage3.
-    _zero_stage3_register_symbolic_functions()
+    _register_symbolic_shape_infer_functions()
 
     # Create weight retrieving function using zero_stage3_named_params.
     func_full_qual_name = _create_weight_retrieval_function(zero_stage3_named_params)
@@ -54,17 +56,14 @@ def post_processing_enable_zero_stage3_compat(
                 return attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
         return None
 
-    trigger_data_type = TensorProto.FLOAT
-    trigger_data_dims = [1]
-
     # Create weight retrieving PythonOp.
     new_input, weight_pull_node = _create_weight_retrieval_pythonop(
         zero_stage3_named_params,
         func_full_qual_name,
         STAGE3_PULL_WEIGHT_TRIGGER_NAME,
         [_get_param_pull_trigger_name(pname) for pname in zero_stage3_named_params],
-        trigger_data_type,
-        trigger_data_dims,
+        STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
+        STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
     )
 
     # Connect weight consumers to use the full-sized parameter output of ORTZeROOffloadPreForwardFunction.
@@ -113,8 +112,8 @@ def post_processing_enable_zero_stage3_compat(
         _update_python_op_input_related_attributes(
             pre_forward_pythonop_node,
             new_input_name,
-            len(trigger_data_dims),  # new rank
-            trigger_data_type,  # new data type
+            len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE),  # new rank
+            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,  # new data type
         )
 
         output_index = reverse_index_among_inputs + len(pre_forward_pythonop_node.output)
@@ -194,7 +193,7 @@ def _create_weight_retrieval_function(
     return func_full_qual_name
 
 
-def _zero_stage3_register_symbolic_functions():
+def _register_symbolic_shape_infer_functions():
     """This function is used to register symbolic shape inference functions for PythonOp used in
     DeepSpeed ZeRO stage3."""
 
@@ -234,14 +233,16 @@ def _create_weight_retrieval_pythonop(
     func_full_qual_name: str,
     input_name: str,
     output_names: List[str],
-    trigger_data_type,
-    trigger_data_dims: List[int],
+    STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
+    STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE: List[int],
 ) -> Tuple[ValueInfoProto, NodeProto]:
     """This function is used to create a weight retrieving PythonOp."""
     offload_param_count = 0 if zero_stage3_named_params is None else len(zero_stage3_named_params)
-    new_input = helper.make_tensor_value_info(input_name, trigger_data_type, trigger_data_dims)
-    output_rank_for_pull_weight_trigger = len(trigger_data_dims)
-    output_dtype_for_pull_weight_trigger = trigger_data_type
+    new_input = helper.make_tensor_value_info(
+        input_name, STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE, STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE
+    )
+    output_rank_for_pull_weight_trigger = len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE)
+    output_dtype_for_pull_weight_trigger = STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE
     output_tensor_ranks = [
         output_rank_for_pull_weight_trigger,
     ] * offload_param_count
@@ -253,8 +254,8 @@ def _create_weight_retrieval_pythonop(
         "comment": "",
         "inplace": 0,
         "input_convention": "d",
-        "input_tensor_ranks": [len(trigger_data_dims)],
-        "input_tensor_types": [trigger_data_type],
+        "input_tensor_ranks": [len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE)],
+        "input_tensor_types": [STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE],
         "output_tensor_ranks": output_tensor_ranks,
         "output_tensor_types": output_tensor_types,
         "training_mode": 1,
