@@ -124,7 +124,7 @@ if __name__ == '__main__':
 
         def get_outputs(self):
             if self.__err != '':
-                raise Exception(err)
+                raise Exception(self.__err)
             return self.__outputs;
 
         def wait(self, sec):
@@ -137,9 +137,9 @@ if __name__ == '__main__':
 
     run_async_state = RunAsyncState();
     # infer proxy model asynchronously
-    proxy_model_outputs = proxy_model_sess.run_async(None, proxy_model_inputs, ProxyRunCallback, run_async_state)
+    proxy_model_sess.run_async(None, proxy_model_inputs, ProxyRunCallback, run_async_state)
 
-
+    # in the same time, run the edge
     edge_model_path = get_whiper_tiny()
     edge_model_sess = InferenceSession(edge_model_path,
         sess_opt, providers=['CPUExecutionProvider'])
