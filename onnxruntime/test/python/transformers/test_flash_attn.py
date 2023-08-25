@@ -178,14 +178,17 @@ def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None, kvpack
 
     if query_padding_mask is not None:
         q_unpad, indices_q, cu_seqlens_q, max_seqlen_q = unpad_input(q, query_padding_mask)
+
         def output_pad_fn(output_unpad):
             return pad_input(output_unpad, indices_q, batch_size, seqlen_q)
+
     else:
         q_unpad = rearrange(q, "b s h d -> (b s) h d")
         cu_seqlens_q = torch.arange(
             0, (batch_size + 1) * seqlen_q, step=seqlen_q, dtype=torch.int32, device=q_unpad.device
         )
         max_seqlen_q = seqlen_q
+
         def output_pad_fn(output_unpad):
             return rearrange(output_unpad, "(b s) h d -> b s h d", b=batch_size)
 
@@ -206,11 +209,15 @@ def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None, kvpack
         qkv_unpad = torch.stack([q_unpad, k_unpad, v_unpad], dim=1)
         qkv = torch.stack([q, k, v], dim=2)
         if query_padding_mask is not None:
+
             def dqkv_pad_fn(dqkv_unpad):
                 return pad_input(dqkv_unpad, indices_q, batch_size, seqlen_q)
+
         else:
+
             def dqkv_pad_fn(dqkv_unpad):
                 return rearrange(dqkv_unpad, "(b s) t h d -> b s t h d", b=batch_size)
+
         return (
             qkv_unpad.detach().requires_grad_(),
             cu_seqlens_q,
@@ -224,11 +231,15 @@ def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None, kvpack
         kv = torch.stack([k, v], dim=2)
         dq_pad_fn = output_pad_fn
         if key_padding_mask is not None:
+
             def dkv_pad_fn(dkv_unpad):
                 return pad_input(dkv_unpad, indices_k, batch_size, seqlen_k)
+
         else:
+
             def dkv_pad_fn(dkv_unpad):
                 return rearrange(dkv_unpad, "(b s) t h d -> b s t h d", b=batch_size)
+
         return (
             q_unpad.detach().requires_grad_(),
             kv_unpad.detach().requires_grad_(),
@@ -245,11 +256,15 @@ def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None, kvpack
     else:
         dq_pad_fn = output_pad_fn
         if key_padding_mask is not None:
+
             def dk_pad_fn(dk_unpad):
                 return pad_input(dk_unpad, indices_k, batch_size, seqlen_k)
+
         else:
+
             def dk_pad_fn(dk_unpad):
                 return rearrange(dk_unpad, "(b s) h d -> b s h d", b=batch_size)
+
         return (
             q_unpad.detach().requires_grad_(),
             k_unpad.detach().requires_grad_(),

@@ -65,7 +65,7 @@ class IndexFirstAxisResidual(torch.autograd.Function):
     def forward(ctx, input, indices):
         ctx.save_for_backward(indices)
         assert input.ndim >= 2
-        ctx.first_axis_dim, other_shape = input.shape[0], input.shape[1:]
+        ctx.first_axis_dim, _ = input.shape[0], input.shape[1:]
         # TD [2022-03-04] For some reason torch.gather is a bit faster than indexing.
         output = input[indices]
         # We don't want to reshape input (b ... -> b (...)) since it could change the channel_last
