@@ -250,7 +250,7 @@ export const createConvTranspose2DProgramInfo =
       // Disabled due to weight matrix layout issue
       // const isVec4 = attributes.group === 1 && isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
       const dispatch = [
-        outputSize / 64,
+        Math.ceil(outputSize / 64),
         1,
         1,
       ];
