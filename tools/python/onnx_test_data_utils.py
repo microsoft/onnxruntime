@@ -221,15 +221,15 @@ if __name__ == "__main__":
         data = create_random_data(args.shape, args.datatype, args.min_value, args.max_value, args.seed)
         numpy_to_pb(args.name, data, args.output)
     elif args.action == "raw_to_pb":
-        if not args.output or not args.name:
-            print("Missing argument. Need output and name to be specified.", file=sys.stderr)
+        if not args.input or not args.output or not args.name:
+            print("Missing argument. Need input, output and name to be specified.", file=sys.stderr)
             sys.exit(-1)
 
         data = np.fromfile(args.input, dtype=np.ubyte)
         numpy_to_pb(args.name, data, args.output)
     elif args.action == "string_to_pb":
-        if not args.output or not args.name:
-            print("Missing argument. Need output and name to be specified.", file=sys.stderr)
+        if not args.input or not args.output or not args.name:
+            print("Missing argument. Need input, output and name to be specified.", file=sys.stderr)
             sys.exit(-1)
 
         data = np.ndarray((1), dtype=object)

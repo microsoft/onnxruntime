@@ -61,7 +61,7 @@ namespace MauiModelTester
             OrtValue ortValue = null;
 
             // special case for strings
-            if ((TensorElementType)tensorProto.DataType == TensorElementType.String)
+            if (tensorElementType == typeof(string))
             {
                 var numElements = tensorProto.Dims.Aggregate(1L, (x, y) => x * y);
                 ortValue = OrtValue.CreateTensorWithEmptyStrings(OrtAllocator.DefaultInstance,
@@ -70,7 +70,7 @@ namespace MauiModelTester
                 int idx = 0;
                 foreach (var str in tensorProto.StringData)
                 {
-                    ortValue.FillStringTensorElement(str.Span, idx++);
+                    ortValue.StringTensorSetElementAt(str.Span, idx++);
                 }
             }
             else
@@ -111,7 +111,7 @@ namespace MauiModelTester
                 case TensorElementType.Int8:
                     return typeof(sbyte);
                 case TensorElementType.String:
-                    return typeof(byte);
+                    return typeof(string);
                 case TensorElementType.Bool:
                     return typeof(bool);
                 default:
