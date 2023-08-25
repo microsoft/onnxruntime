@@ -33,26 +33,26 @@ enum ActivationType {
 };
 
 template <typename T>
-constexpr hipblasDatatype_t HipBlasDataTypeFor();
+constexpr hipblasltDatatype_t HipBlasDataTypeFor();
 
 template <>
-constexpr hipblasDatatype_t HipBlasDataTypeFor<float>() {
-  return HIPBLAS_R_32F;
+constexpr hipblasltDatatype_t HipBlasDataTypeFor<float>() {
+  return HIPBLASLT_R_32F;
 }
 
 template <>
-constexpr hipblasDatatype_t HipBlasDataTypeFor<half>() {
-  return HIPBLAS_R_16F;
+constexpr hipblasltDatatype_t HipBlasDataTypeFor<half>() {
+  return HIPBLASLT_R_16F;
 }
 
 template <>
-constexpr hipblasDatatype_t HipBlasDataTypeFor<BFloat16>() {
-  return HIPBLAS_R_16B;
+constexpr hipblasltDatatype_t HipBlasDataTypeFor<BFloat16>() {
+  return HIPBLASLT_R_16B;
 }
 
 template <>
-constexpr hipblasDatatype_t HipBlasDataTypeFor<double>() {
-  return HIPBLAS_R_64F;
+constexpr hipblasltDatatype_t HipBlasDataTypeFor<double>() {
+  return HIPBLASLT_R_64F;
 }
 
 template <typename Layout>
@@ -104,7 +104,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
 
   hipblasOperation_t trans_a = MapCKLayoutToHipBlasLt<BLayout>();
   hipblasOperation_t trans_b = MapCKLayoutToHipBlasLt<ALayout>();
-  hipblasDatatype_t in_out_datatype = HipBlasDataTypeFor<T>();
+  hipblasltDatatype_t in_out_datatype = HipBlasDataTypeFor<T>();
   std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
 
   HIPBLASLT_CALL_THROW(hipblaslt_ext::getAllAlgos(handle,
@@ -149,7 +149,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutCreate(&mat_a, in_out_datatype, row_a, col_a, lda));
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutCreate(&mat_b, in_out_datatype, row_b, col_b, ldb));
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutCreate(&mat_c, in_out_datatype, row_c, col_c, ldc));
-      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescCreate(&matmul, HIPBLASLT_COMPUTE_F32, HIPBLAS_R_32F));
+      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescCreate(&matmul, HIPBLASLT_COMPUTE_F32, HIPBLASLT_R_32F));
 
       int batch = GetBatchCountFromParams<T>(params);
       if (batch > 1) {
@@ -213,9 +213,11 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != HIPBLAS_STATUS_SUCCESS, "hipBLASLt find_all: algo not supported, index ", std::to_string(i));
-      // TODO: support workspace in next PR
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          workspace_size > 0, "hipBLASLt find_all: extra workspace not supported for now.");
+
+      IAllocatorUniquePtr<void> workspace_buffer;
+      if (workspace_size > 0) {
+        workspace_buffer = params->tuning_ctx->GetScratchBuffer(workspace_size, params->stream);
+      }
 
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmul(op_handle,
                                                 matmul,
@@ -230,9 +232,9 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
                                                 params->c,
                                                 mat_c,
                                                 &algo_i,
-                                                nullptr,
-                                                0,
-                                                params->stream));
+                                                workspace_buffer.get(),
+                                                workspace_size,
+                                                params->StreamHandle()));
 
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescDestroy(matmul));
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutDestroy(mat_a));
