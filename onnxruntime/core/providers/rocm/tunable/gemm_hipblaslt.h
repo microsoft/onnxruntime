@@ -122,7 +122,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
   // Sort heuristic_result by algo index to make sure the order of returned algos is deterministic.
   std::sort(heuristic_result.begin(),
             heuristic_result.end(),
-            [](const hipblasLtMatmulHeuristicResult_t& a, const hipblasLtMatmulHeuristicResult_t& b) {
+            [](hipblasLtMatmulHeuristicResult_t& a, hipblasLtMatmulHeuristicResult_t& b) {
               return hipblaslt_ext::getIndexFromAlgo(a.algo) < hipblaslt_ext::getIndexFromAlgo(b.algo);
             });
 
@@ -253,7 +253,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
       return Status::OK();
     };
     std::string type_string = onnxruntime::MakeString(
-        TypeStringFor<T, ParamsT>(), "HipBlasLt_", i, "_algo", algo_index);
+        TypeStringFor<T, ParamsT>(), "HipBlasLt_", i, "_algo_", algo_index);
     ret.emplace_back(type_string, std::move(hipblaslt_gemm_op));
   }
   return ret;

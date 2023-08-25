@@ -177,7 +177,7 @@ auto GetRocBlasGemmTypeStringAndOps() {
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(
-        onnxruntime::MakeString("RocBlasGemm_", i, "_sol", solution), std::move(rocblas_gemm_op)));
+        onnxruntime::MakeString("RocBlasGemm_", i, "_sol_", solution), std::move(rocblas_gemm_op)));
   }
   return ret;
 }
@@ -250,7 +250,7 @@ auto GetRocBlasBatchedGemmTypeStringAndOps() {
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(
-        onnxruntime::MakeString("RocBlasBatchedGemm_", i, "_sol", solution), std::move(rocblas_gemm_op)));
+        onnxruntime::MakeString("RocBlasBatchedGemm_", i, "_sol_", solution), std::move(rocblas_gemm_op)));
   }
   return ret;
 }
@@ -323,7 +323,7 @@ auto GetRocBlasStridedBatchedGemmTypeStringAndOps() {
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(
-        onnxruntime::MakeString("RocBlasStridedBatchedGemm_", i, "_sol", solution), std::move(rocblas_gemm_op)));
+        onnxruntime::MakeString("RocBlasStridedBatchedGemm_", i, "_sol_", solution), std::move(rocblas_gemm_op)));
   }
   return ret;
 }
