@@ -497,10 +497,10 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
   constexpr std::array<int64_t, 2> dense_shape{3, 3};
-  constexpr std::array<float, 9> dense_data = {
-      0, 0, 1.764052391052246f,
-      0.40015721321105957f, 0, 0.978738009929657f,
-      0, 0, 0};
+  //constexpr std::array<float, 9> dense_data = {
+  //    0, 0, 1.764052391052246f,
+  //    0.40015721321105957f, 0, 0.978738009929657f,
+  //    0, 0, 0};
 
   constexpr std::array<float, 3> expected_values = {1.764052391052246f, 0.40015721321105957f, 0.978738009929657f};
   constexpr std::array<int64_t, 3> expected_linear_indices = {2, 3, 5};
