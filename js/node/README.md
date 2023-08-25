@@ -26,7 +26,7 @@ To use on platforms without pre-built binaries, you can build Node.js binding fr
 
 # GPU Support
 
-Right now Windows version supports only DML provider, Linux x64 can use CUDA and TensorRT.
+Right now, the Windows version supports only the DML provider. Linux x64 can use CUDA and TensorRT.
 
 ## License
 
