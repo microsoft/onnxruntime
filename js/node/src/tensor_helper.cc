@@ -106,7 +106,7 @@ const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_
     {"uint64", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64}};
 
 // currently only support tensor
-Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* memory_info) {
+Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo *memory_info) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
   // check 'dims'

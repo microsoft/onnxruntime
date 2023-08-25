@@ -9,11 +9,15 @@
 
 #include "common.h"
 #include "session_options_helper.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
 #ifdef USE_DML
 #include "dml_provider_factory.h"
 #endif
 #ifdef USE_TENSORRT
 #include "tensorrt_provider_factory.h"
+#include "tensorrt_provider_options.h"
 #endif
 #ifdef USE_COREML
 #include "coreml_provider_factory.h"
@@ -56,11 +60,19 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
       // TODO: handling CPU EP options
 #ifdef USE_CUDA
     } else if (name == "cuda") {
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, deviceId));
+      OrtCUDAProviderOptionsV2 *options;
+      Ort::GetApi().CreateCUDAProviderOptions(&options);
+      options->device_id = deviceId;
+      sessionOptions.AppendExecutionProvider_CUDA_V2(*options);
+      Ort::GetApi().ReleaseCUDAProviderOptions(options);
 #endif
 #ifdef USE_TENSORRT
     } else if (name == "tensorrt") {
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sessionOptions, deviceId));
+      OrtTensorRTProviderOptionsV2 *options;
+      Ort::GetApi().CreateTensorRTProviderOptions(&options);
+      options->device_id = deviceId;
+      sessionOptions.AppendExecutionProvider_TensorRT_V2(*options);
+      Ort::GetApi().ReleaseTensorRTProviderOptions(options);
 #endif
 #ifdef USE_DML
     } else if (name == "dml") {

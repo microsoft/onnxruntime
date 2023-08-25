@@ -4,11 +4,11 @@
 #include "onnxruntime_cxx_api.h"
 
 #include "common.h"
+#include "directml_load_helper.h"
 #include "inference_session_wrap.h"
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
-#include "directml_load_helper.h"
 
 Napi::FunctionReference InferenceSessionWrap::constructor;
 Ort::Env *InferenceSessionWrap::ortEnv;
@@ -159,7 +159,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   std::vector<bool> reuseOutput;
   size_t inputIndex = 0;
   size_t outputIndex = 0;
-  OrtMemoryInfo* memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault).release();
+  OrtMemoryInfo *memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault).release();
 
   try {
     for (auto &name : inputNames_) {
@@ -210,7 +210,7 @@ Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo
   Napi::EscapableHandleScope scope(env);
   Napi::Array result = Napi::Array::New(env);
 
-  auto createObject = [&env](const std::string& name, const bool bundled) -> Napi::Object {
+  auto createObject = [&env](const std::string &name, const bool bundled) -> Napi::Object {
     Napi::Object result = Napi::Object::New(env);
     result.Set("name", name);
     result.Set("bundled", bundled);

@@ -56,16 +56,16 @@ if (ONNXRUNTIME_BUILD_DIR && typeof ONNXRUNTIME_BUILD_DIR === 'string') {
   args.push(`--CDONNXRUNTIME_BUILD_DIR=${ONNXRUNTIME_BUILD_DIR}`);
 }
 if (USE_DML) {
-  args.push('--CDUSE_DML');
+  args.push('--CDUSE_DML=ON');
 }
 if (USE_CUDA) {
-  args.push('--CDUSE_CUDA');
+  args.push('--CDUSE_CUDA=ON');
 }
 if (USE_TENSORRT) {
-  args.push('--CDUSE_TENSORRT');
+  args.push('--CDUSE_TENSORRT=ON');
 }
 if (USE_COREML) {
-  args.push('--CDUSE_COREML');
+  args.push('--CDUSE_COREML=ON');
 }
 
 // set CMAKE_OSX_ARCHITECTURES for macOS build
