@@ -10,12 +10,15 @@
 # license information.
 # -------------------------------------------------------------------------
 import math
-from onnx import TensorProto, helper
-from onnxruntime import InferenceSession, SessionOptions
+
 import numpy
 import torch
+from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
-from bert_padding import unpad_input, pad_input
+from onnx import TensorProto, helper
+
+from onnxruntime import InferenceSession, SessionOptions
+
 torch.manual_seed(0)
 
 
@@ -152,14 +155,13 @@ def generate_random_padding_mask(max_seqlen, batch_size, device, mode="random"):
         lengths = torch.full((batch_size, 1), max_seqlen, device=device, dtype=torch.int32)
     elif mode == "random":
         lengths = torch.randint(max(1, max_seqlen - 20), max_seqlen, (batch_size, 1), device=device)
-    elif mode == "third":
+    else:
         lengths = torch.randint(max_seqlen // 3, max_seqlen, (batch_size, 1), device=device)
     padding_mask = repeat(torch.arange(max_seqlen, device=device), "s -> b s", b=batch_size) < lengths
     return padding_mask
 
 
-def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None,
-                 kvpacked=False, qkvpacked=False):
+def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None, kvpacked=False, qkvpacked=False):
     """
     Arguments:
         q: (batch_size, seqlen_q, nheads, d)
@@ -176,22 +178,26 @@ def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None,
 
     if query_padding_mask is not None:
         q_unpad, indices_q, cu_seqlens_q, max_seqlen_q = unpad_input(q, query_padding_mask)
-        output_pad_fn = lambda output_unpad: pad_input(output_unpad, indices_q, batch_size, seqlen_q)
+        def output_pad_fn(output_unpad):
+            return pad_input(output_unpad, indices_q, batch_size, seqlen_q)
     else:
-        q_unpad = rearrange(q, 'b s h d -> (b s) h d')
-        cu_seqlens_q = torch.arange(0, (batch_size + 1) * seqlen_q, step=seqlen_q, dtype=torch.int32,
-                                    device=q_unpad.device)
+        q_unpad = rearrange(q, "b s h d -> (b s) h d")
+        cu_seqlens_q = torch.arange(
+            0, (batch_size + 1) * seqlen_q, step=seqlen_q, dtype=torch.int32, device=q_unpad.device
+        )
         max_seqlen_q = seqlen_q
-        output_pad_fn = lambda output_unpad: rearrange(output_unpad, '(b s) h d -> b s h d', b=batch_size)
+        def output_pad_fn(output_unpad):
+            return rearrange(output_unpad, "(b s) h d -> b s h d", b=batch_size)
 
     if key_padding_mask is not None:
         k_unpad, indices_k, cu_seqlens_k, max_seqlen_k = unpad_input(k, key_padding_mask)
         v_unpad, _, _, _ = unpad_input(v, key_padding_mask)
     else:
-        k_unpad = rearrange(k, 'b s h d -> (b s) h d')
-        v_unpad = rearrange(v, 'b s h d -> (b s) h d')
-        cu_seqlens_k = torch.arange(0, (batch_size + 1) * seqlen_k, step=seqlen_k, dtype=torch.int32,
-                                    device=k_unpad.device)
+        k_unpad = rearrange(k, "b s h d -> (b s) h d")
+        v_unpad = rearrange(v, "b s h d -> (b s) h d")
+        cu_seqlens_k = torch.arange(
+            0, (batch_size + 1) * seqlen_k, step=seqlen_k, dtype=torch.int32, device=k_unpad.device
+        )
         max_seqlen_k = seqlen_k
 
     if qkvpacked:
@@ -200,35 +206,65 @@ def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None,
         qkv_unpad = torch.stack([q_unpad, k_unpad, v_unpad], dim=1)
         qkv = torch.stack([q, k, v], dim=2)
         if query_padding_mask is not None:
-            dqkv_pad_fn = lambda dqkv_unpad: pad_input(dqkv_unpad, indices_q, batch_size, seqlen_q)
+            def dqkv_pad_fn(dqkv_unpad):
+                return pad_input(dqkv_unpad, indices_q, batch_size, seqlen_q)
         else:
-            dqkv_pad_fn = lambda dqkv_unpad: rearrange(dqkv_unpad, '(b s) t h d -> b s t h d', b=batch_size)
-        return (qkv_unpad.detach().requires_grad_(), cu_seqlens_q, max_seqlen_q,
-                qkv.detach().requires_grad_(), output_pad_fn, dqkv_pad_fn)
+            def dqkv_pad_fn(dqkv_unpad):
+                return rearrange(dqkv_unpad, "(b s) t h d -> b s t h d", b=batch_size)
+        return (
+            qkv_unpad.detach().requires_grad_(),
+            cu_seqlens_q,
+            max_seqlen_q,
+            qkv.detach().requires_grad_(),
+            output_pad_fn,
+            dqkv_pad_fn,
+        )
     elif kvpacked:
         kv_unpad = torch.stack([k_unpad, v_unpad], dim=1)
         kv = torch.stack([k, v], dim=2)
         dq_pad_fn = output_pad_fn
         if key_padding_mask is not None:
-            dkv_pad_fn = lambda dkv_unpad: pad_input(dkv_unpad, indices_k, batch_size, seqlen_k)
+            def dkv_pad_fn(dkv_unpad):
+                return pad_input(dkv_unpad, indices_k, batch_size, seqlen_k)
         else:
-            dkv_pad_fn = lambda dkv_unpad: rearrange(dkv_unpad, '(b s) t h d -> b s t h d', b=batch_size)
-        return (q_unpad.detach().requires_grad_(), kv_unpad.detach().requires_grad_(),
-                cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
-                q.detach().requires_grad_(), kv.detach().requires_grad_(),
-                output_pad_fn, dq_pad_fn, dkv_pad_fn)
+            def dkv_pad_fn(dkv_unpad):
+                return rearrange(dkv_unpad, "(b s) t h d -> b s t h d", b=batch_size)
+        return (
+            q_unpad.detach().requires_grad_(),
+            kv_unpad.detach().requires_grad_(),
+            cu_seqlens_q,
+            cu_seqlens_k,
+            max_seqlen_q,
+            max_seqlen_k,
+            q.detach().requires_grad_(),
+            kv.detach().requires_grad_(),
+            output_pad_fn,
+            dq_pad_fn,
+            dkv_pad_fn,
+        )
     else:
         dq_pad_fn = output_pad_fn
         if key_padding_mask is not None:
-            dk_pad_fn = lambda dk_unpad: pad_input(dk_unpad, indices_k, batch_size, seqlen_k)
+            def dk_pad_fn(dk_unpad):
+                return pad_input(dk_unpad, indices_k, batch_size, seqlen_k)
         else:
-            dk_pad_fn = lambda dk_unpad: rearrange(dk_unpad, '(b s) h d -> b s h d', b=batch_size)
-        return (q_unpad.detach().requires_grad_(), k_unpad.detach().requires_grad_(),
-                v_unpad.detach().requires_grad_(),
-                cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
-                q.detach().requires_grad_(), k.detach().requires_grad_(),
-                v.detach().requires_grad_(),
-                output_pad_fn, dq_pad_fn, dk_pad_fn)
+            def dk_pad_fn(dk_unpad):
+                return rearrange(dk_unpad, "(b s) h d -> b s h d", b=batch_size)
+        return (
+            q_unpad.detach().requires_grad_(),
+            k_unpad.detach().requires_grad_(),
+            v_unpad.detach().requires_grad_(),
+            cu_seqlens_q,
+            cu_seqlens_k,
+            max_seqlen_q,
+            max_seqlen_k,
+            q.detach().requires_grad_(),
+            k.detach().requires_grad_(),
+            v.detach().requires_grad_(),
+            output_pad_fn,
+            dq_pad_fn,
+            dk_pad_fn,
+        )
 
 
 def create_inputs(config: Config, kv_packed=False, qkv_packed=True):
@@ -393,14 +429,36 @@ def parity_check(
         out_ref, _ = attention_qkvpacked_ref(qkv, key_padding_mask, 0.0, None, causal=False)
         out_ref = out_ref.detach().cpu().numpy()
     else:
-        q = torch.randn(config.batch_size, config.sequence_length, config.num_heads, config.head_size, device="cuda", dtype=torch.float16, requires_grad=False)
-        k = torch.randn(config.batch_size, config.kv_sequence_length, config.num_heads, config.head_size, device="cuda", dtype=torch.float16, requires_grad=False)
-        v = torch.randn(config.batch_size, config.kv_sequence_length, config.num_heads, config.head_size, device="cuda", dtype=torch.float16, requires_grad=False)
+        q = torch.randn(
+            config.batch_size,
+            config.sequence_length,
+            config.num_heads,
+            config.head_size,
+            device="cuda",
+            dtype=torch.float16,
+            requires_grad=False,
+        )
+        k = torch.randn(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.num_heads,
+            config.head_size,
+            device="cuda",
+            dtype=torch.float16,
+            requires_grad=False,
+        )
+        v = torch.randn(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.num_heads,
+            config.head_size,
+            device="cuda",
+            dtype=torch.float16,
+            requires_grad=False,
+        )
         out = flash_attn_func(q, k, v, config)
         out = torch.squeeze(out, 0)
-        out = torch.reshape(
-            out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size)
-        )
+        out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
         out = out.detach().cpu().numpy()
         # Pytorch to compare
         out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None)
@@ -428,16 +486,27 @@ def parity_check(
 
 
 if __name__ == "__main__":
-    print('-------- TEST PACKED MHA ---------')
+    print("-------- TEST PACKED MHA ---------")
     for b in [5]:
         for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
             for n in [6]:
                 for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
                     config = Config(b, s, s, n, h)
                     parity_check(config, True)
-    print('-------- TEST MHA ---------')
+    print("-------- TEST MHA ---------")
     for b in [5]:
-        for s, s2 in [(113, 203), (128, 217), (113, 211), (108, 256), (256, 512), (512, 256), (1024, 1024), (1023, 1024), (1024, 1023), (2048, 2048)]:
+        for s, s2 in [
+            (113, 203),
+            (128, 217),
+            (113, 211),
+            (108, 256),
+            (256, 512),
+            (512, 256),
+            (1024, 1024),
+            (1023, 1024),
+            (1024, 1023),
+            (2048, 2048),
+        ]:
             for n in [6]:
                 for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
                     config = Config(b, s, s2, n, h)

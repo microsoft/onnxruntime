@@ -2,7 +2,6 @@
 
 import torch
 import torch.nn.functional as F
-
 from einops import rearrange, repeat
 
 
@@ -67,7 +66,6 @@ class IndexFirstAxisResidual(torch.autograd.Function):
         ctx.save_for_backward(indices)
         assert input.ndim >= 2
         ctx.first_axis_dim, other_shape = input.shape[0], input.shape[1:]
-        second_dim = other_shape.numel()
         # TD [2022-03-04] For some reason torch.gather is a bit faster than indexing.
         output = input[indices]
         # We don't want to reshape input (b ... -> b (...)) since it could change the channel_last
@@ -127,7 +125,6 @@ def pad_input(hidden_states, indices, batch, seqlen):
     Return:
         hidden_states: (batch, seqlen, ...)
     """
-    dim = hidden_states.shape[-1]
     # output = torch.zeros((batch * seqlen), dim, device=hidden_states.device, dtype=hidden_states.dtype)
     # output[indices] = hidden_states
     output = index_put_first_axis(hidden_states, indices, batch * seqlen)
