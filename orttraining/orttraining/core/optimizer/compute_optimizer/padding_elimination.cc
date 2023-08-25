@@ -378,7 +378,6 @@ void IterateSubgraphFromNode(Graph& graph,
           if (axis < 2) {
             LOG_DEBUG_INFO(logger, "PaddingElimination::axis of ReduceMean: " + cur->Name() + " is " +
                                        std::to_string(axis) + ", which blocks merging leading two dims.");
-            candidate_outputs.insert(cur);
             axes_check = false;
             break;
           }
@@ -387,6 +386,8 @@ void IterateSubgraphFromNode(Graph& graph,
           LOG_DEBUG_INFO(logger, "PaddingElimination::ReduceMean: " + cur->Name() + " is added to subgraph.");
           subgraph.insert(cur->MutableOutputDefs()[0]);
           PushAllOutputNode(graph, to_visit, cur, visited);
+        } else {
+          candidate_outputs.insert(cur);
         }
       } else {
         LOG_DEBUG_INFO(logger, "PaddingElimination::shape of input of ReduceMean: " + cur->Name() + " is unknown.");

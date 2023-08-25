@@ -5778,8 +5778,8 @@ def test_ops_for_padding_elimination(test_cases):
 
         # test test_elementwise op for padding elimination
         # in case 0, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [hidden_size],
-        #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
-        #            output of test_op.
+        #            the test_op should be included in padding elimination subgraph and the PadAndUnflatten should be
+        #            added to output of test_op.
         # in case 2, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
         #            the test_op should be included in padding elimination subgraph and a 'Expand + Reshape + ShrunkenGather'
         #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
@@ -5787,7 +5787,7 @@ def test_ops_for_padding_elimination(test_cases):
         #            the test_op should be included in padding elimination subgraph and a 'Expand + Reshape + ShrunkenGather'
         #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
         # in case 4, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
-        #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
+        #            the test_op should be included in padding elimination subgraph and the PadAndUnflatten should be added to
         #            output of test_op. Besides, the other input of Add should be added 'Reshape + ShrunkenGather' to
         #            flatten and elimination padding.
         def test_elementwise(self, input_ids):
@@ -5815,11 +5815,11 @@ def test_ops_for_padding_elimination(test_cases):
 
         # test MatMul op for padding elimination
         # in case 0, the shapes of inputs of MatMul are [batch_size, seqlen, hidden_size] and [hidden_size, 128]
-        #            the MatMul should be included in padding elimination subgraph and the GatherGrad should be added to
-        #            output of MatMul.
+        #            the MatMul should be included in padding elimination subgraph and the PadAndUnflatten should be
+        #            added to output of MatMul.
         # in case 1, the shapes of inputs of MatMul are [2, seqlen] and [batch_size, seqlen, hidden_size]
         #            this case is not support in padding elimination, so the MatMul should not be included in padding
-        #            elimination subgraph and the GatherGrad should be added before MatMul.
+        #            elimination subgraph and the PadAndUnflatten should be added before MatMul.
         def test_matmul(self, input_ids):
             inputs_embeds = self.word_embeddings(input_ids)
             output = None
@@ -5832,7 +5832,7 @@ def test_ops_for_padding_elimination(test_cases):
             return output
 
         # test other ops for padding elimination
-        # all these ops should be included in padding elimination subgraph and the GatherGrad should be added to
+        # all these ops should be included in padding elimination subgraph and the PadAndUnflatten should be added to
         # output of these ops.
         def test_other(self, input_ids):
             inputs_embeds = self.word_embeddings(input_ids)
@@ -5849,6 +5849,11 @@ def test_ops_for_padding_elimination(test_cases):
             elif test_op == "Gelu":
                 output = torch.nn.functional.gelu(inputs_embeds)
             elif test_op == "ReduceMean":
+                # In case 0, the inputs_embeds are reduced at last dimension, the ReduceMean should be included in padding
+                # elimination subgraph and the PadAndUnflatten should be added to output of ReduceMean.
+                # In case 1, the inputs_embeds are reduced at first dimension which is not supported in padding elimination,
+                # so the ReduceMean should not be included in padding elimination subgraph and the PadAndUnflatten should
+                # be added before ReduceMean.
                 if case == 0:
                     output = torch.mean(inputs_embeds, dim=-1)
                 elif case == 1:
