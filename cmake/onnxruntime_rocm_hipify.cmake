@@ -111,8 +111,6 @@ endif()
 
 set(provider_excluded_files
   "atomic/common.cuh"
-  "controlflow/if.cc"
-  "controlflow/if.h"
   "controlflow/loop.cc"
   "controlflow/loop.h"
   "controlflow/scan.cc"
