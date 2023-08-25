@@ -1,3 +1,4 @@
+
 ---
 title: Cloud - Azure
 description: Instructions to infer an ONNX model remotely with an Azure endpoint
@@ -9,24 +10,19 @@ nav_order: 11
 {: .no_toc }
 
 
-The Azure Execution Provider enables ONNX Runtime to invoke a remote Azure endpoint for inference. The endpoint must be deployed beforehand.
-To consume the endpoint, a model with same inputs and outputs must be first loaded locally.
-
-One use case for Azure Execution Provider is for small-big models. E.g. A smaller model can be deployed on edge devices for faster inference,
-while a bigger model can be deployed on Azure for higher precision. Using the Azure Execution Provider, switching between the two can be easily achieved (assuming same inputs and outputs). 
-
-Azure Execution Provider is in preview stage, and all API(s) and usage are subject to change.
-
-Since 1.16, three operators are available:
+The Azure Execution Provider enables ONNX Runtime to invoke a remote Azure endpoint for inference, the endpoint must be deployed or available beforehand. 
+Since 1.16, below pluggable operators are available from [onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions): 
 
 - [OpenAIAudioToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#openaiaudiototext)
 - [AzureTextToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretexttotext)
 - [AzureTritonInvoker](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretritoninvoker)
 
-In generally, Azure Execution Provider assists two mode of usage:
+By the operators, Azure Execution Provider assists two mode of usage:
 
-- [Edge and cloud, side by side](#Edge and cloud, side by side)
-- [Merge once, and run a hybrid](#Merge once, and run a hybrid)
+- [Edge and azure side by side](#Edge-and-azure-side-by-side)
+- [Merge and run the hybrid](#Merge-and-run-the-hybrid)
+
+Azure Execution Provider is in preview stage, and all API(s) and usage are subject to change.
 
 ## Contents
 {: .no_toc }
@@ -38,8 +34,7 @@ In generally, Azure Execution Provider assists two mode of usage:
 Since 1.16, Azure Execution Provider is shipped by default in both python and nuget packages.
 
 ## Requirements
-Since 1.16, all Azure Execution Provider operators are shipped with [onnxruntime-extension](https://github.com/microsoft/onnxruntime-extensions) (>=v0.9.0) python and nuget packages.
-Please ensure the installation of correct onnxruntime-extension packages before using Azure Execution Provider.
+Since 1.16, all Azure Execution Provider operators are shipped with [onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions) (>=v0.9.0) python and nuget packages. Please ensure the installation of correct onnxruntime-extension packages before using Azure Execution Provider.
 
 ## Build
 
@@ -47,11 +42,11 @@ For build instructions, please see the [BUILD page](../build/eps.md#azure).
 
 ## Usage
 
-### Edge and cloud, side by side
-
+### Edge and azure side by side
+In this mode, there are two models running simulaneouly. By [RunAsync](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L4341) API, the azure model runs asynchronously. The API is also available as [python](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/onnxruntime/python/onnxruntime_pybind_state.cc#L1759) and [csharp](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs#L1147) APIs.
 ```python
 # ---------------------------------------------------------------------------------------
-# Demo: running two models simultaneously - one on edge and the other remotely by a proxy,
+# Demo: running two models simultaneously - one on edge and the other on azure,
 #       compare and pick better result in the end.
 # ---------------------------------------------------------------------------------------
 import os
@@ -70,7 +65,7 @@ def get_whiper_tiny():
 
 
 # Generate a proxy model which talks to openAI audio service
-def get_openai_audio_proxy_model():
+def get_openai_audio_azure_model():
     auth_token = helper.make_tensor_value_info('auth_token', TensorProto.STRING, [1])
     model = helper.make_tensor_value_info('model_name', TensorProto.STRING, [1])
     response_format = helper.make_tensor_value_info('response_format', TensorProto.STRING, [-1])
@@ -90,7 +85,7 @@ def get_openai_audio_proxy_model():
     graph = helper.make_graph([invoker], 'graph', [auth_token, model, response_format, file], [transcriptions])
     model = helper.make_model(graph, ir_version=8,
                               opset_imports=[helper.make_operatorsetid('com.microsoft.extensions', 1)])
-    model_name = 'openai_whisper_proxy.onnx'
+    model_name = 'openai_whisper_azure.onnx'
     onnx.save(model, model_name)
     return model_name
 
@@ -99,14 +94,14 @@ if __name__ == '__main__':
     sess_opt = SessionOptions()
     sess_opt.register_custom_ops_library(get_library_path())
 
-    proxy_model_path = get_openai_audio_proxy_model()
-    proxy_model_sess = InferenceSession(proxy_model_path,
+    azure_model_path = get_openai_audio_azure_model()
+    azure_model_sess = InferenceSession(azure_model_path,
         sess_opt, providers=['CPUExecutionProvider', 'AzureExecutionProvider'])  # load AzureEP
 
     with open('test16.wav', "rb") as _f:  # read raw audio data from a local wav file
         audio_stream = np.asarray(list(_f.read()), dtype=np.uint8)
 
-    proxy_model_inputs = {
+    azure_model_inputs = {
         "auth_token": np.array([os.getenv('AUDIO', '')]),  # read auth from env variable
         "model_name": np.array(['whisper-1']),
         "response_format":  np.array(['text']),
@@ -134,13 +129,13 @@ if __name__ == '__main__':
             self.__event.wait(sec)
 
 
-    def ProxyRunCallback(outputs: np.ndarray, state: RunAsyncState, err: str) -> None:
+    def azureRunCallback(outputs: np.ndarray, state: RunAsyncState, err: str) -> None:
         state.fill_outputs(outputs, err)
 
 
     run_async_state = RunAsyncState();
-    # infer proxy model asynchronously
-    proxy_model_sess.run_async(None, proxy_model_inputs, ProxyRunCallback, run_async_state)
+    # infer azure model asynchronously
+    azure_model_sess.run_async(None, azure_model_inputs, azureRunCallback, run_async_state)
 
     # in the same time, run the edge
     edge_model_path = get_whiper_tiny()
@@ -163,10 +158,9 @@ if __name__ == '__main__':
     # compare results and pick the better
 ```
 
-### Merge once, and run a hybrid
+### Merge and run the hybrid
 
-Alternatively, one could also merge their local and proxy models beforehand into a hybrid, then infer as an ordinary onnx model.
-Sample scripts could be found [here](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/AzureEP).
+Alternatively, one could also merge local and azure models into a hybrid, then infer as an ordinary onnx model. Sample scripts could be found [here](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/AzureEP).
 
 ## Current Limitations
 
