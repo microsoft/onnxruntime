@@ -211,7 +211,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     ORT_RETURN_IF_ERROR(ProcessBlockSizeAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
-  // TODO: Refactor processing of Sigmoid/Tanh to a separate function (or op-builder file).
+  // TODO(adrianlizarraga): Refactor processing of Sigmoid/Tanh to a separate function (or op-builder file).
   if (op_type != "Sigmoid" && op_type != "Tanh") {
     return ProcessOutputs(qnn_model_wrapper, node_unit,
                           std::move(input_names),
@@ -239,7 +239,8 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
       offset = 0;
     }
 
-    float expected_scale = output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 ? (1.0f / 65536.0f) : (1.0f / 32768.0f);
+    const float expected_scale = output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 ? (1.0f / 65536.0f)
+                                                                                           : (1.0f / 32768.0f);
 
     if (scale != expected_scale) {
       LOGS(logger, WARNING) << "QNN EP requires that 16-bit " << op_type << " operators use an scale equal to "
@@ -248,7 +249,8 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     }
   }
 
-  Qnn_TensorType_t tensor_type = qnn_model_wrapper.IsGraphOutput(output_name) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  Qnn_TensorType_t tensor_type = qnn_model_wrapper.IsGraphOutput(output_name) ? QNN_TENSOR_TYPE_APP_READ
+                                                                              : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, output_info.qnn_data_type, output_info.quant_param,
                                         std::move(output_info.shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
