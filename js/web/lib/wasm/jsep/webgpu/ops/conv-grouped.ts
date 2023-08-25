@@ -47,9 +47,6 @@ const createGroupedConvProgramInfo =
   ${shaderHelper.declareVariables(...inputVars, output)}
 
   ${activationFunction}
-  ${output.impl('offsetToIndices')}
-  ${x.impl('indicesToOffset', 'get')}
-  ${w.impl('indicesToOffset', 'get')}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}

@@ -128,9 +128,6 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     const poolingCode = `
             ${shaderHelper.declareVariables(x, output)}
 
-            ${output.impl('offsetToIndices')}
-            ${x.impl('indicesToOffset')}
-
             ${shaderHelper.mainStart()}
               ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
@@ -178,9 +175,6 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     }
     const poolingCode = `
             ${shaderHelper.declareVariables(x, output)}
-
-            ${output.impl('offsetToIndices')}
-            ${x.impl('indicesToOffset')}
 
             const pads = array<u32, ${padsRank}>(${attributes.pads.map(i => `${i}u`).join(',')});
             const inputDims = array<u32, ${rank}>(${inputDims.map(i => `${i}u`).join(',')});

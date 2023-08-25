@@ -176,6 +176,20 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
                   const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path = std::nullopt,
                   const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path = std::nullopt);
 
+  /** \brief Create a training session that can be used to begin or resume training.
+   * This constructor allows the users to load the models from buffers instead of files.
+   *
+   * \param[in] env Env to be used for the training session.
+   * \param[in] session_options SessionOptions that the user can customize for this training session.
+   * \param[in] checkpoint_state Training states that the training session uses as a starting point for training.
+   * \param[in] train_model_data Buffer containing training model data.
+   * \param[in] eval_model_data Buffer containing evaluation model data.
+   * \param[in] optim_model_data Buffer containing optimizer model (used for performing weight/parameter update).
+   *
+   */
+  TrainingSession(const Env& env, const SessionOptions& session_options, CheckpointState& checkpoint_state,
+                  const std::vector<uint8_t>& train_model_data, const std::vector<uint8_t>& eval_model_data = {},
+                  const std::vector<uint8_t>& optim_model_data = {});
   /// @}
 
   /// \name Implementing The Training Loop
