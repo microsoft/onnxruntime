@@ -478,9 +478,12 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   // TODO: this sync is because the graph inputs can be consumed by multiple stream,
   // but we can only place the MemCpyAsync on one of the stream. Ideally we should make
   // other stream wait on the event of the memory copy stream, instead of host sync stream.
+  std::unordered_set<Stream*> visited;
   for (auto* stream : feed_streams) {
-    if (stream)
+    if (stream && visited.find(stream) == visited.end()) {
+      visited.insert(stream);
       stream->Flush();
+    }
   }
   return Status::OK();
 }
