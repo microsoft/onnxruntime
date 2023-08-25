@@ -96,6 +96,8 @@ static void RunQDQUnaryOpTest(const TestInputDef<float>& input_def, const std::s
                        1e-5f);
 }
 
+// Runs a non-quantized model with a single unary operator.
+// Compares the outputs of the CPU EP and QNN EP (CPU backend).
 template <typename InputType = float>
 static void RunUnaryOpTest(const TestInputDef<InputType>& input_def, const std::string& op_type,
                            const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
@@ -109,7 +111,6 @@ static void RunUnaryOpTest(const TestInputDef<InputType>& input_def, const std::
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  // Runs model with DQ-> Op -> Q and compares the outputs of the CPU and QNN EPs.
   RunQnnModelTest(BuildUnaryOpTestCase<InputType>(op_type, input_def, attrs, domain),
                   provider_options,
                   opset_version,
