@@ -47,7 +47,7 @@ steps:
       --volume $(Build.SourcesDirectory):/onnxruntime_src \
       --volume $(Build.BinariesDirectory)/${{ parameters.BuildConfig }}:/build \
       ${{ parameters.DockerImageTag }} \
-        bash -c "rm -rf /build/onnxruntime/ && python3 -m pip install /build/dist/onnxruntime*.whl && /build/launch_test.py --cmd_line_with_args 'python orttraining_test_ort_apis.py' --cwd /build" \
+        bash -c "rm -rf /build/onnxruntime/ && python3 -m pip install /build/dist/onnxruntime*.whl && /build/launch_test.py --cmd_line_with_args 'python orttraining_test_ort_apis.py --cwd /build' --cwd /build" \
   displayName: 'Run ORT Training APIs Tests'
   condition: succeededOrFailed()
   timeoutInMinutes: 120
