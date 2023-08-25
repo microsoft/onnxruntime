@@ -41,9 +41,11 @@ Do not modify directly.*
 | Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
+| Greater | ai.onnx(7-8,9-12,13+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
+| Less | ai.onnx(7-8,9-12,13+) |  |
 | Log | ai.onnx(6-12,13+) |  |
 | MatMul | ai.onnx(1-12,13+) |  |
 | MaxPool | ai.onnx(1-7,8-9,10,11,12+); com.ms.internal.nhwc(11,12+) | need perf optimization; need implementing activation |
