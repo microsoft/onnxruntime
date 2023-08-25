@@ -26,8 +26,7 @@ import {ConvTransposeAttributes} from '../conv-transpose';
 
 const createConvTranspose2DOpProgramShaderSource =
     (shaderHelper: ShaderHelper, inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
-     outputShape: readonly number[], hasBias: boolean, elementsPerThread: readonly number[],
-     is1DimensionDispatch: boolean, isVec4: boolean): string => {
+     outputShape: readonly number[], hasBias: boolean, is1DimensionDispatch: boolean, isVec4 = false): string => {
       const isChannelsLast = attributes.format === 'NHWC';
       const rowDim = isChannelsLast ? 1 : 2;
       const colDim = isChannelsLast ? 2 : 3;
@@ -242,27 +241,18 @@ export const createConvTranspose2DProgramInfo =
     (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvTransposeAttributes,
      squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
       const hasBias = inputs.length > 2;
-      const isChannelsLast = attributes.format === 'NHWC';
+      // const isChannelsLast = attributes.format === 'NHWC';
       const outputShape = attributes.outputShape;
-      const batchSize = outputShape[0];
-      const outWidth = outputShape[isChannelsLast ? 1 : 2];
-      const outHeight = outputShape[isChannelsLast ? 2 : 3];
-      const outChannels = outputShape[isChannelsLast ? 3 : 1];
+      const outputSize = ShapeUtil.size(outputShape);
+
       // const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
       // TODO Enable isVec4 for performance
       // Disabled due to weight matrix layout issue
-      // const isVec4 = attributes.grouping === 1 && isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
-      const isVec4 = false;
-      const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
-      const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
-      const workGroupSize: [number, number, number] =
-          isVec4 ? [8, 8, 1] : [dispatchX <= 4 ? 4 : 16, dispatchX > 4 && dispatchY <= 4 ? 4 : 16, 1];
-      const elementsPerThread =
-          isVec4 ? [4, 4, 1] : [dispatchX <= 4 ? 1 : 2, dispatchX > 4 && dispatchY <= 4 ? 1 : 2, 1];
+      // const isVec4 = attributes.group === 1 && isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
       const dispatch = [
-        Math.ceil(dispatchX / workGroupSize[0] / elementsPerThread[0]),
-        Math.ceil(dispatchY / workGroupSize[1] / elementsPerThread[1]),
-        Math.ceil(batchSize / workGroupSize[2] / elementsPerThread[1])
+        outputSize / 64,
+        1,
+        1,
       ];
       LOG_DEBUG('verbose', () => `[conv2d_backprop_webgpu] dispatch = ${dispatch}`);
 
@@ -275,7 +265,6 @@ export const createConvTranspose2DProgramInfo =
         }],
         dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
         getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
-            shaderHelper, inputs, attributes, outputShape, hasBias, elementsPerThread,
-            dispatch[1] === 1 && dispatch[2] === 1, isVec4),
+            shaderHelper, inputs, attributes, outputShape, hasBias, dispatch[1] === 1 && dispatch[2] === 1),
       };
     };
