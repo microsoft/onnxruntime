@@ -1,4 +1,3 @@
-
 ---
 title: Cloud - Azure
 description: Instructions to infer an ONNX model remotely with an Azure endpoint
@@ -9,7 +8,6 @@ redirect_from: /docs/reference/execution-providers/Azure-ExecutionProvider
 
 # Azure Execution Provider (Preview)
 {: .no_toc }
-
 
 The Azure Execution Provider enables ONNX Runtime to invoke a remote Azure endpoint for inference, the endpoint must be deployed or available beforehand.
 
