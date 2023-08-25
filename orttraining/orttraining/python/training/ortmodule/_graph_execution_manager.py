@@ -140,7 +140,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             register_triton_op_executor()
 
-        self._zero_stage3_param_map = None
+        self._zero_stage3_param_map = {}
         if self._runtime_options.enable_zero_stage3_support:
             # Cannot toggle feature enabling/disabling after the first time enabled.
             from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params

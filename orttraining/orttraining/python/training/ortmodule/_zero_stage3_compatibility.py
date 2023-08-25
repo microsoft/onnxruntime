@@ -19,22 +19,22 @@ STAGE3_PULL_WEIGHT_TRIGGER_NAME = "pull_weight_trigger"
 
 def post_processing_enable_zero_stage3_compat(
     exported_model: ModelProto,
-    offload_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]],
-    param_names: List[str],
+    zero_stage3_named_params: Dict[str, torch.nn.parameter.Parameter],
+    all_param_names: List[str],
 ) -> ModelProto:
     """This function is used to enable zero stage3 compatibility.
 
     Args:
         exported_model (ModelProto): The exported model.
-        offload_named_params (Optional[Dict[str, torch.nn.parameter.Parameter]]): The offload named parameters.
-        param_names (List[str]): All parameter names.
+        zero_stage3_named_params (Optional[Dict[str, torch.nn.parameter.Parameter]]): The offload named parameters.
+        all_param_names (List[str]): All parameter names.
     """
 
     # Register symbolic shape inference functions for PythonOp used in DeepSpeed ZeRO stage3.
     _zero_stage3_register_symbolic_functions()
 
-    # Create weight retrieving function using offload_named_params.
-    func_full_qual_name = _create_weight_retrieval_function(offload_named_params)
+    # Create weight retrieving function using zero_stage3_named_params.
+    func_full_qual_name = _create_weight_retrieval_function(zero_stage3_named_params)
 
     consumer_map = {}
     for node in exported_model.graph.node:
@@ -59,17 +59,17 @@ def post_processing_enable_zero_stage3_compat(
 
     # Create weight retrieving PythonOp.
     new_input, weight_pull_node = _create_weight_retrieval_pythonop(
-        offload_named_params,
+        zero_stage3_named_params,
         func_full_qual_name,
         STAGE3_PULL_WEIGHT_TRIGGER_NAME,
-        [_get_param_pull_trigger_name(pname) for pname in offload_named_params],
+        [_get_param_pull_trigger_name(pname) for pname in zero_stage3_named_params],
         trigger_data_type,
         trigger_data_dims,
     )
 
     # Connect weight consumers to use the full-sized parameter output of ORTZeROOffloadPreForwardFunction.
     for graph_input in exported_model.graph.input:
-        if graph_input.name not in offload_named_params:
+        if graph_input.name not in zero_stage3_named_params:
             continue
 
         if graph_input.name not in consumer_map:
@@ -78,16 +78,11 @@ def post_processing_enable_zero_stage3_compat(
         consumers = consumer_map[graph_input.name]
         pre_forward_pythonop_node = None
 
-        input_tensor_ranks = []
-        input_tensor_dtypes = []
-        rank_attr = None
-        dtype_attr = None
         for c in consumers:
             if c.op_type != "PythonOp":
                 continue
 
             func_name = _get_func_name(c)
-
             if (
                 func_name
                 == "onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction"
@@ -96,13 +91,6 @@ def post_processing_enable_zero_stage3_compat(
                     pre_forward_pythonop_node is None
                 ), "Multiple ORTZeROOffloadPreForwardFunction nodes found, it should not happen"
                 pre_forward_pythonop_node = c
-                for attr in c.attribute:
-                    if attr.name == "input_tensor_ranks":
-                        input_tensor_ranks = attr.ints
-                        rank_attr = attr
-                    if attr.name == "input_tensor_types":
-                        input_tensor_dtypes = attr.ints
-                        dtype_attr = attr
 
         if pre_forward_pythonop_node is None:
             raise RuntimeError(
@@ -119,17 +107,15 @@ def post_processing_enable_zero_stage3_compat(
         ), f"index_offset_on_python_op_input length is not 1: {index_offset_on_python_op_input}"
 
         reverse_index_among_inputs = index_offset_on_python_op_input[0] - len(pre_forward_pythonop_node.input)
-        pre_forward_pythonop_node.input[index_offset_on_python_op_input[0]] = _get_param_pull_trigger_name(
-            graph_input.name
-        )
+        new_input_name = _get_param_pull_trigger_name(graph_input.name)
+        pre_forward_pythonop_node.input[index_offset_on_python_op_input[0]] = new_input_name
 
-        # For PythonOp, we need to update some of its attributes.
-        input_tensor_ranks[index_offset_on_python_op_input[0]] = len(trigger_data_dims)
-        input_tensor_dtypes[index_offset_on_python_op_input[0]] = trigger_data_type
-        pre_forward_pythonop_node.attribute.remove(rank_attr)
-        pre_forward_pythonop_node.attribute.remove(dtype_attr)
-        pre_forward_pythonop_node.attribute.append(helper.make_attribute("input_tensor_ranks", input_tensor_ranks))
-        pre_forward_pythonop_node.attribute.append(helper.make_attribute("input_tensor_types", input_tensor_dtypes))
+        _update_python_op_input_related_attributes(
+            pre_forward_pythonop_node,
+            new_input_name,
+            len(trigger_data_dims),  # new rank
+            trigger_data_type,  # new data type
+        )
 
         output_index = reverse_index_among_inputs + len(pre_forward_pythonop_node.output)
         pre_forward_pythonop_node.output[output_index] = graph_input.name
@@ -140,36 +126,16 @@ def post_processing_enable_zero_stage3_compat(
         for c in consumers:
             if c == pre_forward_pythonop_node or c.op_type != "PythonOp":
                 continue
-
-            input_tensor_ranks = []
-            input_tensor_dtypes = []
-            rank_attr = None
-            dtype_attr = None
-            for attr in c.attribute:
-                if attr.name == "input_tensor_ranks":
-                    input_tensor_ranks = attr.ints
-                    rank_attr = attr
-                if attr.name == "input_tensor_types":
-                    input_tensor_dtypes = attr.ints
-                    dtype_attr = attr
-
-            index_offset_on_python_op_input = []
-            for i, input_name in enumerate(c.input):
-                if input_name == graph_input.name:
-                    index_offset_on_python_op_input.append(i)
-
-            for index in index_offset_on_python_op_input:
-                input_tensor_ranks[index] = len(offload_named_params[graph_input.name].ds_shape)
-                input_tensor_dtypes[index] = pytorch_dtype_to_onnx(offload_named_params[graph_input.name].dtype)
-
-            c.attribute.remove(rank_attr)
-            c.attribute.remove(dtype_attr)
-            c.attribute.append(helper.make_attribute("input_tensor_ranks", input_tensor_ranks))
-            c.attribute.append(helper.make_attribute("input_tensor_types", input_tensor_dtypes))
+            _update_python_op_input_related_attributes(
+                c,
+                graph_input.name,
+                len(zero_stage3_named_params[graph_input.name].ds_shape),  # new rank
+                pytorch_dtype_to_onnx(zero_stage3_named_params[graph_input.name].dtype),  # new data type
+            )
 
     # Delete exported_model.graph.input
     graph_inputs_to_remove = [
-        graph_input for graph_input in exported_model.graph.input if graph_input.name in offload_named_params
+        graph_input for graph_input in exported_model.graph.input if graph_input.name in zero_stage3_named_params
     ]
     for input_to_remove in graph_inputs_to_remove:
         exported_model.graph.input.remove(input_to_remove)
@@ -177,7 +143,7 @@ def post_processing_enable_zero_stage3_compat(
     # Re-order graph input to make sure the weight pull trigger is before all parameter inputs.
     offset = 0
     for graph_input in exported_model.graph.input:
-        if graph_input.name in param_names:
+        if graph_input.name in all_param_names:
             break
         offset += 1
 
@@ -187,13 +153,15 @@ def post_processing_enable_zero_stage3_compat(
     return exported_model
 
 
-def _create_weight_retrieval_function(offload_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]]) -> str:
-    """This function is used to create a weight retrieving function using offload_named_params."""
+def _create_weight_retrieval_function(
+    zero_stage3_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]]
+) -> str:
+    """This function is used to create a weight retrieving function using zero_stage3_named_params."""
 
     class WeightRetrievalFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, weight_in_trigger):
-            params = list(offload_named_params.values())
+            params = list(zero_stage3_named_params.values())
             ctx.params = params
             ctx.dtype = weight_in_trigger.dtype
             ctx.device = weight_in_trigger.device
@@ -210,7 +178,7 @@ def _create_weight_retrieval_function(offload_named_params: Optional[Dict[str, t
             tensor_input_shapes: List[Optional[List[Union[int, str]]]],
             tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
         ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
-            param_count = len(offload_named_params.values())
+            param_count = len(zero_stage3_named_params.values())
             tensor_output_shapes = [
                 tensor_input_shapes[0],
             ] * param_count
@@ -262,7 +230,7 @@ def _zero_stage3_register_symbolic_functions():
 
 
 def _create_weight_retrieval_pythonop(
-    offload_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]],
+    zero_stage3_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]],
     func_full_qual_name: str,
     input_name: str,
     output_names: List[str],
@@ -270,7 +238,7 @@ def _create_weight_retrieval_pythonop(
     trigger_data_dims: List[int],
 ) -> Tuple[ValueInfoProto, NodeProto]:
     """This function is used to create a weight retrieving PythonOp."""
-    offload_param_count = 0 if offload_named_params is None else len(offload_named_params)
+    offload_param_count = 0 if zero_stage3_named_params is None else len(zero_stage3_named_params)
     new_input = helper.make_tensor_value_info(input_name, trigger_data_type, trigger_data_dims)
     output_rank_for_pull_weight_trigger = len(trigger_data_dims)
     output_dtype_for_pull_weight_trigger = trigger_data_type
@@ -304,3 +272,39 @@ def _create_weight_retrieval_pythonop(
     )
 
     return new_input, weight_pull_node
+
+
+def _update_python_op_input_related_attributes(node: NodeProto, input_name: str, new_rank: int, new_dtype: int):
+    """This function is used to update PythonOp's input related attributes, e.g.
+        input_tensor_ranks and input_tensor_types.
+
+    Args:
+        node (NodeProto): The PythonOp node.
+        input_name (str): The input name to be updated.
+        new_rank (int): The new rank of the input, to be used in input_tensor_ranks.
+        new_dtype (int): The new data type of the input, to be used in input_tensor_types.
+    """
+    input_tensor_ranks = None
+    input_tensor_dtypes = None
+    rank_attr = None
+    dtype_attr = None
+    for attr in node.attribute:
+        if attr.name == "input_tensor_ranks":
+            input_tensor_ranks = attr.ints
+            rank_attr = attr
+        if attr.name == "input_tensor_types":
+            input_tensor_dtypes = attr.ints
+            dtype_attr = attr
+
+    assert input_tensor_ranks is not None, "input_tensor_ranks is None"
+    assert input_tensor_dtypes is not None, "input_tensor_dtypes is None"
+
+    for index, node_input_name in enumerate(node.input):
+        if node_input_name == input_name:
+            input_tensor_ranks[index] = new_rank
+            input_tensor_dtypes[index] = new_dtype
+
+    node.attribute.remove(rank_attr)
+    node.attribute.remove(dtype_attr)
+    node.attribute.append(helper.make_attribute("input_tensor_ranks", input_tensor_ranks))
+    node.attribute.append(helper.make_attribute("input_tensor_types", input_tensor_dtypes))
