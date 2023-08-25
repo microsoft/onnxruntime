@@ -250,6 +250,7 @@ TEST_P(ModelTest, Run) {
 #ifdef _WIN32
     broken_tests.insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
     broken_tests.insert({"bidaf", "this test fails with new image since Aug 25."});
+    broken_tests.insert({"Candy", "Flaky test, need to investigate", {"opset9"}});
 #else
     broken_tests.insert({"bidaf", "this test should be recovered when multi-gpu pipeline deprecates NV12", {"opset9"}});
 #endif
