@@ -17,13 +17,15 @@ while a bigger model can be deployed on Azure for higher precision. Using the Az
 
 Azure Execution Provider is in preview stage, and all API(s) and usage are subject to change.
 
-Till onnxruntime 1.16, three operators are available:
+Since 1.16, three operators are available:
 
 - [OpenAIAudioToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#openaiaudiototext)
 - [AzureTextToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretexttotext)
 - [AzureTritonInvoker](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretritoninvoker)
 
-Each of above operators could be used to compose a proxy model that talks to a supported remote endpoint.
+Each operator could be used to compose a proxy model talks to Azure or OpenAI services via https calls.
+By [RunAsync](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L4341) API, the call could be conducted asynchronously.
+An example could be found in Usage.
 
 ## Contents
 {: .no_toc }
@@ -32,11 +34,11 @@ Each of above operators could be used to compose a proxy model that talks to a s
 {:toc}
 
 ## Install
-Azure Execution Provider releases with default onnxruntime python and nuget packages.
+Since 1.16, Azure Execution Provider is shipped by default in both python and nuget packages.
 
 ## Requirements
-For onnxruntime 1.16, all Azure Execution Provider operators are released with onnxruntime extension (>=v0.9.0) python and nuget packages.
-Please ensure the installation of correct onnxruntime extension packages beforehand.
+Since 1.16, all Azure Execution Provider operators are shipped with [onnxruntime-extension](https://github.com/microsoft/onnxruntime-extensions) (>=v0.9.0) python and nuget packages.
+Please ensure the installation of correct onnxruntime-extension packages before using Azure Execution Provider.
 
 ## Build
 
@@ -160,7 +162,7 @@ if __name__ == '__main__':
     # compare results and pick the better
 ```
 
-## Merge once, and run a hybrid
+### Merge once, and run a hybrid
 
 Alternatively, one could also merge their local and proxy models beforehand into a hybrid, then infer as an ordinary onnx model.
 Sample scripts could be found [here](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/AzureEP).
