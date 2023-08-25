@@ -170,12 +170,14 @@ export declare namespace InferenceSession {
   // Backend React Native: supports 'cpu', 'xnnpack', 'coreml' (iOS), 'nnapi' (Android).
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
+    coreml: CoreMlExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
+    dml: DmlExecutionProviderOption;
+    tensorrt: TensorRtExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
     webnn: WebNNExecutionProviderOption;
-    coreml: CoreMLExecutionProviderOption;
     nnapi: NnapiExecutionProviderOption;
   }
 
@@ -192,6 +194,18 @@ export declare namespace InferenceSession {
   }
   export interface CudaExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'cuda';
+    deviceId?: number;
+  }
+  export interface CoreMlExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'coreml';
+    coreMlFlags?: number;
+  }
+  export interface DmlExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'dml';
+    deviceId?: number;
+  }
+  export interface TensorRtExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'tensorrt';
     deviceId?: number;
   }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
