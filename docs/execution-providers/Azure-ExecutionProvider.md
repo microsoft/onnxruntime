@@ -23,9 +23,10 @@ Since 1.16, three operators are available:
 - [AzureTextToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretexttotext)
 - [AzureTritonInvoker](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretritoninvoker)
 
-As showed in the links, each operator could be used to compose a proxy model talks to Azure or OpenAI services via https calls.
-By [RunAsync](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L4341) API, the call could be made asynchronous.
-An example could be found in [Usage](#Usage).
+In generally, Azure Execution Provider assists two mode of usage:
+
+- [Edge and cloud, side by side](#Edge and cloud, side by side)
+- [Merge once, and run a hybrid](#Merge once, and run a hybrid)
 
 ## Contents
 {: .no_toc }
