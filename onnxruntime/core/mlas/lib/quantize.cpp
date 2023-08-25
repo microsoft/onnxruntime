@@ -166,14 +166,18 @@ MlasQuantizeLinearPackBytes<uint16_t>(
     MLAS_INT32X4 IntegerVector
     )
 {
+#if defined(MLAS_SSE41_INTRINSICS)
+    IntegerVector = _mm_packus_epi32(IntegerVector, IntegerVector);  // 16-bit values packed in lower 8 bytes.
+#else
     // Cannot use _mm_packus_epi32 because that was not available until SSE4.1.
     // Instead, emulate by sign-extending the first 16-bits of each packed 32-bit element.
     // Afterwards, can use _mm_packs_epi32, which is available on SSE2.
     // See: https://stackoverflow.com/a/11028244
 
     IntegerVector = _mm_slli_epi32 (IntegerVector, 16);
-    IntegerVector = _mm_srai_epi32 (IntegerVector, 16);  // Sign-extend by undoing left shift with right arithmetic shift
+    IntegerVector = _mm_srai_epi32 (IntegerVector, 16);  // Sign-extend: undo left shift with right arithmetic shift
     IntegerVector = _mm_packs_epi32(IntegerVector, IntegerVector);  // 16-bit values packed in lower 8 bytes.
+#endif  // defined(MLAS_SSE41_INTRINSICS)
 
     return IntegerVector;
 }
