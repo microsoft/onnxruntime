@@ -23,6 +23,8 @@ Till onnxruntime 1.16, three operators are available:
 - [AzureTextToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretexttotext)
 - [AzureTritonInvoker](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretritoninvoker)
 
+Each of above operators could be used to compose a proxy model that talks to remote endpoints.
+
 ## Contents
 {: .no_toc }
 
@@ -42,7 +44,7 @@ For build instructions, please see the [BUILD page](../build/eps.md#azure).
 
 ## Usage
 
-### Python
+### Two models side by side
 
 ```python
 
@@ -157,6 +159,11 @@ if __name__ == '__main__':
     # compare results and pick a better
 ```
 
-### Current Limitations
+## Merge and run a hybrid model
+
+Alternatively, one could also merge their local and proxy models beforehand into a hybrid, then infer as an ordinary onnx model.
+Sample scripts could be found [here](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/AzureEP).
+
+## Current Limitations
 
 * Only builds and run on Windows, Linux and Android platforms. For Android, AzureTritonInvoker op is not supported.
