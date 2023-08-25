@@ -50,8 +50,6 @@ const createBinaryOpProgramShader =
         };
 
         broadcastImpl = `
-  ${output.impl('offsetToIndices')}
-
   fn calcOffsetA(outputIndices: ${output.type.indices}) -> u32 {
     return ${calcOffsetImpl(dimsA)};
   }
@@ -146,8 +144,6 @@ const createBinaryOpProgramInfo =
         if (sharedDimension % 4 === 0) {
           vectorize = true;
         }
-
-
       } else {
         // element-wise
         vectorize = true;
@@ -188,19 +184,24 @@ export const mul = (context: ComputeContext): void => {
 };
 
 export const pow = (context: ComputeContext): void => {
+  const type = inputVariable('input', context.inputs[0].dataType, context.inputs[0].dims).type.value;
+  const roundStr = type === 'i32' ? 'round' : '';
   context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'Pow', ({scalar: (a, b) => `pow_f32(${a},${b})`, vector: (a, b) => `pow_vf32(${a},${b})`}), `
-    fn pow_f32(a : f32, b : f32) -> f32 {
-      if (b == 0.0) {
-        return 1.0;
-      } else if (a < 0.0 && b != floor(b)) {
-        return pow(a, b); // NaN
+      context.inputs, 'Pow',
+      ({scalar: (a, b) => `pow_custom(${a},${b})`, vector: (a, b) => `pow_vector_custom(${a},${b})`}),
+      `
+    fn pow_custom(a : ${type}, b : ${type}) -> ${type} {
+      if (b == ${type}(0.0)) {
+        return ${type}(1.0);
+      } else if (a < ${type}(0.0) && f32(b) != floor(f32(b))) {
+        return ${type}(pow(f32(a), f32(b))); // NaN
       }
-      return select(sign(a), 1.0, round(abs(b) % 2.0) != 1.0) * pow(abs(a), b);
+      return select(sign(a), ${type}(1.0), round(f32(abs(b) % ${type}(2.0))) != 1.0) * ${type}(${
+          roundStr}(pow(f32(abs(a)), f32(b))));
     }
-    fn pow_vf32(a : vec4<f32>, b : vec4<f32>) -> vec4<f32> {
+    fn pow_vector_custom(a : vec4<${type}>, b : vec4<${type}>) -> vec4<${type}> {
       // TODO: implement vectorized pow
-      return vec4<f32>(pow_f32(a.x, b.x), pow_f32(a.y, b.y), pow_f32(a.z, b.z), pow_f32(a.w, b.w));
+      return vec4<${type}>(pow_custom(a.x, b.x), pow_custom(a.y, b.y), pow_custom(a.z, b.z), pow_custom(a.w, b.w));
     }
       `));
 };

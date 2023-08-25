@@ -66,7 +66,7 @@ Options:
 
 *** Backend Options ***
 
- --wasm-number-threads         Set the WebAssembly number of threads
+ -x, --wasm-number-threads     Set the WebAssembly number of threads
  --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
  --wasm-enable-simd            Set whether to enable SIMD
  --wasm-enable-proxy           Set whether to enable proxy worker
@@ -264,9 +264,9 @@ function parseWasmOptions(_args: minimist.ParsedArgs): InferenceSession.WebAssem
 }
 
 function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
-  const numThreads = args['wasm-number-threads'];
+  const numThreads = args.x || args['wasm-number-threads'];
   if (typeof numThreads !== 'undefined' && typeof numThreads !== 'number') {
-    throw new Error('Flag "wasm-number-threads" must be a number value');
+    throw new Error('Flag "x"/"wasm-number-threads" must be a number value');
   }
   const initTimeout = args['wasm-init-timeout'];
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {

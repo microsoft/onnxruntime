@@ -206,7 +206,7 @@ else()
 
   set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
   if (onnxruntime_USE_JSEP)
-    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput")
+    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput,_JsepGetNodeName")
   else()
     set(EXPORTED_FUNCTIONS "_malloc,_free")
   endif()

@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {ShaderHelper} from './common';
+import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
 export interface InstanceNormAttributes extends AttributeWithCacheKey {
   epsilon: number;
@@ -45,7 +45,7 @@ const createInstanceNormProgramInfo =
              Got scale size of ${scaleSize} and bias size of ${biasSize}`);
       }
 
-      const dataType = tensorTypeToWsglType(inputs[0].dataType);
+      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   const C: u32 = ${C};
@@ -99,7 +99,7 @@ const createInstanceNormNHWCProgramInfo =
       const C = xShape[xShape.length - 1];
       const H = ShapeUtil.sizeFromDimension(xShape, 1) / C;
 
-      const dataType = tensorTypeToWsglType(inputs[0].dataType);
+      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
 
       const normCount = C * N;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
