@@ -1342,6 +1342,7 @@
       //"less.jsonc",
       "log.jsonc",
       "matmul.jsonc",
+      "matmul-broadcast.jsonc",
       "mul.jsonc",
       //"neg.jsonc",
       //"not.jsonc",
