@@ -118,7 +118,7 @@ class InferenceSession {
     std::optional<TensorShape> tensor_shape;  // not applicable if the input is non-tensor type
   };
 
-  using InputOutputDefMetaMap = std::unordered_map<std::string, InputOutputDefMetaData>;
+  using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
 
  public:
 #if !defined(ORT_MINIMAL_BUILD)
