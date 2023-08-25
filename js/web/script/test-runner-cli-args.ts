@@ -324,7 +324,11 @@ function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
     throw new Error('Flag "webgpu-profiling-mode" is invalid');
   }
-  return {profilingMode};
+  const validateInputContent = args['webgpu-validate-input-content'];
+  if (validateInputContent !== undefined && validateInputContent !== 'off' && validateInputContent !== 'default') {
+    throw new Error('Flag "webgpu-validate-input-content" is invalid');
+  }
+  return {profilingMode, validateInputContent};
 }
 
 function parseGlobalEnvFlags(args: minimist.ParsedArgs): NonNullable<TestRunnerCliArgs['globalEnvFlags']> {

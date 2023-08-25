@@ -2,24 +2,9 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
 import {outputVariable, ShaderHelper} from './common';
-
-const validateInputs = (inputs: readonly TensorView[]): void => {
-  if (!inputs || inputs.length !== 3) {
-    throw new Error('Range requires 3 input.');
-  }
-
-  if (inputs[0].dims.length !== 0 || inputs[1].dims.length !== 0 || inputs[2].dims.length !== 0) {
-    throw new Error('Range requires scalar input.');
-  }
-
-  if (inputs[0].dataType !== inputs[1].dataType || inputs[1].dataType !== inputs[2].dataType) {
-    throw new Error('Range requires all inputs have the same data type.');
-  }
-};
 
 const validateInputsContent = (start: number, limit: number, delta: number): void => {
   const sameStartLimit = start === limit;
@@ -41,11 +26,11 @@ const createRangeProgramInfo =
       const wgslType = output.type.storage;
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-  ${shaderHelper.declareVariables(output)}
-  ${shaderHelper.mainStart()}
-  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-  output[global_idx] = ${wgslType}(${start}) + ${wgslType}(global_idx) * ${wgslType}(${delta});
-}`;
+        ${shaderHelper.declareVariables(output)}
+        ${shaderHelper.mainStart()}
+        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+        output[global_idx] = ${wgslType}(${start}) + ${wgslType}(global_idx) * ${wgslType}(${delta});
+      }`;
       return {
         ...metadata,
         getShaderSource,
@@ -55,7 +40,6 @@ const createRangeProgramInfo =
     };
 
 export const range = (context: ComputeContext): void => {
-  validateInputs(context.inputs);
   let start = 0;
   let limit = 0;
   let delta = 0;
@@ -68,7 +52,9 @@ export const range = (context: ComputeContext): void => {
     limit = context.inputs[1].getFloat32Array()[0];
     delta = context.inputs[2].getFloat32Array()[0];
   }
-  validateInputsContent(start, limit, delta);
+  if (context.getFlagValue('validateInputContent') === 'default') {
+    validateInputsContent(start, limit, delta);
+  }
 
   const cacheHint = [start, limit, delta].map(x => x.toString()).join('_');
   const metadata: ProgramMetadata = {name: 'Range', inputTypes: [], cacheHint};

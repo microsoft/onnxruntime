@@ -96,6 +96,7 @@ export declare namespace Env {
      * Set or get the profiling mode.
      */
     profilingMode?: 'off'|'default';
+<<<<<<< HEAD
     /**
      * Get the device for WebGPU.
      *
@@ -105,6 +106,9 @@ export declare namespace Env {
      * see comments on {@link GpuBufferType} for more details about why not use types defined in "@webgpu/types".
      */
     readonly device: unknown;
+=======
+    validateInputContent?: 'off'|'default';
+>>>>>>> 2aa984366d (Remove input validation and add a flag for input content validation)
   }
 }
 

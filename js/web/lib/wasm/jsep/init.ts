@@ -124,6 +124,16 @@ class ComputeContextImpl implements ComputeContext {
       this.module.stackRestore(stack);
     }
   }
+
+  getFlagValue(flagName: string): string|undefined {
+    if (flagName === 'profilingMode') {
+      return this.backend.profilingMode();
+    } else if (flagName === 'validateInputContent') {
+      return this.backend.validateInputContent();
+    } else {
+      throw new Error(`Not supported for flag name: ${flagName}`);
+    }
+  }
 }
 
 export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
