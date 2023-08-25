@@ -37,9 +37,7 @@ Azure Execution Provider is in preview stage, and all API(s) and usage are subje
 Since 1.16, Azure Execution Provider is shipped by default in both python and nuget packages.
 
 ## Requirements
-Since 1.16, all Azure Execution Provider operators are shipped with [onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions) (>=v0.9.0) python and nuget packages.
-
-Please ensure the installation of correct onnxruntime-extension packages before using Azure Execution Provider.
+Since 1.16, all Azure Execution Provider operators are shipped with [onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions) (>=v0.9.0) python and nuget packages. Please ensure the installation of correct onnxruntime-extension packages before using Azure Execution Provider.
 
 ## Build
 
@@ -167,7 +165,6 @@ if __name__ == '__main__':
 ### Merge and run the hybrid
 
 Alternatively, one could also merge local and azure models into a hybrid, then infer as an ordinary onnx model.
-
 Sample scripts could be found [here](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/AzureEP).
 
 ## Current Limitations
