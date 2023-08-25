@@ -174,8 +174,8 @@ MlasQuantizeLinearPackBytes<uint16_t>(
     // Afterwards, can use _mm_packs_epi32, which is available on SSE2.
     // See: https://stackoverflow.com/a/11028244
 
-    IntegerVector = _mm_slli_epi32 (IntegerVector, 16);
-    IntegerVector = _mm_srai_epi32 (IntegerVector, 16);  // Sign-extend: undo left shift with right arithmetic shift
+    IntegerVector = _mm_slli_epi32(IntegerVector, 16);
+    IntegerVector = _mm_srai_epi32(IntegerVector, 16);  // Sign-extend: undo left shift with right arithmetic shift
     IntegerVector = _mm_packs_epi32(IntegerVector, IntegerVector);  // 16-bit values packed in lower 8 bytes.
 #endif  // defined(MLAS_SSE41_INTRINSICS)
 
@@ -249,23 +249,25 @@ Return Value:
 
 #if defined(MLAS_NEON64_INTRINSICS)
         if constexpr (sizeof(OutputType) == sizeof(uint8_t)) {
-          vst1q_lane_s32((int32_t*)Output, IntegerVector, 0);
+          vst1q_lane_s32(reinterpret_cast<int32_t*>(Output), IntegerVector, 0);
         } else {
           static_assert(sizeof(OutputType) == sizeof(uint16_t));
-          vst1q_lane_s64((int64_t*)Output, vreinterpretq_s64_s32(IntegerVector), 0);
+          vst1q_lane_s64(reinterpret_cast<int64_t*>(Output), vreinterpretq_s64_s32(IntegerVector), 0);
         }
 #else
         if constexpr (sizeof(OutputType) == sizeof(uint8_t)) {
-          *((int32_t*)Output) = _mm_cvtsi128_si32(IntegerVector);
+          *(reinterpret_cast<int32_t*>(Output)) = _mm_cvtsi128_si32(IntegerVector);
         } else {
           static_assert(sizeof(OutputType) == sizeof(uint16_t));
 #if defined(MLAS_TARGET_IX86)
           // x86 does not support _mm_cvtsi128_si64.
           constexpr uint32_t bytes_high_bit = 0x80808080;
           const __m128i first_8_bytes_mask = _mm_set_epi32(0, 0, bytes_high_bit, bytes_high_bit);
-          _mm_maskmoveu_si128(IntegerVector, first_8_bytes_mask, (char*)Output);  // Store first 8 bytes into Output.
+
+          // Store first 8 bytes into Output.
+          _mm_maskmoveu_si128(IntegerVector, first_8_bytes_mask, reinterpret_cast<char*>(Output));
 #else
-          *((int64_t*)Output) = _mm_cvtsi128_si64(IntegerVector);
+          *(reinterpret_cast<int64_t*>(Output)) = _mm_cvtsi128_si64(IntegerVector);
 #endif  // defined(MLAS_TARGET_IX86)
         }
 #endif  // defined(MLAS_NEON64_INTRINSICS)
@@ -287,14 +289,14 @@ Return Value:
 
 #if defined(MLAS_NEON64_INTRINSICS)
         if constexpr (sizeof(OutputType) == sizeof(uint8_t)) {
-          vst1q_lane_u8((uint8_t*)Output + n, vreinterpretq_u8_s32(IntegerVector), 0);
+          vst1q_lane_u8(reinterpret_cast<uint8_t*>(Output) + n, vreinterpretq_u8_s32(IntegerVector), 0);
         } else {
           static_assert(sizeof(OutputType) == sizeof(uint16_t));
-          vst1q_lane_u16((uint16_t*)Output + n, vreinterpretq_u16_s32(IntegerVector), 0);
+          vst1q_lane_u16(reinterpret_cast<uint16_t*>(Output) + n, vreinterpretq_u16_s32(IntegerVector), 0);
         }
 #else
         static_assert(sizeof(OutputType) <= sizeof(uint16_t));
-        *((OutputType*)Output + n) = (OutputType)_mm_cvtsi128_si32(IntegerVector);
+        Output[n] = static_cast<OutputType>(_mm_cvtsi128_si32(IntegerVector));
 #endif
     }
 }

@@ -85,11 +85,11 @@ Return Value:
 
         if constexpr (sizeof(OutputType) == sizeof(uint8_t)) {
             auto CharVector = vec_pack(ShortVector0, ShortVector1);
-            vec_xst(CharVector, 0, (int8_t *) Output);
+            vec_xst(CharVector, 0, reinterpret_cast<int8_t*>(Output));
         } else {
             static_assert(sizeof(OutputType) == sizeof(uint16_t));
-            vec_xst(ShortVector0, 0, (int16_t *) Output);
-            vec_xst(ShortVector1, 0, (int16_t *) (Output + 8));
+            vec_xst(ShortVector0, 0, reinterpret_cast<int16_t*>(Output));
+            vec_xst(ShortVector1, 0, reinterpret_cast<int16_t*>(Output + 8));
         }
 
         Output += 16;

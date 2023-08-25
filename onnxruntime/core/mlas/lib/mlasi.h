@@ -633,8 +633,7 @@ void
     uint16_t* Output,
     size_t N,
     float Scale,
-    uint16_t ZeroPoint
-    );
+    uint16_t ZeroPoint);
 
 typedef
 void
@@ -643,8 +642,7 @@ void
     int16_t* Output,
     size_t N,
     float Scale,
-    int16_t ZeroPoint
-    );
+    int16_t ZeroPoint);
 
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
