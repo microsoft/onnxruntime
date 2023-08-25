@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type BinaryCustomExpression = (expressionA: string, expressionB: string) => string;
@@ -16,8 +17,8 @@ type BinaryFunctionCall = BuiltinFunctionName|BinaryCustomExpression|{
 
 const createBinaryOpProgramShader =
     (shaderHelper: ShaderHelper, dimsA: readonly number[], dimsB: readonly number[], dimsOutput: readonly number[],
-     vectorize: boolean, doBroadcast: boolean, funcCall: BinaryFunctionCall, additionalImplementation?: string,
-     typeA = 'f32', typeB = 'f32', typeOutput = 'f32') => {
+     vectorize: boolean, doBroadcast: boolean, funcCall: BinaryFunctionCall, typeA: number, typeB: number,
+     typeOutput: number, additionalImplementation?: string) => {
       const outputSize = ShapeUtil.size(dimsOutput);
       const vecSize = Math.ceil(outputSize / 4);
 
@@ -33,83 +34,95 @@ const createBinaryOpProgramShader =
       }
 
       let broadcastImpl = '';
-      const outputIndicesHelper = createIndicesHelper('output', dimsOutput);
+      const output = outputVariable('outputData', typeOutput, dimsOutput, 4);
+      const a = inputVariable('aData', typeA, dimsA, 4);
+      const b = inputVariable('bData', typeB, dimsB, 4);
       if (doBroadcast) {
         const calcOffsetImpl = (dims: readonly number[]) => {
           const strides = ShapeUtil.computeStrides(dims);
           const offsets: string[] = [];
           for (let i = dims.length - 1; i >= 0; i--) {
             const idx = dimsOutput.length === 0 ? '0u' :
-                (dimsOutput.length === 1)       ? '(*outputIndices)' :
-                                                  `(*outputIndices)[${i + dimsOutput.length - dims.length}]`;
+                (dimsOutput.length === 1)       ? 'outputIndices' :
+                                                  `outputIndices[${i + dimsOutput.length - dims.length}]`;
             offsets.push(`${strides[i]}u * (${idx} % ${dims[i]}u)`);
           }
           return offsets.length > 0 ? offsets.join('+') : '0u';
         };
 
         broadcastImpl = `
-  ${outputIndicesHelper.o2iImpl}
+          fn calcOffsetA(outputIndices: ${output.type.indices}) -> u32 {
+            return ${calcOffsetImpl(dimsA)};
+          }
 
-  fn calcOffsetA(outputIndices: ptr<function, ${outputIndicesHelper.iType}>) -> u32 {
-    return ${calcOffsetImpl(dimsA)};
-  }
-
-  fn calcOffsetB(outputIndices: ptr<function, ${outputIndicesHelper.iType}>) -> u32 {
-    return ${calcOffsetImpl(dimsB)};
-  }
-  `;
+          fn calcOffsetB(outputIndices: ${output.type.indices}) -> u32 {
+            return ${calcOffsetImpl(dimsB)};
+          }
+        `;
       }
 
       let assignment: string;
       if (vectorize) {
         if (doBroadcast) {
           assignment = `
-      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-      ${outputIndicesHelper.o2iCall('global_idx * 4u', 'outputIndices')}
-      let offsetA = calcOffsetA(&outputIndices);
-      let offsetB = calcOffsetB(&outputIndices);
-      outputData[global_idx] = ${expressionVector('aData[offsetA / 4u]', 'bData[offsetB / 4u]')};`;
+            let outputIndices = ${output.offsetToIndices('global_idx * 4u')};
+            let offsetA = calcOffsetA(outputIndices);
+            let offsetB = calcOffsetB(outputIndices);
+            ${
+              output.setByOffset(
+                  'global_idx', expressionVector(a.getByOffset('offsetA / 4u'), b.getByOffset('offsetB / 4u')))}
+          `;
         } else {
-          assignment = `outputData[global_idx] = ${expressionVector('aData[global_idx]', 'bData[global_idx]')};`;
+          assignment = output.setByOffset(
+              'global_idx', expressionVector(a.getByOffset('global_idx'), b.getByOffset('global_idx')));
         }
       } else {
         if (!doBroadcast) {
           throw new Error('no necessary to use scalar implementation for element-wise binary op implementation.');
         }
-        const singleAssignment = (x: number) => {
+
+        const singleAssignment = (resStr: string, x: number, typeCast = '') => {
           const expressionA = `aData[indexA${x}][componentA${x}]`;
           const expressionB = `bData[indexB${x}][componentB${x}]`;
           return `
-      ${outputIndicesHelper.o2iCall(`global_idx * 4u + ${x}u`, 'outputIndices')}
-      let offsetA${x} = calcOffsetA(&outputIndices);
-      let offsetB${x} = calcOffsetB(&outputIndices);
-      let indexA${x} = offsetA${x} / 4u;
-      let indexB${x} = offsetB${x} / 4u;
-      let componentA${x} = offsetA${x} % 4u;
-      let componentB${x} = offsetB${x} % 4u;
-      outputData[global_idx][${x}] = ${expressionScalar(expressionA, expressionB)};`;
+            let outputIndices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
+            let offsetA${x} = calcOffsetA(outputIndices${x});
+            let offsetB${x} = calcOffsetB(outputIndices${x});
+            let indexA${x} = offsetA${x} / 4u;
+            let indexB${x} = offsetB${x} / 4u;
+            let componentA${x} = offsetA${x} % 4u;
+            let componentB${x} = offsetB${x} % 4u;
+            ${resStr}[${x}] = ${typeCast}(${expressionScalar(expressionA, expressionB)});
+          `;
         };
-
-        assignment = `
-      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-      ${singleAssignment(0)}
-      ${singleAssignment(1)}
-      ${singleAssignment(2)}
-      ${singleAssignment(3)}`;
+        if (typeOutput === DataType.bool) {
+          assignment = `
+            var data = vec4<u32>(0);
+            ${singleAssignment('data', 0, 'u32')}
+            ${singleAssignment('data', 1, 'u32')}
+            ${singleAssignment('data', 2, 'u32')}
+            ${singleAssignment('data', 3, 'u32')}
+            outputData[global_idx] = dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(data));`;
+        } else {
+          assignment = `
+            ${singleAssignment('outputData[global_idx]', 0)}
+            ${singleAssignment('outputData[global_idx]', 1)}
+            ${singleAssignment('outputData[global_idx]', 2)}
+            ${singleAssignment('outputData[global_idx]', 3)}
+          `;
+        }
       }
 
       return `
-  @group(0) @binding(0) var<storage, read> aData : array<vec4<${typeA}>>;
-  @group(0) @binding(1) var<storage, read> bData : array<vec4<${typeB}>>;
-  @group(0) @binding(2) var<storage, read_write> outputData : array<vec4<${typeOutput}>>;
+        ${shaderHelper.declareVariables(a, b, output)}
 
-  ${additionalImplementation ?? ''}
-  ${broadcastImpl}
+        ${additionalImplementation ?? ''}
+        ${broadcastImpl}
 
-  ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
-    ${assignment}
-  }`;
+        ${shaderHelper.mainStart()}
+        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
+        ${assignment}
+      }`;
     };
 
 const createBinaryOpProgramInfo =
@@ -133,7 +146,7 @@ const createBinaryOpProgramInfo =
 
         // check whether vectorize can be enabled
         let sharedDimension = 1;
-        for (let i = 0; i < outputShape.length; i++) {
+        for (let i = 1; i < outputShape.length; i++) {
           const dimA = a.dims[a.dims.length - i] ?? 1;
           const dimB = b.dims[b.dims.length - i] ?? 1;
           if (dimA === dimB) {
@@ -145,8 +158,6 @@ const createBinaryOpProgramInfo =
         if (sharedDimension % 4 === 0) {
           vectorize = true;
         }
-
-
       } else {
         // element-wise
         vectorize = true;
@@ -155,7 +166,8 @@ const createBinaryOpProgramInfo =
       return {
         ...metadata,
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
-            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, additionalImplementation),
+            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,
+            outputDataType, additionalImplementation),
         outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
         dispatchGroup: () =>
             ({x: Math.ceil(outputSize / 64 /* workgroup size */ / (vectorize ? 4 : 1) /* vec size */)})
@@ -164,12 +176,13 @@ const createBinaryOpProgramInfo =
 
 const createBinaryOpProgramInfoLoader =
     (inputs: readonly TensorView[], name: string, funcCall: BinaryFunctionCall, additionalImplementation?: string,
-     cacheKey?: string): ProgramInfoLoader => {
+     cacheKey?: string, outputDataType?: number): ProgramInfoLoader => {
       const metadata:
           ProgramMetadata = {name, inputTypes: [GpuDataType.default, GpuDataType.default], cacheHint: cacheKey};
       return {
         ...metadata,
-        get: () => createBinaryOpProgramInfo(metadata, inputs[0], inputs[1], funcCall, additionalImplementation)
+        get: () => createBinaryOpProgramInfo(
+            metadata, inputs[0], inputs[1], funcCall, additionalImplementation, outputDataType)
       };
     };
 
@@ -186,23 +199,46 @@ export const mul = (context: ComputeContext): void => {
 };
 
 export const pow = (context: ComputeContext): void => {
+  const type = inputVariable('input', context.inputs[0].dataType, context.inputs[0].dims).type.value;
+  const roundStr = type === 'i32' ? 'round' : '';
   context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'Pow', ({scalar: (a, b) => `pow_f32(${a},${b})`, vector: (a, b) => `pow_vf32(${a},${b})`}), `
-    fn pow_f32(a : f32, b : f32) -> f32 {
-      if (b == 0.0) {
-        return 1.0;
-      } else if (a < 0.0 && b != floor(b)) {
-        return pow(a, b); // NaN
+      context.inputs, 'Pow',
+      ({scalar: (a, b) => `pow_custom(${a},${b})`, vector: (a, b) => `pow_vector_custom(${a},${b})`}),
+      `
+    fn pow_custom(a : ${type}, b : ${type}) -> ${type} {
+      if (b == ${type}(0.0)) {
+        return ${type}(1.0);
+      } else if (a < ${type}(0.0) && f32(b) != floor(f32(b))) {
+        return ${type}(pow(f32(a), f32(b))); // NaN
       }
-      return select(sign(a), 1.0, round(abs(b) % 2.0) != 1.0) * pow(abs(a), b);
+      return select(sign(a), ${type}(1.0), round(f32(abs(b) % ${type}(2.0))) != 1.0) * ${type}(${
+          roundStr}(pow(f32(abs(a)), f32(b))));
     }
-    fn pow_vf32(a : vec4<f32>, b : vec4<f32>) -> vec4<f32> {
+    fn pow_vector_custom(a : vec4<${type}>, b : vec4<${type}>) -> vec4<${type}> {
       // TODO: implement vectorized pow
-      return vec4<f32>(pow_f32(a.x, b.x), pow_f32(a.y, b.y), pow_f32(a.z, b.z), pow_f32(a.w, b.w));
+      return vec4<${type}>(pow_custom(a.x, b.x), pow_custom(a.y, b.y), pow_custom(a.z, b.z), pow_custom(a.w, b.w));
     }
       `));
 };
 
 export const sub = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Sub', (a, b) => `${a}-${b}`));
+};
+
+export const greater = (context: ComputeContext): void => {
+  context.compute(createBinaryOpProgramInfoLoader(
+      context.inputs, 'Greater', ({
+        scalar: (a, b) => `select(0, 1, ${a}>${b})`,
+        vector: (a, b) => `select(vec4<u32>(0), vec4<u32>(1), ${a}>${b})`
+      }),
+      undefined, undefined, DataType.bool));
+};
+
+export const less = (context: ComputeContext): void => {
+  context.compute(createBinaryOpProgramInfoLoader(
+      context.inputs, 'Less', ({
+        scalar: (a, b) => `select(0, 1, ${a}<${b})`,
+        vector: (a, b) => `select(vec4<u32>(0), vec4<u32>(1), ${a}<${b})`
+      }),
+      undefined, undefined, DataType.bool));
 };

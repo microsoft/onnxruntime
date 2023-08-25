@@ -130,6 +130,22 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelCon
   API_IMPL_END
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version, _In_ int resource_id, _Outptr_ void** resource) {
+  API_IMPL_BEGIN
+  *resource = {};
+  const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+  auto* stream = reinterpret_cast<onnxruntime::Stream*>(ctx->GetComputeStream());
+  if (!stream) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
+  }
+  *resource = stream->GetResource(resource_version, resource_id);
+  if (!(*resource)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Requested resource does not exist");
+  }
+  return nullptr;
+  API_IMPL_END
+};
+
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
