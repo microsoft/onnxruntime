@@ -5,8 +5,8 @@
 
 #include "core/framework/op_kernel.h"
 
-const void* JsepOutput(void* context, int index, void* data) {
-  uint32_t* data_offset = reinterpret_cast<uint32_t*>(data);
+const void* JsepOutput(void* context, int index, const void* data) {
+  const uint32_t* data_offset = reinterpret_cast<const uint32_t*>(data);
   uint32_t dim = *data_offset++;
   size_t dim_size = static_cast<size_t>(dim);
   std::vector<int64_t> dims;
@@ -23,4 +23,9 @@ const void* JsepOutput(void* context, int index, void* data) {
 
   LOGF_DEFAULT(VERBOSE, "JsepOutput -- data=%zu", (size_t)(r));
   return r;
+}
+
+const void* JsepGetNodeName(const void* kernel) {
+  const auto& name = reinterpret_cast<const onnxruntime::OpKernel*>(kernel)->Node().Name();
+  return name.c_str();
 }
