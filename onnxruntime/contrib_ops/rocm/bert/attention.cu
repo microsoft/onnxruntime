@@ -112,7 +112,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   {
     auto& params = gemm_permute_params;
     params.tuning_ctx = GetTuningContext();
-    params.stream = stream;
+    params.stream = context->GetComputeStream();
     params.handle = rocblas;
     params.attention = &attn;
     params.device_prop = &device_prop;
@@ -178,7 +178,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   {
     auto& params = gemm_softmax_gemm_permute_params;
     params.tuning_ctx = GetTuningContext();
-    params.stream = Stream(context);
+    params.stream = context->GetComputeStream();
     params.handle = rocblas;
     params.attention = &attn;
     params.device_prop = &device_prop;

@@ -70,7 +70,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Exp", {}},
           {"LRN", {}},
           {"Ceil", {}},
-          {"Abs", {}}};
+          {"Abs", {}},
+          {"DepthToSpace", {}},
+          {"SpaceToDepth", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
@@ -107,6 +109,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetLogicalComparisonOpVersions
           {"GreaterOrEqual", {}},
           {"Less", {}},
           {"LessOrEqual", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetWhereOpVersionsMap() {
+  return {{"Where", {}}};
 }
 
 /* Selector rules registration related */
@@ -195,6 +200,13 @@ void RegisterLogicalComparisonSelectors(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterWhereSelectors(Selectors& qdq_selectors) {
+  /* register selectors for Where ops */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<WhereNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetWhereOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -208,6 +220,7 @@ void SelectorManager::CreateSelectors() {
   RegisterInstanceAndLayerNormalizationSelector(qdq_selectors_);
   RegisterBatchNormalizationSelector(qdq_selectors_);
   RegisterLogicalComparisonSelectors(qdq_selectors_);
+  RegisterWhereSelectors(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

@@ -51,7 +51,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Sqrt", *this);
     CreateSimpleOpBuilder("Sub", *this);
     CreateSimpleOpBuilder("Tanh", *this);
-    CreateSimpleOpBuilder("Transpose", *this);
 
     CreateSimpleOpBuilder("LogSoftmax", *this);
     CreateSimpleOpBuilder("MatMul", *this);
@@ -61,6 +60,9 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("DequantizeLinear", *this);
 
     CreateSimpleOpBuilder("HardSwish", *this);
+
+    CreateSimpleOpBuilder("DepthToSpace", *this);
+    CreateSimpleOpBuilder("SpaceToDepth", *this);
   }
 
   {
@@ -144,6 +146,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateLRNOpBuilder("LRN", *this);
+  }
+
+  {
+    CreateTransposeOpBuilder("Transpose", *this);
   }
 }
 
