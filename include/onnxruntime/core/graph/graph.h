@@ -734,6 +734,11 @@ class Graph {
   */
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const;
 
+  /** Overrides the initialized tensors's dimensions. Can be used when a model's input also has a default initializer
+   * that the user decides to override with AddFreeDimensionOverrideByName.
+   */
+  void OverrideInitializedTensorDim(const std::string& tensor_name, int dim_index, int64_t override);
+
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
 
@@ -1572,6 +1577,7 @@ class Graph {
   ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
 
   InitializedTensorSet name_to_initial_tensor_;
+  std::unordered_map<std::string, ONNX_NAMESPACE::TensorShapeProto> name_to_overriden_initial_tensor_shape_;
 
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
