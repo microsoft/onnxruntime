@@ -1880,7 +1880,14 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
                                                        bool is_inputs) const {
   const char* const input_output_moniker = is_inputs ? "Input" : "Output";
   const char* const feed_fetches_moniker = is_inputs ? "Feed" : "Fetch";
-  // const InputOutputDefMetaMap& input_output_meta_map = is_inputs ? input_def_map_ : output_def_map_;
+
+  auto is_sparse_initializer = [this](const std::string& name) -> bool {
+    int idx = -1;
+    if (session_state_->GetOrtValueNameIdxMap().GetIdx(name, idx).IsOK()) {
+      return session_state_->IsSparseInitializer(idx);
+    }
+    return false;
+  };
 
   if (names.size() != feeds_fetches.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, feed_fetches_moniker, " names has ", names.size(),
@@ -1947,7 +1954,7 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
           ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, sparse_tensor.DenseShape(),
                                                      *iter->second.tensor_shape, input_output_moniker));
         }
-      } else if (session_state_->GetGraphViewer().GetGraph().IsSparseInitializer(name) &&
+      } else if (is_sparse_initializer(name) &&
                  expected_type->IsTensorType()) {
         // If this metadata came from a sparse initializer converted to dense, then still validate it.
         auto expected_element_type = expected_type->AsTensorType()->GetElementType();
