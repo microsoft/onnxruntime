@@ -178,7 +178,6 @@ export declare namespace InferenceSession {
     webgl: WebGLExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
     webnn: WebNNExecutionProviderOption;
-    coreml: CoreMLExecutionProviderOption;
     nnapi: NnapiExecutionProviderOption;
   }
 
