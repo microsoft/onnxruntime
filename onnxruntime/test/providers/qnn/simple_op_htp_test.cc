@@ -97,6 +97,27 @@ static void RunQDQUnaryOpTest(const TestInputDef<float>& input_def, const std::s
 }
 
 template <typename InputType = float>
+static void RunUnaryOpTest(const TestInputDef<InputType>& input_def, const std::string& op_type,
+                           const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                           int opset_version,
+                           ExpectedEPNodeAssignment expected_ep_assignment,
+                           const std::string& domain = kOnnxDomain) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnCpu.dll";
+#else
+  provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  // Runs model with DQ-> Op -> Q and compares the outputs of the CPU and QNN EPs.
+  RunQnnModelTest(BuildUnaryOpTestCase<InputType>(op_type, input_def, attrs, domain),
+                  provider_options,
+                  opset_version,
+                  expected_ep_assignment,
+                  1e-5f);
+}
+
+template <typename InputType = float>
 static GetTestModelFn BuildBinaryOpTestCase(const std::string& op_type, const TestInputDef<InputType>& input0_def,
                                             const TestInputDef<InputType>& input1_def) {
   return [op_type, input0_def, input1_def](ModelTestBuilder& builder) {
@@ -169,6 +190,46 @@ static void RunBinaryOpTest(const std::string& op_type, const TestInputDef<Input
                   provider_options,
                   opset_version,
                   expected_ep_assignment);
+}
+
+// Check that QNN compiles DQ -> Sigmoid -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, UnaryOp_Sigmoid) {
+  RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),  // Input range [-10.0, 10.0f]
+                    "Sigmoid",
+                    {},
+                    13,
+                    ExpectedEPNodeAssignment::All);
+}
+
+// Runs Sigmoid on QNN CPU backend.
+// Uses an input of rank 3
+TEST_F(QnnCPUBackendTests, UnaryOp_Sigmoid) {
+  RunUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),  // Input range [-10.0, 10.0f]
+                 "Sigmoid",
+                 {},
+                 13,
+                 ExpectedEPNodeAssignment::All);
+}
+
+// Check that QNN compiles DQ -> Tanh -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, UnaryOp_Tanh) {
+  RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),  // Input range [-10.0, 10.0f]
+                    "Tanh",
+                    {},
+                    13,
+                    ExpectedEPNodeAssignment::All);
+}
+
+// Runs Tanh on QNN CPU backend.
+// Uses an input of rank 3
+TEST_F(QnnCPUBackendTests, UnaryOp_Tanh) {
+  RunUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),  // Input range [-10.0, 10.0f]
+                 "Tanh",
+                 {},
+                 13,
+                 ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Gelu -> Q as a single unit.

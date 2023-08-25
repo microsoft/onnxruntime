@@ -211,7 +211,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     ORT_RETURN_IF_ERROR(ProcessBlockSizeAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
-  // TODO: Refactor processing of Sigmoid/Tanh to a separate function.
+  // TODO: Refactor processing of Sigmoid/Tanh to a separate function (or op-builder file).
   if (op_type != "Sigmoid" && op_type != "Tanh") {
     return ProcessOutputs(qnn_model_wrapper, node_unit,
                           std::move(input_names),
@@ -239,8 +239,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
       offset = 0;
     }
 
-    float expected_scale = output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 ?
-      (1.0f / 65536.0f) : (1.0f / 32768.0f);
+    float expected_scale = output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 ? (1.0f / 65536.0f) : (1.0f / 32768.0f);
 
     if (scale != expected_scale) {
       LOGS(logger, WARNING) << "QNN EP requires that 16-bit " << op_type << " operators use an scale equal to "
