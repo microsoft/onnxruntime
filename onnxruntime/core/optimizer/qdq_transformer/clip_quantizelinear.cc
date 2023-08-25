@@ -3,6 +3,7 @@
 
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 
@@ -73,7 +74,7 @@ bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, con
 
   // if Clip is followed by QuantizeLinear, it can be fused into QuantizeLinear potentially
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuantizeLinear", {10, 13, 19})) {
+  if (!QDQ::MatchQNode(next_node)) {
     return false;
   }
 

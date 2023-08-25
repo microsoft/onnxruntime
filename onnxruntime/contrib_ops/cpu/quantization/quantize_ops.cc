@@ -26,6 +26,15 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     DequantizeLinear<int8_t>);
 
 ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    DequantizeLinear,
+    1,
+    int32_t,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
+    DequantizeLinear<int32_t>);
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     QuantizeLinear,
     1,
     uint8_t,
