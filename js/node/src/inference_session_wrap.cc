@@ -12,7 +12,6 @@
 #include <string>
 
 Napi::FunctionReference InferenceSessionWrap::constructor;
-Ort::Env *InferenceSessionWrap::ortEnv;
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 #if defined(USE_DML) && defined(_WIN32)
@@ -20,8 +19,12 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 #endif
   // create ONNX runtime env
   Ort::InitApi();
-  ortEnv = new Ort::Env{ORT_LOGGING_LEVEL_WARNING, "onnxruntime-node"};
-
+  ORT_NAPI_THROW_ERROR_IF(
+      Ort::Global<void>::api_ == nullptr, env,
+      "Failed to initialize ONNX Runtime API. It could happen when this nodejs binding was built with a higher version "
+      "ONNX Runtime but now runs with a lower version ONNX Runtime DLL(or shared library).");
+  auto ortEnv = new Ort::Env{ORT_LOGGING_LEVEL_WARNING, "onnxruntime-node"};
+  env.SetInstanceData(ortEnv);
   // initialize binding
   Napi::HandleScope scope(env);
 
@@ -33,7 +36,6 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 
   constructor = Napi::Persistent(func);
   constructor.SuppressDestruct();
-
   exports.Set("InferenceSession", func);
 
   Napi::Function listSupportedBackends = Napi::Function::New(env, InferenceSessionWrap::ListSupportedBackends);
@@ -63,7 +65,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
       Napi::String value = info[0].As<Napi::String>();
 
       ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(OrtEnv(),
+      this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
 #ifdef _WIN32
                                             reinterpret_cast<const wchar_t *>(value.Utf16Value().c_str()),
 #else
@@ -78,8 +80,9 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
       ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(
-          new Ort::Session(OrtEnv(), reinterpret_cast<char *>(buffer) + bytesOffset, bytesLength, sessionOptions));
+      this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
+                                            reinterpret_cast<char *>(buffer) + bytesOffset, bytesLength,
+                                            sessionOptions));
     } else {
       ORT_NAPI_THROW_TYPEERROR(
           env,

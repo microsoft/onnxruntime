@@ -60,10 +60,6 @@ private:
   // persistent constructor
   static Napi::FunctionReference constructor;
 
-  // global env
-  static Ort::Env *ortEnv;
-  static Ort::Env &OrtEnv() { return *ortEnv; }
-
   // session objects
   bool initialized_;
   std::unique_ptr<Ort::Session> session_;
