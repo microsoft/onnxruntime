@@ -11,8 +11,7 @@ stages:
   - NuGet_Test_Linux_CPU
   - NuGet_Test_Win_GPU
   - NuGet_Test_Linux_GPU
-  - NuGet_Packaging_ROCm # TODO use NuGet_Test_Linux_ROCm once we have agent pool for testing
-  # - NuGet_Test_Linux_ROCm
+  - NuGet_Test_Linux_ROCm
   - NuGet_Test_MacOS
   - NuGet_Packaging_DML
   - NuGet_Test_Win_Training_CPU
