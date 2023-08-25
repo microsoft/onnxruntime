@@ -40,18 +40,15 @@ option(USE_COREML "Build with CoreML support" OFF)
 
 if(USE_DML)
   add_compile_definitions(USE_DML=1)
-  include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/providers/dml)
 endif()
 if(USE_CUDA)
   add_compile_definitions(USE_CUDA=1)
 endif()
 if(USE_TENSORRT)
   add_compile_definitions(USE_TENSORRT=1)
-  include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/providers/tensorrt)
 endif()
 if(USE_COREML)
   add_compile_definitions(USE_COREML=1)
-  include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/providers/coreml)
 endif()
 
 # source files
@@ -100,10 +97,15 @@ if (WIN32)
     COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE}/onnxruntime.dll
       ${dist_folder}
-    COMMAND ${CMAKE_COMMAND} -E copy
+  )
+  if (USE_DML)
+    add_custom_command(
+      TARGET onnxruntime_binding POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE}/DirectML.dll
       ${dist_folder}
-  )
+    )
+  endif ()
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_custom_command(
       TARGET onnxruntime_binding POST_BUILD

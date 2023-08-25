@@ -13,14 +13,14 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
 #ifdef USE_DML
-#include "dml_provider_factory.h"
+#include "core/providers/dml/dml_provider_factory.h"
 #endif
 #ifdef USE_TENSORRT
-#include "tensorrt_provider_factory.h"
-#include "tensorrt_provider_options.h"
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
 #ifdef USE_COREML
-#include "coreml_provider_factory.h"
+#include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 
 const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NAME_TO_ID_MAP = {
