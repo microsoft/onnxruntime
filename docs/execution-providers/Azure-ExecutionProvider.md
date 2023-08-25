@@ -16,6 +16,11 @@ One use case for Azure Execution Provider is for small-big models. E.g. A smalle
 while a bigger model can be deployed on Azure for higher precision. Using the Azure Execution Provider, switching between the two can be easily achieved (assuming same inputs and outputs). 
 
 Azure Execution Provider is in preview stage, and all API(s) and usage are subject to change.
+For onnxruntime 1.16, three operators are available:
+
+- [OpenAIAudioToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#openaiaudiototext)
+- [AzureTextToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretexttotext)
+- [AzureTritonInvoker](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretritoninvoker)
 
 ## Contents
 {: .no_toc }
@@ -24,11 +29,11 @@ Azure Execution Provider is in preview stage, and all API(s) and usage are subje
 {:toc}
 
 ## Install
-Pre-built Python binaries of ONNX Runtime with Azure EP are published on Pypi: [onnxruntime-azure](https://pypi.org/project/onnxruntime-azure/)
+Since onnxruntime 1.16, Azure Execution Provider releases with default onnxruntime python and nuget packages.
 
 ## Requirements
-
-For Linux, please make sure openssl is installed.
+Since onnxruntime 1.16, all Azure Execution Provider operators are released with onnxruntime extension (>=v0.9.0) python and nuget packages.
+Please ensure the installation of correct onnxruntime extension packages beforehand.
 
 ## Build
 
@@ -39,33 +44,113 @@ For build instructions, please see the [BUILD page](../build/eps.md#azure).
 ### Python
 
 ```python
-from onnxruntime import *
-import numpy as np
 import os
+import onnx
+from onnx import helper, TensorProto
+from onnxruntime_extensions import get_library_path
+from onnxruntime import SessionOptions, InferenceSession
+import numpy as np
+import threading
 
-sess_opt = SessionOptions()
-sess_opt.add_session_config_entry('azure.endpoint_type', 'triton'); # only support triton server for now
-sess_opt.add_session_config_entry('azure.uri', 'https://...')
-sess_opt.add_session_config_entry('azure.model_name', 'a_simple_model');
-sess_opt.add_session_config_entry('azure.model_version', '1'); # optional, default 1
-sess_opt.add_session_config_entry('azure.verbose', 'true'); # optional, default false
 
-sess = InferenceSession('a_simple_model.onnx', sess_opt, providers=['CPUExecutionProvider','azureExecutionProvider'])
+# To get the model,
+# please run https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/whisper_e2e.py
+def get_whiper_tiny():
+    return '/onnxruntime-extensions/tutorials/whisper_onnx_tiny_en_fp32_e2e.onnx'
 
-run_opt = RunOptions()
-run_opt.add_run_config_entry('use_azure', '1') # optional, default '0' to run inference locally.
-run_opt.add_run_config_entry('azure.auth_key', '...') # optional, required only when use_azure set to 1
 
-x = np.array([1,2,3,4]).astype(np.float32)
-y = np.array([4,3,2,1]).astype(np.float32)
+# Generate a proxy model which talks to openAI audio service
+def get_openai_audio_proxy_model():
+    auth_token = helper.make_tensor_value_info('auth_token', TensorProto.STRING, [1])
+    model = helper.make_tensor_value_info('model_name', TensorProto.STRING, [1])
+    response_format = helper.make_tensor_value_info('response_format', TensorProto.STRING, [-1])
+    file = helper.make_tensor_value_info('file', TensorProto.UINT8, [-1])
 
-z = sess.run(None, {'X':x, 'Y':y}, run_opt)[0]
+    transcriptions = helper.make_tensor_value_info('transcriptions', TensorProto.STRING, [-1])
+
+    invoker = helper.make_node('OpenAIAudioToText',
+                               ['auth_token', 'model_name', 'response_format', 'file'],
+                               ['transcriptions'],
+                               domain='com.microsoft.extensions',
+                               name='audio_invoker',
+                               model_uri='https://api.openai.com/v1/audio/transcriptions',
+                               audio_format='wav',
+                               verbose=False)
+
+    graph = helper.make_graph([invoker], 'graph', [auth_token, model, response_format, file], [transcriptions])
+    model = helper.make_model(graph, ir_version=8,
+                              opset_imports=[helper.make_operatorsetid('com.microsoft.extensions', 1)])
+    model_name = 'openai_whisper_proxy.onnx'
+    onnx.save(model, model_name)
+    return model_name
+
+
+if __name__ == '__main__':
+    sess_opt = SessionOptions()
+    sess_opt.register_custom_ops_library(get_library_path())  # load extension
+
+    proxy_model_path = get_openai_audio_proxy_model()
+    proxy_model_sess = InferenceSession(proxy_model_path,
+        sess_opt, providers=['CPUExecutionProvider', 'AzureExecutionProvider'])  # load AzureEP
+
+    with open('test16.wav', "rb") as _f:  # read raw audio data from a local wav file
+        audio_stream = np.asarray(list(_f.read()), dtype=np.uint8)
+
+    proxy_model_inputs = {
+        "auth_token": np.array([os.getenv('AUDIO', '')]),  # read auth from env variable
+        "model_name": np.array(['whisper-1']),
+        "response_format":  np.array(['text']),
+        "file": audio_stream
+    }
+
+
+    class RunAsyncState:
+        def __init__(self):
+            self.__event = threading.Event()
+            self.__outputs = None
+            self.__err = ''
+
+        def fill_outputs(self, outputs, err):
+            self.__outputs = outputs
+            self.__err = err
+            self.__event.set()
+
+        def get_outputs(self):
+            return self.__outputs;
+
+        def wait(self, sec):
+            self.__event.wait(sec)
+
+
+    def ProxyRunCallback(outputs: np.ndarray, state: RunAsyncState, err: str) -> None:
+        state.fill_outputs(outputs, err)
+
+
+    run_async_state = RunAsyncState();
+    # infer proxy model asynchronously
+    proxy_model_outputs = proxy_model_sess.run_async(None, proxy_model_inputs, ProxyRunCallback, run_async_state)
+
+
+    edge_model_path = get_whiper_tiny()
+    edge_model_sess = InferenceSession(edge_model_path,
+        sess_opt, providers=['CPUExecutionProvider'])
+
+    edge_model_outputs = edge_model_sess.run(None, {
+        'audio_stream': np.expand_dims(audio_stream, 0),
+        'max_length': np.asarray([200], dtype=np.int32),
+        'min_length': np.asarray([0], dtype=np.int32),
+        'num_beams': np.asarray([2], dtype=np.int32),
+        'num_return_sequences': np.asarray([1], dtype=np.int32),
+        'length_penalty': np.asarray([1.0], dtype=np.float32),
+        'repetition_penalty': np.asarray([1.0], dtype=np.float32)
+    })
+
+    print("\noutput from whisper tiny: ", edge_model_outputs)
+    run_async_state.wait(10)
+    print("\nresponse from openAI: ", run_async_state.get_outputs())
+    # compare results and pick a better
 ```
 
 ### Current Limitations
 
-* Only supports [Triton Inference Server](https://github.com/triton-inference-server) on [AML](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-with-triton?tabs=python%2Cendpoint).
-* Only builds and run on Windows and Linux.
-* Available only as Python package, but can be built from source and used via C/C++ API(s).
-* **Known Issue:** For certain ubuntu versions, https call made by AzureEP might report error - "error setting certificate verify location ...".
-To silence it, please create file "/etc/pki/tls/certs/ca-bundles.crt" that link to "/etc/ssl/certs/ca-certificates.crt".
+* Only builds and run on Windows, Linux and Android platforms. For Android, AzureTritonInvoker op is not supported.
