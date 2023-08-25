@@ -47,6 +47,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
           {"GlobalAveragePool", {}},
+          {"GlobalMaxPool", {}},
           {"LeakyRelu", {}},
           {"ReduceMean", {}},
           {"ReduceMin", {}},
