@@ -370,7 +370,7 @@ int OrtRun(OrtSession* session,
            OrtRunOptions* run_options) {
   auto status_code = CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
 #if defined(USE_JSEP)
-  EM_ASM({ Module.jsepRunPromiseResolve($0); }, status_code);
+  EM_ASM({ Module.jsepRunPromiseResolve ?.($0); }, status_code);
 #endif
   return status_code;
 }

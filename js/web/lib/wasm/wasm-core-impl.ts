@@ -258,18 +258,14 @@ export const run = async(
         wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
       }
 
-      if (wasm.jsepOnRunStart) {
-        wasm.jsepOnRunStart(sessionId);
-      }
+      wasm.jsepOnRunStart?.(sessionId);
 
       // support RunOptions
       let errorCode = wasm._OrtRun(
           sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset, outputCount,
           outputValuesOffset, runOptionsHandle);
 
-      if (wasm.jsepOnRunEnd) {
-        wasm.jsepOnRunEnd(sessionId);
-      }
+      wasm.jsepOnRunEnd?.(sessionId);
 
       const runPromise = wasm.jsepRunPromise;
       if (runPromise && typeof runPromise.then !== 'undefined') {

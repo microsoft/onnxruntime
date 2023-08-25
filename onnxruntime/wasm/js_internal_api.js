@@ -18,6 +18,11 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
     Module['jsepRunPromise'] = new Promise(r => {
       Module.jsepRunPromiseResolve = r;
     });
+
+    if (Module.jsepSessionState) {
+      throw new Error('Session already started');
+    }
+
     Module.jsepSessionState = {
       sessionId,
       errors: []
