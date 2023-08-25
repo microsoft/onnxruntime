@@ -4,6 +4,7 @@ title: Cloud - Azure
 description: Instructions to infer an ONNX model remotely with an Azure endpoint
 parent: Execution Providers
 nav_order: 11
+redirect_from: /docs/reference/execution-providers/Azure-ExecutionProvider
 ---
 
 # Azure Execution Provider (Preview)
@@ -49,6 +50,7 @@ In this mode, there are two models running simulaneouly. By [RunAsync](https://g
 # Demo: running two models simultaneously - one on edge and the other on azure,
 #       compare and pick better result in the end.
 # ---------------------------------------------------------------------------------------
+
 import os
 import onnx
 from onnx import helper, TensorProto
@@ -58,13 +60,13 @@ import numpy as np
 import threading
 
 
-# To get the model,
-# please run https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/whisper_e2e.py
+# Generate the local model by:
+# https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/whisper_e2e.py
 def get_whiper_tiny():
     return '/onnxruntime-extensions/tutorials/whisper_onnx_tiny_en_fp32_e2e.onnx'
 
 
-# Generate a proxy model which talks to openAI audio service
+# Generate the azure model
 def get_openai_audio_azure_model():
     auth_token = helper.make_tensor_value_info('auth_token', TensorProto.STRING, [1])
     model = helper.make_tensor_value_info('model_name', TensorProto.STRING, [1])
