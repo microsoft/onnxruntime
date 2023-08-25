@@ -23,7 +23,7 @@ Till onnxruntime 1.16, three operators are available:
 - [AzureTextToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretexttotext)
 - [AzureTritonInvoker](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretritoninvoker)
 
-Each of above operators could be used to compose a proxy model that talks to remote endpoints.
+Each of above operators could be used to compose a proxy model that talks to a supported remote endpoint.
 
 ## Contents
 {: .no_toc }
@@ -44,10 +44,9 @@ For build instructions, please see the [BUILD page](../build/eps.md#azure).
 
 ## Usage
 
-### Two models side by side
+### Edge and cloud, side by side
 
 ```python
-
 # ---------------------------------------------------------------------------------------
 # Demo: running two models simultaneously - one on edge and the other remotely by a proxy,
 #       compare and pick better result in the end.
@@ -95,7 +94,7 @@ def get_openai_audio_proxy_model():
 
 if __name__ == '__main__':
     sess_opt = SessionOptions()
-    sess_opt.register_custom_ops_library(get_library_path())  # load extension
+    sess_opt.register_custom_ops_library(get_library_path())
 
     proxy_model_path = get_openai_audio_proxy_model()
     proxy_model_sess = InferenceSession(proxy_model_path,
@@ -124,6 +123,8 @@ if __name__ == '__main__':
             self.__event.set()
 
         def get_outputs(self):
+            if self.__err != '':
+                raise Exception(err)
             return self.__outputs;
 
         def wait(self, sec):
@@ -156,14 +157,15 @@ if __name__ == '__main__':
     print("\noutput from whisper tiny: ", edge_model_outputs)
     run_async_state.wait(10)
     print("\nresponse from openAI: ", run_async_state.get_outputs())
-    # compare results and pick a better
+    # compare results and pick the better
 ```
 
-## Merge and run a hybrid model
+## Merge once, and run a hybrid
 
 Alternatively, one could also merge their local and proxy models beforehand into a hybrid, then infer as an ordinary onnx model.
 Sample scripts could be found [here](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/AzureEP).
 
 ## Current Limitations
 
-* Only builds and run on Windows, Linux and Android platforms. For Android, AzureTritonInvoker op is not supported.
+* Only builds and run on Windows, Linux and Android.
+* For Android, AzureTritonInvoker is not supported.
