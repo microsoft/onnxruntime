@@ -519,10 +519,12 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
 
     std::vector<OrtValue> results;
     results.resize(1);
+
     auto ml_type = DataTypeImpl::GetType<SparseTensor>();
     results[0].Init(p_tensor.release(), ml_type, ml_type->GetDeleteFunc());
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(), EmptySpan<OrtValue>(), AsSpan<std::string>({"values"}), &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(), EmptySpan<OrtValue>(),
+                                 AsSpan<std::string>({"values"}), &results, nullptr));
 
     ASSERT_TRUE(results[0].IsAllocated());
     ASSERT_TRUE(results[0].IsSparseTensor());

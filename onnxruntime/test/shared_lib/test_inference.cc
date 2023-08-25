@@ -159,8 +159,8 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                                   expected_values_y,
                                   nullptr);
     // with preallocated output tensor
-    Ort::Value value_y = Ort::Value::CreateTensor<InT>(default_allocator.get(),
-                                                       expected_dims_y.data(), expected_dims_y.size());
+    Ort::Value value_y = Ort::Value::CreateTensor<OutT>(default_allocator.get(),
+                                                        expected_dims_y.data(), expected_dims_y.size());
 
     // test it twice
     for (int i = 0; i != 2; ++i)
@@ -2652,7 +2652,7 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_Tensors) {
     exception_thrown = true;
     const char* exception_string = ex.what();
     ASSERT_TRUE(strcmp(exception_string,
-                       "Unexpected input data type. Actual: (tensor(double)) , expected: (tensor(float))") == 0);
+                       "Unexpected Input data type. Actual: (tensor(double)) , expected: (tensor(float))") == 0);
   }
 
   ASSERT_TRUE(exception_thrown);
@@ -2684,7 +2684,7 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
     exception_thrown = true;
     const char* exception_string = ex.what();
     ASSERT_TRUE(strcmp(exception_string,
-                       "Unexpected input data type. Actual: (seq(double)) , expected: (seq(float))") == 0);
+                       "Unexpected Input data type. Actual: (seq(double)) , expected: (seq(float))") == 0);
   }
 
   ASSERT_TRUE(exception_thrown);
