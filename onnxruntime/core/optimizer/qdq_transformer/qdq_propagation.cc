@@ -31,7 +31,7 @@ bool CanNodePropagate(const Node& node) {
 // 2. scale_initializer_nodearg and zp_initializer_nodearg_ptr (if not null) are constant initializers
 Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                      NodeArg& scale_initializer_nodearg, NodeArg* zp_initializer_nodearg_ptr,
-                     const std::string& domain, const logging::Logger& logger) {
+                     const std::string& qdq_domain, const logging::Logger& logger) {
   auto* src_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
   auto* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
 
@@ -77,7 +77,7 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                                // outputs
                                {&q_to_dq_nodearg},
                                nullptr,  // attributes
-                               domain);
+                               qdq_domain);
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(q_node), "Failed to set op schema for added Q node.");
 
@@ -90,7 +90,7 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                                 // outputs
                                 {&post_dq_nodearg},
                                 nullptr,  // attributes
-                                domain);
+                                qdq_domain);
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(dq_node), "Failed to set op schema for added DQ node.");
 

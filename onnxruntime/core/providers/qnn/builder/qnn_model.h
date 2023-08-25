@@ -13,14 +13,14 @@
 
 namespace onnxruntime {
 namespace qnn {
+
 class QnnModel {
  public:
   QnnModel(const logging::Logger& logger,
-           QnnBackendManager* qnn_backend_manager,
-           bool is_quantized_model = true)
+           QnnBackendManager* qnn_backend_manager)
       : logger_(logger),
-        qnn_backend_manager_(qnn_backend_manager),
-        is_quantized_model_(is_quantized_model) {
+        qnn_backend_manager_(qnn_backend_manager) {
+    qnn_backend_type_ = qnn_backend_manager_->GetQnnBackendType();
   }
 
   ~QnnModel() = default;
@@ -85,6 +85,8 @@ class QnnModel {
 
   Status SetupTensors(std::vector<Qnn_Tensor_t>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers, bool is_input = true);
 
+  QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
+
  private:
   size_t GetInputOutputIndex(const std::string& name, const std::unordered_map<std::string, OnnxTensorInfo>& io_info) const {
     auto it = io_info.find(name);
@@ -100,11 +102,11 @@ class QnnModel {
   std::unordered_map<std::string, size_t> model_output_index_map_;
   // TODO: remove initializer_inputs_, use QnnModelWrapper
   std::unordered_set<std::string> initializer_inputs_;
-  bool is_quantized_model_ = false;
   std::unordered_map<std::string, OnnxTensorInfo> inputs_info_;
   std::unordered_map<std::string, OnnxTensorInfo> outputs_info_;
   std::vector<Qnn_Tensor_t> qnn_inputs_;
   std::vector<Qnn_Tensor_t> qnn_outputs_;
+  QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
 };
 
 }  // namespace qnn

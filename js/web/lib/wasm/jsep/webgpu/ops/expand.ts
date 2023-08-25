@@ -58,15 +58,12 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   const inputShape = ${input.indices(...inputShape)};
   ${shaderHelper.declareVariables(input, output)}
-  ${output.impl('offsetToIndices')}
-  ${input.impl('indicesToOffset', 'get')}
   ${shaderHelper.mainStart()}
   ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
     let outputIndices = ${output.offsetToIndices('global_idx')};
     var inputIndices: ${input.type.indices};
     for (var i = 0; i < ${inputShape.length}; i++) {
-      if (inputShape[i] == 1) {
-        // TODO: IndicesHelper should offer uniform way to get/set indices for all ranks
+      if (${input.indicesGet('inputShape', 'i')} == 1) {
         ${input.indicesSet('inputIndices', 'i', 0)}
       } else {
         ${
@@ -86,7 +83,8 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
 
 export const expand = (context: ComputeContext): void => {
   validateInputs(context.inputs);
-  const cacheHint = context.inputs.map(x => x.dims.toString()).join('_');
+  const outputShape = Array.from(context.inputs[1].getBigInt64Array(), Number);
+  const cacheHint = outputShape.toString();
   context.compute(
       {...expandProgramMetadata, cacheHint, get: () => createExpandProgramInfo(expandProgramMetadata, context.inputs)},
       {inputs: [0]});

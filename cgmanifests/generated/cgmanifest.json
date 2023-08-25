@@ -272,7 +272,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6ba67d3428e05f690145373ca87fb8d32f98df45",
+          "commitHash": "0462dc31ae78f48744b6141ae376df1f96d3f459",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -376,6 +376,16 @@
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
         },
         "comments": "extensions"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d52ec01652b7d620386251db92455968d8d90bdc",
+          "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
+        },
+        "comments": "composable_kernel"
       }
     }
   ]

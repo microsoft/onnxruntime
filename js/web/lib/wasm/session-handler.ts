@@ -20,6 +20,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     // fetch model from url and move to wasm heap. The arraybufffer that held the http
     // response is freed once we return
     const response = await fetch(path);
+    if (response.status !== 200) {
+      throw new Error(`failed to load model: ${path}`);
+    }
     const arrayBuffer = await response.arrayBuffer();
     return createSessionAllocate(new Uint8Array(arrayBuffer));
   }
