@@ -143,9 +143,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._zero_stage3_param_map = None
         if self._runtime_options.enable_zero_stage3_support:
             # Cannot toggle feature enabling/disabling after the first time enabled.
-            from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_offloaded_params
+            from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params
 
-            self._zero_stage3_param_map = _get_all_offloaded_params(self._flattened_module)
+            self._zero_stage3_param_map = _get_all_zero_stage3_params(self._flattened_module)
 
             configure_ort_compatible_zero_stage3()
 

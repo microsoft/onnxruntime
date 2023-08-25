@@ -9,6 +9,7 @@ import torch
 from onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, helper
 
 from onnxruntime.capi._pybind_state import register_torch_autograd_function
+from onnxruntime.training.utils import pytorch_dtype_to_onnx
 
 from ._custom_autograd_function_exporter import PythonOpShapeInferStore
 from ._utils import get_fully_qualified_class_name
@@ -132,6 +133,39 @@ def post_processing_enable_zero_stage3_compat(
 
         output_index = reverse_index_among_inputs + len(pre_forward_pythonop_node.output)
         pre_forward_pythonop_node.output[output_index] = graph_input.name
+
+        # If the consumer of original `graph_input.name` is PythonOp, we need also update its attributes because now
+        # `graph_input.name` as output of pre_forward_pythonop_node, is full-sized parameter, the rank might differ
+        # from the original one.
+        for c in consumers:
+            if c == pre_forward_pythonop_node or c.op_type != "PythonOp":
+                continue
+
+            input_tensor_ranks = []
+            input_tensor_dtypes = []
+            rank_attr = None
+            dtype_attr = None
+            for attr in c.attribute:
+                if attr.name == "input_tensor_ranks":
+                    input_tensor_ranks = attr.ints
+                    rank_attr = attr
+                if attr.name == "input_tensor_types":
+                    input_tensor_dtypes = attr.ints
+                    dtype_attr = attr
+
+            index_offset_on_python_op_input = []
+            for i, input_name in enumerate(c.input):
+                if input_name == graph_input.name:
+                    index_offset_on_python_op_input.append(i)
+
+            for index in index_offset_on_python_op_input:
+                input_tensor_ranks[index] = len(offload_named_params[graph_input.name].ds_shape)
+                input_tensor_dtypes[index] = pytorch_dtype_to_onnx(offload_named_params[graph_input.name].dtype)
+
+            c.attribute.remove(rank_attr)
+            c.attribute.remove(dtype_attr)
+            c.attribute.append(helper.make_attribute("input_tensor_ranks", input_tensor_ranks))
+            c.attribute.append(helper.make_attribute("input_tensor_types", input_tensor_dtypes))
 
     # Delete exported_model.graph.input
     graph_inputs_to_remove = [

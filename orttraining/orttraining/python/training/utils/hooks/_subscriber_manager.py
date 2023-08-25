@@ -191,7 +191,7 @@ class SubscriberManager:
                 next_module_index: list of int, carrying a global unique module index that can be used next.
             """
             module_index = next_module_index[0]
-            module.id = module_index  # STAGE3WARN: needed by DeepSpeed
+            module.id = module_index  # STAGE3WARN#1: needed by DeepSpeed
             self._run_ctx.global_states.module_index_to_depth[module_index] = depth
             self._run_ctx.global_states.module_to_module_index[module] = module_index
 
@@ -217,7 +217,7 @@ class SubscriberManager:
             next_module_index: list of int, carrying a global unique module index that can be used next.
         """
         module_index = next_module_index[0]
-        module.id = module_index  # STAGE3WARN: needed by DeepSpeed
+        module.id = module_index  # STAGE3WARN#2: needed by DeepSpeed
         self._run_ctx.global_states.module_index_to_depth[module_index] = depth
         self._run_ctx.global_states.module_to_module_index[module] = module_index
 

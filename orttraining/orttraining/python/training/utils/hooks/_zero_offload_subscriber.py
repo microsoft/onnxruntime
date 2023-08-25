@@ -115,13 +115,13 @@ def _get_params_for_current_module(module: torch.nn.Module) -> List[torch.nn.par
     """
     from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params
 
-    # Retrive the parameters that are not available for this module.
+    # Retrieve all parameters for this module.
     partitioned_params = [param for param in iter_params(module)]
 
     return partitioned_params
 
 
-def _get_all_offloaded_params(module: torch.nn.Module) -> Dict[str, torch.nn.parameter.Parameter]:
+def _get_all_zero_stage3_params(module: torch.nn.Module) -> Dict[str, torch.nn.parameter.Parameter]:
     """Retrieve all the parameters that are offloaded."""
     from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 
@@ -134,16 +134,13 @@ def _get_all_offloaded_params(module: torch.nn.Module) -> Dict[str, torch.nn.par
 
 
 class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
-    """This function is a common bridge to call original PyTorch's
-    pre_forward_function and post_backward_function.
-    """
+    """This function is a common bridge to call original PyTorch's pre_forward_function"""
 
     @staticmethod
     def forward(
         ctx,
         module,
         pre_forward_with_kwargs_function,
-        post_backward_function,
         args_schema,
         kwargs_schema,
         args_tensor_count,
@@ -155,7 +152,6 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
             ctx: context object
             module: the module to be called
             pre_forward_with_kwargs_function: the function to be called before forward (PyTorch's pre_forward_function)
-            post_backward_function: the function to be called after backward (PyTorch's post_backward_function)
             args_schema: the schema of the args, used to reconstruct the args in original form in
                 PyTorch's pre_forward_function's inputs.
             kwargs_schema: the schema of the kwargs, used to reconstruct the kwargs in original form in
@@ -168,6 +164,17 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         args_tensors = tensor_list[:args_tensor_count]
         kwargs_tensors = tensor_list[args_tensor_count : args_tensor_count + kwargs_tensor_count]
 
+        # For PyTorch runs, the sizes are all 0, it does not need a gradient because
+        # param._detach().requires_grad_(False) is called.
+        # But for ORT runs, the sizes are all [1], as output of weight retrieval function.
+        # So we keep track of the shapes and dtypes of the passed in tensors, then generate the grads in backward.
+        # While for both PyTorch and ORT runs, the grad is not important because they are not param grads
+        # any more, they are only used for completing the full backward propagation.
+        passed_in_param_tensors = tensor_list[args_tensor_count + kwargs_tensor_count :]
+        ctx.shapes = [p.shape for p in passed_in_param_tensors]
+        ctx.dtypes = [p.dtype for p in passed_in_param_tensors]
+        ctx.devices = [p.device for p in passed_in_param_tensors]
+
         args = unflatten_data_using_schema(args_tensors, args_schema)
         kwargs = unflatten_data_using_schema(kwargs_tensors, kwargs_schema)
 
@@ -179,6 +186,8 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         partitioned_params = _get_params_for_current_module(module)
         ctx.partitioned_params = partitioned_params
 
+        assert len(partitioned_params) == len(passed_in_param_tensors)
+
         f_ret = pre_forward_with_kwargs_function(module, args, kwargs)
 
         if f_ret is None:
@@ -188,7 +197,6 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
             updated_args, updated_kwargs = f_ret
 
         ctx.module = module
-        ctx.post_backward_function = post_backward_function
 
         updated_args_tensors, _ = extract_data_and_schema(updated_args)
         updated_kwargs_tensors, _ = extract_data_and_schema(updated_kwargs)
@@ -203,17 +211,33 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *grads):
         updated_grads = grads
-        if ctx.post_backward_function is not None:
-            ret = ctx.post_backward_function(ctx.module, grads)
-            if ret is not None:
-                updated_grads = ret
 
-        # TODO(pengwa) Update grad for partitioned parameters.
         input_count = len(updated_grads) - len(ctx.partitioned_params)
-        zeros = [torch.zeros(0, dtype=p.dtype, device=p.device) for p in ctx.partitioned_params]
-        zero_grads = updated_grads[:input_count] + tuple(zeros)
+        param_start_offset = input_count
 
-        return (None, None, None, None, None, None, None, *zero_grads)
+        # Only need to accumulate grad explicitly for ORT run (e.g. ctx.shapes[0] == (1,));
+        # In the PyTorch run, the accumulation happens automatically.
+        need_manual_grad_acc = len(ctx.shapes) > 0 and ctx.shapes[0] == (1,)
+        if need_manual_grad_acc:
+            for param_index, p in enumerate(ctx.partitioned_params):
+                g = updated_grads[param_index + param_start_offset]
+                if g is None:
+                    raise RuntimeError(f"param {p} has no grad, this should not happen.")
+                # Param gradient accumulation is triggered here, along with the attached hooks, done by PyTorch.
+                assert p.shape == g.shape, f"param_index: {param_index} - param shape {p.shape} != grad shape {g.shape}"
+                p.backward(updated_grads[param_index + param_start_offset])
+
+        # At this point, the **real** param grads are already updated, the following grads are only used for
+        # completing the full backward propagation, will not affect parameter updates.
+        passed_in_param_grad = [
+            torch.zeros(shape, dtype=dtype, device=device)
+            for shape, dtype, device in zip(ctx.shapes, ctx.dtypes, ctx.devices)
+        ]
+
+        # nones = (None, ) * len(ctx.partitioned_params)
+        zero_grads = updated_grads[:input_count] + tuple(passed_in_param_grad)
+
+        return (None, None, None, None, None, None, *zero_grads)
 
     @staticmethod
     def infer_shape(
@@ -258,14 +282,14 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
             module: the module to be called
             post_forward_function: the function to be called after forward (PyTorch's post_forward_function)
             pre_backward_function: the function to be called before backward (PyTorch's pre_backward_function)
-            output_schema: the schema of the output, used to reconstruct the output in original form in
+            output_schema: the schema of the output, used to reconstruct the output in its original form in
                 PyTorch's post_forward_function's inputs.
             output_tensors: the list of tensors.
 
         """
         outputs = unflatten_data_using_schema(output_tensors, output_schema)
 
-        # STAGE3WARN: _post_forward_module_hook's second argument `input is not used, so we just pass a None here.
+        # STAGE3WARN#3: _post_forward_module_hook's second argument `input is not used, so we just pass a None here.
         updated_outputs = post_forward_function(module, None, outputs)
 
         if updated_outputs is None:
@@ -341,11 +365,19 @@ class ZeROOffloadSubscriber(SubscriberBase):
         input and output for torch.autograd.Function, so we do flatten and unflatten here.
 
         """
+        ## Handle `_post_backward_module_hook`
 
-        args_tensors, args_schema = extract_data_and_schema(args)
+        # Put `_post_backward_module_hook` first because in backward, it is responsible for unloading parameters,
+        # we want ORTZeROOffloadPreForwardFunction's backward still be able to access the full sized parameters.
+        _post_backward_module_hook = self._functions.get("_post_backward_module_hook")
+        # STAGE3WARN#4: most logic in _post_backward_module_hook can be traced correctly so we don't need to
+        # wrap with PythonOp. For those cannot be traced, we handle them in STAGE3WARN#5.
+        updated_args = _post_backward_module_hook(module, args)
+
+        ## Handle `_pre_forward_module_hook`
+
+        args_tensors, args_schema = extract_data_and_schema(updated_args)
         kwargs_tensors, kwargs_schema = extract_data_and_schema(kwargs)
-
-        partitioned_params = _get_params_for_current_module(module)
 
         _pre_forward_module_hook = self._functions.get("_pre_forward_module_hook")
 
@@ -358,18 +390,26 @@ class ZeROOffloadSubscriber(SubscriberBase):
             if rets is not None:
                 updated_args = rets
 
-            # STAGE3WARN: Moved from _post_backward_module_hook to make sure ORT run will trigger every iteration.
+            # STAGE3WARN#5: Moved from _post_backward_module_hook to make sure ORT run will trigger every iteration.
             module.ds_grads_remaining = 0
+
             return updated_args, updated_kwargs
 
-        all_tensors = args_tensors + kwargs_tensors + partitioned_params
+        # Need to pass the parameters as input to let the exporter trace the related weights for
+        # current ORTZeROOffloadPreForwardFunction
+        partitioned_params = _get_params_for_current_module(module)
+        # Don't require grad for passed-in parameter, otherwise it will be treated as a leaf node, in backward
+        # returned 0-sized grad did not match the param's gradient accumulator function's input shape metadata,
+        # PyTorch run will fail during backward.
+        detached_partitioned_params = [p.detach().requires_grad_(False) for p in partitioned_params]
+
+        all_tensors = args_tensors + kwargs_tensors + detached_partitioned_params
 
         self._check_all_tensor(all_tensors, module, "pre_forward_module_apply_impl input check")
 
         rets = ORTZeROOffloadPreForwardFunction.apply(
             module,
             _wrap_pre_forward_module_hook,
-            None,
             args_schema,
             kwargs_schema,
             args_tensor_count,
@@ -384,11 +424,6 @@ class ZeROOffloadSubscriber(SubscriberBase):
 
         updated_args = unflatten_data_using_schema(updated_args_tensors, args_schema)
         updated_kwargs = unflatten_data_using_schema(updated_kwargs_tensors, kwargs_schema)
-
-        _post_backward_module_hook = self._functions.get("_post_backward_module_hook")
-        # STAGE3WARN: Other part of _post_backward_module_hook can be traced correctly so we don't need to
-        # wrap with PythonOp.
-        updated_args = _post_backward_module_hook(module, updated_args)
 
         return updated_args, updated_kwargs
 
@@ -411,7 +446,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         _post_forward_module_hook = self._functions.get("_post_forward_module_hook")
 
         def _wrap_post_forward_module_hook(module, input, outputs):
-            # STAGE3WARN: _post_forward_module_hook applied this for each tensor output, so we do a simple wrap here.
+            # STAGE3WARN#6: _post_forward_module_hook applied this for each tensor output, so we do a simple wrap here.
             from deepspeed.runtime.zero.partition_parameters import is_zero_param
 
             updated_outputs = _post_forward_module_hook(module, input, outputs)
@@ -438,8 +473,8 @@ class ZeROOffloadSubscriber(SubscriberBase):
         updated_outputs = unflatten_data_using_schema(updated_outputs_tensors, outputs_schema)
 
         _pre_backward_module_hook = self._functions.get("_pre_backward_module_hook")
-        # STAGE3WARN: _pre_backward_module_hook's second argument `input is not used, so we just pass a None here.
-        # STAGE3WARN: part of the original _pre_backward_module_hook can be traced correctly so we moved them into
+        # STAGE3WARN#7: _pre_backward_module_hook's second argument `input is not used, so we just pass a None here.
+        # STAGE3WARN#8: part of the original _pre_backward_module_hook can be traced correctly so we moved them into
         # _wrap_post_forward_module_hook above.
         updated_outputs = _pre_backward_module_hook(module, None, updated_outputs)
 
