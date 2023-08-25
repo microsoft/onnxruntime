@@ -11,14 +11,16 @@ redirect_from: /docs/reference/execution-providers/Azure-ExecutionProvider
 {: .no_toc }
 
 
-The Azure Execution Provider enables ONNX Runtime to invoke a remote Azure endpoint for inference, the endpoint must be deployed or available beforehand. 
+The Azure Execution Provider enables ONNX Runtime to invoke a remote Azure endpoint for inference, the endpoint must be deployed or available beforehand.
+
+
 Since 1.16, below pluggable operators are available from [onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions): 
 
 - [OpenAIAudioToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#openaiaudiototext)
 - [AzureTextToText](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretexttotext)
 - [AzureTritonInvoker](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md#azuretritoninvoker)
 
-By the operators, Azure Execution Provider assists two mode of usage:
+By the operators, Azure Execution Provider supports two mode of usage:
 
 - [Edge and azure side by side](#Edge-and-azure-side-by-side)
 - [Merge and run the hybrid](#Merge-and-run-the-hybrid)
@@ -35,7 +37,9 @@ Azure Execution Provider is in preview stage, and all API(s) and usage are subje
 Since 1.16, Azure Execution Provider is shipped by default in both python and nuget packages.
 
 ## Requirements
-Since 1.16, all Azure Execution Provider operators are shipped with [onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions) (>=v0.9.0) python and nuget packages. Please ensure the installation of correct onnxruntime-extension packages before using Azure Execution Provider.
+Since 1.16, all Azure Execution Provider operators are shipped with [onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions) (>=v0.9.0) python and nuget packages.
+
+Please ensure the installation of correct onnxruntime-extension packages before using Azure Execution Provider.
 
 ## Build
 
@@ -44,7 +48,7 @@ For build instructions, please see the [BUILD page](../build/eps.md#azure).
 ## Usage
 
 ### Edge and azure side by side
-In this mode, there are two models running simulaneouly. By [RunAsync](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L4341) API, the azure model runs asynchronously. The API is also available as [python](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/onnxruntime/python/onnxruntime_pybind_state.cc#L1759) and [csharp](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs#L1147) APIs.
+In this mode, there are two models running simulaneouly. The azure model runs asynchronously by [RunAsync](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L4341) API, which is also available through [python](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/onnxruntime/python/onnxruntime_pybind_state.cc#L1759) and [csharp](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs#L1147).
 ```python
 # ---------------------------------------------------------------------------------------
 # Demo: running two models simultaneously - one on edge and the other on azure,
@@ -162,7 +166,9 @@ if __name__ == '__main__':
 
 ### Merge and run the hybrid
 
-Alternatively, one could also merge local and azure models into a hybrid, then infer as an ordinary onnx model. Sample scripts could be found [here](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/AzureEP).
+Alternatively, one could also merge local and azure models into a hybrid, then infer as an ordinary onnx model.
+
+Sample scripts could be found [here](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/AzureEP).
 
 ## Current Limitations
 
