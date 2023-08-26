@@ -44,14 +44,14 @@ struct Float8E4M3FN {
     std::memcpy(&b, &v, sizeof(b));
 
     val = static_cast<uint8_t>((b & 0x80000000) >> 24);  // sign
-    if ((b & 0x7fc00000) == 0x7fc00000) {
-      val |= 0x7f;
-    } else if ((b & 0x7fffffff) == 0x7f800000) {
+    if ((b & 0x7fffffff) == 0x7f800000) {                // infinity
       if (saturate) {
         val |= 126;
       } else {
         val |= 0x7f;
       }
+    } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
+      val |= 0x7f;
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
@@ -206,15 +206,15 @@ struct Float8E4M3FNUZ {
     std::memcpy(&b, &v, sizeof(b));
 
     val = static_cast<uint8_t>((b & 0x80000000) >> 24);  // sign
-    if ((b & 0x7fc00000) == 0x7fc00000) {
-      val = 0x80;
-    } else if ((b & 0x7fffffff) == 0x7f800000) {
+    if ((b & 0x7fffffff) == 0x7f800000) {                // infinity
       if (saturate) {
         val |= 0x7F;
       } else {
         // infinity
         val = 0x80;
       }
+    } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
+      val = 0x80;
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
@@ -359,15 +359,15 @@ struct Float8E5M2 {
     uint32_t b;
     std::memcpy(&b, &v, sizeof(b));
 
-    val = (b & 0x80000000) >> 24;  // sign
-    if ((b & 0x7fc00000) == 0x7fc00000) {
-      val |= 0x7f;
-    } else if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
+    val = (b & 0x80000000) >> 24;          // sign
+    if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
       if (saturate) {
         val |= 0x7B;
       } else {
         val |= 0x7C;
       }
+    } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
+      val |= 0x7f;
     } else {
       uint32_t e = (b & 0x7F800000) >> 23;  // exponent
       uint32_t m = b & 0x007FFFFF;          // mantissa
@@ -515,15 +515,15 @@ struct Float8E5M2FNUZ {
     uint32_t b;
     std::memcpy(&b, &v, sizeof(b));
 
-    val = (b & 0x80000000) >> 24;  // sign
-    if ((b & 0x7fc00000) == 0x7fc00000) {
-      val = 0x80;
-    } else if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
+    val = (b & 0x80000000) >> 24;          // sign
+    if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
       if (saturate) {
         val |= 0x7F;
       } else {
         val = 0x80;
       }
+    } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
+      val = 0x80;
     } else {
       uint32_t e = (b & 0x7F800000) >> 23;  // exponent
       uint32_t m = b & 0x007FFFFF;          // mantissa
