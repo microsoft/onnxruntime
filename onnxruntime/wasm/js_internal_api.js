@@ -37,20 +37,17 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
     const errorPromises = Module.jsepSessionState.errors;
     Module.jsepSessionState = null;
 
-    if (errorPromises.length > 0) {
-      const runPromise = Module['jsepRunPromise'];
-      Module['jsepRunPromise'] = new Promise((resolve, reject) => {
-        Promise.all(errorPromises).then(errors => {
-          errors = errors.filter(e => e);
-          if (errors.length > 0) {
-            reject(new Error(errors.join('\n')));
-          } else {
-            resolve(runPromise);
-          }
-        }, reason => {
-          reject(reason);
-        });
+    return errorPromises.length === 0 ? Promise.resolve() : new Promise((resolve, reject) => {
+      Promise.all(errorPromises).then(errors => {
+        errors = errors.filter(e => e);
+        if (errors.length > 0) {
+          reject(new Error(errors.join('\n')));
+        } else {
+          resolve();
+        }
+      }, reason => {
+        reject(reason);
       });
-    }
+    });
   };
 };
