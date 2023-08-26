@@ -111,6 +111,8 @@ def get_arg_parser():
         numpy_to_pb: Convert numpy array saved to a file with numpy.save() to a TensorProto, and serialize to a pb file.
         image_to_pb: Convert data from an image file into a TensorProto, and serialize to a pb file.
         random_to_pb: Create a TensorProto with random data, and serialize to a pb file.
+        raw_to_pb: Create a uint8 TensorProto with raw data from a file, and serialize to a pb file.
+        string_to_pb: Create a string TensorProto with the input string, and serialize to a pb file.
         update_name_in_pb: Update the TensorProto.name value in a pb file.
                            Updates the input file unless --output <filename> is specified.
         """,
@@ -120,11 +122,19 @@ def get_arg_parser():
     parser.add_argument(
         "--action",
         help="Action to perform",
-        choices=["dump_pb", "numpy_to_pb", "image_to_pb", "random_to_pb", "update_name_in_pb"],
+        choices=[
+            "dump_pb",
+            "numpy_to_pb",
+            "image_to_pb",
+            "random_to_pb",
+            "raw_to_pb",
+            "string_to_pb",
+            "update_name_in_pb",
+        ],
         required=True,
     )
 
-    parser.add_argument("--input", help="The input filename or directory name")
+    parser.add_argument("--input", help="The input filename, directory name or string.")
     parser.add_argument("--name", help="The value to set TensorProto.name to if creating/updating one.")
     parser.add_argument("--output", help="Filename to serialize the TensorProto to.")
 
@@ -209,6 +219,21 @@ if __name__ == "__main__":
             sys.exit(-1)
 
         data = create_random_data(args.shape, args.datatype, args.min_value, args.max_value, args.seed)
+        numpy_to_pb(args.name, data, args.output)
+    elif args.action == "raw_to_pb":
+        if not args.input or not args.output or not args.name:
+            print("Missing argument. Need input, output and name to be specified.", file=sys.stderr)
+            sys.exit(-1)
+
+        data = np.fromfile(args.input, dtype=np.ubyte)
+        numpy_to_pb(args.name, data, args.output)
+    elif args.action == "string_to_pb":
+        if not args.input or not args.output or not args.name:
+            print("Missing argument. Need input, output and name to be specified.", file=sys.stderr)
+            sys.exit(-1)
+
+        data = np.ndarray((1), dtype=object)
+        data[0] = args.input
         numpy_to_pb(args.name, data, args.output)
     elif args.action == "update_name_in_pb":
         if not args.input or not args.name:
