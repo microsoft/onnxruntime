@@ -896,7 +896,9 @@ class FusionAttentionUnet(Fusion):
                 return
         else:
             # Check if we have a LoRA pattern
-            match_qkv = self.match_qkv_torch1_lora(root_input, skip_add) or self.match_qkv_torch2_lora(root_input, skip_add)
+            match_qkv = self.match_qkv_torch1_lora(root_input, skip_add) or self.match_qkv_torch2_lora(
+                root_input, skip_add
+            )
             if match_qkv is None:
                 return
 
@@ -1116,9 +1118,7 @@ class FusionAttentionUnet(Fusion):
             return None
         (mul_q, _transpose_q, reshape_q, matmul_add_q) = q_nodes
 
-        k_nodes = self.model.match_parent_path(
-            matmul_qk, ["Mul", "Transpose", "Reshape", "Add"], [1, None, 0, 0]
-        )
+        k_nodes = self.model.match_parent_path(matmul_qk, ["Mul", "Transpose", "Reshape", "Add"], [1, None, 0, 0])
         if k_nodes is None:
             logger.debug("fuse_attention: failed to match LoRA k path")
             return None
