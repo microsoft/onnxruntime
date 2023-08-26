@@ -89,7 +89,7 @@ struct TestInputDef {
     T max;
   };
 
-  TestInputDef() : is_initializer_(false) {}
+  TestInputDef() {}
 
   // Creates a random input definition. Specify its shape, whether it's an initializer, and
   // the min/max range.
@@ -185,8 +185,8 @@ struct TestInputDef {
  private:
   std::vector<int64_t> shape_;
   std::variant<RawData, RandomData> data_info_;
-  bool is_initializer_;
-  bool has_range_override_;
+  bool is_initializer_{false};
+  bool has_range_override_{false};
   std::pair<T, T> range_override_;
 };
 
@@ -422,7 +422,8 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
 // to input_scale * weights_scale. See quantization tool: onnx_quantizer.py::quantize_bias_static()
 //
 // i.e., initial bias => manual quantization (int32) => DQ => final float bias
-NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale);
+NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
+                              bool use_contrib_qdq = false);
 
 /**
  * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
