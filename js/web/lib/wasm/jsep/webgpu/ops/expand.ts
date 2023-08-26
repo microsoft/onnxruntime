@@ -58,8 +58,6 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   const inputShape = ${input.indices(...inputShape)};
   ${shaderHelper.declareVariables(input, output)}
-  ${output.impl('offsetToIndices')}
-  ${input.impl('indicesToOffset', 'get')}
   ${shaderHelper.mainStart()}
   ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
     let outputIndices = ${output.offsetToIndices('global_idx')};

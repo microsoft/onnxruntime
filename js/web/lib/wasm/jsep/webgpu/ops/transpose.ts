@@ -64,8 +64,6 @@ export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: nu
   ${shaderHelper.declareVariables(input, output)}
 
   ${permFunctionBody(perm, rank, input, output)}
-  ${output.impl('offsetToIndices')}
-  ${input.impl('indicesToOffset', 'get')}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
