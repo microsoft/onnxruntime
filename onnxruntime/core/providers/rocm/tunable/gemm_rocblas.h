@@ -167,12 +167,9 @@ auto GetRocBlasGemmTypeStringAndOps() {
           rocblas_gemm_flags_none);
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status == rocblas_status_invalid_size,
-          "[rocBLAS] Solution #", i, " (original ", solution, ") not supported: INVALID VALUE.");
-
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != rocblas_status_success,
-          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status),
+          " (", params->Signature(), ")");
 
       return Status::OK();
     };
@@ -240,12 +237,9 @@ auto GetRocBlasBatchedGemmTypeStringAndOps() {
           rocblas_gemm_flags_none);
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status == rocblas_status_invalid_size,
-          "[rocBLAS] Solution #", i, " (original ", solution, ") not supported: INVALID VALUE.");
-
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != rocblas_status_success,
-          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status),
+          " (", params->Signature(), ")");
 
       return Status::OK();
     };
@@ -313,12 +307,9 @@ auto GetRocBlasStridedBatchedGemmTypeStringAndOps() {
           rocblas_gemm_flags_none);
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          status == rocblas_status_invalid_size,
-          "[rocBLAS] Solution #", i, " (original ", solution, ") not supported: INVALID VALUE.");
-
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != rocblas_status_success,
-          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status),
+          " (", params->Signature(), ")");
 
       return Status::OK();
     };
