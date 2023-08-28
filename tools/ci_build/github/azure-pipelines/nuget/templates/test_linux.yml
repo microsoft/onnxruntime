@@ -5,6 +5,7 @@ parameters:
   StageSuffix: 'CPU'
   NativePackagePrefix: 'onnxruntime'
   SpecificArtifact: false
+  CustomOpArtifactName: 'onnxruntime-linux-x64'
   BuildId: '0'
 
 stages:
@@ -35,7 +36,7 @@ stages:
     - template: ../../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Linux CustomOp TestData'
-        ArtifactName: 'onnxruntime-linux-x64'
+        ArtifactName: ${{ parameters.CustomOpArtifactName }}
         TargetPath: '$(Build.BinariesDirectory)/testdata'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
