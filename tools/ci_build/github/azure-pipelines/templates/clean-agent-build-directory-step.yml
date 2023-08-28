@@ -17,7 +17,12 @@ steps:
   displayName: 'Clean Agent Directories'
   condition: always()
 
-- script: docker image prune -f
+- script: |
+    if which docker >/dev/null; then
+      docker image prune -f
+    else
+      echo docker does not exist
+    fi
   displayName: Clean docker images
   condition: eq(variables['Agent.OS'], 'Linux')
   continueOnError: true

@@ -83,7 +83,7 @@ export interface OrtWasmModule extends EmscriptenModule {
   _JsepGetNodeName(kernel: number): number;
 
   jsepOnRunStart?(sessionId: number): void;
-  jsepOnRunEnd?(sessionId: number): void;
+  jsepOnRunEnd?(sessionId: number): Promise<void>;
   jsepRunPromise?: Promise<number>;
   // #endregion
 }
