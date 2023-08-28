@@ -1,11 +1,8 @@
-# Workflow for building and deploying the ORT GitHub Pages site
+# This is a placeholder workflow only. Its purpose for manual runs to show up
+# in the GitHub web UI. It is not used for any automated runs.
 name: Publish site
 
 on:
-  # Runs on pushes targeting the branch where the website sources live
-  push:
-    branches: ["gh-pages"]
-
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -14,4 +11,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Placeholder step to have workflow included in the GitHub web UI
-        run: echo "Placeholder step to have workflow included in the GitHub web UI"
+        run: echo "Placeholder step to have workflow included in the GitHub web UI
