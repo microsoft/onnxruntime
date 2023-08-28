@@ -89,4 +89,10 @@ export class WebGLBackend implements Backend {
   dispose(): void {
     this.glContext.dispose();
   }
+  createTrainingSessionHandler(
+      checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
+      evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
+      options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler> {
+    throw new Error('Training not supported on WebGL');
+  }
 }

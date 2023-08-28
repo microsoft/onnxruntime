@@ -169,6 +169,13 @@ class OnnxruntimeBackend implements Backend {
     await handler.loadModel(options || {});
     return handler;
   }
+
+  createTrainingSessionHandler(
+      checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
+      evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
+      options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler> {
+    throw new Error('Training not supported on React Native');
+  }
 }
 
 export const onnxruntimeBackend = new OnnxruntimeBackend();

@@ -28,6 +28,13 @@ class OnnxjsBackend implements Backend {
 
     return new OnnxjsSessionHandler(session);
   }
+
+  createTrainingSessionHandler(
+      checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
+      evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
+      options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler> {
+    throw new Error('Training not supported on Onnxjs');
+  }
 }
 
 export const onnxjsBackend = new OnnxjsBackend();

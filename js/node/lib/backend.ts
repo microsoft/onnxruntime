@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, SessionHandler} from 'onnxruntime-common';
+import {Backend, InferenceSession, SessionHandler, TrainingSessionHandler} from 'onnxruntime-common';
 
 import {Binding, binding} from './binding';
 
@@ -65,6 +65,13 @@ class OnnxruntimeBackend implements Backend {
         }
       });
     });
+  }
+
+  createTrainingSessionHandler(
+      checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
+      evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
+      options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler> {
+    throw new Error('Training not supported on Nodejs');
   }
 }
 
