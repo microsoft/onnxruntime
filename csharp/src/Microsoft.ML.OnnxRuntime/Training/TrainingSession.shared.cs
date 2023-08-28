@@ -358,7 +358,7 @@ namespace Microsoft.ML.OnnxRuntime
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
         {
-            if (!_evalOutputCount.Equals(outputValues.Count))
+            if (_evalOutputCount != (ulong)outputValues.Count())
             {
                 throw new ArgumentException($"Length of {nameof(outputValues)} ({outputValues.Count}) must match that of train model ({_trainOutputCount}).");
             }
