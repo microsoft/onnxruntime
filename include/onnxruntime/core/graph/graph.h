@@ -1577,7 +1577,7 @@ class Graph {
   ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
 
   InitializedTensorSet name_to_initial_tensor_;
-  std::unordered_map<std::string, ONNX_NAMESPACE::TensorShapeProto> name_to_overriden_initial_tensor_shape_;
+  std::unordered_map<std::string, ONNX_NAMESPACE::TensorShapeProto> name_to_overridden_initial_tensor_shape_;
 
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>

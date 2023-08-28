@@ -2464,12 +2464,12 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       // Set shape accordingly.
       TensorShapeProto inferred_shape;
 
-      auto overriden_shape_iter = name_to_overriden_initial_tensor_shape_.find(name);
+      auto overridden_shape_iter = name_to_overridden_initial_tensor_shape_.find(name);
 
-      // If the initializer's shape was overriden (e.g. via AddFreeDimensionOverrideByName), we use the overriden shape
+      // If the initializer's shape was overridden (e.g. via AddFreeDimensionOverrideByName), we use the overridden shape
       // instead of the initial one
-      if (overriden_shape_iter != name_to_overriden_initial_tensor_shape_.end()) {
-        inferred_shape = overriden_shape_iter->second;
+      if (overridden_shape_iter != name_to_overridden_initial_tensor_shape_.end()) {
+        inferred_shape = overridden_shape_iter->second;
       } else {
         for (auto dim : tensor_proto->dims()) {
           inferred_shape.add_dim()->set_dim_value(dim);
@@ -2981,10 +2981,10 @@ bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorPro
 }
 
 void Graph::OverrideInitializedTensorDim(const std::string& tensor_name, int dim_index, int64_t override) {
-  auto iter = name_to_overriden_initial_tensor_shape_.find(tensor_name);
+  auto iter = name_to_overridden_initial_tensor_shape_.find(tensor_name);
 
-  if (iter == name_to_overriden_initial_tensor_shape_.end()) {
-    // Initialize the overriden shape to the initial shape, which will be overriden below
+  if (iter == name_to_overridden_initial_tensor_shape_.end()) {
+    // Initialize the overridden shape to the initial shape, which will be overridden below
     const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
     ORT_ENFORCE(GetInitializedTensor(tensor_name, tensor_proto), "No initializers found with name ", tensor_name, ".");
 
@@ -2993,7 +2993,7 @@ void Graph::OverrideInitializedTensorDim(const std::string& tensor_name, int dim
       initial_shape.add_dim()->set_dim_value(dim);
     }
 
-    iter = name_to_overriden_initial_tensor_shape_.emplace(tensor_name, std::move(initial_shape)).first;
+    iter = name_to_overridden_initial_tensor_shape_.emplace(tensor_name, std::move(initial_shape)).first;
   }
 
   ORT_ENFORCE(
