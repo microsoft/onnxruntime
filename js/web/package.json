@@ -36,7 +36,7 @@
   "devDependencies": {
     "@chiragrupani/karma-chromium-edge-launcher": "^2.2.2",
     "@types/chai": "^4.3.4",
-    "@types/emscripten": "^1.39.6",
+    "@types/emscripten": "^1.39.7",
     "@types/flatbuffers": "^1.10.0",
     "@types/karma": "^6.1.0",
     "@types/minimatch": "^5.1.2",

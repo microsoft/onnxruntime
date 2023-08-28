@@ -19,6 +19,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
   async fetchModelAndWeights(modelPath: string, weightsPath?: string): Promise<[Uint8Array, ArrayBuffer?]> {
     const modelResponse = await fetch(modelPath);
+    if (modelResponse.status !== 200) {
+      throw new Error(`failed to load model: ${modelPath}`);
+    }
     const promises: [Promise<Uint8Array>, Promise<ArrayBuffer>?] = [
       modelResponse.arrayBuffer().then(b => new Uint8Array(b))
     ];

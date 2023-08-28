@@ -3,7 +3,6 @@
 
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {FSNode} from './binding/ort-wasm';
 import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
@@ -20,12 +19,13 @@ const getSessionInputOutputCount = (sessionHandle: number): [number, number] => 
   const wasm = getInstance();
   const stack = wasm.stackSave();
   try {
-    const dataOffset = wasm.stackAlloc(8);
-    const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + 4);
+    const ptrSize = wasm.PTR_SIZE;
+    const dataOffset = wasm.stackAlloc(2 * ptrSize);
+    const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + ptrSize);
     if (errorCode !== 0) {
       checkLastError('Can\'t get session input/output count.');
     }
-    return [wasm.HEAP32[dataOffset / 4], wasm.HEAP32[dataOffset / 4 + 1]];
+    return [wasm.getValue(dataOffset, '*'), wasm.getValue(dataOffset + ptrSize, '*')];
   } finally {
     wasm.stackRestore(stack);
   }
@@ -71,7 +71,7 @@ const activeSessions = new Map<number, SessionMetadata>();
  * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.
  * @returns a 3-elements tuple - the pointer, size of the allocated buffer, and optional weights.pb FS node
  */
-export const createSessionAllocate = (model: Uint8Array, weights?: ArrayBuffer): [number, number, FSNode?] => {
+export const createSessionAllocate = (model: Uint8Array, weights?: ArrayBuffer): [number, number, string?] => {
   const wasm = getInstance();
   const modelDataOffset = wasm._malloc(model.byteLength);
   if (modelDataOffset === 0) {
@@ -79,14 +79,13 @@ export const createSessionAllocate = (model: Uint8Array, weights?: ArrayBuffer):
   }
   wasm.HEAPU8.set(model, modelDataOffset);
 
-  let weightsFile: FSNode|undefined;
+  let weightsPath: string|undefined;
   if (weights) {
-    weightsFile = wasm.FS.create('/home/web_user/weights.pb');
-    weightsFile.contents = new Uint8Array(weights);
-    weightsFile.usedBytes = weights.byteLength;
+    weightsPath = '/home/web_user/weights.pb';
+    wasm.createFileFromArrayBuffer(weightsPath, weights);
     wasm.FS.chdir('/home/web_user');
   }
-  return [modelDataOffset, model.byteLength, weightsFile];
+  return [modelDataOffset, model.byteLength, weightsPath];
 };
 
 /**
@@ -151,7 +150,7 @@ export const createSessionFinalize =
         }
         allocs.forEach(alloc => wasm._free(alloc));
         if (modelData[2]) {
-          wasm.FS.unlink('/home/web_user/weights.pb');
+          wasm.FS.unlink(modelData[2]);
         }
       }
     };
@@ -202,10 +201,10 @@ export const run = async(
 
   const inputValues: number[] = [];
   const inputAllocs: number[] = [];
+  const ptrSize = wasm.PTR_SIZE;
 
   try {
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
-
     // create input tensors
     for (let i = 0; i < inputCount; i++) {
       const dataType = inputs[i][0];
@@ -235,10 +234,9 @@ export const run = async(
       }
 
       const stack = wasm.stackSave();
-      const dimsOffset = wasm.stackAlloc(4 * dims.length);
+      const dimsOffset = wasm.stackAlloc(ptrSize * dims.length);
       try {
-        let dimIndex = dimsOffset / 4;
-        dims.forEach(d => wasm.HEAP32[dimIndex++] = d);
+        dims.forEach((d, index) => wasm.setValue(dimsOffset + (index * ptrSize), d, '*'));
         const tensor = wasm._OrtCreateTensor(
             tensorDataTypeStringToEnum(dataType), dataOffset, dataByteLength, dimsOffset, dims.length);
         if (tensor === 0) {
@@ -251,23 +249,19 @@ export const run = async(
     }
 
     const beforeRunStack = wasm.stackSave();
-    const inputValuesOffset = wasm.stackAlloc(inputCount * 4);
-    const inputNamesOffset = wasm.stackAlloc(inputCount * 4);
-    const outputValuesOffset = wasm.stackAlloc(outputCount * 4);
-    const outputNamesOffset = wasm.stackAlloc(outputCount * 4);
+    const inputValuesOffset = wasm.stackAlloc(inputCount * ptrSize);
+    const inputNamesOffset = wasm.stackAlloc(inputCount * ptrSize);
+    const outputValuesOffset = wasm.stackAlloc(outputCount * ptrSize);
+    const outputNamesOffset = wasm.stackAlloc(outputCount * ptrSize);
 
     try {
-      let inputValuesIndex = inputValuesOffset / 4;
-      let inputNamesIndex = inputNamesOffset / 4;
-      let outputValuesIndex = outputValuesOffset / 4;
-      let outputNamesIndex = outputNamesOffset / 4;
       for (let i = 0; i < inputCount; i++) {
-        wasm.HEAPU32[inputValuesIndex++] = inputValues[i];
-        wasm.HEAPU32[inputNamesIndex++] = inputNamesUTF8Encoded[inputIndices[i]];
+        wasm.setValue(inputValuesOffset + ptrSize * i, inputValues[i], '*');
+        wasm.setValue(inputNamesOffset + ptrSize * i, inputNamesUTF8Encoded[inputIndices[i]], '*');
       }
       for (let i = 0; i < outputCount; i++) {
-        wasm.HEAPU32[outputValuesIndex++] = 0;
-        wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
+        wasm.setValue(outputValuesOffset + ptrSize * i, 0, '*');
+        wasm.setValue(outputNamesOffset + ptrSize * i, outputNamesUTF8Encoded[outputIndices[i]], '*');
       }
 
       // jsepOnRunStart is only available when JSEP is enabled.
@@ -305,29 +299,29 @@ export const run = async(
       if (errorCode !== 0) {
         checkLastError('failed to call OrtRun().');
       }
-
       for (let i = 0; i < outputCount; i++) {
-        const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
+        const tensor = wasm.getValue(outputValuesOffset + i * ptrSize, '*');
 
         const beforeGetTensorDataStack = wasm.stackSave();
         // stack allocate 4 pointer value
-        const tensorDataOffset = wasm.stackAlloc(4 * 4);
+        const tensorDataOffset = wasm.stackAlloc(4 * ptrSize);
 
         let type: Tensor.Type|undefined, dataOffset = 0;
         try {
           errorCode = wasm._OrtGetTensorData(
-              tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
+              tensor, tensorDataOffset, tensorDataOffset + ptrSize, tensorDataOffset + ptrSize * 2,
+              tensorDataOffset + ptrSize * 3);
           if (errorCode !== 0) {
             checkLastError(`Can't access output tensor data on index ${i}.`);
           }
-          let tensorDataIndex = tensorDataOffset / 4;
-          const dataType = wasm.HEAPU32[tensorDataIndex++];
-          dataOffset = wasm.HEAPU32[tensorDataIndex++];
-          const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
-          const dimsLength = wasm.HEAPU32[tensorDataIndex++];
+
+          const dataType = wasm.getValue(tensorDataOffset, '*');
+          dataOffset = wasm.getValue(tensorDataOffset + ptrSize, '*');
+          const dimsOffset = wasm.getValue(tensorDataOffset + ptrSize * 2, '*');
+          const dimsLength = wasm.getValue(tensorDataOffset + ptrSize * 3, '*');
           const dims = [];
           for (let i = 0; i < dimsLength; i++) {
-            dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
+            dims.push(wasm.getValue(dimsOffset + i * ptrSize, '*'));
           }
           wasm._OrtFree(dimsOffset);
 

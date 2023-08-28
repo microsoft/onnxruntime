@@ -15,17 +15,17 @@ export declare namespace JSEP {
     errors: Array<Promise<string|null>>;
   }
 }
-export type FSNode = {
-  contents: Uint8Array; usedBytes: number;
-}
 
 export interface OrtWasmModule extends EmscriptenModule {
-  // #region emscripten functions
-  FS: {create(path: string): FSNode; chdir(path: string): void; unlink(path: string|FSNode): void;};
+  PTR_SIZE: number;
+  FS: {unlink(path: string): void; chdir(path: string): void};
 
+  // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
+  getValue(ptr: number, type: string): number;
+  setValue(ptr: number, value: number, type: string): void;
 
   UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;
@@ -67,6 +67,8 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtReleaseRunOptions(runOptionsHandle: number): void;
 
   _OrtEndProfiling(sessionHandle: number): number;
+
+  createFileFromArrayBuffer(path: string, buffer: ArrayBuffer): void;
   // #endregion
 
   // #region config

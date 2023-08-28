@@ -3,8 +3,6 @@
 
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {FSNode} from './binding/ort-wasm';
-
 /**
  *  tuple elements are: ORT element type; dims; tensor data
  */
@@ -18,7 +16,7 @@ export type SerializableSessionMetadata = [number, string[], string[]];
 /**
  *  tuple elements are: modeldata.offset, modeldata.length
  */
-export type SerializableModeldata = [number, number, FSNode?];
+export type SerializableModeldata = [number, number, string?];
 
 interface MessageError {
   err?: string;

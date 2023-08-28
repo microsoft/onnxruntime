@@ -66,24 +66,24 @@ class ComputeContextImpl implements ComputeContext {
   private customDataOffset = 0;
   private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
-    const heapU32 = module.HEAPU32;
+    const heap = module.PTR_SIZE === 4 ? module.HEAPU32 : module.HEAPU64;
 
     // extract context data
-    let dataIndex = (contextDataOffset >> 2);
-    this.opKernelContext = heapU32[dataIndex++];
-    const inputCount = heapU32[dataIndex++];
-    this.outputCount = heapU32[dataIndex++];
-    this.customDataOffset = heapU32[dataIndex++];
-    this.customDataSize = heapU32[dataIndex++];
+    let dataIndex = module.PTR_SIZE === 8 ? (contextDataOffset / 2 ** 3) : (contextDataOffset >> 2);
+    this.opKernelContext = Number(heap[dataIndex++]);
+    const inputCount = Number(heap[dataIndex++]);
+    this.outputCount = Number(heap[dataIndex++]);
+    this.customDataOffset = Number(heap[dataIndex++]);
+    this.customDataSize = Number(heap[dataIndex++]);
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const dataType = heapU32[dataIndex++];
-      const data = heapU32[dataIndex++];
-      const dim = heapU32[dataIndex++];
+      const dataType = Number(heap[dataIndex++]);
+      const data = Number(heap[dataIndex++]);
+      const dim = Number(heap[dataIndex++]);
       const dims: number[] = [];
       for (let d = 0; d < dim; d++) {
-        dims.push(heapU32[dataIndex++]);
+        dims.push(Number(heap[dataIndex++]));
       }
       inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }
@@ -113,11 +113,11 @@ class ComputeContextImpl implements ComputeContext {
   output(index: number, dims: readonly number[]): number {
     const stack = this.module.stackSave();
     try {
-      const data = this.module.stackAlloc((1 + dims.length) * 4 /* sizeof(size_t) */);
-      let offset = data >> 2;
-      this.module.HEAPU32[offset++] = dims.length;
+      const ptrSize = this.module.PTR_SIZE;
+      const data = this.module.stackAlloc((1 + dims.length) * ptrSize /* sizeof(size_t) */);
+      this.module.setValue(data, dims.length, '*');
       for (let i = 0; i < dims.length; i++) {
-        this.module.HEAPU32[offset++] = dims[i];
+        this.module.setValue(data + ptrSize * (i + 1), dims[i], '*');
       }
       return this.module._JsepOutput(this.opKernelContext, index, data);
     } finally {
@@ -141,20 +141,20 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
         {backend},
 
         // jsepAlloc()
-        (size: number) => backend.alloc(size),
+        (size: number) => backend.alloc(Number(size)),
 
         // jsepFree()
-        (ptr: number) => backend.free(ptr),
+        (ptr: number) => backend.free(Number(ptr)),
 
         // jsepCopy(src, dst, size, isSourceGpu)
         (src: number, dst: number, size: number, isSourceGpu = false) => {
           if (isSourceGpu) {
             LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
-            backend.memcpy(src, dst);
+            backend.memcpy(Number(src), Number(dst));
           } else {
             LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
-            const data = module.HEAPU8.subarray(src, src + size);
-            backend.upload(dst, data);
+            const data = module.HEAPU8.subarray(Number(src), Number(src) + Number(size));
+            backend.upload(Number(dst), data);
           }
         },
 
@@ -165,7 +165,9 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
                   'verbose',
                   () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
-              await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
+              await backend.download(
+                  Number(gpuDataId),
+                  () => module.HEAPU8.subarray(Number(dataOffset), Number(dataOffset) + Number(size)));
             },
 
         // jsepCreateKernel
@@ -183,7 +185,7 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
               'verbose',
               () => `[WebGPU] jsepRun: sessionId=${sessionState.sessionId}, kernel=${kernel}, contextDataOffset=${
                   contextDataOffset}`);
-          const context = new ComputeContextImpl(module, backend, contextDataOffset);
+          const context = new ComputeContextImpl(module, backend, Number(contextDataOffset));
           return backend.computeKernel(kernel, context, sessionState.errors);
         });
   }

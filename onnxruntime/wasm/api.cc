@@ -15,7 +15,7 @@ std::string g_last_error_message;
 }  // namespace
 
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
-static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
+// static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
 
 OrtErrorCode CheckStatus(OrtStatusPtr status) {
   if (status) {
@@ -248,7 +248,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
   }
 }
 
-int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dims, size_t* dims_length) {
+int OrtGetTensorData(OrtValue* tensor, intptr_t* data_type, void** data, size_t** dims, size_t* dims_length) {
   ONNXType tensor_type;
   RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
   if (tensor_type != ONNX_TYPE_TENSOR) {
@@ -318,7 +318,7 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     *data = p_tensor_raw_data;
   }
 
-  *data_type = static_cast<int>(type);
+  *data_type = static_cast<intptr_t>(type);
   *dims_length = dims_len;
   *dims = UNREGISTER_AUTO_RELEASE(p_dims);
   return ORT_OK;
