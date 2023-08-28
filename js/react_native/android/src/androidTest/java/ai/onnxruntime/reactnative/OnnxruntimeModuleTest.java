@@ -58,7 +58,7 @@ public class OnnxruntimeModuleTest {
   @Test
   public void getName() throws Exception {
     OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
-    ortModule.blobModule = blobModule;
+    ortModule.getOnnxruntime().setBlobModule(blobModule);
     String name = "Onnxruntime";
     Assert.assertEquals(ortModule.getName(), name);
   }
@@ -71,7 +71,7 @@ public class OnnxruntimeModuleTest {
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
-      ortModule.blobModule = blobModule;
+      ortModule.getOnnxruntime().setBlobModule(blobModule);
       ortModule.checkBlobModule();
       String sessionKey = "";
 
@@ -166,7 +166,7 @@ public class OnnxruntimeModuleTest {
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
-      ortModule.blobModule = blobModule;
+      ortModule.getOnnxruntime().setBlobModule(blobModule);
       ortModule.checkBlobModule();
       String sessionKey = "";
 
