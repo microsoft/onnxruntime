@@ -239,16 +239,17 @@ class MinMaxCalibrater(CalibraterBase):
         self.intermediate_outputs = []
 
     def collect_data(self, data_reader: CalibrationDataReader):
+        print(self.max_intermediate_outputs)
         while True:
             inputs = data_reader.get_next()
             if not inputs:
                 break
             self.intermediate_outputs.append(self.infer_session.run(None, inputs))
-            if len(self.intermediate_outputs) == self.max_intermediate_outputs:
+            if self.max_intermediate_outputs is not None and len(self.intermediate_outputs) == self.max_intermediate_outputs:
                 self.compute_range()
                 self.clear_collected_data()
 
-        if self.max_intermediate_outputs is not None and len(self.intermediate_outputs) == 0 and self.calibrate_tensors_range is None:
+        if self.max_intermediate_outputs is None and len(self.intermediate_outputs) == 0 and self.calibrate_tensors_range is None:
             raise ValueError("No data is collected.")
 
         self.compute_range()
