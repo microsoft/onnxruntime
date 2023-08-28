@@ -1061,77 +1061,46 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GridSample, 1,
                                   updateOutputShape(ctx, 0, {N, C, H_out, W_out});
                                 }));
 
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    UnfoldTensor, 1,
-    OpSchema()
-        .SetDoc("Returns a tensor which contains all slices of size size from input tensor in the dimension dim. "
-                "Step between two slices is given by step. "
-                "If sizedim is the size of dimension dim for input tensor, the size of dimension dim in "
-                "the returned tensor will be (sizedim - size) / step + 1. "
-                "An additional dimension of size size is appended in the returned tensor.")
-        .Attr("dim", "specify the dimension to unfold", AttributeProto::INT, static_cast<int64_t>(-1))
-        .Attr("size", "specify the size", AttributeProto::INT)
-        .Attr("step", "specify the step.", AttributeProto::INT, static_cast<int64_t>(1))
-        .Input(0, "input", "input tensor", "T")
-        .Output(0, "output", "Output tensor.", "T")
-        .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Allow inputs and outputs to be any kind of tensor.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-          if (!hasInputShape(ctx, 0)) return;
-          auto& input_shape = getInputShape(ctx, 0);
-          const int rank = input_shape.dim_size();
-          int64_t dim = getAttribute(ctx, "dim", -1);
-          dim = HandleNegativeAxis(dim, rank);
-          if (!input_shape.dim(static_cast<int>(dim)).has_dim_value()) {
-            return;
-          }
-          int64_t dim_size = input_shape.dim(static_cast<int>(dim)).dim_value();
-
-          const int64_t step = getAttribute(ctx, "step", -1);
-          if (step <= 0) {
-            fail_shape_inference("size attribute in UnfoldTensor must greater than 0.")
-          }
-          int64_t size = -1;
-          auto size_proto = ctx.getAttribute("size");
-          if (!(size_proto)) {
-            fail_shape_inference("size attribute in UnfoldTensor not specified!")
-          }
-          size = size_proto->i();
-          if (size > dim_size || size <= 0) {
-            fail_shape_inference("size attribute in UnfoldTensor not positive and less than the dim size!")
-          }
-
-          ONNX_NAMESPACE::TensorShapeProto output_shape;
-          for (int d = 0; d < rank; d++) {
-            if (d == dim) {
-              output_shape.add_dim()->set_dim_value((dim_size - size) / step + 1);
-            } else {
-              *output_shape.add_dim() = input_shape.dim(d);
-            }
-          }
-          output_shape.add_dim()->set_dim_value(size);
-          updateOutputShape(ctx, 0, output_shape);
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    DynamicTimeWarping, 1,
-    OpSchema()
-        .SetDoc("Input is cost matrix where each value in input[r][c] is the cost for pass the point (r, c). From current point"
-                "(r, c),  points (r+1, c), (r+1, c+1) or (r, c+1) could be arrived in next move. Given such cost matrix, return "
-                "dynamic time wrapping of shape [2, x], where the path made by all points (output[0][t], output[1][t])"
-                "have the lowest cost among all paths from (0, 0) to (M-1, N-1).")
-        .Input(0, "input", "Input cost tensor, it must be 2D tensor of shape M x N, or 1 x M x N", "F")
-        .Output(0, "output", "Output tensor. shape is [2, x], where max(M, N) <= x < M + N", "I")
-        .TypeConstraint("F", {"tensor(float)"}, "Constrain to float tensors.")
-        .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT32);
-          ONNX_NAMESPACE::TensorShapeProto resultShape;
-          resultShape.add_dim()->set_dim_value(2);
-          resultShape.add_dim();
-          updateOutputShape(ctx, 0, resultShape);
-        }));
+ONNX_MS_OPERATOR_SET_SCHEMA(WhisperDecode, 1,
+                            OpSchema()
+                                .SetDoc("Whisper decode for speech processing. Supports whisper beam search and greedy search.")
+                                .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
+                                .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("search_type", "search type: 0 for GreedySearch; 1 for BeamSearch", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
+                                .Attr("vocab_size",
+                                      "Size of the vocabulary. "
+                                      "If not provided, it will be inferred from the decoder subgraph's output shape",
+                                      AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Attr("no_speech_token",
+                                      "The token in whisper model that mark all sequence empty. With this model, whisper could output no_speech_prob after Default -1.",
+                                      AttributeProto::INT, OPTIONAL_VALUE)
+                                .Input(0, "logits", "Per-token logits of the probability distribution at the current step. Shape is (batch_size, vocab_size)", "F")
+                                .Input(1, "tokens", "All tokens in the context so far, including the prefix and sot_sequence tokens. Shape is (batch_size, sequence_length)", "F")
+                                .Input(2, "temperature", "", "F")
+                                .Input(3, "best_of", "The number of independent sample trajectories, if t > 0. Shape is (1)", OpSchema::Optional)
+                                .Input(4, "beam_size", "The number of beams in beam search, if t == 0. Shape is (1)", OpSchema::Optional)
+                                .Input(5, "patience", "The patience in beam search. Shape is (1)", OpSchema::Optional)
+                                .Input(6, "length_penalty", "alpha in Google NMT, or None for length norm, when ranking generations"
+                                        "to select which to return among the beams or best-of-N samples. Shape is (1)", "T", OpSchema::Optional)
+                                .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+                                .Input(8, "logits_filters", "Logits filters to be applied based on types of search used. Default value 0 means no specific logit processor. Accepts value >= 0. Shape is (1)", "I", OpSchema::Optional)
+                                .Output(0, "sequences", "The tokens, appended with the selected next token. Shape is (batch_size, current_sequence_length + 1)", "F")
+                                .Output(1, "sequences_scores", "Sequence of Tensors containing candidate token sequences, for each audio input. Shape is ()", "T", OpSchema::Optional)
+                                .Output(2, "non_speech_probs",
+                                        "For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token."
+                                        "Currently we treat the last token's logits is what we need, in future extra graph logic may be add to the encoder/context-decoder subgraph."
+                                        "The prob is save before logits may be updated by extra-decoding-ids. The shape of non_speech_probs is [B]", "T", OpSchema::Optional)
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
+                                .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")
+                                .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+                                .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  #BeamSearchShapeInference(ctx);
+                                }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                             OpSchema()
