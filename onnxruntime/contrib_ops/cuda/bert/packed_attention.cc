@@ -60,7 +60,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
                                                               parameters.head_size,
                                                               parameters.sequence_length,
                                                               enable_trt_flash_attention_,
-                                                              false /*causal*/);
+                                                              parameters.causal /*causal*/);
 
   if (!is_fMHA_supported) {
     return fused_runner;
@@ -68,7 +68,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
 
   // Assuming that num_heads and head_size do not change.
   if (nullptr == fused_fp16_runner_.get()) {
-    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(parameters.num_heads, parameters.head_size, sm, false /*causal*/,
+    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(parameters.num_heads, parameters.head_size, sm, parameters.causal /*causal*/,
                                                       enable_trt_flash_attention_, parameters.scale);
   }
 
