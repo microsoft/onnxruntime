@@ -382,12 +382,6 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
 
 4. Test Android and iOS apps. In Windows, open Android Emulator first.
 
-   `debug.keystore` must be generated ahead for Android example.
-
-   ```sh
-   keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/e2e/android/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
-   ```
-
    From `<ORT_ROOT>/js/react_native,
 
    ```sh
