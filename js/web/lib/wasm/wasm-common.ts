@@ -165,22 +165,6 @@ export const logLevelStringToEnum = (logLevel?: 'verbose'|'info'|'warning'|'erro
   }
 };
 
-export const tensorTypeToWsglType = (type: DataType) => {
-  switch (type) {
-    case DataType.float:
-      return 'f32';
-    // TODO: enable after "shader-f16" WSGL extension release
-    // case DataType.float16:
-    //   return 'f16';
-    case DataType.int32:
-      return 'i32';
-    case DataType.uint32:
-      return 'u32';
-    default:
-      throw new Error(`Unsupported type: ${type}`);
-  }
-};
-
 export const streamResponseToBuffer = async (response: Response, output: ArrayBuffer, outputOffset = 0) => {
   let offset = outputOffset;
   if (typeof response.body?.getReader !== 'undefined') {

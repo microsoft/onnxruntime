@@ -484,8 +484,6 @@ const createResizeProgramInfo =
         }
       })()};
       ${shaderHelper.declareVariables(input, output)}
-      ${output.impl('offsetToIndices')}
-      ${input.impl('indicesToOffset')}
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
         if (${noScale}) {
