@@ -72,7 +72,7 @@ public class OnnxruntimeModuleTest {
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
       ortModule.getOnnxruntime().setBlobModule(blobModule);
-      ortModule.checkBlobModule();
+      ortModule.getOnnxruntime().checkBlobModule();
       String sessionKey = "";
 
       // test loadModel()
@@ -167,7 +167,7 @@ public class OnnxruntimeModuleTest {
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
       ortModule.getOnnxruntime().setBlobModule(blobModule);
-      ortModule.checkBlobModule();
+      ortModule.getOnnxruntime().checkBlobModule();
       String sessionKey = "";
 
       // test loadModel() with nnapi ep options
