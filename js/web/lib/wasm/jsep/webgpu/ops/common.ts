@@ -229,6 +229,11 @@ export const tensorTypeToWsglStorageType = (type: DataType, components: 1|2|3|4 
   return typeof mappedType === 'string' ? mappedType : mappedType[0];
 };
 
+export const tensorTypeToWsglValueType = (type: DataType, components: 1|2|3|4 = 1) => {
+  const mappedType = getWgslMappedType(type, components);
+  return typeof mappedType === 'string' ? mappedType : mappedType[1];
+};
+
 /**
  * A helper function to get a IndicesHelper for a given input or output.
  *

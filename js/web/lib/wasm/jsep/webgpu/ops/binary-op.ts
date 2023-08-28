@@ -42,9 +42,7 @@ const createBinaryOpProgramShader =
           const strides = ShapeUtil.computeStrides(dims);
           const offsets: string[] = [];
           for (let i = dims.length - 1; i >= 0; i--) {
-            const idx = dimsOutput.length === 0 ? '0u' :
-                (dimsOutput.length === 1)       ? 'outputIndices' :
-                                                  `outputIndices[${i + dimsOutput.length - dims.length}]`;
+            const idx = output.indicesGet('outputIndices', i + dimsOutput.length - dims.length);
             offsets.push(`${strides[i]}u * (${idx} % ${dims[i]}u)`);
           }
           return offsets.length > 0 ? offsets.join('+') : '0u';
@@ -194,6 +192,12 @@ export const div = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Div', (a, b) => `${a}/${b}`));
 };
 
+export const equal = (context: ComputeContext): void => {
+  context.compute(createBinaryOpProgramInfoLoader(
+      context.inputs, 'Equal', ({scalar: (a, b) => `u32(${a}==${b})`, vector: (a, b) => `vec4<u32>(${a}==${b})`}),
+      undefined, undefined, DataType.bool));
+};
+
 export const mul = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Mul', (a, b) => `${a}*${b}`));
 };
@@ -227,18 +231,12 @@ export const sub = (context: ComputeContext): void => {
 
 export const greater = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'Greater', ({
-        scalar: (a, b) => `select(0, 1, ${a}>${b})`,
-        vector: (a, b) => `select(vec4<u32>(0), vec4<u32>(1), ${a}>${b})`
-      }),
+      context.inputs, 'Greater', ({scalar: (a, b) => `u32(${a}>${b})`, vector: (a, b) => `vec4<u32>(${a}>${b})`}),
       undefined, undefined, DataType.bool));
 };
 
 export const less = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'Less', ({
-        scalar: (a, b) => `select(0, 1, ${a}<${b})`,
-        vector: (a, b) => `select(vec4<u32>(0), vec4<u32>(1), ${a}<${b})`
-      }),
+      context.inputs, 'Less', ({scalar: (a, b) => `u32(${a}<${b})`, vector: (a, b) => `vec4<u32>(${a}<${b})`}),
       undefined, undefined, DataType.bool));
 };
