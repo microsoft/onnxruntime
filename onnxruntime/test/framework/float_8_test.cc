@@ -45,8 +45,8 @@ TEST(Float8_Tests, NanE4M3FN) {
   EXPECT_EQ(onnxruntime::Float8E4M3FN(0x7F800001).val, static_cast<uint8_t>(0x7F));
   EXPECT_EQ(onnxruntime::Float8E4M3FN(0xFF800001).val, static_cast<uint8_t>(0xFF));
   // 0x7FC00000 is the value used by numpy.
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0x7FC00000).val, 0x7F));
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0xFFC00000).val, 0xFF));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN(0x7FC00000).val, static_cast<uint8_t>(0x7F));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN(0xFFC00000).val, static_cast<uint8_t>(0xFF));
 }
 
 TEST(Float8_Tests, NanE4M3FNUZ) {
