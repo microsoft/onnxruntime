@@ -405,7 +405,7 @@ const matMulReadWriteFnSource =
       if (row < dimAOuter && col < dimBOuter) {
         var value = valueIn;
         let coords = vec3<i32>(batch, row, colIn);
-        ${hasBias ? 'value = value + bias[colIn]' : ''}
+        ${hasBias ? 'value = value + bias[colIn];' : ''}
         ${applyActivation}
         ${outputVariable.setByIndices('vec3<u32>(coords)', 'value')}
       }
