@@ -123,7 +123,7 @@ auto GetCKSplitKGemmTypeStringAndOps() {
       auto invoker = impl->MakeInvokerPointer();
       auto ck_gemm_op = [num_split, impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            params->k < 128 * num_split, "k=", num_split," is too small, it makes no sense to use this split-k gemm.");
+            params->k < 128 * num_split, "k=", params->k, " is too small, it makes no sense to use this split-k gemm.");
 
         auto one = ToHipType<T>::FromFloat(1.0f);
         auto zero = ToHipType<T>::FromFloat(0.0f);
