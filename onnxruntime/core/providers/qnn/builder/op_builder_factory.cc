@@ -63,6 +63,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
     CreateSimpleOpBuilder("DepthToSpace", *this);
     CreateSimpleOpBuilder("SpaceToDepth", *this);
+
+    CreateSimpleOpBuilder("GridSample", *this);
   }
 
   {

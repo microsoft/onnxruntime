@@ -30,18 +30,6 @@ class SimpleOpBuilder : public BaseOpBuilder {
 
  private:
   Status ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
-  Status ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper,
-                               const NodeUnit& node_unit,
-                               std::vector<std::string>& param_tensor_names) const;
-  Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
-                                      const NodeUnit& node_unit,
-                                      const std::string input_name) const;
-  Status ProcessBlockSizeAttribute(QnnModelWrapper& qnn_model_wrapper,
-                                   const NodeUnit& node_unit,
-                                   std::vector<std::string>& param_tensor_names) const;
-  Status ProcessModeAttribute(QnnModelWrapper& qnn_model_wrapper,
-                              const NodeUnit& node_unit,
-                              std::vector<std::string>& param_tensor_names) const;
 };
 
 Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
@@ -60,9 +48,9 @@ Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper,
-                                              const NodeUnit& node_unit,
-                                              std::vector<std::string>& param_tensor_names) const {
+Status ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper,
+                             const NodeUnit& node_unit,
+                             std::vector<std::string>& param_tensor_names) {
   NodeAttrHelper node_helper(node_unit);
   float alpha = node_helper.Get("alpha", 1.0f);
   Qnn_Scalar_t alpha_qnn_scalar = QNN_SCALAR_INIT;
@@ -76,9 +64,9 @@ Status SimpleOpBuilder::ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ProcessBlockSizeAttribute(QnnModelWrapper& qnn_model_wrapper,
-                                                  const NodeUnit& node_unit,
-                                                  std::vector<std::string>& param_tensor_names) const {
+Status ProcessBlockSizeAttribute(QnnModelWrapper& qnn_model_wrapper,
+                                 const NodeUnit& node_unit,
+                                 std::vector<std::string>& param_tensor_names) {
   NodeAttrHelper node_helper(node_unit);
   uint32_t block_size = node_helper.Get("blocksize", static_cast<uint32_t>(0));
   std::vector<uint32_t> block_size_shape{2};
@@ -91,9 +79,9 @@ Status SimpleOpBuilder::ProcessBlockSizeAttribute(QnnModelWrapper& qnn_model_wra
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ProcessModeAttribute(QnnModelWrapper& qnn_model_wrapper,
-                                             const NodeUnit& node_unit,
-                                             std::vector<std::string>& param_tensor_names) const {
+Status ProcessModeAttribute(QnnModelWrapper& qnn_model_wrapper,
+                            const NodeUnit& node_unit,
+                            std::vector<std::string>& param_tensor_names) {
   NodeAttrHelper node_helper(node_unit);
   std::string mode = node_helper.Get("mode", "DCR");
   Qnn_Scalar_t mode_qnn_scalar = QNN_SCALAR_INIT;
@@ -114,9 +102,9 @@ Status SimpleOpBuilder::ProcessModeAttribute(QnnModelWrapper& qnn_model_wrapper,
 }
 
 // Process alpha attribute as input for Qnn LeakyRelu
-Status SimpleOpBuilder::ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
-                                                     const NodeUnit& node_unit,
-                                                     const std::string input_name) const {
+Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
+                                    const NodeUnit& node_unit,
+                                    const std::string input_name) {
   NodeAttrHelper node_helper(node_unit);
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
@@ -149,6 +137,51 @@ Status SimpleOpBuilder::ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_
   return Status::OK();
 }
 
+Status ProcessGridSampleAttributes(QnnModelWrapper& qnn_model_wrapper,
+                                   const NodeUnit& node_unit,
+                                   std::vector<std::string>& param_tensor_names) {
+  NodeAttrHelper node_helper(node_unit);
+  int64_t align_corners = node_helper.Get("align_corners", static_cast<int64_t>(0));
+  Qnn_Scalar_t align_corners_qnn_scalar = QNN_SCALAR_INIT;
+  align_corners_qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
+  align_corners_qnn_scalar.bool8Value = static_cast<uint8_t>(align_corners == 0 ? 0 : 1);
+  QnnParamWrapper align_corners_param(node_unit.Index(), node_unit.Name(), QNN_OP_GRID_SAMPLE_PARAM_ALIGN_CORNERS, align_corners_qnn_scalar);
+  param_tensor_names.push_back(align_corners_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(align_corners_param));
+
+  std::string mode = node_helper.Get("mode", "linear");
+  Qnn_Scalar_t mode_qnn_scalar = QNN_SCALAR_INIT;
+  mode_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+  if ("bilinear" == mode) {
+    mode_qnn_scalar.uint32Value = QNN_OP_GRID_SAMPLE_MODE_BILINEAR;
+  } else if ("nearest" == mode) {
+    mode_qnn_scalar.uint32Value = QNN_OP_GRID_SAMPLE_MODE_NEAREST;
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GridSample mode only support bilinear & nearest.");
+  }
+  QnnParamWrapper mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_GRID_SAMPLE_PARAM_MODE, mode_qnn_scalar);
+  param_tensor_names.push_back(mode_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(mode_param));
+
+  std::string padding_mode = node_helper.Get("padding_mode", "zeros");
+  Qnn_Scalar_t padding_mode_qnn_scalar = QNN_SCALAR_INIT;
+  padding_mode_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+  if ("zeros" == padding_mode) {
+    padding_mode_qnn_scalar.uint32Value = QNN_OP_GRID_SAMPLE_PADDING_MODE_ZEROS;
+  } else if ("border" == padding_mode) {
+    padding_mode_qnn_scalar.uint32Value = QNN_OP_GRID_SAMPLE_PADDING_MODE_BORDER;
+  } else if ("reflection" == padding_mode) {
+    padding_mode_qnn_scalar.uint32Value = QNN_OP_GRID_SAMPLE_PADDING_MODE_REFLECTION;
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GridSample padding_mode only support zeros, border & reflection.");
+  }
+  QnnParamWrapper padding_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_GRID_SAMPLE_PARAM_PADDING_MODE, padding_mode_qnn_scalar);
+  param_tensor_names.push_back(padding_mode_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(padding_mode_param));
+
+  return Status::OK();
+}
+
 Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                     const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
@@ -163,7 +196,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   if (do_op_validation) {
     ORT_RETURN_IF_ERROR(ExplictOpCheck(qnn_model_wrapper, node_unit));
     // Skip the op validation for DepthToSpace & SpaceToDepth if it's not NHWC data layout
-    if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth")) {
+    if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth" || op_type == "GridSample")) {
       return Status::OK();
     }
   }
@@ -209,6 +242,10 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   if (op_type == "SpaceToDepth") {
     ORT_RETURN_IF_ERROR(ProcessBlockSizeAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
+  }
+
+  if (op_type == "GridSample") {
+    ORT_RETURN_IF_ERROR(ProcessGridSampleAttributes(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
