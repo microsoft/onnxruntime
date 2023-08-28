@@ -52,7 +52,7 @@ export const checkLastError = (message: string): void => {
 
   const stack = wasm.stackSave();
   try {
-    const ptrSize = 8;
+    const ptrSize = wasm.PTR_SIZE;
     const paramsOffset = wasm.stackAlloc(2 * ptrSize);
     wasm._OrtGetLastError(paramsOffset, paramsOffset + ptrSize);
     const errorCode = wasm.getValue(paramsOffset, 'i32');

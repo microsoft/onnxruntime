@@ -71,7 +71,7 @@ const activeSessions = new Map<number, SessionMetadata>();
  * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.
  * @returns a 3-elements tuple - the pointer, size of the allocated buffer, and optional weights.pb FS node
  */
-export const createSessionAllocate = (model: Uint8Array, weights?: ArrayBuffer): [number, number, string?] => {
+export const createSessionAllocate = (model: Uint8Array, weights?: ArrayBuffer, weightsFilename?: string): [number, number, string?] => {
   const wasm = getInstance();
   const modelDataOffset = wasm._malloc(model.byteLength);
   if (modelDataOffset === 0) {
@@ -81,9 +81,11 @@ export const createSessionAllocate = (model: Uint8Array, weights?: ArrayBuffer):
 
   let weightsPath: string|undefined;
   if (weights) {
-    weightsPath = '/home/web_user/weights.pb';
+    const dir = '/home/web_user';
+    weightsPath = `${dir}/${weightsFilename}`;
     wasm.createFileFromArrayBuffer(weightsPath, weights);
-    wasm.FS.chdir('/home/web_user');
+    console.log('CREATED WEIGHTS', weightsPath);
+    wasm.FS.chdir(dir);
   }
   return [modelDataOffset, model.byteLength, weightsPath];
 };

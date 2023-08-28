@@ -43,7 +43,7 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
   createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
   async createSessionHandler(
-      urisOrBuffers: string|[string, string]|Uint8Array|[Uint8Array, ArrayBuffer],
+      urisOrBuffers: string|[string, string]|Uint8Array|[Uint8Array, ArrayBuffer, string],
       options?: InferenceSession.SessionOptions): Promise<SessionHandler> {
     const handler = new OnnxruntimeWebAssemblySessionHandler();
     await handler.loadModel(urisOrBuffers, options);

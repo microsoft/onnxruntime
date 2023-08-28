@@ -34,7 +34,7 @@ interface MessageInitOrt extends MessageError {
 
 interface MessageCreateSessionAllocate extends MessageError {
   type: 'create_allocate';
-  in ?: {model: Uint8Array; weights?: ArrayBuffer};
+  in ?: {model: Uint8Array; weights?: ArrayBuffer; weightsFilename?: string};
   out?: SerializableModeldata;
 }
 

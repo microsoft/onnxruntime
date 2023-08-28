@@ -162,6 +162,17 @@ else()
     ${onnxruntime_webassembly_src}
   )
 
+  if (onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING AND NOT onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
+    # we catch exceptions at the api level
+    file(GLOB_RECURSE onnxruntime_webassembly_src_exc CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/wasm/api.cc"
+      "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
+    )
+    set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
+    message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
+    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
+  endif()
+
   target_link_libraries(onnxruntime_webassembly PRIVATE
     nsync::nsync_cpp
     ${PROTOBUF_LIB}
@@ -237,11 +248,15 @@ else()
       "SHELL:-s MAXIMUM_MEMORY=17179869184"
       --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js"
     )
+    target_link_options(onnxruntime_webassembly PRIVATE "-fwasm-exceptions")
   else ()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s MAXIMUM_MEMORY=4294967296"
       --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js"
     )
+    # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
+    # -fwasm-exceptions is not compatible with ASYNCIFY=1 so it will not be used in 32 bit builds
+    target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
   endif ()
 
   target_link_options(onnxruntime_webassembly PRIVATE
@@ -309,9 +324,6 @@ else()
   if (onnxruntime_USE_WEBNN)
    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --bind -sWASM_BIGINT")
   endif()
-
-  # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  target_link_options(onnxruntime_webassembly PRIVATE "-fwasm-exceptions")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)

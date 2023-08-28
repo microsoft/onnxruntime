@@ -17,14 +17,12 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   inputNames: string[];
   outputNames: string[];
 
-  async fetchModelAndWeights(modelPath: string, weightsPath?: string): Promise<[Uint8Array, ArrayBuffer?]> {
+  async fetchModelAndWeights(modelPath: string, weightsPath?: string): Promise<[Uint8Array, ArrayBuffer?, string?]> {
     const modelResponse = await fetch(modelPath);
     if (modelResponse.status !== 200) {
       throw new Error(`failed to load model: ${modelPath}`);
     }
-    const promises: [Promise<Uint8Array>, Promise<ArrayBuffer>?] = [
-      modelResponse.arrayBuffer().then(b => new Uint8Array(b))
-    ];
+    let promises: [Promise<Uint8Array>, Promise<ArrayBuffer>?, Promise<string>?];
 
     if (weightsPath) {
       const weightsResponse = await fetch(weightsPath);
@@ -40,7 +38,18 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
         index: 'u64',
         shared: true,
       });
-      promises.push(streamResponseToBuffer(weightsResponse, weightsMemory.buffer, 0).then(() => weightsMemory.buffer));
+      promises = [
+        modelResponse.arrayBuffer().then(b => new Uint8Array(b)),
+        streamResponseToBuffer(weightsResponse, weightsMemory.buffer, 0).then(() => weightsMemory.buffer),
+        new Promise(resolve => {
+          const name = weightsPath.split('/');
+          resolve(name[name.length - 1]);
+        })
+      ];
+    } else {
+      promises = [
+        modelResponse.arrayBuffer().then(b => new Uint8Array(b)),
+      ];
     }
 
     // fetch model and weights in parallel
@@ -48,7 +57,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   }
 
   async loadModel(
-      urisOrBuffers: string|[string, string]|Uint8Array|[Uint8Array, ArrayBuffer],
+      urisOrBuffers: string|[string, string]|Uint8Array|[Uint8Array, ArrayBuffer, string],
       options?: InferenceSession.SessionOptions): Promise<void> {
     if (!runtimeInitialized) {
       await initializeRuntime(env);
@@ -57,6 +66,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
     let modelBuffer: Uint8Array;
     let weightsBuffer: ArrayBuffer|undefined;
+    let weightsFilename: string|undefined;
     const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
     if (Array.isArray(urisOrBuffers)) {
       // handle [string, string]
@@ -65,10 +75,10 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
           modelBuffer = await promisify(readFile)(urisOrBuffers[0]);
           weightsBuffer = await promisify(readFile)(urisOrBuffers[1] as string);
         } else {
-          [modelBuffer, weightsBuffer] = await this.fetchModelAndWeights(urisOrBuffers[0], urisOrBuffers[1] as string);
+          [modelBuffer, weightsBuffer, weightsFilename] = await this.fetchModelAndWeights(urisOrBuffers[0], urisOrBuffers[1] as string);
         }
       } else {  // [UInt8Array, ArrayBuffer]
-        [modelBuffer, weightsBuffer] = urisOrBuffers as [Uint8Array, ArrayBuffer];
+        [modelBuffer, weightsBuffer, weightsFilename] = urisOrBuffers as [Uint8Array, ArrayBuffer, string];
       }
     } else {
       if (typeof urisOrBuffers === 'string') {
@@ -82,7 +92,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       }
     }
 
-    const modelData: SerializableModeldata = await createSessionAllocate(modelBuffer, weightsBuffer);
+    const modelData: SerializableModeldata = await createSessionAllocate(modelBuffer, weightsBuffer, weightsFilename);
     // create the session
     [this.sessionId, this.inputNames, this.outputNames] = await createSessionFinalize(modelData, options);
   }
