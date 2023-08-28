@@ -36,7 +36,6 @@ TEST(MatMulWithQuantWeight, MatMul2DSym) {
   test.AddAttribute<int64_t>("N", N);
   test.AddAttribute<int64_t>("block_size", 32);
   test.AddAttribute<int64_t>("bits", 4);
-  test.AddAttribute<int64_t>("has_zero_point", 0);
 
   std::vector<float> input0_vals(M * K);
   float fv = -135.f;
@@ -109,7 +108,6 @@ TEST(MatMulWithQuantWeight, MatMul2DBlkZp) {
   test.AddAttribute<int64_t>("N", N);
   test.AddAttribute<int64_t>("block_size", 32);
   test.AddAttribute<int64_t>("bits", 4);
-  test.AddAttribute<int64_t>("has_zero_point", 1);
 
   std::vector<float> input0_vals(M * K);
   float fv = -135.f;

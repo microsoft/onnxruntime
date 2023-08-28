@@ -26,9 +26,6 @@ class MatMulWithQuantWeight final : public OpKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
-    int64_t has_zero_point = 0;
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("has_zero_point", &has_zero_point));
-    has_zero_point_ = has_zero_point != 0;
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -38,7 +35,6 @@ class MatMulWithQuantWeight final : public OpKernel {
   int64_t N_;
   int64_t block_size_;
   int64_t nbits_;
-  bool has_zero_point_;
 };
 
 Status MatMulWithQuantWeight::Compute(OpKernelContext* ctx) const {
