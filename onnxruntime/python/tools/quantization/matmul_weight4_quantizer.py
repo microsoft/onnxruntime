@@ -16,7 +16,9 @@ from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
 from .onnx_model import ONNXModel
 from .quant_utils import attribute_to_kwarg, load_model_with_shape_infer
+import multiprocessing
 
+from joblib import Parallel, delayed, parallel_config
 
 def __q4_block_size() -> int:
     # happens to be 32 for now, but future quantization types
@@ -51,13 +53,15 @@ def int4_block_quant(fp32weight: npt.ArrayLike, symmetric: bool) -> np.ndarray:
         fp32weight = np.pad(fp32weight, ((0, pad_len), (0, 0)), "constant")
 
     # block wise quantization, each block comes from a single column
-    blob_idx = 0
     packed = np.zeros((cols * k_blocks, blob_size), dtype="uint8")
     scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
     zero_point = np.zeros((cols * k_blocks), dtype="uint8")
-    for n in range(cols):
-        ncol = fp32weight[:, n]
+    fp32weight = np.transpose(fp32weight)
+    def _process_column(n):
+        ncol = fp32weight[n, :]
         blks = np.split(ncol, k_blocks)
+        blob_idx = n * k_blocks
+        #print(f"start to process {n}")
         for blk in blks:
             packed_blob = packed[blob_idx]
 
@@ -85,6 +89,10 @@ def int4_block_quant(fp32weight: npt.ArrayLike, symmetric: bool) -> np.ndarray:
             blk_int = np.clip(np.rint(blk * reciprocal_scale + zp), 0, 15).astype("uint8")
             for i in range(0, blob_size, 2):
                 packed_blob[i//2] = blk_int[i] | blk_int[i+1] << 4
+        #print(f"end to process {n}")
+
+    with parallel_config(backend='threading', n_jobs=-1):
+        Parallel()(delayed(_process_column)(n) for n in range(cols))
     return (packed.reshape((cols, k_blocks, blob_size)),
             scales.reshape((cols, k_blocks)),
             zero_point.reshape((cols, k_blocks)))
@@ -174,6 +182,7 @@ class MatMulWeight4Quantizer:
         graph = graph_stack[-1]
 
         for node in graph.node:
+            print(node.name)
             graph_attrs = [
                 attr
                 for attr in node.attribute
@@ -249,4 +258,4 @@ if __name__ == "__main__":
     model = load_model_with_shape_infer(Path(input_model_path))
     quant = MatMulWeight4Quantizer(model, 0)
     quant.process()
-    quant.model.save_model_to_file(output_model_path, False)
+    quant.model.save_model_to_file(output_model_path, True)
