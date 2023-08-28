@@ -240,3 +240,21 @@ export const less = (context: ComputeContext): void => {
       context.inputs, 'Less', ({scalar: (a, b) => `u32(${a}<${b})`, vector: (a, b) => `vec4<u32>(${a}<${b})`}),
       undefined, undefined, DataType.bool));
 };
+
+export const greaterOrEqual = (context: ComputeContext): void => {
+  context.compute(createBinaryOpProgramInfoLoader(
+      context.inputs, 'GreateOrEqual', ({
+        scalar: (a, b) => `select(0, 1, ${a}>=${b})`,
+        vector: (a, b) => `select(vec4<u32>(0), vec4<u32>(1), ${a}>=${b})`
+      }),
+      undefined, undefined, DataType.bool));
+};
+
+export const lessOrEqual = (context: ComputeContext): void => {
+  context.compute(createBinaryOpProgramInfoLoader(
+      context.inputs, 'LessOrEqual', ({
+        scalar: (a, b) => `select(0, 1, ${a}<=${b})`,
+        vector: (a, b) => `select(vec4<u32>(0), vec4<u32>(1), ${a}<=${b})`
+      }),
+      undefined, undefined, DataType.bool));
+};
