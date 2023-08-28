@@ -30,6 +30,9 @@ class SimpleOpBuilder : public BaseOpBuilder {
 
  private:
   Status ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
+
+  static constexpr std::array<std::string_view, 2> gridsample_supported_modes = {"bilinear", "nearest"};
+  static constexpr std::array<std::string_view, 3> gridsample_supported_padding_modes = {"zeros", "border", "reflection"};
 };
 
 Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
@@ -43,6 +46,16 @@ Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper,
                       "QNN EP: Cannot get shape for Softmax input");
     ORT_RETURN_IF(axis != static_cast<int32_t>(input_shape.size() - 1),
                   "QNN Softmax only supports an `axis` attribute equal to input_rank-1 (or -1)");
+  }
+
+  if (node_unit.OpType() == "GridSample") {
+    NodeAttrHelper node_helper(node_unit);
+    std::string mode = node_helper.Get("mode", "linear");
+    ORT_RETURN_IF_NOT(utils::ArrayHasString(gridsample_supported_modes, mode), "GridSample does not support mode ",
+                      mode.c_str());
+    std::string padding_mode = node_helper.Get("padding_mode", "zeros");
+    ORT_RETURN_IF_NOT(utils::ArrayHasString(gridsample_supported_padding_modes, padding_mode), "GridSample does not support padding_mode ",
+                      padding_mode.c_str());
   }
 
   return Status::OK();
