@@ -52,9 +52,8 @@ auto GetCKGemmTypeStringAndOps() {
     auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
       auto one = ToHipType<T>::FromFloat(1.0f);
       auto zero = ToHipType<T>::FromFloat(0.0f);
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          params->alpha != one || params->beta != zero,
-          impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->alpha != one || params->beta != zero,
+                                                impl->GetTypeString(), " only supports alpha == 1 and beta == 0");
 
       auto nop = Nop{};
       auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
@@ -87,9 +86,8 @@ auto GetCKStreamKGemmTypeStringAndOps() {
     auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
       auto one = ToHipType<T>::FromFloat(1.0f);
       auto zero = ToHipType<T>::FromFloat(0.0f);
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          params->alpha != one || params->beta != zero,
-          impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->alpha != one || params->beta != zero,
+                                                impl->GetTypeString(), " only supports alpha == 1 and beta == 0");
 
       auto nop = Nop{};
       auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
@@ -127,9 +125,8 @@ auto GetCKSplitKGemmTypeStringAndOps() {
 
         auto one = ToHipType<T>::FromFloat(1.0f);
         auto zero = ToHipType<T>::FromFloat(0.0f);
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            params->alpha != one || params->beta != zero,
-            impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->alpha != one || params->beta != zero,
+                                                  impl->GetTypeString(), " only supports alpha == 1 and beta == 0");
 
         auto nop = Nop{};
         auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
