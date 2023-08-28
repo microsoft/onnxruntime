@@ -1426,8 +1426,44 @@ std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Creat
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+// Adapter to convert the legacy OrtOpenVINOProviderOptions to ProviderOptions
+ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const OrtOpenVINOProviderOptions* legacy_ov_options) {
+  ProviderOptions ov_options_converted_map;
+  if (legacy_ov_options->device_type != nullptr)
+    ov_options_converted_map["device_type"] = legacy_ov_options->device_type;
+
+  ov_options_converted_map["enable_vpu_fast_compile"] = legacy_ov_options->enable_vpu_fast_compile;
+
+  if (legacy_ov_options->device_id != nullptr)
+    ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
+
+  ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
+
+  if (legacy_ov_options->cache_dir != nullptr)
+    ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
+
+  std::stringstream context_string;
+
+  if (legacy_ov_options->context != nullptr)
+    context_string << legacy_ov_options->context;
+  ov_options_converted_map["context"] = context_string.str();
+
+  ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
+  ov_options_converted_map["enable_dynamic_shapes"] = legacy_ov_options->enable_dynamic_shapes;
+
+  // Add new provider option below
+  ov_options_converted_map["num_streams"] = "1";
+  return ov_options_converted_map;
+}
+
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const OrtOpenVINOProviderOptions* provider_options) {
-  return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options);
+  ProviderOptions ov_options_converted_map = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
+  return s_library_openvino.Get().CreateExecutionProviderFactory(&ov_options_converted_map);
+}
+
+std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions* provider_options_map) {
+  // std::cout << provider_options_map.at("num_streams") << std::endl;
+  return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {

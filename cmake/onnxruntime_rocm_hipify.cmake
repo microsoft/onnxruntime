@@ -114,8 +114,6 @@ endif()
 
 set(provider_excluded_files
   "atomic/common.cuh"
-  "controlflow/if.cc"
-  "controlflow/if.h"
   "controlflow/loop.cc"
   "controlflow/loop.h"
   "controlflow/scan.cc"
@@ -204,6 +202,10 @@ set(training_ops_excluded_files
   "reduction/reduction_ops.cc"  # no double type support
   "cuda_training_kernels.cc"
   "cuda_training_kernels.h"
+  "nn/conv_shared.cc"
+  "nn/conv_shared.h"
+  "nn/conv_transpose_grad.cc"
+  "nn/conv_transpose_grad.h"
 )
 
 function(auto_set_source_files_hip_language)
