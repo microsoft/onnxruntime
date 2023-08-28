@@ -30,10 +30,6 @@ struct MemoryEfficientAttentionParams {
   int32_t* seqstart_k_ptr;
   int32_t* seqlen_k_ptr;
 
-  int32_t q_strideB;
-  int32_t k_strideB;
-  int32_t v_strideB;
-
   const void* query;      // [B, S, N, H]
   const void* key;        // [B, L, N, H], where L is kv_sequence_length
   const void* value;      // [B, L, N, H_v]
