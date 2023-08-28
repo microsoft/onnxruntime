@@ -192,7 +192,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2);
-      
+
   if (use_memory_efficient_attention) {
     bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention = (nullptr == relative_position_bias || is_good_for_rpb);

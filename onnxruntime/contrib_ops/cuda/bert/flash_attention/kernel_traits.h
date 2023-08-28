@@ -76,38 +76,41 @@ struct Flash_fwd_kernel_traits : public Base {
 
   using TiledMma = TiledMMA<
       typename Base::MMA_Atom_Arch,
-      cute::Layout<cute::Shape<cute::Int<kNWarps>, _1, _1>>,  // 4x1x1 or 8x1x1 thread group
-      typename Base::ValLayoutMNK>;                           // 1x2x1 or 1x2x2 value group for 16x16x16 MMA and LDSM
+      Layout<Shape<Int<kNWarps>, _1, _1>>,  // 4x1x1 or 8x1x1 thread group
+      typename Base::ValLayoutMNK>;         // 1x2x1 or 1x2x2 value group for 16x16x16 MMA and LDSM
 
   using SmemLayoutAtomQ = decltype(composition(Swizzle<kSwizzle, 3, 3>{},
                                                // This has to be kBlockKSmem, using kHeadDim gives wrong results for d=128
-                                               cute::Layout<cute::Shape<_8, cute::Int<kBlockKSmem>>,
-                                                            cute::Stride<cute::Int<kBlockKSmem>, _1>>{}));
+                                               Layout<Shape<_8, Int<kBlockKSmem>>,
+                                                      Stride<Int<kBlockKSmem>, _1>>{}));
   using SmemLayoutQ = decltype(tile_to_shape(
       SmemLayoutAtomQ{},
-      cute::Shape<cute::Int<kBlockM>, cute::Int<kHeadDim>>{}));
+      Shape<Int<kBlockM>, Int<kHeadDim>>{}));
 
   using SmemLayoutKV = decltype(tile_to_shape(
       SmemLayoutAtomQ{},
-      cute::Shape<cute::Int<kBlockN>, cute::Int<kHeadDim>>{}));
+      Shape<Int<kBlockN>, Int<kHeadDim>>{}));
 
-  using SmemLayoutAtomVtransposed = decltype(composition(Swizzle<kSwizzle, 3, 3>{},
-                                                         // This has to be kBlockN and not 8, otherwise we get wrong results for d=128
-                                                         cute::Layout<cute::Shape<cute::Int<kBlockKSmem>, cute::Int<kBlockN>>,
-                                                                      cute::Stride<_1, cute::Int<kBlockKSmem>>>{}));
+  // This has to be kBlockN and not 8, otherwise we get wrong results for d=128
+  using SmemLayoutAtomVtransposedNoSwizzle = Layout<Shape<Int<kBlockKSmem>, Int<kBlockN>>,
+                                                    Stride<_1, Int<kBlockKSmem>>>;
+  using SmemLayoutAtomVtransposed = decltype(composition(Swizzle<kSwizzle, 3, 3>{}, SmemLayoutAtomVtransposedNoSwizzle{}));
   using SmemLayoutVtransposed = decltype(tile_to_shape(
       SmemLayoutAtomVtransposed{},
-      cute::Shape<cute::Int<kHeadDim>, cute::Int<kBlockN>>{}));
+      Shape<Int<kHeadDim>, Int<kBlockN>>{}));
   // Maybe the VtransposeNoSwizzle just needs to have the right shape
   // And the strides don't matter?
-  using SmemLayoutVtransposedNoSwizzle = decltype(SmemLayoutVtransposed{}.layout_fn());
+  using SmemLayoutVtransposedNoSwizzle = decltype(tile_to_shape(
+      SmemLayoutAtomVtransposedNoSwizzle{},
+      Shape<Int<kHeadDim>, Int<kBlockN>>{}));
+  // using SmemLayoutVtransposedNoSwizzle = decltype(SmemLayoutVtransposed{}.layout_fn());
 
   using SmemLayoutAtomO = decltype(composition(Swizzle<kSwizzle, 3, 3>{},
-                                               cute::Layout<cute::Shape<cute::Int<8>, cute::Int<kBlockKSmem>>,
-                                                            cute::Stride<cute::Int<kBlockKSmem>, _1>>{}));
+                                               Layout<Shape<Int<8>, Int<kBlockKSmem>>,
+                                                      Stride<Int<kBlockKSmem>, _1>>{}));
   using SmemLayoutO = decltype(tile_to_shape(
       SmemLayoutAtomO{},
-      cute::Shape<cute::Int<kBlockM>, cute::Int<kHeadDim>>{}));
+      Shape<Int<kBlockM>, Int<kHeadDim>>{}));
   using SmemCopyAtomO = Copy_Atom<DefaultCopy, elem_type>;
 
   static constexpr int kSmemQCount = cute::size(SmemLayoutQ{});
@@ -136,18 +139,18 @@ struct Flash_fwd_kernel_traits : public Base {
       DefaultCopy>;
   using GmemTiledCopyQKV = decltype(make_tiled_copy(Copy_Atom<Gmem_copy_struct, elem_type>{},
                                                     GmemLayoutAtom{},
-                                                    cute::Layout<cute::Shape<_1, _8>>{}));  // Val layout, 8 vals per read
+                                                    Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per read
   using GmemTiledCopyO = decltype(make_tiled_copy(Copy_Atom<DefaultCopy, elem_type>{},
                                                   GmemLayoutAtom{},
-                                                  cute::Layout<cute::Shape<_1, _8>>{}));  // Val layout, 8 vals per store
+                                                  Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per store
   static constexpr int kGmemThreadsPerRowP = kBlockN / kGmemElemsPerLoad;
   static_assert(kNThreads % kGmemThreadsPerRowP == 0, "kNThreads must be a multiple of kGmemThreadsPerRowP");
-  using GmemLayoutAtomP = cute::Layout<cute::Shape<cute::Int<kNThreads / kGmemThreadsPerRowP>, cute::Int<kGmemThreadsPerRowP>>,
-                                       cute::Stride<cute::Int<kGmemThreadsPerRowP>, _1>>;
+  using GmemLayoutAtomP = Layout<Shape<Int<kNThreads / kGmemThreadsPerRowP>, Int<kGmemThreadsPerRowP>>,
+                                 Stride<Int<kGmemThreadsPerRowP>, _1>>;
 
   using GmemTiledCopyP = decltype(make_tiled_copy(Copy_Atom<DefaultCopy, elem_type>{},
                                                   GmemLayoutAtomP{},
-                                                  cute::Layout<cute::Shape<_1, _8>>{}));  // Val layout, 8 vals per store
+                                                  Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per store
 };
 
 // Is_V_in_regs is an option to reduce smem usage, but will increase register pressue.
@@ -214,15 +217,18 @@ struct Flash_bwd_kernel_traits : public Base {
       SmemLayoutAtomKV{},
       cute::make_shape(cute::Int<kBlockN>{}, cute::Int<kHeadDim>{})));
 
-  using SmemLayoutAtomKtransposed = decltype(composition(Swizzle<kSwizzle, 3, 3>{},
-                                                         cute::Layout<cute::Shape<cute::Int<kBlockKSmem>, cute::Int<kBlockN>>,
-                                                                      cute::Stride<_1, cute::Int<kBlockKSmem>>>{}));
+  using SmemLayoutAtomKtransposedNoSwizzle = Layout<Shape<Int<kBlockKSmem>, Int<kBlockN>>,
+                                                    Stride<_1, Int<kBlockKSmem>>>;
+  using SmemLayoutAtomKtransposed = decltype(composition(Swizzle<kSwizzle, 3, 3>{}, SmemLayoutAtomKtransposedNoSwizzle{}));
   using SmemLayoutKtransposed = decltype(tile_to_shape(
       SmemLayoutAtomKtransposed{},
-      cute::make_shape(cute::Int<kHeadDim>{}, cute::Int<kBlockN>{})));
+      make_shape(Int<kHeadDim>{}, Int<kBlockN>{})));
   // Maybe the KtransposeNoSwizzle just needs to have the right shape
   // And the strides don't matter?
-  using SmemLayoutKtransposedNoSwizzle = decltype(SmemLayoutKtransposed{}.layout_fn());
+  using SmemLayoutKtransposedNoSwizzle = decltype(tile_to_shape(
+      SmemLayoutAtomKtransposedNoSwizzle{},
+      make_shape(Int<kHeadDim>{}, Int<kBlockN>{})));
+  // using SmemLayoutKtransposedNoSwizzle = decltype(SmemLayoutKtransposed{}.layout_fn());
 
   // TODO: generalize to other values of kBlockN
   // TODO: what should be the Swizzle here? 3 is faster than 1, and 1 is faster than 2
@@ -239,37 +245,43 @@ struct Flash_bwd_kernel_traits : public Base {
   using SmemLayoutPdS = decltype(tile_to_shape(
       SmemLayoutAtomPdS{},
       cute::make_shape(cute::Int<kBlockM>{}, cute::Int<kBlockN>{})));
-  using SmemLayoutAtomPdStransposed = decltype(composition(Swizzle<kSwizzlePdS, 3, 3>{},
-                                                           cute::Layout<cute::Shape<cute::Int<kPBlockN>, cute::Int<kBlockM>>,
-                                                                        cute::Stride<_1, cute::Int<kPBlockN>>>{}));
+  using SmemLayoutAtomPdStransposedNoSwizzle = Layout<Shape<Int<kPBlockN>, Int<kBlockM>>,
+                                                      Stride<_1, Int<kPBlockN>>>;
+  using SmemLayoutAtomPdStransposed = decltype(composition(Swizzle<kSwizzlePdS, 3, 3>{}, SmemLayoutAtomPdStransposedNoSwizzle{}));
   using SmemLayoutPdStransposed = decltype(tile_to_shape(
       SmemLayoutAtomPdStransposed{},
-      cute::make_shape(cute::Int<kBlockN>{}, cute::Int<kBlockM>{})));
-  using SmemLayoutPdStransposedNoSwizzle = decltype(SmemLayoutPdStransposed{}.layout_fn());
+      make_shape(Int<kBlockN>{}, Int<kBlockM>{})));
+  using SmemLayoutPdStransposedNoSwizzle = decltype(tile_to_shape(
+      SmemLayoutAtomPdStransposedNoSwizzle{},
+      make_shape(Int<kBlockN>{}, Int<kBlockM>{})));
+  // using SmemLayoutPdStransposedNoSwizzle = decltype(SmemLayoutPdStransposed{}.layout_fn());
   using SmemCopyAtomPdS = Copy_Atom<DefaultCopy, elem_type>;
 
-  using SmemLayoutAtomQdOtransposed = decltype(composition(Swizzle<kSwizzle, 3, 3>{},
-                                                           cute::Layout<cute::Shape<cute::Int<kBlockKSmem>, cute::Int<kBlockM>>,
-                                                                        cute::Stride<_1, cute::Int<kBlockKSmem>>>{}));
+  using SmemLayoutAtomQdOtransposedNoSwizzle = Layout<Shape<Int<kBlockKSmem>, Int<kBlockM>>,
+                                                      Stride<_1, Int<kBlockKSmem>>>;
+  using SmemLayoutAtomQdOtransposed = decltype(composition(Swizzle<kSwizzle, 3, 3>{}, SmemLayoutAtomQdOtransposedNoSwizzle{}));
   using SmemLayoutQdOtransposed = decltype(tile_to_shape(
       SmemLayoutAtomQdOtransposed{},
-      cute::make_shape(cute::Int<kHeadDim>{}, cute::Int<kBlockM>{})));
-  using SmemLayoutQdOtransposedNoSwizzle = decltype(SmemLayoutQdOtransposed{}.layout_fn());
+      make_shape(Int<kHeadDim>{}, Int<kBlockM>{})));
+  using SmemLayoutQdOtransposedNoSwizzle = decltype(tile_to_shape(
+      SmemLayoutAtomQdOtransposedNoSwizzle{},
+      make_shape(Int<kHeadDim>{}, Int<kBlockM>{})));
+  // using SmemLayoutQdOtransposedNoSwizzle = decltype(SmemLayoutQdOtransposed{}.layout_fn());
 
   using SmemLayoutAtomdKV = decltype(composition(Swizzle<kSwizzle, 3, 3>{},
-                                                 cute::Layout<cute::Shape<_8, cute::Int<kBlockKSmem>>,
-                                                              cute::Stride<cute::Int<kBlockKSmem>, _1>>{}));
+                                                 Layout<Shape<_8, Int<kBlockKSmem>>,
+                                                        Stride<Int<kBlockKSmem>, _1>>{}));
   using SmemLayoutdKV = decltype(tile_to_shape(
       SmemLayoutAtomdKV{},
-      cute::make_shape(cute::Int<kBlockN>{}, cute::Int<kHeadDim>{})));
+      make_shape(Int<kBlockN>{}, Int<kHeadDim>{})));
   using SmemCopyAtomdKV = Copy_Atom<DefaultCopy, elem_type>;
 
   using SmemLayoutAtomdQ = decltype(composition(Swizzle<kSwizzle, 3, 3>{},
-                                                cute::Layout<cute::Shape<_8, cute::Int<kBlockKSmem>>,
-                                                             cute::Stride<cute::Int<kBlockKSmem>, _1>>{}));
+                                                Layout<Shape<_8, Int<kBlockKSmem>>,
+                                                       Stride<Int<kBlockKSmem>, _1>>{}));
   using SmemLayoutdQ = decltype(tile_to_shape(
       SmemLayoutAtomdQ{},
-      cute::make_shape(cute::Int<kBlockM>{}, cute::Int<kHeadDim>{})));
+      make_shape(Int<kBlockM>{}, Int<kHeadDim>{})));
   using SmemCopyAtomdQ = Copy_Atom<DefaultCopy, elem_type>;
 
   static constexpr int kSmemQdOCount = cute::size(SmemLayoutQdO{}) * (No_double_buffer ? 2 : 3);  // Double buffer for sQ

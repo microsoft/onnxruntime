@@ -10,9 +10,9 @@
 namespace onnxruntime {
 namespace flash {
 
-template <typename Kernel_traits, bool Is_causal, bool Is_even_N, bool Is_even_K, bool Return_softmax>
+template <typename Kernel_traits, bool Is_causal, bool Is_even_MN, bool Is_even_K, bool Return_softmax>
 __global__ void flash_fwd_kernel(Flash_fwd_params params) {
-  flash::compute_attn<Kernel_traits, Is_causal, Is_even_N, Is_even_K, Return_softmax>(params);
+  flash::compute_attn<Kernel_traits, Is_causal, Is_even_MN, Is_even_K, Return_softmax>(params);
 }
 
 template <typename Kernel_traits, bool Is_causal>
@@ -27,13 +27,13 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
   dim3 grid(num_m_block, params.b, params.h);
   // We also use is_even_N to set Unpadded in the BlockInfo constructor, so we need to check
   // for cu_seqlens_q as well.
-  const bool is_even_N = params.cu_seqlens_q == nullptr && params.cu_seqlens_k == nullptr && params.seqlen_k % Kernel_traits::kBlockN == 0;
+  const bool is_even_MN = params.cu_seqlens_q == nullptr && params.cu_seqlens_k == nullptr && params.seqlen_k % Kernel_traits::kBlockN == 0 && params.seqlen_q % Kernel_traits::kBlockM == 0;
   const bool is_even_K = params.d == Kernel_traits::kHeadDim;
-  BOOL_SWITCH(is_even_N, IsEvenNConst, [&] {
+  BOOL_SWITCH(is_even_MN, IsEvenMNConst, [&] {
     BOOL_SWITCH(is_even_K, IsEvenKConst, [&] {
       // Will only return softmax if dropout, to reduce compilation time.
-      auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenNConst, IsEvenKConst, false>;
-      // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenNConst, true, ReturnSoftmaxConst>;
+      auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenMNConst, IsEvenKConst, false>;
+      // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenMNConst, true, ReturnSoftmaxConst>;
       if (smem_size >= 48 * 1024) {
         cudaFuncSetAttribute(
             kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
