@@ -78,7 +78,6 @@ jobs:
     ${{ if eq(parameters.WITH_CACHE, true) }}:
       PS_CACHE_ARG: '-use_cache'
       PY_CACHE_ARG: '--use_cache'
-      MSBUILD_CACHE_ARG: '/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
   workspace:
     clean: all
   pool: ${{ parameters.MachinePool }}
@@ -137,48 +136,17 @@ jobs:
       nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
       restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
 
-  - ${{ if eq(parameters.WITH_CACHE, true) }}:
-    - task: Cache@2
-      inputs:
-        ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
-          key: ' "$(TODAY)" |  $(System.StageName) | ${{ parameters.BuildConfig }} | merge '
-        ${{else}}:
-          key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} | $(Build.SourceVersion) '
-        path: $(ORT_CACHE_DIR)
-        restoreKeys: |
-          "$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }}
-      displayName: Cache Task
-
-  - task: PythonScript@0
-    displayName: 'Generate cmake config'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ variables.PY_CACHE_ARG }} ${{ parameters.additionalBuildFlags }}'
-      workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: VSBuild@1
-    displayName: 'Build'
-    inputs:
-      solution: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\onnxruntime.sln'
-      platform: ${{ parameters.msbuildPlatform }}
-      configuration: ${{ parameters.BuildConfig }}
-      msbuildArgs: '-maxcpucount ${{ variables.MSBUILD_CACHE_ARG }}'
-      msbuildArchitecture: ${{ parameters.buildArch }}
-      maximumCpuCount: true
-      logProjectEvents: false
-      workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
-      createLogFile: true
-    ${{ if eq(parameters.WITH_CACHE, true) }}:
-      env:
-        CCACHE_DIR: $(ORT_CACHE_DIR)
-
-  - ${{ if eq(parameters.WITH_CACHE, true) }}:
-    - powershell: |
-        ccache -sv
-        ccache -z
-      displayName: cache stat
-      env:
-        CCACHE_DIR: $(ORT_CACHE_DIR)
+  - template: win-ci-build-steps.yml
+    parameters:
+      WithCache: ${{ parameters.WITH_CACHE }}
+      Today: $(TODAY)
+      CacheDir: $(ORT_CACHE_DIR)
+      AdditionalKey: " $(System.StageName) | ${{ parameters.BuildConfig }} "
+      BuildPyArguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      MsbuildArguments: '-maxcpucount'
+      BuildArch: ${{ parameters.buildArch }}
+      Platform: ${{ parameters.msbuildPlatform }}
+      BuildConfig: ${{ parameters.BuildConfig }}
 
   - powershell: |
       Get-Volume $("$(Build.BinariesDirectory)")[0]
