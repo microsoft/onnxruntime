@@ -489,7 +489,7 @@ public class InferenceTest {
       } catch (OrtException e) {
         OnnxValue.close(container.values());
         String msg = e.getMessage();
-        assertTrue(msg.contains("Unexpected input data type"));
+        assertTrue(msg.contains("Unexpected Input data type"));
       }
     }
   }
