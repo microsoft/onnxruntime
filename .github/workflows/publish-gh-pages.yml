@@ -1,4 +1,4 @@
-# This is a placeholder workflow only. Its purpose for manual runs to show up
+# This is a placeholder workflow only. Its purpose is for manual runs to show up
 # in the GitHub web UI. It is not used for any automated runs.
 name: Publish site
 
