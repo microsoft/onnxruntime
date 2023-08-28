@@ -34,7 +34,7 @@ public class OnnxruntimePackage extends TurboReactPackage {
     return () -> {
       final Map<String, ReactModuleInfo> moduleInfos = new HashMap<>();
       boolean isTurboModule = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED;
-      moduleInfos.put(OnnxruntimeModule.NAME, new ReactModuleInfo(OnnxruntimeModule.NAME, OnnxruntimeModule.NAME,
+      moduleInfos.put(OnnxruntimeModule.NAME, new ReactModuleInfo(OnnxruntimeModule.NAME, "OnnxruntimeModule",
                                                                   false,        // canOverrideExistingModule
                                                                   false,        // needsEagerInit
                                                                   true,         // hasConstants
