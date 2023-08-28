@@ -1,0 +1,17 @@
+# Workflow for building and deploying the ORT GitHub Pages site
+name: Publish site
+
+on:
+  # Runs on pushes targeting the branch where the website sources live
+  push:
+    branches: ["gh-pages"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder step to have workflow included in the GitHub web UI
+        run: echo "Placeholder step to have workflow included in the GitHub web UI"
