@@ -1881,6 +1881,7 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
   const char* const input_output_moniker = is_inputs ? "Input" : "Output";
   const char* const feed_fetches_moniker = is_inputs ? "Feed" : "Fetch";
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   auto is_sparse_initializer = [this](const std::string& name) -> bool {
     int idx = -1;
     if (session_state_->GetOrtValueNameIdxMap().GetIdx(name, idx).IsOK()) {
@@ -1888,6 +1889,7 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
     }
     return false;
   };
+#endif
 
   if (names.size() != feeds_fetches.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, feed_fetches_moniker, " names has ", names.size(),
