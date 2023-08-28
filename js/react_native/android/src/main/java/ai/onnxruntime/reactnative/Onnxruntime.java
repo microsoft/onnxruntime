@@ -54,7 +54,6 @@ public class Onnxruntime implements LifecycleEventListener {
     nextSessionId = nextSessionId.add(BigInteger.valueOf(1));
     return key;
   }
-  protected Map<String, OrtSession> getSessionMap() { return sessionMap; }
   private BlobModule blobModule;
 
   public Onnxruntime(ReactApplicationContext context) { reactContext = context; }
@@ -430,7 +429,6 @@ public class Onnxruntime implements LifecycleEventListener {
 
   @Override
   public void onHostDestroy() {
-    Map<String, OrtSession> sessionMap = getSessionMap();
     for (String key : sessionMap.keySet()) {
       try {
         dispose(key);
