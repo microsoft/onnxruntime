@@ -22,23 +22,24 @@
 import {TensorView} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
+import {getBroadcastDims, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from '../common';
 import {getActicationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
-import {biasActivationSnippet, typeSnippet} from './activation_util';
+import {typeSnippet} from './activation_util';
 
-const writeDataToSubAVec4Snippet = (transpose: boolean) => {
+const writeDataToSubAVec4Snippet = (transpose: boolean, batchDims?: IndicesHelper) => {
   if (transpose) {
     return `
         mm_Asub[inputRow][inputCol] = mm_readA(batch,
           kStart + inputRow,
-          globalRowStart / innerElementSize + inputCol);
+          globalRowStart / innerElementSize + inputCol${batchDims ? ', batchIndices' : ''});
         `;
 
   } else {
     return `
         mm_Asub[inputRow][inputCol] = mm_readA(batch,
           globalRow + innerRow,
-          kStart / innerElementSize + inputCol);
+          kStart / innerElementSize + inputCol${batchDims ? ', batchIndices' : ''});
         `;
   }
 };
@@ -69,8 +70,8 @@ const calculateResultSnippet = (transposeA: boolean, innerElementSize: number) =
 };
 
 export const makeMatMulPackedVec4Source =
-    (workPerThread: number[], workgroupSize: [number, number, number], transposeA = false, tileInner = 32,
-     splitK = false, splitedDimInner = 32, isVectorA = false): string => {
+    (workPerThread: number[], workgroupSize: [number, number, number], batchDims?: IndicesHelper, transposeA = false,
+     tileInner = 32, splitK = false, splitedDimInner = 32): string => {
       const tileAOuter = workgroupSize[1] * workPerThread[1];
       const tileBOuter = workgroupSize[0] * workPerThread[0];
       const tileAWidth = transposeA ? tileAOuter : tileInner;
@@ -102,12 +103,13 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
         @builtin(global_invocation_id) globalId : vec3<u32>,
         @builtin(workgroup_id) workgroupId : vec3<u32>) {
   let localRow = i32(localId.y);
-  let tileRow = ${isVectorA ? '0' : 'localRow * rowPerThread'};
+  let tileRow = localRow * rowPerThread;
   let tileCol = i32(localId.x);
 
-  let globalRow = ${isVectorA ? '0' : 'i32(globalId.y) * rowPerThread'};
+  let globalRow =i32(globalId.y) * rowPerThread;
   let globalCol = i32(globalId.x);
   let batch = ${splitK ? '0' : 'i32(globalId.z)'};
+  ${batchDims ? `let batchIndices = ${batchDims.offsetToIndices('u32(batch)')};` : ''}
   let globalRowStart = i32(workgroupId.y) * ${tileAOuter};
 
   let numTiles = ${splitK ? `${Math.ceil(splitedDimInner / tileInner)}` : '(dimInner - 1) / tileInner + 1'};
@@ -122,14 +124,15 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
       for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {
           let inputRow = tileRow + innerRow;
           let inputCol = tileCol;
-          ${writeDataToSubAVec4Snippet(transposeA)}
+          ${writeDataToSubAVec4Snippet(transposeA, batchDims)}
       }
 
       // Load one tile of B into local memory.
       for (var innerRow = 0; innerRow < ${rowPerThreadB}; innerRow = innerRow + 1) {
           let inputRow = tileRowB + innerRow;
           let inputCol = tileCol;
-          mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol);
+          mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol${
+          batchDims ? ', batchIndices' : ''});
       }
       kStart = kStart + tileInner;
       workgroupBarrier();
@@ -153,19 +156,19 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
 }`;
     };
 
-const writeDataToSubASnippet = (transpose: boolean) => {
+const writeDataToSubASnippet = (transpose: boolean, batchDims?: IndicesHelper) => {
   if (transpose) {
     return `
             mm_Asub[inputRow][inputCol] = mm_readA(batch,
               kStart + inputRow,
-              globalRowStart + inputCol);
+              globalRowStart + inputCol${batchDims ? ', batchIndices' : ''});
             `;
 
   } else {
     return `
             mm_Asub[inputRow][inputCol] = mm_readA(batch,
               globalRowStart + inputRow,
-              kStart + inputCol);
+              kStart + inputCol${batchDims ? ', batchIndices' : ''});
             `;
   }
 };
@@ -176,8 +179,8 @@ const readDataFromSubASnippet = (transposeA: boolean) =>
 // sequentialAccessByThreads means sequential data in memory is accessed by
 // threads, instead of a single thread (default behavior).
 export const makeMatMulPackedSource =
-    (workPerThread: number[], workgroupSize: [number, number, number], transposeA = false, tileInner = 32,
-     splitK = false, splitedDimInner = 32, sequentialAccessByThreads = false): string => {
+    (workPerThread: number[], workgroupSize: [number, number, number], batchDims?: IndicesHelper, transposeA = false,
+     tileInner = 32, splitK = false, splitedDimInner = 32, sequentialAccessByThreads = false): string => {
       const tileAOuter = workPerThread[1] * workgroupSize[1];
       const tileBOuter = workPerThread[0] * workgroupSize[0];
       const tileAWidth = transposeA ? tileAOuter : tileInner;
@@ -204,7 +207,7 @@ export const makeMatMulPackedSource =
       // Load one tile of A into local memory.
       for (var inputRow = localRow; inputRow < ${tileAHight}; inputRow = inputRow + ${workgroupSize[1]}) {
         for (var inputCol = localCol; inputCol < ${tileAWidth}; inputCol = inputCol + ${workgroupSize[0]}) {
-          ${writeDataToSubASnippet(transposeA)}
+          ${writeDataToSubASnippet(transposeA, batchDims)}
         }
       }
       // Load one tile of B into local memory.
@@ -212,7 +215,7 @@ export const makeMatMulPackedSource =
             for (var inputCol = localCol; inputCol < ${tileBOuter}; inputCol = inputCol + ${workgroupSize[0]}) {
           mm_Bsub[inputRow][inputCol] = mm_readB(batch,
             kStart + inputRow,
-            globalColStart + inputCol);
+            globalColStart + inputCol${batchDims ? ', batchIndices' : ''});
         }
       }
       kStart = kStart + tileInner;
@@ -262,7 +265,7 @@ for (var t = 0; t < numTiles; t = t + 1) {
     for (var innerCol = 0; innerCol < ${colPerThreadA}; innerCol = innerCol + 1) {
       let inputRow = tileRowA + innerRow;
       let inputCol = tileColA + innerCol;
-      ${writeDataToSubASnippet(transposeA)}
+      ${writeDataToSubASnippet(transposeA, batchDims)}
     }
   }
 
@@ -273,7 +276,7 @@ for (var t = 0; t < numTiles; t = t + 1) {
       let inputCol = tileCol + innerCol;
       mm_Bsub[inputRow][inputCol] = mm_readB(batch,
         kStart + inputRow,
-        globalCol + innerCol);
+        globalCol + innerCol${batchDims ? ', batchIndices' : ''});
     }
   }
   kStart = kStart + tileInner;
@@ -317,6 +320,7 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
         @builtin(global_invocation_id) globalId : vec3<u32>,
         @builtin(workgroup_id) workgroupId : vec3<u32>) {
     let batch = ${splitK ? '0' : 'i32(globalId.z)'};
+    ${batchDims ? `let batchIndices = ${batchDims.offsetToIndices('u32(batch)')};` : ''}
     let numTiles = ${splitK ? `${Math.ceil(splitedDimInner / tileInner)}` : '(dimInner - 1) / tileInner + 1'};
     var kStart = ${splitK ? `i32(globalId.z) * ${splitedDimInner}` : '0'};
 
@@ -334,32 +338,64 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
     };
 
 const matMulReadWriteFnSource =
-    (component: number, hasBias: boolean, transposeB = false, applyActivation: string): string => {
+    (component: number, hasBias: boolean, applyActivation: string, variables: IndicesHelper[]): string => {
+      const batchAVariable = variables[0];
+      const batchBVariable = variables[1];
+      const batchVariable = variables[2];
+      const aVariable = variables[3];
+      const bVariable = variables[4];
+      const outputVariable = variables[5];
+      const broadCastADims = getBroadcastDims(batchAVariable.shape, batchVariable.shape);
+      const broadCastBDims = getBroadcastDims(batchBVariable.shape, batchVariable.shape);
+      const getAIndices = () => {
+        const aRank = aVariable.shape.length;
+        const batchRank = batchVariable.shape.length;
+        let resStr = `var aIndices: ${aVariable.type.indices};`;
+        for (let i = aRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
+          resStr += `\naIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
+        }
+        broadCastADims.forEach(i => {
+          resStr += `\naIndices[${i}] = 0;`;
+        });
+        resStr += `\naIndices[${aRank - 2}] = u32(row);
+                   aIndices[${aRank - 1}] = u32(colIn);`;
+        return resStr;
+      };
+      const getBIndices = () => {
+        const bRank = bVariable.shape.length;
+        const batchRank = batchVariable.shape.length;
+        let resStr = `var bIndices: ${bVariable.type.indices};`;
+        for (let i = bRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
+          resStr += `\nbIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
+        }
+        broadCastBDims.forEach(i => {
+          resStr += `\nbIndices[${i}] = 0;`;
+        });
+        resStr += `\nbIndices[${bRank - 2}] = u32(row);
+                   bIndices[${bRank - 1}] = u32(colIn);`;
+        return resStr;
+      };
       const source = `
-    fn getIndexFromCoords3D(coords : vec3<i32>, shape : vec3<i32>) -> i32 {
-      return dot(coords, vec3<i32>(shape.y * shape.z, shape.z, 1));
-    }
-
-    fn mm_readA(batch: i32, row: i32, colIn: i32) -> ${typeSnippet(component)} {
+    fn mm_readA(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${
+          typeSnippet(component)} {
       var value = ${typeSnippet(component)}(0.0);
       let col = colIn * ${component};
       if(row < dimAOuter && col < dimInner)
       {
-        let coords = vec3<i32>(batch, row, col);
-        let aIndex = getIndexFromCoords3D(coords, aShape) / ${component};
-        value = a[aIndex];
+        ${getAIndices()}
+        value = ${aVariable.getByIndices('aIndices')};
       }
       return value;
     }
 
-    fn mm_readB(batch: i32, row: i32, colIn: i32) -> ${typeSnippet(component)} {
+    fn mm_readB(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${
+          typeSnippet(component)} {
       var value = ${typeSnippet(component)}(0.0);
       let col = colIn * ${component};
       if(row < dimInner && col < dimBOuter)
       {
-        let coords = ${transposeB ? 'vec3<i32>(batch, col, row)' : 'vec3<i32>(batch, row, col)'};
-        let bIndex = getIndexFromCoords3D(coords, bShape) / ${component};
-        value = b[bIndex];
+        ${getBIndices()}
+        value = ${bVariable.getByIndices('bIndices')};
       }
       return value;
     }
@@ -368,11 +404,10 @@ const matMulReadWriteFnSource =
       let col = colIn * ${component};
       if (row < dimAOuter && col < dimBOuter) {
         var value = valueIn;
-        let coords = vec3<i32>(batch, row, col);
-        ${biasActivationSnippet(hasBias)}
+        let coords = vec3<i32>(batch, row, colIn);
+        ${hasBias ? 'value = value + bias[colIn]' : ''}
         ${applyActivation}
-        let outIndex = getIndexFromCoords3D(coords, outShape) / ${component};
-        output[outIndex] = value;
+        ${outputVariable.setByIndices('vec3<u32>(coords)', 'value')}
       }
     }
     `;
@@ -381,24 +416,23 @@ const matMulReadWriteFnSource =
 
 export const createMatmulProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
-     outputShape: readonly number[], transposeB = false): ProgramInfo => {
+     outputShape: readonly number[]): ProgramInfo => {
       const aShape = inputs[0].dims;
       const bShape = inputs[1].dims;
 
       const outerDimsA = aShape.slice(0, -2);
       const outerDimsB = bShape.slice(0, -2);
       const outerDims = outputShape.slice(0, -2);
+      const batchDims = inputVariable('batchDims', inputs[0].dataType, outerDims);
+      const batchADims = inputVariable('batchADims', inputs[0].dataType, outerDimsA);
+      const batchBDims = inputVariable('batchBDims', inputs[0].dataType, outerDimsB);
+      const variables = [batchADims, batchBDims, batchDims];
       const batchSize = ShapeUtil.size(outerDims);
-      const batchSizeA = ShapeUtil.size(outerDimsA);
-      const batchSizeB = ShapeUtil.size(outerDimsB);
-      // TODO: support broadcasting
 
       const dimAOuter = outputShape[outputShape.length - 2];
       const dimInner = aShape[aShape.length - 1];
       const dimBOuter = outputShape[outputShape.length - 1];
-      const b3DShape = transposeB ? [batchSizeB, dimBOuter, dimInner] : [batchSizeB, dimInner, dimBOuter];
       const isVec4 = dimInner % 4 === 0 && dimBOuter % 4 === 0;
-      const dataType = isVec4 ? 'vec4<f32>' : 'f32';  // TODO: support other data type
       const component = isVec4 ? 4 : 1;
       const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
@@ -411,33 +445,31 @@ export const createMatmulProgramInfo =
         Math.ceil(batchSize / workgroupSize[2] / elementsPerThread[2])
       ];
 
-      const declareInputs = [
-        `@group(0) @binding(0) var<storage, read> a: array<${dataType}>;`,
-        `@group(0) @binding(1) var<storage, read> b: array<${dataType}>;`
-      ];
+      const components = isVec4 ? 4 : 1;
+      const A = inputVariable('a', inputs[0].dataType, [...outerDimsA, dimAOuter, dimInner / components], components);
+      const B = inputVariable('b', inputs[1].dataType, [...outerDimsB, dimInner, dimBOuter / components], components);
+      const output =
+          outputVariable('result', inputs[0].dataType, [batchSize, dimAOuter, dimBOuter / components], components);
+      variables.push(A);
+      variables.push(B);
+      variables.push(output);
+      const inputVariables = [A, B];
       const hasBias = inputs.length > 2;
-      let declareFunctions = matMulReadWriteFnSource(component, hasBias, transposeB, applyActivation);
+      const declareFunctions = matMulReadWriteFnSource(component, hasBias, applyActivation, variables);
       if (hasBias) {
-        declareInputs.push(`@group(0) @binding(2) var<storage, read> bias: array<${dataType}>;`);
-        declareFunctions += `
-            fn getBiasByOutputCoords(coords : vec3<i32>) -> ${dataType} {
-              return bias[coords.z / ${component}];
-            }`;
+        inputVariables.push(inputVariable('bias', inputs[2].dataType, [dimBOuter / components], components));
       }
-      const getShaderSource = () => `
+      const getShaderSource = (shaderHelper: ShaderHelper) => `
   const dimAOuter: i32 = ${dimAOuter};
   const dimBOuter: i32 = ${dimBOuter};
   const dimInner: i32 = ${dimInner};
-  const aShape : vec3<i32> = vec3<i32>(${batchSizeA}, ${dimAOuter}, ${dimInner});
-  const bShape : vec3<i32> = vec3<i32>(${b3DShape.join(',')});
-  const outShape : vec3<i32> = vec3<i32>(${batchSize}, ${dimAOuter}, ${dimBOuter});
-  ${declareInputs.join('')}
-  @group(0) @binding(${declareInputs.length}) var<storage, read_write> output : array<${dataType}>;
+  ${shaderHelper.declareVariables(...inputVariables, output)}
   ${declareFunctions}
   ${activationFunction}
   ${
-          isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workgroupSize) :
-                   makeMatMulPackedSource(elementsPerThread, workgroupSize)}`;
+          isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workgroupSize, batchDims) :
+                   makeMatMulPackedSource(elementsPerThread, workgroupSize, batchDims)}
+                   ${batchDims.impl()}`;
       return {
         ...metadata,
         outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],

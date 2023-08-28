@@ -190,7 +190,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
         matmulInputs.push(inputs[2]);
       }
       context.compute(
-          createMatmulProgramInfoLoader(matmulInputs, adjustedAttributes, outputShape, false), {inputs: matmulInputs});
+          createMatmulProgramInfoLoader(matmulInputs, adjustedAttributes, outputShape), {inputs: matmulInputs});
     } else {
       context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
     }
