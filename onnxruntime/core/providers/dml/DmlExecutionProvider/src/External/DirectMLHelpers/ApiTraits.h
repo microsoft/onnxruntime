@@ -2,18 +2,6 @@
 // Licensed under the MIT License.
 #pragma once
 
-struct DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC
-{
-    const DML_TENSOR_DESC* ATensor;
-    const DML_TENSOR_DESC* AScaleTensor;
-    _Maybenull_ const DML_TENSOR_DESC* AZeroPointTensor;
-    const DML_TENSOR_DESC* BTensor;
-    _Maybenull_ const DML_TENSOR_DESC* BScaleTensor;
-    _Maybenull_ const DML_TENSOR_DESC* BZeroPointTensor;
-    const DML_TENSOR_DESC* OutputScaleTensor;                   // This is an input tensor
-    _Maybenull_ const DML_TENSOR_DESC* OutputZeroPointTensor;   // This is an input tensor
-    const DML_TENSOR_DESC* OutputTensor;
-};
 
 struct DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC
 {
@@ -26,9 +14,7 @@ struct DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC
     _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
     const DML_TENSOR_DESC* OutputTensor;
 };
-
-const int DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT = 0x80000011;
-const int DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1 = 0x8000000e;
+const int DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT = 0x80000011; 
 
 namespace ApiTraits
 {
@@ -1049,12 +1035,6 @@ template <>
 struct OperatorDescTraits<DML_DIAGONAL_MATRIX1_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_DIAGONAL_MATRIX1;
-};
-
-template <>
-struct OperatorDescTraits<DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC>
-{
-    static constexpr DML_OPERATOR_TYPE Type = (DML_OPERATOR_TYPE) DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1;
 };
 
 template <>
@@ -2197,12 +2177,6 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_GELU>
 };
 
 template <>
-struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1>
-{
-    using DescType = DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC;
-};
-
-template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MULTIHEAD_ATTENTION>
 {
     using DescType = DML_MULTIHEAD_ATTENTION_OPERATOR_DESC;
@@ -2554,8 +2528,6 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
 
 #pragma warning(push)
 #pragma warning(disable: 4063)
-    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1:
-        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
         return std::invoke(std::forward<Visitor>(visitor), DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
 #pragma warning(pop)
@@ -2783,7 +2755,6 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_DIAGONAL_MATRIX1: return "DML_OPERATOR_DIAGONAL_MATRIX1";
 #pragma warning(push)
 #pragma warning(disable: 4063)
-    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1: return "DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1";
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return "DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT";
     case DML_OPERATOR_MULTIHEAD_ATTENTION: return "DML_OPERATOR_MULTIHEAD_ATTENTION";
 #pragma warning(pop)

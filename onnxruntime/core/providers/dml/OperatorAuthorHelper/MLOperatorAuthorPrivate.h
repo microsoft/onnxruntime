@@ -82,7 +82,7 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
         uint32_t inputIndex, 
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
-    
+
     STDMETHOD_(bool, IsDmlGraphNode)() const noexcept PURE;
 
     STDMETHOD(SetDmlOperator)(
