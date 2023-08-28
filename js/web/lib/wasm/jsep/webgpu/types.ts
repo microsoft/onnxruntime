@@ -147,5 +147,5 @@ export interface ComputeContext {
   compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
       TensorView[];
   output(index: number, dims: readonly number[]): number;
-  getFlagValue(flagName: string): string|undefined;
+  validateInputContent(): boolean|undefined;
 }

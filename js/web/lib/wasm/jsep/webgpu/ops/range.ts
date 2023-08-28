@@ -52,7 +52,7 @@ export const range = (context: ComputeContext): void => {
     limit = context.inputs[1].getFloat32Array()[0];
     delta = context.inputs[2].getFloat32Array()[0];
   }
-  if (context.getFlagValue('validateInputContent') === 'default') {
+  if (context.validateInputContent()) {
     validateInputsContent(start, limit, delta);
   }
 

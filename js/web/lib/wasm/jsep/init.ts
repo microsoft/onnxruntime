@@ -125,14 +125,8 @@ class ComputeContextImpl implements ComputeContext {
     }
   }
 
-  getFlagValue(flagName: string): string|undefined {
-    if (flagName === 'profilingMode') {
-      return this.backend.profilingMode();
-    } else if (flagName === 'validateInputContent') {
-      return this.backend.validateInputContent();
-    } else {
-      throw new Error(`Not supported for flag name: ${flagName}`);
-    }
+  validateInputContent(): boolean|undefined {
+    return this.backend.env.webgpu.validateInputContent;
   }
 }
 

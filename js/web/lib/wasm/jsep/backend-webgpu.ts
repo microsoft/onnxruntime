@@ -98,14 +98,6 @@ export class WebGpuBackend {
 
   env: Env;
 
-  profilingMode(): 'off'|'default'|undefined {
-    return this.env.webgpu.profilingMode;
-  }
-
-  validateInputContent(): 'off'|'default'|undefined {
-    return this.env.webgpu.validateInputContent;
-  }
-
   async initialize(env: Env): Promise<void> {
     if (!navigator.gpu) {
       // WebGPU is not available.
