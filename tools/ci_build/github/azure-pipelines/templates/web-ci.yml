@@ -23,10 +23,6 @@ parameters:
   displayName: 'Build JSEP'
   type: boolean
   default: true
-- name: BuildTraining
-  displayName: 'Build training'
-  type: boolean
-  default: true
 
 - name: WASMTemplate
   type: string

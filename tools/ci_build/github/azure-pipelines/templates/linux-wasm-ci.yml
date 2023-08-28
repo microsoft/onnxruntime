@@ -31,6 +31,10 @@ parameters:
   type: boolean
   default: false
 
+- name: BuildTraining
+  type: boolean
+  default: true
+
 - name: WithCache
   type: boolean
   default: false
