@@ -190,7 +190,29 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(CreateTrainingSession, _In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
                   _Inout_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* train_model_path,
                   _In_ const ORTCHAR_T* eval_model_path, _In_ const ORTCHAR_T* optimizer_model_path,
-                  _Outptr_ OrtTrainingSession** out);
+                  _Outptr_result_maybenull_ OrtTrainingSession** out);
+
+  /** \brief Create a training session that can be used to begin or resume training.
+   * This api provides a way to load all the training artifacts from buffers instead of files.
+   *
+   * \param[in] env Environment to be used for the training session.
+   * \param[in] options Session options that the user can customize for this training session.
+   * \param[in] checkpoint_state Training states that the training session uses as a starting point for training.
+   * \param[in] train_model_data Buffer containing the model data to be used to perform training
+   * \param[in] train_data_length Length of the buffer containing train_model_data
+   * \param[in] eval_model_data Buffer containing the model data to be used to perform evaluation
+   * \param[in] eval_data_length Length of the buffer containing eval_model_data
+   * \param[in] optim_model_data Buffer containing the model data to be used to perform weight update
+   * \param[in] optim_data_length Length of the buffer containing optim_model_data
+   * \param[out] out Created training session.
+   *
+   */
+  ORT_API2_STATUS(CreateTrainingSessionFromBuffer, _In_ const OrtEnv* env,
+                  _In_ const OrtSessionOptions* options, _Inout_ OrtCheckpointState* checkpoint_state,
+                  _In_ const void* train_model_data, size_t train_data_length,
+                  _In_ const void* eval_model_data, size_t eval_data_length,
+                  _In_ const void* optim_model_data, size_t optim_data_length,
+                  _Outptr_result_maybenull_ OrtTrainingSession** out);
 
   /// @}
 

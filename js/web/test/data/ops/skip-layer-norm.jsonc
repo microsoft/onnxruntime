@@ -1,0 +1,122 @@
+[
+  {
+    "name": "SkipLayerNormalization",
+    "operator": "SkipLayerNormalization",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [
+      {
+        "name": "epsilon",
+        "data": 1e-5,
+        "type": "float"
+      }
+    ],
+    "inputShapeDefinitions": [[1, 2, 4], [1, 2, 4], [4], [4], [4]],
+    "cases": [
+      {
+        "name": "default",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1, 1, 1, 1, 1, 1],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1, 1],
+            "dims": [4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1, 1],
+            "dims": [4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1, 1],
+            "dims": [4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              -0.34163546562194824, 0.5527881383895874, 1.4472118616104126, 2.3416354656219482, -0.34163546562194824,
+              0.5527881383895874, 1.4472118616104126, 2.3416354656219482
+            ],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          },
+          {
+            "data": null,
+            "type": "float32"
+          },
+          {
+            "data": null,
+            "type": "float32"
+          },
+          {
+            "data": null,
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "default",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1, 1, 1, 1, 1, 1],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1, 1],
+            "dims": [4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1, 1],
+            "dims": [4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1, 1],
+            "dims": [4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              -0.34163546562194824, 0.5527881383895874, 1.4472118616104126, 2.3416354656219482, -0.34163546562194824,
+              0.5527881383895874, 1.4472118616104126, 2.3416354656219482
+            ],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          },
+          {
+            "data": null,
+            "type": "float32"
+          },
+          {
+            "data": null,
+            "type": "float32"
+          },
+          {
+            "data": [3, 4, 5, 6, 7, 8, 9, 10],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

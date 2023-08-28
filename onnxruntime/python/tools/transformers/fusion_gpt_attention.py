@@ -7,7 +7,7 @@ from logging import getLogger
 import numpy as np
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
-from onnx import TensorProto, helper, numpy_helper  # noqa: F401
+from onnx import helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)

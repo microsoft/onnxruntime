@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-declare namespace JSEP {
+export declare namespace JSEP {
   type BackendType = unknown;
   type AllocFunction = (size: number) => number;
   type FreeFunction = (size: number) => number;
@@ -9,7 +9,11 @@ declare namespace JSEP {
   type DownloadFunction = (gpuDataId: number, dataOffset: number, size: number) => Promise<void>;
   type CreateKernelFunction = (name: string, kernel: number, attribute: unknown) => void;
   type ReleaseKernelFunction = (kernel: number) => void;
-  type RunFunction = (kernel: number, contextDataOffset: number) => number;
+  type RunFunction = (kernel: number, contextDataOffset: number, sessionState: SessionState) => number;
+  export interface SessionState {
+    sessionId: number;
+    errors: Array<Promise<string|null>>;
+  }
 }
 
 export interface OrtWasmModule extends EmscriptenModule {
@@ -71,7 +75,10 @@ export interface OrtWasmModule extends EmscriptenModule {
        releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction): void;
 
   _JsepOutput(context: number, index: number, data: number): number;
+  _JsepGetNodeName(kernel: number): number;
 
+  jsepOnRunStart?(sessionId: number): void;
+  jsepOnRunEnd?(sessionId: number): Promise<void>;
   jsepRunPromise?: Promise<number>;
   // #endregion
 }

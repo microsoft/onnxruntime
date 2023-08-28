@@ -3,7 +3,7 @@
 
 import {Env} from 'onnxruntime-common';
 
-import {OrtWasmModule} from '../binding/ort-wasm';
+import {JSEP, OrtWasmModule} from '../binding/ort-wasm';
 import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
@@ -56,6 +56,7 @@ class TensorViewImpl implements TensorView {
 class ComputeContextImpl implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
+  readonly outputCount: number;
   get kernelCustomData(): {[key: string]: unknown} {
     return this.backend.currentKernelCustomData;
   }
@@ -71,6 +72,7 @@ class ComputeContextImpl implements ComputeContext {
     let dataIndex = (contextDataOffset >> 2);
     this.opKernelContext = heapU32[dataIndex++];
     const inputCount = heapU32[dataIndex++];
+    this.outputCount = heapU32[dataIndex++];
     this.customDataOffset = heapU32[dataIndex++];
     this.customDataSize = heapU32[dataIndex++];
 
@@ -167,16 +169,22 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
             },
 
         // jsepCreateKernel
-        (name: string, kernel: number, attribute: unknown) => backend.createKernel(name, kernel, attribute),
+        (name: string, kernel: number, attribute: unknown) => backend.createKernel(
+            name, kernel, attribute,
+            env.debug || env.webgpu.profilingMode === 'default' ? module.UTF8ToString(module._JsepGetNodeName(kernel)) :
+                                                                  `${kernel}`),
 
         // jsepReleaseKernel
         (kernel: number) => backend.releaseKernel(kernel),
 
         // jsepRun
-        (kernel: number, contextDataOffset: number) => {
-          LOG_DEBUG('verbose', () => `[WebGPU] jsepRun: kernel=${kernel}, contextDataOffset=${contextDataOffset}`);
+        (kernel: number, contextDataOffset: number, sessionState: JSEP.SessionState) => {
+          LOG_DEBUG(
+              'verbose',
+              () => `[WebGPU] jsepRun: sessionId=${sessionState.sessionId}, kernel=${kernel}, contextDataOffset=${
+                  contextDataOffset}`);
           const context = new ComputeContextImpl(module, backend, contextDataOffset);
-          return backend.computeKernel(kernel, context);
+          return backend.computeKernel(kernel, context, sessionState.errors);
         });
   }
 };
