@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "contrib_ops/cuda/bert/packed_multihead_attention.h"
+#include "contrib_ops/cuda/bert/packed_multihead_attention_impl.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
@@ -15,7 +17,9 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
+#include "contrib_ops/cuda/bert/packed_attention_impl.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "driver_types.h"
 #include "gsl/narrow"
 
@@ -92,7 +96,7 @@ PagedAttention<T>::PagedAttention(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr("mask_type", &mask_type_).IsOK() && (mask_type_ == "normal" || mask_type_ == "alibi" || mask_type_ == "RoPE"));
   const bool use_flash_attn_v2 = ParseEnvironmentVariableWithDefault<bool>("use_flash_attn_v2", true);
   if (use_flash_attn_v2) {
-    const std::string lib_path = ParseEnvironmentVariableWithDefault<std::string>("flash_attention_v2", "/home/jicwen/work/flash-attention/build/Debug/libflashattn.so");
+    const std::string lib_path = ParseEnvironmentVariableWithDefault<std::string>("FlashAttentionV2", "/home/jicwen/work/flash-attention/build/Debug/libflashattn.so");
 
     void* fd = dlopen(lib_path.c_str(), RTLD_LOCAL | RTLD_NOW);
 
@@ -101,7 +105,7 @@ PagedAttention<T>::PagedAttention(const OpKernelInfo& info) : CudaKernel(info) {
   }
 }
 
-void flash_attention_v2(const cudaDeviceProp& device_prop, cudaStream_t stream,
+void FlashAttentionV2(const cudaDeviceProp& device_prop, cudaStream_t stream,
                         const Tensor* query, const Tensor* key, const Tensor* value,
                         float* work_space,
                         Tensor* output, const InputMetadata* input_metadata,
@@ -135,7 +139,7 @@ void flash_attention_v2(const cudaDeviceProp& device_prop, cudaStream_t stream,
 }
 
 template <typename T>
-void memory_efficient_attn(const cudaDeviceProp& device_prop, cudaStream_t stream,
+void MemoryEfficientAttn(const cudaDeviceProp& device_prop, cudaStream_t stream,
                            const Tensor* query, const Tensor* key, const Tensor* value,
                            Tensor* output, const InputMetadata* input_metadata,
                            PackedAttentionParameters params) {
@@ -153,9 +157,6 @@ void memory_efficient_attn(const cudaDeviceProp& device_prop, cudaStream_t strea
   attn_param.seqlen_k_ptr = nullptr;
   attn_param.seqstart_q_ptr = reinterpret_cast<int32_t*>(input_metadata->attn_bias.q_seqinfo.seqstart);
   attn_param.seqstart_k_ptr = reinterpret_cast<int32_t*>(input_metadata->attn_bias.q_seqinfo.seqstart);
-  attn_param.q_strideB = params.head_size * params.num_heads * input_metadata->num_prompt_tokens;
-  attn_param.k_strideB = params.head_size * params.num_heads * input_metadata->num_prompt_tokens;
-  attn_param.v_strideB = params.head_size * params.num_heads * input_metadata->num_prompt_tokens;
   attn_param.query = query->DataRaw();
   attn_param.key = key->DataRaw();
   attn_param.value = value->DataRaw();
@@ -179,14 +180,121 @@ Status PagedAttention<T>::CheckInputs(
   ORT_UNUSED_PARAMETER(value);
   int64_t num_prompt_tokens = input_metadata->num_prompt_tokens;
 
-  parameters.batch_size = 1;
+  parameters.batch_size = input_metadata->attn_bias.batchsize;
   parameters.sequence_length = gsl::narrow<int>(num_prompt_tokens);
   parameters.head_size = head_size_;
   parameters.num_heads = num_heads_;
   parameters.scale = scale_;
+
+  ////parameters.batch_size = static_cast<int>(batch_size);
+  parameters.sequence_length = static_cast<int>(input_metadata->attn_bias.q_seqinfo.max_seqlen);
+  parameters.input_hidden_size = -1;  // not applicable
+  parameters.hidden_size = static_cast<int>(head_size_ * num_heads_);
+  parameters.v_hidden_size = static_cast<int>(head_size_ * num_heads_);
+  ////parameters.head_size = static_cast<int>(hidden_size) / num_heads;
+  parameters.v_head_size = static_cast<int>(parameters.head_size);
+  parameters.num_heads = num_heads_;
+  ////parameters.scale = scale_;
+  parameters.token_count = static_cast<int32_t>(num_prompt_tokens);
+  parameters.has_relative_position_bias = false;
+  parameters.broadcast_res_pos_bias = false;
+  parameters.causal = true;
+
   return Status::OK();
 }
 
+template <typename T>
+Status PagedAttention<T>::RunMultiHeadAttention(Tensor* output, OpKernelContext* context, PackedAttentionParameters& parameters, const InputMetadata* input_metadata) const {
+  const Tensor* query = context->Input<Tensor>(0);
+  const Tensor* key = context->Input<Tensor>(1);
+  const Tensor* value = context->Input<Tensor>(2);
+  const Tensor* bias = nullptr;
+  const Tensor* relative_position_bias = nullptr;
+  cublasHandle_t cublas = this->GetCublasHandle(context);
+  auto& device_prop = this->GetDeviceProp();
+
+#if USE_FLASH_ATTENTION
+  bool disable_flash_attention_ = sizeof(T) != 2 || onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
+                                                   attention::kDisableFlashAttention, false);
+#else
+  bool disable_flash_attention_ = true;
+#endif
+  bool disable_TRT_flash_attention_ = sizeof(T) == 2 &&
+                                    ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, true);
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  bool disable_memory_efficient_attention_ = onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
+      attention::kDisableMemoryEfficientAttention, false);
+#else
+  bool disable_memory_efficient_attention_ = true;
+#endif
+
+  bool use_flash_attention = false;
+#if USE_FLASH_ATTENTION
+  if (!disable_flash_attention_) {
+    use_flash_attention = !parameters.has_relative_position_bias &&
+                          parameters.head_size == parameters.v_head_size &&
+                          onnxruntime::flash::is_supported(device_prop,
+                                                           parameters.head_size,
+                                                           parameters.num_heads,
+                                                           parameters.num_heads);
+  }
+#endif
+
+  MHARunner* fused_runner = (use_flash_attention ||
+                             disable_TRT_flash_attention_ ||
+                             parameters.causal) ? nullptr : this->GetFusedRunner(device_prop, parameters);
+
+  bool use_memory_efficient_attention = false;
+
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  if (!use_flash_attention && nullptr == fused_runner && !disable_memory_efficient_attention_) {
+    int sm = device_prop.major * 10 + device_prop.minor;
+    bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
+    use_memory_efficient_attention =
+        is_good_for_rpb &&
+        (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
+        (parameters.head_size & 7) == 0 &&
+        (parameters.v_head_size & 7) == 0 &&
+        has_memory_efficient_attention(sm, sizeof(T) == 2);
+  }
+#endif
+  constexpr size_t element_size = sizeof(T);
+  // When the source and target format is same (like TN3H => TN3H, or TNH => TNH) and no bias, need not transpose qkv.
+  const bool no_qkv_workspace = (fused_runner != nullptr) ||
+                                ((use_memory_efficient_attention || use_flash_attention));
+  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
+                                                   parameters.batch_size,
+                                                   parameters.num_heads,
+                                                   parameters.head_size,
+                                                   parameters.v_head_size,
+                                                   parameters.sequence_length,
+                                                   fused_runner,
+                                                   use_flash_attention,
+                                                   use_memory_efficient_attention,
+                                                   no_qkv_workspace);
+  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  PackedMultiHeadAttentionData<CudaT> data;
+  data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
+  data.key = (key == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
+  data.value = (value == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.bias = (bias == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
+  data.relative_position_bias = (nullptr == relative_position_bias)
+                                    ? nullptr
+                                    : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  data.token_offset = nullptr;//token_offset->Data<int32_t>();
+  data.cumulative_sequence_length = reinterpret_cast<int32_t*>(input_metadata->attn_bias.q_seqinfo.seqstart);
+  data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
+  data.fused_runner = reinterpret_cast<void*>(fused_runner);
+  data.use_flash_attention = use_flash_attention;
+  data.use_memory_efficient_attention = use_memory_efficient_attention;
+  data.no_qkv_workspace = no_qkv_workspace;
+  data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;
+
+  return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
+}
 
 template <typename T>
 Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -221,13 +329,17 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   int64_t num_prompt_tokens = std::min(query->Shape()[0], input_metadata->num_prompt_tokens);
+  bool use_multihead_attn = true;
   if (num_prompt_tokens > 0) {
-    if (flash_attention_v2_kernel_ && device_prop.major >= 8) {
+    if (use_multihead_attn) {
+      ORT_RETURN_IF_ERROR(RunMultiHeadAttention(output, context, parameters, input_metadata));
+    }
+    else if (flash_attention_v2_kernel_ && device_prop.major >= 8) {
       auto workspace = GetScratchBuffer<float>(static_cast<size_t>(
                                                    input_metadata->attn_bias.batchsize * parameters.num_heads * input_metadata->attn_bias.q_seqinfo.max_seqlen),
                                                context->GetComputeStream());
 
-      flash_attention_v2(device_prop, Stream(context),
+      FlashAttentionV2(device_prop, Stream(context),
                          query,
                          key,
                          value,
@@ -237,7 +349,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                          parameters,
                          flash_attention_v2_kernel_);
     } else {
-      memory_efficient_attn<MLFloat16>(device_prop, Stream(context),
+      MemoryEfficientAttn<MLFloat16>(device_prop, Stream(context),
                                        query,
                                        key,
                                        value,

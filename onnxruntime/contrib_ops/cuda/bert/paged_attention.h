@@ -7,6 +7,8 @@
 #include <memory>
 #include <vector>
 
+#include "contrib_ops/cuda/bert/packed_attention.h"
+
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "driver_types.h"
@@ -20,7 +22,7 @@ using namespace onnxruntime::cuda;
 struct InputMetadata;
 
 template <typename T>
-class PagedAttention final : public CudaKernel {
+class PagedAttention final : public TrtFusedAttention<T>, public CudaKernel {
  public:
   PagedAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -32,8 +34,9 @@ class PagedAttention final : public CudaKernel {
       const Tensor* value,
       const InputMetadata* input_metadata,
       PackedAttentionParameters& parameters) const;
+  Status RunMultiHeadAttention(Tensor* output, OpKernelContext* context, PackedAttentionParameters& parameters, const InputMetadata* input_metadata) const;
 
-  int32_t num_heads_;                      // number of attention heads
+  int32_t num_heads_;                  // number of attention heads
   int32_t head_size_;                      // number of attention heads
   float scale_;                            // sqrt(head_size_)
   std::string mask_type_;                  // position embedding type

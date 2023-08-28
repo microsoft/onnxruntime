@@ -66,17 +66,10 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.o_strideM = params.num_heads * params.v_head_size;
     p.bias_strideM = nullptr == params.attn_bias ? 0 : p.num_keys;
 
-    if (params.seqstart_k_ptr == nullptr && params.q_strideB > 0 && params.k_strideB > 0 && params.v_strideB > 0) {
-      p.q_strideB = static_cast<int64_t>(p.q_strideM) * params.sequence_length;
-      p.k_strideB = static_cast<int64_t>(p.k_strideM) * params.kv_sequence_length;
-      p.v_strideB = static_cast<int64_t>(p.v_strideM) * params.kv_sequence_length;
-      p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
-    } else {
-      p.q_strideB = params.q_strideB;
-      p.k_strideB = params.k_strideB;
-      p.v_strideB = params.v_strideB;
-      p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
-    }
+    p.q_strideB = static_cast<int64_t>(p.q_strideM) * params.sequence_length;
+    p.k_strideB = static_cast<int64_t>(p.k_strideM) * params.kv_sequence_length;
+    p.v_strideB = static_cast<int64_t>(p.v_strideM) * params.kv_sequence_length;
+    p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
   }
 
   constexpr auto kernel_fn = attention_kernel_batched_impl<Attention>;

@@ -639,7 +639,7 @@ Status FlashAttention(
           sequence_length,
           sequence_length,
           scale,
-          false  // is causal
+          parameters.causal  // is causal
           ));
 
   DUMP_TENSOR_INIT();
@@ -690,7 +690,7 @@ Status FusedAttentionCutlass(
   p.kv_sequence_length = parameters.sequence_length;
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
-  p.causal = false;
+  p.causal = parameters.causal;
   p.scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                      : parameters.scale;
   p.seqlen_k_ptr = nullptr;
