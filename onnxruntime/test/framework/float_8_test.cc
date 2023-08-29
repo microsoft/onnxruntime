@@ -37,52 +37,57 @@ TEST(Float8_Tests, CastE4M3FN) {
   }
 }
 
+union float_bits {
+  uint32_t bits;
+  float val;
+};
+
 TEST(Float8_Tests, NanE4M3FN) {
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0x7F800000).val, static_cast<uint8_t>(0x7E));
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0xFF800000).val, static_cast<uint8_t>(0xFE));
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0x7F800000, false).val, static_cast<uint8_t>(0x7F));
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0xFF800000, false).val, static_cast<uint8_t>(0xFF));
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0x7F800001).val, static_cast<uint8_t>(0x7F));
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0xFF800001).val, static_cast<uint8_t>(0xFF));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0x7F800000}).val).val, static_cast<uint8_t>(0x7E));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0xFF800000}).val).val, static_cast<uint8_t>(0xFE));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0x7F800000}).val, false).val, static_cast<uint8_t>(0x7F));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0xFF800000}).val, false).val, static_cast<uint8_t>(0xFF));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0x7F800001}).val).val, static_cast<uint8_t>(0x7F));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0xFF800001}).val).val, static_cast<uint8_t>(0xFF));
   // 0x7FC00000 is the value used by numpy.
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0x7FC00000).val, static_cast<uint8_t>(0x7F));
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(0xFFC00000).val, static_cast<uint8_t>(0xFF));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0x7FC00000}).val).val, static_cast<uint8_t>(0x7F));
+  EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0xFFC00000}).val).val, static_cast<uint8_t>(0xFF));
 }
 
 TEST(Float8_Tests, NanE4M3FNUZ) {
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(0x7F800000).val, static_cast<uint8_t>(0x7F));
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(0xFF800000).val, static_cast<uint8_t>(0xFF));
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(0x7F800000, false).val, static_cast<uint8_t>(0x80));
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(0xFF800000, false).val, static_cast<uint8_t>(0x80));
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(0x7F800001).val, static_cast<uint8_t>(0x80));
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(0xFF800001).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0x7F800000}).val).val, static_cast<uint8_t>(0x7F));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0xFF800000}).val).val, static_cast<uint8_t>(0xFF));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0x7F800000}).val, false).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0xFF800000}).val, false).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0x7F800001}).val).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0xFF800001}).val).val, static_cast<uint8_t>(0x80));
   // 0x7FC00000 is the value used by numpy.
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(0x7FC00000).val, static_cast<uint8_t>(0x80));
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(0xFFC00000).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0x7FC00000}).val).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0xFFC00000}).val).val, static_cast<uint8_t>(0x80));
 }
 
 TEST(Float8_Tests, NanE5M2) {
-  EXPECT_EQ(onnxruntime::Float8E5M2(0x7F800000).val, static_cast<uint8_t>(0x7B));
-  EXPECT_EQ(onnxruntime::Float8E5M2(0xFF800000).val, static_cast<uint8_t>(0xFB));
-  EXPECT_EQ(onnxruntime::Float8E5M2(0x7F800000, false).val, static_cast<uint8_t>(0x7C));
-  EXPECT_EQ(onnxruntime::Float8E5M2(0xFF800000, false).val, static_cast<uint8_t>(0x7C));
-  EXPECT_EQ(onnxruntime::Float8E5M2(0x7F800001).val, static_cast<uint8_t>(0x7F));
-  EXPECT_EQ(onnxruntime::Float8E5M2(0xFF800001).val, static_cast<uint8_t>(0xFF));
+  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0x7F800000}).val).val, static_cast<uint8_t>(0x7B));
+  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0xFF800000}).val).val, static_cast<uint8_t>(0xFB));
+  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0x7F800000}).val, false).val, static_cast<uint8_t>(0x7C));
+  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0xFF800000}).val, false).val, static_cast<uint8_t>(0x7C));
+  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0x7F800001}).val).val, static_cast<uint8_t>(0x7F));
+  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0xFF800001}).val).val, static_cast<uint8_t>(0xFF));
   // 0x7FC00000 is the value used by numpy.
-  EXPECT_EQ(onnxruntime::Float8E5M2(0x7FC00000).val, static_cast<uint8_t>(0x7F));
-  EXPECT_EQ(onnxruntime::Float8E5M2(0xFFC00000).val, static_cast<uint8_t>(0xFF));
+  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0x7FC00000}).val).val, static_cast<uint8_t>(0x7F));
+  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0xFFC00000}).val).val, static_cast<uint8_t>(0xFF));
 }
 
 TEST(Float8_Tests, NanE5M2FNUZ) {
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(0x7F800000).val, static_cast<uint8_t>(0x7F));
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(0xFF800000).val, static_cast<uint8_t>(0xFF));
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(0x7F800000, false).val, static_cast<uint8_t>(0x80));
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(0xFF800000, false).val, static_cast<uint8_t>(0x80));
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(0x7F800001).val, static_cast<uint8_t>(0x80));
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(0xFF800001).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0x7F800000}).val).val, static_cast<uint8_t>(0x7F));
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0xFF800000}).val).val, static_cast<uint8_t>(0xFF));
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0x7F800000}).val, false).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0xFF800000}).val, false).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0x7F800001}).val).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0xFF800001}).val).val, static_cast<uint8_t>(0x80));
   // 0x7FC00000 is the value used by numpy.
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(0x7FC00000).val, static_cast<uint8_t>(0x80));
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(0xFFC00000).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0x7FC00000}).val).val, static_cast<uint8_t>(0x80));
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0xFFC00000}).val).val, static_cast<uint8_t>(0x80));
 }
 
 }  // namespace test
