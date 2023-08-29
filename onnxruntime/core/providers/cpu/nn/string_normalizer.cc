@@ -202,7 +202,7 @@ class Utf8Converter {
 #endif
 
 #if defined(__APPLE__)
-const std::string default_locale("en.UTF-8");
+const std::string default_locale("en-US.UTF-8");
 #else
 const std::string default_locale("en_US.UTF-8"); // All non-MS and not Apple
 #endif
