@@ -7,7 +7,7 @@ buildscript {
   }
 
   dependencies {
-    classpath 'com.android.tools.build:gradle:4.1.2'
+    classpath 'com.android.tools.build:gradle:7.3.1'
     // noinspection DifferentKotlinGradleVersion
   }
 }
@@ -235,7 +235,14 @@ repositories {
 }
 
 dependencies {
-  api "com.facebook.react:react-native:" + REACT_NATIVE_VERSION
+  if (REACT_NATIVE_MINOR_VERSION >= 71) {
+    // REACT_NATIVE_VERSION >= 0.71.x use react-android (https://mvnrepository.com/artifact/com.facebook.react/react-android)
+    // See also https://github.com/facebook/react-native/blob/0.71-stable/android/README.md
+    api "com.facebook.react:react-android:" + REACT_NATIVE_VERSION
+  } else {
+    api "com.facebook.react:react-native:" + REACT_NATIVE_VERSION
+  }
+  api "com.facebook.react:react-android:" + REACT_NATIVE_VERSION
   api "org.mockito:mockito-core:2.28.2"
 
   androidTestImplementation "androidx.test:runner:1.1.0"
