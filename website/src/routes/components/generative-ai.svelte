@@ -9,7 +9,7 @@
 				for image synthesis, text generation, and more
 			</p>
 			<br>
-			<a href="/generativeai" class="btn btn-primary">Learn more about ORT & Generative AI →</a>
+			<a href="/generative-ai" class="btn btn-primary">Learn more about ORT & Generative AI →</a>
 		</div>
 		<img class="m-auto" src="https://placehold.co/600x300" alt="" />
 	</div>
