@@ -51,7 +51,7 @@ class WindowsEnv : public Env {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-  void SleepForMicroseconds(int64_t micros) const override;
+  void WindowsEnv::SleepForMicroseconds(int64_t micros) const override;
   static int DefaultNumCores();
   int GetNumPhysicalCpuCores() const override;
   std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override;
