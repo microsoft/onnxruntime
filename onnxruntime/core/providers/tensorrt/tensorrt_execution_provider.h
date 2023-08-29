@@ -309,12 +309,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
     CUDAGraph cuda_graph_;
     bool is_graph_captured_ = false;
-    int regular_run_count_before_graph_capture_ = -1;
+    int regular_run_count_before_graph_capture_ = 0;
     // There is chance (currently only happens in CUDA EP) that the second regular run allocates GPU memory for causes like:
     // (1) memory pattern is enabled. (2) arena allocation for stream.
     // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
     // to allocate enough memory in Arena before graph capturing.
-    const int min_num_runs_before_cuda_graph_capture_ = 0;  // required min regular runs before graph capture for the necessary memory allocations.
+    const int min_num_runs_before_cuda_graph_capture_ = 11;  // required min regular runs before graph capture for the necessary memory allocations.
   };
 
   using PerThreadContextMap = std::unordered_map<const TensorrtExecutionProvider*, std::weak_ptr<PerThreadContext>>;
