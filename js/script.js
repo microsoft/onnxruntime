@@ -194,11 +194,6 @@ function checkValidity(){
     var current_arch = opts['architecture'];
     var current_hw = opts['hardwareAcceleration'];
     
-    // console.log("current: "+current_os);
-    // console.log("current: "+current_arch);
-    // console.log("current: "+current_lang);
-    // console.log("current: "+current_hw);
-
     var valid = Object.getOwnPropertyNames(validCombos);
   
     //os section
@@ -279,7 +274,6 @@ function checkValidity(){
             }
 
             if(isvalidcombo==false && hardwareAcceleration[i].id!=current_hw){
-                // console.log(hardwareAcceleration[i]);
                 $(hardwareAcceleration[i]).addClass("gray"); 
             }
         } 
@@ -293,17 +287,7 @@ function ot_checkValidity(){
     var current_hw = ot_opts['ot_hardwareAcceleration'];
     var current_build = ot_opts['ot_build'];
     
-    // console.log("current: "+current_os);
-    // console.log("current: "+current_arch);
-    // console.log("current: "+current_lang);
-    // console.log("current: "+current_hw);
-
-    
     var valid = Object.getOwnPropertyNames(ot_validCombos);
-
-    console.log('---------------------- test');
-    console.log(!ot_validCombos.hasOwnProperty(ot_buildMatcher()));
-    console.log('---------------------- does this match up with:');
 
     // scenario section
     for(var i =0; i<ot_scenario.length; i++){
@@ -603,11 +587,20 @@ var ot_validCombos = {
     "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA,ot_stable":
     "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA,ot_nightly":
+    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_nightly_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+
     "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_stable":
     "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
     
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_nightly":
+    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_nightly_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
     "pip install onnxruntime-training<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
+    "pip -m install coloredlogs flatbuffers numpy packaging protobuf sympy<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
 
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
@@ -699,21 +692,6 @@ function ot_commandMessage(key) {
         return true;
     }
 
-    // //console.log('key- '+key);
-    //  var ot_object = {
-    //     "ot_linux,ot_ORTModule,ot_X64,ot_CUDA10":
-    //         "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
-
-    //     "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA10":
-    //         "Coming Soon",
-    //  };
-    //  if (!ot_object.hasOwnProperty(key)) {
-    //     $("#ot_command span").html(
-    //         "Coming Soon"
-    //     );
-    // } else {
-    //     $("#ot_command span").html(ot_object[key]);
-    // }
 }
 
 var validCombos = {
@@ -1365,14 +1343,12 @@ var validCombos = {
 };
 
 function commandMessage(key) {
-   // console.log('key- '.key);
 
    $("#command").removeClass("valid");
    $("#command").removeClass("invalid");
 
     if(opts['os']=='web' && opts['language']=='JS' &&validCombos.hasOwnProperty(key)){
         $("#command span").html(validCombos[key]);
-        // console.log(element);
         $("#command").addClass("valid");
         return true;
     }
@@ -1390,7 +1366,6 @@ function commandMessage(key) {
         return false;
     } else {
         $("#command span").html(validCombos[key]);
-        // console.log(element);
         $("#command").addClass("valid");
         return true;
     }
