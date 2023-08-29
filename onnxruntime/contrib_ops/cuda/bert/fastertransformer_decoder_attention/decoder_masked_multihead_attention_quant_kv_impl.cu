@@ -29,6 +29,8 @@
 #include "decoder_masked_multihead_attention_impl.h"
 #include "decoder_masked_multihead_attention_impl_utils.h"
 #include <cfloat>
+#include <cuda/pipeline>
+#include <cooperative_groups.h>
 
 namespace onnxruntime {
 namespace contrib {
@@ -588,9 +590,6 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   // The number of keys per warp.
   constexpr int K_PER_WARP = WARP_SIZE / THREADS_PER_KEY;
 
-  // Base pointer for the beam's batch, before offsetting with indirection buffer
-  TQ8* k_cache_batch = &params_k_cache[bbhi * params.max_sequence_length * head_size + ki];
-
   // Pick a number of keys to make sure all the threads of a warp enter (due to shfl_sync).
   int ti_end = ((tlength + K_PER_WARP - 1) / K_PER_WARP) * K_PER_WARP;
 
@@ -598,39 +597,82 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
-  for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
-    const int mapped_beam_index = (has_beams && ti < tlength) ? beam_indices[ti] : input_beam_index;
-    const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
+  constexpr int size_of_single_k_buffer = THREADS_PER_BLOCK * K_VEC_SIZE;
+  static_assert(size_of_single_k_buffer > 0 && size_of_single_k_buffer % 4 == 0);
+  __shared__ __align__(4) char double_k_buffer[2 * size_of_single_k_buffer];
+  char4* buffer_k[2] = {(char4*)double_k_buffer, (char4*)(double_k_buffer + size_of_single_k_buffer)};
 
-    const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
-    int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + ki / params.quant_kv_block_size;
-    TFp scale_of_k = ((ti < tlength) ? *(((TFp*)params.k_scale) + scale_offset) : TFp{0.0});
+  //some extra space allocated as we assume quantize block size could be as small as 16
+  constexpr int size_of_k_scale_buffer = K_PER_ITER * (head_size / 16);
+  __shared__ TFp k_scales_buffer[size_of_k_scale_buffer];
 
-    // The keys loaded from the key cache.
-    K_vec_k k_vec[K_VECS_PER_THREAD];
+  constexpr auto stages_count = 2;
+  __shared__ cuda::pipeline_shared_state<cuda::thread_scope_block, stages_count> shared_state_pipeline;
+  auto group = cooperative_groups::this_thread_block();
+  auto pipeline = cuda::make_pipeline(group, &shared_state);
 
-    if (ti < tlength) {
-      #pragma unroll
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        int jj = ii * params.max_sequence_length + ti;
+  // only work for greed search, or beam size == 1
+  // Base pointer for the beam's batch, before offsetting with indirection buffer
+  TQ8* k_cache_batch = &params_k_cache[bhi * params.max_sequence_length * head_size];
 
-        k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
-            reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), __half2half2(scale_of_k)));
+  (TFp*)src_k_scales = ((TFp*)params.k_scale) + bhi * params.max_sequence_length * scales_per_head;
+
+  using K_vec_acum = K_vec_k;
+  for (int ti_0 = 0; ti_0 < ti_end; ti_0 += K_PER_ITER) {
+    int ti = ti_0 + ko;
+    int number_of_t = (ti_0 + K_PER_ITER >= tlength) ? K_PER_ITER : (tlength - ti_0);
+
+    pipeline.producer_acquire();
+    TQ8* k_cache_ti_0 = k_cache_batch + (ti_0 * 8);
+    cuda::memcpy_async(group, buffer_k[0], (const char4*)(k_cache_ti_0), number_of_t * 8, pipeline);
+    // also load all scales
+    cuda::memcpy_async(group, k_scales_buffer, src_k_scales + (ti_0 * scales_per_head) , number_of_t * scales_per_head, pipeline);
+    pipeline.producer_commit();
+
+    K_vec_k k_vec;
+    K_vec_acum qk_acc;
+    zero(qk_acc);
+
+    #pragma unroll
+    for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
+      pipeline.producer_acquire();
+      cuda::memcpy_async(group, buffer_k[ii & 1], (const char4*)(k_cache_ti_0 + (ii * params.max_sequence_length * 8)), number_of_t * 8, pipeline);
+      pipeline.producer_commit();
+
+      pipeline.consumer_wait();
+      if (ti < tlength) {
+        TFp scale_of_k = k_scales_buffer[ko * scales_per_head + ((ii - 1) * 8 / params.quant_kv_block_size)];
+        k_vec = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
+            reinterpret_cast<const K_vec_m*>(&buffer_k[(ii - 1) & 1][tidx * K_VEC_SIZE]), __half2half2(scale_of_k)));
+      } else {
+        zero(k_vec);
       }
-    } else {
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        zero(k_vec[ii]);
-      }
+      qk_acc = onnxruntime::cuda::fma(q[ii - 1], k_vec, qk_acc);
+      pipeline.consumer_release();
     }
 
-    // Perform the dot product and normalize qk.
-    // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
-    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
+    pipeline.consumer_wait();
+    if (ti < tlength) {
+      TFp scale_of_k = k_scales_buffer[ko * scales_per_head + ((K_VECS_PER_THREAD - 1) * 8 / params.quant_kv_block_size)];
+      k_vec = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
+          reinterpret_cast<const K_vec_m*>(&buffer_k[(K_VECS_PER_THREAD - 1) & 1][tidx * K_VEC_SIZE]), __half2half2(scale_of_k)));
+    } else {
+      zero(k_vec);
+    }
+    qk_acc = onnxruntime::cuda::fma(q[ii - 1], k_vec, qk_acc);
+    pipeline.consumer_release();
+
+    float qk = sum(qk_vec);
+
+    #pragma unroll
+    for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
+      qk += __shfl_xor_sync(uint32_t(-1), qk, mask);
+    }
 
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to
     // mimic PyTorch when dealing with mask filter values
+    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
     if (is_masked) {
       qk += params.mask_filter_value;
     }
