@@ -601,10 +601,16 @@ var ot_validCombos = {
     "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
 
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_stable":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training",
+
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_nightly":
+    "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training",
 
     "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
     "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
+
+    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
+    "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
 
     "ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
@@ -656,6 +662,9 @@ var ot_validCombos = {
 
     "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
     "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
+
+    "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
+    "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
 
     "ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU,ot_stable":
         "Add 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
