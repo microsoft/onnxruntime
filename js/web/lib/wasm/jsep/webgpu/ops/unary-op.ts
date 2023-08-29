@@ -219,6 +219,10 @@ export const leakyRelu = (context: ComputeContext, attributes: AlphaAttributes):
       `const leaky_relu_alpha_: f32 = f32(${attributes.alpha});`, attributes.cacheKey));
 };
 
+export const not = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Not', a => `!${a}`));
+};
+
 export const neg = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Neg', a => `-${a}`));
 };

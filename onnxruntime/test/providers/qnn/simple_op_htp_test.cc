@@ -439,16 +439,12 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D) {
                               17, ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
-// Enable when this is fixed.
 TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_LargeInputs) {
   RunQDQBinaryOpTest<uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                               TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                               17, ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
-// Enable when this is fixed.
 TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_Broadcast) {
   RunQDQBinaryOpTest<uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                               TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
@@ -474,9 +470,6 @@ TEST_F(QnnHTPBackendTests, DISABLED_BinaryOp_Div4D_LargeInputs) {
                               17, ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
-// Enable when this is fixed.
-// Fails accuracy when input0 has dims [1,3,768,768]
 TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast) {
   RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                               TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
@@ -489,6 +482,7 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Mul4D) {
                               TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
                               17, ExpectedEPNodeAssignment::All);
 }
+
 // Test QDQ And
 TEST_F(QnnHTPBackendTests, BinaryOp_And4D) {
   RunBinaryOpTest<bool>("And", TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
