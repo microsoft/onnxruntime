@@ -251,6 +251,18 @@ template <typename T>
 __device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
 
 template <typename T>
+__device__ __inline__ T _Signum(T a, std::false_type /* is_signed */) { return T(0) < a; }
+
+template <typename T>
+__device__ __inline__ T _Signum(T a, std::true_type /* is_signed */) { return (T(0) < a) - (a < T(0)); }
+
+template <typename T>
+__device__ __inline__ T _Sign(T a) { return _Signum(a, std::is_signed<T>()); }
+
+template <>
+__device__ __inline__ half _Sign(half a) { return _Signum(a, std::true_type()); }
+
+template <typename T>
 __device__ __inline__ T _Normcdf(T a);
 
 template <>
@@ -337,7 +349,7 @@ struct GridDim {
 };
 
 // aligned vector generates vectorized load/store
-template<typename T, int vec_size>
+template <typename T, int vec_size>
 struct alignas(sizeof(T) * vec_size) aligned_vector {
   T val[vec_size];
 };
@@ -350,11 +362,11 @@ struct alignas(sizeof(T) * vec_size) aligned_vector {
 // HIP_KERNEL_ASSERT is a macro that wraps an assert() call inside rocm kernels.
 // TODO ROCM added support recently, should verify.
 #define HIP_KERNEL_ASSERT(...)
-//#define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
+// #define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
 
 // WARP related definitions and functions
 constexpr int GPU_WARP_SIZE = warpSize;
-inline int GPU_WARP_SIZE_HOST= warpSizeDynamic();
+inline int GPU_WARP_SIZE_HOST = warpSizeDynamic();
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
