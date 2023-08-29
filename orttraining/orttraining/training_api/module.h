@@ -21,6 +21,8 @@ struct Parameter {
 
   // Return the mutable data.
   OrtValue& Data() { return data_; }
+  Status CopyTo(const DataTransferManager* data_transfer_manager, OrtValue& data) const;
+  Status CopyFrom(const OrtValue& data, const DataTransferManager* data_transfer_manager);
   const std::string& Name() const { return name_; }
 
   // Returns whether this parameter is trainable or not.
@@ -34,7 +36,6 @@ struct Parameter {
   // Reset and release the gradient buffer of this Parameter greedily.
   Status ResetGrad();
 
- protected:
   Status SetGrad(const std::string& gradient_name, const OrtValue& param_grad);
 
  private:
