@@ -480,10 +480,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   // other stream wait on the event of the memory copy stream, instead of host sync stream.
   std::unordered_set<Stream*> visited;
   for (auto* stream : feed_streams) {
-    if (stream) {
-      auto unique_stream = visited.insert(stream);
-      if (unique_stream.second) stream->Flush();
-    }
+    if (stream && visited.insert(stream).second) stream->Flush();
   }
   return Status::OK();
 }
