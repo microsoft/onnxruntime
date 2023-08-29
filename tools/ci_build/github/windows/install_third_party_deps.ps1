@@ -99,5 +99,7 @@ Install-Abseil -cmake_path $cmake_path -src_root $ort_src_root -build_config $bu
 
 Install-Protobuf -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
 
+$protobuf_version="4.21.12"
+
 # ONNX doesn't allow us to specify CMake's path
 Install-ONNX -build_config $build_config -src_root $ort_src_root -protobuf_version $protobuf_version
