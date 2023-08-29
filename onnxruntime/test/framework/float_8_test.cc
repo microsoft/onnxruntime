@@ -70,7 +70,7 @@ TEST(Float8_Tests, NanE5M2) {
   EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0x7F800000}).val).val, static_cast<uint8_t>(0x7B));
   EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0xFF800000}).val).val, static_cast<uint8_t>(0xFB));
   EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0x7F800000}).val, false).val, static_cast<uint8_t>(0x7C));
-  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0xFF800000}).val, false).val, static_cast<uint8_t>(0x7C));
+  EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0xFF800000}).val, false).val, static_cast<uint8_t>(0xFC));
   EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0x7F800001}).val).val, static_cast<uint8_t>(0x7F));
   EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0xFF800001}).val).val, static_cast<uint8_t>(0xFF));
   // 0x7FC00000 is the value used by numpy.
