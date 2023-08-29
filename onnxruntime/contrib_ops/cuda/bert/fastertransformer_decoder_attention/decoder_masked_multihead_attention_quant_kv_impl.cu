@@ -197,7 +197,7 @@ inline __device__ char2 QuantizeHalf2(const uint32_t v, const __half2 scale2) {
   const __half2 one_two_seven{127, 127};
   uh2.u = v;
   uh2.h2 = __hmul2(__h2div(uh2.h2, scale2), one_two_seven);
-  return char2{__half2char_rz(uh2.h2.x), __half2char_rz(uh2.h2.y)};
+  return char2{(char)__half2short_rn(uh2.h2.x), (char)__half2short_rn(uh2.h2.y)};
 }
 
 template <typename TVec>
@@ -311,6 +311,10 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
   // The shared memory buffers for the block-wide reductions. One for max, one for sum.
   __shared__ float red_smem[WARPS_PER_BLOCK * 2];
+
+  constexpr auto scope = ::cuda::thread_scope_block;
+  constexpr auto stages_count = 2;
+  __shared__ ::cuda::pipeline_shared_state<scope, stages_count> shared_state_k;
 
   // A vector of Q or K elements for the current timestep.
   using Qk_vec_k = typename Qk_vec_k_<T, head_size>::Type;  // with kernel-used precision
@@ -595,27 +599,24 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
   // Iterate over the keys/timesteps to compute the various (Q*K^T)_{ti} values.
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
-  const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
   constexpr int size_of_single_k_buffer = THREADS_PER_BLOCK * K_VEC_SIZE;
   static_assert(size_of_single_k_buffer > 0 && size_of_single_k_buffer % 4 == 0);
-  __shared__ __align__(4) char double_k_buffer[2 * size_of_single_k_buffer];
+  __shared__ char double_k_buffer[2 * size_of_single_k_buffer];
   char4* buffer_k[2] = {(char4*)double_k_buffer, (char4*)(double_k_buffer + size_of_single_k_buffer)};
 
   //some extra space allocated as we assume quantize block size could be as small as 16
   constexpr int size_of_k_scale_buffer = K_PER_ITER * (head_size / 16);
   __shared__ TFp k_scales_buffer[size_of_k_scale_buffer];
 
-  constexpr auto stages_count = 2;
-  __shared__ cuda::pipeline_shared_state<cuda::thread_scope_block, stages_count> shared_state_pipeline;
   auto group = cooperative_groups::this_thread_block();
-  auto pipeline = cuda::make_pipeline(group, &shared_state);
+  auto pipeline = ::cuda::make_pipeline(group, &shared_state_k);
 
   // only work for greed search, or beam size == 1
   // Base pointer for the beam's batch, before offsetting with indirection buffer
   TQ8* k_cache_batch = &params_k_cache[bhi * params.max_sequence_length * head_size];
 
-  (TFp*)src_k_scales = ((TFp*)params.k_scale) + bhi * params.max_sequence_length * scales_per_head;
+  TFp* src_k_scales = ((TFp*)params.k_scale) + bhi * params.max_sequence_length * scales_per_head;
 
   using K_vec_acum = K_vec_k;
   for (int ti_0 = 0; ti_0 < ti_end; ti_0 += K_PER_ITER) {
@@ -624,9 +625,9 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     pipeline.producer_acquire();
     TQ8* k_cache_ti_0 = k_cache_batch + (ti_0 * 8);
-    cuda::memcpy_async(group, buffer_k[0], (const char4*)(k_cache_ti_0), number_of_t * 8, pipeline);
+    ::cuda::memcpy_async(group, buffer_k[0], (const char4*)(k_cache_ti_0), number_of_t * 8, pipeline);
     // also load all scales
-    cuda::memcpy_async(group, k_scales_buffer, src_k_scales + (ti_0 * scales_per_head) , number_of_t * scales_per_head, pipeline);
+    ::cuda::memcpy_async(group, k_scales_buffer, src_k_scales + (ti_0 * scales_per_head) , number_of_t * scales_per_head, pipeline);
     pipeline.producer_commit();
 
     K_vec_k k_vec;
@@ -636,7 +637,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     #pragma unroll
     for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
       pipeline.producer_acquire();
-      cuda::memcpy_async(group, buffer_k[ii & 1], (const char4*)(k_cache_ti_0 + (ii * params.max_sequence_length * 8)), number_of_t * 8, pipeline);
+      ::cuda::memcpy_async(group, buffer_k[ii & 1], (const char4*)(k_cache_ti_0 + (ii * params.max_sequence_length * 8)), number_of_t * 8, pipeline);
       pipeline.producer_commit();
 
       pipeline.consumer_wait();
@@ -647,7 +648,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       } else {
         zero(k_vec);
       }
-      qk_acc = onnxruntime::cuda::fma(q[ii - 1], k_vec, qk_acc);
+      qk_acc = onnxruntime::cuda::fma(q_vec[ii - 1], k_vec, qk_acc);
       pipeline.consumer_release();
     }
 
@@ -659,10 +660,10 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     } else {
       zero(k_vec);
     }
-    qk_acc = onnxruntime::cuda::fma(q[ii - 1], k_vec, qk_acc);
+    qk_acc = onnxruntime::cuda::fma(q_vec[K_VECS_PER_THREAD - 1], k_vec, qk_acc);
     pipeline.consumer_release();
 
-    float qk = sum(qk_vec);
+    float qk = sum(qk_acc);
 
     #pragma unroll
     for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
