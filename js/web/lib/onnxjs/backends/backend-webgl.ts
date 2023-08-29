@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
+import {env, InferenceSession, TrainingSessionHandler} from 'onnxruntime-common';
 
 import {Backend, SessionHandler} from '../backend';
 import {Logger} from '../instrument';

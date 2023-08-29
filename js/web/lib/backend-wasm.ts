@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, env, InferenceSession, SessionHandler} from 'onnxruntime-common';
+import {Backend, env, InferenceSession, SessionHandler, TrainingSessionHandler} from 'onnxruntime-common';
 import {cpus} from 'os';
 
 import {initializeWebAssemblyInstance} from './wasm/proxy-wrapper';

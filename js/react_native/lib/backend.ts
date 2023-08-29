@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, SessionHandler, Tensor,} from 'onnxruntime-common';
+import {Backend, InferenceSession, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
 import {Platform} from 'react-native';
 
 import {binding, Binding, JSIBlob, jsiHelper} from './binding';
