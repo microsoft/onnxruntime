@@ -3,20 +3,13 @@
 
 #pragma once
 
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/graph/op_identifier.h"
 
 #include "core/common/status.h"
 #include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-
-template <typename T>
-struct Offset;
-
-struct String;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 
