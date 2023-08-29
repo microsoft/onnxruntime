@@ -84,7 +84,6 @@ export const createSessionAllocate = (model: Uint8Array, weights?: ArrayBuffer, 
     const dir = '/home/web_user';
     weightsPath = `${dir}/${weightsFilename}`;
     wasm.createFileFromArrayBuffer(weightsPath, weights);
-    console.log('CREATED WEIGHTS', weightsPath);
     wasm.FS.chdir(dir);
   }
   return [modelDataOffset, model.byteLength, weightsPath];
