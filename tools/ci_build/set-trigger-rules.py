@@ -21,7 +21,6 @@ skip_js_changes = [
     "linux-gpu-ci-pipeline.yml",
     "linux-gpu-tensorrt-ci-pipeline.yml",
     "linux-migraphx-ci-pipeline.yml",
-    "linux-multi-gpu-tensorrt-ci-pipeline.yml",
     "linux-openvino-ci-pipeline.yml",
     "linux-qnn-ci-pipeline.yml",
     "mac-ci-pipeline.yml",
