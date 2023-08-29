@@ -88,7 +88,7 @@ Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* p_op_kernel_context)
   CudnnTensor data_desc;
   vector<int64_t> new_dims;
   BatchNormHelper::NormalizeDims(x_shape, new_dims);
-  ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>(), NHWC));
 
   // For half data type, the alpha, beta, scale, B, mean, var need to be float type
   if (X->IsDataType<MLFloat16>()) {
