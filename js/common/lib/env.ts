@@ -62,6 +62,10 @@ export declare namespace Env {
      */
     contextId?: 'webgl'|'webgl2';
     /**
+     * Get the WebGL rendering context.
+     */
+    readonly context: WebGLRenderingContext;
+    /**
      * Set or get the maximum batch size for matmul. 0 means to disable batching.
      *
      * @deprecated
@@ -88,7 +92,19 @@ export declare namespace Env {
   }
 
   export interface WebGpuFlags {
+    /**
+     * Set or get the profiling mode.
+     */
     profilingMode?: 'off'|'default';
+    /**
+     * Get the device for WebGPU.
+     *
+     * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
+     * Use `const device = env.webgpu.device as GPUDevice;` in TypeScript to access this property with correct type.
+     *
+     * see comments on {@link GpuBufferType} for more details about why not use types defined in "@webgpu/types".
+     */
+    readonly device: unknown;
   }
 }
 
@@ -110,27 +126,27 @@ export interface Env {
    * Get version of the current package.
    */
   readonly versions: {
-    common: string;
-    web?: string;
-    node?: string;
+    readonly common: string;
+    readonly web?: string;
+    readonly node?: string;
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    'react-native'?: string;
+    readonly 'react-native'?: string;
   };
 
   /**
    * Represent a set of flags for WebAssembly
    */
-  wasm: Env.WebAssemblyFlags;
+  readonly wasm: Env.WebAssemblyFlags;
 
   /**
    * Represent a set of flags for WebGL
    */
-  webgl: Env.WebGLFlags;
+  readonly webgl: Env.WebGLFlags;
 
   /**
    * Represent a set of flags for WebGPU
    */
-  webgpu: Env.WebGpuFlags;
+  readonly webgpu: Env.WebGpuFlags;
 
   [name: string]: unknown;
 }

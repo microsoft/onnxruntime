@@ -295,7 +295,7 @@ function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLEx
   return {name: 'webgl'};
 }
 
-function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
+function parseWebglFlags(args: minimist.ParsedArgs): Partial<Env.WebGLFlags> {
   const contextId = args['webgl-context-id'];
   if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
     throw new Error('Flag "webgl-context-id" is invalid');
@@ -319,7 +319,7 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
-function parseWebgpuFlags(args: minimist.ParsedArgs): Env.WebGpuFlags {
+function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   const profilingMode = args['webgpu-profiling-mode'];
   if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
     throw new Error('Flag "webgpu-profiling-mode" is invalid');
