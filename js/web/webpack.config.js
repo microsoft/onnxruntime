@@ -57,6 +57,7 @@ const DEFAULT_BUILD_DEFS = {
   DISABLE_WASM: false,
   DISABLE_WASM_PROXY: false,
   DISABLE_WASM_THREAD: false,
+  ENABLE_TRAINING: false
 };
 
 // common config for release bundle
@@ -289,6 +290,15 @@ module.exports = () => {
           buildOrtWebConfig({suffix: '.es6.min', target: 'es6'}),
           // ort-web.es5.min.js
           buildOrtWebConfig({suffix: '.es5.min', target: 'es5'}),
+
+          // ort.wasm.min.js
+          buildOrtConfig({
+            suffix: '.training.wasm.min',
+            build_defs: {
+              ...DEFAULT_BUILD_DEFS,
+              ENABLE_TRAINING: true,
+            }
+          }),
       );
 
     case 'node':

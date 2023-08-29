@@ -33,6 +33,7 @@ const FILTER = args.f || args.filter;
 const ROOT_FOLDER = path.join(__dirname, '..');
 const WASM_BINDING_FOLDER = path.join(ROOT_FOLDER, 'lib', 'wasm', 'binding');
 const WASM_BINDING_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm.js');
+const TRAINING_WASM_BINDING_SIMD_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-training-wasm-simd.js');
 const WASM_BINDING_THREADED_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.js');
 const WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-simd-threaded.jsep.js');
 const WASM_BINDING_THREADED_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.worker.js');
@@ -45,6 +46,7 @@ const WASM_DIST_FOLDER = path.join(ROOT_FOLDER, 'dist');
 const WASM_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm.wasm');
 const WASM_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.wasm');
 const WASM_SIMD_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd.wasm');
+const TRAINING_WASM_SIMD_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-training-wasm-simd.wasm');
 const WASM_SIMD_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd-threaded.wasm');
 const WASM_SIMD_JSEP_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd.jsep.wasm');
 const WASM_SIMD_THREADED_JSEP_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm');
@@ -75,6 +77,8 @@ if (WASM) {
     validateFile(WASM_SIMD_THREADED_WASM_PATH);
     validateFile(WASM_SIMD_JSEP_WASM_PATH);
     validateFile(WASM_SIMD_THREADED_JSEP_WASM_PATH);
+    validateFile(TRAINING_WASM_BINDING_SIMD_JS_PATH);
+    validateFile(TRAINING_WASM_SIMD_WASM_PATH);
   } catch (e) {
     npmlog.error('Build', `WebAssembly files are not ready. build WASM first. ERR: ${e}`);
     throw e;

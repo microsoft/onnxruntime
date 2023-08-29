@@ -8,8 +8,14 @@ import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule> =
-    BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
+let ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule>;
+
+if (BUILD_DEFS.ENABLE_TRAINING) {
+  ortWasmFactory = require('./binding/ort-training-wasm-simd.js');
+}
+else {
+  ortWasmFactory = BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
+}
 
 const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> = !BUILD_DEFS.DISABLE_WASM_THREAD ?
     (BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm-threaded.js') :
@@ -71,12 +77,19 @@ const isSimdSupported = (): boolean => {
   }
 };
 
-const getWasmFileName = (useSimd: boolean, useThreads: boolean) => {
-  if (useThreads) {
-    return useSimd ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-threaded.wasm';
-  } else {
-    return useSimd ? 'ort-wasm-simd.wasm' : 'ort-wasm.wasm';
+const getWasmFileName = (useSimd: boolean, useThreads: boolean, useTraining: boolean) => {
+  let wasmArtifact : string = 'ort';
+  if (useTraining) {
+    wasmArtifact += '-training';
   }
+  wasmArtifact += '-wasm';
+  if (useSimd) {
+    wasmArtifact += '-simd';
+  }
+  if (useThreads) {
+    wasmArtifact += '-threaded';
+  }
+  return wasmArtifact + '.wasm';
 };
 
 export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise<void> => {
@@ -102,7 +115,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   const wasmPaths = flags.wasmPaths;
   const wasmPrefixOverride = typeof wasmPaths === 'string' ? wasmPaths : undefined;
-  const wasmFileName = getWasmFileName(useSimd, useThreads);
+  const wasmFileName = getWasmFileName(useSimd, useThreads, BUILD_DEFS.ENABLE_TRAINING);
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[wasmFileName] : undefined;
 
   let isTimeout = false;
