@@ -2412,7 +2412,7 @@ TEST(ReductionOpTest, ReduceSum_do_not_keepdims_axes_input_not_initializer) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer_opset_13) {
   OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -2425,7 +2425,7 @@ TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer_opset_13) {
   OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
@@ -3371,6 +3371,241 @@ TEST(ReductionOpTest, ReduceSum_ReduceDimWithZero3) {
   test3.AddInput<float>("data", {3, 0, 2}, {});
   test3.AddOutput<float>("reduced", {3, 0}, {});
   run(test3);
+}
+
+// test if noop_with_empty_axes behaves correctly
+TEST(ReductionOpTest, ReduceL1_noop_axes_input_initializer_opset_18) {
+  OpTester test("ReduceL1", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {kTensorrtExecutionProvider,
+       kOpenVINOExecutionProvider,
+       kDnnlExecutionProvider,
+       kDmlExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL1_empty_axes_input_initializer_opset_18) {
+  OpTester test("ReduceL1", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {}, {10.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceL2_noop_axes_input_initializer_opset_18) {
+  OpTester test("ReduceL2", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {kTensorrtExecutionProvider,
+       kOpenVINOExecutionProvider,
+       kDnnlExecutionProvider,
+       kDmlExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL2_empty_axes_input_initializer_opset_18) {
+  OpTester test("ReduceL2", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {}, {5.47722558f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_noop_axes_input_initializer_opset_18) {
+  OpTester test("ReduceMax", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {kTensorrtExecutionProvider,
+       kOpenVINOExecutionProvider,
+       kDnnlExecutionProvider,
+       kDmlExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMax_empty_axes_input_initializer_opset_18) {
+  OpTester test("ReduceMax", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {}, {4.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_noop_axes_input_initializer_opset_18) {
+  OpTester test("ReduceMean", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {kTensorrtExecutionProvider,
+       kOpenVINOExecutionProvider,
+       kDnnlExecutionProvider,
+       kDmlExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMean_empty_axes_input_initializer_opset_18) {
+  OpTester test("ReduceMean", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {}, {2.5f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_noop_axes_input_initializer_opset_18) {
+  OpTester test("ReduceMin", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {kTensorrtExecutionProvider,
+       kOpenVINOExecutionProvider,
+       kDnnlExecutionProvider,
+       kDmlExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMin_empty_axes_input_initializer_opset_18) {
+  OpTester test("ReduceMin", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {}, {1.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceProd_noop_axes_input_initializer_opset_18) {
+  OpTester test("ReduceProd", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {kTensorrtExecutionProvider,
+       kOpenVINOExecutionProvider,
+       kDnnlExecutionProvider,
+       kDmlExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceProd_empty_axes_input_initializer_opset_18) {
+  OpTester test("ReduceProd", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {}, {24.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer_opset_18) {
+  OpTester test("ReduceSum", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer_opset_18) {
+  OpTester test("ReduceSum", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {}, {10.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumSquare_noop_axes_input_initializer_opset_18) {
+  OpTester test("ReduceSumSquare", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {kTensorrtExecutionProvider,
+       kOpenVINOExecutionProvider,
+       kDnnlExecutionProvider,
+       kDmlExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceSumSquare_empty_axes_input_initializer_opset_18) {
+  OpTester test("ReduceSumSquare", 18);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {}, {30.0f});
+  test.Run();
 }
 
 TEST(ReductionOpTest, ReduceInfMax) {
