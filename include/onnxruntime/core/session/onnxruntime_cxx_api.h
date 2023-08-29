@@ -1073,12 +1073,12 @@ struct SessionImpl : ConstSessionImpl<T> {
    *
    * \param[in] run_options
    * \param[in] input_names Array of null terminated UTF8 encoded strings of the input names
-   * \param[in] input_values Array of Value objects of length input_count that is the list of input values
+   * \param[in] input_values Array of Value objects of length input_count
    * \param[in] input_count Number of elements in the input_names and inputs arrays
    * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
    * \param[out] output_values Array of provided Values to be filled with outputs.
    *             On calling RunAsync, output_values[i] could either be initialized by a null pointer or a preallocated OrtValue*.
-   *             Later, on calling the callback, each output_values[i] of null will be filled with a OrtValue* allocated by onnxruntime.
+   *             Later, on invoking the callback, each output_values[i] of null will be filled with a OrtValue* allocated by onnxruntime.
    *             Then, an array of OrtValue* will be casted from output_values, and pass to the callback.
    *             NOTE: it is customer's duty to finally release output_values and each of its member,
    *             regardless of whether the member (Ort::Value) is allocated by onnxruntime or preallocated by the customer.

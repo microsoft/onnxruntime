@@ -4334,7 +4334,7 @@ struct OrtApi {
    * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
    * \param[in] output_names_len Number of elements in the output_names and outputs array
    * \param[out] output OrtValue* array of size output_names_len.
-   *             On calling RunAsync, output[i] could either be a null or a pointer to an preallocated OrtValue.
+   *             On calling RunAsync, output[i] could either be a null or a pointer to a preallocated OrtValue.
    *             Later, the output array will be passed to run_async_callback with all null(s) filled with valid
    *             OrtValue pointer(s) allocated by onnxruntime.
    *             NOTE: it is customer's duty to finally release the output array and each of its member,
