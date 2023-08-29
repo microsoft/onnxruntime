@@ -8,6 +8,7 @@
 #include <cmath>
 #include <unordered_map>
 #include "core/framework/provider_options.h"
+#include "core/util/qmath.h"
 
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/util/include/test_utils.h"
@@ -30,23 +31,19 @@ struct QuantParams {
   QType zero_point;
 
   static QuantParams<QType> Compute(float rmin, float rmax) {
-    if (rmin == 0.0f && rmax == 0.0f) {  // Quantizing a single zero.
-      return QuantParams<QType>{1.0f, 0};
-    }
+    // Ensure a minimum range of 0.0001 (required by QNN)
+    rmax = std::max(rmax, rmin + 0.0001f);
 
-    if (rmin == rmax) {  // One data-point (x) to quantize.
-      if (rmin < 0) {    // new range is [-x , 0.0f]
-        rmax = 0.0f;
-      } else {  // new range is [0.0f, x]
-        rmin = 0.0f;
-      }
-    }
+    // Both QNN and ORT require the range to include 0.0f
+    rmin = std::min(rmin, 0.0f);
+    rmax = std::max(rmax, 0.0f);
 
     constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
     constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
 
-    const float scale = (rmax - rmin) / (qmax - qmin);
-    const QType zero_point = static_cast<QType>(std::roundf((qmin - rmin) / scale));
+    const float scale = rmax == rmin ? 1.0f : (rmax - rmin) / (qmax - qmin);
+    const float initial_zero_point = qmin - rmin / scale;
+    const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin, std::min(qmax, initial_zero_point))));
 
     return QuantParams<QType>{scale, zero_point};
   }
@@ -75,6 +72,18 @@ inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data) {
   return QuantParams<QType>::Compute(min_val, max_val);
 }
 
+/**
+ * Returns a float vector with data in the specified range. Uses linear interpolation to fill the elements in the array
+ * and ensures that min_val, 0.0f, and max_val are all included.
+ * TODO(adrianlizarraga): Should use this instead of random *float* test inputs for test repeatability/stability!
+ *
+ * \param min_val The minimum value.
+ * \param max_val The maximum value.
+ * \param num_elems The number of elements in the result.
+ * \return A vector of floats with elements set to values in the specified range.
+ */
+std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems);
+
 // Class that defines an input that can be created with ModelTestBuilder.
 // Defines whether the input is an initializer and if the data should be randomized or if
 // set to an explicit value.
@@ -89,7 +98,7 @@ struct TestInputDef {
     T max;
   };
 
-  TestInputDef() : is_initializer_(false) {}
+  TestInputDef() = default;
 
   // Creates a random input definition. Specify its shape, whether it's an initializer, and
   // the min/max range.
@@ -185,8 +194,8 @@ struct TestInputDef {
  private:
   std::vector<int64_t> shape_;
   std::variant<RawData, RandomData> data_info_;
-  bool is_initializer_;
-  bool has_range_override_;
+  bool is_initializer_{false};
+  bool has_range_override_{false};
   std::pair<T, T> range_override_;
 };
 

@@ -15,6 +15,24 @@
 namespace onnxruntime {
 namespace test {
 
+std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems) {
+  std::vector<float> data;
+  data.reserve(num_elems);
+
+  const float step_size = (max_val - min_val) / static_cast<float>(num_elems);
+  float val = min_val;
+  for (size_t i = 0; i < num_elems; i++) {
+    data.push_back(val);
+    val += step_size;
+  }
+
+  // Guarantee that 0.0 and max_val are present.
+  data[num_elems / 2] = 0.0f;
+  data[num_elems - 1] = max_val;
+
+  return data;
+}
+
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err, logging::Severity log_severity) {
