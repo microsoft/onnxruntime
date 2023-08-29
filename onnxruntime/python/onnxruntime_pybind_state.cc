@@ -85,6 +85,7 @@ struct AsyncResource {
   std::vector<std::string> feed_names;
   std::vector<const char*> feed_names_raw;
 
+  std::vector<OrtValue> fetches;
   std::vector<OrtValue*> fetches_raw;
 
   std::vector<std::string> fetch_names;
@@ -102,6 +103,7 @@ struct AsyncResource {
   }
 
   void ReserveFetches(size_t sz) {
+    fetches.reserve(sz);
     fetches_raw.reserve(sz);
     fetch_names.reserve(sz);
     fetch_names_raw.reserve(sz);
@@ -1788,7 +1790,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              for (auto& output_name : output_names) {
                async_resource->fetch_names.push_back(output_name);
                async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
-               async_resource->fetches_raw.push_back({});
+               async_resource->fetches.push_back({});
+               async_resource->fetches_raw.push_back(&async_resource->fetches.back());
              }
              const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
              common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
