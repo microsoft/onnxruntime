@@ -601,10 +601,10 @@ var ot_validCombos = {
     "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
 
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_stable":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
     "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
 
     "ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
@@ -655,7 +655,7 @@ var ot_validCombos = {
     "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-training-android</a> using Maven/Gradle and refer to the instructions <a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here.</a>",
 
     "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
-    "pip install onnxruntime-training<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
 
     "ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU,ot_stable":
         "Add 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
