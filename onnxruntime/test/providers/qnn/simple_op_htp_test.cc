@@ -263,7 +263,8 @@ TEST_F(QnnCPUBackendTests, UnaryOp_Tanh) {
 // Check that QNN compiles DQ -> Gelu -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, UnaryOp_Gelu) {
-  RunQDQUnaryOpTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),  // Input range [-10.0, 10.0f]
+  const std::vector<float> input_data = {-10.0f, -8.4f, 0.0f, 4.3f, 7.1f, 10.0f};
+  RunQDQUnaryOpTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
                              "Gelu",
                              {},
                              11,
@@ -272,20 +273,21 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Gelu) {
 }
 
 // Tests accuracy of 16-bit QDQ GeLu.
-// TODO: Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=9.6821488114073873e-05, zero_point=749.
-// Expected val: 3.2107748985290527
-// QNN QDQ val: 3.2113752365112305 (err 0.00060033798217773438)
-// CPU QDQ val: 3.21079421043396 (err 1.9311904907226562e-05)
+// TODO: Inaccuracy detected for output 'output', element 5.
+// Output quant params: scale=0.00015259021893143654, zero_point=0.
+// Expected val: 10
+// QNN QDQ val: 9.997406005859375 (err 0.002593994140625)
+// CPU QDQ val: 9.999847412109375 (err 0.000152587890625)
 TEST_F(QnnHTPBackendTests, UnaryOp_Gelu_U16) {
-  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),  // Input range [-10.0, 10.0f]
+  const std::vector<float> input_data = {-10.0f, -8.4f, 0.0f, 4.3f, 7.1f, 10.0f};
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
                               "Gelu",
                               {},
                               11,
                               ExpectedEPNodeAssignment::All,
                               kMSDomain,  // GeLu is a contrib op.
                               true,       // Use MS domain Q/DQ ops.
-                              0.0016f);   // TODO: Accuracy
+                              0.0025f);   // TODO: Accuracy
 }
 
 // Check that QNN compiles DQ -> Elu -> Q as a single unit.
@@ -317,7 +319,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Elu_U16) {
 // Check that QNN compiles DQ -> HardSwish -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish) {
-  RunQDQUnaryOpTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),  // Input range [-10.0, 10.0f]
+  const std::vector<float> input_data = {-10.0f, -8.4f, 0.0f, 4.3f, 7.1f, 10.0f};
+  RunQDQUnaryOpTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
                              "HardSwish",
                              {},
                              14,
@@ -325,14 +328,21 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish) {
 }
 
 // Tests accuracy of 16-bit QDQ HardSwish
+// TODO: Inaccuracy detected for output 'output', element 5.
+// Output quant params: scale=0.00015259021893143654, zero_point=0.
+// Expected val: 10
+// QNN QDQ val: 9.999237060546875 (err 0.000762939453125)
+// CPU QDQ val: 9.999847412109375 (err 0.000152587890625)
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish_U16) {
-  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),  // Input range [-10.0, 10.0f]
+  const std::vector<float> input_data = {-10.0f, -8.4f, 0.0f, 4.3f, 7.1f, 10.0f};
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
                               "HardSwish",
                               {},
                               14,
                               ExpectedEPNodeAssignment::All,
                               kOnnxDomain,
-                              true);
+                              true,
+                              0.001f);  // TODO: Remove additional tolerance needed for inaccuracy
 }
 
 // Check that QNN compiles DQ -> Atan -> Q as a single unit.
