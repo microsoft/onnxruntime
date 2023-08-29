@@ -106,6 +106,21 @@ def generate_artifacts(
 
         def build(self, *inputs_to_loss):
             if "additional_output_names" in extra_options:
+                # If additional output names is not a list, raise an error
+                if not isinstance(extra_options["additional_output_names"], list):
+                    raise RuntimeError(
+                        f"Unknown type provided for additional output names {type(extra_options['additional_output_names'])}. "
+                        "Expected additional output names to be a list of strings."
+                    )
+
+                # If one of additional output names is not a model output, raise an error
+                for additional_output_name in extra_options["additional_output_names"]:
+                    if additional_output_name not in [output.name for output in model.graph.output]:
+                        raise RuntimeError(
+                            f"Additional output name {additional_output_name} is not a model output. "
+                            "Expected additional output names to be a list of model outputs."
+                        )
+
                 loss_output = self._loss(*inputs_to_loss)
                 if isinstance(loss_output, tuple):
                     return (*loss_output, *tuple(extra_options["additional_output_names"]))
