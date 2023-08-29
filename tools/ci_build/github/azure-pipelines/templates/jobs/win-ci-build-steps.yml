@@ -75,7 +75,7 @@ steps:
       ${{ if eq(parameters.WithCache, true) }}:
         msbuildArgs: '${{parameters.MsbuildArguments}} ${{parameters.CacheArg}}'
       ${{ else }}:
-        arguments: '${{parameters.CMakeArguments}}'
+        msbuildArgs: '${{parameters.MsbuildArguments}}'
       msbuildArchitecture: ${{parameters.BuildArch}}
       maximumCpuCount: true
       logProjectEvents: false
