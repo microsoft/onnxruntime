@@ -89,7 +89,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // Add weight (b of MatMul)
     std::vector<float> b_transposed;
     ORT_RETURN_IF_ERROR(GetTensorFloatDataTransposed(b_tensor, b_transposed));
-    CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed.data(), b_transposed.size());
+    CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed);
   } else {  // Gemm
     NodeAttrHelper helper(node);
     const auto transB = helper.Get("transB", 0);
@@ -98,7 +98,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       coreml_inner_product->set_outputchannels(b_shape[1]);
       std::vector<float> b_transposed;
       ORT_RETURN_IF_ERROR(GetTensorFloatDataTransposed(b_tensor, b_transposed));
-      CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed.data(), b_transposed.size());
+      CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed);
     } else {
       coreml_inner_product->set_inputchannels(b_shape[1]);
       coreml_inner_product->set_outputchannels(b_shape[0]);

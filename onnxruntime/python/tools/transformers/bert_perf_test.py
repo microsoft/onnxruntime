@@ -3,11 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-# This tool measures the inference performance of onnxruntime or onnxruntime-gpu python package on Bert model.
-
-# The input model shall have exactly three inputs. The model is either fully optimized (with EmbedLayerNormalization node),
-# or with reasonable input names (one input name has 'mask' substring, another has 'token' or 'segment' substring).
-# See get_bert_inputs function in bert_test_data.py for more information.
+# This tool measures the inference performance of onnxruntime on BERT-like model with inputs like input_ids,
+# token_type_ids (optional), and attention_mask (optional).
+#
+# If the model does not have exactly three inputs like above, you might need specify names of inputs with
+# --input_ids_name, --segment_ids_name and --input_mask_name
 
 # Example command to run test on batch_size 1 and 2 for a model on GPU:
 #   python bert_perf_test.py --model bert.onnx --batch_size 1 2 --sequence_length 128 --use_gpu --samples 1000 --test_times 1
@@ -270,7 +270,7 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
             results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
             all_latency_list.extend(latency_list)
 
-    # latency in miliseconds
+    # latency in milliseconds
     latency_ms = np.array(all_latency_list) * 1000
 
     average_latency = statistics.mean(latency_ms)
