@@ -12,9 +12,9 @@ let ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule>;
 
 if (BUILD_DEFS.ENABLE_TRAINING) {
   ortWasmFactory = require('./binding/ort-training-wasm-simd.js');
-}
-else {
-  ortWasmFactory = BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
+} else {
+  ortWasmFactory =
+      BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
 }
 
 const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> = !BUILD_DEFS.DISABLE_WASM_THREAD ?
@@ -78,18 +78,14 @@ const isSimdSupported = (): boolean => {
 };
 
 const getWasmFileName = (useSimd: boolean, useThreads: boolean, useTraining: boolean) => {
-  let wasmArtifact : string = 'ort';
-  if (useTraining) {
-    wasmArtifact += '-training';
-  }
-  wasmArtifact += '-wasm';
   if (useSimd) {
-    wasmArtifact += '-simd';
+    if (useTraining) {
+      return 'ort-training-wasm-simd.wasm';
+    }
+    return useThreads ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-simd.wasm';
+  } else {
+    return useThreads ? 'ort-wasm-threaded.wasm' : 'ort-wasm.wasm';
   }
-  if (useThreads) {
-    wasmArtifact += '-threaded';
-  }
-  return wasmArtifact + '.wasm';
 };
 
 export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise<void> => {
