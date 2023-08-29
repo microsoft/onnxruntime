@@ -214,10 +214,12 @@ class Conv : public CudaKernel {
   using CudaT = typename ToCudaType<T>::MappedType;
 
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
-    transpose_weights_ = info.GetKernelDef().Domain() == kMSInternalNHWCDomain;
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
   }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) override;
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
@@ -231,7 +233,7 @@ class Conv : public CudaKernel {
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
   static const cudnnConvolutionFwdAlgo_t kAllAlgos[];
-  bool transpose_weights_ = false;
+  std::unique_ptr<Tensor> W_;
 };
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,

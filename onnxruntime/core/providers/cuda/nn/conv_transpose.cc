@@ -2,8 +2,8 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/tensor/transpose_impl.h"
 #include "conv_transpose.h"
+#include "core/providers/cuda/tensor/transpose.h"
 
 // To suppress FP static analyzer warnings:
 // https://msdata.visualstudio.com/Vienna/_workitems/edit/1944928 and
@@ -50,6 +50,41 @@ Status ConvTranspose<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
 }
 
 template <typename T, bool NHWC>
+Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+  // only layout of weight input is adjusted via PrePack
+  if (NHWC) {  // InputTensors::IN_W
+    if (input_idx == 1) {
+      // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
+      auto orig_shape = tensor.Shape();
+
+      InlinedVector<size_t> perm{0, 2, 3, 1};
+      gsl::span<size_t> permutation(perm.data(), 4);
+      TensorShapeVector new_dims{orig_shape[0],
+                                orig_shape[2],
+                                orig_shape[3],
+                                orig_shape[1]};
+      W_ = Tensor::Create(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+
+      cudaStream_t stream = 0;
+      auto status = cuda::Transpose::DoTranspose(GetDeviceProp(),
+                                  stream,
+                                  //  provider_->PerThreadDefaultCublasHandle(),
+                                  DefaultCublasHandle(),
+                                  permutation, tensor, *W_);
+
+      if (!status.IsOK()) {
+        return status;
+      }
+      is_packed = true;
+    }
+  }
+
+  return Status::OK();
+}
+
+template <typename T, bool NHWC>
 Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -64,7 +99,12 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3-, 4- or 5-dimensional.",
                            " X: ", X->Shape().ToString().c_str());
   }
-  const Tensor* W = context->Input<Tensor>(1);
+  const Tensor* W;
+  if (!W_) {
+    W = context->Input<Tensor>(1);
+  } else {
+    W = W_.get();
+  }
   const TensorShape& w_shape = W->Shape();
   TensorShapeVector w_dims = w_shape.AsShapeVector();
   auto w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
@@ -93,32 +133,8 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
         s_.cached_benchmark_results.clear();
       }
 
-      // If we remove the contrib op NhwcConv we can rewrite this to be much simpler
-      // basically only strides of W will change and a transpose kernel is launched if NHWC is true
-      // currently we are only allowed to transpose the weight if node is part of kMSInternalNHWCDomain
-      if (transpose_weights_) {
-        // if the OP is registered in domain kMSInternalNHWCDomain the weights are not transposed beforehand.
-        auto nchw_strides = generateStrides(w_dims, false);
-        w_dims = {w_dims[0], w_dims[2], w_dims[3], w_dims[1]};
-        auto nhwc_strides = generateStrides(w_dims, true);
-        cudaStream_t compute_stream = Stream(context);
-        const T * w_data_nchw = W->Data<T>();
-        size_t weight_bytes = W->SizeInBytes();
-        IAllocatorUniquePtr<void> w_data_nhwc_temp = GetTransientScratchBuffer<void>(weight_bytes);
-        const TArray<int64_t> nchw_strides_arr = {};
-        const TArray<fast_divmod> nhwc_strides_arr = {};
-        auto status = TransposeImpl(
-          compute_stream, sizeof(T), w_dims.size(),
-          nchw_strides_arr, w_data_nchw, nhwc_strides_arr, w_data_nhwc_temp.get(), w_dims.size()
-        );
-
-        T * w_data_nchw_out = const_cast<T*>(W->Data<T>());
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(w_data_nchw_out ,w_data_nhwc_temp.get() , weight_bytes, cudaMemcpyDeviceToDevice, compute_stream));
-        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(compute_stream));
-      }
-
       ConvTransposeAttributes::Prepare p;
-      ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding, nullptr, NHWC));
+      ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding, &w_shape, NHWC));
 
       auto y_dims = p.Y->Shape().AsShapeVector();
       if (x_dimensions == 3) {

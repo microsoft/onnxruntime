@@ -57,7 +57,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShape input_shape = X->Shape().Slice(is_nhwc ? 1 : 2 , is_nhwc ? rank-1 : rank);
     const int64_t num_input_channels = is_nhwc ? X->Shape()[rank - 1]: X->Shape()[1];
     const int64_t N = X->Shape()[0];
-    const int64_t num_output_channels_multiplier = F_Shape[1];
+    const int64_t num_output_channels_multiplier = is_nhwc ? F_Shape[3]: F_Shape[1];
     const int64_t num_output_channels = num_output_channels_multiplier * group;
 
     // input validations
@@ -88,7 +88,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     }
 
     TensorShapeVector kernel_shape;
-    ORT_RETURN_IF_ERROR(ComputeKernelShape(F_Shape, kernel_shape));
+    ORT_RETURN_IF_ERROR(ComputeKernelShape(F_Shape, kernel_shape, is_nhwc));
 
     TensorShapeVector local_output_padding(output_padding);
     if (local_output_padding.empty()) {

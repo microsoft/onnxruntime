@@ -2,12 +2,12 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/tensor/transpose_impl.h"
 #include "core/providers/cuda/nn/conv.h"
 #include "core/common/span_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/tensor/slice.h"
+#include "core/providers/cuda/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -92,6 +92,40 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 }
 
 template <typename T, bool NHWC>
+Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+  // only layout of weight input is adjusted via PrePack
+  if (NHWC) {  // InputTensors::IN_W
+    if (input_idx == 1) {
+      // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
+      auto orig_shape = tensor.Shape();
+
+      InlinedVector<size_t> perm{0, 2, 3, 1};
+      gsl::span<size_t> permutation(perm.data(), 4);
+      TensorShapeVector new_dims{orig_shape[0],
+                                orig_shape[2],
+                                orig_shape[3],
+                                orig_shape[1]};
+      W_ = Tensor::Create(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+
+      cudaStream_t stream = 0;
+      auto status = cuda::Transpose::DoTranspose(GetDeviceProp(),
+                                  stream,
+                                  //  provider_->PerThreadDefaultCublasHandle(),
+                                  DefaultCublasHandle(),
+                                  permutation, tensor, *W_);
+      if (!status.IsOK()) {
+        return status;
+      }
+      is_packed = true;
+    }
+  }
+
+  return Status::OK();
+}
+
+template <typename T, bool NHWC>
 Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) const {
   // set X
   const Tensor* X = context->Input<Tensor>(0);
@@ -100,7 +134,12 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
   s_.x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
   // set W
-  const Tensor* W = context->Input<Tensor>(1);
+  const Tensor* W;
+  if (!W_) {
+    W = context->Input<Tensor>(1);
+  } else {
+    W = W_.get();
+  }
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
   s_.w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
@@ -137,37 +176,10 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       s_.cached_benchmark_results.clear();
     }
 
-    // If we remove the contrib op NhwcConv we can rewrite this to be much simpler
-    // basically only strides of W will change and a transpose kernel is launched if NHWC is true
-    // currently we are only allowed to transpose the weight if node is part of kMSInternalNHWCDomain
-    if (transpose_weights_) {
-      // if the OP is registered in domain kMSInternalNHWCDomain the weights are not transposed beforehand.
-      auto nchw_strides = generateStrides(w_dims, false);
-      w_dims = {w_dims[0], w_dims[2], w_dims[3], w_dims[1]};
-      auto nhwc_strides = generateStrides(w_dims, true);
-      cudaStream_t compute_stream = Stream(context);
-      const T * w_data_nchw = W->Data<T>();
-      size_t weight_bytes = W->SizeInBytes();
-      // cudaMallocAsync(&w_data_nhwc_temp, weight_bytes, compute_stream);
-      IAllocatorUniquePtr<void> w_data_nhwc_temp = GetTransientScratchBuffer<void>(weight_bytes);
-      const TArray<int64_t> nchw_strides_arr = {};
-      const TArray<fast_divmod> nhwc_strides_arr = {};
-      auto status = TransposeImpl(
-        compute_stream, sizeof(T), w_dims.size(),
-        nchw_strides_arr, w_data_nchw, nhwc_strides_arr, w_data_nhwc_temp.get(), w_dims.size()
-      );
-
-      T * w_data_nchw_out = const_cast<T*>(W->Data<T>());
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(w_data_nchw_out ,w_data_nhwc_temp.get() , weight_bytes, cudaMemcpyDeviceToDevice, compute_stream));
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(compute_stream));
-      // cudaFreeAsync(w_data_nhwc_temp, compute_stream);
-    }
-
-    const bool weight_desc_channel_last = (!transpose_weights_ && channels_last);
-    ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, weight_desc_channel_last));
+    ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, channels_last));
 
     TensorShapeVector kernel_shape;
-    ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape, weight_desc_channel_last));
+    ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape, channels_last));
 
     const size_t kernel_rank = kernel_shape.size();
 
