@@ -120,6 +120,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Sub", QNN_OP_ELEMENT_WISE_SUBTRACT},
         {"Tanh", QNN_OP_TANH},
         {"Transpose", QNN_OP_TRANSPOSE},
+        {"GridSample", QNN_OP_GRID_SAMPLE},
 
         {"DequantizeLinear", QNN_OP_DEQUANTIZE},
         {"QuantizeLinear", QNN_OP_QUANTIZE},
