@@ -86,6 +86,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreatePoolOpBuilder("GlobalAveragePool", *this);
     CreatePoolOpBuilder("AveragePool", *this);
     CreatePoolOpBuilder("MaxPool", *this);
+    CreatePoolOpBuilder("GlobalMaxPool", *this);
   }
 
   {

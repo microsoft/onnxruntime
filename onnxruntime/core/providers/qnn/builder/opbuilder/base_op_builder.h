@@ -140,6 +140,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"GlobalAveragePool", QNN_OP_POOL_AVG_2D},
         {"AveragePool", QNN_OP_POOL_AVG_2D},
         {"MaxPool", QNN_OP_POOL_MAX_2D},
+        {"GlobalMaxPool", QNN_OP_POOL_MAX_2D},
 
         {"Reshape", QNN_OP_RESHAPE},
         {"Resize", QNN_OP_RESIZE},
