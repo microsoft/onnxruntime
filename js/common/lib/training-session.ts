@@ -4,6 +4,8 @@
 import {InferenceSession} from './inference-session.js';
 import {TrainingSession as TrainingSessionImpl} from './training-session-impl.js';
 
+/* eslint-disable @typescript-eslint/no-redeclare */
+
 /**
  * Represent a runtime instance of an ONNX model.
  */
