@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface PadAttributes extends AttributeWithCacheKey {
   // 0-constant, 1-reflect, 2-edge, 3-wrap
@@ -36,14 +36,14 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const getPadConstant =
-    (outputDims: readonly number[], inputDims: readonly number[], inputStrides: readonly number[], pads: number[],
-     dataType: string, constantValue: number): string => {
+    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
+     inputStrides: readonly number[], pads: number[], dataType: string, constantValue: number): string => {
       const inputRank = inputDims.length;
 
       let block = '';
       for (let i = inputRank - 1; i >= 0; --i) {
         block += `
-            k = i32(${outputDims.length < 2 ? 'indices' : `indices[${i}]`}) - ${pads[i]};
+            k = i32(${output.indicesGet('indices', i)}) - ${pads[i]};
             if (k < 0) {
               break;
             }
@@ -66,45 +66,45 @@ const getPadConstant =
     };
 
 const getPadReflect =
-    (outputDims: readonly number[], inputDims: readonly number[], inputStrides: readonly number[], pads: number[]):
-        string => {
-          const inputRank = inputDims.length;
+    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
+     inputStrides: readonly number[], pads: number[]): string => {
+      const inputRank = inputDims.length;
 
-          let block = '';
-          for (let i = inputRank - 1; i >= 0; --i) {
-            block += `
-                k = i32(${outputDims.length < 2 ? 'indices' : `indices[${i}]`}) - ${pads[i]};
+      let block = '';
+      for (let i = inputRank - 1; i >= 0; --i) {
+        block += `
+                k = i32(${output.indicesGet('indices', i)}) - ${pads[i]};
                 if (k < 0) {
                   k = -k;
                 }
                 {
                   let _2n_1 = ${2 * (inputDims[i] - 1)};
-                  k = i32(f32(k) % f32(_2n_1)) ;
+                  k = k % _2n_1;
                   if(k >= ${inputDims[i]}) {
                     k = _2n_1 - k;
                   }
                 }
                 offset += k * ${inputStrides[i]};
             `;
-          }
+      }
 
-          return `
+      return `
               var offset = 0;
               var k = 0;
               ${block}
               value = x[offset];
           `;
-        };
+    };
 
 const getPadEdge =
-    (outputDims: readonly number[], inputDims: readonly number[], inputStrides: readonly number[], pads: number[]):
-        string => {
-          const inputRank = inputDims.length;
+    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
+     inputStrides: readonly number[], pads: number[]): string => {
+      const inputRank = inputDims.length;
 
-          let block = '';
-          for (let i = inputRank - 1; i >= 0; --i) {
-            block += `
-                k = i32(${outputDims.length < 2 ? 'indices' : `indices[${i}]`}) - ${pads[i]};
+      let block = '';
+      for (let i = inputRank - 1; i >= 0; --i) {
+        block += `
+                k = i32(${output.indicesGet('indices', i)}) - ${pads[i]};
                 if (k < 0) {
                   k = 0;
                 }
@@ -113,25 +113,25 @@ const getPadEdge =
                 }
                 offset += k * ${inputStrides[i]};
             `;
-          }
+      }
 
-          return `
+      return `
               var offset = 0;
               var k = 0;
               ${block}
               value = x[offset];
           `;
-        };
+    };
 
 const getPadWrap =
-    (outputDims: readonly number[], inputDims: readonly number[], inputStrides: readonly number[], pads: number[]):
-        string => {
-          const inputRank = inputDims.length;
+    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
+     inputStrides: readonly number[], pads: number[]): string => {
+      const inputRank = inputDims.length;
 
-          let block = '';
-          for (let i = inputRank - 1; i >= 0; --i) {
-            block += `
-                k = i32(${outputDims.length < 2 ? 'indices' : `indices[${i}]`}) - ${pads[i]};
+      let block = '';
+      for (let i = inputRank - 1; i >= 0; --i) {
+        block += `
+                k = i32(${output.indicesGet('indices', i)}) - ${pads[i]};
                 if (k < 0)  {
                   k += ${inputDims[i]};
                 }
@@ -140,28 +140,29 @@ const getPadWrap =
                 }
                 offset += k * ${inputStrides[i]};
             `;
-          }
+      }
 
-          return `
+      return `
               var offset = 0;
               var k = 0;
               ${block}
               value = x[offset];
           `;
-        };
+    };
 
 const getPadSnippet =
-    (outputDims: readonly number[], inputDims: readonly number[], inputStrides: readonly number[],
-     attributes: PadAttributes, dataType: string): string => {
+    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
+     inputStrides: readonly number[], attributes: PadAttributes, dataType: string): string => {
       switch (attributes.mode) {
         case 0:
-          return getPadConstant(outputDims, inputDims, inputStrides, attributes.pads, dataType, attributes.value);
+          return getPadConstant(
+              output, outputDims, inputDims, inputStrides, attributes.pads, dataType, attributes.value);
         case 1:
-          return getPadReflect(outputDims, inputDims, inputStrides, attributes.pads);
+          return getPadReflect(output, outputDims, inputDims, inputStrides, attributes.pads);
         case 2:
-          return getPadEdge(outputDims, inputDims, inputStrides, attributes.pads);
+          return getPadEdge(output, outputDims, inputDims, inputStrides, attributes.pads);
         case 3:
-          return getPadWrap(outputDims, inputDims, inputStrides, attributes.pads);
+          return getPadWrap(output, outputDims, inputDims, inputStrides, attributes.pads);
         default:
           throw new Error('Invalid mode');
       }
@@ -174,23 +175,23 @@ const generatePadCode =
           const outputDims = ShapeUtil.padShape(inputDims.slice(), attributes.pads);
           const outputSize = ShapeUtil.size(outputDims);
           const inputStrides = ShapeUtil.computeStrides(inputDims);
-          const padSnippet = getPadSnippet(outputDims, inputDims, inputStrides, attributes, dataType);
 
           const output = outputVariable('output', inputs[0].dataType, outputDims);
           const input = inputVariable('x', inputs[0].dataType, inputDims);
 
+          const padSnippet = getPadSnippet(output, outputDims, inputDims, inputStrides, attributes, dataType);
           const padCode = `
-      ${shaderHelper.declareVariables(input, output)}
-        ${output.impl()}
-        ${shaderHelper.mainStart()}
-          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+              ${shaderHelper.declareVariables(input, output)}
+              ${output.impl()}
+              ${shaderHelper.mainStart()}
+              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-          let indices = ${output.offsetToIndices('global_idx')};
+              let indices = ${output.offsetToIndices('global_idx')};
 
-          var value = ${dataType}(0);
-          ${padSnippet}
-          output[global_idx] = value;
-      }`;
+              var value = ${dataType}(0);
+              ${padSnippet}
+              output[global_idx] = value;
+          }`;
           return padCode;
         };
 

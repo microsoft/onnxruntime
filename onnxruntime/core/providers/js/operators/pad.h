@@ -11,7 +11,7 @@ namespace js {
 
 class Pad : public JsKernel, public PadBase {
  public:
-  Pad(const OpKernelInfo& info) : JsKernel(info), PadBase(info) {
+  explicit Pad(const OpKernelInfo& info) : JsKernel(info), PadBase(info) {
     std::vector<int32_t> pads;
     if (!is_dynamic_) {
       pads.resize(pads_.size());
@@ -22,10 +22,9 @@ class Pad : public JsKernel, public PadBase {
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Pad, ({"mode" : $1,
                                       "value" : $2,
-                                      "pads" : $3 ? Array.from(HEAP32.subarray($5, $5 + $4)) : []}),
+                                      "pads" : $3 ? Array.from(HEAP32.subarray($4, $4 + $3)) : []}),
                                static_cast<int32_t>(mode_),
                                static_cast<double>(value_),
-                               !is_dynamic_,
                                gsl::narrow_cast<int32_t>(pads.size()),
                                reinterpret_cast<int32_t>((pads.size() > 0) ? pads.data() : nullptr) >> 2);
   }

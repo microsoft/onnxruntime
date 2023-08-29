@@ -11,15 +11,6 @@ namespace js {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Pad,
     kOnnxDomain,
-    1,
-    1,
-    kJsExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Pad);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Pad,
-    kOnnxDomain,
     2,
     10,
     kJsExecutionProvider,
