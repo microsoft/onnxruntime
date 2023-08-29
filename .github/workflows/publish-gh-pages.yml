@@ -11,4 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Placeholder step to have workflow included in the GitHub web UI
-        run: echo "Placeholder step to have workflow included in the GitHub web UI
+        run: |
+          echo "Placeholder step to have workflow included in the GitHub web UI"
+          echo "The actual publish workflow is run from the gh-pages branch"
