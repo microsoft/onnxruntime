@@ -109,9 +109,12 @@ struct AsyncResource {
   }
 
   ~AsyncResource() {
-    std::for_each(fetches_raw.begin(), fetches_raw.end(), [](OrtValue* fetch) {
-      std::unique_ptr<OrtValue> fetch_recycler(fetch);
+    std::for_each(fetches_raw.begin(), fetches_raw.end(), [](const OrtValue* fetch) {
+      if (fetch) {
+        std::unique_ptr<const OrtValue> fetch_recycler(fetch);
+      }
     });
+    fetches_raw.clear();
   }
 };
 
