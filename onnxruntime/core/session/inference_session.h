@@ -113,7 +113,7 @@ class InferenceSession {
         : node_arg(node_arg0), ml_data_type(ml_data_type0) {
     }
 
-    const NodeArg* node_arg;
+    gsl::not_null<const NodeArg*> node_arg;
     MLDataType ml_data_type;
     std::optional<TensorShape> tensor_shape;  // not applicable if the input is non-tensor type
   };
@@ -653,7 +653,7 @@ class InferenceSession {
   [[nodiscard]] common::Status ValidateInputsOutputs(gsl::span<const std::string> feed_fetches_names,
                                                      gsl::span<const OrtValue> feeds_fetches,
                                                      const InputOutputDefMetaMap& input_output_meta_map,
-                                                     bool is_inputs) const;
+                                                     ArgType arg_type) const;
 
   [[nodiscard]] common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 

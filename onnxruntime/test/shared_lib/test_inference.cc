@@ -2652,7 +2652,7 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_Tensors) {
     exception_thrown = true;
     const char* exception_string = ex.what();
     ASSERT_TRUE(strcmp(exception_string,
-                       "Unexpected Input data type. Actual: (tensor(double)) , expected: (tensor(float))") == 0);
+                       "Unexpected input data type. Actual: (tensor(double)) , expected: (tensor(float))") == 0);
   }
 
   ASSERT_TRUE(exception_thrown);
@@ -2684,7 +2684,7 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
     exception_thrown = true;
     const char* exception_string = ex.what();
     ASSERT_TRUE(strcmp(exception_string,
-                       "Unexpected Input data type. Actual: (seq(double)) , expected: (seq(float))") == 0);
+                       "Unexpected input data type. Actual: (seq(double)) , expected: (seq(float))") == 0);
   }
 
   ASSERT_TRUE(exception_thrown);

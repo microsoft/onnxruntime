@@ -1877,9 +1877,13 @@ static common::Status CheckTypes(MLDataType actual, MLDataType expected, const s
 common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::string> names,
                                                        gsl::span<const OrtValue> feeds_fetches,
                                                        const InputOutputDefMetaMap& input_output_meta_map,
-                                                       bool is_inputs) const {
-  const char* const input_output_moniker = is_inputs ? "Input" : "Output";
-  const char* const feed_fetches_moniker = is_inputs ? "Feed" : "Fetch";
+                                                       ArgType arg_type) const {
+  ORT_ENFORCE(arg_type == ArgType::kInput || arg_type == ArgType::kOutput, "Valid values kInput, kOutput");
+
+  auto is_inputs = [](ArgType arg_type) -> bool { return arg_type == ArgType::kInput; };
+
+  const char* const input_output_moniker = is_inputs(arg_type) ? "input" : "output";
+  const char* const feed_fetches_moniker = is_inputs(arg_type) ? "feed" : "fetch";
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   auto is_sparse_initializer = [this](const std::string& name) -> bool {
@@ -1907,7 +1911,7 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
     const auto& input_output_ml_value = feeds_fetches[i];
 
     // For outputs the user may supply an unallocated placeholder.
-    if (!is_inputs && !input_output_ml_value.IsAllocated()) {
+    if (!is_inputs(arg_type) && !input_output_ml_value.IsAllocated()) {
       continue;
     }
 
@@ -1972,7 +1976,7 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
                                "' expected to be of type: ", static_cast<int>(expected_type->type_), " but received a sparse tensor");
       }
 #else
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, input_output_moniker, " with name ", feed_name,
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, input_output_moniker, " with name ", name,
                              " is a sparse tensor, which is not supported in this build.");
 #endif
 
@@ -2009,39 +2013,27 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
 
 common::Status InferenceSession::ValidateInputs(gsl::span<const std::string> feed_names,
                                                 gsl::span<const OrtValue> feeds) const {
-  constexpr bool inputs_true = true;
-  return ValidateInputsOutputs(feed_names, feeds, input_def_map_, inputs_true);
+  return ValidateInputsOutputs(feed_names, feeds, input_def_map_, ArgType::kInput);
 }
 
 common::Status InferenceSession::ValidateOutputs(gsl::span<const std::string> output_names,
                                                  const std::vector<OrtValue>* p_fetches) const {
-  if (p_fetches == nullptr) {
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Output vector pointer is NULL");
-  }
-
   if (output_names.empty()) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "At least one output should be requested.");
   }
 
-  const auto fetches = gsl::make_span(*p_fetches);
-
-  if (!fetches.empty() && (output_names.size() != fetches.size())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Output vector incorrectly sized: output_names.size(): ", output_names.size(),
-                           "fetches.size(): ", fetches.size());
-  }
+  const auto fetches = (p_fetches == nullptr) ? EmptySpan<const OrtValue>() : gsl::make_span(*p_fetches);
 
   if (fetches.empty()) {
     for (const auto& name : output_names) {
       if (output_def_map_.count(name) == 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Output name:", name);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid output name:", name);
       }
     }
     return Status::OK();
   }
 
-  constexpr bool inputs_false = false;
-  return ValidateInputsOutputs(output_names, fetches, output_def_map_, inputs_false);
+  return ValidateInputsOutputs(output_names, fetches, output_def_map_, ArgType::kOutput);
 }
 
 #ifdef ENABLE_TRAINING
@@ -2748,24 +2740,26 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
     }
   };
 
-  InputOutputDefMetaMap input_defs;
-  if (graph.CanOverrideInitializer()) {
-    // for IR 4 or higher it is optional to have a matching graph input for an initializer, and if one exists the
-    // initializer is explicitly overridable.
-    add_inputs_outputs(graph.GetInputsIncludingInitializers(), input_defs);
-  } else {
-    // for IR < 4 we don't allow overriding initializers so that they can be treated as constant. exclude them from
-    // the list of valid inputs by just using the GetInputs() list.
-    add_inputs_outputs(graph.GetInputs(), input_defs);
+  {
+    InputOutputDefMetaMap input_defs;
+    if (graph.CanOverrideInitializer()) {
+      // for IR 4 or higher it is optional to have a matching graph input for an initializer, and if one exists the
+      // initializer is explicitly overridable.
+      add_inputs_outputs(graph.GetInputsIncludingInitializers(), input_defs);
+    } else {
+      // for IR < 4 we don't allow overriding initializers so that they can be treated as constant. exclude them from
+      // the list of valid inputs by just using the GetInputs() list.
+      add_inputs_outputs(graph.GetInputs(), input_defs);
+    }
+    input_def_map_.swap(input_defs);
   }
-  input_def_map_.swap(input_defs);
 
-  // save outputs
   const auto& outputs = graph.GetOutputs();
-
-  InputOutputDefMetaMap output_defs;
-  add_inputs_outputs(outputs, output_defs);
-  output_def_map_.swap(output_defs);
+  {
+    InputOutputDefMetaMap output_defs;
+    add_inputs_outputs(outputs, output_defs);
+    output_def_map_.swap(output_defs);
+  }
 
   VLOGS(*session_logger_, 1) << "Done saving model metadata";
   return common::Status::OK();
