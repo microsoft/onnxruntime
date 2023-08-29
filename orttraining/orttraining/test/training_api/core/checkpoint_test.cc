@@ -281,9 +281,7 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
  * Save Optimizer states into ORT checkpoint files,
  * Then load it into ORT, compare with the initial optimizer states values.
  */
-#if defined(USE_CUDA)
-
-TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
+TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
   /// Phase 1 - Test Preparation
   /// Prepare the data and dest folder for saving checkpoint.
   /// Also cooked the data for test result comparison.
@@ -329,11 +327,17 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  std::vector<std::shared_ptr<IExecutionProvider>> cuda_provider{onnxruntime::test::DefaultCudaExecutionProvider()};
-  auto model = std::make_unique<Module>(model_uri, &state, session_option,
-                                        *env, cuda_provider);
-  auto optimizer = std::make_unique<Optimizer>(optim_uri, &state, session_option,
-                                               *env, cuda_provider);
+  std::vector<std::shared_ptr<IExecutionProvider>> providers;
+#if defined(USE_CUDA)
+  providers.push_back(onnxruntime::test::DefaultCudaExecutionProvider());
+#endif
+  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                           std::nullopt,
+                                           std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
+  auto model = std::make_unique<Module>(model_identifier, &state, session_option,
+                                        *env, providers);
+  auto optimizer = std::make_unique<Optimizer>(model_identifier, &state, session_option,
+                                               *env, providers);
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -373,7 +377,6 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
 
       ASSERT_EQ(param_tensor.DataType(), restored_tensor.DataType());
       ASSERT_EQ(param_tensor.SizeInBytes(), restored_tensor.SizeInBytes());
-      ASSERT_EQ(param_tensor.DataType(), restored_tensor.DataType());
 
       std::vector<float> state_vect;
       CpuOrtValueToVec(restored_ort_value, state_vect);
@@ -383,8 +386,6 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
     }
   }
 }
-
-#endif
 
 /**
  * Create PropertyBag with sets of properties,
