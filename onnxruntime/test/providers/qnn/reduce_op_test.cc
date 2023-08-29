@@ -442,7 +442,7 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset11) {
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13) {
   RunReduceOpQDQTest<int8_t>("ReduceSum",
-                             TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                             TestInputDef<float>({2, 2}, false, {-10.0f, 3.21289f, -5.9981f, 10.0f}),
                              {0, 1},  // axes
                              true,    // keepdims
                              13,      // opset

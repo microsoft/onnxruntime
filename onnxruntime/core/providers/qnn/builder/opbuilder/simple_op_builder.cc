@@ -219,7 +219,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                           logger, do_op_validation, GetQnnOpType(op_type));
   }
 
-  // int16 Sigmoid and Tanh require offset = 0 and scale = 1/int16_max. This checks out if you do the math.
+  // int16 Sigmoid and Tanh require specific output scale and zero-point values (regardless of floating-point range).
   const auto& output = node_unit.Outputs()[0];
   const std::string& output_name = output.node_arg.Name();
 
@@ -230,17 +230,23 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                               output_info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16;
 
   if (is_16bit_quant) {
+    const bool is_s16 = output_info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16;
     int32_t& offset = output_info.quant_param.scaleOffsetEncoding.offset;
     float& scale = output_info.quant_param.scaleOffsetEncoding.scale;
 
-    if (offset != 0) {
-      LOGS(logger, WARNING) << "QNN EP requires that 16-bit " << op_type << " operators use an offset of 0. "
-                            << "Offset for " << node_unit.Name() << " will be forced to 0.";
-      offset = 0;
+    constexpr std::array<int32_t, 2> sigmoid_offset = {0, 0};
+    constexpr std::array<float, 2> sigmoid_scale = {1.0f / 65536.0f, 1.0f / 32768.0f};
+    constexpr std::array<int32_t, 2> tanh_offset = {-32768, 0};
+    constexpr std::array<float, 2> tanh_scale = {1.0f / 32768.0f, 1.0f / 32768.0f};
+
+    const int32_t expected_offset = op_type == "Sigmoid" ? sigmoid_offset[is_s16] : tanh_offset[is_s16];
+    if (offset != expected_offset) {
+      LOGS(logger, WARNING) << "QNN EP requires that 16-bit " << op_type << " operators use an offset of "
+                            << expected_offset << ". Offset for " << node_unit.Name() << " will be overridden";
+      offset = expected_offset;
     }
 
-    const float expected_scale = output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 ? (1.0f / 65536.0f)
-                                                                                           : (1.0f / 32768.0f);
+    const float expected_scale = op_type == "Sigmoid" ? sigmoid_scale[is_s16] : tanh_scale[is_s16];
 
     if (scale != expected_scale) {
       LOGS(logger, WARNING) << "QNN EP requires that 16-bit " << op_type << " operators use an scale equal to "

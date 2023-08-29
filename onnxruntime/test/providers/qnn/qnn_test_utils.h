@@ -8,6 +8,7 @@
 #include <cmath>
 #include <unordered_map>
 #include "core/framework/provider_options.h"
+#include "core/util/qmath.h"
 
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/util/include/test_utils.h"
@@ -30,23 +31,19 @@ struct QuantParams {
   QType zero_point;
 
   static QuantParams<QType> Compute(float rmin, float rmax) {
-    if (rmin == 0.0f && rmax == 0.0f) {  // Quantizing a single zero.
-      return QuantParams<QType>{1.0f, 0};
-    }
+    // Ensure a minimum range of 0.0001 (required by QNN)
+    rmax = std::max(rmax, rmin + 0.0001f);
 
-    if (rmin == rmax) {  // One data-point (x) to quantize.
-      if (rmin < 0) {    // new range is [-x , 0.0f]
-        rmax = 0.0f;
-      } else {  // new range is [0.0f, x]
-        rmin = 0.0f;
-      }
-    }
+    // Both QNN and ORT require the range to include 0.0f
+    rmin = std::min(rmin, 0.0f);
+    rmax = std::max(rmax, 0.0f);
 
     constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
     constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
 
-    const float scale = (rmax - rmin) / (qmax - qmin);
-    const QType zero_point = static_cast<QType>(std::roundf((qmin - rmin) / scale));
+    const float scale = rmax == rmin ? 1.0f : (rmax - rmin) / (qmax - qmin);
+    const float initial_zero_point = qmin - rmin / scale;
+    const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin, std::min(qmax, initial_zero_point))));
 
     return QuantParams<QType>{scale, zero_point};
   }
@@ -233,7 +230,7 @@ void InferenceModel(const std::string& model_data, const char* log_id,
 template <typename QuantType = uint8_t>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
                                  const ProviderOptions& qnn_options, int opset_version,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err,
+                                 ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-4f,
                                  logging::Severity log_severity = logging::Severity::kERROR) {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};

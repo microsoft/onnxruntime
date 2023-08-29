@@ -258,13 +258,11 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
-  if (dq_nodes.size() < 3) {  // no bias
-    return true;
-  }
-
-  int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
-    return false;
+  if (dq_nodes.size() == 3) {  // has bias
+    int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+      return false;
+    }
   }
 
   return int16_uint16_allowed_ || (!Is16BitIntType(dt_input) && !Is16BitIntType(dt_weight));

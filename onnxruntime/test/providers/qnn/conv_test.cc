@@ -417,43 +417,110 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
                                      ExpectedEPNodeAssignment::All);
 }
 
-#if 0
-// Tests 16-bit QDQ Conv with dynamic bias.
-TEST_F(QnnHTPBackendTests, ConvU16U16S32_bias_dynamic_input) {
-  RunHTPConvOpTest<uint16_t, uint16_t>("Conv",
-                                       TestInputDef<float>({1, 1, 5, 5}, false, 0.0f, 10.0f),   // Random dynamic input
-                                       TestInputDef<float>({1, 1, 3, 3}, true, -10.0f, 10.0f),  // Random static input
-                                       TestInputDef<float>({1}, false, {2.0f}),                 // Dynamic bias = 2.0f
-                                       {1, 1},                                                  // Strides
-                                       {0, 0, 0, 0},                                            // Pads
-                                       {1, 1},                                                  // Dilations
-                                       "NOTSET",
-                                       ExpectedEPNodeAssignment::All,
-                                       true);  // Use com.microsoft QDQ ops for 16-bit
-}
-
-// Tests 16-bit activations, 8-bit weights QDQ Conv with dynamic bias.
-TEST_F(QnnHTPBackendTests, ConvU16U8S32_bias_dynamic_input) {
-  RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
-                                      TestInputDef<float>({1, 1, 5, 5}, false, 0.0f, 10.0f),   // Random dynamic input
-                                      TestInputDef<float>({1, 1, 3, 3}, true, -10.0f, 10.0f),  // Random static input
-                                      TestInputDef<float>({1}, false, {2.0f}),                 // Dynamic bias = 2.0f
-                                      {1, 1},                                                  // Strides
-                                      {0, 0, 0, 0},                                            // Pads
-                                      {1, 1},                                                  // Dilations
+// Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's Conv2d)
+// TODO: Inaccuracy detected for output 'output', element 0.
+// Output quant params: scale=6585.83056640625, zero_point=65535.
+// Expected val: -67.35833740234375
+// QNN QDQ val: -431602400 (err 431602336)
+// CPU QDQ val: 0 (err 67.35833740234375)
+TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_DynamicBias) {
+  RunHTPConvOpTest<uint16_t, int16_t>("Conv",
+                                      TestInputDef<float>({1, 1, 5, 5}, false, -10.0f, 10.0f),  // Input
+                                      TestInputDef<float>({2, 1, 3, 3}, false, -10.0f, 10.0f),  // Weights
+                                      TestInputDef<float>({1}, false, {2.0f}),                  // Bias
+                                      {1, 1},                                                   // Strides
+                                      {0, 0, 0, 0},                                             // Pads
+                                      {1, 1},                                                   // Dilations
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true);  // Use com.microsoft QDQ ops for 16-bit
 }
-#endif
+
+// Tests 16-bit QDQ Conv with dynamic weights and no bias (uses QNN's DepthWiseConv2d)
+// TODO: FAIL: Failed to finalize QNN graph. Error code 1002
+TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_NoBias) {
+  RunHTPConvOpTest<uint16_t, int16_t>("Conv",
+                                      TestInputDef<float>({1, 1, 5, 5}, false, -10.0f, 10.0f),  // Input
+                                      TestInputDef<float>({1, 1, 3, 3}, false, -10.0f, 10.0f),  // Weights
+                                      TestInputDef<float>(),                                    // Bias
+                                      {1, 1},                                                   // Strides
+                                      {0, 0, 0, 0},                                             // Pads
+                                      {1, 1},                                                   // Dilations
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      true);  // Use com.microsoft QDQ ops for 16-bit
+}
+
+// Tests 16-bit activations, 8-bit static weights QDQ Conv with static bias.
+// TODO: Inaccuracy detected for output 'output', element 2.
+// Output quant params: scale=0.0041189868934452534, zero_point=16353.
+// Expected val: 202.57948303222656
+// QNN QDQ val: 201.96627807617188 (err 0.6132049560546875)
+// CPU QDQ val: 202.028076171875 (err 0.5514068603515625)
+TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
+  RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
+                                      TestInputDef<float>({1, 1, 5, 5}, false, -10.0f, 10.0f),  // Input
+                                      TestInputDef<float>({1, 1, 3, 3}, true, -10.0f, 10.0f),   // Weights
+                                      TestInputDef<float>({1}, true, {2.0f}),                   // Bias
+                                      {1, 1},                                                   // Strides
+                                      {0, 0, 0, 0},                                             // Pads
+                                      {1, 1},                                                   // Dilations
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      true,  // Use com.microsoft QDQ ops for 16-bit
+                                      13,
+                                      0.06f);  // TODO: Inaccurate!
+}
+
+// Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
+// TODO: Inaccuracy detected for output 'output', element 2.
+// Output quant params: scale=0.0041189868934452534, zero_point=16353.
+// Expected val: 202.57948303222656
+// QNN QDQ val: 201.96627807617188 (err 0.6132049560546875)
+// CPU QDQ val: 202.028076171875 (err 0.5514068603515625)
+TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
+  RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
+                                      TestInputDef<float>({1, 1, 5, 5}, false, -10.0f, 10.0f),  // Input
+                                      TestInputDef<float>({1, 1, 3, 3}, true, -10.0f, 10.0f),   // Weights
+                                      TestInputDef<float>({1}, false, {2.0f}),                  // Bias
+                                      {1, 1},                                                   // Strides
+                                      {0, 0, 0, 0},                                             // Pads
+                                      {1, 1},                                                   // Dilations
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      true,  // Use com.microsoft QDQ ops for 16-bit
+                                      13,
+                                      0.06f);  // TODO: Inaccurate!
+}
+
+// Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
+// TODO: Inaccuracy detected for output 'output', element 0.
+// Output quant params: scale=0.0060733519494533539, zero_point=44914.
+// Expected val: -18.683261871337891
+// QNN QDQ val: -19.246452331542969 (err 0.56319046020507812)
+// CPU QDQ val: -19.210012435913086 (err 0.52675056457519531)
+TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
+  RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
+                                      TestInputDef<float>({1, 2, 5, 5}, false, -10.0f, 10.0f),  // Input
+                                      TestInputDef<float>({1, 2, 3, 3}, true, -10.0f, 10.0f),   // Weights
+                                      TestInputDef<float>(),                                    // Bias
+                                      {1, 1},                                                   // Strides
+                                      {0, 0, 0, 0},                                             // Pads
+                                      {1, 1},                                                   // Dilations
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      true,  // Use com.microsoft QDQ ops for 16-bit
+                                      13,
+                                      0.04f);  // TODO: Inaccurate!
+}
 
 // Test that dynamic weights with default bias works for Conv. This was previously not working
 // on older versions of QNN sdk.
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_DynamicWeight_NoBias) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
-                                     TestInputDef<float>({1, 3, 32, 32}, false, -10.0f, 10.0f),  // Random dynamic input
-                                     TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),    // Random dynamic weights
-                                     TestInputDef<float>(),                                      // Default bias
+                                     TestInputDef<float>({1, 3, 32, 32}, false, -10.0f, 10.0f),  // Input
+                                     TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),    // Weights
+                                     TestInputDef<float>(),                                      // Bias
                                      {1, 1},                                                     // Strides
                                      {0, 0, 0, 0},                                               // Pads
                                      {1, 1},                                                     // Dilations
