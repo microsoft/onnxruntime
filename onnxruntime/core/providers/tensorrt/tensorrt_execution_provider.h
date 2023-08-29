@@ -307,7 +307,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_ is put under PerThreadContext.
     // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
-    std::unique_ptr<CUDAGraph> cuda_graph_;
+    CUDAGraph cuda_graph_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = -1;
     // There is chance (currently only happens in CUDA EP) that the second regular run allocates GPU memory for causes like:
