@@ -439,7 +439,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   // Convert acc_o from fp32 to fp16/bf16
   cute::Tensor rO = flash::convert_type<Element>(acc_o);
   cute::Tensor sO = make_tensor(sQ.data(), typename Kernel_traits::SmemLayoutO{});  // (SMEM_M,SMEM_N)
-                                                                                    // Partition sO to match the accumulator partitioning
+  // Partition sO to match the accumulator partitioning
   auto smem_tiled_copy_O = make_tiled_copy_C(typename Kernel_traits::SmemCopyAtomO{}, tiled_mma);
   auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);  // auto smem_thr_copy_O = make_tiled_copy_C_warpcontiguousM<MMA_M>(typename Kernel_traits::SmemCopyAtomO{}, tiled_mma).get_thread_slice(tidx);
   cute::Tensor taccOrO = smem_thr_copy_O.retile_S(rO);              // ((Atom,AtomNum), MMA_M, MMA_N)
