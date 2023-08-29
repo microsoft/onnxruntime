@@ -43,11 +43,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     set(gtest_disable_pthreads ON)
   endif()
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  # Set it to ON will cause crashes in onnxruntime_test_all when onnxruntime_USE_CUDA is ON
   set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
-else()
-  set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
-endif()
   # gtest and gmock
   FetchContent_Declare(
     googletest
