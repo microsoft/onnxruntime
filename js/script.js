@@ -393,8 +393,6 @@ function ot_checkValidity(){
             $(ot_build[i]).addClass("gray"); 
         }
     }
-    console.log(isvalidcombo);
-    console.log('-------------------------------------------------------------');
 }
 
 
@@ -597,7 +595,7 @@ var ot_validCombos = {
     "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_nightly_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
     
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
-    "pip install onnxruntime-training<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "pip -m install coloredlogs flatbuffers numpy packaging protobuf sympy<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
 
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
     "pip -m install coloredlogs flatbuffers numpy packaging protobuf sympy<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
