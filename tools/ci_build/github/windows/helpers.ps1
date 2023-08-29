@@ -337,11 +337,10 @@ function Install-Pybind {
     cd build
     [string[]]$cmake_args = "..", "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-DBUILD_TESTING=OFF"
     $cmake_args += $cmake_extra_args
-    $p = Start-Process -FilePath $cmake_path -ArgumentList $cmake_args -NoNewWindow -Wait -PassThru
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "CMake command failed. Exitcode: $exitCode"
-        exit $exitCode
+    &$cmake_path $cmake_args
+    if ($lastExitCode -ne 0) {
+      Write-Host -Object "CMake command failed. Exitcode: $exitCode"
+      exit $lastExitCode
     }
 
     $msbuild_args = "-nodeReuse:false", "-nologo", "-nr:false", "-maxcpucount", "-p:UseMultiToolTask=true", "-p:configuration=`"$build_config`""
@@ -414,11 +413,10 @@ function Install-Abseil {
     [string[]]$cmake_args = ".", "-DABSL_PROPAGATE_CXX_STD=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DABSL_USE_EXTERNAL_GOOGLETEST=ON", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix"
     $cmake_args += $cmake_extra_args
 
-    $p = Start-Process -FilePath $cmake_path -ArgumentList $cmake_args -NoNewWindow -Wait -PassThru
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "CMake command failed. Exitcode: $exitCode"
-        exit $exitCode
+    &$cmake_path $cmake_args
+    if ($lastExitCode -ne 0) {
+      Write-Host -Object "CMake command failed. Exitcode: $exitCode"
+      exit $lastExitCode
     }
 
     $msbuild_args = "-nodeReuse:false", "-nologo", "-nr:false", "-maxcpucount", "-p:UseMultiToolTask=true", "-p:configuration=`"$build_config`""
@@ -482,11 +480,10 @@ function Install-UTF8-Range {
     [string[]]$cmake_args = ".", "-Dutf8_range_ENABLE_TESTS=OFF", "-Dutf8_range_ENABLE_INSTALL=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix"
     $cmake_args += $cmake_extra_args
 
-    $p = Start-Process -FilePath $cmake_path -ArgumentList $cmake_args -NoNewWindow -Wait -PassThru
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "CMake command failed. Exitcode: $exitCode"
-        exit $exitCode
+    &$cmake_path $cmake_args
+    if ($lastExitCode -ne 0) {
+      Write-Host -Object "CMake command failed. Exitcode: $exitCode"
+      exit $lastExitCode
     }
 
     $msbuild_args = "-nodeReuse:false", "-nologo", "-nr:false", "-maxcpucount", "-p:UseMultiToolTask=true", "-p:configuration=`"$build_config`""
@@ -565,13 +562,12 @@ function Install-Protobuf {
     [string[]]$cmake_args = ".", "-Dprotobuf_DISABLE_RTTI=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-Dprotobuf_USE_EXTERNAL_GTEST=ON", "-DBUILD_SHARED_LIBS=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF", "-Dprotobuf_ABSL_PROVIDER=package"
     $cmake_args += $cmake_extra_args
 
-    $p = Start-Process -FilePath $cmake_path -ArgumentList $cmake_args -NoNewWindow -Wait -PassThru
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "CMake command failed. Exitcode: $exitCode"
-        exit $exitCode
+    &$cmake_path $cmake_args
+    if ($lastExitCode -ne 0) {
+      Write-Host -Object "CMake command failed. Exitcode: $exitCode"
+      exit $lastExitCode
     }
-
+    
     $msbuild_args = "-nodeReuse:false", "-nologo", "-nr:false", "-maxcpucount", "-p:UseMultiToolTask=true", "-p:configuration=`"$build_config`""
 
     if ($use_cache) {

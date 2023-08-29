@@ -30,6 +30,14 @@ export declare namespace Test {
   }
 
   /**
+   * This interface represent a placeholder for an empty tensor. Should only be used in testing.
+   */
+  interface EmptyTensorValue {
+    data: null;
+    type: Tensor.Type;
+  }
+
+  /**
    * Represent a string to describe the current environment.
    * Used in ModelTest and OperatorTest to determine whether to run the test or not.
    */
@@ -57,8 +65,8 @@ export declare namespace Test {
 
   export interface OperatorTestCase {
     name: string;
-    inputs: readonly TensorValue[];
-    outputs: readonly TensorValue[];
+    inputs: ReadonlyArray<TensorValue|EmptyTensorValue>;
+    outputs: ReadonlyArray<TensorValue|EmptyTensorValue>;
   }
 
   export interface OperatorTestOpsetImport {
@@ -102,6 +110,12 @@ export declare namespace Test {
     [backend: string]: {[group: string]: readonly TestList.Test[]};
   }
 
+  interface EnvOptions extends Partial<Omit<Env, 'wasm'|'webgl'|'webgpu'>> {
+    wasm: Partial<Env.WebAssemblyFlags>;
+    webgl: Partial<Env.WebGLFlags>;
+    webgpu: Partial<Env.WebGpuFlags>;
+  }
+
   /**
    * Represent ONNX Runtime Web global options
    */
@@ -114,7 +128,7 @@ export declare namespace Test {
     cudaFlags?: Record<string, unknown>;
     wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
     webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-    globalEnvFlags?: Partial<Env>;
+    globalEnvFlags?: EnvOptions;
   }
 
   /**

@@ -1,0 +1,33 @@
+[
+  {
+    "name": "Simple test without bias",
+    "operator": "LayerNormalization",
+    "cases": [
+      {
+        "name": "Simple test without bias",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              -1.3416354656219482, -0.8944236636161804, 1.3416354656219482, 5.366541862487793, -1.3416354656219482,
+              -0.8944236636161804, 1.3416354656219482, 5.366541862487793
+            ],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

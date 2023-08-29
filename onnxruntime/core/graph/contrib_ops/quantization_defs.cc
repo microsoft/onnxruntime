@@ -152,23 +152,24 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, false)
         .Input(0, "x", "N-D full precision Input tensor to be quantized.", "T1")
         .Input(1, "y_scale",
-               "Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor,"
-               "which means a per-tensor or per-axis quantization. If it's a 1-D tensor, "
-               "its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
+               "Scale for doing quantization to get 'y'. It can be a scalar, which means per-tensor/layer "
+               "quantization, or a 1-D tensor for per-axis quantization.",
                "T1")
         .Input(2, "y_zero_point",
-               "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a "
-               "per-tensor"
-               "or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the "
-               "dimension value of 'axis' dimension of input 'x'.",
-               "T2")
+               "Zero point for doing quantization to get 'y'. Shape must match y_scale. Default is "
+               "uint8 with zero point of 0 if it's not specified.",
+               "T2", OpSchema::Optional)
         .Output(0, "y", "N-D quantized output tensor. It has same shape as input 'x'.", "T2")
         .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain 'x', 'y_scale' to float tensors.")
         .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"},
                         "Constrain 'y_zero_point' and 'y' to 8-bit integer tensors.")
         .SetDoc(QuantizeLinear_ver1_doc)
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          if (ctx.getNumInputs() == 3 && ctx.getInputType(2) != nullptr) {
+            propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          } else {
+            updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
+          }
 
           if (!hasInputShape(ctx, 0)) return;
 
@@ -192,21 +193,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                       AttributeProto::INT, false)
                                 .Input(0, "x", "N-D quantized Input tensor to be de-quantized.", "T1")
                                 .Input(1, "x_scale",
-                                       "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a "
-                                       "per-tensor or per-axis quantization."
-                                       "If it's a 1-D tensor, its number of elements should be equal to the dimension "
-                                       "value of 'axis' dimension of input 'x'.",
+                                       "Scale for input 'x'. It can be a scalar, which means a per-tensor/layer "
+                                       "dequantization, or a 1-D tensor for per-axis dequantization.",
                                        "T2")
                                 .Input(2, "x_zero_point",
-                                       "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a "
-                                       "per-tensor or per-axis quantization."
-                                       "If it's a 1-D tensor, its number of elements should be equal to the dimension "
-                                       "value of 'axis' dimension of input 'x'.",
-                                       "T1")
+                                       "Zero point for input 'x'. Shape must match x_scale. It's optional. "
+                                       "Zero point is 0 when it's not specified.",
+                                       "T1", OpSchema::Optional)
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
-                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"},
-                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.")
+                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int32)"},
+                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors or 32-bit "
+                                                "signed integer tensors.")
                                 .TypeConstraint("T2", {"tensor(float16)", "tensor(float)"},
                                                 "Constrain 'y', 'x_scale' to float tensors.")
                                 .SetDoc(DequantizeLinear_ver1_doc)

@@ -13,6 +13,8 @@
 #include "orttraining/training_api/ort_training_apis.h"
 #include "orttraining/training_api/training_session.h"
 
+using namespace onnxruntime::training::api;
+
 namespace {
 
 std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> CreateProviders(
@@ -26,44 +28,85 @@ std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> CreateProviders(
   return execution_providers;
 }
 
+static OrtStatus* CreateSessionAndLoadModel(_In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
+                                            _Inout_ OrtCheckpointState* checkpoint_state,
+                                            const ModelIdentifiers& model_identifiers,
+                                            std::unique_ptr<TrainingSession>& train_sess) {
+  auto chkpt_state = reinterpret_cast<CheckpointState*>(checkpoint_state);
+
+  using ProvidersType = std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>>;
+  train_sess = std::make_unique<TrainingSession>(env->GetEnvironment(),
+                                                 options == nullptr ? onnxruntime::SessionOptions() : options->value,
+                                                 options == nullptr
+                                                     ? ProvidersType()
+                                                     : CreateProviders(options->provider_factories),
+                                                 chkpt_state,
+                                                 model_identifiers,
+                                                 options == nullptr
+                                                     ? gsl::span<OrtCustomOpDomain* const>()
+                                                     : options->custom_op_domains_);
+
+  return nullptr;
+}
+
 }  // namespace
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* env,
                     _In_ const OrtSessionOptions* options, _Inout_ OrtCheckpointState* checkpoint_state,
                     _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path,
-                    _In_ const ORTCHAR_T* optimizer_model_path, _Outptr_ OrtTrainingSession** out) {
+                    _In_ const ORTCHAR_T* optimizer_model_path, _Outptr_result_maybenull_ OrtTrainingSession** out) {
   API_IMPL_BEGIN
   if (options != nullptr && options->value.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1") {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Use Env Allocators is not supported for on device training.");
   }
   std::unique_ptr<onnxruntime::training::api::TrainingSession> train_sess;
-  auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
   OrtStatus* status = nullptr;
   *out = nullptr;
 
-  ORT_TRY {
-    using ProvidersType = std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>>;
-    train_sess = std::make_unique<onnxruntime::training::api::TrainingSession>(
-        env->GetEnvironment(),
-        options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        options == nullptr ? ProvidersType() : CreateProviders(options->provider_factories),
-        chkpt_state,
-        onnxruntime::training::api::ModelIdentifiers(
-            onnxruntime::ToUTF8String(train_model_path),
-            eval_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_path))
-                            : std::nullopt,
-            optimizer_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(optimizer_model_path))
-                                 : std::nullopt),
-        options == nullptr ? gsl::span<OrtCustomOpDomain* const>() : options->custom_op_domains_);
+  ORT_ENFORCE(train_model_path != nullptr,
+              "Train model path is required to create TrainingSession, it cannot be empty.");
 
-    *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
-    });
-  }
+  auto model_identifiers = onnxruntime::training::api::ModelIdentifiers(
+      onnxruntime::ToUTF8String(train_model_path),
+      eval_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_path))
+                      : std::nullopt,
+      optimizer_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(optimizer_model_path))
+                           : std::nullopt);
 
+  ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(env, options, checkpoint_state, model_identifiers, train_sess));
+  *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSessionFromBuffer, _In_ const OrtEnv* env,
+                    _In_ const OrtSessionOptions* options, _Inout_ OrtCheckpointState* checkpoint_state,
+                    _In_ const void* train_model_data, size_t train_data_length,
+                    _In_ const void* eval_model_data, size_t eval_data_length,
+                    _In_ const void* optim_model_data, size_t optim_data_length,
+                    _Outptr_result_maybenull_ OrtTrainingSession** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::training::api::TrainingSession> train_sess;
+  OrtStatus* status = nullptr;
+  *out = nullptr;
+
+  ORT_ENFORCE(train_model_data != nullptr && train_data_length != 0,
+              "Training Session Creation failed. Train model data cannot be NULL.");
+
+  auto model_identifiers = ModelIdentifiers(gsl::make_span(reinterpret_cast<const uint8_t*>(train_model_data),
+                                                           train_data_length),
+                                            eval_data_length == 0 || eval_model_data == nullptr
+                                                ? gsl::span<const uint8_t>()
+                                                : gsl::make_span(reinterpret_cast<const uint8_t*>(eval_model_data),
+                                                                 eval_data_length),
+                                            optim_data_length == 0 || optim_model_data == nullptr
+                                                ? gsl::span<const uint8_t>()
+                                                : gsl::make_span(reinterpret_cast<const uint8_t*>(optim_model_data),
+                                                                 optim_data_length));
+
+  ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(env, options, checkpoint_state, model_identifiers, train_sess));
+  *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
   return status;
   API_IMPL_END
 }
@@ -523,6 +566,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::LoadCheckpoint,
     &OrtTrainingApis::SaveCheckpoint,
     &OrtTrainingApis::CreateTrainingSession,
+    &OrtTrainingApis::CreateTrainingSessionFromBuffer,
     &OrtTrainingApis::TrainingSessionGetTrainingModelOutputCount,
     &OrtTrainingApis::TrainingSessionGetEvalModelOutputCount,
     &OrtTrainingApis::TrainingSessionGetTrainingModelOutputName,
