@@ -224,6 +224,7 @@ quantize(const Cli& cli)
     return 0;
 }
 
+
 int
 dequantize(const Cli& cli)
 {
