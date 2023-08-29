@@ -14,7 +14,10 @@ if(Patch_FOUND AND WIN32)
 else()
   set(ABSL_PATCH_COMMAND "")
 endif()
-
+if(WIN32 AND NOT Patch_FOUND)
+  #see https://github.com/google/re2/issues/425 and https://github.com/google/re2/issues/436
+  set(ABSL_ENABLE_INSTALL ON)
+endif()
 # NB! Advancing Abseil version changes its internal namespace,
 # currently absl::lts_20230125 which affects abseil-cpp.natvis debugger
 # visualization file, that must be adjusted accordingly, unless we eliminate
