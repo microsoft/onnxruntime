@@ -300,11 +300,13 @@ void addOrtValueMethods(pybind11::module& m) {
 #ifdef USE_CUDA
         GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
 #elif USE_ROCM
-  GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
 #elif USE_CANN
-  GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCannToHostMemCpyFunction());
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCannToHostMemCpyFunction());
+#elif USE_DML
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetDmlToHostMemCpyFunction());
 #else
-  GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
         return obj;
       })

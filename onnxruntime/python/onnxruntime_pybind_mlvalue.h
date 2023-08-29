@@ -79,6 +79,10 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id);
 
 void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes);
 
+void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction();
+
 #endif
 
 #ifdef USE_CANN
