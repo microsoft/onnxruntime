@@ -89,12 +89,12 @@ export class WebGLBackend implements Backend {
   dispose(): void {
     this.glContext.dispose();
   }
-    /* eslint-disable @typescript-eslint/no-unused-vars */
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   async createTrainingSessionHandler(
       checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
       evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
       options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler> {
     throw new Error('Training not supported on Nodejs');
   }
-    /* eslint-enable @typescript-eslint/no-unused-vars */
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 }
