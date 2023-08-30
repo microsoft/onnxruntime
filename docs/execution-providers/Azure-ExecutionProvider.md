@@ -44,7 +44,7 @@ For build instructions, please see the [BUILD page](../build/eps.md#azure).
 ## Usage
 
 ### Edge and azure side by side
-In this mode, there are two models running simulaneouly. The azure model runs asynchronously by [RunAsync](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L4341) API, which is also available through [python](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/onnxruntime/python/onnxruntime_pybind_state.cc#L1759) and [csharp](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs#L1147).
+In this mode, there are two models running simultaneously. The azure model runs asynchronously by [RunAsync](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L4341) API, which is also available through [python](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/onnxruntime/python/onnxruntime_pybind_state.cc#L1759) and [csharp](https://github.com/microsoft/onnxruntime/blob/873ef8b8f0b09b49c0a7b7e2f03f3639d7418c22/csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs#L1147).
 ```python
 import os
 import onnx
