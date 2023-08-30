@@ -246,7 +246,7 @@ stages:
           --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
           --build-arg BUILD_UID=$(id -u)
           --network=host
-          --build-arg ROCM_VERSION=${{ parameters.RocmVersion }}
+          --build-arg ROCM_VERSION=$(RocmVersion)
         Repository: onnxruntimetrainingrocmbuild-rocm$(RocmVersion)
 
     - template: templates/set-version-number-variables-step.yml
