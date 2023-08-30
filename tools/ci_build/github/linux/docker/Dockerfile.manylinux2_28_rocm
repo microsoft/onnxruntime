@@ -16,7 +16,7 @@ RUN yum --enablerepo=extras install -y epel-release && dnf config-manager --set-
 RUN yum clean all
 RUN echo -e "[ROCm]\nname=ROCm\nbaseurl=https://repo.radeon.com/rocm/yum/$ROCM_VERSION/main\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/rocm.repo
 
-RUN echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/$ROCM_VERSION/rhel/7.9/main/x86_64\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/amdgpu.repo
+RUN echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/$ROCM_VERSION/rhel/8.8/main/x86_64\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/amdgpu.repo
 
 RUN yum install -y rocm-dev
 
