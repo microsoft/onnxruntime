@@ -23,25 +23,37 @@ from onnxruntime.training.utils import (
 from ._subscriber_base import RuntimeStates, SubscriberBase
 
 
-# Used to monkey patch the original function
-# Adapted from https://github.com/microsoft/DeepSpeed/blob/e8318634b4313eaad89842cf4322e1762d34ced3/deepspeed/runtime/zero/parameter_offload.py#L333
-def _setup_zero_stage3_ort_compatible_hooks(self):
-    self.hierarchy = 0
+def _get_ort_compatible_zero_stage3_hook_function(debug, stats_output_dir, stats_overwrite):
+    """Create ort compatible hook function for DeepSpeed ZeRO stage3.
 
-    from onnxruntime.training.utils.hooks import SubscriberManager, ZeROOffloadSubscriber
-    from onnxruntime.training.utils.hooks._zero_offload_subscriber import _zero_offload_one_time_initializer
+    Args:
+        debug: whether to enable convergence debugging.
+        stats_output_dir: the directory to store convergence stats.
+        stats_overwrite: whether to overwrite the stats file if it already exists.
+    """
 
-    # Each DeepSpeed engine has a separate subscriber manager.
-    self._offload_subscriber_manager = SubscriberManager()
-    self._offload_subscriber_manager.subscribe(
-        self.module, [ZeROOffloadSubscriber(self, _zero_offload_one_time_initializer)]
-    )
-    self.forward_hooks.extend(self._offload_subscriber_manager._pre_forward_hooks)
-    self.forward_hooks.extend(self._offload_subscriber_manager._post_forward_hooks)
+    # Used to monkey patch the original function
+    # Adapted from https://github.com/microsoft/DeepSpeed/blob/e8318634b4313eaad89842cf4322e1762d34ced3/deepspeed/runtime/zero/parameter_offload.py#L333
+    def _setup_zero_stage3_ort_compatible_hooks(self):
+        self.hierarchy = 0
 
-    # Add top module to stack trace
-    global FWD_MODULE_STACK  # noqa: PLW0602
-    FWD_MODULE_STACK.append(self.module)
+        from onnxruntime.training.utils.hooks import StatisticsSubscriber, SubscriberManager, ZeROOffloadSubscriber
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _zero_offload_one_time_initializer
+
+        subscribers = [ZeROOffloadSubscriber(self, _zero_offload_one_time_initializer)]
+        if debug is True:
+            subscribers.append(StatisticsSubscriber(output_dir=stats_output_dir, override_output_dir=stats_overwrite))
+        # Each DeepSpeed engine has a separate subscriber manager.
+        self._offload_subscriber_manager = SubscriberManager()
+        self._offload_subscriber_manager.subscribe(self.module, subscribers)
+        self.forward_hooks.extend(self._offload_subscriber_manager._pre_forward_hooks)
+        self.forward_hooks.extend(self._offload_subscriber_manager._post_forward_hooks)
+
+        # Add top module to stack trace
+        global FWD_MODULE_STACK  # noqa: PLW0602
+        FWD_MODULE_STACK.append(self.module)
+
+    return _setup_zero_stage3_ort_compatible_hooks
 
 
 # Adapted from https://github.com/microsoft/DeepSpeed/blob/e8318634b4313eaad89842cf4322e1762d34ced3/deepspeed/runtime/zero/linear.py#L104
@@ -86,14 +98,16 @@ try:
         _zero_offload_one_time_initializer.collect_code(DeepSpeedZeRoOffload.setup_zero_stage3_hooks)
 
     # This is the function to enable ORT ZeRO offload.
-    def configure_ort_compatible_zero_stage3():
+    def configure_ort_compatible_zero_stage3(debug=False, stats_output_dir="./", stats_overwrite=False):
         """Configure ZeRO stage3 to be ORT compatible.
 
         This function will overwrite the original DeepSpeed ZeRO stage3 hooks to make it ORT compatible.
         """
 
         # Only done once no matter how many times this function is called for different modules.
-        DeepSpeedZeRoOffload.setup_zero_stage3_hooks = _setup_zero_stage3_ort_compatible_hooks
+        DeepSpeedZeRoOffload.setup_zero_stage3_hooks = _get_ort_compatible_zero_stage3_hook_function(
+            debug, stats_output_dir, stats_overwrite
+        )
 
         from deepspeed.runtime.zero.linear import zero3_linear_wrap
 
@@ -103,7 +117,7 @@ try:
 except ImportError as e:
     warnings.warn(f"DeepSpeed import error {e}")
 
-    def configure_ort_compatible_zero_stage3():
+    def configure_ort_compatible_zero_stage3(debug=False, stats_output_dir=None, stats_overwrite=False):
         raise RuntimeError("DeepSpeed is not installed, cannot configure ORT compatible ZeRO stage3.")
 
 

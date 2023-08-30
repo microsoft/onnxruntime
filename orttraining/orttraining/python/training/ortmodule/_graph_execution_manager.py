@@ -19,7 +19,7 @@ from torch.utils.cpp_extension import ROCM_HOME
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from onnxruntime.training.utils import ORTModelInputOutputSchemaType
+from onnxruntime.training.utils import ORTModelInputOutputSchemaType, onnx_dtype_to_pytorch
 from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
@@ -147,7 +147,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             self._zero_stage3_param_map = _get_all_zero_stage3_params(self._flattened_module)
 
-            configure_ort_compatible_zero_stage3()
+            configure_ort_compatible_zero_stage3(debug=False, stats_output_dir="ort_output", stats_overwrite=True)
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
@@ -625,7 +625,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         )
 
         kwargs[STAGE3_PULL_WEIGHT_TRIGGER_NAME] = torch.zeros(
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE, dtype=STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE, device=device
+            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+            dtype=onnx_dtype_to_pytorch(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE),
+            device=device,
         ).requires_grad_()
 
         return kwargs

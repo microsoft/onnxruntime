@@ -234,9 +234,9 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 input_float_tuples.extend(list(arg))
                 continue
 
-            is_inspect_activation = (
-                func_full_qual_name == "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation"
-            )
+            from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectActivation
+
+            is_inspect_activation = func_full_qual_name == get_fully_qualified_class_name(_InspectActivation)
             if is_inspect_activation and isinstance(arg, str):
                 # _InspectActivation is a special case where the first argument is a string
                 # that is used to determine the activation name to be inspected.

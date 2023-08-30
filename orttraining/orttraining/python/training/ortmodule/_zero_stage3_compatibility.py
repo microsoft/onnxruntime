@@ -66,6 +66,10 @@ def post_processing_enable_zero_stage3_compat(
         STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
     )
 
+    from onnxruntime.training.utils.hooks._zero_offload_subscriber import ORTZeROOffloadPreForwardFunction
+
+    prefowrad_function_name = get_fully_qualified_class_name(ORTZeROOffloadPreForwardFunction)
+
     # Connect weight consumers to use the full-sized parameter output of ORTZeROOffloadPreForwardFunction.
     for graph_input in exported_model.graph.input:
         if graph_input.name not in zero_stage3_named_params:
@@ -82,10 +86,7 @@ def post_processing_enable_zero_stage3_compat(
                 continue
 
             func_name = _get_func_name(c)
-            if (
-                func_name
-                == "onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction"
-            ):
+            if func_name == prefowrad_function_name:
                 assert (
                     pre_forward_pythonop_node is None
                 ), "Multiple ORTZeROOffloadPreForwardFunction nodes found, it should not happen"

@@ -29,14 +29,6 @@ def no_increase_global_step():
     finally:
         ORT_NO_INCREASE_GLOBAL_STEP[0] = False
 
-    @staticmethod
-    def infer_shape(
-        node: onnx.NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
-        return tensor_input_shapes, tensor_input_dtypes
-
 
 class _IncrementStep(torch.autograd.Function):
     """This class is used to manage the global execution step, e.g.
