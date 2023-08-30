@@ -12,10 +12,10 @@ steps:
     debugMode: false
   continueOnError: true
 
-- task: BinSkim@3
+- task: BinSkim@4
   displayName: 'Run BinSkim'
   inputs:
-    arguments: 'analyze $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.dll  --recurse --verbose'
+    AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
   continueOnError: true
 
 - task: DeleteFiles@1

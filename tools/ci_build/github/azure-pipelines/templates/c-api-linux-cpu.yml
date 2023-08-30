@@ -19,6 +19,9 @@ parameters:
 
 - name: OnnxruntimeNodejsBindingArch
   type: string
+  values:
+  - arm64
+  - x64
 
 - name: PoolName
   type: string
