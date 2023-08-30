@@ -74,7 +74,10 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
       options.set("autoPad", emscripten::val("same-upper"));
     }
   } else {
-    options.set("padding", emscripten::val::array(pads));
+    // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
+    // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
+    const std::vector<int32_t> padding{pads[0], pads[2], pads[1], pads[3]};
+    options.set("padding", emscripten::val::array(padding));
   }
 
   // Add bias if present.
