@@ -236,9 +236,7 @@ stages:
   jobs:
   - job: Test_CPU_EP
     pool:
-      # We need macOS-12 to run the Android emulator for now.
-      # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
     workspace:
       clean: all
     condition: succeeded()
@@ -307,9 +305,7 @@ stages:
 
   - job: Test_NNAPI_EP
     pool:
-      # We need macOS-12 to run the Android emulator for now.
-      # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
     timeoutInMinutes: 90
     workspace:
       clean: all
@@ -402,9 +398,7 @@ stages:
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
-      # We need macOS-12 to run the Android emulator for now.
-      # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
     timeoutInMinutes: 180
     workspace:
       clean: all

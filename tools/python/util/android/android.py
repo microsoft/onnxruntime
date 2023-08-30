@@ -111,6 +111,8 @@ def start_emulator(
             "-no-audio",
             "-no-boot-anim",
             "-no-window",
+            "-gpu",
+            "swiftshader_indirect",
         ]
         if extra_args is not None:
             emulator_args += extra_args

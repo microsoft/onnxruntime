@@ -50,9 +50,7 @@ stages:
   jobs:
   - job: ReactNative_CI
     pool:
-      # We need macOS-12 to run the Android emulator for now.
-      # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
     variables:
       runCodesignValidationInjection: false
       TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
