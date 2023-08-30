@@ -212,7 +212,7 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
         qkv = torch.randn(batch_size, sequence_length, 3, num_heads, head_size, device=device, dtype=dtype)
         q, k, v = qkv.unbind(dim=2)
 
-        # configuous is required for IO Binding
+        # contiguous is required for IO Binding
         q = torch.reshape(q, (config.batch_size, config.sequence_length, -1)).contiguous()
         k = torch.reshape(k, (config.batch_size, config.kv_sequence_length, -1)).contiguous()
         v = torch.reshape(v, (config.batch_size, config.kv_sequence_length, -1)).contiguous()
