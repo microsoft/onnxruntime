@@ -1,4 +1,3 @@
-##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -25,12 +24,3 @@ pr:
     - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
-#### end trigger ####
-
-stages:
-- template: templates/mac-cpu-packaging-pipeline.yml
-  parameters:
-    AllowReleasedOpsetOnly: 0
-    BuildForAllArchs: false
-    AdditionalBuildFlags: --build_objc --enable_language_interop_ops --build_wheel --use_xnnpack
-    WithCache: true
