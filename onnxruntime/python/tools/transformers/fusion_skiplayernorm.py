@@ -45,8 +45,10 @@ class FusionSkipLayerNormalization(Fusion):
             if self.model.get_initializer(add_input) is not None:
                 return
 
-        # The number of input node of add should be 2
-        if len(self.model.get_parents(add)) != 2:
+        # The number of input node of add should be 2 or 1 with the second input as a graph input
+        parents_to_add = self.model.get_parents(add)
+        if len(parents_to_add) != 2 and (len(parents_to_add) != 1 and add.input[0] in self.model.get_graphs_input_names()):
+            logger.debug("Number of input nodes to Add should either be 2 or 1 with the other input being a graph input")
             return
 
         # To avoid an Add node have two children of LayerNormalization, we shall only fuse one SkipLayerNormalization

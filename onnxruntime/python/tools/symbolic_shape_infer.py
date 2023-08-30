@@ -206,9 +206,11 @@ class SymbolicShapeInference:
             "PackedAttention": self._infer_PackedAttention,
             "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
             "PythonOp": self._infer_PythonOp,
+            "QuickGelu": self._infer_FastGelu,
             "RelativePositionBias": self._infer_RelativePositionBias,
             "RemovePadding": self._infer_RemovePadding,
             "RestorePadding": self._infer_RestorePadding,
+            "RotaryEmbedding": self._infer_RotaryEmbedding,
             "SimplifiedLayerNormalization": self._infer_LayerNormalization,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
@@ -463,6 +465,7 @@ class SymbolicShapeInference:
             "BiasSplitGelu",
             "BiasAdd",
             "NhwcConv",
+            "QuickGelu",
         ]
 
         if not skip_infer:
@@ -2308,6 +2311,9 @@ class SymbolicShapeInference:
     def _infer_Gelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
 
+    def _infer_QuickGelu(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
     def _infer_GemmFastGelu(self, node):  # noqa: N802
         self._compute_matmul_shape(node)
 
@@ -2377,6 +2383,9 @@ class SymbolicShapeInference:
             vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, output_shape))
 
     def _infer_BiasAdd(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
+    def _infer_RotaryEmbedding(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
 
     def _infer_PythonOp(self, node):  # noqa: N802
@@ -2751,13 +2760,13 @@ class SymbolicShapeInference:
                             if i in self.known_vi_:
                                 logger.debug(self.known_vi_[i])
                             else:
-                                logger.debug(f"not in knwon_vi_ for {i}")
+                                logger.debug(f"not in known_vi_ for {i}")
                         logger.debug("node outputs:")
                         for o in node.output:
                             if o in self.known_vi_:
                                 logger.debug(self.known_vi_[o])
                             else:
-                                logger.debug(f"not in knwon_vi_ for {o}")
+                                logger.debug(f"not in known_vi_ for {o}")
                         if self.auto_merge_ and not out_type_undefined:
                             logger.debug("Merging: " + str(self.suggested_merge_))
                     return False
