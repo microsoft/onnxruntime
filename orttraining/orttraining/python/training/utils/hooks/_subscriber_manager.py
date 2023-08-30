@@ -47,8 +47,9 @@ class _IncrementStep(torch.autograd.Function):
         ctx.current_step = run_ctx.global_states.execution_step
         ctx.run_ctx = run_ctx
 
-        if ctx.current_step >= 0:
-            print(f"{'='*6} Completed forward pass for STEP {ctx.current_step} {'='*6}")
+        # Uncomment the following line for debugging purposes.
+        # if ctx.current_step >= 0:
+        #     print(f"{'='*6} Completed forward pass for STEP {ctx.current_step} {'='*6}")
 
         if ORT_NO_INCREASE_GLOBAL_STEP[0] is False:
             ctx.run_ctx.global_states.execution_step += 1
