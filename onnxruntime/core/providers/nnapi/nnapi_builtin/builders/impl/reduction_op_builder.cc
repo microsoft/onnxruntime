@@ -100,55 +100,49 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   }
 
   // Add ReduceMean operation
-  if (!axes.empty()) {
-    InlinedVector<uint32_t> input_indices;
-    input_indices.push_back(operand_indices.at(input));  // data
 
-    const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
-    Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
-    const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
+  InlinedVector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));  // data
 
-    input_indices.push_back(operand_indices.at(axes_name));  // axes
+  const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
+  Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
+  const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
 
-    int32_t input_rank = static_cast<int32_t>(input_shape.size());
+  input_indices.push_back(operand_indices.at(axes_name));  // axes
 
-    // Make output dimensions
-    InlinedVector<uint32_t> output_dimen;
-    if (keepdims) {
-      output_dimen.reserve(input_rank);
+  int32_t input_rank = static_cast<int32_t>(input_shape.size());
+
+  // Make output dimensions
+  InlinedVector<uint32_t> output_dimen;
+  if (keepdims) {
+    output_dimen.reserve(input_rank);
+  } else {
+    output_dimen.reserve(input_rank - axes.size());
+  }
+
+  for (int32_t i = 0; i < input_rank; i++) {
+    if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
+      output_dimen.push_back(input_shape[i]);
     } else {
-      output_dimen.reserve(input_rank - axes.size());
-    }
-
-    for (int32_t i = 0; i < input_rank; i++) {
-      if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
-        output_dimen.push_back(input_shape[i]);
-      } else {
-        if (keepdims) {
-          output_dimen.push_back(1);
-        }
+      if (keepdims) {
+        output_dimen.push_back(1);
       }
     }
-
-    // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced,
-    // NNAPI requires the output shape to be {1}. (otherwise NNAPI will treat it as dynamic shape.)
-    if (output_dimen.empty())
-      output_dimen.push_back(1);
-
-    shaper.AddShape(output, output_dimen);
-
-    ADD_SCALAR_OPERAND(model_builder, input_indices, keepdims ? 1 : 0);
-
-    const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
-                                                   {output}, {output_operand_type}));
-  } else {
-    // If `axes` is still empty at this point, meaning that it's ReduceMean-18 and attribute `noop_with_empty_axes` specifies as 1,
-    // treat as an Identity op here.
-    const OperandType output_operand_type(operand_types.at(input).type, input_shape);
-    model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   }
+
+  // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced,
+  // NNAPI requires the output shape to be {1}. (otherwise NNAPI will treat it as dynamic shape.)
+  if (output_dimen.empty())
+    output_dimen.push_back(1);
+
+  shaper.AddShape(output, output_dimen);
+
+  ADD_SCALAR_OPERAND(model_builder, input_indices, keepdims ? 1 : 0);
+
+  const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                 {output}, {output_operand_type}));
 
   return Status::OK();
 }
