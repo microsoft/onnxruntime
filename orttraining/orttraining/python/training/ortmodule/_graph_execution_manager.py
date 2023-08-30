@@ -20,6 +20,7 @@ import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.training.utils import ORTModelInputOutputSchemaType
+from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
 from ._custom_autograd_function_exporter import _post_process_after_export
@@ -139,6 +140,10 @@ class GraphExecutionManager(GraphExecutionInterface):
             from onnxruntime.training.ort_triton import register_triton_op_executor
 
             register_triton_op_executor()
+
+        if self._runtime_options.enable_zero_stage3_support:
+            # Cannot toggle feature enabling/disabling after the first time enabled.
+            configure_ort_compatible_zero_stage3()
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
@@ -281,7 +286,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             # All required models have already been exported previously
             return False
         self._set_device_from_module(inputs, kwargs)
-        self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
+
+        from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
+
+        with no_increase_global_step():
+            self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(
                 self._debug_options.save_onnx_models.path,
@@ -311,7 +320,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # WARNING/ERROR -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # Be noted: rank 0 log only is controlled by logger configured in _logger.py
         torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
-        self._logger.info("Exporting the PyTorch model to ONNX...")
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
@@ -326,6 +334,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
         self._flattened_module._input_info = self._input_info
+
+        self._logger.info("Exporting the PyTorch model to ONNX...")
 
         # Leverage cached model if available
         cache_dir = self._runtime_options.ortmodule_cache_dir
@@ -658,6 +668,14 @@ class GraphExecutionManager(GraphExecutionInterface):
                     f"Use offline tuning results from {self._runtime_options.tuning_results_path}",
                 )
             )
+
+        feature_map.append(
+            (
+                "ZeRO Stage3 Support",
+                self._runtime_options.enable_zero_stage3_support,
+                "Enable/Disable with env ORTMODULE_ENABLE_ZERO_STAGE3=1/0",
+            )
+        )
 
         mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
         mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"
