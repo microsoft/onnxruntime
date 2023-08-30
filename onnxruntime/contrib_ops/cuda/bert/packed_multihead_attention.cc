@@ -45,8 +45,12 @@ PackedMultiHeadAttention<T>::PackedMultiHeadAttention(const OpKernelInfo& info)
 #if USE_FLASH_ATTENTION
   disable_flash_attention_ = sizeof(T) != 2 || onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
                                                    attention::kDisableFlashAttention, false);
+  min_seq_len_for_flash_attention_packed_qkv_ = ParseEnvironmentVariableWithDefault<int>(
+      attention::kMinSeqLenForFlashAttentionPackedQKV,
+      attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
 #else
   disable_flash_attention_ = true;
+  min_seq_len_for_flash_attention_packed_qkv_ = 0;
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -247,6 +251,12 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                                            parameters.head_size,
                                                            parameters.num_heads,
                                                            parameters.num_heads);
+
+    // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
+    if (use_flash_attention && key == nullptr && value == nullptr &&
+        parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
+      use_flash_attention = false;
+    }
   }
 #endif
 

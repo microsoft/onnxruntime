@@ -198,7 +198,13 @@ def get_sm8x_kernel_name(config: Config) -> str:
     # This classification is for Nvidia GPU of Compute Capability 8.* like A100.
     # Note that some kernel might not exist in older or newer GPUs.
     if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
-        return "Flash"
+        if config.input_format == InputFormats.QKV_BSN3H:
+            min_seq_len = os.getenv("ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV")
+            min_length = int(min_seq_len) if min_seq_len is not None else 513
+            if config.sequence_length >= min_length:
+                return "Flash"
+        else:
+            return "Flash"
 
     if (os.getenv("ORT_DISABLE_FUSED_CROSS_ATTENTION") != "1" and config.kv_sequence_length <= 128) or (
         os.getenv("ORT_DISABLE_FUSED_ATTENTION") != "1"
@@ -255,6 +261,7 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
     print("Environment Variables:")
     env_names = [
         "ORT_DISABLE_FLASH_ATTENTION",
+        "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV",
         "ORT_DISABLE_FUSED_ATTENTION",
         "ORT_DISABLE_TRT_FLASH_ATTENTION",
         "ORT_ENABLE_FUSED_CAUSAL_ATTENTION",

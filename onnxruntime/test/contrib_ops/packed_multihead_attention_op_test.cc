@@ -187,7 +187,9 @@ static void RunPackedMultiHeadAttentionTest(
 #if USE_FLASH_ATTENTION
   if (kernel_type == AttentionKernelType::AttentionKernel_FlashAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{{onnxruntime::contrib::attention::kDisableFlashAttention, "0"}}};
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+            {onnxruntime::contrib::attention::kMinSeqLenForFlashAttentionPackedQKV, "0"}}};
     InvokePackedMultiHeadAttentionTest(true, true);
   }
 #endif
