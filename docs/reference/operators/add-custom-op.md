@@ -82,7 +82,7 @@ int main() {
 ```
 A "Compute" function is required for the struct to run as a custom op.
 
-NOTE, for both cases:
+For both cases, note:
 
 - Inputs need to be declared as const references.
 - Outputs need to be declared as non-const references.
