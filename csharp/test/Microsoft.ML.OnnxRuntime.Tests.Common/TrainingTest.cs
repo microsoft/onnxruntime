@@ -530,6 +530,90 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             TrainingUtils.SetSeed(8888);
         }
 
+        [Fact(DisplayName = "TestGetParameter")]
+        public void TestGetParameter()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                var parameter = state.GetParameter("fc1.weight");
+                cleanUp.Add(parameter);
+
+                Assert.NotNull(parameter);
+                var typeShape = parameter.GetTensorTypeAndShape();
+
+                Assert.Equal(2, typeShape.DimensionsCount);
+                var fetchedShape = typeShape.Shape;
+                Assert.Equal(500, fetchedShape[0]);
+                Assert.Equal(784, fetchedShape[1]);
+            }
+        }
+
+        [Fact(DisplayName = "TestUpdateParameter")]
+        public void TestUpdateParameter()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                var parameter = state.GetParameter("fc1.weight");
+                cleanUp.Add(parameter);
+
+                Assert.NotNull(parameter);
+                var typeShape = parameter.GetTensorTypeAndShape();
+
+                Assert.Equal(2, typeShape.DimensionsCount);
+                var fetchedShape = typeShape.Shape;
+                Assert.Equal(500, fetchedShape[0]);
+                Assert.Equal(784, fetchedShape[1]);
+
+                float maxVal = 20;
+                Random randNum = new Random();
+                float[] updated_parameter_buffer = Enumerable
+                    .Repeat(0, 500 * 784)
+                    .Select(i => maxVal * (float)randNum.NextDouble())
+                    .ToArray();
+
+                var updated_parameter = OrtValue.CreateTensorValueFromMemory(updated_parameter_buffer, fetchedShape);
+                cleanUp.Add(updated_parameter);
+
+                state.UpdateParameter("fc1.weight", updated_parameter);
+                var current_parameter = state.GetParameter("fc1.weight");
+                cleanUp.Add(current_parameter);
+
+                var current_parameter_tensor = current_parameter.GetTensorDataAsSpan<float>().ToArray();
+                Assert.Equal(updated_parameter_buffer, current_parameter_tensor);
+                Assert.NotEqual(parameter.GetTensorDataAsSpan<float>().ToArray(), current_parameter_tensor);
+
+                state.UpdateParameter("fc1.weight", parameter);
+                current_parameter = state.GetParameter("fc1.weight");
+                cleanUp.Add(current_parameter);
+
+                current_parameter_tensor = current_parameter.GetTensorDataAsSpan<float>().ToArray();
+                Assert.Equal(parameter.GetTensorDataAsSpan<float>().ToArray(), current_parameter_tensor);
+                Assert.NotEqual(updated_parameter_buffer, current_parameter_tensor);
+            }
+        }
+
         internal class FloatComparer : IEqualityComparer<float>
         {
             private float atol = 1e-3f;
