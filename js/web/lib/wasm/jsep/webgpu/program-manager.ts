@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {tensorDataTypeEnumToString} from '../../wasm-common';
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
 import {TensorView} from '../tensor';
@@ -104,11 +105,11 @@ export class ProgramManager {
         this.backend.gpuDataManager.release(syncData.id);
         let inputShapes = '';
         inputsTensorView.forEach((value, i) => {
-          inputShapes += `input[${i}]: ${value.dims}, `;
+          inputShapes += `input[${i}]: ${value.dims} | ${tensorDataTypeEnumToString(value.dataType)}, `;
         });
         let outputShapes = '';
         buildArtifact.programInfo.outputs.forEach((value, i) => {
-          outputShapes += `output[${i}]: ${value.dims}, `;
+          outputShapes += `output[${i}]: ${value.dims} | ${tensorDataTypeEnumToString(value.dataType)}, `;
         });
         // eslint-disable-next-line no-console
         console.log(`[profiling] kernel "${kernelName}" ${inputShapes}${outputShapes}execution time: ${
