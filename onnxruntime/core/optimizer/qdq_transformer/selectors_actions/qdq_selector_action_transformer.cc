@@ -105,8 +105,8 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // TODO: Enable 16-bit types in selector when unary QLinear* ops support 16-bit.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>();
+  std::vector<const char*> providers = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
                                                           {"LeakyRelu", {}},
@@ -123,17 +123,31 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 void BinaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 4 nodes. 2 x DQ for inputs, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
-  const std::string action_name{"2DQ"};
-  std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // TODO: Enable 16-bit types in selector when binary QLinear* ops support 16-bit.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>();
-  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
-                                                         {{"Add", {}},
-                                                          {"Mul", {}}},
-                                                         std::move(selector),
-                                                         std::move(action));
+  {
+    const std::string action_name{"2DQ_Mul"};
+    std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
+
+    std::vector<const char*> providers = {kCpuExecutionProvider};
+    std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>(providers);
+    qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                           {{"Mul", {}}},
+                                                           std::move(selector),
+                                                           std::move(action));
+  }
+
+  {
+    const std::string action_name{"2DQ_Add"};
+    std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
+
+    std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>();
+
+    qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                            {{"Add", {}}},
+                                                            std::move(selector),
+                                                            std::move(action));
+  }
 
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
@@ -214,8 +228,8 @@ void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::GemmReplaceWithQuant>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // TODO: Enable 16-bit types in selector when QGemm supports 16-bit.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::GemmSelector>();
+  std::vector<const char*> providers = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::GemmSelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Gemm", {}}},
                                                          std::move(selector),
@@ -235,8 +249,9 @@ void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::WhereReplaceWithQLinear>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // TODO: Enable 16-bit types in selector when QLinearWhere supports 16-bit.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::WhereSelector>();
+
+  std::vector<const char*> providers = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::WhereSelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Where", {}}},
                                                          std::move(selector),
@@ -271,8 +286,8 @@ QDQSelectorActionTransformer::QDQSelectorActionTransformer(
           "QDQSelectorActionTransformer",
           CreateSelectorActionRegistry(is_int8_allowed),
           apply_context,
-          // this transformer is only compatible with the CPU EP
-          {kCpuExecutionProvider}} {
+          // this transformer is only compatible with the CPU and DML EP
+          {kCpuExecutionProvider, kDmlExecutionProvider}} {
 }
 
 }  // namespace onnxruntime

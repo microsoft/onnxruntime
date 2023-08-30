@@ -239,12 +239,15 @@ class BaseSelector : public NodeSelector {
 
   // We std::move SelectorActionRegistry into the SelectorActionTransformer so this class needs to have a move ctor
   BaseSelector(BaseSelector&& rhs) noexcept
-      : node_group_selector_{std::move(rhs.node_group_selector_)} {
+      : node_group_selector_{std::move(rhs.node_group_selector_)},
+        compatible_providers_{std::move(rhs.compatible_providers_)} {
   }
 
  protected:
-  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector)
-      : node_group_selector_{std::move(node_group_selector)} {}
+  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector, std::vector<const char*> compatible_providers = {})
+      : node_group_selector_{std::move(node_group_selector)} {
+    compatible_providers_.assign(compatible_providers.begin(), compatible_providers.end());
+  }
 
   // override if you need to adjust the values in NodesToOptimize.
   // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs
@@ -253,6 +256,7 @@ class BaseSelector : public NodeSelector {
 
  private:
   std::unique_ptr<NodeGroupSelector> node_group_selector_;
+  std::vector<std::string> compatible_providers_;
 };
 
 class DropQDQNodesSelector : public BaseSelector {
@@ -269,14 +273,14 @@ class DropDQNodesSelector : public BaseSelector {
 
 class UnarySelector : public BaseSelector {
  public:
-  explicit UnarySelector(bool allow_16bit = false)
-      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit)) {}
+  explicit UnarySelector(std::vector<const char*> compatible_providers, bool allow_16bit = false)
+      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit), compatible_providers) {}
 };
 
 class BinarySelector : public BaseSelector {
  public:
-  explicit BinarySelector(bool allow_16bit = false)
-      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit)) {}
+  explicit BinarySelector(std::vector<const char*> compatible_providers = {}, bool allow_16bit = false)
+      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit), compatible_providers) {}
 };
 
 // Variadic DQ nodes -> node -> Q
@@ -307,8 +311,8 @@ class ConvSelector : public BaseSelector {
 
 class WhereSelector : public BaseSelector {
  public:
-  explicit WhereSelector(bool allow_16bit = false)
-      : BaseSelector(std::make_unique<WhereNodeGroupSelector>(allow_16bit)) {}
+  explicit WhereSelector(std::vector<const char*> compatible_providers = {}, bool allow_16bit = false)
+      : BaseSelector(std::make_unique<WhereNodeGroupSelector>(allow_16bit), compatible_providers) {}
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
@@ -323,8 +327,8 @@ class MatMulSelector : public BaseSelector {
 // Output: optional Q node for Y
 class GemmSelector : public BaseSelector {
  public:
-  explicit GemmSelector(bool allow_16bit = false)
-      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(allow_16bit)) {}
+  explicit GemmSelector(std::vector<const char*> compatible_providers = {}, bool allow_16bit = false)
+      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(allow_16bit), compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
