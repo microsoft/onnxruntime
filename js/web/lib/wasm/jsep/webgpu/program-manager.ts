@@ -105,14 +105,14 @@ export class ProgramManager {
         this.backend.gpuDataManager.release(syncData.id);
         let inputShapes = '';
         inputsTensorView.forEach((value, i) => {
-          inputShapes += `input[${i}]: ${value.dims} | ${tensorDataTypeEnumToString(value.dataType)}, `;
+          inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
         });
         let outputShapes = '';
         buildArtifact.programInfo.outputs.forEach((value, i) => {
-          outputShapes += `output[${i}]: ${value.dims} | ${tensorDataTypeEnumToString(value.dataType)}, `;
+          outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
         });
         // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelName}" ${inputShapes}${outputShapes}execution time: ${
+        console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
             endTime - startTime} ns`);
       });
     }
