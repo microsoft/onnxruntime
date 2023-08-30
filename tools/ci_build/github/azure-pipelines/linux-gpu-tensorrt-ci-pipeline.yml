@@ -79,20 +79,22 @@ jobs:
                   -e BUILD_BUILDNUMBER \
                   -e CCACHE_DIR=/cache \
                   onnxruntimetensorrt86gpubuild \
-                  /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                    --build_dir /build --cmake_generator Ninja \
-                    --config Release \
-                    --skip_submodule_sync \
-                    --build_shared_lib \
-                    --parallel \
-                    --build_wheel \
-                    --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
-                    --enable_pybind --build_java \
-                    --use_tensorrt --tensorrt_home /usr \
-                    --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc CMAKE_CUDA_ARCHITECTURES=75 \
-                    --use_cache \
-                     ccache -sv \
-                     ccache -z
+                  /bin/bash -c "
+                    cccache -s; \
+                      /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                      --build_dir /build --cmake_generator Ninja \
+                      --config Release \
+                      --skip_submodule_sync \
+                      --build_shared_lib \
+                      --parallel \
+                      --build_wheel \
+                      --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
+                      --enable_pybind --build_java \
+                      --use_tensorrt --tensorrt_home /usr \
+                      --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc CMAKE_CUDA_ARCHITECTURES=75 \
+                      --use_cache; \
+                     ccache -sv; \
+                     ccache -z"
             workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
