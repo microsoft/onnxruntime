@@ -218,12 +218,20 @@ quantize(const Cli& cli)
         } else {
             buf = std::cout.rdbuf();
         }
+#if defined(__GNUC__) && __GNUC__ >= 12
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored \
+    "-Wdangling-pointer"  // TODO: suppress warning about dangling pointer until we have a fix
         std::ostream stream(buf);
+#pragma GCC diagnostic pop
+#else
+        std::ostream stream(buf);
+#endif
+
         writeUint8Txt(stream, dstbuf.data(), dstbuf.size());
     }
     return 0;
 }
-
 
 int
 dequantize(const Cli& cli)
