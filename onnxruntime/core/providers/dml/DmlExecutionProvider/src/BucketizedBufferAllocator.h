@@ -92,7 +92,7 @@ namespace Dml
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
 
-    #if _DEBUG
+    #ifdef _DEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet
         std::map<size_t, AllocationInfo*> m_outstandingAllocationsById;
     #endif
