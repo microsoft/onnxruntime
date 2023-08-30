@@ -168,6 +168,7 @@ CMD ["/bin/bash"]
 #Install ccache
 RUN mkdir -p /tmp/ccache && \
     cd /tmp/ccache && \
+    yum install wget -y && \
     wget -q -O - https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz | tar --strip 1 -J -xf - && \
     cp /tmp/ccache/ccache /usr/bin && \
     rm -rf /tmp/ccache
