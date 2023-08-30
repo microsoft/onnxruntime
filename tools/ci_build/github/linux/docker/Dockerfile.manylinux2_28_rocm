@@ -9,7 +9,8 @@ FROM $BASEIMAGE AS base_image
 ARG ROCM_VERSION=5.5
 
 # Enable epel-release repositories
-RUN yum --enablerepo=extras install -y epel-release
+# See: https://github.com/ROCm-Developer-Tools/HIP/issues/2330
+RUN yum --enablerepo=extras install -y epel-release && dnf config-manager --set-enabled powertools
 
 # Install the ROCm rpms
 RUN yum clean all
