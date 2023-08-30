@@ -174,7 +174,7 @@ export const createConv2DMatMulProgramInfo =
       const dispatch = [
         Math.ceil(dispatchX / workGroupSize[0] / elementsPerThread[0]),
         Math.ceil(dispatchY / workGroupSize[1] / elementsPerThread[1]),
-        Math.ceil(batchSize / workGroupSize[2] / elementsPerThread[1])
+        Math.ceil(batchSize / workGroupSize[2] / elementsPerThread[2])
       ];
 
       LOG_DEBUG('verbose', () => `[conv2d_mm_webgpu] dispatch = ${dispatch}`);
@@ -242,9 +242,10 @@ export const createConv2DMatMulProgramInfo =
                 isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, undefined, false, elementsSize[0],
                 elementsSize[1], elementsSize[2])}
             ${
-            isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, !isChannelsLast, tileInner) :
-                     makeMatMulPackedSource(
-                         elementsPerThread, workGroupSize, !isChannelsLast, tileInner, false, undefined,
-                         sequentialAccessByThreads)}`
+            isVec4 ?
+                makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, undefined, !isChannelsLast, tileInner) :
+                makeMatMulPackedSource(
+                    elementsPerThread, workGroupSize, undefined, !isChannelsLast, tileInner, false, undefined,
+                    sequentialAccessByThreads)}`
       };
     };

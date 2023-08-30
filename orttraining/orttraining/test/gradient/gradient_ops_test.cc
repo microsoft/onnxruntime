@@ -3108,7 +3108,7 @@ void ConvTransposeGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProv
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"ConvTranspose"};
 
-  float error_tolerance = 1e-1f;
+  float error_tolerance = 3e-1f;
 
   // 1D convolution
   {

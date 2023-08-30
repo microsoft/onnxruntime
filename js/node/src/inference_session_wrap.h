@@ -16,6 +16,12 @@ public:
 
 private:
   /**
+   * [sync] list supported backend list
+   * @returns array with objects { "name": "cpu", requirementsInstalled: true }
+   */
+  static Napi::Value ListSupportedBackends(const Napi::CallbackInfo &info);
+
+  /**
    * [sync] create the session.
    * @param arg0 either a string (file path) or a Uint8Array
    * @returns nothing
