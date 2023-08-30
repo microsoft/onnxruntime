@@ -23,6 +23,9 @@ parameters:
   type: string
   default: ''
 
+# We only have CUDA/TRT on x64. We do not have a build for CUDA/TRT for ARM64.
+# Therefore this file does not have an `OnnxruntimeNodejsBindingArch` parameter
+  
 stages:
 - stage: Linux_C_API_Packaging_GPU_TensorRT_x64
   dependsOn: []
@@ -70,7 +73,7 @@ stages:
       - ${{ if eq(parameters.buildNodejs, 'true') }}:
           - template: nodejs-artifacts-package-and-publish-steps-posix.yml
             parameters:
-              arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
+              arch: 'x64'
               os: 'linux'
               artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
 

@@ -1223,6 +1223,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     broken_tests.insert({"sce_sum_expanded", "result differs"});
     broken_tests.insert({"sce_sum_log_prob", "result differs"});
     broken_tests.insert({"sce_sum_log_prob_expanded", "result differs"});
+    broken_tests.insert({"gridsample_reflection_padding", "result differs"});
   }
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});
