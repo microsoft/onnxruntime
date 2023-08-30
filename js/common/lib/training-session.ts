@@ -10,39 +10,13 @@ import {TrainingSession as TrainingSessionImpl} from './training-session-impl.js
  * Represent a runtime instance of an ONNX model.
  */
 export interface TrainingSession {
-  // #region run()
-
-  /**
-   * Run TrainStep asynchronously with the given feeds and options.
-   *
-   * @param feeds - Representation of the model input. See type description of `InferenceSession.InputType` for detail.
-   * @param options - Optional. A set of options that controls the behavior of model training.
-   * @returns A promise that resolves to an error code
-   */
-  runTrainStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
-      Promise<InferenceSession.ReturnType>;
-
-  /**
-   * Run a single train step with the given inputs and options.
-   *
-   * @param feeds - Representation of the model input.
-   * @param fetches - Representation of the model output.
-   * detail.
-   * @param options - Optional. A set of options that controls the behavior of model inference.
-   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding values.
-   */
-  runTrainStep(
-      feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
-      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
-
-  // #endregion
-
   // #region release()
 
   /**
    * Release the inference session and the underlying resources.
    */
   release(): Promise<void>;
+  // #endregion
 
   // #region metadata
 
@@ -55,6 +29,7 @@ export interface TrainingSession {
    * Get output names of the loaded model.
    */
   readonly outputNames: readonly string[];
+  // #endregion
 }
 
 export interface TrainingSessionFactory {

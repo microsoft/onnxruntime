@@ -53,13 +53,6 @@ export declare namespace Env {
      * @defaultValue `false`
      */
     proxy?: boolean;
-
-    /**
-     * Set or get a boolean value indicating whether to enable training. If set to true, training will be enabled.
-     *
-     * @defaultValue `false`
-     */
-    enableTraining?: boolean;
   }
 
   export interface WebGLFlags {

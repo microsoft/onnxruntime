@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
+import {Backend, InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
 import {Platform} from 'react-native';
 
 import {binding, Binding, JSIBlob, jsiHelper} from './binding';
@@ -169,15 +169,6 @@ class OnnxruntimeBackend implements Backend {
     await handler.loadModel(options || {});
     return handler;
   }
-
-  /* eslint-disable @typescript-eslint/no-unused-vars */
-  async createTrainingSessionHandler(
-      checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
-      evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
-      options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler> {
-    throw new Error('Training not supported on Nodejs');
-  }
-  /* eslint-enable @typescript-eslint/no-unused-vars */
 }
 
 export const onnxruntimeBackend = new OnnxruntimeBackend();

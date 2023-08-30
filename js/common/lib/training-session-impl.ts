@@ -14,28 +14,6 @@ export class TrainingSession implements TrainingSessionInterface {
     this.handler = handler;
   }
 
-  /* eslint-disable @typescript-eslint/no-unused-vars */
-  /* eslint-disable no-console */
-  runTrainStep(feeds: InferenceSession.OnnxValueMapType, options?: InferenceSession.RunOptions):
-      Promise<InferenceSession.OnnxValueMapType>;
-  runTrainStep(
-      feeds: InferenceSession.OnnxValueMapType, fetches: InferenceSession.FetchesType,
-      options?: InferenceSession.RunOptions): Promise<InferenceSession.OnnxValueMapType>;
-  async runTrainStep(
-      feeds: InferenceSession.OnnxValueMapType, arg1?: InferenceSession.FetchesType|InferenceSession.RunOptions,
-      arg2?: InferenceSession.RunOptions): Promise<InferenceSession.OnnxValueMapType> {
-    // console.log arguments to suppress ts6133 error
-    console.log(feeds);
-    if (arg1) {
-      console.log(arg1);
-    }
-    if (arg2) {
-      console.log(arg2);
-    }
-    throw new Error('Method not implemented.');
-  }
-  /* eslint-enable @typescript-eslint/no-unused-vars */
-  /* eslint-enable no-console */
   async release(): Promise<void> {
     return this.handler.dispose();
   }
@@ -73,9 +51,15 @@ export class TrainingSession implements TrainingSessionInterface {
     const eps = options.executionProviders || [];
     const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
     const backend = await resolveBackend(backendHints);
-    const handler =
-        await backend.createTrainingSessionHandler(checkpointState, trainModel, evalModel, optimizerModel, options);
-    return new TrainingSession(handler);
+    if (backend.createTrainingSessionHandler) {
+      const handler =
+          await backend.createTrainingSessionHandler(checkpointState, trainModel, evalModel, optimizerModel, options);
+      return new TrainingSession(handler);
+    } else {
+      throw new Error(
+          'Training backend could not be resolved. ' +
+          'Make sure you\'re using the correct configuration + webassembly files.');
+    }
   }
 
   inputNames: readonly string[];

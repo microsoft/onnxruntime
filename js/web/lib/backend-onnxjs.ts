@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /* eslint-disable import/no-internal-modules */
-import {Backend, InferenceSession, SessionHandler, TrainingSessionHandler} from 'onnxruntime-common';
+import {Backend, InferenceSession, SessionHandler} from 'onnxruntime-common';
 
 import {Session} from './onnxjs/session';
 import {OnnxjsSessionHandler} from './onnxjs/session-handler';
@@ -28,15 +28,6 @@ class OnnxjsBackend implements Backend {
 
     return new OnnxjsSessionHandler(session);
   }
-
-  /* eslint-disable @typescript-eslint/no-unused-vars */
-  async createTrainingSessionHandler(
-      checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
-      evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
-      options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler> {
-    throw new Error('Training not supported on Nodejs');
-  }
-  /* eslint-enable @typescript-eslint/no-unused-vars */
 }
 
 export const onnxjsBackend = new OnnxjsBackend();

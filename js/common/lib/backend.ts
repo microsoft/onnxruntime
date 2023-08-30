@@ -49,10 +49,6 @@ export interface TrainingSessionHandler {
 
   readonly inputNames: readonly string[];
   readonly outputNames: readonly string[];
-
-  runTrainStep(
-      feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
-      options: InferenceSession.RunOptions): Promise<TrainingSessionHandler.ReturnType>;
 }
 
 /**
@@ -69,10 +65,10 @@ export interface Backend {
   createSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<SessionHandler>;
 
-  createTrainingSessionHandler(
-      checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
-      evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
-      options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler>;
+  createTrainingSessionHandler?
+      (checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
+       evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
+       options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler>;
 }
 
 export {registerBackend} from './backend-impl.js';
