@@ -434,6 +434,11 @@ static void RunModelWithRandomInput(
   std::vector<int64_t> cum_seq_len_dims{batch_size + 1};
 
   float gpu_threshold = is_float16 ? 0.1f : 0.005f;
+  bool flash_attention_disabled = !is_float16 ||
+    onnxruntime::ParseEnvironmentVariableWithDefault<bool>(onnxruntime::contrib::attention::kDisableFlashAttention, false) ||
+    !HasCudaEnvironment(800);
+  gpu_threshold = !flash_attention_disabled ? 0.25f : gpu_threshold;
+
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
   if (enable_cuda) {
     OpTester test("PackedAttention", 1, onnxruntime::kMSDomain);

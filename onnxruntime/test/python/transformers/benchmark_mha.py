@@ -247,6 +247,11 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
         (64, 384, 12, 64),
         (128, 512, 12, 64),
         (64, 512, 12, 64),
+        # more
+        (4, 2048, 32, 128),
+        (4, 4096, 32, 128),
+        (8, 2048, 32, 128),
+        (8, 4096, 32, 128),
     ]
 
     print(f"enable_cuda_graph={enable_cuda_graph}")
