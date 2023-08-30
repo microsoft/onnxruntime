@@ -51,7 +51,7 @@ struct Merge {
     ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "reverse", &reverse) == nullptr);
     reverse_ = reverse != 0;
   }
-  // a Compute function is required to be present
+  // a "Compute" member function is required to be present
   void Compute(const Ort::Custom::Tensor<std::string_view>& strings_in,
                std::string_view string_in,
                Ort::Custom::Tensor<std::string>* strings_out) {
@@ -80,9 +80,9 @@ int main() {
   // create a session with the session_options ...
 }
 ```
-A "Compute" function is required for the struct to run as a custom op.
+A "Compute" member function is required for the struct to run as a custom op.
 
-For both cases, note:
+For both cases:
 
 - Inputs need to be declared as const references.
 - Outputs need to be declared as non-const references.
