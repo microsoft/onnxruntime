@@ -164,6 +164,8 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
   const auto& inputs = node_unit.Inputs();
   const auto& op(node_unit.OpType());
 
+  NodeAttrHelper helper(node_unit);
+
   Shape input_shape;
   if (!GetShape(inputs[0].node_arg, input_shape))
     return false;
