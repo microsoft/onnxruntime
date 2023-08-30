@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "test/providers/qnn/qnn_test_utils.h"
+#include <cassert>
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
@@ -16,6 +17,10 @@ namespace onnxruntime {
 namespace test {
 
 std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems) {
+  if (num_elems == 0) {
+    return {};
+  }
+
   std::vector<float> data;
   data.reserve(num_elems);
 
@@ -26,7 +31,8 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
     val += step_size;
   }
 
-  // Guarantee that 0.0 and max_val are present.
+  // Try to ensure that 0.0 and max_val are also included in the array.
+  // If num_elems is less than 3, then not all of min_val, 0, and max_val will be present.
   data[num_elems / 2] = 0.0f;
   data[num_elems - 1] = max_val;
 

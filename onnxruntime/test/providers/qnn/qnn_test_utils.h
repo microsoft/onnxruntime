@@ -42,7 +42,7 @@ struct QuantParams {
     constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
 
     const float scale = rmax == rmin ? 1.0f : (rmax - rmin) / (qmax - qmin);
-    const float initial_zero_point = qmin - rmin / scale;
+    const float initial_zero_point = qmin - (rmin / scale);
     const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin, std::min(qmax, initial_zero_point))));
 
     return QuantParams<QType>{scale, zero_point};
@@ -79,7 +79,7 @@ inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data) {
  *
  * \param min_val The minimum value.
  * \param max_val The maximum value.
- * \param num_elems The number of elements in the result.
+ * \param num_elems The number of elements in the result. Should be at least 3 to include min, 0, and max.
  * \return A vector of floats with elements set to values in the specified range.
  */
 std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems);
