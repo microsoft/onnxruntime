@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numeric>
 #include <list>
+#include <vector>
 
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
@@ -2134,8 +2135,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetScaledSumGradient) {
                   {GI(0), GI(1), GI(2)},
                   SrcNodeAttributes())};
     }
-  } else
-    ORT_THROW("ScaledSum gradient builder does not support ", input_count, " inputs");
+  }
+
+  ORT_THROW("ScaledSum gradient builder does not support ", input_count, " inputs");
 }
 
 }  // namespace training

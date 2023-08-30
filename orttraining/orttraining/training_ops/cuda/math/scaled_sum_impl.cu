@@ -130,18 +130,20 @@ void ScaledSumImpl(cudaStream_t stream,
 
   if (input_count == 2) {
     if (use_vectorized) {
-      auto functor = TwoInputTVectorizedFunctorType(inputs, scales, input_element_count, output_data);
-      ScaledSumKernel<TwoInputTVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(functor);
-    } else
+      ScaledSumKernel<TwoInputTVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(
+          TwoInputTVectorizedFunctorType(inputs, scales, input_element_count, output_data));
+    } else {
       ScaledSumKernel<TwoInputTNonVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(
           TwoInputTNonVectorizedFunctorType(inputs, scales, input_element_count, output_data));
+    }
   } else if (input_count == 3) {
-    if (use_vectorized)
+    if (use_vectorized) {
       ScaledSumKernel<ThreeInputTVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(
           ThreeInputTVectorizedFunctorType(inputs, scales, input_element_count, output_data));
-    else
+    } else {
       ScaledSumKernel<ThreeInputTNonVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(
           ThreeInputTNonVectorizedFunctorType(inputs, scales, input_element_count, output_data));
+    }
 
   } else {
     ORT_THROW("Unsupported input count: ", input_count);

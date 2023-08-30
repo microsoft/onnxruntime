@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <vector>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "orttraining/training_ops/cuda/math/batch_scale_impl.h"
@@ -123,9 +125,10 @@ void BatchScaleImpl(cudaStream_t stream,
     if (use_vectorized) {
       BatchScaleKernel<ThreeOutputVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(
           ThreeOutputVectorizedFunctorType(input_data, scales, input_element_count, outputs));
-    } else
+    } else {
       BatchScaleKernel<ThreeOutputNonVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(
           ThreeOutputNonVectorizedFunctorType(input_data, scales, input_element_count, outputs));
+    }
 
   } else {
     ORT_THROW("Unsupported output count: ", output_count);

@@ -3041,8 +3041,8 @@ TEST(GradientCheckerTest, ScaledSumGrad) {
 
     TensorInfo output0_info({4, 3}, true);
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
-    attributes.push_back(MakeAttribute("scale_0", float(0.5)));
-    attributes.push_back(MakeAttribute("scale_1", float(0.3)));
+    attributes.push_back(MakeAttribute("scale_0", static_cast<float>(0.5)));
+    attributes.push_back(MakeAttribute("scale_1", static_cast<float>(0.3)));
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.emplace_back(DefaultCudaExecutionProvider());
@@ -3072,9 +3072,9 @@ TEST(GradientCheckerTest, ScaledSumGrad) {
 
     TensorInfo output0_info({4, 3}, true);
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
-    attributes.push_back(MakeAttribute("scale_0", float(0.2)));
-    attributes.push_back(MakeAttribute("scale_1", float(0.3)));
-    attributes.push_back(MakeAttribute("scale_2", float(0.5)));
+    attributes.push_back(MakeAttribute("scale_0", static_cast<float>(0.2)));
+    attributes.push_back(MakeAttribute("scale_1", static_cast<float>(0.3)));
+    attributes.push_back(MakeAttribute("scale_2", static_cast<float>(0.5)));
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.emplace_back(DefaultCudaExecutionProvider());

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <vector>
+
 namespace onnxruntime {
 namespace cuda {
 

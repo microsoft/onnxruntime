@@ -56,13 +56,13 @@ static void RunBatchScaleTestWithFloatAndMLFloat16(const std::vector<float>& inp
 
   std::vector<MLFloat16> input_half;
   input_half.resize(input.size());
-  ConvertFloatToMLFloat16(input.data(), input_half.data(), int(input.size()));
+  ConvertFloatToMLFloat16(input.data(), input_half.data(), static_cast<int>(input.size()));
 
   std::vector<std::vector<MLFloat16>> outputs_half;
   outputs_half.resize(scales.size());
   for (size_t i = 0; i < outputs.size(); ++i) {
     outputs_half[i].resize(outputs[i].size());
-    ConvertFloatToMLFloat16(outputs[i].data(), outputs_half[i].data(), int(outputs[i].size()));
+    ConvertFloatToMLFloat16(outputs[i].data(), outputs_half[i].data(), static_cast<int>(outputs[i].size()));
   }
 
   RunBatchScaleOpTester(input_half, scales, outputs_half, shape);

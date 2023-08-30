@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <vector>
+
 #include "orttraining/training_ops/cuda/math/scaled_sum.h"
 #include "orttraining/training_ops/cuda/math/scaled_sum_impl.h"
 
@@ -59,9 +61,10 @@ Status ScaledSum::ComputeInternal(OpKernelContext* context) const {
                 "Shape of input tensors must be the same.");
   }
 
-  std::vector<float> scales{scale_0_, scale_1_};
+  std::vector<float> scales{scale0_, scale1_};
   if (input_tensors.size() == 3) {
-    scales.push_back(scale_2_);
+    ORT_ENFORCE(scale2_.has_value(), "Scale 2 must be specified.");
+    scales.push_back(scale2_.value());
   }
 
   Tensor* output_tensor = context->Output(0, first_input_tensor_shape);

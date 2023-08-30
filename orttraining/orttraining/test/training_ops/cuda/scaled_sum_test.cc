@@ -53,12 +53,12 @@ static void RunScaledSumWithFloatAndMLFloat16(const std::vector<std::vector<floa
   inputs_half.resize(inputs.size());
   for (size_t i = 0; i < inputs.size(); ++i) {
     inputs_half[i].resize(inputs[i].size());
-    ConvertFloatToMLFloat16(inputs[i].data(), inputs_half[i].data(), int(inputs[i].size()));
+    ConvertFloatToMLFloat16(inputs[i].data(), inputs_half[i].data(), static_cast<int>(inputs[i].size()));
   }
 
   std::vector<MLFloat16> output_half;
   output_half.resize(output.size());
-  ConvertFloatToMLFloat16(output.data(), output_half.data(), int(output.size()));
+  ConvertFloatToMLFloat16(output.data(), output_half.data(), static_cast<int>(output.size()));
 
   RunScaledSumOpTester(inputs_half, scales, output_half, shape);
 }

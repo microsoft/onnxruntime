@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <vector>
+
 #include "orttraining/training_ops/cuda/math/batch_scale.h"
 #include "orttraining/training_ops/cuda/math/batch_scale_impl.h"
 
@@ -43,7 +45,7 @@ struct BatchScaleFunctor {
 Status BatchScale::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
 
-  size_t output_count = scale_2_ > 0 ? 3 : 2;
+  size_t output_count = scale2_.has_value() ? 3 : 2;
   const auto& input_tensor_shape = input_tensor->Shape();
   std::vector<Tensor*> output_tensors;
   output_tensors.reserve(output_count);
@@ -51,9 +53,9 @@ Status BatchScale::ComputeInternal(OpKernelContext* context) const {
     output_tensors.push_back(context->Output(static_cast<int>(i), input_tensor_shape));
   }
 
-  std::vector<float> scales{scale_0_, scale_1_};
+  std::vector<float> scales{scale0_, scale1_};
   if (output_count == 3) {
-    scales.push_back(scale_2_);
+    scales.push_back(scale2_.value());
   }
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(input_tensor->GetElementType());

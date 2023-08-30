@@ -52,6 +52,9 @@ bool IsScaleOperator(Graph& graph, Node& node,
                      const ONNX_NAMESPACE::TensorShapeProto* output_shape,
                      float& scale_value) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Div", {7, 13, 14})) {
+    // If node is Div, check:
+    // 1. The first input has the same shape as the given output_shape.
+    // 2. The second input is a constant initializer (containing a scalar or 1-D 1-element tensor).
     bool first_input_check = (node.InputDefs()[0]->Shape() &&
                               IsShapeEqual(node.InputDefs()[0]->Shape(), output_shape));
 
@@ -63,8 +66,7 @@ bool IsScaleOperator(Graph& graph, Node& node,
                                 (div_input_2_shape->dim_size() == 0  // scalar
                                  || (div_input_2_shape->dim_size() == 1 &&
                                      div_input_2_shape->dim(0).has_dim_value() &&
-                                     div_input_2_shape->dim(0).dim_value() == 1)  // 1d with 1 element
-                                );
+                                     div_input_2_shape->dim(0).dim_value() == 1) /* 1d with 1 element */);
 
       if (second_input_check) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
@@ -105,10 +107,10 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       continue;
 
     auto& node = *node_ptr;
+    // Find an Add that takes two inputs from other nodes' outputs (instead of any graph inputs or initializers).
+    // We also don't allow Add is generating graph outputs.
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {6, 7, 13, 14}) ||
-        node.GetInputEdgesCount() != 2 ||
-        graph_utils::IsGraphInput(graph, node.InputDefs()[0]) ||
-        graph_utils::IsGraphInput(graph, node.InputDefs()[1]) ||
+        node.GetInputEdgesCount() != 2 /* two input MUST come from other nodes' outputs */ ||
         graph.IsOutput(node.OutputDefs()[0]) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
@@ -138,6 +140,7 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       continue;
     }
 
+    // Check the two inputs nodes of Add, if they are scaled operators, add them to the node list to remove.
     auto check_add_input = [&graph, &output_shape, &nodes_to_remove,
                             &data_input_args, &scales](Node* add_input_node) -> bool {
       float scale_value = 1.0f;
@@ -145,6 +148,7 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
         return false;
       }
 
+      // If node is not in nodes_to_remove, add it.
       auto it = std::find_if(nodes_to_remove.begin(), nodes_to_remove.end(),
                              [&add_input_node](std::reference_wrapper<Node> n) {
                                return ((Node&)n).Index() == add_input_node->Index();
@@ -166,12 +170,14 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     }
 
     Node* last_node = &node;
-    // Handle three inputs.
+    // Handle three inputs only when Add node has one single consumer; and be noted we already check earlier
+    // the output is not in graph outputs.
     if (node.GetOutputEdgesCount() == 1) {
       Node& output_node = *graph.GetNode(node.OutputEdgesBegin()->GetNode().Index());
       int output_node_port = node.OutputEdgesBegin()->GetDstArgIndex();
+      // Find the next Add node that use the output of current Add node as one of its inputs.
       if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Add", {6, 7, 13, 14}) &&
-          !graph.IsOutput(output_node.OutputDefs()[0]) /*this Add cannot generate graph output */
+          !graph.IsOutput(output_node.OutputDefs()[0]) /* this Add cannot generate graph output */
       ) {
         int the_other_input_port = 1 - output_node_port;
         NodeArg* the_other_input_arg = output_node.MutableInputDefs()[the_other_input_port];
@@ -183,19 +189,25 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
         bool the_other_node_output_edge_check = mutable_the_other_input_node == nullptr ||
                                                 mutable_the_other_input_node->GetOutputEdgesCount() == 1;
 
+        // Also make sure the other input arg has Shape equal to output_shape, we don't want to
+        // handle broadcast cases now.
         if (the_other_node_output_edge_check &&
             the_other_input_arg->Shape() && IsShapeEqual(the_other_input_arg->Shape(), output_shape)) {
           last_node = &output_node;
           nodes_to_remove.push_back(node);
 
           float scale_value = 1.0f;
-          if (mutable_the_other_input_node &&
-              IsScaleOperator(graph, *mutable_the_other_input_node, output_shape, scale_value)) {
+          if (mutable_the_other_input_node && IsScaleOperator(graph, *mutable_the_other_input_node,
+                                                              output_shape, scale_value)) {
             data_input_args.push_back(mutable_the_other_input_node->MutableInputDefs()[0]);
             nodes_to_remove.push_back(*mutable_the_other_input_node);
+            scales.push_back(scale_value);
+          } else {
+            // The other input is 1). a constant initializer or graph input, OR 2). it is not a scale operator:
+            // then we only add node arg into data input args, NOT need add any mode into nodes_to_remove.
+            data_input_args.push_back(mutable_the_other_input_node->MutableInputDefs()[0]);
+            scales.push_back(scale_value);
           }
-
-          scales.push_back(scale_value);
         }
       }
     }
@@ -204,18 +216,12 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       continue;
     }
 
-    InlinedVector<NodeArg*> input_args;
-    input_args.reserve(data_input_args.size());
-    for (size_t pair_index = 0; pair_index < data_input_args.size(); ++pair_index) {
-      input_args.push_back(data_input_args[pair_index]);
-    }
-
     auto type_info = *output_type;
     InlinedVector<NodeArg*> output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("ScaledSum"), &type_info)};
     Node& scaled_sum_node = graph.AddNode(graph.GenerateNodeName("ScaledSum"),
                                           "ScaledSum",
                                           "FusedScaledSum",
-                                          input_args,
+                                          data_input_args,
                                           output_args,
                                           nullptr,
                                           kMSDomain);
