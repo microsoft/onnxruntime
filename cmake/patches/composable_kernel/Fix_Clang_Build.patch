@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 514b98fde..59c8a568a 100644
+index f861e3020..f0b6bceae 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,7 +1,7 @@
@@ -11,7 +11,7 @@ index 514b98fde..59c8a568a 100644
  
  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
  
-@@ -94,27 +94,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+@@ -41,27 +41,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  set(CMAKE_CXX_EXTENSIONS OFF)
  message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
  
@@ -39,7 +39,7 @@ index 514b98fde..59c8a568a 100644
  ## HIP
  find_package(HIP REQUIRED)
  # Override HIP version in config.h, if necessary.
-@@ -136,8 +115,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
+@@ -83,8 +62,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
      message(STATUS "CK_HIP_VERSION_PATCH overriden with ${CK_OVERRIDE_HIP_VERSION_PATCH}")
  endif()
  message(STATUS "Build with HIP ${HIP_VERSION}")
@@ -48,7 +48,17 @@ index 514b98fde..59c8a568a 100644
  
  ## tidy
  include(EnableCompilerWarnings)
-@@ -391,11 +368,3 @@ rocm_install(FILES
+@@ -273,9 +250,6 @@ rocm_package_setup_component(profiler
+ )
+ 
+ add_subdirectory(library)
+-add_subdirectory(example)
+-add_subdirectory(test)
+-add_subdirectory(profiler)
+ 
+ #Create an interface target for the include only files and call it "composablekernels"
+ include(CMakePackageConfigHelpers)
+@@ -301,11 +275,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -61,7 +71,7 @@ index 514b98fde..59c8a568a 100644
 -    HEADER_ONLY
 -)
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-index 1d54a141b..4edd7dbfb 100644
+index c206c4dc0..b283eeb64 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 +++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 @@ -1,7 +1,13 @@

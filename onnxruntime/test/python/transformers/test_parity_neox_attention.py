@@ -14,7 +14,6 @@ import unittest
 
 import numpy as np
 import torch
-from onnx import TensorProto, helper
 from torch import nn
 
 np.random.seed(0)
@@ -30,6 +29,8 @@ def create_neox_attention_graph(
     qkv_bias,
     num_heads,
 ):
+    from onnx import TensorProto, helper
+
     nodes = [
         helper.make_node(
             "Attention",
@@ -77,6 +78,8 @@ def create_neox_decoder_masked_self_attention_graph(
     qkv_bias,
     num_heads,
 ):
+    from onnx import TensorProto, helper
+
     nodes = [
         helper.make_node(
             "DecoderMaskedSelfAttention",

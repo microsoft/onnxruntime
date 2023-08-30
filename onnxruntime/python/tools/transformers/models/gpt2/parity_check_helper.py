@@ -9,13 +9,17 @@
 import math
 import multiprocessing
 import os
+import sys
 from pathlib import Path
 
 import numpy
 import torch
-from benchmark_helper import create_onnxruntime_session
 from gpt2_helper import Gpt2Helper
 from onnx import TensorProto, numpy_helper
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+from benchmark_helper import create_onnxruntime_session  # noqa: E402
 
 NON_ZERO_VALUE = str(1)
 ZERO_VALUE = str(0)

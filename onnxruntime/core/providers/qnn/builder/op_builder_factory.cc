@@ -51,6 +51,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Sqrt", *this);
     CreateSimpleOpBuilder("Sub", *this);
     CreateSimpleOpBuilder("Tanh", *this);
+    CreateSimpleOpBuilder("Transpose", *this);
 
     CreateSimpleOpBuilder("LogSoftmax", *this);
     CreateSimpleOpBuilder("MatMul", *this);
@@ -63,8 +64,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
     CreateSimpleOpBuilder("DepthToSpace", *this);
     CreateSimpleOpBuilder("SpaceToDepth", *this);
-
-    CreateSimpleOpBuilder("GridSample", *this);
   }
 
   {
@@ -88,7 +87,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreatePoolOpBuilder("GlobalAveragePool", *this);
     CreatePoolOpBuilder("AveragePool", *this);
     CreatePoolOpBuilder("MaxPool", *this);
-    CreatePoolOpBuilder("GlobalMaxPool", *this);
   }
 
   {
@@ -149,10 +147,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateLRNOpBuilder("LRN", *this);
-  }
-
-  {
-    CreateTransposeOpBuilder("Transpose", *this);
   }
 }
 

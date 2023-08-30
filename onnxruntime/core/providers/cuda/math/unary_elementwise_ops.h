@@ -112,12 +112,5 @@ class Cos final : public UnaryElementwise {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template <typename T>
-class Sign final : public UnaryElementwise {
- public:
-  Sign(const OpKernelInfo& info) : UnaryElementwise(info) {}
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
 }  // namespace cuda
 }  // namespace onnxruntime

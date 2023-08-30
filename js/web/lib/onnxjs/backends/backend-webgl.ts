@@ -72,8 +72,6 @@ export class WebGLBackend implements Backend {
 
       Logger.setWithEnv(env);
 
-      Object.defineProperty(env.webgl, 'context', {value: this.glContext.gl});
-
       Logger.verbose(
           'WebGLBackend',
           `Created WebGLContext: ${typeof this.glContext} with matmulMaxBatchSize: ${

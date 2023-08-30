@@ -20,8 +20,6 @@
 #pragma warning(pop)
 #endif
 
-#include "flatbuffers/flatbuffers.h"
-
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
@@ -44,6 +42,12 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
+
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
 
 namespace onnxruntime {
 class Graph;
@@ -886,11 +890,12 @@ class Graph {
   @returns NodeArg reference.
   */
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
-    auto insert_result = node_args_.emplace(name, nullptr);
-    if (insert_result.second) {
-      insert_result.first->second = std::make_unique<NodeArg>(name, p_arg_type);
+    auto iter = node_args_.find(name);
+    if (iter != node_args_.end()) {
+      return *(iter->second);
     }
-    return *(insert_result.first->second);
+    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
+    return *(result.first->second);
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

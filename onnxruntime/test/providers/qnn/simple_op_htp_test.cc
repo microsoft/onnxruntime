@@ -96,40 +96,24 @@ static void RunQDQUnaryOpTest(const TestInputDef<float>& input_def, const std::s
                        1e-5f);
 }
 
-// TODO: share with other op tests
-// Creates the graph with two inputs and attributes
-template <typename InputType>
-static GetTestModelFn BuildOpTestCase(const std::string& op_type,
-                                      const TestInputDef<InputType>& input0_def,
-                                      const TestInputDef<InputType>& input1_def,
-                                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [op_type, input0_def, input1_def, attrs](ModelTestBuilder& builder) {
+template <typename InputType = float>
+static GetTestModelFn BuildBinaryOpTestCase(const std::string& op_type, const TestInputDef<InputType>& input0_def,
+                                            const TestInputDef<InputType>& input1_def) {
+  return [op_type, input0_def, input1_def](ModelTestBuilder& builder) {
     NodeArg* input0 = MakeTestInput(builder, input0_def);
     NodeArg* input1 = MakeTestInput(builder, input1_def);
 
     auto* output = builder.MakeOutput();
-    Node& onnx_node = builder.AddNode(op_type, {input0, input1}, {output});
-
-    for (const auto& attr : attrs) {
-      onnx_node.AddAttributeProto(attr);
-    }
+    builder.AddNode(op_type, {input0, input1}, {output});
   };
 }
 
-// Creates the graph with two inputs and attributes
-//                       _______________________
-//                      |                       |
-//   input0_u8 -> DQ -> |       SimpleOp        | -> Q -> output_u8
-//   input1_u8 -> DQ -> |_______________________|
-//
-// Currently used to test QNN EP.
-template <typename InputQType>
-static GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_type,
-                                                        const TestInputDef<float>& input0_def,
-                                                        const TestInputDef<float>& input1_def,
-                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [op_type, input0_def, input1_def, attrs](ModelTestBuilder& builder,
-                                                  std::vector<QuantParams<InputQType>>& output_qparams) {
+template <typename InputQType = uint8_t>
+static GetTestQDQModelFn<InputQType> BuildQDQBinaryOpTestCase(const std::string& op_type,
+                                                              const TestInputDef<float>& input0_def,
+                                                              const TestInputDef<float>& input1_def) {
+  return [op_type, input0_def, input1_def](ModelTestBuilder& builder,
+                                           std::vector<QuantParams<InputQType>>& output_qparams) {
     NodeArg* input0 = MakeTestInput(builder, input0_def);
     NodeArg* input1 = MakeTestInput(builder, input1_def);
 
@@ -142,11 +126,7 @@ static GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_ty
 
     // Op -> op_output
     auto* op_output = builder.MakeIntermediate();
-    Node& onnx_node = builder.AddNode(op_type, {qdq0_output, qdq1_output}, {op_output});
-
-    for (const auto& attr : attrs) {
-      onnx_node.AddAttributeProto(attr);
-    }
+    builder.AddNode(op_type, {qdq0_output, qdq1_output}, {op_output});
 
     // op_output -> Q -> DQ -> output
     AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, op_output, output_qparams[0].scale,
@@ -155,12 +135,9 @@ static GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_ty
 }
 
 template <typename InputQType = uint8_t>
-static void RunQDQOpTest(const std::string& op_type,
-                         const TestInputDef<float>& input0_def,
-                         const TestInputDef<float>& input1_def,
-                         const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                         int opset_version,
-                         ExpectedEPNodeAssignment expected_ep_assignment) {
+static void RunQDQBinaryOpTest(const std::string& op_type, const TestInputDef<float>& input0_def,
+                               const TestInputDef<float>& input1_def, int opset_version,
+                               ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -168,8 +145,8 @@ static void RunQDQOpTest(const std::string& op_type,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input0_def, input1_def, attrs),
-                       BuildQDQOpTestCase<InputQType>(op_type, input0_def, input1_def, attrs),
+  TestQDQModelAccuracy(BuildBinaryOpTestCase<float>(op_type, input0_def, input1_def),
+                       BuildQDQBinaryOpTestCase<InputQType>(op_type, input0_def, input1_def),
                        provider_options,
                        opset_version,
                        expected_ep_assignment,
@@ -177,12 +154,9 @@ static void RunQDQOpTest(const std::string& op_type,
 }
 
 template <typename InputType = float>
-static void RunOpTest(const std::string& op_type,
-                      const TestInputDef<InputType>& input0_def,
-                      const TestInputDef<InputType>& input1_def,
-                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                      int opset_version,
-                      ExpectedEPNodeAssignment expected_ep_assignment) {
+static void RunBinaryOpTest(const std::string& op_type, const TestInputDef<InputType>& input0_def,
+                            const TestInputDef<InputType>& input1_def, int opset_version,
+                            ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -191,7 +165,7 @@ static void RunOpTest(const std::string& op_type,
 #endif
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
-  RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input0_def, input1_def, attrs),
+  RunQnnModelTest(BuildBinaryOpTestCase<InputType>(op_type, input0_def, input1_def),
                   provider_options,
                   opset_version,
                   expected_ep_assignment);
@@ -453,49 +427,39 @@ TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {
 
 // Test QDQ Add
 TEST_F(QnnHTPBackendTests, BinaryOp_Add4D) {
-  RunQDQOpTest<uint8_t>("Add",
-                        TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
-                        TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
-                        {},
-                        17,
-                        ExpectedEPNodeAssignment::All);
+  RunQDQBinaryOpTest<uint8_t>("Add", TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                              TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                              17, ExpectedEPNodeAssignment::All);
 }
 
 // Test QDQ Sub
 TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D) {
-  RunQDQOpTest<uint8_t>("Sub",
-                        TestInputDef<float>({1, 3, 8, 8}, false, -10.0f, 10.0f),
-                        TestInputDef<float>({1, 3, 8, 8}, false, -10.0f, 10.0f),
-                        {},
-                        17,
-                        ExpectedEPNodeAssignment::All);
+  RunQDQBinaryOpTest<uint8_t>("Sub", TestInputDef<float>({1, 3, 8, 8}, false, -10.0f, 10.0f),
+                              TestInputDef<float>({1, 3, 8, 8}, false, -10.0f, 10.0f),
+                              17, ExpectedEPNodeAssignment::All);
 }
 
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// Enable when this is fixed.
 TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_LargeInputs) {
-  RunQDQOpTest<uint8_t>("Sub",
-                        TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
-                        TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
-                        {},
-                        17,
-                        ExpectedEPNodeAssignment::All);
+  RunQDQBinaryOpTest<uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                              TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                              17, ExpectedEPNodeAssignment::All);
 }
 
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// Enable when this is fixed.
 TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_Broadcast) {
-  RunQDQOpTest<uint8_t>("Sub",
-                        TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
-                        TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
-                        {},
-                        17,
-                        ExpectedEPNodeAssignment::All);
+  RunQDQBinaryOpTest<uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                              TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
+                              17, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_SmallInputs) {
-  RunQDQOpTest<uint8_t>("Div",
-                        TestInputDef<float>({1, 2, 2, 2}, false, {-10.0f, -8.0f, -1.0f, 0.0f, 1.0f, 2.1f, 8.0f, 10.0f}),
-                        TestInputDef<float>({1, 2, 2, 2}, false, {5.0f, 4.0f, 1.0f, 1.0f, 1.0f, 4.0f, 4.0f, 5.0f}),
-                        {},
-                        17,
-                        ExpectedEPNodeAssignment::All);
+  RunQDQBinaryOpTest<uint8_t>("Div",
+                              TestInputDef<float>({1, 2, 2, 2}, false, {-10.0f, -8.0f, -1.0f, 0.0f, 1.0f, 2.1f, 8.0f, 10.0f}),
+                              TestInputDef<float>({1, 2, 2, 2}, false, {5.0f, 4.0f, 1.0f, 1.0f, 1.0f, 4.0f, 4.0f, 5.0f}),
+                              17, ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Enable when this is fixed.
@@ -505,116 +469,38 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_SmallInputs) {
 // QNN QDQ val: 0 (err 277957.3125)
 // CPU QDQ val: -516716.71875 (err 238759.40625)
 TEST_F(QnnHTPBackendTests, DISABLED_BinaryOp_Div4D_LargeInputs) {
-  RunQDQOpTest<uint8_t>("Div",
-                        TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
-                        TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
-                        {},
-                        17,
-                        ExpectedEPNodeAssignment::All);
+  RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                              TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                              17, ExpectedEPNodeAssignment::All);
 }
 
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// Enable when this is fixed.
+// Fails accuracy when input0 has dims [1,3,768,768]
 TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast) {
-  RunQDQOpTest<uint8_t>("Div",
-                        TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
-                        TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
-                        {},
-                        17,
-                        ExpectedEPNodeAssignment::All);
+  RunQDQBinaryOpTest<uint8_t>("Div", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                              TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
+                              17, ExpectedEPNodeAssignment::All);
 }
 
 // Test QDQ Mul
 TEST_F(QnnHTPBackendTests, BinaryOp_Mul4D) {
-  RunQDQOpTest<uint8_t>("Mul",
-                        TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
-                        TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
-                        {},
-                        17,
-                        ExpectedEPNodeAssignment::All);
+  RunQDQBinaryOpTest<uint8_t>("Mul", TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                              TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                              17, ExpectedEPNodeAssignment::All);
+}
+// Test QDQ And
+TEST_F(QnnHTPBackendTests, BinaryOp_And4D) {
+  RunBinaryOpTest<bool>("And", TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
+                        TestInputDef<bool>({1, 4}, false, {false, true, false, true}),
+                        17, ExpectedEPNodeAssignment::All);
 }
 
-// Test And
-TEST_F(QnnCPUBackendTests, BinaryOp_And4D) {
-  RunOpTest<bool>("And",
-                  TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
-                  TestInputDef<bool>({1, 4}, false, {false, true, false, true}),
-                  {},
-                  17,
-                  ExpectedEPNodeAssignment::All);
-}
-
-// Test that Or is not yet supported on CPU backend.
-TEST_F(QnnCPUBackendTests, BinaryOp_HTP_Or_Unsupported) {
-  RunOpTest<bool>("Or",
-                  TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
-                  TestInputDef<bool>({1, 4}, false, {false, true, false, true}),
-                  {},
-                  17,
-                  ExpectedEPNodeAssignment::None);
-}
-
-// Test QDQ GridSample with bilinear
-TEST_F(QnnHTPBackendTests, GridSample_Bilinear) {
-  RunQDQOpTest<uint8_t>("GridSample",
-                        TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
-                        TestInputDef<float>({1, 2, 4, 2}, false, -10.0f, 10.0f),
-                        {utils::MakeAttribute("align_corners", static_cast<int64_t>(0)),
-                         utils::MakeAttribute("mode", "bilinear"),
-                         utils::MakeAttribute("padding_mode", "zeros")},
-                        17,
-                        ExpectedEPNodeAssignment::All);
-}
-
-// Test QDQ GridSample with align corners
-TEST_F(QnnHTPBackendTests, GridSample_AlignCorners) {
-  RunQDQOpTest<uint8_t>("GridSample",
-                        TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
-                        TestInputDef<float>({1, 2, 4, 2}, false, -10.0f, 10.0f),
-                        {utils::MakeAttribute("align_corners", static_cast<int64_t>(1)),
-                         utils::MakeAttribute("mode", "bilinear"),
-                         utils::MakeAttribute("padding_mode", "zeros")},
-                        17,
-                        ExpectedEPNodeAssignment::All);
-}
-
-// Test QDQ GridSample with padding mode: border
-// Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.046370312571525574, zero_point=129.
-// Expected val: 3.3620510101318359
-// QNN QDQ val: 3.2922921180725098 (err 0.069758892059326172)
-// CPU QDQ val: 3.3850328922271729 (err 0.022981882095336914)
-TEST_F(QnnHTPBackendTests, DISABLED_GridSample_BorderPadding) {
-  RunQDQOpTest<uint8_t>("GridSample",
-                        TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
-                        TestInputDef<float>({1, 2, 4, 2}, false, -10.0f, 10.0f),
-                        {utils::MakeAttribute("mode", "bilinear"),
-                         utils::MakeAttribute("padding_mode", "border")},
-                        17,
-                        ExpectedEPNodeAssignment::All);
-}
-
-// Test QDQ GridSample with nearest mode
-TEST_F(QnnHTPBackendTests, GridSample_Nearest) {
-  RunQDQOpTest<uint8_t>("GridSample",
-                        TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
-                        TestInputDef<float>({1, 2, 4, 2}, false, -10.0f, 10.0f),
-                        {utils::MakeAttribute("mode", "nearest")},
-                        17,
-                        ExpectedEPNodeAssignment::All);
-}
-
-// Test QDQ GridSample with reflection padding mode
-// Inaccuracy detected for output 'output', element 2.
-// Output quant params: scale=0.024269860237836838, zero_point=0.
-// Expected val: 3.212885856628418
-// QNN QDQ val: 3.1308119297027588 (err 0.08207392692565918)
-// CPU QDQ val: 3.2036216259002686 (err 0.0092642307281494141)
-TEST_F(QnnHTPBackendTests, DISABLED_GridSample_ReflectionPaddingMode) {
-  RunQDQOpTest<uint8_t>("GridSample",
-                        TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
-                        TestInputDef<float>({1, 2, 4, 2}, false, -10.0f, 10.0f),
-                        {utils::MakeAttribute("padding_mode", "reflection")},
-                        17,
-                        ExpectedEPNodeAssignment::All);
+// Test that Or is not yet supported on HTP backend.
+TEST_F(QnnHTPBackendTests, BinaryOp_HTP_Or_Unsupported) {
+  RunBinaryOpTest<bool>("Or", TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
+                        TestInputDef<bool>({1, 4}, false, {false, true, false, true}),
+                        17, ExpectedEPNodeAssignment::None);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

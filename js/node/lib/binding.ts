@@ -33,18 +33,11 @@ export declare namespace Binding {
   export interface InferenceSessionConstructor {
     new(): InferenceSession;
   }
-
-  export interface SupportedBackend {
-    name: string;
-    bundled: boolean;
-  }
 }
 
 // export native binding
 export const binding =
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-    require(`../bin/napi-v3/${process.platform}/${process.arch}/onnxruntime_binding.node`) as {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  InferenceSession: Binding.InferenceSessionConstructor;
-  listSupportedBackends: () => Binding.SupportedBackend[];
-};
+    require(`../bin/napi-v3/${process.platform}/${process.arch}/onnxruntime_binding.node`) as
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    {InferenceSession: Binding.InferenceSessionConstructor};

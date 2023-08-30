@@ -32,7 +32,6 @@ def _create_training_artifacts(
     artifact_directory: str | os.PathLike,
     requires_grad: list[str] | None = None,
     frozen_params: list[str] | None = None,
-    optimizer_type=artifacts.OptimType.AdamW,
 ):
     device = "cpu"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
@@ -46,7 +45,7 @@ def _create_training_artifacts(
 
     artifacts.generate_artifacts(
         onnx_model,
-        optimizer=optimizer_type,
+        optimizer=artifacts.OptimType.AdamW,
         loss=artifacts.LossType.CrossEntropyLoss,
         requires_grad=requires_grad,
         frozen_params=frozen_params,
@@ -114,8 +113,7 @@ def test_eval_step():
         assert fetches
 
 
-@pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
-def test_optimizer_step(optimizer_type):
+def test_optimizer_step():
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
@@ -127,7 +125,7 @@ def test_optimizer_step(optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
+        ) = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module and Optimizer.
@@ -144,8 +142,7 @@ def test_optimizer_step(optimizer_type):
         assert not np.array_equal(old_flatten_params.numpy(), new_params.numpy())
 
 
-@pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
-def test_get_and_set_lr(optimizer_type):
+def test_get_and_set_lr():
     with tempfile.TemporaryDirectory() as temp_dir:
         (
             checkpoint_file_path,
@@ -153,7 +150,7 @@ def test_get_and_set_lr(optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
+        ) = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module and Optimizer.
@@ -171,8 +168,7 @@ def test_get_and_set_lr(optimizer_type):
         assert lr != new_lr
 
 
-@pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
-def test_scheduler_step(optimizer_type):
+def test_scheduler_step():
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
@@ -184,7 +180,7 @@ def test_scheduler_step(optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
+        ) = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module and Optimizer.
@@ -244,9 +240,8 @@ def test_training_module_checkpoint():
         assert np.array_equal(old_flatten_params.numpy(), new_params.numpy())
 
 
-@pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
 @pytest.mark.parametrize("trainable_only", [True, False])
-def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
+def test_copy_buffer_to_parameters(trainable_only):
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
@@ -259,10 +254,7 @@ def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
             optimizer_model_file_path,
             _,
         ) = _create_training_artifacts(
-            temp_dir,
-            requires_grad=["fc2.weight", "fc2.bias"],
-            frozen_params=["fc1.weight", "fc1.bias"],
-            optimizer_type=optimizer_type,
+            temp_dir, requires_grad=["fc2.weight", "fc2.bias"], frozen_params=["fc1.weight", "fc1.bias"]
         )
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
 

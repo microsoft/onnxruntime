@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-template <typename T, typename U, typename V, bool Simplified>
+template <typename T, typename U, typename V>
 Status LaunchSkipLayerNormKernel(
     RocmTuningContext* tuning,
     Stream* stream,

@@ -6,7 +6,6 @@
 import argparse
 import os
 import sys
-from pathlib import Path
 
 import numpy
 import torch
@@ -52,7 +51,6 @@ def find_transformers_source(sub_dir_paths=[]):  # noqa: B006
         "transformers",
         *sub_dir_paths,
     )
-    source_dir = os.path.normpath(source_dir)
     if os.path.exists(source_dir):
         if source_dir not in sys.path:
             sys.path.append(source_dir)
@@ -68,10 +66,13 @@ def create_inputs(
     device=torch.device("cuda"),  # noqa: B008
 ):
     float_type = torch.float16 if float16 else torch.float32
-    return torch.normal(mean=0.0, std=10.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
+    input = torch.normal(mean=0.0, std=10.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
+    return input
 
 
 def export_onnx(model, onnx_model_path, float16, hidden_size, device):
+    from pathlib import Path
+
     Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
     input_hidden_states = create_inputs(hidden_size=hidden_size, float16=float16, device=device)

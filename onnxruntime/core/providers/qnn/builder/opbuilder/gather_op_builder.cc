@@ -23,6 +23,7 @@ class GatherOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
+                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
@@ -30,18 +31,20 @@ class GatherOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
+                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
 Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
+                                      bool is_quantized_model,
                                       std::vector<std::string>& input_names,
                                       bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
   const auto& inputs = node_unit.Inputs();
   ORT_RETURN_IF(inputs.size() != 2, "Gather should has 2 inputs at least!");
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
 
   // Process indices
   const auto& input_name = inputs[1].node_arg.Name();
@@ -60,9 +63,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint8_t> gather_indices;
   bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
 
-  // Gather input 0 is quantized tensor, input 1 (indices) is int64, this is not supported by QNN
-  bool is_quantized_tensor = inputs[0].quant_param.has_value();
-  ORT_RETURN_IF(is_quantized_tensor && qnn_data_type == QNN_DATATYPE_INT_64 && !is_initializer_input,
+  ORT_RETURN_IF(is_quantized_model && qnn_data_type == QNN_DATATYPE_INT_64 && !is_initializer_input,
                 "HTP backend doesn't support any int64 data type.");
 
   if (is_initializer_input) {
@@ -121,6 +122,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger,
+                                                    bool is_quantized_model,
                                                     bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(logger);
   std::vector<std::string> param_tensor_names;
@@ -160,12 +162,11 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const auto& output_name = gather_output.node_arg.Name();
 
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  bool is_quantized_tensor = gather_output.quant_param.has_value();
-  utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
+  utils::InitializeQuantizeParam(quantize_param, is_quantized_model);
 
   const auto* type_proto = gather_output.node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(gather_output.quant_param,
                                                                    quantize_param.scaleOffsetEncoding.scale,
                                                                    quantize_param.scaleOffsetEncoding.offset),

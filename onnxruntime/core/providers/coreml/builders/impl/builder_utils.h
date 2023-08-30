@@ -7,7 +7,7 @@
 
 #ifdef __APPLE__
 
-#include "core/common/gsl.h"
+#include <unordered_map>
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/common.h"
@@ -33,16 +33,12 @@ Status HandleAutoPad(const std::vector<int64_t> input_shape,
                      AutoPadType& auto_pad_type_out);
 
 // Copy an onnx initializer data to a coreml weight
-Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, const ONNX_NAMESPACE::TensorProto& tensor);
+Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
+                          const ONNX_NAMESPACE::TensorProto& tensor);
 
 // Copy the float array to a coreml weight
-void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const float> data);
-
-// Copy the int32_t array to a coreml weight
-void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int32_t> data);
-
-// Copy the int64_t array to a coreml weight
-void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int64_t> data);
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
+                        const float* data, size_t num_elements);
 
 }  // namespace coreml
 }  // namespace onnxruntime

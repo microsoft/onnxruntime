@@ -56,7 +56,6 @@ class GemmTunable : public IKernelExplorer {
   }
 
   void Run() override {
-    WithMaxTuningDurationMs max_duration(TuningContext(), 250);
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
@@ -118,7 +117,6 @@ class BatchedGemmTunable : public IBatchedGemmKernelExplorer<T> {
   }
 
   void Run() override {
-    WithMaxTuningDurationMs max_duration(params_.TuningContext(), 250);
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
@@ -181,7 +179,6 @@ class StridedBatchedGemmTunable : public IKernelExplorer {
   }
 
   void Run() override {
-    WithMaxTuningDurationMs max_duration(params_.TuningContext(), 250);
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 

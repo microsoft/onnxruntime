@@ -69,11 +69,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0) return Status::OK();
 
-  return MatMulImpl<T>(this, helper, reinterpret_cast<const T*>(left_X->Data<T>()),
-                       reinterpret_cast<const T*>(right_X->Data<T>()),
-                       reinterpret_cast<T*>(Y->MutableData<T>()),
-                       left_X->Shape(), right_X->Shape(),
-                       transa, transb, trans_batch_a_, trans_batch_b_, alpha_, ctx->GetComputeStream());
+  if (MatMulImpl<T>(this, helper, reinterpret_cast<const T*>(left_X->Data<T>()),
+                    reinterpret_cast<const T*>(right_X->Data<T>()),
+                    reinterpret_cast<T*>(Y->MutableData<T>()),
+                    left_X->Shape(), right_X->Shape(),
+                    transa, transb, trans_batch_a_, trans_batch_b_, alpha_, ctx->GetComputeStream()) != Status::OK()) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "MatMulImpl failed");
+  }
+  return Status::OK();
 }
 
 }  // namespace rocm

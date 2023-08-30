@@ -110,18 +110,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateReductionOpBuilder("ReduceSum", op_registrations);
   }
 
-  {  // Shape
-    CreateShapeOpBuilder("Shape", op_registrations);
-  }
-
-  {  // Gather
-    CreateGatherOpBuilder("Gather", op_registrations);
-  }
-
-  {  // Slice
-    CreateSliceOpBuilder("Slice", op_registrations);
-  }
-
   return op_registrations;
 }
 

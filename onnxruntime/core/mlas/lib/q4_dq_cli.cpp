@@ -254,14 +254,13 @@ dequantize(const Cli& cli)
         out.write((const char*)dstbuf.data(), std::streamsize(dstbuf.size()) * sizeof(float));
     } else {
         std::streambuf* buf;
-        std::ofstream file_output_stream;
         if (cli.output_file) {
-            file_output_stream.open(cli.output_file, std::ios::out);
-            if (file_output_stream.fail()) {
+            std::ofstream out(cli.output_file, std::ios::out);
+            if (!out) {
                 std::cerr << "Cannot open output file " << cli.output_file << std::endl;
                 return -1;
             }
-            buf = file_output_stream.rdbuf();
+            buf = out.rdbuf();
         } else {
             buf = std::cout.rdbuf();
         }

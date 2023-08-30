@@ -52,9 +52,7 @@ Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output
                                     QDQ::DQOpName,
                                     MakeString("Added by ", kTransformerName),
                                     dq_inputs,
-                                    {&new_dq_output_nodearg},
-                                    nullptr,  // attributes
-                                    original_dq_node.Domain());
+                                    {&new_dq_output_nodearg});
 
   // set up edges
   // remove DQ -> Y

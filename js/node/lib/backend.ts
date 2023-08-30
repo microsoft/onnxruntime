@@ -69,4 +69,3 @@ class OnnxruntimeBackend implements Backend {
 }
 
 export const onnxruntimeBackend = new OnnxruntimeBackend();
-export const listSupportedBackends = binding.listSupportedBackends;

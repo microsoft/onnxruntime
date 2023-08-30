@@ -83,13 +83,12 @@ Arguments:
     inspector node affects memory peak causing the original recipe run to fail with OOM.
 - `bucket_size`: the size of the bucket to split the statistic calculation.
 
-### 2.2 Use `inspect_activation` to collect intermediate tensors in a `nn.Module` forward()
+### 2.2 Use `_InspectActivation` to collect intermediate tensors in a `nn.Module` forward()
 
 The limitation of `GlobalSubscriberManager` is, only 'nn.Module's forward output tensors will be dumped, if you want to
 dump the intermediate tensors in a `nn.Module`'s forward function, refer to the following example:
 
 ```diff
-+   from onnxruntime.training.utils import inspect_activation
 class BloomForCausalLM(BloomPreTrainedModel):
   def __init__(self, config: BloomConfig):
     ...
@@ -99,10 +98,10 @@ class BloomForCausalLM(BloomPreTrainedModel):
     transformer_outputs = self.transformer(...)
     hidden_states = transformer_outputs[0]
     lm_logits = self.lm_head(hidden_states)
-+   lm_logits = inspect_activation("lm_logits", lm_logits)
++   lm_logits = _InspectActivation.apply("lm_logits", None, GlobalSubscriberManager.get_run_context(), lm_logits)
     # Shift so that tokens < n predict n
     shift_logits = lm_logits[..., :-1, :].contiguous()
-+   shift_logits = inspect_activation("shift_logits", shift_logits)
++   shift_logits = _InspectActivation.apply("shift_logits", None, GlobalSubscriberManager.get_run_context(), shift_logits)
     shift_labels = labels[..., 1:].contiguous()
     batch_size, seq_length, vocab_size = shift_logits.shape
     # Flatten the tokens
@@ -114,7 +113,7 @@ class BloomForCausalLM(BloomPreTrainedModel):
     return loss
 ```
 
-Be noted, make sure the activation name (as the first argument of `inspect_activation`) is unique, otherwise
+Be noted, make sure the activation name (as the first argument of `_InspectActivation.apply`) is unique, otherwise
 stat file using the activation name will be overwritten by the last write. The dumped data are stored in the `output_dir`.
 
 

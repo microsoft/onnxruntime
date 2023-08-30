@@ -3,9 +3,7 @@
 
 #pragma once
 
-#include <string>
 #include "core/session/inference_session.h"
-#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -75,12 +73,12 @@ struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
-  // The model and checkpoint state can be provided as a file path or a byte array
-  Module(const ModelIdentifiers& model_identifiers,
+  Module(const std::string& train_model_path_or_bytes,
          CheckpointState* state,
          const onnxruntime::SessionOptions& session_options,
          const Environment& env,
          const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+         const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt,
          gsl::span<OrtCustomOpDomain* const> op_domains = gsl::span<OrtCustomOpDomain* const>());
 
   // Return the trainable/nontrainable parameters
@@ -161,7 +159,7 @@ struct Module {
   CheckpointState* state_;  // Non owning pointer to the state.
 
   bool accumulate_gradient_ = false;
-  std::optional<std::string> eval_model_path_;
+  std::string eval_model_path_;
   size_t train_user_input_count_{0U};
   size_t eval_user_input_count_{0U};
 };

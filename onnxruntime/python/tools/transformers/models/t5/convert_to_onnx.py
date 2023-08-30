@@ -8,10 +8,13 @@ import argparse
 import copy
 import logging
 import os
+import sys
 
 import torch
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS, T5Helper
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 

@@ -21,6 +21,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
+                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
@@ -28,6 +29,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                        const NodeUnit& node_unit,
                                        const logging::Logger& logger,
+                                       bool is_quantized_model,
                                        std::vector<std::string>& input_names,
                                        bool do_op_validation) const {
   if (do_op_validation) {
@@ -39,7 +41,7 @@ Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   const auto& input_0 = node_unit.Inputs()[0];
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, input_0, logger, input_names));
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, input_0, logger, is_quantized_model, input_names));
 
   return Status::OK();
 }

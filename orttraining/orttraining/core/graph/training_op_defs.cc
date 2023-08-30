@@ -1537,7 +1537,7 @@ void RegisterTrainingOpSchemas() {
              "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
              " in mixed precision training. ",
              "T_BOOL", OpSchema::Optional)
-      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T_BOOL")
+      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
       .Output(3, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT", OpSchema::Optional)
@@ -4908,21 +4908,6 @@ Return true if all elements are true and false otherwise.
           }
         }
       });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeGrad)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Input(0, "dY", "Gradient of output Y", "T")
-      .Input(1, "X", "Input tensor", "T")
-      .Input(2, "W", "Weight tensor", "T")
-      .Output(0, "dX", "Gradient of X", "T", OpSchema::Optional)
-      .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
-      .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
-      .AllowUncheckedAttributes()
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.");
 }
 
 }  // namespace training

@@ -28,7 +28,6 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MatMul) {
         2e-3f,
     };
 
-#if defined(__APPLE__)
     RandomValueGenerator gen{1234};
     const auto A_shape = std::vector<int64_t>{static_cast<int64_t>(M), 2};
     const auto A_data = gen.Uniform<float>(A_shape, 0.0f, 1.0f);
@@ -39,9 +38,6 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MatMul) {
                               std::move(coreml_ep),
                               {{"A", A}},
                               ep_verification_params);
-#else
-    TestModelLoad(model_path, std::move(coreml_ep), ep_verification_params.ep_node_assignment);
-#endif
   };
 
   for (size_t i = 1; i <= 5; ++i) {
@@ -62,7 +58,6 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MobileNetExcerpt) {
         5e-2f,
     };
 
-#if defined(__APPLE__)
     RandomValueGenerator gen{1234};
     const auto input_shape = std::vector<int64_t>{static_cast<int64_t>(batch_size), 3, 224, 224};
     const auto input_data = gen.Uniform<float>(input_shape, 0.0f, 1.0f);
@@ -73,9 +68,6 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MobileNetExcerpt) {
                               std::move(coreml_ep),
                               {{"input", input}},
                               ep_verification_params);
-#else
-    TestModelLoad(model_path, std::move(coreml_ep), ep_verification_params.ep_node_assignment);
-#endif
   };
 
   for (size_t i = 1; i <= 5; ++i) {
@@ -91,10 +83,13 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, EmptyInputFails) {
   tester.AddInput<float>("A", {0, 2}, {});
   tester.AddOutput<float>("Y", {0, 4}, {});
 
+  auto eps = std::vector<std::unique_ptr<IExecutionProvider>>{};
+  eps.emplace_back(std::make_unique<CoreMLExecutionProvider>(0));
+
   tester
       .Config(ModelTester::ExpectResult::kExpectFailure,
               "the runtime shape ({0,2}) has zero elements. This is not supported by the CoreML EP.")
-      .ConfigEp(std::make_unique<CoreMLExecutionProvider>(0))
+      .ConfigEps(std::move(eps))
       .RunWithConfig();
 }
 
@@ -103,9 +98,21 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, OnlyAllowStaticInputShapes) {
 
   auto coreml_ep = std::make_unique<CoreMLExecutionProvider>(COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES);
 
-  TestModelLoad(model_path, std::move(coreml_ep),
-                // expect no supported nodes because we disable dynamic input shape support
-                ExpectedEPNodeAssignment::None);
+  const auto ep_verification_params = EPVerificationParams{
+      ExpectedEPNodeAssignment::None,  // expect no supported nodes because we disable dynamic input shape support
+  };
+
+  constexpr size_t M = 3;
+  RandomValueGenerator gen{1234};
+  const auto A_shape = std::vector<int64_t>{static_cast<int64_t>(M), 2};
+  const auto A_data = gen.Uniform<float>(A_shape, 0.0f, 1.0f);
+
+  OrtValue A = CreateInputOrtValueOnCPU<float>(A_shape, A_data);
+
+  RunAndVerifyOutputsWithEP(model_path, CurrentTestName(),
+                            std::move(coreml_ep),
+                            {{"A", A}},
+                            ep_verification_params);
 }
 
 }  // namespace onnxruntime::test

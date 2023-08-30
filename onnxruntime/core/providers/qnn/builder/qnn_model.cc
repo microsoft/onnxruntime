@@ -102,8 +102,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       qnn_backend_manager_->GetQnnBackendHandle(),
                                                       model_input_index_map_,
                                                       model_output_index_map_,
-                                                      initializer_inputs_,
-                                                      qnn_backend_manager_->GetQnnBackendType());
+                                                      initializer_inputs_);
   bool rt = true;
   rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name);
   if (!rt) {
@@ -119,9 +118,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     const NodeUnit& node_unit = GetNodeUnit(node, node_unit_map);
     // Q, DQ nodes in the node unit only carry the quantization parameters
     // Add the QNN node when it is the target node (It's a normal node or a singel Q/DQ node)
-    const std::string& op_type = node_unit.OpType();
     LOGS(logger_, VERBOSE) << " node name: [" << node->Name()
-                           << "] node optype: [" << op_type
+                           << "] node optype: [" << node->OpType()
                            << "] as part of the NodeUnit type: [" << node_unit.OpType()
                            << "] name: [" << node_unit.Name()
                            << "]";
@@ -129,8 +127,9 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
       continue;
     }
 
-    if (const auto* op_builder = GetOpBuilder(op_type)) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_));
+    if (const auto* op_builder = GetOpBuilder(node->OpType())) {
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_,
+                                                        is_quantized_model_));
     }
   }
 

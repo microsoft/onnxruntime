@@ -9,8 +9,9 @@ import argparse
 import json
 import logging
 import platform
+import sys  # noqa: F401
 from os import environ
-from typing import Dict, List
+from typing import Dict, List, Tuple, Union  # noqa: F401
 
 import cpuinfo
 import psutil

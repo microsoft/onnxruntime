@@ -14,8 +14,6 @@ import numpy as np
 import pytest
 from utils import dtype_to_suffix, matmul, softmax
 
-max_batch_size = int(os.environ.get("KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE", 64))
-
 
 def multinormal_distribution(num_distribution, num_element_per_dist):
     arrays = []
@@ -38,7 +36,7 @@ def get_ck_binding_name(dtype, biased: bool, masked: bool):
 
 
 dtypes = ["float16"]
-batches = [1, max_batch_size]
+batches = [1, 64]
 seqlens = [128, 512]
 total_seqlens = [128, 512]
 num_heads = [8, 12]

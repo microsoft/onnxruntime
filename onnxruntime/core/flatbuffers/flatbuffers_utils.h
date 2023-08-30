@@ -5,8 +5,6 @@
 
 #include <unordered_map>
 
-#include "flatbuffers/flatbuffers.h"
-
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/common/status.h"
@@ -14,6 +12,18 @@
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
 }
+
+namespace flatbuffers {
+class FlatBufferBuilder;
+
+template <typename T>
+struct Offset;
+
+struct String;
+
+template <typename T>
+class Vector;
+}  // namespace flatbuffers
 
 namespace onnxruntime {
 

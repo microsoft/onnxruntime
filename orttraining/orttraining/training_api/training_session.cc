@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_api/training_session.h"
-#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime::training::api {
 
@@ -13,12 +12,13 @@ TrainingSession::TrainingSession(const Environment& session_env,
                                  const ModelIdentifiers& model_identifiers,
                                  gsl::span<OrtCustomOpDomain* const> custom_op_domains)
     : state_{state},
-      module_{std::make_unique<Module>(model_identifiers, state_,
-                                       session_options, session_env, providers, custom_op_domains)},
-      optimizer_{model_identifiers.IsOptimizerModelAvailable()
+      module_{std::make_unique<Module>(model_identifiers.train_model, state_,
+                                       session_options, session_env, providers,
+                                       model_identifiers.eval_model, custom_op_domains)},
+      optimizer_{model_identifiers.optim_model.has_value()
                      ? std::make_unique<Optimizer>(
-                           model_identifiers, state_,
-                           session_options, session_env, providers)
+                           model_identifiers.optim_model.value(), state_,
+                           session_options, session_env, providers, custom_op_domains)
                      : std::unique_ptr<Optimizer>()} {}
 
 Status TrainingSession::RegisterScheduler(

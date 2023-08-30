@@ -64,11 +64,8 @@ struct SGDOptimizerV2Algorithm : public OptimizerAlgorithmBase {
 };
 
 struct OptimizerAlorithmFactory {
-  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const PathString& optim_path,
+  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const std::string& optim_path_or_bytes,
                                                                 int32_t& group_count);
-  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const uint8_t* optim_model_data,
-                                                                size_t optim_model_data_len, int32_t& group_count);
-  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(std::shared_ptr<Model> model, int32_t& group_count);
 };
 
 struct CheckpointState;
@@ -99,7 +96,7 @@ struct Optimizer {
   // Initialize an optimizer module from an ORT inference session with loaded
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input's ValueInfoProto if the parameter doesn't have it already.
-  Optimizer(const ModelIdentifiers& model_identifiers,
+  Optimizer(const std::string& optim_path_or_bytes,
             CheckpointState* state,
             const onnxruntime::SessionOptions& session_options,
             const Environment& env,
@@ -124,7 +121,7 @@ struct Optimizer {
   }
 
  private:
-  void Initialize(const ModelIdentifiers& model_identifiers,
+  void Initialize(const std::string& optim_path_or_bytes,
                   const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                   gsl::span<OrtCustomOpDomain* const> op_domains);
 

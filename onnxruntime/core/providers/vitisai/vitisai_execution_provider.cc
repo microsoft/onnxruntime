@@ -96,10 +96,6 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     // VITIS AI EP not support sungraph. Assigned to CPU.
     return {};
   }
-  if (execution_providers_) {
-    // Only compiling a model once is currently supported
-    return {};
-  }
   auto opt_str = info_.get_json_config_str();  // String
   execution_providers_ =
       std::make_unique<my_ep_t>(compile_onnx_model(graph, *GetLogger(), opt_str));

@@ -138,7 +138,6 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
     model_proto = model.ToProto();
   } else {
     model_proto = model.ToGraphProtoWithExternalInitializers(filename_dat,
-                                                             ToPathString(filename),
                                                              initializer_size_threshold);
   }
   auto& metadata = model.MetaData();
@@ -195,9 +194,6 @@ Node& graph_fuse(Graph& graph, const std::string& name,
     auto proto = mygraph.ToGraphProto();
     *proto.mutable_name() = name;
     fused_node.AddAttribute("body", proto);
-  }
-  for (auto&& o : fused_node.OutputDefs()) {
-    graph.UpdateProducerNode(o->Name(), fused_node.Index());
   }
   return fused_node;
 }

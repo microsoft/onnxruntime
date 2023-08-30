@@ -550,6 +550,11 @@ def parse_arguments():
         default=None,
         help="Specify the generator that CMake invokes.",
     )
+    parser.add_argument(
+        "--enable_multi_device_test",
+        action="store_true",
+        help="Test with multi-device. Mostly used for multi-device GPU",
+    )
     parser.add_argument("--use_dml", action="store_true", help="Build with DirectML.")
     parser.add_argument(
         "--dml_path",

@@ -33,7 +33,6 @@ class OptimType(Enum):
     """
 
     AdamW = 1
-    SGD = 2
 
 
 def generate_artifacts(
@@ -193,8 +192,7 @@ def generate_artifacts(
     logging.info("Optimizer enum provided: %s", optimizer.name)
 
     optim_model = None
-    optim_blocks = {OptimType.AdamW: onnxblock.optim.AdamW, OptimType.SGD: onnxblock.optim.SGD}
-
+    optim_blocks = {OptimType.AdamW: onnxblock.optim.AdamW}
     optim_block = optim_blocks[optimizer]()
     with onnxblock.empty_base():
         _ = optim_block(model_params)

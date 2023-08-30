@@ -53,10 +53,10 @@ inline std::string GetFunctionIdentifier(std::string_view function_domain, std::
   return function_domain.data() + std::string(":") + function_name.data();
 }
 
-void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto& calling_node,
-                const onnxruntime::NodeAttributes& attr_map, const std::string& unique_prefix);
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
+                const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix);
 
-void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const Node& calling_node, const std::string& unique_prefix);
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, Node& calling_node, std::string unique_prefix);
 
 }  // namespace function_utils
 

@@ -9,10 +9,10 @@ import unittest
 
 import onnx
 import torch
-from parity_utilities import export_onnx, find_transformers_source, optimize_onnx, parse_arguments, run_parity
+from parity_utilities import *  # noqa: F403
 from torch import nn
 
-if find_transformers_source():
+if find_transformers_source():  # noqa: F405
     from onnx_model import OnnxModel
 else:
     from onnxruntime.transformers.onnx_model import OnnxModel
@@ -150,12 +150,14 @@ def run(
 
     # Do not re-use onnx file from previous test since weights of model are random.
     onnx_model_path = "./temp/layer_norm_{}_formula{}.onnx".format("fp16" if float16 else "fp32", formula)
-    export_onnx(model, onnx_model_path, float16, hidden_size, device)
+    export_onnx(model, onnx_model_path, float16, hidden_size, device)  # noqa: F405
 
     if optimized:
         optimized_onnx_path = "./temp/layer_norm_{}_formula{}_opt.onnx".format("fp16" if float16 else "fp32", formula)
         if (not float16) or cast_fp16:
-            optimize_onnx(onnx_model_path, optimized_onnx_path, expected_op=LayerNorm.get_fused_op(), verbose=verbose)
+            optimize_onnx(  # noqa: F405
+                onnx_model_path, optimized_onnx_path, expected_op=LayerNorm.get_fused_op(), verbose=verbose
+            )
         else:
             if cast_onnx_only:
                 optimize_fp16_onnx_with_cast(onnx_model_path, optimized_onnx_path, epsilon=epsilon)
@@ -166,7 +168,7 @@ def run(
     else:
         onnx_path = onnx_model_path
 
-    num_failure = run_parity(
+    num_failure = run_parity(  # noqa: F405
         model,
         onnx_path,
         batch_size,
@@ -297,14 +299,16 @@ class TestLayerNormParity(unittest.TestCase):
 
     def test_cuda(self):
         if not torch.cuda.is_available():
-            self.skipTest("test requires GPU and torch+cuda")
+            import pytest
+
+            pytest.skip("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
             self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, run_extra_tests=True, verbose=self.verbose)
 
 
 if __name__ == "__main__":
-    args, remaining_args = parse_arguments(namespace_filter=unittest)
+    args, remaining_args = parse_arguments(namespace_filter=unittest)  # noqa: F405
 
     TestLayerNormParity.verbose = args.log_verbose
     TestLayerNormParity.optimized = args.optimize

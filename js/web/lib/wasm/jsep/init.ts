@@ -3,7 +3,7 @@
 
 import {Env} from 'onnxruntime-common';
 
-import {JSEP, OrtWasmModule} from '../binding/ort-wasm';
+import {OrtWasmModule} from '../binding/ort-wasm';
 import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
@@ -169,22 +169,16 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
             },
 
         // jsepCreateKernel
-        (name: string, kernel: number, attribute: unknown) => backend.createKernel(
-            name, kernel, attribute,
-            env.debug || env.webgpu.profilingMode === 'default' ? module.UTF8ToString(module._JsepGetNodeName(kernel)) :
-                                                                  `${kernel}`),
+        (name: string, kernel: number, attribute: unknown) => backend.createKernel(name, kernel, attribute),
 
         // jsepReleaseKernel
         (kernel: number) => backend.releaseKernel(kernel),
 
         // jsepRun
-        (kernel: number, contextDataOffset: number, sessionState: JSEP.SessionState) => {
-          LOG_DEBUG(
-              'verbose',
-              () => `[WebGPU] jsepRun: sessionId=${sessionState.sessionId}, kernel=${kernel}, contextDataOffset=${
-                  contextDataOffset}`);
+        (kernel: number, contextDataOffset: number) => {
+          LOG_DEBUG('verbose', () => `[WebGPU] jsepRun: kernel=${kernel}, contextDataOffset=${contextDataOffset}`);
           const context = new ComputeContextImpl(module, backend, contextDataOffset);
-          return backend.computeKernel(kernel, context, sessionState.errors);
+          return backend.computeKernel(kernel, context);
         });
   }
 };

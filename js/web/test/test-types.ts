@@ -110,12 +110,6 @@ export declare namespace Test {
     [backend: string]: {[group: string]: readonly TestList.Test[]};
   }
 
-  interface EnvOptions extends Partial<Omit<Env, 'wasm'|'webgl'|'webgpu'>> {
-    wasm: Partial<Env.WebAssemblyFlags>;
-    webgl: Partial<Env.WebGLFlags>;
-    webgpu: Partial<Env.WebGpuFlags>;
-  }
-
   /**
    * Represent ONNX Runtime Web global options
    */
@@ -128,7 +122,7 @@ export declare namespace Test {
     cudaFlags?: Record<string, unknown>;
     wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
     webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-    globalEnvFlags?: EnvOptions;
+    globalEnvFlags?: Partial<Env>;
   }
 
   /**

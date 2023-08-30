@@ -82,7 +82,7 @@ elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     # keep the same name since AzureEP will release with CpuEP by default.
-    pass
+    package_name = "onnxruntime"
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     package_name = "onnxruntime-qnn"
 
@@ -470,7 +470,6 @@ packages = [
     "onnxruntime.transformers.models.bart",
     "onnxruntime.transformers.models.bert",
     "onnxruntime.transformers.models.gpt2",
-    "onnxruntime.transformers.models.llama",
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.t5",
     "onnxruntime.transformers.models.stable_diffusion",

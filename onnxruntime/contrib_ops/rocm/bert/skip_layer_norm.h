@@ -11,7 +11,7 @@ namespace rocm {
 
 using namespace onnxruntime::rocm;
 
-template <typename T, bool Simplified>
+template <typename T>
 class SkipLayerNorm final : public RocmKernel {
  public:
   SkipLayerNorm(const OpKernelInfo& op_kernel_info);

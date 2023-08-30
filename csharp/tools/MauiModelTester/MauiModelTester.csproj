@@ -53,13 +53,13 @@
 	<ItemGroup>
 		<PackageReference Include="Google.Protobuf" Version="3.16.0" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="7.0.0" />
-		<PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.16.0-dev-20230821-1235-cbaa008391" />
-		<PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.9.0-dev-20230823-0618-3f1ce5ef" />
+		<PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.16.0-dev-20230707-1222-2a11f29eaa" />
+		<PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.8.0" />
 	</ItemGroup>
 
 	<!-- Project loaded by MauiModelTester.sln. Use the nightly package. -->
 	<ItemGroup Condition="'$(SolutionName)'=='MauiModelTester'">
-		<PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.16.0-dev-20230821-1246-cbaa008391" />
+		<PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.16.0-dev-20230707-1224-2a11f29eaa" />
 	</ItemGroup>
 
 	<!-- Project loaded by the ORT C# solution in /csharp. Use the local build of the C# wrapper -->

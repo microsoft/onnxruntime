@@ -4,8 +4,10 @@
 # --------------------------------------------------------------------------
 from logging import getLogger
 
+import numpy as np  # noqa: F401
 from fusion_base import Fusion
-from onnx import helper
+from fusion_utils import FusionUtils  # noqa: F401
+from onnx import TensorProto, helper, numpy_helper  # noqa: F401
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)

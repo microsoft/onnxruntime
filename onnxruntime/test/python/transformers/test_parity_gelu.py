@@ -28,7 +28,7 @@ import os
 import unittest
 
 import torch
-from parity_utilities import export_onnx, optimize_onnx, parse_arguments, run_parity
+from parity_utilities import *  # noqa: F403
 from torch import nn
 
 
@@ -36,7 +36,7 @@ class Gelu(nn.Module):
     def __init__(self, formula=4, fp32_gelu_op=False):
         super().__init__()
         self.formula = formula
-        self.fp32_gelu_op = fp32_gelu_op
+        self.fp32_gelu_op = True
 
     def gelu(self, x):
         if self.formula == 0:
@@ -98,12 +98,12 @@ def run(
 
     # Do not re-use onnx file from previous test since weights of model are random.
     onnx_model_path = "./temp/gelu_{}_{}.onnx".format(formula, "fp16" if float16 else "fp32")
-    export_onnx(model, onnx_model_path, float16, hidden_size, device)
+    export_onnx(model, onnx_model_path, float16, hidden_size, device)  # noqa: F405
 
     if optimized:
         optimized_onnx_path = "./temp/gelu_{}_opt_{}.onnx".format(formula, "fp16" if float16 else "fp32")
         use_gpu = float16 and not fp32_gelu_op
-        optimize_onnx(
+        optimize_onnx(  # noqa: F405
             onnx_model_path,
             optimized_onnx_path,
             Gelu.get_fused_op(formula),
@@ -115,7 +115,7 @@ def run(
     else:
         onnx_path = onnx_model_path
 
-    num_failure = run_parity(
+    num_failure = run_parity(  # noqa: F405
         model,
         onnx_path,
         batch_size,
@@ -226,7 +226,9 @@ class TestGeluParity(unittest.TestCase):
 
     def test_cuda(self):
         if not torch.cuda.is_available():
-            self.skipTest("test requires GPU and torch+cuda")
+            import pytest
+
+            pytest.skip("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
             for i in self.formula_to_test:
@@ -234,7 +236,7 @@ class TestGeluParity(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    args, remaining_args = parse_arguments(namespace_filter=unittest)
+    args, remaining_args = parse_arguments(namespace_filter=unittest)  # noqa: F405
 
     TestGeluParity.verbose = args.log_verbose
     TestGeluParity.optimized = args.optimize

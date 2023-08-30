@@ -162,28 +162,6 @@ TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero) {
   test.Run();
 }
 
-TEST(TensorOpTest, ReshapeSixDimNewShape) {
-  // CoreML has a 5D limit for the new shape. With the CoreML EP enabled, this should fall back to the CPU EP.
-  OpTester test("Reshape", 14);
-  test.AddInput<float>("data", {8, 8, 8}, std::vector<float>(8 * 8 * 8, 1.0f));
-
-  const auto target_shape = std::vector<int64_t>{2, 4, 4, 2, 8, 1};
-  test.AddInput<int64_t>("shape", {static_cast<int64_t>(target_shape.size())}, target_shape, true);
-  test.AddOutput<float>("reshaped", target_shape, std::vector<float>(8 * 8 * 8, 1.0f));
-  test.Run();
-}
-
-TEST(TensorOpTest, ReshapeSixDimInputShape) {
-  // CoreML has a 5D limit for the new shape. With the CoreML EP enabled, this should fall back to the CPU EP.
-  OpTester test("Reshape", 14);
-  test.AddInput<float>("data", {2, 4, 4, 2, 8, 1}, std::vector<float>(8 * 8 * 8, 1.0f));
-
-  const auto target_shape = std::vector<int64_t>{8, 8, 8};
-  test.AddInput<int64_t>("shape", {static_cast<int64_t>(target_shape.size())}, target_shape, true);
-  test.AddOutput<float>("reshaped", target_shape, std::vector<float>(8 * 8 * 8, 1.0f));
-  test.Run();
-}
-
 #if defined(USE_DNNL)
 TEST(TensorOpTest, Reshape_bfloat16) {
 #ifdef USE_DNNL

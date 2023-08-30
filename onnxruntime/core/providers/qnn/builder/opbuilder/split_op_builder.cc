@@ -22,6 +22,7 @@ class SplitOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
+                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
@@ -29,12 +30,14 @@ class SplitOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
+                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
 Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const logging::Logger& logger,
+                                     bool is_quantized_model,
                                      std::vector<std::string>& input_names,
                                      bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
@@ -42,7 +45,7 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   // Only support 1 input, Onnx Opset version < 11, or input 2 is initializer
   // doesn't support input 2 (split data) from dynamic input
   const auto& inputs = node_unit.Inputs();
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
 
   return Status::OK();
 }
@@ -51,6 +54,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                                                    const NodeUnit& node_unit,
                                                    std::vector<std::string>&& input_names,
                                                    const logging::Logger& logger,
+                                                   bool is_quantized_model,
                                                    bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
   int32_t axis_value = 0;
@@ -116,7 +120,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

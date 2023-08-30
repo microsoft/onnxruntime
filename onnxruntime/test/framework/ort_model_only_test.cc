@@ -4,7 +4,6 @@
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/TensorSeq.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -554,41 +553,6 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopyInitializersUseBuffer)
   test_info.run_use_buffer = true;
   test_info.disable_copy_ort_buffer = true;
   test_info.use_buffer_for_initializers = true;
-  RunOrtModel(test_info);
-}
-
-// regression test for 2 issues covered by PR #17000 (internally reported issue).
-// 1) allocation planner broke in minimal build when subgraph had no nodes.
-// 2) usage of a sequence data type caused an exception due to IsSparseTensor() throwing
-//    instead of allowing the calling code to have #ifdef'd code to handle when IsSparseTensor
-//    returned true and sparse tensors were disabled.
-TEST(OrtModelOnlyTests, GithubIssue17000) {
-  // need to run the model to
-  auto model_uri = ORT_TSTR("testdata/ort_github_issue_17000.ort");
-
-  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-
-  OrtValue item0, item1;
-  CreateMLValue<float>(allocator, {1}, {1.f}, &item0);
-  CreateMLValue<float>(allocator, {2}, {2.f, 3.f}, &item1);
-
-  auto elem_type = DataTypeImpl::GetType<float>();
-  auto tensor_seq = std::make_unique<TensorSeq>(elem_type);
-  tensor_seq->SetElements({item0, item1});
-
-  auto mltype = DataTypeImpl::GetType<TensorSeq>();
-  OrtValue value(tensor_seq.release(), mltype, mltype->GetDeleteFunc());
-
-  OrtModelTestInfo test_info;
-  test_info.model_filename = model_uri;
-  test_info.inputs.insert(std::make_pair("seq_in", value));
-  test_info.output_names = {"still_has_elements"};
-  test_info.output_verifier = [](const std::vector<OrtValue>& fetches) {
-    const auto& output = fetches[0].Get<Tensor>();
-    ASSERT_EQ(output.Shape().Size(), 1);
-    ASSERT_EQ(output.Data<bool>()[0], true);  // removed one item from seq so should still have elements
-  };
-
   RunOrtModel(test_info);
 }
 

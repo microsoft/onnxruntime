@@ -15,7 +15,6 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr LoadCheckpoint;
             public IntPtr SaveCheckpoint;
             public IntPtr CreateTrainingSession;
-            public IntPtr CreateTrainingSessionFromBuffer;
             public IntPtr TrainingSessionGetTrainingModelOutputCount;
             public IntPtr TrainingSessionGetEvalModelOutputCount;
             public IntPtr TrainingSessionGetTrainingModelOutputName;

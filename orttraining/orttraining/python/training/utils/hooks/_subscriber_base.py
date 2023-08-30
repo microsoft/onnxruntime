@@ -5,54 +5,34 @@
 
 
 import sys
-from typing import Optional, Tuple
+from typing import Union
 
 import torch
-
-from onnxruntime.training.utils import ORTModelInputOutputType
-
-
-class RuntimeStates:
-    """
-    A data struct holding states for runtime context.
-    > Global states that are one-time collected during model hook registration. A global execution step is
-      also initialized to reflect how many steps have been executed, it will get updated after each step
-      completes its forward path.
-    """
-
-    class _GlobalStates:
-        def __init__(self):
-            # Used to track current execution step, e.g. how many forward/backward path is called.
-            self.execution_step = 0
-            # Used to store the depth of each module, which indicate the indentation level of the module.
-            self.module_index_to_depth = {}
-            # Used to store the unique id of each sequential activation.
-            self.module_to_module_index = {}
-
-    def __init__(self):
-        self.global_states = RuntimeStates._GlobalStates()
 
 
 class SubscriberBase:
     """
     Base class for all module hook subscribers.
+    Currently, the hook here only means post-forward hook and pre-backward hook.
 
-    A module hook subscriber is a class that allow define custom actions to be executed during the nn.Module's hooks.
-    Two types of APIs can be used to define custom actions:
-    1. Module level interfaces:
-        pre_forward_module_apply - called inside the nn.Module's pre-forward hook.
-        post_forward_module_apply - called inside the nn.Module's post-forward hook.
-        post_forward_outmost_module_apply - called inside the nn.Module's post-forward hook, but only for the outmost module.
-    2. Tensor level interfaces:
-        pre_forward_tensor_apply - called inside the nn.Module's pre-forward hook, for each input tensor.
-        post_forward_tensor_apply - called inside the nn.Module's post-forward hook, for each output tensor.
+    A module hook subscriber is a class that implements the `module_post_forward_impl` and `module_pre_backward_impl`
+    function.
+    > The post_forward hook is called after the activation is generated in the forward path.
+    > The pre_backward hook is called before the activation gradient is computed.
 
-    For ORT runs, tensor's flows are important, that's the reason we have tensor input as function input,
-    and tensor output as function output for all the APIs.
-    With this, the overall flow can be traced as a data flow graph (DAG).
+    The post_forward path:
+        Module_A generates activation tensor_a --> Post forward hook (calling subscribers' forward one by one) -->
+        Module_B generates activation tensor_b --> ...
+
+    The pre_backward path:
+        Module_B backward run, tensor_b's gradient is computed as tensor_b_grad -->
+        Pre-backward hook (calling subscribers' backward one by one) -->
+        Module_A backward run, tensor_a's gradient is computed as tensor_a_grad
+
+    Be noted: the "Pre"/"Post" is described from the perspective of Module_A.
     """
 
-    def __init__(self, start_step: Optional[int], end_step: Optional[int]):
+    def __init__(self, start_step: Union[None, int], end_step: Union[None, int]):
         """
         Steps in [start_step, end_step) will run the subscriber's actions, and other steps will skip.
         If start_step is None, 0 is given; if end_step is None, sys.maxsize is given.
@@ -60,152 +40,34 @@ class SubscriberBase:
         self._start_step: int = start_step if start_step is not None else 0
         self._end_step: int = end_step if end_step is not None else sys.maxsize
 
-    def pre_forward_module_apply(
-        self,
-        run_rtx: RuntimeStates,
-        module: torch.nn.Module,
-        args: ORTModelInputOutputType,
-        kwargs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-        """This function is called inside the nn.Module's pre-forward hook.
+    def module_post_forward(self, activation: torch.Tensor, depth: int, name: str, step: int):
+        """
+        This function will be run after the torch Module forward is completed.
 
         Args:
-            run_rtx (RuntimeStates): The runtime states of SubscriberManager.
-            module (torch.nn.Module): The module that is being executed.
-            args (ORTModelInputOutputType): The positional arguments that are passed to the module's pre-forward hook.
-            kwargs (ORTModelInputOutputType): The keyword arguments that are passed to the module's pre-forward hook.
-
-        Returns:
-            Tuple[ORTModelInputOutputType, ORTModelInputOutputType]: Updated args and kwargs.
-
+            activation: Tensor to be inspected.
+            depth: The indent level of the torch Module generating `activation`.
+            name: The unique name for the `activation`.
+            step: Current execution step.
         """
-        if self._need_skip_step(run_rtx.global_states.execution_step):
-            return args, kwargs
+        if self._start_step <= step < self._end_step:
+            self.module_post_forward_impl(activation, depth, name, step)
 
-        updated_args, updated_kwargs = self.pre_forward_module_apply_impl(run_rtx, module, args, kwargs)
-        return updated_args, updated_kwargs
-
-    def pre_forward_module_apply_impl(
-        self,
-        run_rtx: RuntimeStates,
-        module: torch.nn.Module,
-        args: ORTModelInputOutputType,
-        kwargs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-        return args, kwargs
-
-    def pre_forward_tensor_apply(
-        self, run_rtx: RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
-    ) -> torch.Tensor:
-        """This function is called inside the nn.Module's pre-forward hook.
+    def module_pre_backward(self, activation: torch.Tensor, depth: int, name: str, step: int):
+        """
+        This function will be run before the torch Module backward run.
 
         Args:
-            run_rtx (RuntimeStates): The runtime states of SubscriberManager.
-            module (torch.nn.Module): The module that is being executed.
-            tensor_index (int): The index of the tensor in the input tensor list.
-            tensor (torch.Tensor): The tensor is one of module's forward inputs.
+            activation: Tensor to be inspected.
+            depth: The indent level of the torch Module generating `activation`.
+            name: The unique name for the `activation`.
+            step: Current execution step.
         """
-        if self._need_skip_step(run_rtx.global_states.execution_step):
-            return tensor
+        if self._start_step <= step < self._end_step:
+            self.module_pre_backward_impl(activation, depth, name, step)
 
-        return self.pre_forward_tensor_apply_impl(run_rtx, module, tensor_index, tensor)
+    def module_post_forward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
+        raise NotImplementedError()
 
-    def pre_forward_tensor_apply_impl(
-        self, run_rtx: RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
-    ) -> torch.Tensor:
-        return tensor
-
-    def post_forward_module_apply(
-        self,
-        run_rtx: RuntimeStates,
-        module: torch.nn.Module,
-        args: ORTModelInputOutputType,
-        outputs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-        """This function is called inside the nn.Module's post-forward hook.
-
-        Args:
-            run_rtx (RuntimeStates): The runtime states of SubscriberManager.
-            module (torch.nn.Module): The module that is being executed.
-            args (ORTModelInputOutputType): The inputs arguments that are passed to the module's post-forward
-                hook as input.
-            outputs (ORTModelInputOutputType): The outputs arguments that are passed to the module's post-forward
-                hook as input.
-
-        Returns:
-            Tuple[ORTModelInputOutputType, ORTModelInputOutputType]: Updated inputs and outputs.
-        """
-        if self._need_skip_step(run_rtx.global_states.execution_step):
-            return args, outputs
-
-        return self.post_forward_module_apply_impl(run_rtx, module, args, outputs)
-
-    def post_forward_module_apply_impl(
-        self,
-        run_rtx: RuntimeStates,
-        module: torch.nn.Module,
-        args: ORTModelInputOutputType,
-        outputs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-        return args, outputs
-
-    def post_forward_tensor_apply(
-        self, run_rtx: RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
-    ) -> torch.Tensor:
-        """This function is called inside the nn.Module's post-forward hook.
-
-        Args:
-            run_rtx (RuntimeStates): The runtime states of SubscriberManager.
-            module (torch.nn.Module): The module that is being executed.
-            tensor_index (int): The index of the tensor in the output tensor list.
-            tensor (torch.Tensor): The tensor is one of module's forward outputs.
-
-        Returns:
-            torch.Tensor: Updated tensor.
-        """
-        if self._need_skip_step(run_rtx.global_states.execution_step):
-            return tensor
-
-        return self.post_forward_tensor_apply_impl(run_rtx, module, tensor_index, tensor)
-
-    def post_forward_tensor_apply_impl(
-        self, run_rtx: RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
-    ) -> torch.Tensor:
-        return tensor
-
-    def post_forward_outmost_module_apply(
-        self,
-        run_rtx: RuntimeStates,
-        module: torch.nn.Module,
-        args: ORTModelInputOutputType,
-        outputs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-        """This function is called inside the outmost nn.Module's post-forward hook.
-
-        Args:
-            run_rtx (RuntimeStates): The runtime states of SubscriberManager.
-            module (torch.nn.Module): The module that is being executed.
-            args (ORTModelInputOutputType): The inputs arguments that are passed to the module's post-forward
-                hook as input.
-            outputs (ORTModelInputOutputType): The outputs arguments that are passed to the module's post-forward
-                hook as input.
-
-        Returns:
-            Tuple[ORTModelInputOutputType, ORTModelInputOutputType]: Updated inputs and outputs.
-        """
-        if self._need_skip_step(run_rtx.global_states.execution_step):
-            return args, outputs
-
-        return self.post_forward_outmost_module_apply_impl(run_rtx, module, args, outputs)
-
-    def post_forward_outmost_module_apply_impl(
-        self,
-        run_rtx: RuntimeStates,
-        module: torch.nn.Module,
-        args: ORTModelInputOutputType,
-        outputs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-        return args, outputs
-
-    def _need_skip_step(self, current_step: int) -> bool:
-        return current_step < self._start_step or current_step >= self._end_step
+    def module_pre_backward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
+        raise NotImplementedError()

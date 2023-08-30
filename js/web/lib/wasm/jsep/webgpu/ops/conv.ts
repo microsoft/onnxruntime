@@ -10,7 +10,6 @@ import {ComputeContext} from '../types';
 import {createGroupedConvProgramInfoLoader} from './conv-grouped';
 import {createConv2DMatMulProgramInfoLoader} from './conv2d-mm';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
-import {createMatmulProgramInfoLoader} from './matmul';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
 
 export const calculateOutputShape =
@@ -161,39 +160,16 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   const outHeight = outputShape[isChannelsLast ? 1 : 2];
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
   const outChannels = outputShape[isChannelsLast ? 3 : 1];
-  const batch = outputShape[0];
 
   const sameSize =
       isChannelsLast && weightHeight === inputHeight && weightWidth === inputWidth && attributes.autoPad === 'VALID';
   if (sameSize ||
       (weightHeight === 1 && weightWidth === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1 &&
-       attributes.strides[0] === 1 && attributes.strides[1] === 1 && attributes.pads[0] === 0 &&
-       attributes.pads[1] === 0)) {
-    if (isChannelsLast && attributes.group === 1) {
-      // conv2dByMatMul
-      const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
-          context.compute(
-              {
-                ...transposeProgramMetadata,
-                cacheHint: weightTransposeAttribute.cacheKey,
-                get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
-              },
-              {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
-      if (attributes.wIsConst && !context.kernelCustomData.wT) {
-        context.kernelCustomData.wT = transposedWeight;
-      }
-
-      const matmulInputs = [];
-      matmulInputs.push(inputs[0].reshape([batch, inputHeight * inputWidth, inputChannels]));
-      matmulInputs.push(transposedWeight.reshape([1, inputChannels, outChannels]));
-      if (hasBias) {
-        matmulInputs.push(inputs[2]);
-      }
-      context.compute(
-          createMatmulProgramInfoLoader(matmulInputs, adjustedAttributes, outputShape), {inputs: matmulInputs});
-    } else {
-      context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
-    }
+       attributes.strides[0] === 1 && attributes.strides[1] === 1 &&
+       (attributes.autoPad === 'SAME_UPPER' || attributes.autoPad === 'SAME_LOWER' ||
+        attributes.autoPad === 'VALID'))) {
+    // TODO: implement conv2dByMatMul()
+    context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
     return;
   }
 

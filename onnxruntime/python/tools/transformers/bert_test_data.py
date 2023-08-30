@@ -584,12 +584,7 @@ def create_and_save_test_data(
 
     import onnxruntime
 
-    providers = (
-        ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        if "CUDAExecutionProvider" in onnxruntime.get_available_providers()
-        else ["CPUExecutionProvider"]
-    )
-    session = onnxruntime.InferenceSession(model, providers=providers)
+    session = onnxruntime.InferenceSession(model)
     output_names = [output.name for output in session.get_outputs()]
 
     for i, inputs in enumerate(all_inputs):
@@ -634,7 +629,6 @@ def main():
         args.only_input_tensors,
         args.average_sequence_length,
         args.random_sequence_length,
-        args.mask_type,
     )
 
     print("Test data is saved to directory:", output_dir)

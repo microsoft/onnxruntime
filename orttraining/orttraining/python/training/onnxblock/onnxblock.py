@@ -205,8 +205,6 @@ class TrainingBlock(blocks.Block):
             model, self._requires_grad, self._frozen_params, output, accessor._GLOBAL_CUSTOM_OP_LIBRARY
         )
 
-        logging.debug("Adding gradient accumulation nodes for training block %s", self.__class__.__name__)
-
         _training_graph_utils.build_gradient_accumulation_graph(self._training_model, self._requires_grad)
 
         accessor._GLOBAL_ACCESSOR.model.CopyFrom(self._training_model)

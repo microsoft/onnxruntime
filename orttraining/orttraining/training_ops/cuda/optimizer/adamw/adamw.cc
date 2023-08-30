@@ -35,7 +35,7 @@ Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   AdamWOptimizerBase::Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, p));
 
-  bool* updated_flag_ptr = p.updated_flag->template MutableData<bool>();
+  int64_t* updated_flag_ptr = p.updated_flag->template MutableData<int64_t>();
 
   // Currently placed on CPU, need revisit when we had mixed precision training requirement.
   const Tensor* update_signal = ctx->Input<Tensor>(6);
@@ -51,9 +51,9 @@ Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
     launch_multi_tensor_functor<MTA_ADAMW_GROUP_SIZE, TFunctor>(
         Stream(ctx), MTA_ADAMW_CHUNK_SIZE, p.grouped_tensor_sizes, p.grouped_tensor_pointers, functor,
         alpha_, beta_, epsilon_, *lr_ptr, weight_decay_, adam_mode_, correct_bias_, *step_ptr);
-    *updated_flag_ptr = true;
+    *updated_flag_ptr = 1;
   } else {
-    *updated_flag_ptr = false;
+    *updated_flag_ptr = 0;
   }
 
   if (p.updated_weights != nullptr) {

@@ -11,6 +11,7 @@ trigger:
   paths:
     exclude:
     - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -20,6 +21,7 @@ pr:
   paths:
     exclude:
     - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 # It'd better to check out https://github.com/microsoft/onnxruntime/wiki/Leverage-Existing-Artifacts
 # to save debugging time.

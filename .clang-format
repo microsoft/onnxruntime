@@ -7,9 +7,6 @@ BasedOnStyle:  Google
 ColumnLimit:     0
 SortIncludes: false
 DerivePointerAlignment: false
-# Avoid adding spaces between tokens in GSL_SUPPRESS arguments.
-# E.g., don't change "GSL_SUPPRESS(r.11)" to "GSL_SUPPRESS(r .11)".
-WhitespaceSensitiveMacros: ["GSL_SUPPRESS"]
 
 # if you want to customize when working locally see https://clang.llvm.org/docs/ClangFormatStyleOptions.html for options.
 # See ReformatSource.ps1 for a script to update all source according to the current options in this file.

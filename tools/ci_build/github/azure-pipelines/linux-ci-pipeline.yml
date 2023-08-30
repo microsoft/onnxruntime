@@ -6,6 +6,7 @@ trigger:
   paths:
     exclude:
     - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -15,6 +16,7 @@ pr:
   paths:
     exclude:
     - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 resources:
   repositories:
@@ -240,7 +242,6 @@ stages:
       ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
       prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
       with_cache: true
-      cmake_build_type: Release
 
 - stage: arm64_test
   dependsOn: ['arm64_build']

@@ -71,7 +71,7 @@ TEST(GridsampleContribOpTest, gridsample_paddingmode_reflection) {
                         5.0000f, 5.0000f, 10.0000f, 10.0000f});
   test.AddAttribute("padding_mode", "reflection");
   test.AddOutput<float>("Y", {1, 1, 2, 4}, {2.5000f, 0.0000f, 1.7000f, 2.5000f, 2.5000f, 1.7000f, 5.0000f, 2.5000f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // Accuracy issue for QNN
+  test.Run();
 }
 
 TEST(GridsampleContribOpTest, gridsample_aligncorners_true) {
