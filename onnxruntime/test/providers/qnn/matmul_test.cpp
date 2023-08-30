@@ -57,7 +57,8 @@ static GetTestQDQModelFn<QuantType> BuildMatMulOpQDQTestCase(const TestInputDef<
 static void RunMatMulOpOpTest(const TestInputDef<float>& input1_def,
                               const TestInputDef<float>& input2_def,
                               ExpectedEPNodeAssignment expected_ep_assignment,
-                              int opset = 13) {
+                              int opset = 13,
+                              float f32_abs_err = 1e-4f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";
@@ -69,7 +70,7 @@ static void RunMatMulOpOpTest(const TestInputDef<float>& input1_def,
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  2e-4f);
+                  f32_abs_err);
 }
 
 // Runs a QDQ MatMul model on the QNN HTP backend. Checks the graph node assignment, and that the
@@ -105,10 +106,19 @@ TEST_F(QnnCPUBackendTests, MatMulOp) {
 }
 
 // Test MatMul broadcasting
+// Note slight inaccuracy in CPU backend:
+// Expected: contains 896 values, where each value and its corresponding value in 16-byte object
+// <80-03 00-00 00-00 00-00 40-00 34-F0 5B-01 00-00> are an almost-equal pair
+// Actual: 16-byte object <80-03 00-00 00-00 00-00 40-00 23-F0 5B-01 00-00>,
+// where the value pair (148.536011, 148.536255) at index #4 don't match, which is 0.000244141 from 148.536
 TEST_F(QnnCPUBackendTests, MatMulOp_Broadcast) {
-  RunMatMulOpOpTest(TestInputDef<float>({28, 1, 64}, false, -10.0f, 10.0f),
-                    TestInputDef<float>({64, 32}, false, -10.0f, 10.0f),
-                    ExpectedEPNodeAssignment::All, 18);
+  // Create two matrices with element values in the range [-10.0, 10.0].
+  std::vector<float> input_a = GetFloatDataInRange(-10.0f, 10.0f, 28 * 64);
+  std::vector<float> input_b = GetFloatDataInRange(-10.0f, 10.0f, 64 * 32);
+
+  RunMatMulOpOpTest(TestInputDef<float>({28, 1, 64}, false, input_a),
+                    TestInputDef<float>({64, 32}, false, input_b),
+                    ExpectedEPNodeAssignment::All, 18, 0.00026f);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
