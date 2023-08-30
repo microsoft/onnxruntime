@@ -1,0 +1,16 @@
+# This is a placeholder workflow only. Its purpose is for manual runs to show up
+# in the GitHub web UI. It is not used for any automated runs.
+name: Publish site
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder step to have workflow included in the GitHub web UI
+        run: |
+          echo "Placeholder step to have workflow included in the GitHub web UI"
+          echo "The actual publish workflow is run from the gh-pages branch"
