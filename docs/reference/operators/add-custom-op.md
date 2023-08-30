@@ -1,3 +1,4 @@
+
 ---
 title: Custom operators
 parent: Operators
@@ -41,8 +42,16 @@ int main() {
 }
 ```
 
-Inputs are declared as const references, while outputs are required to be non-const references. The access of shape and data are all supported by
-[Ort::Custom::Tensor](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L54C9-L54C9).
+- Inputs need to be declared as const references.
+- Outputs need to be declared as non-const references.
+- [Ort::Custom::Tensor::Shape()](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L80C27-L80C27) returns input shape.
+- [Ort::Custom::Tensor::Data()](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L67C46-L67C46) returns raw input data.
+- [Ort::Custom::Tensor::NumberOfElement()](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L73C15-L73C15) returns number of elements in the input.
+- [Ort::Custom::Tensor::Allocate(...)](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L83C12-L83C12) allocates an output and returns raw data address.
+- Supported template arguments are: int8_t, int16_t, int32_t, int64_t, float, double.
+- Support [std::string_view](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L188) as input and [std::string](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L117) as output, please find usage [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/test_inference.cc#L3129).
+- For custom op functions running on CPUExecutionProvider, [span](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L40) and scalar as inputs are supported, please find usage [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L43).
+- For custom op functions that expect kernel context, please see an example [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L43).
 
 
 For custom ops that bear attributes, structs are also supported：
@@ -54,6 +63,7 @@ struct Merge {
     ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "reverse", &reverse) == nullptr);
     reverse_ = reverse != 0;
   }
+  // a Compute function is required to be present
   void Compute(const Ort::Custom::Tensor<std::string_view>& strings_in,
                std::string_view string_in,
                Ort::Custom::Tensor<std::string>* strings_out) {
@@ -82,16 +92,15 @@ int main() {
   // create a session with the session_options ...
 }
 ```
-
-For custom ops running on CPUExecutionProvider, [span](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L40) and scalar as inputs are supported, please refer to more [examples](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L43) for usage.
+Note - a "Compute" function is required for the struct to run as a custom op.
+More examples could be found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc) and [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/test_inference.cc#L3123).
 
 ## Legacy way for custom op development and registration
-The legacy way for developing custom op is still supported, please refer to the [examples](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/custom_op_utils.h) for detail.
+The legacy way for developing custom op is still supported, please refer to examples [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/custom_op_utils.h).
 
 ## Create a library of custom operators
 Custom operators can be defined in a separate shared library (e.g., a .dll on Windows or a .so on Linux). A custom operator library must export and implement a `RegisterCustomOps` function. The `RegisterCustomOps` function adds a `Ort::CustomOpDomain` containing the library's custom operators to the provided session options.
-
-Please refer to the [example](https://github.com/microsoft/onnxruntime/tree/rel-1.16.0/onnxruntime/test/testdata/custom_op_library) for detail.
+Please refer to a project [here](https://github.com/microsoft/onnxruntime/tree/rel-1.16.0/onnxruntime/test/testdata/custom_op_library) and related cmake commands [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/cmake/onnxruntime_unittests.cmake#L1482).
 
 ## Calling a native operator from custom operator
 To simplify implementation of custom operators, native onnxruntime operators can directly be invoked. For example, some custom ops might have to do GEMM or TopK in between other computations. 
@@ -154,8 +163,7 @@ int main() {
 }
 ```
 
-Details could be found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L39).
-
+Code could be found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L39).
 A unit test case could found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/test_inference.cc#L3272).
 
 ## Wrapping an external inference runtime in a custom operator
