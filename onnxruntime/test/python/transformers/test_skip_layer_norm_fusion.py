@@ -41,7 +41,7 @@ class TestFusion(unittest.TestCase):
     ):
         options = FusionOptions("bert")
         optimized_model = optimize_model(model_path, optimization_options=options, opt_level=0)
-        optimized_model.save_model_to_file(f"optimized{model_path}")
+
         ops = ["Add", "LayerNormalization", "SkipLayerNormalization", "Cast"]
         for op in ops:
             nodes = optimized_model.get_nodes_by_op_type(op)
