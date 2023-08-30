@@ -238,7 +238,7 @@ stages:
 
     # get-docker-image-steps.yml will move the $(Build.SourcesDirectory)/manylinux into $(Build.SourcesDirectory)/onnxruntime,
     # then rename $(Build.SourcesDirectory)/onnxruntime as $(Build.SourcesDirectory)
-    - template: get-docker-image-steps.yml
+    - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
         Context: tools/ci_build/github/linux/docker
