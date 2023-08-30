@@ -115,7 +115,7 @@ void ScaledSumImpl(cudaStream_t stream,
                    const std::vector<float>& scales,
                    T* output_data) {
   const int blocksPerGrid = static_cast<int>(CeilDiv(input_element_count, kBlockSize * kNumUnroll));
-  constexpr int vec_alignment = std::alignment_of<aligned_vector<T, NumUnroll>>::value;
+  constexpr int vec_alignment = std::alignment_of<aligned_vector<T, kNumUnroll>>::value;
   const bool use_vectorized = (input_element_count % kNumUnroll == 0) &&
                               (reinterpret_cast<uintptr_t>(output_data) % vec_alignment == 0) &&
                               (reinterpret_cast<uintptr_t>(inputs[0]) % vec_alignment == 0) &&
