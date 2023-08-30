@@ -2305,7 +2305,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (detailed_build_log_) {
             engine_build_start = std::chrono::steady_clock::now();
           }
-          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(trt_builder->buildSerializedNetwork(*trt_network, *trt_config));
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not build engine for fused node: " + fused_node.Name());
@@ -2671,7 +2671,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               engine_build_start = std::chrono::steady_clock::now();
             }
             *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-                trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
+                trt_builder->buildSerializedNetwork(*trt_state->network->get(), *trt_config));
             if (detailed_build_log_) {
               auto engine_build_stop = std::chrono::steady_clock::now();
               LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
