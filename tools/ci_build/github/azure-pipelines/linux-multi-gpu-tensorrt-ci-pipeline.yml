@@ -11,6 +11,7 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -24,13 +25,16 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
+    - 'js/node'
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
-stages:
-- template: templates/mac-cpu-packaging-pipeline.yml
+jobs:
+- template: templates/linux-ci.yml
   parameters:
-    AllowReleasedOpsetOnly: 0
-    BuildForAllArchs: false
-    AdditionalBuildFlags: --build_objc --enable_language_interop_ops --build_wheel --use_xnnpack
-    WithCache: true
+    AgentPool : 'Linux-Multi-GPU'
+    JobName: 'Linux_CI_Multi_GPU_TensorRT_Dev'
+    # The latest TensorRT container only supports ubuntu20.04 and python 3.8
+    RunDockerBuildArgs: '-o ubuntu20.04 -d tensorrt -x "--enable_multi_device_test"'
+    DoNugetPack:  'false'
+    ArtifactName: 'drop-linux'

@@ -20,6 +20,8 @@
 #pragma warning(pop)
 #endif
 
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
@@ -42,12 +44,6 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 class Graph;
