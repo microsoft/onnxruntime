@@ -115,12 +115,12 @@ void ScaledSumImpl(cudaStream_t stream,
                    const std::vector<float>& scales,
                    T* output_data) {
   const int blocksPerGrid = static_cast<int>(CeilDiv(input_element_count, kBlockSize * kNumUnroll));
-
+  constexpr int vec_alignment = std::alignment_of<aligned_vector<T, NumUnroll>>::value;
   const bool use_vectorized = (input_element_count % kNumUnroll == 0) &&
-                              (reinterpret_cast<uintptr_t>(output_data) % 32 == 0) &&
-                              (reinterpret_cast<uintptr_t>(inputs[0]) % 32 == 0) &&
-                              (reinterpret_cast<uintptr_t>(inputs[1]) % 32 == 0) &&
-                              (inputs.size() < 3 || (reinterpret_cast<uintptr_t>(inputs[2]) % 32 == 0));
+                              (reinterpret_cast<uintptr_t>(output_data) % vec_alignment == 0) &&
+                              (reinterpret_cast<uintptr_t>(inputs[0]) % vec_alignment == 0) &&
+                              (reinterpret_cast<uintptr_t>(inputs[1]) % vec_alignment == 0) &&
+                              (inputs.size() < 3 || (reinterpret_cast<uintptr_t>(inputs[2]) % vec_alignment == 0));
 
   const int input_count = static_cast<int>(inputs.size());
   using TwoInputTVectorizedFunctorType = ScaledSumFunctor<T, kNumUnroll, 2, true>;

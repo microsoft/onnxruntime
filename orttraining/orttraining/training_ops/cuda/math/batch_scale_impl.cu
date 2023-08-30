@@ -101,12 +101,12 @@ void BatchScaleImpl(cudaStream_t stream,
                     const std::vector<float>& scales,
                     const std::vector<T*>& outputs) {
   const int blocksPerGrid = static_cast<int>(CeilDiv(input_element_count, kBlockSize * kNumUnroll));
-
+  constexpr int vec_alignment = std::alignment_of<aligned_vector<T, NumUnroll>>::value;
   const bool use_vectorized = (input_element_count % kNumUnroll == 0) &&
-                              (reinterpret_cast<uintptr_t>(input_data) % 32 == 0) &&
-                              (reinterpret_cast<uintptr_t>(outputs[0]) % 32 == 0) &&
-                              (reinterpret_cast<uintptr_t>(outputs[1]) % 32 == 0) &&
-                              (outputs.size() < 3 || (reinterpret_cast<uintptr_t>(outputs[2]) % 32 == 0));
+                              (reinterpret_cast<uintptr_t>(input_data) % vec_alignment == 0) &&
+                              (reinterpret_cast<uintptr_t>(outputs[0]) % vec_alignment == 0) &&
+                              (reinterpret_cast<uintptr_t>(outputs[1]) % vec_alignment == 0) &&
+                              (outputs.size() < 3 || (reinterpret_cast<uintptr_t>(outputs[2]) % vec_alignment == 0));
 
   const int output_count = static_cast<int>(outputs.size());
   using TwoOutputVectorizedFunctorType = BatchScaleFunctor<T, kNumUnroll, 2, true>;
