@@ -97,8 +97,12 @@ def flash_attn_func(q, k, v, config, causal=False):
     }
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+    io_binding = ort_session.io_binding()
+    for input in ort_inputs:
+        io_binding.bind_cpu_input(input, ort_inputs[input])
+    io_binding.bind_output("output")
     start = time.time()
-    ort_session.run(None, ort_inputs)
+    ort_session.run_with_iobinding(io_binding)
     end = time.time()
     return end - start
 
