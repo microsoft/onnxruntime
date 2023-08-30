@@ -59,7 +59,7 @@ For more information, you can check API using the following:
 help(onnxruntime_extensions.gen_processing_models)
 ```
 
-You can also get an ONNX models in the following ways, among others:
+You can also get the pre/post-processing ONNX model in the following ways, among others:
 - [Pre/post-processing pipeline](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/tools/pre_post_processing/pre_post_processor.py)
 - [Export from a PyTorch model](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/superresolution_e2e.py#L69)
 - [Create an ONNX model with a graph](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/_ortapi2.py#L50)
