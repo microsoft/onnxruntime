@@ -282,7 +282,7 @@ export class TensorResultValidator {
   private static isHalfFloat: boolean|undefined;
 
   constructor(backend: string) {
-    if (backend === 'cpu') {
+    if (backend === 'cpu' || backend === 'dml' || backend === 'cuda' || backend === 'tensorrt') {
       this.absoluteThreshold = CPU_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = CPU_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'webgl') {
