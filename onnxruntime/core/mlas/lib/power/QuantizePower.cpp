@@ -1,4 +1,5 @@
 #include "mlasi.h"
+#include <type_traits>
 #include <altivec.h>
 
 template<typename OutputType>
@@ -83,13 +84,13 @@ Return Value:
         auto ShortVector0 = vec_pack(IntegerVector0, IntegerVector1);
         auto ShortVector1 = vec_pack(IntegerVector2, IntegerVector3);
 
-        if constexpr (sizeof(OutputType) == sizeof(uint8_t)) {
+        if constexpr (std::is_same_v<OutputType, uint8_t> || std::is_same_v<OutputType, int8_t>) {
             auto CharVector = vec_pack(ShortVector0, ShortVector1);
-            vec_xst(CharVector, 0, reinterpret_cast<int8_t*>(Output));
+            vec_xst(CharVector, 0, Output);
         } else {
-            static_assert(sizeof(OutputType) == sizeof(uint16_t));
-            vec_xst(ShortVector0, 0, reinterpret_cast<int16_t*>(Output));
-            vec_xst(ShortVector1, 0, reinterpret_cast<int16_t*>(Output + 8));
+            static_assert(std::is_same_v<OutputType, uint16_t> || std::is_same_v<OutputType, int16_t>);
+            vec_xst(ShortVector0, 0, Output);
+            vec_xst(ShortVector1, 0, &Output[8]);
         }
 
         Output += 16;
