@@ -51,10 +51,11 @@ void ReductionOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, cons
 Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& op_type(node_unit.OpType());
   const auto& inputs = node_unit.Inputs();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
   auto& shaper(model_builder.GetShaper());
-  const auto input_shape = shaper[inputs[0].node_arg.Name()];
+  const auto input_shape = shaper[input];
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
@@ -99,10 +100,10 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   }
 
   // Add ReduceMean operation
-  InlinedVector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(inputs[0].node_arg.Name()));  // data
-
   if (!axes.empty()) {
+    InlinedVector<uint32_t> input_indices;
+    input_indices.push_back(operand_indices.at(input));  // data
+
     const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
     Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
     const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
@@ -110,17 +111,17 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
     input_indices.push_back(operand_indices.at(axes_name));  // axes
 
-    int32_t input_size = static_cast<int32_t>(input_shape.size());
+    int32_t input_dim = static_cast<int32_t>(input_shape.size());
 
     // Make output dimensions
     InlinedVector<uint32_t> output_dimen;
     if (keepdims) {
-      output_dimen.reserve(input_size);
+      output_dimen.reserve(input_dim);
     } else {
-      output_dimen.reserve(input_size - axes.size());
+      output_dimen.reserve(input_dim - axes.size());
     }
 
-    for (int32_t i = 0; i < input_size; i++) {
+    for (int32_t i = 0; i < input_dim; i++) {
       if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
         output_dimen.push_back(input_shape[i]);
       } else {
@@ -145,8 +146,8 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   } else {
     // If `axes` is still empty at this point, meaning that it's ReduceMean-18 and attribute `noop_with_empty_axes` specifies as 1,
     // treat as an Identity op here.
-    const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, input_shape);
-    model_builder.RegisterOperand(output, operand_indices.at(inputs[0].node_arg.Name()), output_operand_type);
+    const OperandType output_operand_type(operand_types.at(input).type, input_shape);
+    model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   }
 
   return Status::OK();
