@@ -20,7 +20,6 @@ The basic workflow is to add the custom operators to an ONNX model and then to p
 
 ## Quickstart
 
-## Installation
 ### **Python installation**
 ```bash
 pip install onnxruntime-extensions
