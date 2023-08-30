@@ -103,13 +103,13 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Adds the given int property to the checkpoint state.
+        /// Adds or updates the given int property to/in the checkpoint state.
         ///
-        /// Runtime properties that are ints such as epoch, training step, and others can be added to the checkpoint
-        /// state by the user if they desire by calling this function with the appropriate property name and
-        /// value. The given property name must be unique to be able to successfully add the property.
+        /// Runtime properties such as epoch, training step, best score, and others can be added to the checkpoint
+        /// state by the user by calling this function with the corresponding property name and value.
+        /// The given property name must be unique to be able to successfully add the property.
         /// </summary>
-        /// <param name="propertyName">Unique name of the property being added.</param>
+        /// <param name="propertyName">Name of the property being added or updated.</param>
         /// <param name="propertyValue">Property value associated with the given name.</param>
         public void AddProperty(string propertyName, long propertyValue)
         {
@@ -117,13 +117,13 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Adds the given float property to the checkpoint state.
+        /// Adds or updates the given float property to/in the checkpoint state.
         ///
-        /// Runtime properties that are floats such as loss, best score, and others can be added to the checkpoint
-        /// state by the user if they desire by calling this function with the appropriate property name and
-        /// value. The given property name must be unique to be able to successfully add the property.
+        /// Runtime properties such as epoch, training step, best score, and others can be added to the checkpoint
+        /// state by the user by calling this function with the corresponding property name and value.
+        /// The given property name must be unique to be able to successfully add the property.
         /// </summary>
-        /// <param name="propertyName">Unique name of the property being added.</param>
+        /// <param name="propertyName">Name of the property being added or updated.</param>
         /// <param name="propertyValue">Property value associated with the given name.</param>
         public void AddProperty(string propertyName, float propertyValue)
         {
@@ -131,13 +131,13 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Adds the given string property to the checkpoint state.
+        /// Adds or updates the given string property to/in the checkpoint state.
         ///
-        /// Runtime properties that are strings such as parameter names, custom strings, and others can be added
-        /// to the checkpoint state by the user if they desire by calling this function with the appropriate property
-        /// name and value. The given property name must be unique to be able to successfully add the property.
+        /// Runtime properties such as epoch, training step, best score, and others can be added to the checkpoint
+        /// state by the user by calling this function with the corresponding property name and value.
+        /// The given property name must be unique to be able to successfully add the property.
         /// </summary>
-        /// <param name="propertyName">Unique name of the property being added.</param>
+        /// <param name="propertyName">Name of the property being added or updated.</param>
         /// <param name="propertyValue">Property value associated with the given name.</param>
         public void AddProperty(string propertyName, string propertyValue)
         {
@@ -162,7 +162,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Gets the property value from an existing entry in the checkpoint state. The property must
         /// exist in the checkpoint state to be able to retrieve it successfully.
         /// </summary>
-        /// <param name="propertyName">Unique name of the property being retrieved.</param>
+        /// <param name="propertyName">Name of the property being retrieved.</param>
         /// <returns>Property value associated with the given property name.</returns>
         public object GetProperty(string propertyName)
         {
@@ -190,6 +190,59 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             throw new ArgumentException("Expected the property type to be one of long, float or string. Unknown type retrieved " + propertyValue.ToString());
+        }
+
+        /// <summary>
+        /// Updates the data associated with the model parameter in the checkpoint state for the given parameter name.
+        ///
+        /// This function updates a model parameter in the checkpoint state with the given parameter data.
+        /// The training session must be already created with the checkpoint state that contains the parameter
+        /// being updated. The given parameter is copied over to the registered device for the training session.
+        /// The parameter must exist in the checkpoint state to be able to update it successfully.
+        /// </summary>
+        /// <param name="parameterName">Name of the parameter being updated.</param>
+        /// <param name="parameter">The parameter data that should replace the existing parameter data.</param>
+        public void UpdateParameter(string parameterName, OrtValue parameter)
+        {
+            if (parameter.OnnxType != OnnxValueType.ONNX_TYPE_TENSOR)
+            {
+                throw new ArgumentException("Incorrect buffer received. Expected a tensor parameter.");
+            }
+
+            var parameterNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(parameterName);
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtUpdateParameter(handle, parameterNameUtf8, parameter.Handle));
+        }
+
+        /// <summary>
+        /// Gets the data associated with the model parameter from the checkpoint state for the given parameter name.
+        ///
+        /// This function retrieves the model parameter data from the checkpoint state for the given parameter name.
+        /// The parameter is copied over to the provided OrtValue. The training session must be already created
+        /// with the checkpoint state that contains the parameter being retrieved.
+        /// The parameter must exist in the checkpoint state to be able to retrieve it successfully.
+        /// </summary>
+        /// <param name="parameterName">Name of the parameter being updated.</param>
+        /// <returns>The parameter data that is retrieved from the checkpoint state.</returns>
+        public OrtValue GetParameter(string parameterName)
+        {
+            var parameterNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(parameterName);
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParameterTypeAndShape(handle, parameterNameUtf8, out IntPtr typeAndShapeInfoHandle));
+
+            try
+            {
+                var typeAndShapeInfo = new OrtTensorTypeAndShapeInfo(typeAndShapeInfoHandle);
+                var parameter = OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance, typeAndShapeInfo.ElementDataType, typeAndShapeInfo.Shape);
+
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParameter(handle, parameterNameUtf8, parameter.Handle));
+
+                return parameter;
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShapeInfoHandle);
+            }
+
         }
 
 #region SafeHandle
