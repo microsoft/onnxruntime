@@ -3,6 +3,7 @@
 
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
+import {TensorView} from '../tensor';
 
 import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo} from './types';
@@ -30,7 +31,8 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number]): void {
+  run(buildArtifact: Artifact, inputsTensorView: readonly TensorView[], inputs: GpuData[], outputs: GpuData[],
+      dispatchGroup: [number, number, number]): void {
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
     const profilingEnabled = this.backend.supportTimestampQuery && this.backend.env.webgpu.profilingMode === 'default';
@@ -100,9 +102,17 @@ export class ProgramManager {
         }
 
         this.backend.gpuDataManager.release(syncData.id);
-
+        let inputShapes = '';
+        inputsTensorView.forEach((value, i) => {
+          inputShapes += `input[${i}]: ${value.dims}, `;
+        });
+        let outputShapes = '';
+        buildArtifact.programInfo.outputs.forEach((value, i) => {
+          outputShapes += `output[${i}]: ${value.dims}, `;
+        });
         // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelId}|${kernelName}" execution time: ${endTime - startTime} ns`);
+        console.log(`[profiling] kernel "${kernelName}" ${inputShapes}${outputShapes}execution time: ${
+            endTime - startTime} ns`);
       });
     }
 
