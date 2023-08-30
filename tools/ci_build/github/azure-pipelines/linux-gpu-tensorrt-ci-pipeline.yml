@@ -42,6 +42,7 @@ jobs:
     skipComponentGovernanceDetection: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     ORT_CACHE_DIR: '$(Agent.TempDirectory)/ort/ccache'
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   workspace:
     clean: all
   pool: onnxruntime-tensorrt-linuxbuild-T4
