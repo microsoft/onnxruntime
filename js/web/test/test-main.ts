@@ -17,6 +17,8 @@ if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => tes
   require('../../node');
 }
 
+
+// test change
 // set flags
 const options = ORT_WEB_TEST_CONFIG.options;
 if (options.debug !== undefined) {
