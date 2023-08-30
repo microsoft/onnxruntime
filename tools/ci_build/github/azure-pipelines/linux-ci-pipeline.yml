@@ -69,7 +69,7 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2_28_cpu
           Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=amd64/almalinux:8 --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root"
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root"
           Repository: onnxruntimecpubuildpythonx86_64
 
       - template: templates/linux-build-step-with-cache.yml
