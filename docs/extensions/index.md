@@ -23,8 +23,7 @@ The basic workflow is to add the custom operators to an ONNX model and then to p
 ### **Python installation**
 ```bash
 pip install onnxruntime-extensions
-````
-
+```
 
 #### **Nightly Build**
 
@@ -37,6 +36,11 @@ Please ensure that you have met the prerequisites of onnxruntime-extensions (e.g
 Please make sure the compiler toolkit like gcc(later than g++ 8.0) or clang are installed before the following command
 ```bash
 python -m pip install git+https://github.com/microsoft/onnxruntime-extensions.git
+```
+
+### **NuGet installation (with .NET CLI)**
+```bash
+dotnet add package Microsoft.ML.OnnxRuntime.Extensions --version 0.8.1-alpha
 ```
 
 ## Prepare the pre/post-processing ONNX model
@@ -54,7 +58,13 @@ For more information, you can check API using the following:
 ```python
 help(onnxruntime_extensions.gen_processing_models)
 ```
-### NOTE: These data processing model can be merged into other model [onnx.compose](https://onnx.ai/onnx/api/compose.html) if needed.
+
+You can also get an ONNX models in the following ways, among others:
+- [Pre/post-processing pipeline](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/tools/pre_post_processing/pre_post_processor.py)
+- [Export from a PyTorch model](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/superresolution_e2e.py#L69)
+- [Create an ONNX model with a graph](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/_ortapi2.py#L50)
+- [Merge a data processing model into another model using onnx.compose](https://onnx.ai/onnx/api/compose.html)
+
 ## Inference with ONNX Runtime and Extensions
 
 ### Python
@@ -90,10 +100,10 @@ sess_opt.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
 ```
 
 ### C#
-```C#
-SessionOptions options = new SessionOptions()
-options.RegisterOrtExtensions()
-session = new InferenceSession(model, options)
+```java
+SessionOptions options = new SessionOptions();
+options.RegisterOrtExtensions();
+session = new InferenceSession(model, options);
 ```
 
 ## Tutorials
