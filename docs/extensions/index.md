@@ -28,7 +28,7 @@ pip install onnxruntime-extensions
 
 #### **Nightly Build**
 
-#### <strong>on Windows</strong>
+##### on Windows
 ```cmd
 pip install --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-extensions
 ```
