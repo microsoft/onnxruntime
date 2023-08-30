@@ -4,19 +4,19 @@
 # --------------------------------------------------------------------------
 
 """
-Benchmark the performance of MultiHeadAttention. Examples in Linux:
+Benchmark the performance of MultiHeadAttention with A100 GPU in Linux:
 
 flash attention v2:
 ORT_DISABLE_FLASH_ATTENTION=0  python benchmark_mha.py >> result.txt
 
-TensorRT flash attention:
+TensorRT fused attention (when seq_len <= 384) or TensorRT flash attention (seq_len > 384):
 ORT_DISABLE_FLASH_ATTENTION=1  python benchmark_mha.py >> result.txt
 
 Memory Efficient attention:
-ORT_DISABLE_FLASH_ATTENTION=1 ORT_DISABLE_TRT_FLASH_ATTENTION=1 python benchmark_mha.py >> result.txt
+ORT_DISABLE_FLASH_ATTENTION=1 ORT_DISABLE_TRT_FLASH_ATTENTION=1 ORT_DISABLE_FUSED_ATTENTION=1 python benchmark_mha.py >> result.txt
 
 Unfused attention (might fail):
-ORT_DISABLE_FLASH_ATTENTION=1 ORT_DISABLE_TRT_FLASH_ATTENTION=1 ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION=1 python benchmark_mha.py >> result.txt
+ORT_DISABLE_FLASH_ATTENTION=1 ORT_DISABLE_TRT_FLASH_ATTENTION=1 ORT_DISABLE_FUSED_ATTENTION=1 ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION=1 python benchmark_mha.py >> result.txt
 """
 import math
 import os
@@ -28,7 +28,7 @@ import torch
 from onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession
-from onnxruntime.transformers.io_binding_helper import OrtCudaSession as CudaSession
+from onnxruntime.transformers.io_binding_helper import CudaSession
 
 
 class Config:
@@ -142,10 +142,28 @@ def efficiency(flop, time):
     return (flop / time / 10**12) if not math.isnan(time) else 0.0
 
 
-def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeats: int = 30):
+def get_sm80_kernel_name(config: Config) -> str:
+    # This classification is for sm=80 like A100. Note that some kernel might not exist in older GPUs.
+    if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
+        return "Flash_v2"
+
+    if config.sequence_length <= 384 and os.getenv("ORT_DISABLE_FUSED_ATTENTION") != "1":
+        return "TRT_Fused"
+
+    if os.getenv("ORT_DISABLE_TRT_FLASH_ATTENTION") != "1":
+        return "TRT_Flash"
+
+    if os.getenv("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION") != "1":
+        return "Memory_Efficient"
+
+    return "Unfused"
+
+
+def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeats: int = 100):
     device_id = torch.cuda.current_device()
     device = torch.device("cuda", device_id)
 
+    # (batch_size, sequence_length, num_heads, head_size)
     configs = [
         (32, 512, 64, 32),
         (32, 512, 128, 16),
@@ -159,9 +177,17 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
         (2, 8192, 128, 16),
         (1, 16384, 64, 32),
         (1, 16384, 128, 16),
-        (1, 16384, 8, 40),  # stable diffusion self attention
+        # stable diffusion
+        (1, 16384, 8, 40),
         (1, 16384, 8, 80),
         (1, 16384, 8, 160),
+        # bert-base
+        (128, 128, 12, 64),
+        (64, 128, 12, 64),
+        (128, 384, 12, 64),
+        (64, 384, 12, 64),
+        (128, 512, 12, 64),
+        (64, 512, 12, 64),
     ]
     causal = False
 
@@ -175,15 +201,6 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
     ]
     for name in env_names:
         print(f"{name}={os.getenv(name)}")
-
-    if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
-        kernel = "Flash_v2"
-    elif os.getenv("ORT_DISABLE_TRT_FLASH_ATTENTION") != "1":
-        kernel = "TRT_Flash"
-    elif os.getenv("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION") != "1":
-        kernel = "MemoryEfficientAttention"
-    else:
-        kernel = "Unfused"
 
     print(f"enable_cuda_graph={enable_cuda_graph}")
     print("causal\tbatch\tseqlen\theads\th_dim\tTFLOPS\tkernel")
@@ -219,6 +236,7 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
         # compute TFLOPS per second
         speed = efficiency(flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency)
 
+        kernel = get_sm80_kernel_name(config)
         print(f"{causal}\t{batch_size}\t{sequence_length}\t{num_heads}\t{head_size}\t{speed:.2f}\t{kernel}")
 
 
