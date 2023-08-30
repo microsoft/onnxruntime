@@ -1212,8 +1212,8 @@ def generate_build_tree(
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",  # noqa: ISC003
-            "--apple_deploy_target  " + "<the minimum version of the target platform>",  # noqa: ISC003
+            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",
+            "--apple_deploy_target  " + "<the minimum version of the target platform>",
         ]
         if not all(needed_args):
             raise BuildError(
@@ -1632,7 +1632,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             if args.use_nnapi:
                 run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
             else:
-                run_adb_shell("{0}/onnx_test_runner {0}/test".format(device_dir))
+                run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
 
             # run shared_lib_test if necessary
             if args.build_shared_lib:
@@ -1777,11 +1777,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     [sys.executable, "onnxruntime_test_python_symbolic_shape_infer.py"], cwd=cwd, dll_path=dll_path
                 )
 
-            # For CUDA enabled builds test IOBinding feature
-            if args.use_cuda:
+            # For CUDA or DML enabled builds test IOBinding feature
+            if args.use_cuda or args.use_dml:
                 log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
+            if args.use_cuda:
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
 
