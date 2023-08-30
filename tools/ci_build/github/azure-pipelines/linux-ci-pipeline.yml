@@ -67,10 +67,10 @@ stages:
 
       - template: templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-          Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimecpubuild
+          Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2_28_cpu
+          Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=amd64/almalinux:8 --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root"
+          Repository: onnxruntimecpubuildpythonx86_64
 
       - template: templates/linux-build-step-with-cache.yml
         parameters:
@@ -96,12 +96,12 @@ stages:
                     -e NIGHTLY_BUILD \
                     -e BUILD_BUILDNUMBER \
                     -e CCACHE_DIR=/cache \
-                    onnxruntimecpubuild \
+                    onnxruntimecpubuildpythonx86_64 \
                     /bin/bash -c "
                       set -ex; \
                       ccache -s; \
                       /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                        --build_dir /build --cmake_generator Ninja \
+                        --build_dir /build --cmake_generator 'Unix Makefiles' \
                         --config Debug Release \
                         --skip_submodule_sync \
                         --build_shared_lib \
@@ -111,7 +111,7 @@ stages:
                         --enable_onnx_tests \
                         --enable_transformers_tool_test \
                         --use_cache \
-                        --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
+                        --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
                       ccache -sv; \
                       ccache -z"
                 workingDirectory: $(Build.SourcesDirectory)
@@ -155,7 +155,7 @@ stages:
           workingDirectory: $(Build.SourcesDirectory)/csharp
 
       - task: CmdLine@2
-        displayName: 'Install python deps and run java tests'
+        displayName: 'Install python deps'
         inputs:
           script: |
              set -e -x
@@ -167,8 +167,6 @@ stages:
              mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
              cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
              python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-             cd $(Build.SourcesDirectory)/java
-             $(Build.SourcesDirectory)/java/gradlew "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
 
       - task: CmdLine@2
         displayName: 'Install Release python package'
@@ -193,7 +191,6 @@ stages:
               --build_wheel
               --enable_onnx_tests
               --enable_transformers_tool_test
-              --build_nodejs
               --ctest_path ""
 
       - task: CmdLine@2
@@ -221,7 +218,6 @@ stages:
               --build_wheel
               --enable_onnx_tests
               --enable_transformers_tool_test
-              --build_nodejs
               --ctest_path ""
 
       - task: PythonScript@0
@@ -246,10 +242,10 @@ stages:
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-      base_image: 'arm64v8/centos:7'
-      devtoolset_rootpath: /opt/rh/devtoolset-10/root
-      ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
-      prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
+      base_image: 'arm64v8/almalinux:8'
+      devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
+      ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
       with_cache: true
       cmake_build_type: Release
 
