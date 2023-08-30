@@ -61,3 +61,10 @@ mkdir -p /tmp/ccache
 GetFile https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz /tmp/src/ccache-4.7.4-linux-x86_64.tar.xz
 tar --strip 1 -xf /tmp/src/ccache-4.7.4-linux-x86_64.tar.xz -C /tmp/ccache
 cp /tmp/ccache/ccache /usr/bin
+
+echo "Install DotNet"
+GetFile https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb /tmp/packages-microsoft-prod.deb
+dpkg -i /tmp/packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
+apt-get update && apt-get install -y dotnet-sdk-6.0
+apt-get update && apt-get install -y dotnet-runtime-6.0
