@@ -55,7 +55,7 @@ For more information, you can check API using the following:
 help(onnxruntime_extensions.gen_processing_models)
 ```
 ### NOTE: These data processing model can be merged into other model [onnx.compose](https://onnx.ai/onnx/api/compose.html) if needed.
-## Inference with ONNX Runtime Extensions
+## Inference with ONNX Runtime and Extensions
 
 ### Python
 There are individual packages for the following languages, please install it for the build.
