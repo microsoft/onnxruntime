@@ -153,10 +153,10 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
-  const auto input_size = input_shape.size();
-  if (input_size != 4) {
+  const auto input_dim = input_shape.size();
+  if (input_dim != 4) {
     LOGS_DEFAULT(VERBOSE) << "Resize only support 4d shape, input is "
-                          << input_size << "d shape";
+                          << input_dim << "d shape";
     return false;
   }
 
@@ -216,20 +216,22 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     }
 
     // scales
-    if (inputs.size() == 3 && !Contains(initializers, inputs[2].node_arg.Name())) {
+    bool using_scales = (inputs.size() == 3 && inputs[2].node_arg.Exists());
+    if (using_scales && !Contains(initializers, inputs[2].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be known";
       return false;
     }
 
     // sizes
-    if (inputs.size() > 3 && !Contains(initializers, inputs[3].node_arg.Name())) {
+    bool using_sizes = inputs.size() > 3 && inputs[3].node_arg.Exists();
+    if (using_sizes && !Contains(initializers, inputs[3].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input sizes of Resize must be known";
       return false;
     }
     bool input_is_nchw = false;
     // haven't a good solution to check layout when scale is 1.0F
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
-    if (inputs.size() == 3) {  // we are using scales
+    if (using_scales) {  // we are using scales
       const auto& scales_tensor = *initializers.at(inputs[2].node_arg.Name());
       Initializer const unpacked_tensor(scales_tensor);
       auto scales_data = unpacked_tensor.DataAsSpan<float>();

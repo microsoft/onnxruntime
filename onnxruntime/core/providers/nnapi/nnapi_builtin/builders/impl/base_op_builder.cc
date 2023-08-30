@@ -112,7 +112,7 @@ bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initial
   };
 
   for (const auto& input : node_unit.Inputs()) {
-    if (!has_supported_shape(input.node_arg, node_unit.Name(), node_unit.OpType()))
+    if (input.node_arg.Exists() && !has_supported_shape(input.node_arg, node_unit.Name(), node_unit.OpType()))
       return false;
 
     if (input.quant_param.has_value()) {
