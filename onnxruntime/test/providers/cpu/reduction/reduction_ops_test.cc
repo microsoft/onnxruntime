@@ -3465,10 +3465,6 @@ TEST(ReductionOpTest, ReduceMax_empty_axes_input_initializer_opset_18) {
 }
 
 TEST(ReductionOpTest, ReduceMean_noop_axes_input_initializer_opset_18) {
-  // Note: Temporarily disabled NNAPI EP in this unit test case.
-  // for ReduceMean-18 NoOP, NNAPI EP treats it as an identity op and NNAPI doesn't like
-  // specifying an operand both as an input and output.
-  // TODO: Enable NNAPI EP for this test case when the actual fix is available.
   OpTester test("ReduceMean", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -3483,8 +3479,7 @@ TEST(ReductionOpTest, ReduceMean_noop_axes_input_initializer_opset_18) {
       {kTensorrtExecutionProvider,
        kOpenVINOExecutionProvider,
        kDnnlExecutionProvider,
-       kDmlExecutionProvider,
-       kNnapiExecutionProvider});
+       kDmlExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_empty_axes_input_initializer_opset_18) {

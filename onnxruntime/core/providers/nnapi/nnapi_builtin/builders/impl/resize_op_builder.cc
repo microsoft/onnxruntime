@@ -153,10 +153,10 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
-  const auto input_dim = input_shape.size();
-  if (input_dim != 4) {
+  const auto input_rank = input_shape.size();
+  if (input_rank != 4) {
     LOGS_DEFAULT(VERBOSE) << "Resize only support 4d shape, input is "
-                          << input_dim << "d shape";
+                          << input_rank << "d shape";
     return false;
   }
 
@@ -216,7 +216,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     }
 
     // scales
-    bool using_scales = (inputs.size() == 3 && inputs[2].node_arg.Exists());
+    bool using_scales = (inputs.size() > 2 && inputs[2].node_arg.Exists());
     if (using_scales && !Contains(initializers, inputs[2].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be known";
       return false;

@@ -111,17 +111,17 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
     input_indices.push_back(operand_indices.at(axes_name));  // axes
 
-    int32_t input_dim = static_cast<int32_t>(input_shape.size());
+    int32_t input_rank = static_cast<int32_t>(input_shape.size());
 
     // Make output dimensions
     InlinedVector<uint32_t> output_dimen;
     if (keepdims) {
-      output_dimen.reserve(input_dim);
+      output_dimen.reserve(input_rank);
     } else {
-      output_dimen.reserve(input_dim - axes.size());
+      output_dimen.reserve(input_rank - axes.size());
     }
 
-    for (int32_t i = 0; i < input_dim; i++) {
+    for (int32_t i = 0; i < input_rank; i++) {
       if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
         output_dimen.push_back(input_shape[i]);
       } else {
@@ -181,12 +181,17 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
   }
 
   if (op == "ReduceMean") {
+    const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
     if (inputs.size() > 1 && inputs[1].node_arg.Exists()) {
       const auto& axes_name = inputs[1].node_arg.Name();
       if (!Contains(initializers, axes_name)) {
         LOGS_DEFAULT(VERBOSE) << "Axes of ReduceMean must be a constant initializer.";
         return false;
       }
+    }
+    if (node_unit.SinceVersion() >= 18 && noop_with_empty_axes) {
+      LOGS_DEFAULT(VERBOSE) << "NNAPI currently doesn't support ReduceMean-18 with noop_with_empty_axes";
+      return false;
     }
   }
 
