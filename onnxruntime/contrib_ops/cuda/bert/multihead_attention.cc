@@ -68,6 +68,9 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   disable_memory_efficient_attention_ = true;
 #endif
 
+  disable_fused_cross_attention_ = sizeof(T) != 2 ||
+                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
+
   // Allocate cache buffers
   constexpr size_t cache_bytes = sizeof(int32_t) * (static_cast<size_t>(kCumulatedSequenceLengthCacheMaxBatchSize) + 1);
   cumulated_sequence_length_q_cache_.buffer = GetTransientScratchBuffer<void>(cache_bytes);
