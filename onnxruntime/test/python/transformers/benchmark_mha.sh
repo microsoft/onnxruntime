@@ -1,5 +1,5 @@
 echo "flash attention v2"
-ORT_DISABLE_FLASH_ATTENTION=0  python benchmark_mha.py | tee result.txt
+ORT_DISABLE_FLASH_ATTENTION=0  ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV=0 python benchmark_mha.py | tee result.txt
 
 echo "==="
 echo "TensorRT attention kernels - cross attention (when kv_seq_len <= 128) or fused attention (when seq_len <= 384) or flash attention (seq_len > 384)"
