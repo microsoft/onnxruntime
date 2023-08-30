@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
+import {biasAdd} from './ops/bias-add';
+import {biasSplitGelu} from './ops/bias-split-gelu';
 import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
@@ -23,8 +25,6 @@ import {tile} from './ops/tile';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
-import {biasSplitGelu} from './ops/bias-split-gelu';
-import {biasAdd} from './ops/bias-add';
 
 export type RunFunction = (context: ComputeContext, attribute?: unknown) => void;
 export type ParseAttributeFunction = (attributeRaw: unknown) => unknown;
