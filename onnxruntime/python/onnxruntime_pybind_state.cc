@@ -227,7 +227,11 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::CPU:
       return CPU;
     case OrtDevice::GPU:
+#ifdef USE_DML
+      return DML;
+#else
       return CUDA;
+#endif
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
