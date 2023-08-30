@@ -247,7 +247,7 @@ stages:
           --build-arg BUILD_UID=$(id -u)
           --network=host
           --build-arg ROCM_VERSION=${{ parameters.RocmVersion }}
-      Repository: onnxruntimetrainingrocmbuild-rocm$(RocmVersion)
+        Repository: onnxruntimetrainingrocmbuild-rocm$(RocmVersion)
 
     - template: templates/set-version-number-variables-step.yml
 
