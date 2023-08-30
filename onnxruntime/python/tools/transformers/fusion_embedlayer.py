@@ -689,6 +689,57 @@ class FusionEmbedLayerNoMask(Fusion):
         self.finish_fusion(layernorm, embed_node)
         return True
 
+    def fuse_tulr(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+        """Fuse embedding layer for Bert
+        Args:
+            layernorm (NodeProto): node of LayerNormalization or SkipLayerNormalization
+            add_before_layernorm (NodeProto): the Add node before LayerNormalization, or the SkipLayerNormalization itself
+            input_name_to_nodes (Dict[str, List[NodeProto]]): map from input name to nodes
+            output_name_to_node (Dict[str, List[NodeProto]]): map from output name to nodes
+        """
+
+        add_2_gather = self.model.match_parent_path(add_before_layernorm, ["Add"], [0])
+        if add_2_gather is None:
+            return False
+
+        two_gather = self.match_two_gather(add_2_gather[0])
+        if two_gather is None:
+            return False
+
+        word_embedding_gather, segment_embedding_gather = two_gather
+
+        input_ids = word_embedding_gather.input[1]
+
+        if not self.check_attention_subgraph(layernorm, input_name_to_nodes, is_distil_bert=False):
+            return False
+
+        position_embedding_path = self.model.match_parent_path(add_before_layernorm, ["Gather"], [1])
+        if position_embedding_path is None:
+            return False
+
+        position_embedding_gather = position_embedding_path[0]
+
+        # if not self.match_position_embedding(position_embedding_gather, input_ids, output_name_to_node):
+        #     if not self.match_position_embedding(segment_embedding_gather, input_ids, output_name_to_node):
+        #         return False
+        #     # position and segment are switched
+        #     temp = segment_embedding_gather
+        #     segment_embedding_gather = position_embedding_gather
+        #     position_embedding_gather = temp
+
+        # if not self.check_embedding(word_embedding_gather, segment_embedding_gather, position_embedding_gather):
+        #     return False
+        embed_node = self.create_fused_node(
+            input_ids,
+            layernorm,
+            word_embedding_gather,
+            position_embedding_gather,
+            segment_embedding_gather,
+            position_embedding_gather.input[1],
+        )
+        self.finish_fusion(layernorm, embed_node)
+        return True
+
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         if node.op_type == "LayerNormalization":
             first_add_path = self.model.match_parent_path(node, ["Add"], [0])
@@ -705,6 +756,9 @@ class FusionEmbedLayerNoMask(Fusion):
             return
 
         if self.fuse_bert(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+            return
+
+        if self.fuse_tulr(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
             return
 
 
