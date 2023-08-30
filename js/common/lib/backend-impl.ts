@@ -12,7 +12,7 @@ interface BackendInfo {
   aborted?: boolean;
 }
 
-const backends: {[name: string]: BackendInfo} = {};
+const backends: Map<string, BackendInfo> = new Map();
 const backendsSortedByPriority: string[] = [];
 
 /**
@@ -27,9 +27,9 @@ const backendsSortedByPriority: string[] = [];
  */
 export const registerBackend = (name: string, backend: Backend, priority: number): void => {
   if (backend && typeof backend.init === 'function' && typeof backend.createSessionHandler === 'function') {
-    const currentBackend = backends[name];
+    const currentBackend = backends.get(name);
     if (currentBackend === undefined) {
-      backends[name] = {backend, priority};
+      backends.set(name, {backend, priority});
     } else if (currentBackend.priority > priority) {
       // same name is already registered with a higher priority. skip registeration.
       return;
@@ -46,7 +46,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
       }
 
       for (let i = 0; i < backendsSortedByPriority.length; i++) {
-        if (backends[backendsSortedByPriority[i]].priority <= priority) {
+        if (backends.get(backendsSortedByPriority[i])!.priority <= priority) {
           backendsSortedByPriority.splice(i, 0, name);
           return;
         }
@@ -71,7 +71,7 @@ export const resolveBackend = async(backendHints: readonly string[]): Promise<Ba
   const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
   const errors = [];
   for (const backendName of backendNames) {
-    const backendInfo = backends[backendName];
+    const backendInfo = backends.get(backendName);
     if (backendInfo) {
       if (backendInfo.initialized) {
         return backendInfo.backend;
