@@ -41,73 +41,51 @@ struct PoolOp {
   }
 };
 
-TEST(CudaNhwcTest, AveragePoolNhwc) {
-  {
-    auto op = PoolOp<float>{
-        .pooling_type = "AveragePool",
-        .input_dims = {1, 16, 64, 64},
-        .kernel_shape = {3, 3},
-        .channels = 16,
-    };
-    MAKE_PROVIDERS()
-  }
-  {
-    auto op = PoolOp<MLFloat16>{
-        .pooling_type = "AveragePool",
-        .input_dims = {1, 16, 64, 64},
-        .kernel_shape = {3, 3},
-        .channels = 16,
-    };
-    MAKE_PROVIDERS()
-  }
+TYPED_TEST(CudaNhwcTypedTest, AveragePoolNhwc) {
+  auto op = PoolOp<TypeParam>{
+      .pooling_type = "AveragePool",
+      .input_dims = {1, 16, 64, 64},
+      .kernel_shape = {3, 3},
+      .channels = 16,
+  };
+  MAKE_PROVIDERS()
 }
 
-TEST(CudaNhwcTest, MaxPoolNhwc) {
-  {
-    auto op = PoolOp<float>{
-        .pooling_type = "MaxPool",
-        .input_dims = {1, 16, 64, 64},
-        .kernel_shape = {3, 3},
-        .channels = 16,
-    };
-    MAKE_PROVIDERS()
-  }
-  {
-    auto op = PoolOp<MLFloat16>{
-        .pooling_type = "MaxPool",
-        .input_dims = {1, 16, 64, 64},
-        .kernel_shape = {3, 3},
-        .channels = 16,
-    };
-    MAKE_PROVIDERS()
-  }
+TYPED_TEST(CudaNhwcTypedTest, MaxPoolNhwc) {
+  auto op = PoolOp<TypeParam>{
+      .pooling_type = "MaxPool",
+      .input_dims = {1, 16, 64, 64},
+      .kernel_shape = {3, 3},
+      .channels = 16,
+  };
+  MAKE_PROVIDERS()
 }
 
-// TEST(CudaNhwcTest, GlobalMaxPoolNhwc) {
-//   RandomValueGenerator random{};
-//   using dtype = float;
-//   auto test = std::make_unique<CompareOpTester>("GlobalMaxPool", 14);
-//   std::vector<int64_t> input_dims = {4, 3, 64, 86};
-//   std::vector<dtype> input_data = random.Gaussian<dtype>(input_dims, 0.0f, 0.3f);
-//   std::vector<int64_t> output_dims = {input_dims[0], input_dims[1], 1, 1};
-//   std::vector<dtype> output_data = FillZeros<dtype>(output_dims);
+TYPED_TEST(CudaNhwcTypedTest, GlobalMaxPoolNhwc) {
+  RandomValueGenerator random{};
+  auto test = std::make_unique<CompareOpTester>("GlobalMaxPool", 14);
+  const std::vector<int64_t> input_dims = {4, 16, 4, 8};
+  std::vector<TypeParam> input_data = random.Uniform<TypeParam>(input_dims, 0.5f, 1.3f);
+  test->AddInput<TypeParam>("X", input_dims, input_data);
 
-//   test->AddOutput<dtype>("Y", output_dims, output_data);
+  std::vector<int64_t> output_dims = {input_dims[0], input_dims[1], 1, 1};
+  std::vector<TypeParam> output_data = FillZeros<TypeParam>(output_dims);
+  test->AddOutput<TypeParam>("Y", output_dims, output_data);
 
-//   std::vector<std::shared_ptr<IExecutionProvider>> execution_providers;
-//   OrtCUDAProviderOptionsV2 nhwc = {
-//       .prefer_nhwc = true};
-//   execution_providers.push_back(CudaExecutionProviderWithOptions(&nhwc));
+  std::vector<std::shared_ptr<IExecutionProvider>> execution_providers;
+  OrtCUDAProviderOptionsV2 nhwc = {
+      .prefer_nhwc = true};
+  execution_providers.push_back(CudaExecutionProviderWithOptions(&nhwc));
 
-//   double error_tolerance = 1e-3;
-//   OrtCUDAProviderOptionsV2 nchw = {
-//       .prefer_nhwc = false};
-//   auto source_ep = CudaExecutionProviderWithOptions(&nchw);
-//   test->CompareEPs(std::move(source_ep), execution_providers, error_tolerance);
-// }
+  double error_tolerance = 1e-3;
+  OrtCUDAProviderOptionsV2 nchw = {
+      .prefer_nhwc = false};
+  auto source_ep = CudaExecutionProviderWithOptions(&nchw);
+  test->CompareEPs(std::move(source_ep), execution_providers, error_tolerance);
+}
 
-TEST(CudaNhwcTest, AveragePoolNhwcPad) {
-  auto op = PoolOp<float>{
+TYPED_TEST(CudaNhwcTypedTest, AveragePoolNhwcPad) {
+  auto op = PoolOp<TypeParam>{
       .pooling_type = "AveragePool",
       .input_dims = {1, 16, 64, 64},
       .kernel_shape = {3, 3},

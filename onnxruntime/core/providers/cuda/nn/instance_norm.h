@@ -1,5 +1,4 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
@@ -10,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, bool NHWC>
+template <typename T>
 class InstanceNorm final : public CudaKernel {
  public:
   InstanceNorm(const OpKernelInfo& op_kernel_info);

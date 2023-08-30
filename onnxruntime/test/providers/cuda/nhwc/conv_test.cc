@@ -22,16 +22,16 @@ struct ConvOp {
     RandomValueGenerator random{};
 
     auto test = std::make_unique<CompareOpTester>("Conv", 7);
-    std::vector<T> input_data = random.Uniform<T>(input_dims, 0.0f, 0.3f);
+    std::vector<T> input_data = random.Uniform<T>(input_dims, 0.0f, 1.0f);
 
     std::vector<int64_t> weight_dims{channels, input_dims[1] / group, kernel_shape[0], kernel_shape[1]};
-    std::vector<T> weight_data = random.Uniform<T>(weight_dims, 0.0f, 0.3f);
+    std::vector<T> weight_data = random.Uniform<T>(weight_dims, -0.4f, 0.4f);
 
     test->AddInput<T>("X", input_dims, input_data);
     test->AddInput<T>("W", weight_dims, weight_data, true);
     if (bias) {
       std::vector<int64_t> bias_dims{channels};
-      std::vector<T> bias_data = random.Uniform<T>(bias_dims, 0.0f, 0.3f);
+      std::vector<T> bias_data = random.Uniform<T>(bias_dims, 0.2f, 0.4f);
       test->AddInput<T>("B", bias_dims, bias_data, true);
     }
     test->AddAttribute("group", group);
@@ -68,16 +68,16 @@ struct ConvTransposeOp {
     RandomValueGenerator random{};
 
     auto test = std::make_unique<CompareOpTester>("ConvTranspose", 14);
-    std::vector<T> input_data = random.Uniform<T>(input_dims, 0.0f, 0.3f);
+    std::vector<T> input_data = random.Uniform<T>(input_dims, 0.0f, 1.0f);
 
     std::vector<int64_t> weight_dims{input_dims[1], channels / group, kernel_shape[0], kernel_shape[1]};
-    std::vector<T> weight_data = random.Uniform<T>(weight_dims, 0.2f, 0.5f);
+    std::vector<T> weight_data = random.Uniform<T>(weight_dims, -0.4f, 0.4f);
 
     test->AddInput<T>("X", input_dims, input_data);
     test->AddInput<T>("W", weight_dims, weight_data, true);
     if (bias) {
       std::vector<int64_t> bias_dims{channels};
-      std::vector<T> bias_data = random.Uniform<T>(bias_dims, 0.0f, 0.4f);
+      std::vector<T> bias_data = random.Uniform<T>(bias_dims, 0.2f, 0.4f);
       test->AddInput<T>("B", bias_dims, bias_data, true);
     }
     test->AddAttribute("group", group);
@@ -101,121 +101,76 @@ struct ConvTransposeOp {
   }
 };
 
-TEST(CudaNhwcTest, ConvNhwcBias) {
-  {
-    auto op = ConvOp<float>{
-        .input_dims = {1, 16, 64, 64},
-        .kernel_shape = {3, 3},
-        .channels = 16,
-        .bias = true};
+TYPED_TEST(CudaNhwcTypedTest, ConvNhwcBias) {
+  auto op = ConvOp<TypeParam>{
+      .input_dims = {1, 16, 64, 64},
+      .kernel_shape = {3, 3},
+      .channels = 16,
+      .bias = true};
 
-    MAKE_PROVIDERS()
-  }
-  {
-    auto op = ConvOp<MLFloat16>{
-        .input_dims = {1, 16, 64, 64},
-        .kernel_shape = {3, 3},
-        .channels = 16,
-        .bias = true};
-
-    MAKE_PROVIDERS_EPS(1e-2)
-  }
+  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
-TEST(CudaNhwcTest, ConvNhwcGroupNoBias) {
-  auto op = ConvOp<float>{
+TYPED_TEST(CudaNhwcTypedTest, ConvNhwcGroupNoBias) {
+  auto op = ConvOp<TypeParam>{
       .input_dims = {1, 16, 64, 64},
       .kernel_shape = {3, 3},
       .channels = 16,
       .group = 4};
 
-  MAKE_PROVIDERS()
+  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
-TEST(CudaNhwcTest, ConvNhwcPadding) {
-  auto op = ConvOp<float>{
+TYPED_TEST(CudaNhwcTypedTest, ConvNhwcPadding) {
+  auto op = ConvOp<TypeParam>{
       .input_dims = {2, 4, 64, 64},
       .kernel_shape = {3, 3},
       .channels = 4,
       .padding = {4, 4, 4, 4}};
 
-  MAKE_PROVIDERS()
+  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
-TEST(CudaNhwcTest, ConvTransposeNhwcGroupNoBias) {
-  {
-    auto op = ConvTransposeOp<float>{
-        .input_dims = {8, 8, 32, 32},
-        .kernel_shape = {3, 3},
-        .channels = 16,
-        .group = 4};
+TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcGroupNoBias) {
+  auto op = ConvTransposeOp<TypeParam>{
+      .input_dims = {8, 8, 32, 32},
+      .kernel_shape = {3, 3},
+      .channels = 16,
+      .group = 4};
 
-    MAKE_PROVIDERS()
-  }
-  {
-    auto op = ConvTransposeOp<MLFloat16>{
-        .input_dims = {8, 8, 32, 32},
-        .kernel_shape = {3, 3},
-        .channels = 16,
-        .group = 4};
-
-    MAKE_PROVIDERS()
-  }
+  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
-TEST(CudaNhwcTest, ConvTransposeNhwcBias) {
-  {
-    auto op = ConvTransposeOp<float>{
-        .input_dims = {1, 8, 80, 80},
-        .kernel_shape = {5, 5},
-        .channels = 16,
-        .bias = true};
+TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcBias) {
+  auto op = ConvTransposeOp<TypeParam>{
+      .input_dims = {1, 8, 80, 80},
+      .kernel_shape = {5, 5},
+      .channels = 16,
+      .bias = true};
 
-    MAKE_PROVIDERS()
-  }
-  {
-    auto op = ConvTransposeOp<MLFloat16>{
-        .input_dims = {1, 8, 80, 80},
-        .kernel_shape = {5, 5},
-        .channels = 16,
-        .bias = true};
-
-    MAKE_PROVIDERS()
-  }
+  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
-TEST(CudaNhwcTest, ConvTransposeNhwcPad) {
-  {
-    auto op = ConvTransposeOp<float>{
-        .input_dims = {1, 16, 8, 8},
-        .kernel_shape = {3, 3},
-        .channels = 32,
-        .padding = {2, 2, 2, 2},
-        .output_padding = {}};
+TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcPad) {
+  auto op = ConvTransposeOp<TypeParam>{
+      .input_dims = {1, 16, 8, 8},
+      .kernel_shape = {3, 3},
+      .channels = 32,
+      .padding = {2, 2, 2, 2},
+      .output_padding = {}};
 
-    MAKE_PROVIDERS()
-  }
-  {
-    auto op = ConvTransposeOp<MLFloat16>{
-        .input_dims = {1, 16, 8, 8},
-        .kernel_shape = {3, 3},
-        .channels = 32,
-        .padding = {2, 2, 2, 2},
-        .output_padding = {}};
-
-    MAKE_PROVIDERS()
-  }
+  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
-TEST(CudaNhwcTest, ConvTransposeNhwcOutPad) {
-  auto op = ConvTransposeOp<float>{
+TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcOutPad) {
+  auto op = ConvTransposeOp<TypeParam>{
       .input_dims = {1, 32, 8, 8},
       .kernel_shape = {3, 3},
       .channels = 32,
       .strides = {2, 2},
       .output_padding = {1, 1, 1, 1}};
 
-  MAKE_PROVIDERS()
+  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 }  // namespace test

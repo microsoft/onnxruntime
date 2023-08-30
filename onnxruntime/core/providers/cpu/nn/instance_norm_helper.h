@@ -32,7 +32,7 @@ class InstanceNormHelper {
     if (scale->Shape().Size() != in_channels) {
       std::ostringstream ostr;
       ostr << "Mismatch between input data and scale: size of scale != input channel count "
-           << scale->Shape().Size() << " vs. " << input->Shape().GetDims()[1];
+           << scale->Shape().Size() << " vs. " << in_channels << "nhwc: " << is_nhwc;
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
     }
 

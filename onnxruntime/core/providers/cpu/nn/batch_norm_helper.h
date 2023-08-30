@@ -116,7 +116,7 @@ class BatchNormHelper {
     return common::Status::OK();
   }
 
-  static void NormalizeDims(const TensorShape& x_shape, std::vector<int64_t>& new_dims) {
+  static void NormalizeDims(const TensorShape& x_shape, std::vector<int64_t>& new_dims, bool is_nhwc = false) {
     new_dims.clear();
     auto orig_dims = x_shape.GetDims();
     ORT_ENFORCE(orig_dims.size() < 6,
@@ -129,10 +129,16 @@ class BatchNormHelper {
 
     auto rank = x_shape.NumDimensions();
     auto num_samples = rank > 0 ? orig_dims[0] : 1;  // NCHW
-    auto num_channels = rank > 1 ? orig_dims[1] : 1;
-    auto height = rank > 2 ? orig_dims[2] : 1;
+    const size_t channel_dim = is_nhwc ? rank - 1 : 1;
+    const size_t height_dim = is_nhwc ? 1 : 2;
+    auto num_channels = rank > 1 ? orig_dims[channel_dim] : 1;
+    auto height = rank > 2 ? orig_dims[height_dim] : 1;
     int64_t width = 1;
-    new_dims = {num_samples, num_channels, height, width};
+    if (is_nhwc) {
+      new_dims = {num_samples, height, width, num_channels};
+    } else {
+      new_dims = {num_samples, num_channels, height, width};
+    }
   }
 };
 }  // namespace onnxruntime

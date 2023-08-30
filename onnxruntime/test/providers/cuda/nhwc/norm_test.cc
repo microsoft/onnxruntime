@@ -39,30 +39,13 @@ struct BatchNormOp {
   }
 };
 
-TEST(CudaNhwcTest, BatchNormNhwcBias) {
-  {
-    auto op = BatchNormOp<float>{
-        .input_dims = {4, 16, 64, 64},
-    };
+TYPED_TEST(CudaNhwcTypedTest, BatchNormNhwc) {
+  auto op = BatchNormOp<TypeParam>{
+      .input_dims = {4, 16, 64, 64},
+  };
 
-    MAKE_PROVIDERS()
-  }
-  {
-    auto op = BatchNormOp<MLFloat16>{
-        .input_dims = {4, 16, 64, 64},
-    };
-
-    MAKE_PROVIDERS_EPS(1e-2)
-  }
+  MAKE_PROVIDERS()
 }
-
-// TEST(CudaNhwcTest, InstancehNormNhwc) {
-//   auto op = InsanceNormOp<MLFloat16>{
-//       .input_dims = {4, 16, 64, 64},
-//   };
-
-//   MAKE_PROVIDERS()
-// }
 
 }  // namespace test
 }  // namespace onnxruntime
