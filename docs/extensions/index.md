@@ -18,7 +18,7 @@ The basic workflow is to add the custom operators to an ONNX model and then to p
 <img src="../../images/combine-ai-extensions-img.png" alt="Pre and post-processing custom operators for vision, text, and NLP models" width="100%"/>
 <sub>This image was created using <a href="https://github.com/sayanshaw24/combine" target="_blank">Combine.AI</a>, which is powered by Bing Chat, Bing Image Creator, and EdgeGPT.</sub>
 
-### Quickstart
+## Quickstart
 
 ## Installation
 ### **Python installation**
