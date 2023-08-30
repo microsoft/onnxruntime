@@ -15,7 +15,8 @@ namespace Dml
 	public:
 		DmlGraphFusionTransformer(
 			const std::string& name,
-			const onnxruntime::IExecutionProvider* provider
+			const onnxruntime::IExecutionProvider* provider,
+			const std::unordered_map<std::string, const OrtValue*>& initializerOverrides
 		);
 
 	public:
@@ -23,11 +24,12 @@ namespace Dml
 		inline const static char* const DML_GRAPH_FUSION_NODE_DOMAIN = "DmlFusedNodeDomain";
 
 	private:
-		onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph, 
-											  bool& modified, 
-											  int graph_level, 
+		onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph,
+											  bool& modified,
+											  int graph_level,
 											  const onnxruntime::logging::Logger& logger) const final;
 	private:
 		const ExecutionProviderImpl* m_providerImpl = nullptr;
+		const std::unordered_map<std::string, const OrtValue*>& m_initializerOverrides;
 	};
 }

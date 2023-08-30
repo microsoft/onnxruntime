@@ -1541,7 +1541,8 @@ common::Status InferenceSession::Initialize() {
 
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                      execution_providers_.Get(kDmlExecutionProvider));
+                                                                                                                                      execution_providers_.Get(kDmlExecutionProvider),
+                                                                                                                                      session_options_.initializers_to_share_map);
           if (dmlGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }

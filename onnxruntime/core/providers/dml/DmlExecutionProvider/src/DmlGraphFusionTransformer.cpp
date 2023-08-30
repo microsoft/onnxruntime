@@ -17,10 +17,12 @@ namespace Dml
 {
     DmlGraphFusionTransformer::DmlGraphFusionTransformer(
         const std::string& name,
-        const onnxruntime::IExecutionProvider* provider
+        const onnxruntime::IExecutionProvider* provider,
+        const std::unordered_map<std::string, const OrtValue*>& initializerOverrides
     )
         :onnxruntime::GraphTransformer(name),
-         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl())
+         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl()),
+         m_initializerOverrides(initializerOverrides)
     {
     }
 
@@ -131,7 +133,11 @@ namespace Dml
 
                                 continue;
                             }
-                            isInitializerTransferable[input] = {tensor, true};
+
+                            // Overridable initializers specified in the session options can be reused between sessions, so we can never
+                            // transfer them
+                            const bool isOverridable = m_initializerOverrides.find(input) != m_initializerOverrides.end();
+                            isInitializerTransferable[input] = {tensor, !isOverridable};
                         }
                     }
 
