@@ -42,7 +42,7 @@ struct QuantParams {
     constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
 
     const float scale = rmax == rmin ? 1.0f : (rmax - rmin) / (qmax - qmin);
-    const float initial_zero_point = qmin - rmin / scale;
+    const float initial_zero_point = qmin - (rmin / scale);
     const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin, std::min(qmax, initial_zero_point))));
 
     return QuantParams<QType>{scale, zero_point};
@@ -72,6 +72,18 @@ inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data) {
   return QuantParams<QType>::Compute(min_val, max_val);
 }
 
+/**
+ * Returns a float vector with data in the specified range. Uses linear interpolation to fill the elements in the array
+ * and ensures that min_val, 0.0f, and max_val are all included.
+ * TODO(adrianlizarraga): Should use this instead of random *float* test inputs for test repeatability/stability!
+ *
+ * \param min_val The minimum value.
+ * \param max_val The maximum value.
+ * \param num_elems The number of elements in the result. Should be at least 3 to include min, 0, and max.
+ * \return A vector of floats with elements set to values in the specified range.
+ */
+std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems);
+
 // Class that defines an input that can be created with ModelTestBuilder.
 // Defines whether the input is an initializer and if the data should be randomized or if
 // set to an explicit value.
@@ -86,7 +98,7 @@ struct TestInputDef {
     T max;
   };
 
-  TestInputDef() {}
+  TestInputDef() = default;
 
   // Creates a random input definition. Specify its shape, whether it's an initializer, and
   // the min/max range.

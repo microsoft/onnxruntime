@@ -35,6 +35,19 @@ inline void InitializeQuantizeParam(Qnn_QuantizeParams_t& quantize_param, bool i
   quantize_param.scaleOffsetEncoding.offset = offset;
 }
 
+// Utility function that checks if an array of strings contains a specific string.
+// Used to validate ONNX operator attributes.
+template <size_t N>
+static bool ArrayHasString(const std::array<std::string_view, N>& strings, std::string_view str) {
+  for (auto s : strings) {
+    if (s == str) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime

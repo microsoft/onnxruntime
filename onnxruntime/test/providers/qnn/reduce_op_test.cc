@@ -357,6 +357,7 @@ GetTestQDQModelFn<QuantType> BuildQDQReduceOpTestCase(const std::string& reduce_
  * \param keepdims Common attribute for all reduce operations.
  * \param opset The opset version. Some opset versions have "axes" as an attribute or input.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
+ * \param fp32_abs_err Error tolerance.
  */
 template <typename QuantType>
 static void RunReduceOpQDQTest(const std::string& op_type,
@@ -442,8 +443,10 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset11) {
 // - Uses int8 as the quantization type.
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 9);
+
   RunReduceOpQDQTest<int8_t>("ReduceSum",
-                             TestInputDef<float>({2, 2}, false, {-10.0f, 3.21289f, -5.9981f, 10.0f}),
+                             TestInputDef<float>({3, 3}, false, input_data),
                              {0, 1},  // axes
                              true,    // keepdims
                              13,      // opset
@@ -452,8 +455,10 @@ TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13) {
 
 // Tests that keepdims = false generates expected results.
 TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_NoKeepDims) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 9);
+
   RunReduceOpQDQTest<int8_t>("ReduceSum",
-                             TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                             TestInputDef<float>({3, 3}, false, input_data),
                              {1},    // axes
                              false,  // keepdims
                              13,     // opset
@@ -508,8 +513,10 @@ TEST_F(QnnHTPBackendTests, ReduceMaxU8Opset13) {
 // - Uses int8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceMaxS8Opset18) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 9);
+
   RunReduceOpQDQTest<int8_t>("ReduceMax",
-                             TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                             TestInputDef<float>({3, 3}, false, input_data),
                              {0, 1},  // axes
                              true,    // keepdims
                              18,      // opset
@@ -553,8 +560,10 @@ TEST_F(QnnHTPBackendTests, ReduceMinU8Opset13) {
 //
 // Uses int8 as the quantization type.
 TEST_F(QnnHTPBackendTests, ReduceMinS8Opset18) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 9);
+
   RunReduceOpQDQTest<int8_t>("ReduceMin",
-                             TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                             TestInputDef<float>({3, 3}, false, input_data),
                              {0, 1},  // axes
                              true,    // keepdims
                              18,      // opset
@@ -618,21 +627,21 @@ TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset13) {
 // - Uses int8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 //
-// TODO: Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.004183006938546896, zero_point=127.
-// Expected val: -1.0666667222976685
-// QNN QDQ val: -1.0583007335662842 (err 0.0083659887313842773)
-// CPU QDQ val: -1.0666667222976685 (err 0)
+// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 0.
+// Output quant params: scale=0.0007829521200619638, zero_point=127.
+// Expected val: -0.19965279102325439
+// QNN QDQ val: -0.19730393588542938 (err 0.0023488551378250122)
+// CPU QDQ val: -0.19965279102325439 (err 0)
 TEST_F(QnnHTPBackendTests, ReduceMeanS8Opset18) {
-  const std::vector<float> input_data = {-10.0f, -9.5f, -8.4f, -7.3f, -4.0f, 0.0f,
-                                         1.0f, 2.2f, 3.3f, 4.4f, 5.5f, 10.0f};
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
+
   RunReduceOpQDQTest<int8_t>("ReduceMean",
-                             TestInputDef<float>({1, 3, 2, 2}, false, input_data),
+                             TestInputDef<float>({1, 3, 4, 4}, false, input_data),
                              {0, 1, 2, 3},  // axes
                              true,          // keepdims
                              18,            // opset
                              ExpectedEPNodeAssignment::All,
-                             0.004184f);  // TODO: Remove additional tolerance needed for inaccuracy
+                             0.0016f);  // TODO: Remove additional tolerance needed for inaccuracy
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

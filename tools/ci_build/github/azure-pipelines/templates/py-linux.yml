@@ -62,7 +62,7 @@ jobs:
 
     - template: get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2014_cpu
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2_28_cpu
         Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{ parameters.base_image }} --build-arg PLATFORM=${{ parameters.arch }} --build-arg PREPEND_PATH=${{ parameters.prepend_path }} --build-arg LD_LIBRARY_PATH_ARG=${{ parameters.ld_library_path_arg }} --build-arg DEVTOOLSET_ROOTPATH=${{ parameters.devtoolset_rootpath }}"
         Repository: onnxruntimecpubuildpython${{ parameters.arch }}

@@ -155,6 +155,8 @@ export class WebGpuBackend {
         count: 2,
       });
     }
+
+    Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
   }
 
   dispose(): void {

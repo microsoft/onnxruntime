@@ -229,6 +229,11 @@ export const tensorTypeToWsglStorageType = (type: DataType, components: 1|2|3|4 
   return typeof mappedType === 'string' ? mappedType : mappedType[0];
 };
 
+export const tensorTypeToWsglValueType = (type: DataType, components: 1|2|3|4 = 1) => {
+  const mappedType = getWgslMappedType(type, components);
+  return typeof mappedType === 'string' ? mappedType : mappedType[1];
+};
+
 /**
  * A helper function to get a IndicesHelper for a given input or output.
  *
@@ -620,3 +625,27 @@ class ShaderHelperImpl implements ShaderHelper {
 
 export const createShaderHelper = (dispatchGroup: [number, number, number]): ShaderHelper =>
     new ShaderHelperImpl(dispatchGroup);
+
+/**
+ * This function comes from https://github.com/tensorflow/tfjs/blob/master/tfjs-core/src/ops/broadcast_util.ts#L18-L40
+ * Returns the dimensions in the input shape that are broadcasted to
+ * produce the provided output shape.
+ *
+ * The returned dimensions are 0-indexed and sorted. An example:
+ * inShape = [4, 1, 3]
+ * outShape = [5, 4, 3, 3]
+ * result = [1]. Dimension 1 (2nd dimension of input) gets broadcasted 1 => 3.
+ */
+export const getBroadcastDims = (inShape: readonly number[], outShape: readonly number[]): number[] => {
+  const inRank = inShape.length;
+  const dims: number[] = [];
+  for (let i = 0; i < inRank; i++) {
+    const dim = inRank - 1 - i;
+    const a = inShape[dim] || 1;
+    const b = outShape[outShape.length - 1 - i] || 1;
+    if (b > 1 && a === 1) {
+      dims.unshift(dim);
+    }
+  }
+  return dims;
+};
