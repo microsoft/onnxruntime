@@ -1091,7 +1091,6 @@ class OnnxModel:
         logger.info(f"Operators:{op_count}")
         return op_count
 
-
     @staticmethod
     def to_data_hash(tensor: TensorProto, base_dir: str = "") -> int:
         """Converts a tensor def object to a hash for data comparison purposes.
@@ -1121,7 +1120,9 @@ class OnnxModel:
             return hash(np_data.tobytes())
 
     @staticmethod
-    def has_same_value(tensor1: TensorProto, tensor2: TensorProto, signature_cache1: dict = None, signature_cache2: dict = None) -> bool:
+    def has_same_value(
+        tensor1: TensorProto, tensor2: TensorProto, signature_cache1: dict = None, signature_cache2: dict = None
+    ) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
 
@@ -1133,11 +1134,19 @@ class OnnxModel:
         Returns:
             bool: True when two intializers has same value.
         """
-        sig1 = signature_cache1[tensor1.name] if signature_cache1 and tensor1.name in signature_cache1 else OnnxModel.to_data_hash(tensor1)
-        sig2 = signature_cache2[tensor2.name] if signature_cache2 and tensor2.name in signature_cache2 else OnnxModel.to_data_hash(tensor2)
-        if signature_cache1 is not None: 
+        sig1 = (
+            signature_cache1[tensor1.name]
+            if signature_cache1 and tensor1.name in signature_cache1
+            else OnnxModel.to_data_hash(tensor1)
+        )
+        sig2 = (
+            signature_cache2[tensor2.name]
+            if signature_cache2 and tensor2.name in signature_cache2
+            else OnnxModel.to_data_hash(tensor2)
+        )
+        if signature_cache1 is not None:
             signature_cache1[tensor1.name] = sig1
-        if signature_cache2 is not None: 
+        if signature_cache2 is not None:
             signature_cache2[tensor2.name] = sig2
         if sig1 == sig2 and tensor1.data_type == tensor2.data_type and tensor1.dims == tensor2.dims:
             # Same signature, now do the expensive check to confirm the data is the same

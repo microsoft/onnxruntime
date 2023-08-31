@@ -884,7 +884,7 @@ def remove_shared_initializers(
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
     signature_cache1: dict = None,
-    signature_cache2: dict = None
+    signature_cache2: dict = None,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -992,9 +992,9 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
     signature_cache1, signature_cache2 = {}, {}
     encoder.remove_duplicated_initializer(signature_cache1)
     decoder.remove_duplicated_initializer(signature_cache2)
-    initializers = remove_shared_initializers(decoder.model.graph, encoder.model.graph, "s_",
-            signature_cache1,
-            signature_cache2)
+    initializers = remove_shared_initializers(
+        decoder.model.graph, encoder.model.graph, "s_", signature_cache1, signature_cache2
+    )
     return initializers
 
 
