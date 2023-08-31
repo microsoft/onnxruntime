@@ -75,11 +75,11 @@ void mmha_quant_kv_launch_kernel(const DecoderMaskedMultiHeadAttentionQuantKVPar
   int total_sequence_length = params.total_sequence_length;
 
   if (total_sequence_length < 32) {
-    MMHA_QUANT_KV_LAUNCH_KERNEL(T, head_size, 4, THREADS_PER_VALUE, 64);
-  } else if (total_sequence_length < 2048) {
     MMHA_QUANT_KV_LAUNCH_KERNEL(T, head_size, 2, THREADS_PER_VALUE, 128);
-  } else {
+  } else if (total_sequence_length < 2048) {
     MMHA_QUANT_KV_LAUNCH_KERNEL(T, head_size, 1, THREADS_PER_VALUE, 256);
+  } else {
+    MMHA_QUANT_KV_LAUNCH_KERNEL(T, head_size, 1, THREADS_PER_VALUE, 512);
   }
 }
 

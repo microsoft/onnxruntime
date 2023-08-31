@@ -959,11 +959,11 @@ template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64
 // template void __global__ masked_multihead_attention_quant_kv_kernel<float, 128, 1, 32, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 // fp16 + head size = 128
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 4, 16, 64>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
-
 template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 512>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 }  // namespace cuda
 }  // namespace contrib
