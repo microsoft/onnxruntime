@@ -166,6 +166,15 @@ def parse_arguments():
         help="Use parallel build. The optional value specifies the maximum number of parallel jobs. "
         "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.",
     )
+    parser.add_argument(
+        "--nvcc_threads",
+        nargs="?",
+        default=-1,
+        type=int,
+        help="Maximum number of NVCC threads to be used in parallel. "
+        "If the optional value is negative or unspecified, the value of --parallel is used.",
+    )
+
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
     parser.add_argument(
@@ -1028,7 +1037,11 @@ def generate_build_tree(
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_cuda:
-        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(args.parallel))
+        if args.nvcc_threads >= 0:
+            nvcc_threads = args.nvcc_threads
+        else:
+            nvcc_threads = args.parallel
+        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
@@ -2239,6 +2252,8 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
+
+    print(args)
 
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
