@@ -470,7 +470,7 @@ def apply_plot(hist, hist_edges):
     plt.show()
 
 
-def write_calibration_table(calibration_cache, dir = "."):
+def write_calibration_table(calibration_cache, dir="."):
     """
     Helper function to write calibration table to files.
     """
