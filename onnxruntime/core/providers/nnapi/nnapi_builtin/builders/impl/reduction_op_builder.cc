@@ -191,7 +191,7 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
     // TODO: Support the case when a more complete solution is available.
     if (node_unit.SinceVersion() >= 18 && noop_with_empty_axes) {
       LOGS_DEFAULT(VERBOSE)
-          << "NNAPI currently doesn't support the case of ReduceMean-18 with noop_with_empty_axes specifies as 1.";
+          << "NNAPI currently doesn't support the case for ReduceMean 18+ with noop_with_empty_axes attribute set as 1";
       return false;
     }
   }
