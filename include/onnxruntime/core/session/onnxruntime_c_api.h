@@ -4333,8 +4333,12 @@ struct OrtApi {
    * \param[in] input_len Number of elements in the input_names and inputs arrays
    * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
    * \param[in] output_names_len Number of elements in the output_names and outputs array
-   * \param[out] output Array of OrtValue* owned by customers, size to output_names_len. It could simply be an array of nullptr
-   *             The array will be passed back to run_async_callback
+   * \param[out] output OrtValue* array of size output_names_len.
+   *             On calling RunAsync, output[i] could either be a null or a pointer to a preallocated OrtValue.
+   *             Later, the output array will be passed to run_async_callback with all null(s) filled with valid
+   *             OrtValue pointer(s) allocated by onnxruntime.
+   *             NOTE: it is customer's duty to finally release the output array and each of its member,
+   *             regardless of whether the member (OrtValue*) is allocated by onnxruntime or preallocated by the customer.
    * \param[in] run_async_callback Callback function on model run completion
    * \param[in] user_data User data that pass back to run_async_callback
    */
