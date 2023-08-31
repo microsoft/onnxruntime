@@ -284,10 +284,10 @@ class CudaSession:
                 if self.enable_cuda_graph:
                     assert self.input_tensors[name].nelement() == tensor.nelement()
                     assert tensor.device.type == "cuda"
-                    # Requries cuda-python package, please install a version corresponding to CUDA in your machine.
-                    # Update input tensor inplace since cuda graph requires input and output has fixed memory address.
+                    # Please install cuda-python package with a version corresponding to CUDA in your machine.
                     from cuda import cudart
 
+                    # Update input tensor inplace since cuda graph requires input and output has fixed memory address.
                     cudart.cudaMemcpy(
                         self.input_tensors[name].data_ptr(),
                         tensor.data_ptr(),

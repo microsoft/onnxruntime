@@ -105,6 +105,11 @@ constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
 // Minimum sequence length to enable memory efficient attention in FP32.
 constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
 
+// Minimum sequence length to prefer flash attention when input format is packed QKV for MultiHeadAttention
+constexpr const char* kMinSeqLenForFlashAttentionPackedQKV = "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV";
+// Default value for the above setting.
+constexpr int kDefaultMinSeqLenForFlashAttentionPackedQKV = 513;
+
 }  // namespace attention
 
 }  // namespace contrib
