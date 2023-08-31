@@ -247,11 +247,9 @@ jobs:
               --parallel \
               --skip_tests \
               --disable_ml_ops \
+              --disable_types sparsetensor float8 optional \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
-                                    onnxruntime_DISABLE_FLOAT8_TYPES=ON \
-                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -278,10 +276,9 @@ jobs:
               --disable_ml_ops \
               --skip_tests \
               --enable_reduced_operator_type_support \
+              --disable_types sparsetensor optional float8 \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
-                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -308,10 +305,9 @@ jobs:
               --disable_ml_ops \
               --skip_tests \
               --enable_reduced_operator_type_support \
+              --disable_types sparsetensor optional float8 \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
-                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
