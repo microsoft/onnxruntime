@@ -333,7 +333,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests --use_tensorrt --cuda_version=11.8 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
                   ${{ parameters.gpu_build_py_parameters }} \
-                  --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CmdLine@2
@@ -363,7 +363,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests --use_tensorrt --cuda_version=11.8 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8  \
                   ${{ parameters.gpu_build_py_parameters }} --ctest_path '' \
-                  --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
