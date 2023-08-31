@@ -184,17 +184,7 @@ try:
                 dest = "onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so"
                 logger.info("copying %s -> %s", source, dest)
                 copyfile(source, dest)
-                result = subprocess.run(
-                    ["patchelf", "--print-needed", dest], check=True, stdout=subprocess.PIPE, text=True
-                )
-                dependencies = [
-                    "librccl.so",
-                    "libamdhip64.so",
-                    "librocblas.so",
-                    "libMIOpen.so",
-                    "libhsa-runtime64.so",
-                    "libhsakmt.so",
-                ]
+
                 to_preload = []
                 to_preload_cuda = []
                 to_preload_tensorrt = []
@@ -217,7 +207,7 @@ try:
                     "libhsakmt.so",
                 ]
 
-                tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
+                tensorrt_dependencies = ["libnvinfer.so.8.6", "libnvinfer_plugin.so.8.6", "libnvonnxparser.so.8.6"]
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
@@ -242,7 +232,7 @@ try:
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in cuda_dependencies + rocm_dependencies:
+                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
                 try:
