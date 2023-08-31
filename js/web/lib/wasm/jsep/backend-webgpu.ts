@@ -286,7 +286,7 @@ export class WebGpuBackend {
         'info',
         () => `[ProgramManager] run "${programInfo.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
-    this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup);
+    this.programManager.run(artifact, inputs, inputDatas, outputDatas, normalizedDispatchGroup);
 
     return outputTensorViews;
   }
