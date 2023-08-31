@@ -10,7 +10,7 @@ nav_order: 7
 
 ## What is ONNXRuntime-Extensions?
 
-ONNXRuntime-Extensions is a library that extends the capability of the ONNX models and inference with ONNX Runtime, via ONNX Runtime Custom Operator ABIs. It includes a set of Custom Operators to support common model pre- and post-processing for audio, vision, text, and language models. As with ONNX Runtime, Extensions also supports multiple languages and platforms (Python on Windows/Linux/macOS, Android and iOS mobile platforms and Web-Assembly for web.
+ONNXRuntime-Extensions is a library that extends the capability of the ONNX models and inference with ONNX Runtime, via the ONNX Runtime custom operator interface. It includes a set of Custom Operators to support common model pre and post-processing for audio, vision, text, and language models. As with ONNX Runtime, Extensions also supports multiple languages and platforms (Python on Windows/Linux/macOS, Android and iOS mobile platforms and Web-Assembly for web.
 
 The basic workflow is to add the custom operators to an ONNX model and then to perform inference on the enhanced model with ONNX Runtime and ONNXRuntime-Extensions packages.
 
@@ -43,8 +43,14 @@ python -m pip install git+https://github.com/microsoft/onnxruntime-extensions.gi
 dotnet add package Microsoft.ML.OnnxRuntime.Extensions --version 0.8.1-alpha
 ```
 
-## Prepare the pre/post-processing ONNX model
-With onnxruntime-extensions Python package, you can easily get the ONNX processing graph by converting them from Huggingface transformer data processing classes such as in the following example:
+## Add pre and post-processing to the model
+There are multiple ways to get the ONNX processing graph:
+- [Use the pre-processing pipeline API if the model and its pre-processing is supported by the pipeline API](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/tools/pre_post_processing/pre_post_processor.py)
+- [Export to ONNX from a PyTorch model](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/superresolution_e2e.py#L69)
+- [Create an ONNX model with a model graph that includes your custom op node](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/_ortapi2.py#L50)
+- [Compose the pre-processing with an ONNX model using ONNX APIs if you already have the pre processing in an ONNX graph](https://onnx.ai/onnx/api/compose.html)
+
+If the pre processing operator is a HuggingFace tokenizer, you can also easily get the ONNX processing graph by converting from Huggingface transformer data processing classes such as in the following example:
 ```python
 import onnxruntime as _ort
 from transformers import AutoTokenizer
@@ -54,16 +60,13 @@ tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
 model = OrtPyFunction(gen_processing_models(tokenizer, pre_kwargs={})[0])
 ```
 
-For more information, you can check API using the following:
+For more information, you can check the API using the following:
 ```python
 help(onnxruntime_extensions.gen_processing_models)
 ```
 
-You can also get the pre/post-processing ONNX model in the following ways, among others:
-- [Pre/post-processing pipeline](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/tools/pre_post_processing/pre_post_processor.py)
-- [Export from a PyTorch model](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/superresolution_e2e.py#L69)
-- [Create an ONNX model with a graph](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/_ortapi2.py#L50)
-- [Merge a data processing model into another model using onnx.compose](https://onnx.ai/onnx/api/compose.html)
+#### What if I cannot find the custom operator I am looking for?
+Find the custom operators we currently support [here](https://github.com/microsoft/onnxruntime-extensions/tree/main/operators). If you do not find the custom operator you are looking for, you can add a new custom operator to ONNX Runtime Extensions like [this](./add-op.md). Note that if you do add a new operator, you will have to [build from source](./build.md).
 
 ## Inference with ONNX Runtime and Extensions
 
