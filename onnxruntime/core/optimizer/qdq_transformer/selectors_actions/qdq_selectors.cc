@@ -175,7 +175,12 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     return false;
   }
 
-  return int16_uint16_allowed_ || !Is16BitIntType(dt_input);
+  // 16-bit int types must be explicitly allowed.
+  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
+
+  return true;
 }
 
 bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
@@ -195,7 +200,12 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  return int16_uint16_allowed_ || !Is16BitIntType(dt_input_1);
+  // 16-bit int types must be explicitly allowed.
+  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input_1)) {
+    return false;
+  }
+
+  return true;
 }
 
 bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
@@ -225,7 +235,12 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  return int16_uint16_allowed_ || !Is16BitIntType(dt_input);
+  // 16-bit int types must be explicitly allowed.
+  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
+
+  return true;
 }
 
 void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
@@ -265,7 +280,12 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
-  return int16_uint16_allowed_ || (!Is16BitIntType(dt_input) && !Is16BitIntType(dt_weight));
+  // 16-bit int types must be explicitly allowed.
+  if (!int16_uint16_allowed_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
+    return false;
+  }
+
+  return true;
 }
 
 void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
@@ -289,6 +309,7 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
+  // 16-bit int types must be explicitly allowed.
   if (!int16_uint16_allowed_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
     return false;
   }
@@ -336,8 +357,9 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
+  // 16-bit int types must be explicitly allowed.
   if (!int16_uint16_allowed_ && (Is16BitIntType(dt_A) || Is16BitIntType(dt_B))) {
-    return false;  // 16-bit int types must be explicitly allowed.
+    return false;
   }
 
   if (dq_nodes.size() < 3) {  // no bias
@@ -373,7 +395,12 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     return false;
   }
 
-  return int16_uint16_allowed_ || !Is16BitIntType(dt_input_1);
+  // 16-bit int types must be explicitly allowed.
+  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input_1)) {
+    return false;
+  }
+
+  return true;
 }
 
 bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
