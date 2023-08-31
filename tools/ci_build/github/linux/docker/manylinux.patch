@@ -83,7 +83,7 @@ index 9ef1e99..ec52833 100755
 +fi
 \ No newline at end of file
 diff --git a/install-runtime-packages.sh b/install-runtime-packages.sh
-index 137d2e2..680339e 100755
+index 137d2e2..4be0e79 100755
 --- a/install-runtime-packages.sh
 +++ b/install-runtime-packages.sh
 @@ -33,7 +33,7 @@ source $MY_DIR/build_utils.sh
@@ -124,19 +124,22 @@ index 137d2e2..680339e 100755
  elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
  	PACKAGE_MANAGER=dnf
 -	BASETOOLS="${BASETOOLS} curl glibc-locale-source glibc-langpack-en hardlink hostname libcurl libnsl libxcrypt which"
-+	BASETOOLS="${BASETOOLS} curl glibc-locale-source glibc-langpack-en hardlink hostname libcurl libxcrypt which"
++	BASETOOLS="${BASETOOLS} yum-utils curl glibc-locale-source glibc-langpack-en hardlink hostname libcurl libxcrypt which"
  	# See https://unix.stackexchange.com/questions/41784/can-yum-express-a-preference-for-x86-64-over-i386-packages
  	echo "multilib_policy=best" >> /etc/yum.conf
  	# Error out if requested packages do not exist
-@@ -95,11 +97,7 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
+@@ -95,10 +97,10 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
  	sed -i '/^override_install_langs=/d' /etc/yum.conf
  	dnf -y upgrade
  	dnf -y install dnf-plugins-core
 -	dnf config-manager --set-enabled powertools # for yasm
- 	TOOLCHAIN_DEPS="gcc-toolset-12-binutils gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-gcc-gfortran"
+-	TOOLCHAIN_DEPS="gcc-toolset-12-binutils gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-gcc-gfortran"
 -	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
 -		TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
--	fi
++        if [[ -d /usr/local/cuda ]]; then
++	    TOOLCHAIN_DEPS="gcc gcc-c++"
++	else
++	    TOOLCHAIN_DEPS="gcc-toolset-12-binutils gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-gcc-gfortran"
+ 	fi
  elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
  	TOOLCHAIN_DEPS="binutils gcc g++ gfortran"
- 	BASETOOLS="${BASETOOLS} curl util-linux tar"
