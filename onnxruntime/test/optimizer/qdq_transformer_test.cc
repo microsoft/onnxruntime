@@ -1066,31 +1066,43 @@ TEST(QDQTransformerTests, DoubleQDQ) {
                    bad_float_point, good_float_point_2, true);  // Use com.microsoft QDQ ops
 }
 
-TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
-  auto test_case = [&](int output_index, int expected_Q_count, int expected_DQ_count,
-                       bool use_contrib_qdq = false) {
-    auto graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
-      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], expected_Q_count);
-      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expected_DQ_count);
-    };
-    TransformerTester(
-        BuildDoubleQDQWithoutLastOutput<uint8_t>(output_index, use_contrib_qdq),
-        graph,
-        TransformerLevel::Default,
-        TransformerLevel::Level1);
+template <typename QuantType>
+static void RunDoubleQDQWithoutLastNodeBeingOutput(int output_index, int expected_Q_count, int expected_DQ_count,
+                                                   bool use_contrib_qdq = false) {
+  auto graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], expected_Q_count);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expected_DQ_count);
   };
+  TransformerTester(
+      BuildDoubleQDQWithoutLastOutput<QuantType>(output_index, use_contrib_qdq),
+      graph,
+      TransformerLevel::Default,
+      TransformerLevel::Level1);
+}
+
+TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
   constexpr bool use_contrib_qdq = true;  // For readability.
 
-  test_case(0, 2, 2);
-  test_case(0, 2, 2, use_contrib_qdq);
-  test_case(1, 2, 3);                   // EnsureUniqueDQForNodeUnit will duplicate first DQ, so expect one more (3)
-  test_case(1, 2, 3, use_contrib_qdq);  // EnsureUniqueDQForNodeUnit will duplicate first DQ, so expect one more (3)
-  test_case(2, 2, 2);
-  test_case(2, 2, 2, use_contrib_qdq);
-  test_case(3, 1, 1);
-  test_case(3, 1, 1, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(0, 2, 2);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(0, 2, 2, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(0, 2, 2, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(0, 2, 2, use_contrib_qdq);
+
+  // EnsureUniqueDQForNodeUnit will duplicate first DQ, so expected one more (3)
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(1, 2, 3);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(1, 2, 3, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(1, 2, 3, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(1, 2, 3, use_contrib_qdq);
+
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(2, 2, 2);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(2, 2, 2, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(2, 2, 2, use_contrib_qdq);
+
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(3, 1, 1);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(3, 1, 1, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(3, 1, 1, use_contrib_qdq);
 }
 
 // Because split isn't one the supported ops, this will stay the same
