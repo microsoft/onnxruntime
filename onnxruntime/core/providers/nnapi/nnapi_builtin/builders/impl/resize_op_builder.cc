@@ -207,8 +207,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       }
     }
 
-    // The following new features introduced since opset 18 don't have a NNAPI mapping support yet.
-    // Marked as unsupported in NNAPI EP for now.
+    // The new feature - antialiasing introduced since opset 18 doesn't have a NNAPI mapping support yet.
+    // And a few other new attributes are currently not handled by NNAPI EP, can add support in the future if needed.
     if (node_unit.SinceVersion() >= 18) {
       const auto antialias = helper.Get("antialias", 0);
       const auto axes = helper.Get("axes", std::vector<int64_t>{});
