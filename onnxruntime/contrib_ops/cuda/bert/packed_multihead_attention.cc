@@ -9,6 +9,7 @@
 #include "contrib_ops/cuda/bert/packed_multihead_attention_impl.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -42,6 +43,17 @@ PackedMultiHeadAttention<T>::PackedMultiHeadAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
 #if USE_FLASH_ATTENTION
+  disable_flash_attention_ = sizeof(T) != 2 || onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
+                                                   attention::kDisableFlashAttention, false);
+  min_seq_len_for_flash_attention_packed_qkv_ = ParseEnvironmentVariableWithDefault<int>(
+      attention::kMinSeqLenForFlashAttentionPackedQKV,
+      attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
+#else
+  disable_flash_attention_ = true;
+  min_seq_len_for_flash_attention_packed_qkv_ = 0;
+#endif
+
+#if USE_MEMORY_EFFICIENT_ATTENTION
   disable_memory_efficient_attention_ = onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
       attention::kDisableMemoryEfficientAttention, false);
 #else
@@ -94,8 +106,9 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
   int64_t v_hidden_size = hidden_size;
   if (query_dims.size() == 4) {
     if (key != nullptr || value != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' is expected to be empty when 'query' has 4 dimensions in packing mode");
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "Input 'key' and 'value' is expected to be empty when 'query' has 4 dimensions in packing mode");
     }
   } else {  // query_dims.size() == 2
     if (key == nullptr) {
@@ -143,11 +156,12 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
 
   const auto& cu_seq_len_dims = cu_seq_len_shape.GetDims();
   if (cu_seq_len_dims.size() != 1 || cu_seq_len_dims[0] != batch_size + 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
   }
 
-  // TODO(tianleiwu): move relative position bias shape checker to a helper function. It is shared by multiple operators.
+  // TODO(tianleiwu): move relative position bias shape checker to a helper function. It is shared by multiple ops.
   const int num_heads = this->GetNumHeads();
   bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {
@@ -227,19 +241,39 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   Tensor* output = context->Output(0, output_shape);
 
   auto& device_prop = this->GetDeviceProp();
-  MHARunner* fused_runner = this->GetFusedRunner(device_prop, parameters);
+
+  bool use_flash_attention = false;
+#if USE_FLASH_ATTENTION
+  if (!disable_flash_attention_) {
+    use_flash_attention = !parameters.has_relative_position_bias &&
+                          parameters.head_size == parameters.v_head_size &&
+                          onnxruntime::flash::is_supported(device_prop,
+                                                           parameters.head_size,
+                                                           parameters.num_heads,
+                                                           parameters.num_heads);
+
+    // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
+    if (use_flash_attention && key == nullptr && value == nullptr &&
+        parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
+      use_flash_attention = false;
+    }
+  }
+#endif
+
+  MHARunner* fused_runner = use_flash_attention ? nullptr : this->GetFusedRunner(device_prop, parameters);
 
   bool use_memory_efficient_attention = false;
 
-#if USE_FLASH_ATTENTION
-  if (nullptr == fused_runner && !disable_memory_efficient_attention_) {
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  if (!use_flash_attention && nullptr == fused_runner && !disable_memory_efficient_attention_) {
     int sm = device_prop.major * 10 + device_prop.minor;
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
-    use_memory_efficient_attention = is_good_for_rpb &&
-                                     (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
-                                     (parameters.head_size & 7) == 0 &&
-                                     (parameters.v_head_size & 7) == 0 &&
-                                     has_memory_efficient_attention(sm, sizeof(T) == 2);
+    use_memory_efficient_attention =
+        is_good_for_rpb &&
+        (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
+        (parameters.head_size & 7) == 0 &&
+        (parameters.v_head_size & 7) == 0 &&
+        has_memory_efficient_attention(sm, sizeof(T) == 2);
   }
 #endif
 
@@ -250,7 +284,9 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   constexpr size_t element_size = sizeof(T);
   // When the source and target format is same (like TN3H => TN3H, or TNH => TNH) and no bias, need not transpose qkv.
   const bool no_qkv_workspace = (fused_runner != nullptr && key == nullptr && bias == nullptr) ||
-                                (use_memory_efficient_attention && value != nullptr && bias == nullptr);
+                                ((use_memory_efficient_attention || use_flash_attention) &&
+                                 value != nullptr &&
+                                 bias == nullptr);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -258,6 +294,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
                                                    fused_runner,
+                                                   use_flash_attention,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
   auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
@@ -268,12 +305,15 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.key = (key == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = (value == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.bias = (bias == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
-  data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  data.relative_position_bias = (nullptr == relative_position_bias)
+                                    ? nullptr
+                                    : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.token_offset = token_offset->Data<int32_t>();
   data.cumulative_sequence_length = cumulative_sequence_length->Data<int32_t>();
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
+  data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.no_qkv_workspace = no_qkv_workspace;
   data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;

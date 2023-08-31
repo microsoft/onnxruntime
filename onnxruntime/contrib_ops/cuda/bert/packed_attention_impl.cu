@@ -16,6 +16,7 @@
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
@@ -47,22 +48,32 @@ size_t GetAttentionWorkspaceSize(
     size_t v_head_size,
     size_t sequence_length,
     void* fused_runner,
+    bool use_flash_attention,
     bool use_memory_efficient_attention,
     bool no_qkv_workspace) {
   // Note that q, k and v might need alignment for fused attention kernels.
   const size_t qkv_bytes = no_qkv_workspace ? 0 : (element_size * batch_size * num_heads * sequence_length * (qk_head_size + qk_head_size + v_head_size));
 
+#if USE_FLASH_ATTENTION
+  // Use portion of workspace for softmax buffer.
+  if (use_flash_attention) {
+    size_t flash_buffer_bytes = onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, num_heads);
+    return qkv_bytes + flash_buffer_bytes;
+  }
+#else
+  ORT_UNUSED_PARAMETER(use_flash_attention);
+#endif
+
   if (fused_runner != nullptr) {
     return qkv_bytes;
   }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (use_memory_efficient_attention) {
     size_t fmha_buffer_bytes = 0;
     if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
       fmha_buffer_bytes = batch_size * sequence_length * num_heads * v_head_size * sizeof(float);
     }
-
     return qkv_bytes + fmha_buffer_bytes;
   }
 #else
@@ -455,7 +466,7 @@ Status FusedScaledDotProductAttention(
   return Status::OK();
 }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
 template <typename T>
 Status FusedScaledDotProductAttentionCutlass(
     const cudaDeviceProp& device_prop,
@@ -635,7 +646,7 @@ Status QkvToContext(
     return FusedScaledDotProductAttention<T>(device_prop, stream, parameters, data);
   }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
     return FusedScaledDotProductAttentionCutlass(device_prop, stream, parameters, data);
   }

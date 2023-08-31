@@ -29,6 +29,7 @@ struct PackedMultiHeadAttentionData {
 
   void* fused_runner;
 
+  bool use_flash_attention;
   bool use_memory_efficient_attention;
 };
 

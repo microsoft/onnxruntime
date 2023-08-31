@@ -529,7 +529,7 @@ if (onnxruntime_USE_CUDA)
       target_link_libraries(${target} PRIVATE cuda)
     endif()
 
-    if (onnxruntime_USE_FLASH_ATTENTION)
+    if (onnxruntime_USE_FLASH_ATTENTION OR onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       include(cutlass)
       target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
     endif()

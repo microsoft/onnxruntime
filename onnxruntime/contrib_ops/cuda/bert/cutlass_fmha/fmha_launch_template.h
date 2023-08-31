@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -124,4 +124,4 @@ void DispatchBlockSize(const MemoryEfficientAttentionParams& params) {
 #pragma GCC diagnostic pop
 #endif
 
-#endif  // USE_FLASH_ATTENTION
+#endif  // USE_MEMORY_EFFICIENT_ATTENTION
