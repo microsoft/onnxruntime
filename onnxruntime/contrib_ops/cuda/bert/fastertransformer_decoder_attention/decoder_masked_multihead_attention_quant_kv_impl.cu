@@ -691,29 +691,29 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     float qk = 0.0;
 
     if (ti < tlength) {
-      using K_vec_acum = K_vec_k;
-      K_vec_acum qk_acc;
       using QuantK_Vec_m = typename QuantVec<K_vec_m>::Type;
       QuantK_Vec_m quant_k_vec[K_VECS_PER_THREAD];
 
-      quant_k_vec[0] = *(const QuantK_Vec_m *)&k_cache_batch[beam_offset + ti * QK_ELTS_IN_16B];
-      zero(qk_acc);
+      #pragma unroll
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        int jj = ii * params.max_sequence_length + ti;
+        quant_k_vec[ii] = *(const QuantK_Vec_m *)&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B];
+      }
+
+      using K_vec_acum = K_vec_k;
+      K_vec_k k_vec = vec_conversion<K_vec_k, K_vec_m>(DequantizeVec<K_vec_m>(quant_k_vec[0], __half2half2(scale_of_k)));
+      K_vec_acum qk_acc = mul<K_vec_acum, K_vec_k, K_vec_k>(q_vec[0], k_vec);
 
       #pragma unroll
       for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
-        int jj = ii * params.max_sequence_length + ti;
-
-        quant_k_vec[ii] = *(const QuantK_Vec_m *)&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B];
-        K_vec_k k_vec = vec_conversion<K_vec_k, K_vec_m>(DequantizeVec<K_vec_m>(quant_k_vec[ii - 1], __half2half2(scale_of_k)));
-        qk_acc = onnxruntime::cuda::fma(q_vec[ii - 1], k_vec, qk_acc);
+        k_vec = vec_conversion<K_vec_k, K_vec_m>(DequantizeVec<K_vec_m>(quant_k_vec[ii], __half2half2(scale_of_k)));
+        qk_acc = onnxruntime::cuda::fma(q_vec[ii], k_vec, qk_acc);
       }
-      K_vec_k k_vec = vec_conversion<K_vec_k, K_vec_m>(DequantizeVec<K_vec_m>(quant_k_vec[K_VECS_PER_THREAD - 1], __half2half2(scale_of_k)));
-      qk_acc = onnxruntime::cuda::fma(q_vec[K_VECS_PER_THREAD - 1], k_vec, qk_acc);
 
       qk = sum(qk_acc);
     }
 
-#pragma unroll
+    #pragma unroll
     for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
       qk += __shfl_xor_sync(uint32_t(-1), qk, mask);
     }
