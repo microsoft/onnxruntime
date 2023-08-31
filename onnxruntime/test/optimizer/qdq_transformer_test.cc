@@ -928,6 +928,47 @@ TEST(QDQTransformerTests, Gather) {
   RunGatherDropQDQTestCase<int16_t>({12, 37}, {24, 12}, true);  // Use int16 com.microsoft QDQ ops
 }
 
+template <typename QuantType>
+static void RunReshapeDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                      const std::vector<int64_t>& new_shape,
+                                      bool use_contrib_qdq = false) {
+  auto build_test_case = [input_shape, new_shape, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    // Add Reshape node
+    auto* new_shape_arg = builder.Make1DInitializer(new_shape);
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* reshape_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode("Reshape", {input_arg_dq, new_shape_arg}, {reshape_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(reshape_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [input_shape, new_shape, use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Reshape"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+}
+
+TEST(QDQTransformerTests, ReshapeDropQDQ) {
+  RunReshapeDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 12});
+  RunReshapeDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 12}, true);    // Use com.microsoft QDQ ops
+  RunReshapeDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 12}, true);   // Use int16 com.microsoft QDQ ops
+  RunReshapeDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 12}, true);  // Use int16 com.microsoft QDQ ops
+}
+
 TEST(QDQTransformerTests, DoubleQDQ) {
   constexpr uint8_t good_u8_1 = 80;
   constexpr uint8_t good_u8_2 = 40;
