@@ -34,6 +34,7 @@ const ROOT_FOLDER = path.join(__dirname, '..');
 const WASM_BINDING_FOLDER = path.join(ROOT_FOLDER, 'lib', 'wasm', 'binding');
 const WASM_BINDING_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm.js');
 const TRAINING_WASM_BINDING_SIMD_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-training-wasm-simd.js');
+const TRAINING_WASM_BINDING_SIMD_MIN_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-training-wasm-simd.min.js');
 const WASM_BINDING_THREADED_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.js');
 const WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-simd-threaded.jsep.js');
 const WASM_BINDING_THREADED_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.worker.js');
@@ -92,6 +93,31 @@ if (WASM) {
  * Licensed under the MIT License.
  */
 `;
+
+  npmlog.info('Build', 'Minimizing file "ort-training-wasm-simd.js"...');
+  try {
+    const terser = spawnSync(
+        'npx',
+        [
+          'terser', TRAINING_WASM_BINDING_SIMD_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false',
+          '--mangle', 'reserved=[_scriptDir]', '--module'
+        ],
+        {shell: true, encoding: 'utf-8', cwd: ROOT_FOLDER});
+    if (terser.status !== 0) {
+      console.error(terser.error);
+      process.exit(terser.status === null ? undefined : terser.status);
+    }
+
+    fs.writeFileSync(TRAINING_WASM_BINDING_SIMD_MIN_JS_PATH, terser.stdout);
+    fs.writeFileSync(TRAINING_WASM_BINDING_SIMD_JS_PATH, `${COPYRIGHT_BANNER}${terser.stdout}`);
+
+    validateFile(TRAINING_WASM_BINDING_SIMD_MIN_JS_PATH);
+    validateFile(TRAINING_WASM_BINDING_SIMD_JS_PATH);
+  } catch (e) {
+    npmlog.error('Build', `Failed to run terser on ort-training-wasm-simd.js. ERR: ${e}`);
+    throw e;
+  }
+  npmlog.info('Build', 'Minimizing file "ort-training-wasm-simd.js"... DONE');
 
   npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.js"...');
   try {

@@ -78,6 +78,10 @@
     "./webgpu": {
       "types": "./types.d.ts",
       "default": "./dist/ort.webgpu.min.js"
+    },
+    "./training": {
+      "types": "./types.d.ts",
+      "default": "./dist/ort-web.training.wasm.min.js"
     }
   },
   "types": "./types.d.ts",

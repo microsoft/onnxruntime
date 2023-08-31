@@ -104,6 +104,7 @@ function buildConfig({filename, format, target, mode, devtool, build_defs}) {
     config.resolve.alias['./binding/ort-wasm-threaded.js'] = './binding/ort-wasm-threaded.min.js';
     config.resolve.alias['./binding/ort-wasm-threaded-simd.jsep.js'] = './binding/ort-wasm-threaded-simd.jsep.min.js';
     config.resolve.alias['./binding/ort-wasm-threaded.worker.js'] = './binding/ort-wasm-threaded.min.worker.js';
+    config.resolve.alias['./binding/ort-training-wasm-simd.js'] = './binding/ort-training-wasm-simd.min.js';
 
     const options = defaultTerserPluginOptions(target);
     options.terserOptions.format.preamble = COPYRIGHT_BANNER;
@@ -291,8 +292,8 @@ module.exports = () => {
           // ort-web.es5.min.js
           buildOrtWebConfig({suffix: '.es5.min', target: 'es5'}),
 
-          // ort.wasm.min.js
-          buildOrtConfig({
+          // ort-web.training.wasm.min.js
+          buildOrtWebConfig({
             suffix: '.training.wasm.min',
             build_defs: {
               ...DEFAULT_BUILD_DEFS,

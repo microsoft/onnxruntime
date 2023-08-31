@@ -7,7 +7,7 @@
 // So we import code inside the if-clause to allow terser remove the code safely.
 
 export * from 'onnxruntime-common';
-import {registerBackend, env, Backend} from 'onnxruntime-common';
+import {registerBackend, env} from 'onnxruntime-common';
 import {version} from './version';
 
 if (!BUILD_DEFS.DISABLE_WEBGL) {
