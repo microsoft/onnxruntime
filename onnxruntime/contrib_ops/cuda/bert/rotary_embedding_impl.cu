@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/rocm/bert/rotary_embedding_impl.h"
+#include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
-namespace rocm {
+namespace cuda {
 
 template <typename T>
 __global__ void RotaryEmbeddingKernel(
@@ -71,7 +71,7 @@ Status LaunchRotaryEmbeddingKernel(
   // TODO: check head_dim should less than kMaxThreadsPerBlock
   const int blockSize = head_dim;
   const dim3 gridSize(seqlen, num_heads, batch_size);
-  hipStream_t s = static_cast<hipStream_t>(stream->GetHandle());
+  cudaStream_t s = static_cast<cudaStream_t>(stream->GetHandle());
   RotaryEmbeddingKernel<T><<<gridSize, blockSize, 0, s>>>(
 		  input,
 		  pos,
@@ -85,7 +85,7 @@ Status LaunchRotaryEmbeddingKernel(
 		  output
 		  );
 
-  return HIP_CALL(hipGetLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
 // instantiation
@@ -117,6 +117,6 @@ Status LaunchRotaryEmbeddingKernel<half>(
 		const half* sin_buffer,
 	        half* output);
 
-}  // namespace rocm
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

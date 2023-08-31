@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/rocm/bert/rotary_embedding.h"
-#include "contrib_ops/rocm/bert/rotary_embedding_impl.h"
-#include "core/providers/rocm/rocm_common.h"
+#include "contrib_ops/cuda/bert/rotary_embedding.h"
+#include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace contrib {
-namespace rocm {
+namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
@@ -15,7 +15,7 @@ namespace rocm {
       kMSDomain,                                                        \
       1,                                                                \
       T,                                                                \
-      kRocmExecutionProvider,                                           \
+      kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()), \
@@ -50,23 +50,23 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  typedef typename ToHipType<T>::MappedType HipT;
+  typedef typename ToCudaType<T>::MappedType CudaT;
 
-  const HipT* input_buffer = reinterpret_cast<const HipT*>(input->Data<T>());
+  const CudaT* input_buffer = reinterpret_cast<const CudaT*>(input->Data<T>());
   const int64_t* pos_buffer = reinterpret_cast<const int64_t*>(position_ids->Data<int64_t>());
 
   // cos and sin wit shape [1, 1, max_seq_len, head_dim]
   // only use [1, 1, :seqlen, head_dim] of them, that is [0 ~ seqlen*head_dim)
-  const HipT* cos_buffer = reinterpret_cast<const HipT*>(cos_cached->Data<T>());
-  const HipT* sin_buffer = reinterpret_cast<const HipT*>(sin_cached->Data<T>());
+  const CudaT* cos_buffer = reinterpret_cast<const CudaT*>(cos_cached->Data<T>());
+  const CudaT* sin_buffer = reinterpret_cast<const CudaT*>(sin_cached->Data<T>());
 
-  return LaunchRotaryEmbeddingKernel<HipT>(
+  return LaunchRotaryEmbeddingKernel<CudaT>(
       context->GetComputeStream(),
       input_buffer, batch_size, num_heads, seqlen, head_dim, seqlen_with_past,
       pos_buffer, cos_buffer, sin_buffer,
-      reinterpret_cast<HipT*>(output->MutableData<T>()));
+      reinterpret_cast<CudaT*>(output->MutableData<T>()));
 }
 
-}  // namespace rocm
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

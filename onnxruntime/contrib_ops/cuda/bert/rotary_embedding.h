@@ -4,21 +4,21 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/providers/rocm/rocm_kernel.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
-namespace rocm {
+namespace cuda {
 
-using namespace onnxruntime::rocm;
+using namespace onnxruntime::cuda;
 
 template <typename T>
-class RotaryEmbedding final : public RocmKernel {
+class RotaryEmbedding final : public CudaKernel {
  public:
-  RotaryEmbedding(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {}
+  RotaryEmbedding(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {}
   Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
-}  // namespace rocm
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
