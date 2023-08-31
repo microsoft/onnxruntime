@@ -240,7 +240,7 @@ stages:
     # then rename $(Build.SourcesDirectory)/onnxruntime as $(Build.SourcesDirectory)
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: >-
           --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
