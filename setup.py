@@ -242,7 +242,7 @@ try:
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in cuda_dependencies + rocm_dependencies:
+                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
                 try:
