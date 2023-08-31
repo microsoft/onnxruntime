@@ -60,11 +60,12 @@
 #include "orttraining/core/optimizer/lstm_replacement.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/scaled_sum_fusion.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
-#include "core/optimizer/pre_shape_node_elimination.h"
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
+#include "core/optimizer/pre_shape_node_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
 
@@ -136,10 +137,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<QDQFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-      // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
+      // We are supposed to use the execution provider as an indicator,
+      //  but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<IsInfReduceSumFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<ScaledSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {

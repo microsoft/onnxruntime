@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numeric>
 #include <list>
+#include <vector>
 
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
@@ -2085,6 +2086,58 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvTransposeGradient) {
               {GO(0), I(0), I(1)},
               outputs,
               SrcNodeAttributes())};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetScaledSumGradient) {
+  int input_count = GetSrcNodeInputSize();
+  auto attributes = SrcNodeAttributes();
+  float scale_0 = attributes.at("scale_0").f();
+  float scale_1 = attributes.at("scale_1").f();
+  if (input_count == 2) {
+    if (scale_0 == scale_1) {
+      // Specialized branch to avoid duplicated data write.
+      NodeDef scale_node = ConstantScalarNode(scale_0, Name("Scale"), IElemType(0));
+      return std::vector<NodeDef>{
+          scale_node,
+          NodeDef(OpDef{"Mul"},
+                  {GO(0), scale_node.output_args[0]},
+                  {GI(0)}),
+          NodeDef(OpDef{"Identity"},
+                  {GI(0)},
+                  {GI(1)})};
+    } else {
+      return std::vector<NodeDef>{
+          NodeDef(OpDef{"BatchScale", kMSDomain, 1},
+                  {GO(0)},
+                  {GI(0), GI(1)},
+                  SrcNodeAttributes())};
+    }
+  } else if (input_count == 3) {
+    float scale_2 = attributes.at("scale_2").f();
+    if (scale_0 == scale_1 && scale_1 == scale_2) {
+      // Specialized branch to avoid duplicated data write.
+      NodeDef scale_node = ConstantScalarNode(scale_0, Name("Scale"), IElemType(0));
+      return std::vector<NodeDef>{
+          scale_node,
+          NodeDef(OpDef{"Mul"},
+                  {GO(0), scale_node.output_args[0]},
+                  {GI(0)}),
+          NodeDef(OpDef{"Identity"},
+                  {GI(0)},
+                  {GI(1)}),
+          NodeDef(OpDef{"Identity"},
+                  {GI(0)},
+                  {GI(2)})};
+    } else {
+      return std::vector<NodeDef>{
+          NodeDef(OpDef{"BatchScale", kMSDomain, 1},
+                  {GO(0)},
+                  {GI(0), GI(1), GI(2)},
+                  SrcNodeAttributes())};
+    }
+  }
+
+  ORT_THROW("ScaledSum gradient builder does not support ", input_count, " inputs");
 }
 
 }  // namespace training
