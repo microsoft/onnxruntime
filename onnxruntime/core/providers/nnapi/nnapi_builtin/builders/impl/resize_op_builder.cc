@@ -222,7 +222,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         return false;
       }
       if (keep_aspect_ratio_policy != "stretch") {
-        LOGS_DEFAULT(VERBOSE) << "Resize 18+ keep_aspect_ratio_policy attributed is not currently supported by NNAPI EP.";
+        LOGS_DEFAULT(VERBOSE) << "Resize 18+ keep_aspect_ratio_policy attribute is not currently supported by NNAPI EP.";
         return false;
       }
     }
