@@ -65,7 +65,7 @@ For more information, you can check the API using the following:
 help(onnxruntime_extensions.gen_processing_models)
 ```
 
-#### What if I cannot find the custom operator I am looking for?
+### What if I cannot find the custom operator I am looking for?
 Find the custom operators we currently support [here](https://github.com/microsoft/onnxruntime-extensions/tree/main/operators). If you do not find the custom operator you are looking for, you can add a new custom operator to ONNX Runtime Extensions like [this](./add-op.md). Note that if you do add a new operator, you will have to [build from source](./build.md).
 
 ## Inference with ONNX Runtime and Extensions
