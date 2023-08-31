@@ -1350,6 +1350,7 @@
       "mul.jsonc",
       "mul_int32.jsonc",
       //"neg.jsonc",
+      "neg_int32.jsonc",
       "not.jsonc",
       //"or.jsonc",
       "layer-norm.jsonc",
