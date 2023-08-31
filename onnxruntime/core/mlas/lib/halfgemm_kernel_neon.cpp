@@ -14,8 +14,6 @@ Abstract:
 
 --*/
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
 #include "mlasi.h"
 #include "halfgemm.h"
 
@@ -187,5 +185,3 @@ const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon = {
     MLAS_HALF_GEMM_KERNEL_NEON::KernelMaxM,
     32 // kernel may read beyond buffer end by 32 bytes
 };
-
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
