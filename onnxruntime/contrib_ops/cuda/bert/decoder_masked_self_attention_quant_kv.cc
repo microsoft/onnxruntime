@@ -49,6 +49,46 @@ DecoderMaskedSelfAttentionQuantKV<T1, T2>::DecoderMaskedSelfAttentionQuantKV(con
   quant_kv_block_size_ = static_cast<int>(quantize_block_size);
 }
 
+// return the height of the axis that back to zero;
+static int next_position(std::vector<int64_t>& pos, const gsl::span<const int64_t>& shape) {
+  int height = 0;
+  for (int axis = shape.size() - 1; axis >= 0; axis--) {
+    if (++pos[axis] >= shape[axis]) {
+      pos[axis] = 0;
+      ++height;
+    } else {
+      break;
+    }
+  }
+  return height;
+}
+
+template <typename T>
+static void print_tensor(const char* name, const Tensor* t) {
+  auto sz = t->Shape().Size();
+  auto shape = t->Shape().GetDims();
+
+  std::vector<T> vec(sz);
+  cudaDeviceSynchronize();
+  cudaMemcpy(vec.data(), t->DataRaw(), t->SizeInBytes(), cudaMemcpyDeviceToHost);
+
+  std::vector<int64_t> pos(shape.size(), 0LL);
+  std::cout << "  ========  " << name << " ======== " << std::endl;
+  for (int64_t i = 0; i < sz; i++) {
+    if constexpr (std::is_same<T, MLFloat16>::value) {
+      std::cout << (float)vec[i] << ", ";
+    } else if constexpr (std::is_same<T, int8_t>::value) {
+      std::cout << (int)vec[i] << ", ";
+    } else {
+      std::cout << vec[i]<< ", ";
+    }
+    bool newline_height = next_position(pos, shape);
+    if (newline_height) std::cout << std::endl;
+  }
+  std::cout << std::endl;
+}
+
+
 template <typename T1, typename T2>
 Status DecoderMaskedSelfAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
@@ -217,6 +257,7 @@ Status DecoderMaskedSelfAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContex
     parameters.t_step = parameters.past_sequence_length;
   }
 
+  // print_tensor<int8_t>("past", past);
   switch (parameters.head_size) {
     case 32:
       mmha_quant_kv_launch_kernel<T2, 32>(parameters, cuda_stream);
@@ -236,6 +277,8 @@ Status DecoderMaskedSelfAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContex
                              "Got head size: ",
                              parameters.head_size);
   }
+  // print_tensor<int8_t>("present", present);
+
   return Status::OK();
 }
 

@@ -54,9 +54,11 @@ struct TFloatTypeFrom<uint16_t> {
 
 inline __device__ __half2 DequantizeChar2(char2 ch2, const __half2 scale2) {
   // For speed test, for nh=12, hs=128, batch=1, prompt=1000, max_seq_len=1024
+  const float fscale = __half2float(scale2.x);
+  return __half2{__float2half_rn(fscale * ch2.x / 127.0f), __float2half_rn(fscale * ch2.y / 127.0f)};
 
   // A100: avg inference time: 0.239 ms, (pure fp16: 0.161)
-  return __h2div(__hmul2(__half2{ch2.x, ch2.y}, scale2), __half2{127, 127});
+  // return __h2div(__hmul2(__half2{ch2.x, ch2.y}, scale2), __half2{127, 127});
 
   // A100: avg inference time: 0.203,
   // return __half2{ch2.x / 64.0f, ch2.y / 64.0f};
@@ -193,11 +195,15 @@ inline __device__ char2 QuantizeHalf2(const uint32_t v, const __half2 scale2) {
     uint32_t u;
     __half2 h2;
   } uh2;
-
-  const __half2 one_two_seven{127, 127};
   uh2.u = v;
-  uh2.h2 = __hmul2(__h2div(uh2.h2, scale2), one_two_seven);
-  return char2{(char)__half2short_rn(uh2.h2.x), (char)__half2short_rn(uh2.h2.y)};
+  const float fscale = __half2float(scale2.x);
+  const float2 fv2 = __half22float2(uh2.h2);
+  return char2{(char)__half2short_rn(fv2.x / fscale * 127.0), (char)__half2short_rn(fv2.y / fscale * 127.0)};
+
+  // const __half2 one_two_seven{127, 127};
+  // uh2.u = v;
+  // uh2.h2 = __hmul2(__h2div(uh2.h2, scale2), one_two_seven);
+  // return char2{(char)__half2short_rn(uh2.h2.x), (char)__half2short_rn(uh2.h2.y)};
 }
 
 template <typename TVec>
@@ -259,6 +265,8 @@ inline __device__ void QuantizeTo(int8_t* dst, const uint4 v, const __half2 scal
   }
   *(uint2 *)dst = ch2x4.whole;
 }
+
+#pragma diag_suppress static_var_with_dynamic_init
 
 template <
     // The type of the inputs. Supported types: float and half(uint16_t).
@@ -445,7 +453,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     }
 
     if (params.rotary_embedding_dim > 0) {
-      const bool do_rotary = is_active_qk_thread && QK_VEC_SIZE * tidx < params.rotary_embedding_dim;
+      const bool do_rotary = is_active_qk_thread && ((QK_VEC_SIZE * tidx) < params.rotary_embedding_dim);
 
       T* q_smem = reinterpret_cast<T*>(smem_);
       T* k_smem = q_smem + params.rotary_embedding_dim;
@@ -594,16 +602,13 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   // The number of keys per warp.
   constexpr int K_PER_WARP = WARP_SIZE / THREADS_PER_KEY;
 
-  // Pick a number of keys to make sure all the threads of a warp enter (due to shfl_sync).
-  int ti_end = ((tlength + K_PER_WARP - 1) / K_PER_WARP) * K_PER_WARP;
-
   // Iterate over the keys/timesteps to compute the various (Q*K^T)_{ti} values.
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
 
   constexpr int size_of_single_k_buffer = THREADS_PER_BLOCK * K_VEC_SIZE;
   static_assert(size_of_single_k_buffer > 0 && size_of_single_k_buffer % 4 == 0);
   __shared__ char double_k_buffer[2 * size_of_single_k_buffer];
-  char4* buffer_k[2] = {(char4*)double_k_buffer, (char4*)(double_k_buffer + size_of_single_k_buffer)};
+  char* buffer_k[2] = {double_k_buffer, double_k_buffer + size_of_single_k_buffer};
 
   //some extra space allocated as we assume quantize block size could be as small as 16
   constexpr int size_of_k_scale_buffer = K_PER_ITER * (head_size / 16);
@@ -614,72 +619,65 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
   // only work for greed search, or beam size == 1
   // Base pointer for the beam's batch, before offsetting with indirection buffer
-  TQ8* k_cache_batch = &params_k_cache[bhi * params.max_sequence_length * head_size];
+  TQ8* k_cache = &params_k_cache[bhi * params.max_sequence_length * head_size];
 
   TFp* src_k_scales = ((TFp*)params.k_scale) + bhi * params.max_sequence_length * scales_per_head;
 
   using K_vec_acum = K_vec_k;
-  for (int ti_0 = 0; ti_0 < ti_end; ti_0 += K_PER_ITER) {
+  for (int ti_0 = 0; ti_0 < tlength; ti_0 += K_PER_ITER) {
     int ti = ti_0 + ko;
-    int number_of_t = (ti_0 + K_PER_ITER >= tlength) ? K_PER_ITER : (tlength - ti_0);
+    int number_of_t = min(tlength - ti_0, K_PER_ITER);
 
+    TQ8* k_cache_ti_0 = k_cache + (ti_0 * 8);
     pipeline.producer_acquire();
-    TQ8* k_cache_ti_0 = k_cache_batch + (ti_0 * 8);
-    ::cuda::memcpy_async(group, buffer_k[0], (const char4*)(k_cache_ti_0), number_of_t * 8, pipeline);
-    // also load all scales
-    ::cuda::memcpy_async(group, k_scales_buffer, src_k_scales + (ti_0 * scales_per_head) , number_of_t * scales_per_head, pipeline);
+    ::cuda::memcpy_async(group, k_scales_buffer, src_k_scales + (ti_0 * scales_per_head) , sizeof(TFp) * number_of_t * scales_per_head, pipeline);
+    ::cuda::memcpy_async(group, (buffer_k[0]), (k_cache_ti_0), number_of_t * 8, pipeline);
     pipeline.producer_commit();
 
-    K_vec_k k_vec;
     K_vec_acum qk_acc;
     zero(qk_acc);
 
     #pragma unroll
     for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
       pipeline.producer_acquire();
-      ::cuda::memcpy_async(group, buffer_k[ii & 1], (const char4*)(k_cache_ti_0 + (ii * params.max_sequence_length * 8)), number_of_t * 8, pipeline);
+      ::cuda::memcpy_async(group, (buffer_k[ii % 2]), (k_cache_ti_0 + (ii * params.max_sequence_length * 8)), number_of_t * 8, pipeline);
       pipeline.producer_commit();
 
       pipeline.consumer_wait();
       if (ti < tlength) {
         TFp scale_of_k = k_scales_buffer[ko * scales_per_head + ((ii - 1) * 8 / params.quant_kv_block_size)];
-        k_vec = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
-            reinterpret_cast<const K_vec_m*>(&buffer_k[(ii - 1) & 1][tidx * K_VEC_SIZE]), __half2half2(scale_of_k)));
-      } else {
-        zero(k_vec);
+        K_vec_k k_vec = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
+            reinterpret_cast<const K_vec_m*>(&buffer_k[(ii - 1) % 2][tidx * K_VEC_SIZE]), __half2half2(scale_of_k)));
+        qk_acc = onnxruntime::cuda::fma(q_vec[(ii - 1)], k_vec, qk_acc);
       }
-      qk_acc = onnxruntime::cuda::fma(q_vec[ii - 1], k_vec, qk_acc);
       pipeline.consumer_release();
     }
 
     pipeline.consumer_wait();
     if (ti < tlength) {
       TFp scale_of_k = k_scales_buffer[ko * scales_per_head + ((K_VECS_PER_THREAD - 1) * 8 / params.quant_kv_block_size)];
-      k_vec = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
-          reinterpret_cast<const K_vec_m*>(&buffer_k[(K_VECS_PER_THREAD - 1) & 1][tidx * K_VEC_SIZE]), __half2half2(scale_of_k)));
-    } else {
-      zero(k_vec);
+      K_vec_k k_vec = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
+          reinterpret_cast<const K_vec_m*>(&buffer_k[(K_VECS_PER_THREAD - 1) % 2][tidx * K_VEC_SIZE]), __half2half2(scale_of_k)));
+      qk_acc = onnxruntime::cuda::fma(q_vec[(K_VECS_PER_THREAD - 1)], k_vec, qk_acc);
     }
-    qk_acc = onnxruntime::cuda::fma(q_vec[K_VECS_PER_THREAD - 1], k_vec, qk_acc);
     pipeline.consumer_release();
+    pipeline.quit();
 
     float qk = sum(qk_acc);
-
     #pragma unroll
     for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
       qk += __shfl_xor_sync(uint32_t(-1), qk, mask);
     }
-
-    // This is a deviation from FasterTransformer kernel implementation
-    // but this aligns with ORT's other Attention kernels which strives to
-    // mimic PyTorch when dealing with mask filter values
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
-    if (is_masked) {
-      qk += params.mask_filter_value;
-    }
+    qk = qk * inv_sqrt_dh;
 
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
+      // This is a deviation from FasterTransformer kernel implementation
+      // but this aligns with ORT's other Attention kernels which strives to
+      // mimic PyTorch when dealing with mask filter values
+      if ((params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0)) {
+        qk += params.mask_filter_value;
+      }
       if (params.relative_attention_bias != nullptr) {
         qk = add_vec(qk,
                      reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);

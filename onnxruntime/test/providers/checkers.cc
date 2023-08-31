@@ -420,6 +420,7 @@ void Check<Tensor>(std::string_view name, const OrtValue& expected, const Tensor
                               MLFloat16, BFloat16>
       t_disp(actual.GetElementType());
 
+  std::cerr << "====XXXX==== Checking tensor " << name << ", " << actual.Shape() << std::endl;
   t_disp.Invoke<TensorCheck>(expected_tensor, actual, params, provider_type);
 }
 

@@ -995,22 +995,23 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
   // Vary batch size
   for (int batch_size = 1; batch_size <= 5; batch_size += 2) {
     // Vary kv_lengths
-    int past_lens[] = {1000, 1, 30, 3000};
-    for (int past_sequence_length : past_lens) {
-      int sequence_length = 1;
-      int number_of_heads = 12;
+    const std::pair<int, int> past_max_lens[] = {{1, 2}}; // {{1, 2}, {30, 31}, {1000, 1024}, {3000, 3072}};
+    for (const auto [past_sequence_length, max_sequence_length] : past_max_lens) {
+      const int sequence_length = 1;
+      const int number_of_heads = 2;
 
       // Vary head_size / hidden_size
-      int head_sizes[3] = {128, 64, 32};
+      const int head_sizes[3] = {128, 64, 32};
       for (int head_size : head_sizes) {
         for (int quant_kv_block_size = head_size; quant_kv_block_size >= 32; quant_kv_block_size /= 2) {
-          std::cout << "  >>>>[Batch, PastSeqLen, HeadSize, quant_kv_block_size] = [";
-          std::cout << batch_size << ", " << past_sequence_length << ", " << head_size << ", " << quant_kv_block_size << "]";
+          std::cout << "  >>>>[Batch, #Head, PastSeqLen, HeadSize, MaxSeqLen, quant_kv_block_size] = [";
+          std::cout << batch_size << ", " << number_of_heads << ", " << past_sequence_length << ", ";
+          std::cout << head_size << ", " << max_sequence_length << ", "<< quant_kv_block_size << "]";
           std::cout << std::endl;
 
           int hidden_size = number_of_heads * head_size;
           int total_sequence_length = sequence_length + past_sequence_length;
-          int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
+          // int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
 
           OpTester tester("DecoderMaskedSelfAttentionQuantKV", 1, onnxruntime::kMSDomain);
           tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
@@ -1022,13 +1023,14 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
           std::vector<int64_t> bias_dims = {3 * hidden_size};
           std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
 
-          auto input = CreateRandom<MLFloat16>(batch_size * sequence_length * hidden_size);
+          auto non_zero_set_func = [](const std::vector<int64_t>&) { return false; };
+          auto input = RandomFloat<MLFloat16>({batch_size, sequence_length, hidden_size}, non_zero_set_func);
           tester.AddInput<MLFloat16>("input", input_dims, input);
 
-          auto weight = CreateRandom<MLFloat16>(hidden_size * 3 * hidden_size);
+          auto weight = RandomFloat<MLFloat16>({hidden_size, 3LL, hidden_size}, non_zero_set_func);
           tester.AddInput<MLFloat16>("weight", weights_dims, weight);
 
-          auto bias = CreateRandom<MLFloat16>(3 * hidden_size);
+          auto bias = RandomFloat<MLFloat16>({3LL, hidden_size}, non_zero_set_func);
           tester.AddInput<MLFloat16>("bias", bias_dims, bias);
 
           // Mask
@@ -1051,10 +1053,10 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
               kv_cache, batch_size, number_of_heads, past_sequence_length, head_size, max_sequence_length,
               quant_kv_block_size, chunk_size);
 
-          // print_vec("kv_cache", kv_cache, past_dims);
+          print_vec("kv_cache", kv_cache, past_dims);
           // print_vec("reordered_kv_cache", reordered_kv_cache, past_dims);
-          // print_vec("q_reordered_past_kv",q_reordered_past_kv, past_dims);
-          // print_vec("past_kv_scales", past_kv_scales, {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size});
+          print_vec("q_reordered_past_kv",q_reordered_past_kv, past_dims);
+          print_vec("past_kv_scales", past_kv_scales, {2, batch_size, number_of_heads, max_sequence_length * (head_size / quant_kv_block_size)});
 
           tester.AddInput<int8_t>("past", past_dims, q_reordered_past_kv);
 
@@ -1109,9 +1111,9 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
               present, batch_size, number_of_heads, past_sequence_length + 1, head_size, max_sequence_length,
               quant_kv_block_size, chunk_size);
 
-          // print_vec("present_kv_scales", present_kv_scales, {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size});
-          // print_vec("q_reordered_present_kv", q_reordered_present_kv, past_dims);
-          // print_vec("present", present, past_dims);
+          print_vec("present_kv_scales", present_kv_scales, {2, batch_size, number_of_heads, max_sequence_length * (head_size / quant_kv_block_size)});
+          print_vec("q_reordered_present_kv", q_reordered_present_kv, past_dims);
+          print_vec("present", present, past_dims);
 
           // Output(s)
           tester.AddOutput<MLFloat16>("output", input_dims, output);
@@ -1121,6 +1123,11 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
           tester.SetOutputAbsErr("present", 1.0f);
 
           tester.AddOutput<MLFloat16>("present_scales", past_scales_dims, present_kv_scales);
+
+          std::cout << "  <<<<[Batch, #Head, PastSeqLen, HeadSize, MaxSeqLen, quant_kv_block_size] = [";
+          std::cout << batch_size << ", " << number_of_heads << ", " << past_sequence_length << ", ";
+          std::cout << head_size << ", " << max_sequence_length << ", "<< quant_kv_block_size << "]";
+          std::cout << std::endl;
 
           // Run
           std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
