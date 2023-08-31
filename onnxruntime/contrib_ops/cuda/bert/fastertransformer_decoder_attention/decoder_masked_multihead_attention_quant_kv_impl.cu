@@ -66,28 +66,55 @@ inline __device__ __half2 DequantizeChar2(char2 ch2, const __half2 scale2) {
   // return __half2{ch2.x, ch2.x};
 }
 
-template <typename TVec_kernel>
-inline __device__ TVec_kernel LoadQ8(const TVec_kernel* q8, const __half2 scale2);
+template <typename TVec_mem>
+class QuantVec {};
+
+struct __align__(4) Char2x2 {
+  char2 x;
+  char2 y;
+};
+
+struct __align__(8) Char2x4 {
+  char2 x;
+  char2 y;
+  char2 z;
+  char2 w;
+};
 
 template <>
-inline __device__ uint32_t LoadQ8(const uint32_t* q8, const __half2 scale2) {
-  char2 ch2 = *(const char2*)q8;
+class QuantVec<uint32_t> {
+public:
+  using Type = char2;
+};
+
+template <>
+class QuantVec<uint2> {
+public:
+  using Type = Char2x2;
+};
+
+template <>
+class QuantVec<uint4> {
+public:
+  using Type = Char2x4;
+};
+
+
+template <typename TVec_mem>
+inline __device__ TVec_mem DequantizeVec(const typename QuantVec<TVec_mem>::Type qv, const __half2 scale2);
+
+template <>
+inline __device__ uint32_t DequantizeVec<uint32_t>(const char2 ch2, const __half2 scale2) {
   union __align__(4) {
     __half2 h2;
     uint32_t whole;
-  } vec;
-  vec.h2 = DequantizeChar2(ch2, scale2);
-  return vec.whole;
+  } uh;
+  uh.h2 = DequantizeChar2(ch2, scale2);
+  return uh.whole;
 }
 
 template <>
-inline __device__ uint2 LoadQ8(const uint2* q8, const __half2 scale2) {
-  struct __align__(4) Char2x2 {
-    char2 x;
-    char2 y;
-  } ch2x2;
-  ch2x2 = *(const Char2x2 *)q8;
-
+inline __device__ uint2 DequantizeVec<uint2>(const Char2x2 ch2x2, const __half2 scale2) {
   union __align__(8) {
     struct __align__(8) {
       __half2 h2x;
@@ -100,23 +127,9 @@ inline __device__ uint2 LoadQ8(const uint2* q8, const __half2 scale2) {
   return vec.whole;
 }
 
-// template <>
-// inline __device__ uint4 LoadQ8(const uint4* q8, const __half2 scale2) {
-//   // for test speed, it got similar speed as pure fp16 code with this hack.
-//   uint2 u2 = *(const uint2*)q8;
-//   return uint4{u2.x, u2.y, u2.x, u2.y};
-// }
 
 template <>
-inline __device__ uint4 LoadQ8(const uint4* q8, const __half2 scale2) {
-  struct __align__(8) Char2x4 {
-    char2 x;
-    char2 y;
-    char2 z;
-    char2 w;
-  } ch2x4;
-  ch2x4 = *(const Char2x4 *)q8;
-
+inline __device__ uint4 DequantizeVec<uint4>(const Char2x4 ch2x4, const __half2 scale2) {
   union __align__(16) {
     struct __align__(16) {
       __half2 h2x;
@@ -132,6 +145,73 @@ inline __device__ uint4 LoadQ8(const uint4* q8, const __half2 scale2) {
   vec.h2w = DequantizeChar2(ch2x4.w, scale2);
   return vec.whole;
 }
+
+
+template <typename TVec_mem>
+inline __device__ TVec_mem LoadQ8(const TVec_mem* q8, const __half2 scale2) {
+  using Quant_Vec_mem = typename QuantVec<TVec_mem>::Type;
+  Quant_Vec_mem qv = *(const Quant_Vec_mem*)q8;
+  return DequantizeVec<TVec_mem>(qv, scale2);
+}
+
+
+// template <>
+// inline __device__ uint32_t LoadQ8(const uint32_t* q8, const __half2 scale2) {
+//   char2 ch2 = *(const char2*)q8;
+
+//   union __align__(4) {
+//     __half2 h2;
+//     uint32_t whole;
+//   } vec;
+//   vec.h2 = DequantizeChar2(ch2, scale2);
+//   return vec.whole;
+// }
+
+// template <>
+// inline __device__ uint2 LoadQ8(const uint2* q8, const __half2 scale2) {
+//   struct __align__(4) Char2x2 {
+//     char2 x;
+//     char2 y;
+//   } ch2x2;
+//   ch2x2 = *(const Char2x2 *)q8;
+
+//   union __align__(8) {
+//     struct __align__(8) {
+//       __half2 h2x;
+//       __half2 h2y;
+//     };
+//     uint2 whole;
+//   } vec;
+//   vec.h2x = DequantizeChar2(ch2x2.x, scale2);
+//   vec.h2y = DequantizeChar2(ch2x2.y, scale2);
+//   return vec.whole;
+// }
+
+// template <>
+// inline __device__ uint4 LoadQ8(const uint4* q8, const __half2 scale2) {
+//   struct __align__(8) Char2x4 {
+//     char2 x;
+//     char2 y;
+//     char2 z;
+//     char2 w;
+//   } ch2x4;
+//   ch2x4 = *(const Char2x4 *)q8;
+
+//   union __align__(16) {
+//     struct __align__(16) {
+//       __half2 h2x;
+//       __half2 h2y;
+//       __half2 h2z;
+//       __half2 h2w;
+//     };
+//     uint4 whole;
+//   } vec;
+//   vec.h2x = DequantizeChar2(ch2x4.x, scale2);
+//   vec.h2y = DequantizeChar2(ch2x4.y, scale2);
+//   vec.h2z = DequantizeChar2(ch2x4.z, scale2);
+//   vec.h2w = DequantizeChar2(ch2x4.w, scale2);
+//   return vec.whole;
+// }
 
 template <typename TVec>
 inline __device__ __half MaxAbsFloat(const TVec v);
@@ -608,25 +688,36 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     TFp scale_of_k = ((ti < tlength) ? *(((TFp*)params.k_scale) + scale_offset) : TFp{0.0});
 
     // The keys loaded from the key cache.
-    K_vec_k k_vec[K_VECS_PER_THREAD];
+    float qk = 0.0;
 
     if (ti < tlength) {
+      using K_vec_acum = K_vec_k;
+      K_vec_acum qk_acc;
+      using QuantK_Vec_m = typename QuantVec<K_vec_m>::Type;
+      QuantK_Vec_m quant_k_vec[K_VECS_PER_THREAD];
+
+      quant_k_vec[0] = *(const QuantK_Vec_m *)&k_cache_batch[beam_offset + ti * QK_ELTS_IN_16B];
+      zero(qk_acc);
+
       #pragma unroll
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+      for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
         int jj = ii * params.max_sequence_length + ti;
 
-        k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
-            reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), __half2half2(scale_of_k)));
+        quant_k_vec[ii] = *(const QuantK_Vec_m *)&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B];
+        K_vec_k k_vec = vec_conversion<K_vec_k, K_vec_m>(DequantizeVec<K_vec_m>(quant_k_vec[ii - 1], __half2half2(scale_of_k)));
+        qk_acc = onnxruntime::cuda::fma(q_vec[ii - 1], k_vec, qk_acc);
       }
-    } else {
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        zero(k_vec[ii]);
-      }
+      K_vec_k k_vec = vec_conversion<K_vec_k, K_vec_m>(DequantizeVec<K_vec_m>(quant_k_vec[K_VECS_PER_THREAD - 1], __half2half2(scale_of_k)));
+      qk_acc = onnxruntime::cuda::fma(q_vec[K_VECS_PER_THREAD - 1], k_vec, qk_acc);
+
+      qk = sum(qk_acc);
     }
 
-    // Perform the dot product and normalize qk.
-    // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
-    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
+#pragma unroll
+    for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
+      qk += __shfl_xor_sync(uint32_t(-1), qk, mask);
+    }
+    qk *= inv_sqrt_dh;
 
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to

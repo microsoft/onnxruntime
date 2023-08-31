@@ -346,11 +346,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
+    bool is_masked = (params.mask != nullptr && ti < tlength) && (params.mask[bi_total_seq_length + ti] == 0);
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
 
+    float qk;
     if (has_beams) {
 #pragma unroll
       for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
@@ -362,21 +363,41 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
         }
       }
+
+      // Perform the dot product and normalize qk.
+      // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
+      qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
+
     } else {
+      using K_vec_acum = K_vec_k;
+      K_vec_acum qk_acc;
+
+      if (ti < tlength) {
+        k_vec[0] = vec_conversion<K_vec_k, K_vec_m>(
+            (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[ti * QK_ELTS_IN_16B])));
+      }
+      zero(qk_acc);
+
 #pragma unroll
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+      for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
         int jj = ii * params.max_sequence_length + ti;
 
         if (ti < tlength) {
           k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
+        qk_acc = onnxruntime::cuda::fma(q_vec[ii - 1], k_vec[ii-1], qk_acc);
       }
-    }
+      qk_acc = onnxruntime::cuda::fma(q_vec[K_VECS_PER_THREAD - 1], k_vec[K_VECS_PER_THREAD-1], qk_acc);
 
-    // Perform the dot product and normalize qk.
-    // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
-    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
+      // Finalize the reduction across lanes.
+      qk = sum(qk_acc);
+#pragma unroll
+      for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
+        qk += __shfl_xor_sync(uint32_t(-1), qk, mask);
+      }
+      qk *= inv_sqrt_dh;
+    }
 
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to
