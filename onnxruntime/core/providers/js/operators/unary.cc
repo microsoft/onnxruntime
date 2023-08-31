@@ -18,11 +18,24 @@ namespace js {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),               \
       KERNEL_CLASS);
 
+#define JSEP_ELEMENTWISE_MULTI_TYPED_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS)             \
+  ONNX_OPERATOR_KERNEL_EX(                                                              \
+      OP_TYPE, kOnnxDomain, VERSION, kJsExecutionProvider,                              \
+      KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),     \
+                                              DataTypeImpl::GetTensorType<int32_t>()}), \
+      KERNEL_CLASS);
+
+#define JSEP_ELEMENTWISE_MULTI_TYPED_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS) \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                   \
+      OP_TYPE, kOnnxDomain, VERSION_FROM, VERSION_TO, kJsExecutionProvider,                            \
+      KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),                    \
+                                              DataTypeImpl::GetTensorType<int32_t>()}),                \
+      KERNEL_CLASS);
 // math
 
 JSEP_KERNEL_IMPL(Abs, Abs)
-JSEP_ELEMENTWISE_VERSIONED_KERNEL(Abs, 6, 12, float, Abs)
-JSEP_ELEMENTWISE_KERNEL(Abs, 13, float, Abs)
+JSEP_ELEMENTWISE_MULTI_TYPED_VERSIONED_KERNEL(Abs, 6, 12, Abs)
+JSEP_ELEMENTWISE_MULTI_TYPED_KERNEL(Abs, 13, Abs)
 
 JSEP_KERNEL_IMPL(Neg, Neg)
 JSEP_ELEMENTWISE_VERSIONED_KERNEL(Neg, 6, 12, float, Neg)
