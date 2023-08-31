@@ -214,15 +214,15 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       const auto axes = helper.Get("axes", std::vector<int64_t>{});
       const auto keep_aspect_ratio_policy = helper.Get("keep_aspect_ratio_policy", "stretch");
       if (antialias != 0) {
-        LOGS_DEFAULT(VERBOSE) << "Resize 18+ antialias feature is not supported now by NNAPI.";
+        LOGS_DEFAULT(VERBOSE) << "Resize 18+ antialias feature is not currently supported by NNAPI.";
         return false;
       }
       if (!axes.empty()) {
-        LOGS_DEFAULT(VERBOSE) << "Resize 18+ axes attribute is not supported now by NNAPI.";
+        LOGS_DEFAULT(VERBOSE) << "Resize 18+ axes attribute is not currently supported by NNAPI EP.";
         return false;
       }
       if (keep_aspect_ratio_policy != "stretch") {
-        LOGS_DEFAULT(VERBOSE) << "Resize 18+ keep_aspect_ratio_policy attributed is not supported now by NNAPI.";
+        LOGS_DEFAULT(VERBOSE) << "Resize 18+ keep_aspect_ratio_policy attributed is not currently supported by NNAPI EP.";
         return false;
       }
     }
