@@ -891,37 +891,41 @@ TEST(QDQTransformerTests, Gemm_S8S8U8) {
   QDQTransformerGemmTests<int8_t, int8_t, uint8_t, uint8_t>();
 }
 
-TEST(QDQTransformerTests, Gather) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& weights_shape,
-                       bool use_contrib_qdq = false) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input1_arg = builder.MakeInput<int64_t>(input1_shape, 0, weights_shape[0] - 1);
-      auto* output_arg = builder.MakeOutput();
+template <typename QuantType>
+static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
+                                     const std::vector<int64_t>& weights_shape,
+                                     bool use_contrib_qdq = false) {
+  auto build_test_case = [input1_shape, weights_shape, use_contrib_qdq](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>(input1_shape, 0, weights_shape[0] - 1);
+    auto* output_arg = builder.MakeOutput();
 
-      // add Gather
-      auto* weight = builder.MakeInitializer<int8_t>(weights_shape, -128, 127);
-      auto* dq_w_output = builder.MakeIntermediate();
-      auto* gather_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<int8_t>(weight, .003f, 1, dq_w_output, use_contrib_qdq);
-      builder.AddNode("Gather", {dq_w_output, input1_arg}, {gather_output});
+    // add Gather
+    auto* weight = builder.MakeInitializer<QuantType>(weights_shape, std::numeric_limits<QuantType>::min(),
+                                                      std::numeric_limits<QuantType>::max());
+    auto* dq_w_output = builder.MakeIntermediate();
+    auto* gather_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(weight, .003f, 1, dq_w_output, use_contrib_qdq);
+    builder.AddNode("Gather", {dq_w_output, input1_arg}, {gather_output});
 
-      // add Q
-      builder.AddQuantizeLinearNode<int8_t>(gather_output, .003f, 1, output_arg, use_contrib_qdq);
-    };
-
-    auto check_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
-      EXPECT_EQ(op_to_count["Gather"], 1);
-      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
-      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
-    };
-
-    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(gather_output, .003f, 1, output_arg, use_contrib_qdq);
   };
 
-  test_case({12, 37}, {24, 12});
-  test_case({12, 37}, {24, 12}, true);  // Use com.microsoft QDQ ops
+  auto check_graph = [input1_shape, weights_shape, use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Gather"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+}
+
+TEST(QDQTransformerTests, Gather) {
+  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12});
+  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12}, true);   // Use com.microsoft QDQ ops
+  RunGatherDropQDQTestCase<int16_t>({12, 37}, {24, 12}, true);  // Use int16 com.microsoft QDQ ops
 }
 
 TEST(QDQTransformerTests, DoubleQDQ) {
