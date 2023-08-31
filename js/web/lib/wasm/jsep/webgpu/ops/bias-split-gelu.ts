@@ -52,8 +52,10 @@ const createBiasSplitGeluProgramInfo = (metadata: ProgramMetadata, inputs: reado
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
     let biasIdx = global_idx % halfChannels;
-    let valueLeft = input[global_idx] + bias[biasIdx];
-    let valueRight = input[global_idx + halfChannels] + bias[biasIdx + halfChannels];
+    let batchIndex = global_idx / halfChannels;
+    let inputOffset = biasIdx + batchIndex * halfChannels * 2;
+    let valueLeft = input[inputOffset] + bias[biasIdx];
+    let valueRight = input[inputOffset + halfChannels] + bias[biasIdx + halfChannels];
     let geluRight = valueRight * 0.5 * (erf_vf32(valueRight / M_SQRT2) + 1);
 
     ${output.setByOffset('global_idx', 'valueLeft * geluRight')}
