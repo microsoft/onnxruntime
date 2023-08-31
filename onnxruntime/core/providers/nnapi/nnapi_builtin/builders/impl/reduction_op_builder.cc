@@ -185,8 +185,13 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
         return false;
       }
     }
+    // Note: For case ReduceMean 18+ with noop_with_empty_axes specifies as 1, should added as an identity op.
+    // Currently we hit an issue in NNAPI when adding an operand as both an input and output.
+    // This may arise from hadling no-ops like Identity and ReduceX with noop_with_empty_axes set.
+    // TODO: Support the case when a more complete solution is available.
     if (node_unit.SinceVersion() >= 18 && noop_with_empty_axes) {
-      LOGS_DEFAULT(VERBOSE) << "NNAPI currently doesn't support the case of ReduceMean-18 with noop_with_empty_axes specifies as 1.";
+      LOGS_DEFAULT(VERBOSE)
+          << "NNAPI currently doesn't support the case of ReduceMean-18 with noop_with_empty_axes specifies as 1.";
       return false;
     }
   }
