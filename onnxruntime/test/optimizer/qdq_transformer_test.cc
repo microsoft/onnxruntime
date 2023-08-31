@@ -891,6 +891,7 @@ TEST(QDQTransformerTests, Gemm_S8S8U8) {
   QDQTransformerGemmTests<int8_t, int8_t, uint8_t, uint8_t>();
 }
 
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Gather -> Q.
 template <typename QuantType>
 static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
                                      const std::vector<int64_t>& weights_shape,
@@ -911,7 +912,7 @@ static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
     builder.AddQuantizeLinearNode<QuantType>(gather_output, .003f, 1, output_arg, use_contrib_qdq);
   };
 
-  auto check_graph = [input1_shape, weights_shape, use_contrib_qdq](InferenceSessionWrapper& session) {
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
     EXPECT_EQ(op_to_count["Gather"], 1);
@@ -922,12 +923,14 @@ static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
   TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
 }
 
+// Checks that Q/DQ nodes are dropped from DQ -> Gather -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, Gather) {
   RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12});
   RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12}, true);   // Use com.microsoft QDQ ops
   RunGatherDropQDQTestCase<int16_t>({12, 37}, {24, 12}, true);  // Use int16 com.microsoft QDQ ops
 }
 
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Reshape -> Q.
 template <typename QuantType>
 static void RunReshapeDropQDQTestCase(const std::vector<int64_t>& input_shape,
                                       const std::vector<int64_t>& new_shape,
@@ -951,7 +954,7 @@ static void RunReshapeDropQDQTestCase(const std::vector<int64_t>& input_shape,
     builder.AddQuantizeLinearNode<QuantType>(reshape_output, .003f, zero_point, output_arg, use_contrib_qdq);
   };
 
-  auto check_graph = [input_shape, new_shape, use_contrib_qdq](InferenceSessionWrapper& session) {
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
     EXPECT_EQ(op_to_count["Reshape"], 1);
@@ -962,11 +965,65 @@ static void RunReshapeDropQDQTestCase(const std::vector<int64_t>& input_shape,
   TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
 }
 
+// Checks that Q/DQ nodes are dropped from DQ -> Reshape -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, ReshapeDropQDQ) {
   RunReshapeDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 12});
   RunReshapeDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 12}, true);    // Use com.microsoft QDQ ops
   RunReshapeDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 12}, true);   // Use int16 com.microsoft QDQ ops
   RunReshapeDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 12}, true);  // Use int16 com.microsoft QDQ ops
+}
+
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> (Un)Squeeze -> Q.
+template <typename QuantType>
+static void RunSqueezeUnsqueezeDropQDQTestCase(const std::string& squeeze_type,
+                                               const std::vector<int64_t>& input_shape,
+                                               const std::vector<int64_t>& axes,
+                                               bool use_contrib_qdq = false) {
+  auto build_test_case = [squeeze_type, input_shape, axes, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    // Add Squeeze node
+    auto* axes_arg = builder.Make1DInitializer<int64_t>(axes);
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* xsqueeze_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode(squeeze_type, {input_arg_dq, axes_arg}, {xsqueeze_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(xsqueeze_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [squeeze_type, use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count[squeeze_type], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2,
+                    13 /* opset_version */);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> Squeeze -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, SqueezeDropQDQ) {
+  RunSqueezeUnsqueezeDropQDQTestCase<int8_t>("Squeeze", {1, 3, 2, 2}, {0});
+  RunSqueezeUnsqueezeDropQDQTestCase<int8_t>("Squeeze", {1, 3, 2, 2}, {0}, true);    // Use MS domain QDQ ops
+  RunSqueezeUnsqueezeDropQDQTestCase<int16_t>("Squeeze", {1, 3, 2, 2}, {0}, true);   // Use int16 MS domain QDQ ops
+  RunSqueezeUnsqueezeDropQDQTestCase<uint16_t>("Squeeze", {1, 3, 2, 2}, {0}, true);  // Use int16 MS domain QDQ ops
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> Unsqueeze -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, UnsqueezeDropQDQ) {
+  RunSqueezeUnsqueezeDropQDQTestCase<int8_t>("Unsqueeze", {1, 3, 2, 2}, {0});
+  RunSqueezeUnsqueezeDropQDQTestCase<int8_t>("Unsqueeze", {1, 3, 2, 2}, {0}, true);    // Use MS domain QDQ ops
+  RunSqueezeUnsqueezeDropQDQTestCase<int16_t>("Unsqueeze", {1, 3, 2, 2}, {0}, true);   // Use int16 MS domain QDQ ops
+  RunSqueezeUnsqueezeDropQDQTestCase<uint16_t>("Unsqueeze", {1, 3, 2, 2}, {0}, true);  // Use int16 MS domain QDQ ops
 }
 
 TEST(QDQTransformerTests, DoubleQDQ) {
