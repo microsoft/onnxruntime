@@ -13,6 +13,25 @@ else
   exit 1
 fi
 
+# Install dotnet
+if [ -f /etc/redhat-release ]; then
+    RUN rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm \
+    && yum update -y \
+    && yum install -y dotnet-sdk-7.0
+elif [ -f /etc/os-release ]; then
+    apt-get update \
+    && apt-get install -y wget \
+    && wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
+    && dpkg -i packages-microsoft-prod.deb \
+    && apt-get update \
+    && apt-get install -y apt-transport-https \
+    && apt-get update \
+    && apt-get install -y dotnet-sdk-7.0
+else
+  echo "Unsupported OS"
+  exit 1
+fi
+
 if [ ! -d "/opt/conda/bin" ]; then
     PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11")
 else

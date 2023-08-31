@@ -20,7 +20,6 @@ ENV DEVTOOLSET_ROOTPATH=${DEVTOOLSET_ROOTPATH}
 ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}
 ENV PATH=${PREPEND_PATH}${PATH}
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
-ENV DOTNET_SDK_VERSION=6.0.413
 
 # first copy the fixup mirrors script, keep the script around
 COPY build_scripts/fixup-mirrors.sh /usr/local/sbin/fixup-mirrors
@@ -161,16 +160,14 @@ ENV PATH /opt/rh/devtoolset-11/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
-# https://github.com/dotnet/dotnet-docker/blob/main/src/sdk/6.0/alpine3.18/amd64/Dockerfile
-# Install .NET SDK
-RUN wget -O dotnet.tar.gz https://dotnetcli.azureedge.net/dotnet/Sdk/$DOTNET_SDK_VERSION/dotnet-sdk-$DOTNET_SDK_VERSION-linux-musl-x64.tar.gz \
-    && dotnet_sha512='6cffebca6fe29d1f848df9aa0b08a92d780680a02bff964a50d39919e9841b002fa954a8043d6a985885191b0bd55ae3bb7a6e6470a8d3d7ac98eaaed1fb4e56' \
-    && echo "$dotnet_sha512  dotnet.tar.gz" | sha512sum -c - \
-    && mkdir -p /usr/share/dotnet \
-    && tar -oxzf dotnet.tar.gz -C /usr/share/dotnet ./packs ./sdk ./sdk-manifests ./templates ./LICENSE.txt ./ThirdPartyNotices.txt \
-    && rm dotnet.tar.gz \
-    # Trigger first run experience by running arbitrary cmd
-    && dotnet help
+RUN apt-get update \
+    && apt-get install -y wget \
+    && wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
+    && dpkg -i packages-microsoft-prod.deb \
+    && apt-get update \
+    && apt-get install -y apt-transport-https \
+    && apt-get update \
+    && apt-get install -y dotnet-sdk-7.0
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
