@@ -15,7 +15,8 @@ fi
 
 # Install dotnet
 if [ -f /etc/redhat-release ]; then
-    yum update \
+    rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm \
+    && yum update \
     && yum install -y dotnet-sdk-6.0
 elif [ -f /etc/os-release ]; then
     apt-get update \
