@@ -150,8 +150,8 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
     // an input and output.
     // Currently, we return not supported in NNAPI EP when `noop_with_empty_axes` is true.
 
-    // const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, input_shape);
-    // model_builder.RegisterOperand(output, operand_indices.at(inputs[0].node_arg.Name()), output_operand_type);
+    // const OperandType output_operand_type(operand_types.at(input).type, input_shape);
+    // model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   }
 
   return Status::OK();
