@@ -1338,16 +1338,16 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs) {
     TEST_RETURN_IF_NOT(op_count["Identity"] == 1);
 
     for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "com.microsoft.ScaledSum") {
+      if (node.OpType() == "ScaledSum") {
         TEST_RETURN_IF_NOT(node.InputDefs().size() == 3U);
 
         auto& attrs = node.GetAttributes();
         TEST_RETURN_IF_NOT(attrs.find("scale_0") != attrs.end());
         TEST_RETURN_IF_NOT(attrs.find("scale_1") != attrs.end());
         TEST_RETURN_IF_NOT(attrs.find("scale_2") != attrs.end());
-        TEST_RETURN_IF_NOT(0.5f == static_cast<int>(attrs.at("scale_0").f()));
-        TEST_RETURN_IF_NOT(0.3f == static_cast<int>(attrs.at("scale_1").f()));
-        TEST_RETURN_IF_NOT(0.2f == static_cast<int>(attrs.at("scale_2").f()));
+        TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.2f == attrs.at("scale_2").f());
       }
     }
 
@@ -1431,16 +1431,16 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleI
     TEST_RETURN_IF_NOT(op_count["Sub"] == 1);
 
     for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "com.microsoft.ScaledSum") {
+      if (node.OpType() == "ScaledSum") {
         TEST_RETURN_IF_NOT(node.InputDefs().size() == 3U);
 
         auto& attrs = node.GetAttributes();
         TEST_RETURN_IF_NOT(attrs.find("scale_0") != attrs.end());
         TEST_RETURN_IF_NOT(attrs.find("scale_1") != attrs.end());
         TEST_RETURN_IF_NOT(attrs.find("scale_2") != attrs.end());
-        TEST_RETURN_IF_NOT(0.5f == static_cast<int>(attrs.at("scale_0").f()));
-        TEST_RETURN_IF_NOT(0.3f == static_cast<int>(attrs.at("scale_1").f()));
-        TEST_RETURN_IF_NOT(0.2f == static_cast<int>(attrs.at("scale_2").f()));
+        TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
+        TEST_RETURN_IF_NOT(1.0f == attrs.at("scale_2").f());
       }
     }
 
@@ -1524,15 +1524,15 @@ TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
     TEST_RETURN_IF_NOT(op_count["Identity"] == 2);
 
     for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "com.microsoft.ScaledSum") {
+      if (node.OpType() == "ScaledSum") {
         TEST_RETURN_IF_NOT(node.InputDefs().size() == 2U);
 
         auto& attrs = node.GetAttributes();
         TEST_RETURN_IF_NOT(attrs.find("scale_0") != attrs.end());
         TEST_RETURN_IF_NOT(attrs.find("scale_1") != attrs.end());
         TEST_RETURN_IF_NOT(attrs.find("scale_2") == attrs.end());
-        TEST_RETURN_IF_NOT(0.5f == static_cast<int>(attrs.at("scale_0").f()));
-        TEST_RETURN_IF_NOT(0.3f == static_cast<int>(attrs.at("scale_1").f()));
+        TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
       }
     }
     return Status::OK();
