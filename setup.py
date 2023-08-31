@@ -7,9 +7,9 @@
 import datetime
 import logging
 import platform
+import shlex
 import subprocess
 import sys
-import shlex
 from glob import glob, iglob
 from os import environ, getcwd, path, popen, remove
 from pathlib import Path
@@ -201,62 +201,23 @@ try:
                 to_preload_cann = []
 
                 cuda_dependencies = [
-                        "libcublas.so.11",
-                        "libcublasLt.so.11",
-                        "libcudnn.so.8",
-                        "libcudart.so.11.0",
-                        "libcurand.so.10",
-                        "libcufft.so.10"
-                    ]
+                    "libcublas.so.11",
+                    "libcublasLt.so.11",
+                    "libcudnn.so.8",
+                    "libcudart.so.11.0",
+                    "libcurand.so.10",
+                    "libcufft.so.10",
+                ]
                 rocm_dependencies = [
-                        "librccl.so",
-                        "libamdhip64.so",
-                        "librocblas.so",
-                        "libMIOpen.so",
-                        "libhsa-runtime64.so",
-                        "libhsakmt.so",
-                    ]
+                    "librccl.so",
+                    "libamdhip64.so",
+                    "librocblas.so",
+                    "libMIOpen.so",
+                    "libhsa-runtime64.so",
+                    "libhsakmt.so",
+                ]
 
-
-                dest = "onnxruntime/capi/libonnxruntime_providers_" + ("migraphx.so" if is_rocm else "tensorrt.so")
-                if path.isfile(dest):
-                    result = subprocess.run(
-                        ["patchelf", "--print-needed", dest],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        text=True,
-                    )
-                    tensorrt_dependencies = ["libnvinfer.so", "libnvinfer_plugin.so", "libnvonnxparser.so"]
-                    args = ["patchelf", "--debug"]
-                    for line in result.stdout.split("\n"):
-                        for dependency in cuda_dependencies + tensorrt_dependencies:
-                            if dependency in line:
-                                if dependency not in (to_preload + to_preload_cuda):
-                                    to_preload_tensorrt.append(line)
-                                args.extend(["--remove-needed", line])
-                    args.append(dest)
-                    if len(args) > 3:
-                        subprocess.run(args, check=True, stdout=subprocess.PIPE)
-
-                dest = "onnxruntime/capi/libonnxruntime_providers_cann.so"
-                if path.isfile(dest):
-                    result = subprocess.run(
-                        ["patchelf", "--print-needed", dest],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        text=True,
-                    )
-                    cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
-                    args = ["patchelf", "--debug"]
-                    for line in result.stdout.split("\n"):
-                        for dependency in cann_dependencies:
-                            if dependency in line:
-                                if dependency not in to_preload:
-                                    to_preload_cann.append(line)
-                                args.extend(["--remove-needed", line])
-                    args.append(dest)
-                    if len(args) > 3:
-                        subprocess.run(args, check=True, stdout=subprocess.PIPE)
+                tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
@@ -282,12 +243,10 @@ try:
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
                 for i in cuda_dependencies + rocm_dependencies:
-                  auditwheel_cmd += ['--exclude', i]
+                    auditwheel_cmd += ["--exclude", i]
                 logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
                 try:
-                    subprocess.run(
-                        auditwheel_cmd, check=True, stdout=subprocess.PIPE
-                    )
+                    subprocess.run(auditwheel_cmd, check=True, stdout=subprocess.PIPE)
                 finally:
                     logger.info("removing %s", file)
                     remove(file)
