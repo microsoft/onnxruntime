@@ -4,6 +4,13 @@ set -e -x
 # version
 ROCM_VERSION=5.6
 
+while getopts "r:" parameter_Option
+do case "${parameter_Option}"
+in
+r) ROCM_VERSION=${OPTARG};;
+esac
+done
+
 tee /etc/yum.repos.d/amdgpu.repo <<EOF
 [amdgpu]
 name=amdgpu
