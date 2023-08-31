@@ -13,7 +13,7 @@ esac
 done
 
 mkdir -p $HOME/.onnx
-docker run -it --rm \
+docker run --rm \
     --volume /data/onnx:/data/onnx:ro \
     --volume $BUILD_SOURCESDIRECTORY:/onnxruntime_src \
     --volume $BUILD_BINARIESDIRECTORY:/build \
@@ -23,7 +23,7 @@ docker run -it --rm \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
     $ADDITIONAL_DOCKER_PARAMETER \
-    $DOCKER_IMAGE bash
+    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_arm64_python_package.sh -d $DEVICE -c $BUILD_CONFIG -x $BUILD_EXTR_PAR
 
 sudo rm -rf $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/onnxruntime $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/pybind11 \
     $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/models $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/_deps \
