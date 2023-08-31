@@ -15,18 +15,11 @@ fi
 
 # Install dotnet
 if [ -f /etc/redhat-release ]; then
-    rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm \
-    && yum update -y \
-    && yum install -y dotnet-sdk-7.0
+    yum update \
+    && yum install -y dotnet-sdk-6.0
 elif [ -f /etc/os-release ]; then
     apt-get update \
-    && apt-get install -y wget \
-    && wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
-    && dpkg -i packages-microsoft-prod.deb \
-    && apt-get update \
-    && apt-get install -y apt-transport-https \
-    && apt-get update \
-    && apt-get install -y dotnet-sdk-7.0
+    && apt-get install -y dotnet-sdk-6.0
 else
   echo "Unsupported OS"
   exit 1

@@ -116,6 +116,26 @@ stages:
                       ccache -z"
                 workingDirectory: $(Build.SourcesDirectory)
 
+      - bash: |
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume /data/models: /data/models:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              --volume $(ORT_CACHE_DIR):/cache \
+              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimecpubuild \
+              /bin/bash -c "
+                set -ex; \
+                dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
+                ln -s /data/models /build/models; \
+                dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
+                pushd /onnxruntime_src/csharp/ && dotnet test /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln -f net6.0 --no-build -l "console;verbosity=normal" && popd "
+        displayName: 'Run dotnet tests'
+
       - task: UseDotNet@2
         displayName: "Setup dotnet"
         inputs:
