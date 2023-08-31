@@ -2112,9 +2112,11 @@ static void RunModelWithRandomInput(
 
   constexpr int hidden_size = 768;
   constexpr int num_heads = 12;
+  const float min_value = is_float16 ? -0.001f : -1.0f;
+  const float max_value = is_float16 ? 0.001f : 1.0f;
 
   std::vector<int64_t> batch_input_dims{1, sequence_length, hidden_size};
-  std::vector<float> batch_input_data = random.Uniform<float>(batch_input_dims, -1.0f, 1.0f);
+  std::vector<float> batch_input_data = random.Uniform<float>(batch_input_dims, min_value, max_value);
 
   std::vector<int64_t> input_dims{batch_size, sequence_length, hidden_size};
   std::vector<float> input_data;
@@ -2123,12 +2125,12 @@ static void RunModelWithRandomInput(
   }
 
   std::vector<int64_t> weight_dims{hidden_size, 3 * hidden_size};
-  std::vector<float> weight_data = random.Uniform<float>(weight_dims, -1.0f, 1.0f);
+  std::vector<float> weight_data = random.Uniform<float>(weight_dims, min_value, max_value);
 
   std::vector<int64_t> bias_dims{3 * hidden_size};
-  std::vector<float> bias_data = random.Uniform<float>(bias_dims, -1.0f, 1.0f);
+  std::vector<float> bias_data = random.Uniform<float>(bias_dims, min_value, max_value);
 
-  float gpu_threshold = is_float16 ? static_cast<float>(sequence_length) / 32.0f : 0.005f;
+  float gpu_threshold = is_float16 ? 0.5f : 0.005f;
   constexpr float cpu_threshold = 0.002f;
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
@@ -2146,7 +2148,10 @@ static void RunModelWithRandomInput(
       test.AddInput<float>("weight", weight_dims, weight_data);
       test.AddInput<float>("bias", bias_dims, bias_data);
     }
-    test.AddInput<int>("mask_index", mask_index_dims, mask_index_data);
+    if (mask_index_data.size() > 0) {
+      test.AddInput<int>("mask_index", mask_index_dims, mask_index_data);
+    }
+
     test.AddReferenceOutputs(onnx_model, gpu_threshold);
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (enable_cuda) {
@@ -2214,6 +2219,25 @@ TEST(AttentionTest, Attention_Mask1D_Fp32_B2_S64) {
       mask_index_data,
       onnx_model,
       false);
+}
+
+// This case can be used to test flash attention using Ampere GPU
+TEST(AttentionTest, Attention_NoMask_Fp16) {
+  constexpr int batch_size = 2;
+  std::vector<int> sequence_lengths{1, 7, 8};
+  for (const auto& sequence_length : sequence_lengths) {
+    std::vector<int64_t> mask_index_dims{};
+    std::vector<int32_t> mask_index_data{};
+    std::string onnx_model = "testdata/attention_no_mask_fp16.onnx";
+
+    RunModelWithRandomInput(
+        batch_size,
+        sequence_length,
+        mask_index_dims,
+        mask_index_data,
+        onnx_model,
+        true);
+  }
 }
 
 // This test is disabled since it is flaky.
