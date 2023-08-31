@@ -184,9 +184,7 @@ try:
                 dest = "onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so"
                 logger.info("copying %s -> %s", source, dest)
                 copyfile(source, dest)
-                result = subprocess.run(
-                    ["patchelf", "--print-needed", dest], check=True, stdout=subprocess.PIPE, text=True
-                )
+
                 dependencies = [
                     "librccl.so",
                     "libamdhip64.so",
@@ -242,7 +240,7 @@ try:
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
+                for i in dependencies + cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
                 try:
