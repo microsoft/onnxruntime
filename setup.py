@@ -9,6 +9,7 @@ import logging
 import platform
 import subprocess
 import sys
+import shlex
 from glob import glob, iglob
 from os import environ, getcwd, path, popen, remove
 from pathlib import Path
@@ -198,36 +199,16 @@ try:
                 to_preload_cuda = []
                 to_preload_tensorrt = []
                 to_preload_cann = []
-                cuda_dependencies = []
-                args = ["patchelf", "--debug"]
-                for line in result.stdout.split("\n"):
-                    for dependency in dependencies:
-                        if dependency in line:
-                            to_preload.append(line)
-                            args.extend(["--remove-needed", line])
-                args.append(dest)
-                if len(args) > 3:
-                    subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
-                dest = "onnxruntime/capi/libonnxruntime_providers_" + ("rocm.so" if is_rocm else "cuda.so")
-                if path.isfile(dest):
-                    result = subprocess.run(
-                        ["patchelf", "--print-needed", dest],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        text=True,
-                    )
-                    cuda_dependencies = [
-                        "libcublas.so",
-                        "libcublasLt.so",
-                        "libcudnn.so",
-                        "libcudart.so",
-                        "libcurand.so",
-                        "libcufft.so",
-                        "libnvToolsExt.so",
-                        "libcupti.so",
+                cuda_dependencies = [
+                        "libcublas.so.11",
+                        "libcublasLt.so.11",
+                        "libcudnn.so.8",
+                        "libcudart.so.11.0",
+                        "libcurand.so.10",
+                        "libcufft.so.10"
                     ]
-                    rocm_dependencies = [
+                rocm_dependencies = [
                         "librccl.so",
                         "libamdhip64.so",
                         "librocblas.so",
@@ -235,16 +216,7 @@ try:
                         "libhsa-runtime64.so",
                         "libhsakmt.so",
                     ]
-                    args = ["patchelf", "--debug"]
-                    for line in result.stdout.split("\n"):
-                        for dependency in cuda_dependencies + rocm_dependencies:
-                            if dependency in line:
-                                if dependency not in to_preload:
-                                    to_preload_cuda.append(line)
-                                args.extend(["--remove-needed", line])
-                    args.append(dest)
-                    if len(args) > 3:
-                        subprocess.run(args, check=True, stdout=subprocess.PIPE)
+
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_" + ("migraphx.so" if is_rocm else "tensorrt.so")
                 if path.isfile(dest):
@@ -308,9 +280,13 @@ try:
                 assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
+                auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
+                for i in cuda_dependencies + rocm_dependencies:
+                  auditwheel_cmd += ['--exclude', i]
+                logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
                 try:
                     subprocess.run(
-                        ["auditwheel", "repair", "-w", self.dist_dir, file], check=True, stdout=subprocess.PIPE
+                        auditwheel_cmd, check=True, stdout=subprocess.PIPE
                     )
                 finally:
                     logger.info("removing %s", file)
