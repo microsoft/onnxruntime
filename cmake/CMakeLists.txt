@@ -236,7 +236,7 @@ option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for thre
 
 option(onnxruntime_USE_TBB "Build with intel tbb for multi-threading" OFF)
 
-option(onnxruntime_USE_OCT "Build with octopus for multi-threading" OFF)
+option(onnxruntime_USE_OCT "Build with octopus for multi-threading" ON)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
