@@ -8,8 +8,6 @@ nav_order: 7
 
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status%2Fmicrosoft.onnxruntime-extensions?branchName=main)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=209&branchName=main)
 
-## What is ONNXRuntime-Extensions?
-
 ONNXRuntime-Extensions is a library that extends the capability of the ONNX models and inference with ONNX Runtime, via the ONNX Runtime custom operator interface. It includes a set of Custom Operators to support common model pre and post-processing for audio, vision, text, and language models. As with ONNX Runtime, Extensions also supports multiple languages and platforms (Python on Windows/Linux/macOS, Android and iOS mobile platforms and Web-Assembly for web.
 
 The basic workflow is to add the custom operators to an ONNX model and then to perform inference on the enhanced model with ONNX Runtime and ONNXRuntime-Extensions packages.
@@ -44,7 +42,7 @@ dotnet add package Microsoft.ML.OnnxRuntime.Extensions --version 0.8.1-alpha
 ```
 
 ## Add pre and post-processing to the model
-There are multiple ways to get the ONNX processing graph:
+There are multiple ways to add pre and post processing to an ONNX graph:
 - [Use the pre-processing pipeline API if the model and its pre-processing is supported by the pipeline API](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/tools/pre_post_processing/pre_post_processor.py)
 - [Export to ONNX from a PyTorch model](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/superresolution_e2e.py#L69)
 - [Create an ONNX model with a model graph that includes your custom op node](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/_ortapi2.py#L50)
