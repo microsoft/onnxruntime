@@ -1557,7 +1557,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
   if (src_arg != dst_arg) {
     // The edge ends specified by source and destination arg slot are not referring to same node arg.
     // It means there was no edge between these two slots before.
-
+    ORT_THROW("Argument mismatch when removing edge.");
   }
 
   nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
