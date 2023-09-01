@@ -86,7 +86,7 @@ stages:
             onnxruntimecpubuild \
             /bin/bash -c "
               set -ex; \
-              dotnet help; \"
+              dotnet help "
         displayName: 'Run dotnet tests'
 
       - template: templates/linux-build-step-with-cache.yml
