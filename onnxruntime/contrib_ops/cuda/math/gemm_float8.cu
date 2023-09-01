@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include <algorithm>
+#include <utility>
 #include <cuda_runtime.h>
 
 namespace onnxruntime {
@@ -379,7 +380,7 @@ Status GemmFloat8::ComputeGemm(
   // The workspace should be allocated once from OpKernelContext assuming
   // only one cuda function is running at a time (which is not necessarily true
   // with H100).
-  size_t workspaceSize = (size_t)(1 << 25);  // suggested fixed value 32Mb
+  size_t workspaceSize = static_cast<size_t>(1 << 25);  // suggested fixed value 32Mb
   cublasLtMatmulPreference_t preference = nullptr;
   cublasLtMatmulPreferenceCreate(&preference);
   cublasLtMatmulPreferenceSetAttribute(preference,
