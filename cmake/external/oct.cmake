@@ -3,7 +3,7 @@
 
 include(ExternalProject)
 
-ExternalProject_Add(tbb
+ExternalProject_Add(oct
                     GIT_REPOSITORY https://github.com/RandySheriffH/octopus.git
                     GIT_TAG main
                     SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/oct-src
