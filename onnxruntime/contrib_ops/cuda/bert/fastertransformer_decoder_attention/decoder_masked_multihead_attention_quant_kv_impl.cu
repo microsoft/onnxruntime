@@ -839,24 +839,54 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   V_vec_acum out;
   zero(out);
 
-  // Loop over the timesteps to compute the partial outputs.
-  for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
+  using QuantV_vec_m = typename QuantVec<V_vec_m>::Type;
+  QuantV_vec_m quant_v_m_vec[2];
+  TFp scale_of_v[2];
+  T logit[2];
+
+  int ti = vo;
+  int r = 0;
+  if (ti < tlength) {
     // Fetch offset based on cache_indir when beam sampling
     const int mapped_beam_index = has_beams ? params.cache_indir[bi_max_seq_length + ti] : input_beam_index;
     const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
 
     const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
     const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + vi / params.quant_kv_block_size;
-    TFp scale_of_v = *(((TFp*)params.v_scale) + scale_offset);
+    scale_of_v[0] = *(((TFp*)params.v_scale) + scale_offset);
+    quant_v_m_vec[0] = *(const QuantV_vec_m*)&v_cache_batch[beam_offset + ti * head_size];
+    logit[0] = logits_smem[ti];
 
-    // Load the values from the cache.
-    // V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
-    V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(LoadQ8(
-                    reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]), __half2half2(scale_of_v)));
+    // // Load the values from the cache.
+    // // V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
+    // V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(LoadQ8(
+    //                 reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]), __half2half2(scale_of_v)));
+    r++;
+  }
 
-    // Load the logits from shared memory.
-    T logit = logits_smem[ti];
-    out = fma(logit, v, out);
+  // Loop over the timesteps to compute the partial outputs.
+  ti += V_PER_ITER;
+  for (; ti < tlength; ti += V_PER_ITER, r++) {
+    // Fetch offset based on cache_indir when beam sampling
+    const int mapped_beam_index = has_beams ? params.cache_indir[bi_max_seq_length + ti] : input_beam_index;
+    const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
+
+    const int idx_of_2 = r % 2;
+    const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
+    const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + vi / params.quant_kv_block_size;
+    scale_of_v[idx_of_2] = *(((TFp*)params.v_scale) + scale_offset);
+    quant_v_m_vec[idx_of_2] = *(const QuantV_vec_m*)&v_cache_batch[beam_offset + ti * head_size];
+    logit[idx_of_2] = logits_smem[ti];
+
+    const int prev_idx = (r - 1) % 2;
+    V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(DequantizeVec<V_vec_m>(quant_v_m_vec[prev_idx], __half2half2(scale_of_v[prev_idx])));
+    out = fma(logit[prev_idx], v, out);
+  }
+
+  if (r > 0) {
+    const int prev_idx = (r - 1) % 2;
+    V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(DequantizeVec<V_vec_m>(quant_v_m_vec[prev_idx], __half2half2(scale_of_v[prev_idx])));
+    out = fma(logit[prev_idx], v, out);
   }
 
   // One group of threads computes the product(s) for the current timestep.
@@ -961,7 +991,7 @@ template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64
 // fp16 + head size = 128
 template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 2, 16, 256>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 512>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
