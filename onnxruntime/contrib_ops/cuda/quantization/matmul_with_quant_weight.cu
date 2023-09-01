@@ -106,6 +106,7 @@ __global__ void MatMul4BitsWeightKernel(
   // dequantize a blob
   T weight[block_size];
   const uint8_t* quant_data_cur = b_data_quant + (n_id * gridDim.x + k_block_id) * block_size / 2;
+  uint4 values = *(reinterpret_cast<const uint4*>(quant_data_cur));
   T scale = *(scales_data + n_id * gridDim.x + k_block_id);
   T zero_point = static_cast<T>(zero_points ? float(zero_points[n_id * gridDim.x + k_block_id]) : 8.f);
   T scale_zero_point = -scale * zero_point;
@@ -114,8 +115,9 @@ __global__ void MatMul4BitsWeightKernel(
 
   typename Scalar2<T>::type res_pair;
   const typename Scalar2<T>::type* a_data_vec_2 = reinterpret_cast<const typename Scalar2<T>::type*>(a_data_vec);
+  uint* values_ptr = (uint*)(&values);
   for (int kk = 0; kk < block_size; kk += 8) {
-    uint32_t value = *(reinterpret_cast<const uint32_t*>(quant_data_cur+kk));
+    uint32_t value = values_ptr[kk/8];
     EightElementsDequant<T> eight_elements;
     eight_elements.Dequant(value, scale_pair, scale_zero_point_pair);
 
@@ -125,7 +127,7 @@ __global__ void MatMul4BitsWeightKernel(
     res_pair = Scalar2<T>::MulAdd(eight_elements.values[3], a_data_vec_2[kk/2 + 1], res_pair);
   }
 
-  atomicAdd(output + m_id * n + n_id, res_pair.x + res_pair.y);
+  //atomicAdd(output + m_id * n + n_id, res_pair.x + res_pair.y);
 }
 
 template <class T>
@@ -140,9 +142,9 @@ Status MatMul4BitsWeight(
     int k,
     int block_size,
     cudaStream_t stream) {
-  constexpr int n_block_size = 128;
-  dim3 blocks((k + block_size - 1) / block_size, (n + n_block_size - 1) / n_block_size, m);
-  dim3 threads(min(n, n_block_size));
+  constexpr int n_thread_block_size = 256;
+  dim3 blocks((k + block_size - 1) / block_size, (n + n_thread_block_size - 1) / n_thread_block_size, m);
+  dim3 threads(min(n, n_thread_block_size));
 
   if (16 == block_size) {
     MatMul4BitsWeightKernel<T, 16><<<blocks, threads, 0, stream>>>(
