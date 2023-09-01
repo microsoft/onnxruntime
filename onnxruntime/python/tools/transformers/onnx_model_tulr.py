@@ -499,7 +499,7 @@ class FusionGRUGate(Fusion):
         self.node_name_to_graph_name[gate_node.name] = self.this_graph_name
 
 
-def change_attn_mask_type(graph: GraphProto):
+def change_attn_mask(graph: GraphProto):
     new_inputs = []
     for i, vi in enumerate(graph.input):
         if vi.name == "attention_mask":
@@ -507,7 +507,7 @@ def change_attn_mask_type(graph: GraphProto):
                 vi.name,
                 #elem_type=vi.type.tensor_type.elem_type,
                 elem_type=TensorProto.INT32,
-                shape=["batch_size", "sequence_length"],
+                shape=["batch_size + 1"],
             )
         new_inputs.extend([vi])
 
@@ -590,6 +590,6 @@ class TulrOnnxModel(BertOnnxModel):
         self.gru_fusion.apply()
         self.clean_graph()
         self.prune_graph()
-        change_attn_mask_type(self.model.graph)
+        change_attn_mask(self.model.graph)
         replace_mha_with_custom_attn(self.model.graph)
         print("postprocess")
