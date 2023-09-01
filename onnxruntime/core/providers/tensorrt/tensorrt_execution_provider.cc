@@ -356,7 +356,7 @@ std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() c
 
 // Per TensorRT documentation, logger needs to be a singleton.
 TensorrtLogger& GetTensorrtLogger() {
-  static TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kVERBOSE);
+  static TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
   return trt_logger;
 }
 
@@ -2109,8 +2109,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (!trt_builder->platformHasFastInt8()) {
         int8_enable_ = false;
         LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_INT8_ENABLE is set, but platform doesn't support fast native int8";
-      } else {
-        std::cout << "INT8 supported" << std::endl;
       }
     }
 
@@ -2216,7 +2214,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
-      std::cout << "Static shape: Engine cache path:" << engine_cache_path << std::endl;
       const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
       const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
@@ -2275,13 +2272,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           // Set INT8 per tensor dynamic range
           if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
             trt_config->setInt8Calibrator(nullptr);
-            std::cout << "trt_config->setInt8Calibrator(nullptr);" << std::endl;
-
             if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                      "TensorRT EP could not set INT8 dynamic range for fused node: " + fused_node.Name());
-              std::cout << "TensorRT EP could not set INT8 dynamic range for fused node" << std::endl;
-
             }
           }
 
@@ -2305,12 +2298,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (detailed_build_log_) {
             engine_build_start = std::chrono::steady_clock::now();
           }
-          
-          //std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
           std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_builder->buildSerializedNetwork(*trt_network, *trt_config));
           size_t engine_size = serializedModel->size();
-          
-          // trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
           trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serializedModel->data(), engine_size, nullptr));
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -2487,7 +2476,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Prepare cache name
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
-      std::cout << "Dynamic shape: Engine cache path:" << engine_cache_path << std::endl;
       const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
       const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
@@ -2677,8 +2665,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_builder->buildSerializedNetwork(*trt_state->network->get(), *trt_config));
             size_t engine_size = serializedModel->size();
             *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-                //trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
-                (trt_state->runtime->deserializeCudaEngine(serializedNetwork->data(), engine_size, nullptr));
+                trt_state->runtime->deserializeCudaEngine(serializedNetwork->data(), engine_size, nullptr));
 
             if (detailed_build_log_) {
               auto engine_build_stop = std::chrono::steady_clock::now();
