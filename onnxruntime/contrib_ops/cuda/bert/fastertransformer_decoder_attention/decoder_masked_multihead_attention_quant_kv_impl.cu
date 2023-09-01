@@ -50,11 +50,16 @@ struct TFloatTypeFrom<uint16_t> {
   using Type = half;
 };
 
-inline __device__ __half2 DequantizeChar2(char2 ch2, const __half2 scale2) {
+inline __device__ __half2 DequantizeChar2(const char2 ch2, const float unit_scale) {
+  return 	__float22half2_rn(float2{unit_scale * ch2.x, unit_scale * ch2.y});
+
   // For speed test, for nh=12, hs=128, batch=1, prompt=1000, max_seq_len=1024
+  // below goes to 0.16 ms
+  // const float fp32_unit_scale = __half2float(scale2.x);
+  // return 	__float22half2_rn(float2{fp32_unit_scale * ch2.x, fp32_unit_scale * ch2.y});
 
   // A100: avg inference time: 0.239 ms, (pure fp16: 0.161)
-  return __h2div(__hmul2(__half2{ch2.x, ch2.y}, scale2), __half2{127, 127});
+  // return __h2div(__hmul2(__half2{ch2.x, ch2.y}, scale2), __half2{127, 127});
 
   // A100: avg inference time: 0.203,
   // return __half2{ch2.x / 64.0f, ch2.y / 64.0f};
@@ -62,11 +67,11 @@ inline __device__ __half2 DequantizeChar2(char2 ch2, const __half2 scale2) {
   // below goes to 0.60 ms
   // return __half2{ch2.x / 127.0f, ch2.y / 127.0f};
 
-  // below goes to 0.196 ms
+  // below goes to 0.196 ms ???
   // return __half2{ch2.x, ch2.x};
 }
 
-template <typename TVec_mem>
+template <typename TVec_m>
 class QuantVec {};
 
 struct __align__(4) Char2x2 {
@@ -99,22 +104,21 @@ public:
   using Type = Char2x4;
 };
 
-
-template <typename TVec_mem>
-inline __device__ TVec_mem DequantizeVec(const typename QuantVec<TVec_mem>::Type qv, const __half2 scale2);
+template <typename TVec_m>
+inline __device__ TVec_m DequantizeVec(const typename QuantVec<TVec_m>::Type quant_vec_m, const float unit_scale);
 
 template <>
-inline __device__ uint32_t DequantizeVec<uint32_t>(const char2 ch2, const __half2 scale2) {
+inline __device__ uint32_t DequantizeVec<uint32_t>(const char2 ch2, const float unit_scale) {
   union __align__(4) {
     __half2 h2;
     uint32_t whole;
   } uh;
-  uh.h2 = DequantizeChar2(ch2, scale2);
+  uh.h2 = DequantizeChar2(ch2, unit_scale);
   return uh.whole;
 }
 
 template <>
-inline __device__ uint2 DequantizeVec<uint2>(const Char2x2 ch2x2, const __half2 scale2) {
+inline __device__ uint2 DequantizeVec<uint2>(const Char2x2 ch2x2, const float unit_scale) {
   union __align__(8) {
     struct __align__(8) {
       __half2 h2x;
@@ -122,14 +126,14 @@ inline __device__ uint2 DequantizeVec<uint2>(const Char2x2 ch2x2, const __half2 
     };
     uint2 whole;
   } vec;
-  vec.h2x = DequantizeChar2(ch2x2.x, scale2);
-  vec.h2y = DequantizeChar2(ch2x2.y, scale2);
+  vec.h2x = DequantizeChar2(ch2x2.x, unit_scale);
+  vec.h2y = DequantizeChar2(ch2x2.y, unit_scale);
   return vec.whole;
 }
 
 
 template <>
-inline __device__ uint4 DequantizeVec<uint4>(const Char2x4 ch2x4, const __half2 scale2) {
+inline __device__ uint4 DequantizeVec<uint4>(const Char2x4 ch2x4, const float unit_scale) {
   union __align__(16) {
     struct __align__(16) {
       __half2 h2x;
@@ -139,19 +143,19 @@ inline __device__ uint4 DequantizeVec<uint4>(const Char2x4 ch2x4, const __half2 
     };
     uint4 whole;
   } vec;
-  vec.h2x = DequantizeChar2(ch2x4.x, scale2);
-  vec.h2y = DequantizeChar2(ch2x4.y, scale2);
-  vec.h2z = DequantizeChar2(ch2x4.z, scale2);
-  vec.h2w = DequantizeChar2(ch2x4.w, scale2);
+  vec.h2x = DequantizeChar2(ch2x4.x, unit_scale);
+  vec.h2y = DequantizeChar2(ch2x4.y, unit_scale);
+  vec.h2z = DequantizeChar2(ch2x4.z, unit_scale);
+  vec.h2w = DequantizeChar2(ch2x4.w, unit_scale);
   return vec.whole;
 }
 
 
-template <typename TVec_mem>
-inline __device__ TVec_mem LoadQ8(const TVec_mem* q8, const __half2 scale2) {
-  using Quant_Vec_mem = typename QuantVec<TVec_mem>::Type;
-  Quant_Vec_mem qv = *(const Quant_Vec_mem*)q8;
-  return DequantizeVec<TVec_mem>(qv, scale2);
+template <typename TVec_m>
+inline __device__ TVec_m LoadQ8(const TVec_m* q8, const float unit_scale) {
+  using QuantVec_m = typename QuantVec<TVec_m>::Type;
+  QuantVec_m quant_vec_m = *(const QuantVec_m*)q8;
+  return DequantizeVec<TVec_m>(quant_vec_m, unit_scale);
 }
 
 
@@ -604,7 +608,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       QuantizeTo(&params_k_cache[offset], vec_conversion<Qk_vec_m, Qk_vec_k>(k), __half2half2(max_abs_k));
       if (tidx % qk_threads_per_scale == 0) {
         const int scale_offset = (bhi * params.max_sequence_length + tlength) *scales_per_head + tidx / qk_threads_per_scale;
-        *(((TFp*)params.k_scale) + scale_offset) = (TFp)max_abs_k;
+        *(((TFp*)params.k_scale) + scale_offset) = (TFp)(max_abs_k ? (127.0f / (float)max_abs_k) : 0.0f);
       }
 
       // Compute \sum_i Q[i] * K^T[i] for the current timestep.
@@ -694,7 +698,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
     int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + ki / params.quant_kv_block_size;
-    TFp scale_of_k = ((ti < tlength) ? *(((TFp*)params.k_scale) + scale_offset) : TFp{0.0});
+    float scale_of_k = (float)((ti < tlength) ? *(((TFp*)params.k_scale) + scale_offset) : TFp{0.0});
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
@@ -705,7 +709,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
         int jj = ii * params.max_sequence_length + ti;
 
         k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(LoadQ8(
-            reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), __half2half2(scale_of_k)));
+            reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), scale_of_k));
       }
     } else {
       for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
@@ -845,12 +849,12 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
     const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + vi / params.quant_kv_block_size;
-    TFp scale_of_v = *(((TFp*)params.v_scale) + scale_offset);
+    const float scale_of_v = (float)*(((TFp*)params.v_scale) + scale_offset);
 
     // Load the values from the cache.
     // V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
     V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(LoadQ8(
-                    reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]), __half2half2(scale_of_v)));
+                    reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]), scale_of_v));
 
     // Load the logits from shared memory.
     T logit = logits_smem[ti];
@@ -882,7 +886,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     if (vi % params.quant_kv_block_size == 0) {
       const int scales_per_head = head_size / params.quant_kv_block_size;
       const int scale_offset = (bhi * params.max_sequence_length + tlength) * scales_per_head + vi / params.quant_kv_block_size;
-      *(((TFp*)params.v_scale) + scale_offset) = (TFp)max_abs_v;
+      *(((TFp*)params.v_scale) + scale_offset) = (TFp)(max_abs_v ? (127.0f / (float)max_abs_v) : 0.0f);
     }
 
     // Initialize the output value with the current timestep.
