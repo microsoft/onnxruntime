@@ -294,7 +294,7 @@ def main():
     ort_decoder_input_ids_cmd = (
         ["--decoder-input-ids", str(ort_forced_decoder_ids)] if args.language and args.task else []
     )
-    ort_tune_cmd = (["--tune"] if args.tune else [])
+    ort_tune_cmd = ["--tune"] if args.tune else []
 
     all_results = []
     for audio_file in os.listdir(args.audio_path):
@@ -398,31 +398,35 @@ def main():
 
         # Benchmark ONNX Runtime
         if args.ort_model_path:
-            benchmark_cmd = [  # noqa: RUF005
-                "python3",
-                "-m",
-                "models.whisper.benchmark",
-                "--audio-path",
-                audio_path,
-                "--benchmark-type",
-                "ort",
-                "--ort-model-path",
-                args.ort_model_path,
-                "--model-name",
-                args.model_name,
-                "--precision",
-                args.precision,
-                "--device",
-                args.device,
-                "--device-id",
-                str(args.device_id),
-                "--warmup-runs",
-                str(args.warmup_runs),
-                "--num-runs",
-                str(args.num_runs),
-                "--log-folder",
-                args.log_folder,
-            ] + ort_decoder_input_ids_cmd + ort_tune_cmd
+            benchmark_cmd = (
+                [  # noqa: RUF005
+                    "python3",
+                    "-m",
+                    "models.whisper.benchmark",
+                    "--audio-path",
+                    audio_path,
+                    "--benchmark-type",
+                    "ort",
+                    "--ort-model-path",
+                    args.ort_model_path,
+                    "--model-name",
+                    args.model_name,
+                    "--precision",
+                    args.precision,
+                    "--device",
+                    args.device,
+                    "--device-id",
+                    str(args.device_id),
+                    "--warmup-runs",
+                    str(args.warmup_runs),
+                    "--num-runs",
+                    str(args.num_runs),
+                    "--log-folder",
+                    args.log_folder,
+                ]
+                + ort_decoder_input_ids_cmd
+                + ort_tune_cmd
+            )
             logger.info("Benchmark ONNX Runtime")
             results = benchmark(args, benchmark_cmd, "onnxruntime", audio_file, duration)
             all_results.extend(results)
