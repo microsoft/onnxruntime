@@ -242,15 +242,15 @@ Status DecoderMaskedMultiHeadAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelC
 
   switch (parameters.head_size) {
     case 32:
-      mmha_quant_kv_launch_kernel<T2, 32>(parameters, cuda_stream);
+      mmha_quant_kv_launch_kernel<T2, 2, 32>(parameters, cuda_stream);
       break;
 
     case 64:
-      mmha_quant_kv_launch_kernel<T2, 64>(parameters, cuda_stream);
+      mmha_quant_kv_launch_kernel<T2, 2, 64>(parameters, cuda_stream);
       break;
 
     case 128:
-      mmha_quant_kv_launch_kernel<T2, 128>(parameters, cuda_stream);
+      mmha_quant_kv_launch_kernel<T2, 2, 128>(parameters, cuda_stream);
       break;
 
     default:

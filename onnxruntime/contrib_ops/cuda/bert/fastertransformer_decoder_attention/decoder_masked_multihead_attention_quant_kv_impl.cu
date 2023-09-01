@@ -568,16 +568,23 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     const int mapped_beam_index = (has_beams && ti < tlength) ? beam_indices[ti] : input_beam_index;
     const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
 
-    const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
-    int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + ki / params.quant_kv_block_size;
-    float unit_scale_k = (float)((ti < tlength) ? *(((TScale*)params.k_scale) + scale_offset) : TScale{0.0});
-
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
 
     if (ti < tlength) {
+      const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
+      const TScale* scales_in_head = ((const TScale*)params.k_scale) + ((mapped_bhi * params.max_sequence_length + ti) * scales_per_head);
+      float unit_scale_k = 0.0f;
+      int in_head_elem_idx = ki;
+      int renew_scale_elem_idx = 0; // reload scale when in_head_elem_idx >= renew_scale_elem_idx
 #pragma unroll
       for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        if (in_head_elem_idx >= renew_scale_elem_idx) {
+          int in_head_scale_idx = in_head_elem_idx / params.quant_kv_block_size;
+          renew_scale_elem_idx = (in_head_scale_idx + 1) * params.quant_kv_block_size;
+          unit_scale_k = (float)scales_in_head[in_head_scale_idx];
+        }
+        in_head_elem_idx += QK_ELTS_IN_16B;
         int jj = ii * params.max_sequence_length + ti;
         k_vec[ii] = LoadQuantVec((const K_vec_k*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), unit_scale_k);
       }
@@ -732,7 +739,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   }
 
   // One group of threads computes the product(s) for the current timestep.
-  if (vo == tlength % V_PER_ITER && !params.is_cross_attention) {
+  if ((vo == tlength % V_PER_ITER) && !params.is_cross_attention) {
     const auto v_offset = qkv_base_offset + vi;
 
     V_vec_k v;
@@ -798,26 +805,19 @@ typedef __half TQuantKVScale;
 
 // Template instantiation(s)
 
-// fp16 + head size = 32
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 4, 4, 64, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+#define Instantiate(TQuantKVScale)                                                                                                                                    \
+  template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 4, 4, 64, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);    \
+  template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 2, 4, 128, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);   \
+  template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 1, 4, 256, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);   \
+  template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 4, 8, 64, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);    \
+  template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 2, 8, 128, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);   \
+  template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 1, 8, 256, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);   \
+  template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 4, 16, 64, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);  \
+  template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 2, 16, 128, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params); \
+  template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 256, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 2, 4, 128, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
-
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 32, 1, 4, 256, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
-
-// fp16 + head size = 64
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 4, 8, 64, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
-
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 2, 8, 128, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
-
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 64, 1, 8, 256, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
-
-// fp16 + head size = 128
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 4, 16, 64, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
-
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 2, 16, 128, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
-
-template void __global__ masked_multihead_attention_quant_kv_kernel<uint16_t, 128, 1, 16, 256, TQuantKVScale>(DecoderMaskedMultiHeadAttentionQuantKVParams params);
+Instantiate(__half);
+Instantiate(float);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -79,7 +79,7 @@ template <
     typename TScale>
 __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
-template <typename T, int head_size>
+template <typename T, int ScaleElemSize, int head_size>
 void mmha_quant_kv_launch_kernel(const DecoderMaskedMultiHeadAttentionQuantKVParams& params, cudaStream_t stream);
 
 }  // namespace cuda

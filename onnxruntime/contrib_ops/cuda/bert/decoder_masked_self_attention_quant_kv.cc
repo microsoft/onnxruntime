@@ -112,6 +112,7 @@ Status DecoderMaskedSelfAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContex
   Tensor* output = context->Output(0, output_shape);
 
   // TODO: check scales dims vs past dims
+  int64_t quant_kv_scale_elem_size = (past_scales->IsDataType<float>() ? 4 : 2);
 
   // Present input will have the same shape as the past input
   Tensor* present = context->Output(kPresentOutputIndex, past->Shape());
@@ -121,8 +122,8 @@ Status DecoderMaskedSelfAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContex
 
   auto* past_data = past->Data<int8_t>();
   auto* present_data = present->MutableData<int8_t>();
-  auto* past_scales_data = past_scales->Data<T1>();
-  auto* present_scales_data = present_scales->MutableData<T1>();
+  auto* past_scales_data = past_scales->DataRaw();
+  auto* present_scales_data = present_scales->MutableDataRaw();
 
   // No production use-case will incur this copy cost as the implementation of
   // GreedySearch/BeamSearch is written in such a way that the past and present buffers
@@ -179,7 +180,7 @@ Status DecoderMaskedSelfAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContex
   parameters.v_cache = present_data + (present->Shape().Size() / 2);
 
   parameters.k_scale = present_scales_data;
-  parameters.v_scale = present_scales_data + (present_scales->Shape().Size() / 2);
+  parameters.v_scale = ((char*)present_scales_data) + quant_kv_scale_elem_size * (present_scales->Shape().Size() / 2);
   parameters.quant_kv_block_size = quant_kv_block_size_;
 
 // Scale
@@ -217,24 +218,47 @@ Status DecoderMaskedSelfAttentionQuantKV<T1, T2>::ComputeInternal(OpKernelContex
     parameters.t_step = parameters.past_sequence_length;
   }
 
-  switch (parameters.head_size) {
-    case 32:
-      mmha_quant_kv_launch_kernel<T2, 32>(parameters, cuda_stream);
-      break;
+  // Maybe only float scale in future
+  if (quant_kv_scale_elem_size == 4) {
+    switch (parameters.head_size) {
+      case 32:
+        mmha_quant_kv_launch_kernel<T2, 4, 32>(parameters, cuda_stream);
+        break;
 
-    case 64:
-      mmha_quant_kv_launch_kernel<T2, 64>(parameters, cuda_stream);
-      break;
+      case 64:
+        mmha_quant_kv_launch_kernel<T2, 4, 64>(parameters, cuda_stream);
+        break;
 
-    case 128:
-      mmha_quant_kv_launch_kernel<T2, 128>(parameters, cuda_stream);
-      break;
+      case 128:
+        mmha_quant_kv_launch_kernel<T2, 4, 128>(parameters, cuda_stream);
+        break;
 
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Unsupported head size in DecoderMaskedSelfAttentionQuantKV. "
-                             "Got head size: ",
-                             parameters.head_size);
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                              "Unsupported head size in DecoderMaskedSelfAttentionQuantKV. "
+                              "Got head size: ",
+                              parameters.head_size);
+    }
+  } else {
+    switch (parameters.head_size) {
+      case 32:
+        mmha_quant_kv_launch_kernel<T2, 2, 32>(parameters, cuda_stream);
+        break;
+
+      case 64:
+        mmha_quant_kv_launch_kernel<T2, 2, 64>(parameters, cuda_stream);
+        break;
+
+      case 128:
+        mmha_quant_kv_launch_kernel<T2, 2, 128>(parameters, cuda_stream);
+        break;
+
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                              "Unsupported head size in DecoderMaskedSelfAttentionQuantKV. "
+                              "Got head size: ",
+                              parameters.head_size);
+    }
   }
   return Status::OK();
 }

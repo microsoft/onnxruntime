@@ -820,7 +820,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "When past_present_share_buffer is set, "
                "its shape is (2, batch_size, num_heads, max_sequence_length, head_size / qunatize_block_size). "
                "Note, no re-ordering apply to this tensor.",
-               "T")
+               "S")
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
@@ -838,10 +838,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "When past_present_share_buffer is set, "
                "its shape is (2, batch_size, num_heads, max_sequence_length, head_size / qunatize_block_size). "
                "Note, no re-ordering apply to this tensor.",
-               "T")
+               "S")
         .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)"},
+                        {"tensor(float16)"},
                         "Constrain input and output types to float tensors.")
+        .TypeConstraint("S",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain quantize KV cache scale types to float tensors.")
         .TypeConstraint("Q",
                         {"tensor(int8)"},
                         "Constrain input and output types to int8 tensors.")
@@ -851,20 +854,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           constexpr int past_input_index = 4;
           constexpr int past_scale_index = 9;
+          constexpr int present_output_index = 1;
+          constexpr int present_scale_index = 2;
           AttentionTypeAndShapeInference(ctx, past_input_index);
 
           if (ctx.getNumOutputs() > 1) {  // has present output
             if (hasInputShape(ctx, past_input_index)) {
               auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
-              // auto attr_proto = ctx.getAttribute("quant_kv_block_size");
-              // if (!((nullptr != attr_proto) && attr_proto->has_i())) {
-              //   fail_shape_inference("Attr quant_kv_block_size not found");
-              // }
-              // auto quant_kv_block_size = attr_proto->i();
-
               if (past_present_share_buffer) {
-                propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
-                propagateElemTypeFromInputToOutput(ctx, past_scale_index, 2);
+                propagateElemTypeFromInputToOutput(ctx, past_input_index, present_output_index);
+                propagateShapeFromInputToOutput(ctx, past_input_index, present_output_index);
+
+                propagateElemTypeFromInputToOutput(ctx, past_scale_index, present_scale_index);
+                propagateShapeFromInputToOutput(ctx, past_scale_index, present_scale_index);
               } else {
                 fail_shape_inference("past_present_share_buffer must be true");
               }
