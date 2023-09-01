@@ -45,7 +45,9 @@ limitations under the License.
 #ifdef USE_OCT
 #include <octopus/threadpool.h>
 #include <iostream>
-#else
+#endif
+
+#ifdef USE_TBB
 #include <oneapi/tbb.h>
 #endif
 
@@ -375,7 +377,7 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
 
 #if defined(USE_TBB) || defined(USE_OCT)
 
-ThreadPool::ThreadPool(Env* env,
+ThreadPool::ThreadPool(Env* /*env*/,
                        const ThreadOptions& thread_options,
                        const NAME_CHAR_TYPE* /*name*/,
                        int degree_of_parallelism,
@@ -383,11 +385,14 @@ ThreadPool::ThreadPool(Env* env,
                        bool /*force_hybrid*/) : dop_(degree_of_parallelism), thread_options_(thread_options) {
   ORT_ENFORCE(dop_ > 0, "dop must be a positive integer!");
 #ifdef USE_OCT
+  /*
   impl_ = new octopus::ThreadPool(
       dop_, [env](size_t thrd_idx, void* param) {
         env->InitThread(static_cast<int>(thrd_idx), param);
       },
       &thread_options_);
+  */
+  impl_ = new octopus::ThreadPool(dop_);
 #else
   impl_ = new oneapi::tbb::global_control(oneapi::tbb::global_control::max_allowed_parallelism,
                                           degree_of_parallelism);

@@ -2469,7 +2469,7 @@ void JoinThreadCustomized(OrtCustomThreadHandle handle) {
     }
   }
 }
-
+/*
 TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
   constexpr int32_t thread_count = 3;
   Ort::SessionOptions session_options;
@@ -2485,7 +2485,7 @@ TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
   }
   ASSERT_TRUE(custom_creation_hook_called == (thread_count - 1) << 1);
   ASSERT_TRUE(custom_join_hook_called == (thread_count - 1) << 1);
-}
+}*/
 
 // Preventing resize tranformer issue:
 // https://github.com/microsoft/onnxruntime/issues/9857

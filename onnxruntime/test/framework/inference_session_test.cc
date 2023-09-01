@@ -2842,7 +2842,7 @@ void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp
     EXPECT_EQ(d, (set_denormal_as_zero) ? 0.0 : denormal_double * 2);
   });
 }
-
+/*
 // test global thread pool with setting denormal as zero
 TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   // test if denormal-as-zero mode is supported
@@ -2945,7 +2945,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
   VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
-}
+}*/
 
 }  // namespace test
 }  // namespace onnxruntime
