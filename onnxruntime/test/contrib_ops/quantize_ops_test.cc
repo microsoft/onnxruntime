@@ -49,7 +49,8 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int16_cpu) {
   test.AddInput<float>("scale", {}, {2.0f}, true);
   test.AddInput<int16_t>("zero_point", {}, {-1024}, true);
   test.AddOutput<float>("y", dims, {1448.0f, 1988.0f, -2.0f, 4588.0f});
-  test.Run();
+  // Disable Tensorrt EP due to error: unsupported data type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test uint16 com.microsoft.DequantizeLinear (per tensor)
@@ -60,7 +61,8 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint16_cpu) {
   test.AddInput<float>("scale", {}, {2.0f}, true);
   test.AddInput<uint16_t>("zero_point", {}, {32767}, true);
   test.AddOutput<float>("y", dims, {-5534.0f, -3534.0f, 2.0f, 466.0f});
-  test.Run();
+  // Disable Tensorrt EP due to error: unsupported data type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test int32 DequantizeLinear with scalar zero-point & scale.
@@ -300,7 +302,8 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint16) {
                             65535, 0,
                             65535, 0});
 
-  test.Run();
+  // Disable Tensorrt EP due to error: unsupported data type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test int16 com.microsoft.QuantizeLinear (per tensor)
@@ -328,7 +331,8 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int16) {
                            32767, -32768,
                            32767, -32768});
 
-  test.Run();
+  // Disable Tensorrt EP due to error: unsupported data type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 #ifdef USE_CUDA
