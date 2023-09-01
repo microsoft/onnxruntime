@@ -287,12 +287,7 @@ class KernelScope {
 #endif
 #ifdef ENABLE_NVTX_PROFILE
         ,
-        node_compute_range_(MakeString(kernel_.Node().OpType(),
-                                       ".",
-                                       kernel_.Node().Index(),
-                                       "(",
-                                       kernel_.Node().Name(),
-                                       ")"),
+        node_compute_range_(MakeString(kernel_.Node().Name()),
                             profile::Color::Yellow)
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
