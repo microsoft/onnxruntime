@@ -76,8 +76,9 @@ void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq
   auto run_tests = [config, expected_dq_count](bool use_ms_domain_qdq_ops, bool use_16bit_qdq_ops) {
     constexpr int opset_version = 12;
     const char* dequantize_linear_key = use_ms_domain_qdq_ops ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
-    std::function<void(ModelTestBuilder&)> graph_builder_fn = use_16bit_qdq_ops ? GetGraphBuilder<uint16_t>(config, use_ms_domain_qdq_ops)
-                                                                                : GetGraphBuilder<uint8_t>(config, use_ms_domain_qdq_ops);
+    std::function<void(ModelTestBuilder&)> graph_builder_fn = use_16bit_qdq_ops
+                                                                  ? GetGraphBuilder<uint16_t>(config, use_ms_domain_qdq_ops)
+                                                                  : GetGraphBuilder<uint8_t>(config, use_ms_domain_qdq_ops);
 
     {
       SCOPED_TRACE("test with standalone transformer");
