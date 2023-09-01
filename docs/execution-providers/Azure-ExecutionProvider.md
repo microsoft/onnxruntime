@@ -20,8 +20,8 @@ Since 1.16, below pluggable operators are available from [onnxruntime-extensions
 
 With the operators, Azure Execution Provider supports two mode of usage:
 
-- [Edge and azure side by side](#Edge-and-azure-side-by-side)
-- [Merge and run the hybrid](#Merge-and-run-the-hybrid)
+- [Edge and azure side by side](#edge-and-azure-side-by-side)
+- [Merge and run the hybrid](#merge-and-run-the-hybrid)
 
 Azure Execution Provider is in preview stage, and all API(s) and usage are subject to change.
 
