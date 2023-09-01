@@ -18,7 +18,7 @@ from ._fallback import ORTModuleFallbackException, ORTModuleInitException, _Fall
 from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
 if not is_ortmodule_available():
-    raise RuntimeError("ORTModule is not supported on this platform.")
+    raise ImportError("ORTModule is not supported on this platform.")
 
 
 def _defined_from_envvar(name, default_value, warn=True):
