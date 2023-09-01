@@ -72,6 +72,23 @@ stages:
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecpubuild
 
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume /data/models: /data/models:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+            /bin/bash -c "
+              set -ex; \
+              dotnet help; \
+        displayName: 'Run dotnet tests'
+
       - template: templates/linux-build-step-with-cache.yml
         parameters:
           WithCache: true
@@ -115,24 +132,6 @@ stages:
                       ccache -sv; \
                       ccache -z"
                 workingDirectory: $(Build.SourcesDirectory)
-
-      - bash: |
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume /data/models: /data/models:ro \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            onnxruntimecpubuild \
-            /bin/bash -c "
-              set -ex; \
-              dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
-              ln -s /data/models /build/models; \
-              dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; "
-        displayName: 'Run dotnet tests'
 
       - task: UseDotNet@2
         displayName: "Setup dotnet"
