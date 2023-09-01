@@ -2656,16 +2656,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
 
           // Build engine
+          std::unique_ptr<nvinfer1::IHostMemory> serializedModel;
           {
             auto lock = GetApiLock();
             std::chrono::steady_clock::time_point engine_build_start;
             if (detailed_build_log_) {
               engine_build_start = std::chrono::steady_clock::now();
             }
-            std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_builder->buildSerializedNetwork(*trt_state->network->get(), *trt_config));
-            size_t engine_size = serializedModel->size();
+            serializedModel = std::unique_ptr<nvinfer1::IHostMemory>(trt_builder->buildSerializedNetwork(*trt_state->network->get(), *trt_config));
             *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-                trt_state->runtime->deserializeCudaEngine(serializedNetwork->data(), engine_size, nullptr));
+                trt_state->runtime->deserializeCudaEngine(serializedModel->data(), serializedModel->size(), nullptr));
 
             if (detailed_build_log_) {
               auto engine_build_stop = std::chrono::steady_clock::now();
@@ -2682,6 +2682,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
 
             // Serialize engine
+            size_t engine_size = serializedModel->size();
             if (trt_state->engine_decryption_enable) {
               // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
               if (trt_state->engine_encryption != nullptr) {
