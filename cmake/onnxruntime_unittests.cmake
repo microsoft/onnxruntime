@@ -209,7 +209,7 @@ function(AddTest)
     endif()
   endif()
   # Set test timeout to 3 hours.
-  set_target_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
+  set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
 endfunction(AddTest)
 
 # general program entrypoint for C++ unit tests
