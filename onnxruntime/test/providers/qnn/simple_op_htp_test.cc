@@ -421,6 +421,14 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Cos_Inaccurate) {
                     11, ExpectedEPNodeAssignment::All);
 }
 
+// Check that QNN compiles DQ -> Log -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, UnaryOp_Log) {
+  RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, {3.14159f, 100.88436f, 10.542863f, 9.1f, 1.05622f, 3.14159f}),
+                    "Log", {},
+                    11, ExpectedEPNodeAssignment::All);
+}
+
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
 // Test that the default axis (-1) for SoftMax opset 13 works.
 TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_DefaultAxis) {
