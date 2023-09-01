@@ -227,17 +227,18 @@ int8_t quantize(float v, float scale) {
 // Reorder 'K' from [B, N, S, H] to [B, N, H/x, S, x] where x = num_inner_elements;
 // Copy 'V' over as is
 // return [quantized_reordered_kv, past_kv_scales]
-template <typename T>
-static std::pair<std::vector<int8_t>, std::vector<T>>
+template <typename T, typename ScaleT = T>
+static std::pair<std::vector<int8_t>, std::vector<ScaleT>>
 ReorderKVCacheQuantKV(const std::vector<T> & unordered_kv_cache,
                       int batch_size, int num_heads, int sequence_length,
                       int head_size, int max_sequence_length,
                       int quant_kv_block_size,
-                      int num_inner_elements) {
+                      int num_inner_elements,
+                      bool use_unit_scale) {
   assert(quant_kv_block_size > num_inner_elements && (quant_kv_block_size % num_inner_elements == 0));
   assert(head_size % quant_kv_block_size == 0);
   int64_t BNS = int64_t(batch_size) * num_heads * max_sequence_length;
-  std::vector<T> scales(2LL * BNS * (head_size / quant_kv_block_size), (T)0.0f);
+  std::vector<ScaleT> scales(2LL * BNS * (head_size / quant_kv_block_size), (ScaleT)0.0f);
   std::vector<int8_t> ordered(unordered_kv_cache.size(), 0);
 
   auto amax = [](T a, T b) { return (T)fmaxf(fabsf((float)a), fabsf((float)b)); };
@@ -245,7 +246,7 @@ ReorderKVCacheQuantKV(const std::vector<T> & unordered_kv_cache,
   // calc scales
   const T* kv_data = unordered_kv_cache.data();
   int8_t* q_data = ordered.data();
-  T* scale_data = scales.data();
+  ScaleT* scale_data = scales.data();
   for (int64_t k_or_v = 0; k_or_v < 2; k_or_v++) {
     for (int64_t bns = 0; bns < BNS; bns++) {
       int64_t s = (bns % max_sequence_length);
@@ -254,7 +255,7 @@ ReorderKVCacheQuantKV(const std::vector<T> & unordered_kv_cache,
         for (int i = 0; i < quant_kv_block_size; i++) {
           *q_data++ = quantize((float)*kv_data++, (float)scale_value);
         }
-        *scale_data++ = scale_value;
+        *scale_data++ = (ScaleT)(use_unit_scale ? ((float)scale_value / 127.0f) : (float)scale_value);
       }
     }
   }
@@ -992,6 +993,9 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
     return;
   }
 
+  constexpr bool use_unit_scale = true;
+  constexpr int chunk_size = 16 / sizeof(MLFloat16);
+
   // Vary batch size
   for (int batch_size = 1; batch_size <= 5; batch_size += 2) {
     // Vary kv_lengths
@@ -1046,10 +1050,9 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
           auto reordered_kv_cache = ReorderKVCache<MLFloat16>(kv_cache, batch_size,
                                                               number_of_heads, past_sequence_length, head_size, max_sequence_length);
 
-          int chunk_size = 16 / sizeof(MLFloat16);
           auto [q_reordered_past_kv, past_kv_scales] = ReorderKVCacheQuantKV<MLFloat16>(
               kv_cache, batch_size, number_of_heads, past_sequence_length, head_size, max_sequence_length,
-              quant_kv_block_size, chunk_size);
+              quant_kv_block_size, chunk_size, use_unit_scale);
 
           // print_vec("kv_cache", kv_cache, past_dims);
           // print_vec("reordered_kv_cache", reordered_kv_cache, past_dims);
@@ -1107,7 +1110,7 @@ TEST(DecoderMaskedSelfAttentionQuantKVTest, Test_fp16) {
 
           auto [q_reordered_present_kv, present_kv_scales] = ReorderKVCacheQuantKV<MLFloat16>(
               present, batch_size, number_of_heads, past_sequence_length + 1, head_size, max_sequence_length,
-              quant_kv_block_size, chunk_size);
+              quant_kv_block_size, chunk_size, use_unit_scale);
 
           // print_vec("present_kv_scales", present_kv_scales, {2, batch_size, number_of_heads, max_sequence_length, head_size / quant_kv_block_size});
           // print_vec("q_reordered_present_kv", q_reordered_present_kv, past_dims);

@@ -74,7 +74,9 @@ template <
     // The number of threads per value.
     int THREADS_PER_VALUE,
     // The number of threads in a threadblock.
-    int THREADS_PER_BLOCK>
+    int THREADS_PER_BLOCK,
+    // The type for the scales, float or half
+    typename TScale>
 __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHeadAttentionQuantKVParams params);
 
 template <typename T, int head_size>

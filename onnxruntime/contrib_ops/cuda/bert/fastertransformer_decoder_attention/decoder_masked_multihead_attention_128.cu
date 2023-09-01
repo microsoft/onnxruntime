@@ -66,7 +66,8 @@ template void mmha_launch_kernel<uint16_t, 128>(const DecoderMaskedMultiHeadAtte
                                              head_size,                                            \
                                              THDS_PER_KEY,                                         \
                                              THDS_PER_VALUE,                                       \
-                                             THDS_PER_BLOCK>                                       \
+                                             THDS_PER_BLOCK,                                       \
+                                             __half>                                               \
       <<<grid, THDS_PER_BLOCK, dynamic_block_memory, stream>>>(params)
 
 template <typename T, int head_size>
