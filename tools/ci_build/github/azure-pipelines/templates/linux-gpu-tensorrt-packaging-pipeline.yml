@@ -50,7 +50,7 @@ stages:
           Repository: onnxruntimecuda118xtrt86build
       - template: set-version-number-variables-step.yml
 
-      - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
+      - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_tensorrt_c_api_package.sh
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build and Test'
 
