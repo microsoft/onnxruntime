@@ -525,7 +525,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // Loop over the timesteps to compute the partial outputs (with double buffering)
   V_vec_k v[2];
-  int v_index = 0;
+  constexpr int v_index = 0;
 
   {
     int ti = vo;
