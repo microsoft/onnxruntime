@@ -160,6 +160,7 @@ struct KernelArgs
     bool autoPad = false;
     bool autoPadSameUpper = false;
     bool useCeilingOutputShape = false;
+    bool channelsLast = false;
     uint32_t spatialDimensionCount = 0;
 
     KernelArgs(uint32_t spatialDimensionCount) : spatialDimensionCount(spatialDimensionCount)
@@ -188,6 +189,7 @@ struct KernelArgs
     KernelArgs(KernelArgs const& kernelArgs, uint32_t minimumDimensionCount)
     :   autoPad(kernelArgs.autoPad),
         autoPadSameUpper(kernelArgs.autoPadSameUpper),
+        channelsLast(kernelArgs.channelsLast),
         spatialDimensionCount(std::max(kernelArgs.spatialDimensionCount, minimumDimensionCount))
     {
         ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount);
@@ -1168,6 +1170,15 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class QLinearAveragePoolingHelper : public PoolingHelperBase
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    QLinearAveragePoolingHelper(const Info_t& info, const Shape_t& shape/*, bool useGlobalPooling */) : PoolingHelperBase(info, shape, false) {}
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+};
+
 class SqueezeHelper
 {
 public:
@@ -1497,6 +1508,7 @@ using ShapeInferenceHelper_MaxUnpool = UnpoolingHelper;
 using ShapeInferenceHelper_LpPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalLpPool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
+using ShapeInferenceHelper_QLinearAveragePool = QLinearAveragePoolingHelper;
 using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
 using ShapeInferenceHelper_RoiAlign16 = VersionedOpsetHelper<RoiAlignHelper, 16>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;

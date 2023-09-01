@@ -14,7 +14,26 @@ struct DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC
     _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
     const DML_TENSOR_DESC* OutputTensor;
 };
-const int DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT = 0x80000011; 
+const int DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT = 0x80000011;
+
+struct DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    const DML_TENSOR_DESC* InputScaleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputZeroPointTensor;
+    const DML_TENSOR_DESC* OutputScaleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputZeroPointTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+    UINT DimensionCount;
+    _Field_size_(DimensionCount) const UINT* Strides;
+    _Field_size_(DimensionCount) const UINT* WindowSize;
+    _Field_size_(DimensionCount) const UINT* StartPadding;
+    _Field_size_(DimensionCount) const UINT* EndPadding;
+    _Field_size_(DimensionCount) const UINT* Dilations;
+    BOOL IncludePadding;
+};
+const int DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING = 0x8000000B;
+
 
 namespace ApiTraits
 {
@@ -38,7 +57,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 161;
+    static constexpr auto ValueCount = 162;
     static constexpr size_t ActivationFunctionCount = 24;
 };
 
@@ -495,6 +514,12 @@ template <>
 struct OperatorDescTraits<DML_ROI_POOLING_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ROI_POOLING;
+};
+
+template <>
+struct OperatorDescTraits<DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING;
 };
 
 template <>
@@ -1490,6 +1515,12 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ROI_POOLING>
 {
     using DescType = DML_ROI_POOLING_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING>
+{
+    using DescType = DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC;
 };
 
 template <>
@@ -2524,6 +2555,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
 #pragma warning(disable: 4063)
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
         return std::invoke(std::forward<Visitor>(visitor), DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING:
+        return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
 #pragma warning(pop)
 
     default:

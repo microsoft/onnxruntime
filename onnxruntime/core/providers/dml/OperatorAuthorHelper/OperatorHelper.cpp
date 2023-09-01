@@ -495,6 +495,7 @@ namespace OperatorHelper
         }
 
         args.useCeilingOutputShape = kernelInfo.GetOptionalAttribute<bool>(AttrName::CeilMode, 0);
+        args.channelsLast = kernelInfo.GetOptionalAttribute<bool>(AttrName::ChannelsLast, 0);
 
         return args;
     }
@@ -2012,7 +2013,24 @@ namespace OperatorHelper
         }
         return outputShapes;
     }
+    
+    std::vector<EdgeShapes> QLinearAveragePoolingHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        auto inputShape = shapeInfo.GetInputTensorShape(0);
+        std::vector<DimensionType> outputDimensions = InitializeKernelOutputDimensions(inputShape, m_kernel, m_kernel.channelsLast);
 
+        // MaxPool may have both an output and an indices tensor (both the same size).
+        const uint32_t outputCount = shapeInfo.GetOutputCount();
+        assert(outputCount == 1 || outputCount == 2);
+
+        std::vector<EdgeShapes> outputShapes;
+        for (uint32_t i = 0; i < outputCount; ++i)
+        {
+            outputShapes.push_back(outputDimensions);
+        }
+        return outputShapes;
+    }
+    
     std::vector<EdgeShapes> RoiPoolingHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto roiShape = shapeInfo.GetInputTensorShape(InputTensors::ROIS);
