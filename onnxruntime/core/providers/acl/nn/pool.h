@@ -68,4 +68,4 @@ class MaxPoolV8 final : public onnxruntime::MaxPoolV8 {
   ACLExecutionProvider* provider_;
 };
 }  // namespace acl
-}
+}  // namespace onnxruntime

@@ -28,7 +28,7 @@ constexpr int kMinSequenceLengthFlashAttention = 385;
 // Multi-Head Attention runner
 class MHARunner {
  public:
-  MHARunner(const int numHeads, const int headSize, const int wordSize, bool causal_mask)
+  MHARunner(const int numHeads, const int headSize, const int wordSize, bool causal_mask, const float scale)
       : mS(0),
         mB(0),
         mOmatSize(0),
@@ -40,8 +40,9 @@ class MHARunner {
         mStrideQKV(0),
         mLdOut(0),
         mStrideOut(0),
-        mRsqrtHeadSize(1.f / sqrtf(static_cast<float>(headSize))),
-        mHasCausalMask(causal_mask){
+        mScale(scale == 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
+                             : scale),
+        mHasCausalMask(causal_mask) {
   }
 
   virtual ~MHARunner() = default;
@@ -83,13 +84,18 @@ class MHARunner {
   int mLdOut;
   int mStrideOut;
 
-  float mRsqrtHeadSize;
+  float mScale;
   bool mHasCausalMask;
 };
 
 class FusedMHARunnerFP16v2 : public MHARunner {
  public:
-  FusedMHARunnerFP16v2(const int numHeads, const int headSize, const int sm, bool causal_mask, bool enable_flash_attention);
+  FusedMHARunnerFP16v2(const int numHeads,
+                       const int headSize,
+                       const int sm,
+                       bool causal_mask,
+                       bool enable_flash_attention,
+                       const float scale);
   ~FusedMHARunnerFP16v2() = default;  // for pimpl
 
   virtual void setup(const int S, const int B) override;
@@ -103,6 +109,13 @@ class FusedMHARunnerFP16v2 : public MHARunner {
   bool isValid(int s) const override;
 
   int getSFromMaxSeqLen(const int max_seq_len) const override;
+
+  static std::unique_ptr<MHARunner> Create(const int numHeads,
+                                           const int headSize,
+                                           const int sm,
+                                           bool causal_mask,
+                                           bool enable_flash_attention,
+                                           const float scale);
 
  private:
   int mSm;

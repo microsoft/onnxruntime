@@ -27,12 +27,10 @@ TEST(BifurcationDetectorTest, Test1) {
 TEST(BifurcationDetectorTest, Test2) {
   OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
 
-  tester.AddInput<int64_t>("src_tokens", {26}, {756,  194,   39, 1015, 5529, 1216,   24,   72,   23, 1976, 6174, 1340,
-           6,   39,  194, 2161, 1480, 4955,    8, 7806,   65, 1091,    8,  560,
-        4077,  196});
-  tester.AddInput<int64_t>("cur_tokens", {6}, {2,  756,  194,   39, 8155,   23});
+  tester.AddInput<int64_t>("src_tokens", {26}, {756, 194, 39, 1015, 5529, 1216, 24, 72, 23, 1976, 6174, 1340, 6, 39, 194, 2161, 1480, 4955, 8, 7806, 65, 1091, 8, 560, 4077, 196});
+  tester.AddInput<int64_t>("cur_tokens", {6}, {2, 756, 194, 39, 8155, 23});
   tester.AddInput<int64_t>("find_end_idx", {}, {0});
-  tester.AddOutput<int64_t>("tokens", {6}, {2,  756,  194,   39, 8155,   23});
+  tester.AddOutput<int64_t>("tokens", {6}, {2, 756, 194, 39, 8155, 23});
   tester.AddOutput<int64_t>("new_end_idx", {}, {9});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;

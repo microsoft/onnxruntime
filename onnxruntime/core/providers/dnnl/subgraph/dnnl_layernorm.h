@@ -10,21 +10,20 @@ namespace ort_dnnl {
 
 class DnnlLayerNorm {
  public:
-
   typedef std::pair<dnnl::layer_normalization_forward, std::unordered_map<int, dnnl::memory>> ln_components;
 
   enum InputTensorsSLN : int {
     IN_INPUT = 0,
     IN_SKIP = 1,
     IN_SLN_GAMMA = 2,
-    IN_BETA = 3,        // Optional
-    IN_SLN_BIAS = 4     // Optional
+    IN_BETA = 3,     // Optional
+    IN_SLN_BIAS = 4  // Optional
   };
 
   enum InputTensorsLN : int {
     // IN_INPUT = 0,
     IN_LN_GAMMA = 1,
-    IN_LN_BIAS = 2      // Optional
+    IN_LN_BIAS = 2  // Optional
   };
 
   enum OutputTensors : int {

@@ -105,7 +105,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     return s;
   }
 
-  if(W->Shape()[2] == 9 && W->Shape()[3] == 9) {
+  if (W->Shape()[2] == 9 && W->Shape()[3] == 9) {
     LOGS_DEFAULT(WARNING) << "9x9 DirectConvolution does not have an implementation in NCHW layout; defaulting to cpu implementation";
     Status s = onnxruntime::Conv<T>::Compute(context);
     return s;
@@ -255,7 +255,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       convolution_armnn->GetOutputSlot(0).Connect(OutputLayer->GetInputSlot(0));
     }
 
-    //Set the tensors in the network.
+    // Set the tensors in the network.
     armnn::TensorInfo inputTensorInfo(inputShape, armnn::DataType::Float32);
     InputLayer->GetOutputSlot(0).SetTensorInfo(inputTensorInfo);
 

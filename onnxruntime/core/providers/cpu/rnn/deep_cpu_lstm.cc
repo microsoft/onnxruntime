@@ -195,14 +195,15 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
   }
 
   size_t packed_weights_data_size = SafeInt<size_t>(packed_weights_size) * num_directions_;
-  auto* packed_weights_data = alloc->Alloc(packed_weights_data_size);
+  packed_weights.buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weights_data_size, true);
+
+  auto* packed_weights_data = packed_weights.buffer_.get();
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
 
-  packed_weights.buffer_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
   packed_weights.buffer_size_ = packed_weights_data_size;
   packed_weights.weights_size_ = packed_weights_size;
   packed_weights.shape_ = shape;
@@ -287,7 +288,7 @@ Status DeepCpuLstmOp::Compute(OpKernelContext* context) const {
 
     // spans for first direction
     const size_t input_weights_size_per_direction = SafeInt<size_t>(W_shape[1]) * W_shape[2];
-    const size_t hidden_weights_size_per_direction = SafeInt<size_t>(R_shape[1] )* R_shape[2];
+    const size_t hidden_weights_size_per_direction = SafeInt<size_t>(R_shape[1]) * R_shape[2];
 
     GemmWeights<float> W_1(0, input_weights, input_weights_size_per_direction, packed_W_);
     GemmWeights<float> R_1(0, recurrent_weights, hidden_weights_size_per_direction, packed_R_);

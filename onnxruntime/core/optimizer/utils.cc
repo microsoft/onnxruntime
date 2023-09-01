@@ -10,7 +10,7 @@
 #include "core/framework/utils.h"
 #include "core/optimizer/utils.h"
 #include "float.h"
-//#include <deque>
+// #include <deque>
 
 #include <string>
 #include <unordered_map>
@@ -180,7 +180,7 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, I
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     const int32_t* val = init_const.data<int32_t>();
     data.reserve(data.size() + gsl::narrow<size_t>(init_const.size()));
-    for (int64_t i = 0; i < init_const.size(); i++) {
+    for (size_t i = 0; i < init_const.size(); i++) {
       data.push_back(static_cast<int64_t>(val[i]));
     }
   } else {
@@ -271,12 +271,31 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
 // so we have to assume that they are not deterministic, to be on the safe side.
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
 // as long as we verify which of their operations are non-deterministic and add them in the map below.
-constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
+constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike",
+                                                    "RandomNormalLike", "Multinomial"};
+
+// List of deterministic MS domain operators. Currently used for constant folding and common subexpression elimination.
+//
+// TODO(adrianlizarraga): Investigate converting to lists of *non-deterministic* MS domain operators to be consistent
+// with the above ONNX list. With the current approach, only MS domain Q/DQ operators
+// (plus ShrunkenGather for training) are considered deterministic.
+#ifdef ENABLE_TRAINING_OPS
+constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather", "QuantizeLinear", "DequantizeLinear"};
+#else
+constexpr std::array kMSDomainDeterministicOps{"QuantizeLinear", "DequantizeLinear"};
+#endif
+
 bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
   if (domain.compare(kOnnxDomain) == 0) {
     auto iter = std::find(kOnnxDomainNonDeterministicOps.begin(), kOnnxDomainNonDeterministicOps.end(), op);
     return iter == kOnnxDomainNonDeterministicOps.end();
   }
+
+  if (domain.compare(kMSDomain) == 0) {
+    auto iter = std::find(kMSDomainDeterministicOps.begin(), kMSDomainDeterministicOps.end(), op);
+    return iter != kMSDomainDeterministicOps.end();
+  }
+
   // Unknown domain. Assume the op is not deterministic.
   return false;
 }
@@ -290,7 +309,7 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
   max = std::numeric_limits<float>::max();
 
   // Clip opset 1 and 6 has min and max as attributes. they're inputs from opset 11 on.
-  bool min_max_are_attributes = node.SinceVersion() == 1 || node.SinceVersion() == 6;
+  bool min_max_are_attributes = node.SinceVersion() < 11;
   bool min_max_are_constant_values = true;
 
   if (min_max_are_attributes) {
@@ -362,6 +381,34 @@ bool IsScalar(const NodeArg& input_arg) {
   auto dim_size = shape->dim_size();
   return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
 }
+
+template <typename T>
+bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, T& value,
+                               bool is_constant) {
+  if (!IsScalar(input_arg)) {
+    return false;
+  }
+
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (is_constant) {
+    tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
+  } else if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
+    return false;
+  }
+
+  if (tensor_proto == nullptr) {
+    return false;
+  }
+
+  Initializer init_const{*tensor_proto, graph.ModelPath()};
+  const T* val = init_const.data<T>();
+  value = *val;
+
+  return true;
+}
+
+template bool GetScalarInitializerValue<float>(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, float& value,
+                                               bool is_constant);
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 

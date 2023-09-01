@@ -64,22 +64,6 @@ def update_version():
                 f.write(line)
     lines = []
     current_version = ""
-    file_path = os.path.join(cwd, "..", "..", "package", "rpm", "onnxruntime.spec")
-    with open(file_path) as f:
-        lines = f.readlines()
-        for line in lines:
-            if line.startswith("Version:"):
-                current_version = line.split(":")[1].strip()
-                break
-    if version != current_version:
-        with open(file_path, "w") as f:
-            for line in lines:
-                if line.startswith("Version:"):
-                    f.write("Version:        " + version + "\n")
-                    continue
-                f.write(line)
-    lines = []
-    current_version = ""
     file_path = os.path.join(cwd, "..", "..", "onnxruntime", "__init__.py")
     with open(file_path) as f:
         lines = f.readlines()
@@ -103,7 +87,7 @@ def update_version():
         from util import is_windows, run
 
         if is_windows():
-            args = ["cmd", "/c"] + args
+            args = ["cmd", "/c", *args]
         run(*args, cwd=cwd)
 
     # check if node, npm and yarn are installed
@@ -126,6 +110,14 @@ def update_version():
     # upgrade version for onnxruntime-react-native
     run(["npm", "version", version], cwd=os.path.join(js_root, "react_native"))
     run(["yarn", "upgrade", "onnxruntime-common"], cwd=os.path.join(js_root, "react_native"))
+
+    # upgrade version.ts in each package
+    run(["npm", "ci"], cwd=js_root)
+    run(["npm", "run", "update-version", "common"], cwd=js_root)
+    run(["npm", "run", "update-version", "node"], cwd=js_root)
+    run(["npm", "run", "update-version", "web"], cwd=js_root)
+    run(["npm", "run", "update-version", "react_native"], cwd=js_root)
+    run(["npm", "run", "format"], cwd=js_root)
 
 
 if __name__ == "__main__":

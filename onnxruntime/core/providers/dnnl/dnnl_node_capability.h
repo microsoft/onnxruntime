@@ -88,20 +88,20 @@ class DnnlDefaultNodeCapability : public DnnlNodeCapability {
 };
 
 /*
-* Works similar to the `DnnlDefaultNodeCapability` class except that this
-* will check the input of all input nodes.
-*
-* Example usage:
-* std::unordered_set T1 = {type_float32};
-* std::unordered_set T2 = {type_uint8, type_int32, type_float32};
-* DnnlDefaultMultiInputNodeCapability({T1, T2});
-*
-* The number of inputs and the number of unordered_sets must match. For this reason
-* this capability class is not suitable for nodes that may have a variable number of
-* inputs.
-*
-* All types for all inputs must be specified.
-*/
+ * Works similar to the `DnnlDefaultNodeCapability` class except that this
+ * will check the input of all input nodes.
+ *
+ * Example usage:
+ * std::unordered_set T1 = {type_float32};
+ * std::unordered_set T2 = {type_uint8, type_int32, type_float32};
+ * DnnlDefaultMultiInputNodeCapability({T1, T2});
+ *
+ * The number of inputs and the number of unordered_sets must match. For this reason
+ * this capability class is not suitable for nodes that may have a variable number of
+ * inputs.
+ *
+ * All types for all inputs must be specified.
+ */
 class DnnlDefaultMultiInputNodeCapability : public DnnlNodeCapability {
  public:
   DnnlDefaultMultiInputNodeCapability(std::vector<std::unordered_set<ORT_DataType>> inputTypes);
@@ -221,6 +221,7 @@ class DnnlLRNNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlLRNNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
  private:
 };
 
@@ -267,11 +268,11 @@ class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
 };
 
 /**
-* Decide if an Elementwise op is supported by DnnlExecutionProvider
-* Elementwise ops are:
-* Abs, BiasGelu, Elu, Exp, FastGelu, Gelu, Log, Relu, Round, Sigmoid, Softplus, Sqrt, Tanh
-* BiasGelu has a Bias input but the capabilities can be discovered using the Elementwise check.
-*/
+ * Decide if an Elementwise op is supported by DnnlExecutionProvider
+ * Elementwise ops are:
+ * Abs, BiasGelu, Elu, Exp, FastGelu, Gelu, Log, Relu, Round, Sigmoid, Softplus, Sqrt, Tanh
+ * BiasGelu has a Bias input but the capabilities can be discovered using the Elementwise check.
+ */
 class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlElementwiseCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
@@ -294,13 +295,12 @@ class DnnlReduceNodeCapability : public DnnlDefaultNodeCapability {
  private:
   bool IsDimensionSupported(const Node* node) const;
   DnnlElementwiseCapability _eltwise;
-
 };
 
 class DnnlPowNodeCapability : public DnnlDefaultMultiInputNodeCapability {
  public:
   DnnlPowNodeCapability()
-    : DnnlDefaultMultiInputNodeCapability({/*T */{type_bfloat16, type_float32},
+      : DnnlDefaultMultiInputNodeCapability({/*T */ {type_bfloat16, type_float32},
                                              /*T1*/ {type_bfloat16, type_uint8, type_int8, type_int32, type_float32}}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
@@ -378,7 +378,6 @@ class DnnlErfNodeCapability : public DnnlDefaultNodeCapability {
   DnnlBinaryNodeCapability _binary;
 };
 
-
 class DnnlQAttentionNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlQAttentionNodeCapability() : DnnlDefaultNodeCapability({type_float32,
@@ -431,14 +430,14 @@ class DnnlDequantizeLinearNodeCapability : public DnnlDefaultOptionalMultiInputN
 
 class DnnlLayerNormalizationNodeCapability : public DnnlDefaultNodeCapability {
  public:
- // Default constructor
+  // Default constructor
   DnnlLayerNormalizationNodeCapability() : DnnlDefaultNodeCapability({type_float16,
                                                                       type_bfloat16,
                                                                       type_float32,
                                                                       type_double}) {}
   // Constructor for other LayerNorm flavors
   DnnlLayerNormalizationNodeCapability(std::vector<ORT_DataType> supported_dt)
-    : DnnlDefaultNodeCapability(supported_dt){}
+      : DnnlDefaultNodeCapability(supported_dt) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
@@ -451,17 +450,17 @@ class DnnlLayerNormalizationNodeCapability : public DnnlDefaultNodeCapability {
 class DnnlSkipLayerNormalizationNodeCapability : public DnnlLayerNormalizationNodeCapability {
  public:
   DnnlSkipLayerNormalizationNodeCapability() : DnnlLayerNormalizationNodeCapability({type_float32,
-                                                                                    type_float16}) {}
+                                                                                     type_float16}) {}
 };
 
 class DnnlConcatNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlConcatNodeCapability() : DnnlDefaultNodeCapability({type_float32,
-                                                           type_float16,
-                                                           type_bfloat16,
-                                                           type_int32,
-                                                           type_int8,
-                                                           type_uint8}) {}
+                                                          type_float16,
+                                                          type_bfloat16,
+                                                          type_int32,
+                                                          type_int8,
+                                                          type_uint8}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 

@@ -26,8 +26,8 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
   HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
-                                       hipMemcpyDeviceToDevice,
-                                       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream()));
+                                     hipMemcpyDeviceToDevice,
+                                     static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream()));
 
   return Status::OK();
 }
@@ -51,8 +51,9 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
 
   namespace blas = rocm::tunable::blas;
   return blas::column_major::StridedBatchedGemm(
-      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->IsTunableOpEnabled(),
-      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_->GetHandle()),
+      static_cast<rocm::tunable::RocmTuningContext*>(
+          static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetTuningContext()),
+      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_,
       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
       N, M, K,
@@ -70,7 +71,7 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
                                   bool keep_dims, AllocatorPtr allocator,
                                   const TensorShape* input_shape_override,
                                   concurrency::ThreadPool* /*tp*/, void* einsum_rocm_assets) {
-  return rocm::ReductionOps::ReduceCompute<T>(*static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_, MIOPEN_REDUCE_TENSOR_ADD,
+  return rocm::ReductionOps::ReduceCompute<T>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->gpu_allocator_, MIOPEN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,
                                               true, static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_,

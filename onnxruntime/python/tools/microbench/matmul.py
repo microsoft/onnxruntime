@@ -34,6 +34,7 @@ class BenchmarkMatMul(BenchmarkOp):
     def __init__(self, args):
         BenchmarkOp.__init__(self, args)
 
+    @classmethod
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
         a = np.random.rand(op_param.b1, op_param.b2, op_param.m, op_param.k).astype(op_param.data_type)
@@ -85,6 +86,7 @@ class BenchmarkMatMul(BenchmarkOp):
         model_param = ModelParam(1, 384, 768, 768 * 4, 12, data_type)
         self.add_model_cases(model_param, model)
 
+    @classmethod
     def case_profile(cls, op_param, time):
         tflops = op_param.b1 * op_param.b2 * op_param.m * op_param.k * op_param.n * 2 / time / 1000000000
         profile = f"(b1 b2 m k n) = ({op_param.b1} {op_param.b2} {op_param.m} {op_param.k} {op_param.n}), {time:7.4f} ms, {tflops:4.2f} tflops"

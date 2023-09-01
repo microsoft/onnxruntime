@@ -9,15 +9,15 @@
 import argparse
 import logging
 import sys
-from typing import List, Tuple
+from typing import List, Tuple  # noqa: F401
 
 import numpy as np
 import onnx
-from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper
+from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-real_types = set((int(TensorProto.FLOAT), int(TensorProto.DOUBLE)))
+real_types = {int(TensorProto.FLOAT), int(TensorProto.DOUBLE)}
 
 
 def parse_arguments():

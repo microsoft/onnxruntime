@@ -1,0 +1,5 @@
+{
+"type":"DeviceBasedPartitioner",
+"streams":[["node1"],["node2"],["node3"]],
+"devices":["1","1","1"]
+}

@@ -149,46 +149,23 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
   }
 }
 
-// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
-void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  const OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-
-  // for one reason, we have to store allocator and keep it alive among the whole life cycle of process.
-  // 1. xnn_initialize only take effect at the first call,it means the first allocator is shared
-  // by all following xnnpack EP sessions. A static allocator is used to extend its life cycle.
+std::vector<AllocatorPtr> XnnpackExecutionProvider::CreatePreferredAllocators() {
   const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
-  if (!cpu_alloc) {
-    // use shared allocator if available
-    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-
-    if (!cpu_alloc) {
-      // create our allocator
-      const AllocatorCreationInfo allocator_info(
-          [](int) {
-            // lazy create the allocator
-            return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
-                                                                OrtAllocatorType::OrtDeviceAllocator));
-          });
-      // only the first time we create the allocator do we pass in the xnn_allocator
-      cpu_alloc = stored_allocator ? stored_allocator : CreateAllocator(allocator_info);
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(cpu_alloc);
-    }
-
-    InsertAllocator(cpu_alloc);
-  }
-
   if (!stored_allocator) {
-    stored_allocator = cpu_alloc;
+    const AllocatorCreationInfo allocator_info(
+        [](int) {
+          // lazy create the allocator
+          return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
+                                                              OrtAllocatorType::OrtDeviceAllocator));
+        });
+    stored_allocator = CreateAllocator(allocator_info);
   }
-
-  xnn_allocator->context = cpu_alloc.get();
+  xnn_allocator->context = stored_allocator.get();
   const xnn_status st = xnn_initialize(xnn_allocator);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
+  return std::vector<AllocatorPtr>{stored_allocator};
 }
 
 // For ops are not lay-out sensitive and does not defined in

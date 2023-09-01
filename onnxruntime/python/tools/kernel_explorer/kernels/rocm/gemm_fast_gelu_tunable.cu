@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_tunable.h"
-
 #include <pybind11/stl.h>
 
 #include <string>
@@ -31,7 +29,7 @@ class GemmFastGeluTunable : public IKernelExplorer {
                       double beta,
                       DeviceArray& c, int64_t ldc) : params_{} {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
-    params_.tuning = true;
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -39,17 +37,17 @@ class GemmFastGeluTunable : public IKernelExplorer {
     params_.m = m;
     params_.n = n;
     params_.k = k;
-    params_.alpha = alpha;
+    params_.alpha = static_cast<float>(alpha);
     params_.a = static_cast<T*>(a.ptr());
     params_.lda = lda;
     params_.b = static_cast<T*>(b.ptr());
     params_.ldb = ldb;
     params_.bias = static_cast<T*>(bias.ptr());
-    params_.beta = beta;
+    params_.beta = static_cast<float>(beta);
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    op_.EnableTuning();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   ~GemmFastGeluTunable() {
@@ -58,6 +56,7 @@ class GemmFastGeluTunable : public IKernelExplorer {
   }
 
   void Run() override {
+    WithMaxTuningDurationMs max_duration(TuningContext(), 250);
     ORT_THROW_IF_ERROR((op_(&params_)));
   }
 
@@ -97,11 +96,9 @@ class GemmFastGeluTunable : public IKernelExplorer {
   REGISTER_OP(type, Col, Row, "TN");      \
   REGISTER_OP(type, Col, Col, "TT");
 
-void InitGemmFastGeluTunable(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_TRANSAB(float);
   REGISTER_OP_FOR_ALL_TRANSAB(half);
 }
-
-#undef REGISTER_OP
 
 }  // namespace onnxruntime

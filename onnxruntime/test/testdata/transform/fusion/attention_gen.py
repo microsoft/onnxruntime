@@ -1,5 +1,5 @@
 import sys
-from enum import Enum
+from enum import Enum  # noqa: F401
 
 import onnx
 from onnx import TensorProto, helper
@@ -317,7 +317,7 @@ add_qkv_weight = [
 ]
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [  # Attention subgraph
         helper.make_node(
             "LayerNormalization",
@@ -454,7 +454,7 @@ def GenerateModel(model_name):
     onnx.save(model, model_name)
 
 
-def GenerateModel2(model_name):
+def GenerateModel2(model_name):  # noqa: N802
     nodes = [  # Attention subgraph
         helper.make_node(
             "LayerNormalization",

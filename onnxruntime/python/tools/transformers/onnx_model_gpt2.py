@@ -31,7 +31,7 @@ class Gpt2OnnxModel(BertOnnxModel):
         """
         Remove extra reshape nodes.
         """
-        logger.debug(f"start postprocessing...")
+        logger.debug("start postprocessing...")
 
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
@@ -42,7 +42,6 @@ class Gpt2OnnxModel(BertOnnxModel):
                 gemm_node, "Reshape", input_name_to_nodes, recursive=False
             )
 
-            return_indice = []
             nodes = self.match_parent_path(gemm_node, ["Reshape", "FastGelu"], [0, 0], output_name_to_node)
             if nodes is None:
                 nodes = self.match_parent_path(

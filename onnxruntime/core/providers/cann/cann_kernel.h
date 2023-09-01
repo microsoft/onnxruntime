@@ -4,11 +4,13 @@
 
 #pragma once
 
+#include "core/platform/ort_mutex.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/cann_execution_provider.h"
 #include "core/providers/cann/cann_fwd.h"
 #include "core/providers/cann/cann_utils.h"
+#include "core/providers/cann/cann_stream_handle.h"
 
 namespace onnxruntime {
 namespace cann {
@@ -35,26 +37,25 @@ class CannKernel : public OpKernel {
 
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
-  inline aclrtStream Stream() const { return static_cast<aclrtStream>(provider_->GetComputeStream()); }
-
-  template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
-    return provider_->GetScratchBuffer<T>(count_or_bytes);
+  inline aclrtStream Stream(OpKernelContext* ctx) const {
+    auto* stream = ctx->GetComputeStream();
+    return stream ? static_cast<aclrtStream>(stream->GetHandle()) : nullptr;
   }
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBufferOnCANNPinned(size_t count_or_bytes) const {
-    return provider_->GetScratchBufferOnCANNPinned<T>(count_or_bytes);
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
+    if (count_or_bytes == 0) return nullptr;
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, WaitCannNotificationOnDevice);
   }
 
   template <typename T>
-  inline Status Fill(Tensor* y, void* addr) const {
-    return provider_->Fill<T>(y, addr);
+  inline Status Fill(Tensor* y, void* addr, aclrtStream stream) const {
+    return provider_->Fill<T>(y, addr, stream);
   }
 
   template <typename T>
-  inline Status Broadcast(const Tensor* x, Tensor* y, void* addr) const {
-    return provider_->Broadcast<T>(x, y, addr);
+  inline Status Broadcast(const Tensor* x, Tensor* y, void* addr, aclrtStream stream) const {
+    return provider_->Broadcast<T>(x, y, addr, stream);
   }
 
  protected:

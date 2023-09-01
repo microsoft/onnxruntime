@@ -23,7 +23,7 @@ void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, b
                    float atol = 1e-8, float rtol = 1e-5, float threshold = 1e-3);
 
 void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>& actual,
-                   bool use_threshold_compare, float atol = 1e-8, 
+                   bool use_threshold_compare, float atol = 1e-8,
                    float rtol = 1e-5, float threshold = 1e-3);
 
 Status GetDataAndShapeFromTensorProto(const Graph& graph, const NodeArg* input_arg,

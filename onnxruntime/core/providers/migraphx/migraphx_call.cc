@@ -31,7 +31,7 @@ const char* RocmErrString<hipError_t>(hipError_t x) {
 
 template <typename ERRTYPE, bool THRW>
 std::conditional_t<THRW, void, Status> RocmCall(
-  ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
+    ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg, const char* file, const int line) {
   if (retCode != successCode) {
     try {
       char hostname[HOST_NAME_MAX];
@@ -41,10 +41,10 @@ std::conditional_t<THRW, void, Status> RocmCall(
       (void)hipGetDevice(&currentHipDevice);
       (void)hipGetLastError();  // clear last HIP error
       static char str[1024];
-      snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; expr=%s; %s",
+      snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; file=%s ; line=%d ; expr=%s; %s",
                libName, (int)retCode, RocmErrString(retCode), currentHipDevice,
                hostname,
-               exprString, msg);
+               file, line, exprString, msg);
       if constexpr (THRW) {
         // throw an exception with the error info
         ORT_THROW(str);
@@ -66,11 +66,11 @@ std::conditional_t<THRW, void, Status> RocmCall(
   }
 }
 
-template Status RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
-template void RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
-template Status RocmCall<rocblas_status, false>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
-template void RocmCall<rocblas_status, true>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
-template Status RocmCall<miopenStatus_t, false>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
-template void RocmCall<miopenStatus_t, true>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
+template Status RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg, const char* file, const int line);
+template void RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg, const char* file, const int line);
+template Status RocmCall<rocblas_status, false>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg, const char* file, const int line);
+template void RocmCall<rocblas_status, true>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg, const char* file, const int line);
+template Status RocmCall<miopenStatus_t, false>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg, const char* file, const int line);
+template void RocmCall<miopenStatus_t, true>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg, const char* file, const int line);
 
 }  // namespace onnxruntime

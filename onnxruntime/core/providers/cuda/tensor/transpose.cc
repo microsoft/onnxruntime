@@ -146,7 +146,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   for (auto i = new_rank - 1; i > 0; i--) {
     auto curr = new_permutations[i];
-    auto prev = new_permutations[i - 1];
+    auto prev = new_permutations[static_cast<ptrdiff_t>(i) - 1];
     if (prev + 1 == curr) {
       // all dims bigger than curr need to be reduced by 1 due to the merging.
       for (auto j = 0; j < new_rank; j++) {
@@ -155,14 +155,14 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
         }
       }
       for (auto j = i + 1; j < new_rank; j++) {
-        new_permutations[j - 1] = new_permutations[j];
+        new_permutations[static_cast<ptrdiff_t>(j) - 1] = new_permutations[j];
       }
 
       // update input dims
       new_input_dims[prev] *= new_input_dims[curr];
       new_input_dims[curr] = 1;
       for (auto j = static_cast<int32_t>(curr + 1); j < new_rank; j++) {
-        new_input_dims[j - 1] = new_input_dims[j];
+        new_input_dims[static_cast<ptrdiff_t>(j) - 1] = new_input_dims[j];
       }
       new_input_dims[new_rank - 1] = 1;
 
@@ -196,7 +196,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
     auto mn = TryTransposeWithCublas(new_permutations, new_input_dims);
     int M = std::get<0>(mn);
     int N = std::get<1>(mn);
-    if (M != 0 && N != 0) {
+    if (M != 0 && N != 0 && (element_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 || CanUse_cublasTransposeHelper_MLFloat16(M, N))) {
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
         return TransposeWithCublas<float>(stream, cublas_handle, input, output, M, N);
       } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {

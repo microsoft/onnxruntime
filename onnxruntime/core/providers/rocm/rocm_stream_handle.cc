@@ -1,6 +1,7 @@
 #include "core/providers/rocm/rocm_stream_handle.h"
 #include "core/providers/rocm/rocm_common.h"
-//#include "core/common/spin_pause.h"
+// #include "core/common/spin_pause.h"
+#include "core/providers/rocm/rocm_resource.h"
 
 namespace onnxruntime {
 
@@ -40,9 +41,9 @@ RocmStream::RocmStream(hipStream_t stream,
                        bool own_flag,
                        miopenHandle_t external_miopen_handle,
                        rocblas_handle external_rocblas_handle) : Stream(stream, device),
-                                                                own_stream_(own_flag),
-                                                                cpu_allocator_(cpu_allocator),
-                                                                release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream) {
+                                                                 own_stream_(own_flag),
+                                                                 cpu_allocator_(cpu_allocator),
+                                                                 release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream) {
   if (own_flag) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
     ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));
@@ -83,7 +84,7 @@ void RocmStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
 
 struct CpuBuffersInfo {  // TODO: should be moved to base class
   AllocatorPtr allocator;
-  void** buffers;
+  std::unique_ptr<void*[]> buffers;
   // CPU buffer buffers[i].
   // Number of buffer points in "buffers".
   size_t n_buffers;
@@ -95,7 +96,6 @@ static void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status
   for (size_t i = 0; i < info->n_buffers; ++i) {
     info->allocator->Free(info->buffers[i]);
   }
-  delete[] info->buffers;
 }
 
 Status RocmStream::CleanUpOnRunEnd() {
@@ -106,7 +106,7 @@ Status RocmStream::CleanUpOnRunEnd() {
   if (release_cpu_buffer_on_rocm_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {
     std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     cpu_buffers_info->allocator = cpu_allocator_;
-    cpu_buffers_info->buffers = new void*[deferred_cpu_buffers_.size()];
+    cpu_buffers_info->buffers = std::make_unique<void*[]>(deferred_cpu_buffers_.size());
     for (size_t i = 0; i < deferred_cpu_buffers_.size(); ++i) {
       cpu_buffers_info->buffers[i] = deferred_cpu_buffers_.at(i);
     }
@@ -130,7 +130,25 @@ Status RocmStream::CleanUpOnRunEnd() {
   return Status::OK();
 }
 
-// CPU Stream command handles
+void* RocmStream::GetResource(int version, int type) const {
+  ORT_ENFORCE(version <= ORT_ROCM_RESOUCE_VERSION, "resource version unsupported!");
+  void* resource{};
+  switch (type) {
+    case RocmResource::hip_stream_t:
+      return reinterpret_cast<void*>(GetHandle());
+      break;
+    case RocmResource::miopen_handle_t:
+      return reinterpret_cast<void*>(miopen_handle_);
+      break;
+    case RocmResource::rocblas_handle_t:
+      return reinterpret_cast<void*>(rocblas_handle_);
+      break;
+    default:
+      break;
+  }
+  return resource;
+}
+
 void WaitRocmNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
   static_cast<RocmNotification*>(&notification)->wait_on_device(stream);
 }

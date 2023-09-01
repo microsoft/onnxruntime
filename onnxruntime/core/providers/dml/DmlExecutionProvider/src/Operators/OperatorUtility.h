@@ -7,6 +7,12 @@ namespace Dml
 {
     constexpr float DefaultEpsilon = 0.00001f;
 
+    struct ActivationOperatorDescWrapper
+    {
+        ActivationOperatorDesc desc;
+        std::vector<uint32_t> dmlAxes;
+    };
+
     namespace ActivationHelper
     {
         float GetDefaultAlpha(DML_OPERATOR_TYPE function);
@@ -41,6 +47,7 @@ namespace Dml
         bool IsFusableActivationOperator(std::string_view opType, std::string_view domain, int sinceVersion);
 
         std::optional<ActivationOperatorDesc> TryGetFusedActivationDesc(const MLOperatorKernelCreationContext& kernelInfo);
+        std::optional<ActivationOperatorDescWrapper> TryGetGraphFusedActivationDesc(const MLOperatorKernelCreationContext& kernelInfo);
 
         // Produces names for attributes added to fused kernels. This effectively prepends a string to distinguish ONNX
         // attributes from those added dynamically via operator fusion. For example, this function would be used to

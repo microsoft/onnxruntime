@@ -68,4 +68,4 @@ class Shape final : public OpKernel {
   int64_t end_index_ = std::numeric_limits<int64_t>::max();
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

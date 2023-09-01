@@ -87,7 +87,7 @@ ImageInfo = collections.namedtuple("ImageInfo", ["repository", "digest"])
 
 
 def get_image_name(image_info):
-    return "{}@{}".format(image_info.repository, image_info.digest)
+    return f"{image_info.repository}@{image_info.digest}"
 
 
 timestamp_pattern = re.compile(
@@ -146,8 +146,8 @@ def get_valid_images_from_logs(log_paths, min_datetime, min_access_count):
     image_counts = dict()  # dict of {ImageInfo -> count}
 
     for log_path in log_paths:
-        log.debug("Processing log file: {}".format(log_path))
-        with open(log_path, mode="r") as log_file:
+        log.debug(f"Processing log file: {log_path}")
+        with open(log_path) as log_file:
             for line in log_file:
                 image_info = parse_log_line(line, min_datetime)
                 if image_info is not None:

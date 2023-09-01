@@ -6,59 +6,59 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
 - stage: Python_Packaging
   jobs:
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.2.3'
-  - template: templates/rocm.yml
-    parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.2.3'
+      RocmVersion: '5.4.2'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.2.3'
+      RocmVersion: '5.4.2'
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.3.2'
+      PythonVersion: '3.10'
+      RocmVersion: '5.4.2'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.3.2'
+      RocmVersion: '5.5'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.3.2'
+      RocmVersion: '5.5'
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.4'
+      PythonVersion: '3.10'
+      RocmVersion: '5.5'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.4'
+      RocmVersion: '5.6'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.4'
+      RocmVersion: '5.6'
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.4'
-      BuildConfig: 'RelWithDebInfo'
+      PythonVersion: '3.10'
+      RocmVersion: '5.6'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.4'
+      RocmVersion: '5.6'
       BuildConfig: 'RelWithDebInfo'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.4'
+      RocmVersion: '5.6'
+      BuildConfig: 'RelWithDebInfo'
+  - template: templates/rocm.yml
+    parameters:
+      PythonVersion: '3.10'
+      RocmVersion: '5.6'
       BuildConfig: 'RelWithDebInfo'

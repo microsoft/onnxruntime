@@ -103,11 +103,11 @@ class QgemmShortExecuteTest<AType, BType, int32_t, Packed, Threaded> : public Ml
     }
     size_t dims[] = {400, 500, 1024};
     size_t kdims[] = {1003, 2048 + 50, 4096 - 100};
-    for (size_t m : dims){
-      for (size_t n : dims){
-        for (size_t k : kdims){
-          test_registered += RegisterSingleTest(m-3, n+5, k, 1, 14, 211);
-          test_registered += RegisterSingleTest(m+5, n-3, k, 1, 17);
+    for (size_t m : dims) {
+      for (size_t n : dims) {
+        for (size_t k : kdims) {
+          test_registered += RegisterSingleTest(m - 3, n + 5, k, 1, 14, 211);
+          test_registered += RegisterSingleTest(m + 5, n - 3, k, 1, 17);
         }
       }
     }

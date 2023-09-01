@@ -1,18 +1,19 @@
 parameters:
   AgentPool: 'Win-CPU'
-  JobSuffix: ''
-
-jobs:
-- job: Nodejs_Test_${{ parameters.JobSuffix }}
-  workspace:
-    clean: all
-  timeoutInMinutes:  120
-  pool: ${{ parameters.AgentPool }}
+  StageSuffix: ''
+stages:
+- stage: Nodejs_Test_${{ parameters.StageSuffix }}
   dependsOn:
   - Nodejs_Packaging_CPU
   condition: succeeded()
-  variables:
-  - name: OnnxRuntimeBuildDirectory
-    value: '$(Build.BinariesDirectory)'
-  steps:
-  - template: test.yml
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    timeoutInMinutes:  120
+    pool: ${{ parameters.AgentPool }}
+    variables:
+    - name: OnnxRuntimeBuildDirectory
+      value: '$(Build.BinariesDirectory)'
+    steps:
+    - template: test.yml

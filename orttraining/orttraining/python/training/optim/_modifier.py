@@ -18,7 +18,7 @@ from ._multi_tensor_apply import MultiTensorApply
 multi_tensor_applier = MultiTensorApply(2048 * 32)
 
 
-class FP16OptimizerModifier(object):
+class FP16OptimizerModifier:
     def __init__(self, optimizer) -> None:
         super().__init__()
         self._optimizer = optimizer
@@ -30,11 +30,11 @@ class FP16OptimizerModifier(object):
     def check_requirements(self, required_funcs, require_apex=False, require_torch_non_finite_check=False):
         try:
             if require_apex is True:
-                import amp_C
-                from apex import amp
+                import amp_C  # noqa: F401
+                from apex import amp  # noqa: F401
             if require_torch_non_finite_check is True:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
-        except Exception as _:
+        except Exception:
             warnings.warn("Skip modifying optimizer because of Apex or torch_non_finite_check not found.", UserWarning)
             return False
 
@@ -137,7 +137,13 @@ def clip_grad_norm_fp32(
 
         else:
             for grad in grads_for_norm:
-                grad_norm = torch.norm(grad, norm_type)
+                # torch.norm is deprecated and moved to torch.linalg.norm
+                # with a different signature
+                # see https://pytorch.org/docs/stable/generated/torch.norm.html
+                if norm_type in {"fro", "nuc"}:
+                    grad_norm = torch.linalg.matrix_norm(grad, norm_type)
+                else:
+                    grad_norm = torch.linalg.norm(grad, norm_type)
                 total_norm += grad_norm**norm_type
 
         if horizontal_model_parallel_grad_norm_aggregation:

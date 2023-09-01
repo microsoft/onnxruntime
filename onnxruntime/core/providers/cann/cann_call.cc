@@ -101,6 +101,8 @@ template <>
 const char* CannErrString<ge::graphStatus>(ge::graphStatus e) {
   using namespace ge;
 
+  aclrtSynchronizeDevice();
+
   switch (e) {
     CASE_ENUM_TO_STR(GRAPH_FAILED);
     CASE_ENUM_TO_STR(GRAPH_SUCCESS);

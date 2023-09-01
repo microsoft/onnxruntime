@@ -1,8 +1,8 @@
-onnx-example:l
-
+onnx-example:r
+
 X1
 X2
-X3Y"FooBar
+X3Y"FooBar:test
 test-modelZ
 X1
 
@@ -19,4 +19,5 @@ test-modelZ
 Y
 
 
-B
+BB
+test

@@ -1,5 +1,4 @@
 import onnx
-from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
@@ -10,7 +9,7 @@ class QLinearActivation(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def QuantizeClipRelu(self):
+    def QuantizeClipRelu(self):  # noqa: N802
         node = self.node
         assert node.op_type == "Relu" or node.op_type == "Clip"
 
@@ -59,7 +58,7 @@ class QLinearActivation(QuantOperatorBase):
 
         qlinear_activation_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_activation_name = ""
-        if node.name != "":
+        if node.name:
             qlinear_activation_name = node.name + "_quant"
         kwargs = {}
         for attribute in node.attribute:

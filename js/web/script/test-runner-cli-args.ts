@@ -34,8 +34,10 @@ Options:
  -b=<...>, --backend=<...>     Specify one or more backend(s) to run the test upon.
                                  Backends can be one or more of the following, splitted by comma:
                                    webgl
+                                   webgpu
                                    wasm
                                    xnnpack
+                                   webnn
  -e=<...>, --env=<...>         Specify the environment to run the test. Should be one of the following:
                                  chrome     (default)
                                  edge       (Windows only)
@@ -50,6 +52,10 @@ Options:
                                  This flag can be used with a number as value, specifying the total count of test cases to run. The test cases may be used multiple times. Default value is 10.
  -c, --file-cache              Enable file cache.
 
+*** Session Options ***
+ -u=<...>, --optimized-model-file-path=<...>        Specify whether to dump the optimized model.
+ -o=<...>, --graph-optimization-level=<...>    Specify graph optimization level.
+                                                 Default is 'all'. Valid values are 'disabled', 'basic', 'extended', 'all'.
 *** Logging Options ***
 
  --log-verbose=<...>           Set log level to verbose
@@ -60,7 +66,7 @@ Options:
 
 *** Backend Options ***
 
- --wasm-number-threads         Set the WebAssembly number of threads
+ -x, --wasm-number-threads     Set the WebAssembly number of threads
  --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
  --wasm-enable-simd            Set whether to enable SIMD
  --wasm-enable-proxy           Set whether to enable proxy worker
@@ -68,6 +74,7 @@ Options:
  --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
  --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
  --webgl-texture-pack-mode     Set the WebGL texture pack mode (true/false)
+ --webgpu-profiling-mode       Set the WebGPU profiling mode (off/default)
 
 *** Browser Options ***
 
@@ -98,7 +105,7 @@ Examples:
 
 export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
-  type Backend = 'cpu'|'webgl'|'wasm'|'onnxruntime'|'xnnpack';
+  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack'|'webnn';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'prod'|'dev'|'perf';
 }
@@ -149,12 +156,22 @@ export interface TestRunnerCliArgs {
    */
   times?: number;
 
+  /**
+   * whether to dump the optimized model
+   */
+  optimizedModelFilePath?: string;
+
+  /**
+   * Specify graph optimization level
+   */
+  graphOptimizationLevel: 'disabled'|'basic'|'extended'|'all';
+
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-  globalEnvFlags?: Env;
+  globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
 }
 
@@ -247,9 +264,9 @@ function parseWasmOptions(_args: minimist.ParsedArgs): InferenceSession.WebAssem
 }
 
 function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
-  const numThreads = args['wasm-number-threads'];
+  const numThreads = args.x || args['wasm-number-threads'];
   if (typeof numThreads !== 'undefined' && typeof numThreads !== 'number') {
-    throw new Error('Flag "wasm-number-threads" must be a number value');
+    throw new Error('Flag "x"/"wasm-number-threads" must be a number value');
   }
   const initTimeout = args['wasm-init-timeout'];
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
@@ -278,7 +295,7 @@ function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLEx
   return {name: 'webgl'};
 }
 
-function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
+function parseWebglFlags(args: minimist.ParsedArgs): Partial<Env.WebGLFlags> {
   const contextId = args['webgl-context-id'];
   if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
     throw new Error('Flag "webgl-context-id" is invalid');
@@ -302,11 +319,20 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
-function parseGlobalEnvFlags(args: minimist.ParsedArgs): Env {
-  const wasmFlags = parseWasmFlags(args);
-  const webglFlags = parseWebglFlags(args);
+function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
+  const profilingMode = args['webgpu-profiling-mode'];
+  if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
+    throw new Error('Flag "webgpu-profiling-mode" is invalid');
+  }
+  return {profilingMode};
+}
+
+function parseGlobalEnvFlags(args: minimist.ParsedArgs): NonNullable<TestRunnerCliArgs['globalEnvFlags']> {
+  const wasm = parseWasmFlags(args);
+  const webgl = parseWebglFlags(args);
+  const webgpu = parseWebgpuFlags(args);
   const cpuFlags = parseCpuFlags(args);
-  return {webgl: webglFlags, wasm: wasmFlags, cpuFlags};
+  return {webgl, wasm, webgpu, ...cpuFlags};
 }
 
 export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs {
@@ -334,11 +360,17 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   // Option: -b=<...>, --backend=<...>
-  const browserBackends = ['webgl', 'wasm', 'xnnpack'];
+  const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack', 'webnn'];
+
+  // TODO: remove this when Chrome support WebNN.
+  //       we need this for now because Chrome does not support webnn yet,
+  //       and ChromeCanary is not in CI.
+
+  const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
-  const backend =
-      (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : browserBackends) : backendArgs.split(',');
+  const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :
+                                                      backendArgs.split(',');
   for (const b of backend) {
     if ((env !== 'node' && browserBackends.indexOf(b) === -1) || (env === 'node' && nodejsBackends.indexOf(b) === -1)) {
       throw new Error(`backend ${b} is not supported in env ${env}`);
@@ -346,6 +378,11 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   const globalEnvFlags = parseGlobalEnvFlags(args);
+
+  if (backend.includes('webnn') && !globalEnvFlags.wasm!.proxy) {
+    // Backend webnn is restricted in the dedicated worker.
+    globalEnvFlags.wasm!.proxy = true;
+  }
 
   // Options:
   // --log-verbose=<...>
@@ -378,6 +415,19 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig.push({category: 'TestRunner.Perf', config: {minimalSeverity: 'verbose'}});
   }
 
+  // Option: -u, --optimized-model-file-path
+  const optimizedModelFilePath = args['optimized-model-file-path'] || args.u || undefined;
+  if (typeof optimizedModelFilePath !== 'undefined' && typeof optimizedModelFilePath !== 'string') {
+    throw new Error('Flag "optimized-model-file-path" need to be either empty or a valid file path.');
+  }
+
+  // Option: -o, --graph-optimization-level
+  const graphOptimizationLevel = args['graph-optimization-level'] || args.o || 'all';
+  if (typeof graphOptimizationLevel !== 'string' ||
+      ['disabled', 'basic', 'extended', 'all'].indexOf(graphOptimizationLevel) === -1) {
+    throw new Error(`graph optimization level is invalid: ${graphOptimizationLevel}`);
+  }
+
   // Option: -c, --file-cache
   const fileCache = parseBooleanArg(args['file-cache'] || args.c, false);
 
@@ -405,6 +455,8 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig,
     profile,
     times: perf ? times : undefined,
+    optimizedModelFilePath,
+    graphOptimizationLevel: graphOptimizationLevel as TestRunnerCliArgs['graphOptimizationLevel'],
     fileCache,
     cpuOptions,
     webglOptions,

@@ -215,11 +215,15 @@ enum class TensorDataType : int32_t {
   COMPLEX64 = 14,
   COMPLEX128 = 15,
   BFLOAT16 = 16,
+  FLOAT8E4M3FN = 17,
+  FLOAT8E4M3FNUZ = 18,
+  FLOAT8E5M2 = 19,
+  FLOAT8E5M2FNUZ = 20,
   MIN = UNDEFINED,
-  MAX = BFLOAT16
+  MAX = FLOAT8E5M2FNUZ
 };
 
-inline const TensorDataType (&EnumValuesTensorDataType())[17] {
+inline const TensorDataType (&EnumValuesTensorDataType())[21] {
   static const TensorDataType values[] = {
     TensorDataType::UNDEFINED,
     TensorDataType::FLOAT,
@@ -237,13 +241,17 @@ inline const TensorDataType (&EnumValuesTensorDataType())[17] {
     TensorDataType::UINT64,
     TensorDataType::COMPLEX64,
     TensorDataType::COMPLEX128,
-    TensorDataType::BFLOAT16
+    TensorDataType::BFLOAT16,
+    TensorDataType::FLOAT8E4M3FN,
+    TensorDataType::FLOAT8E4M3FNUZ,
+    TensorDataType::FLOAT8E5M2,
+    TensorDataType::FLOAT8E5M2FNUZ
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorDataType() {
-  static const char * const names[18] = {
+  static const char * const names[22] = {
     "UNDEFINED",
     "FLOAT",
     "UINT8",
@@ -261,13 +269,17 @@ inline const char * const *EnumNamesTensorDataType() {
     "COMPLEX64",
     "COMPLEX128",
     "BFLOAT16",
+    "FLOAT8E4M3FN",
+    "FLOAT8E4M3FNUZ",
+    "FLOAT8E5M2",
+    "FLOAT8E5M2FNUZ",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorDataType(TensorDataType e) {
-  if (flatbuffers::IsOutRange(e, TensorDataType::UNDEFINED, TensorDataType::BFLOAT16)) return "";
+  if (flatbuffers::IsOutRange(e, TensorDataType::UNDEFINED, TensorDataType::FLOAT8E5M2FNUZ)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorDataType()[index];
 }

@@ -56,7 +56,7 @@ void CreateBaseModel(onnxruntime::Model& model, std::vector<int> dims) {
   ONNX_NAMESPACE::TypeProto float_tensor;
   float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-  for (auto dim: dims) {
+  for (auto dim : dims) {
     float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
   }
 

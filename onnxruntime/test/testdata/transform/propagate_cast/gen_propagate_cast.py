@@ -29,9 +29,7 @@ def save(model_path, nodes, inputs, outputs, initializers):
 
 
 def gen_fuse_back2back_casts(model_path):
-
-    for (type1, type2) in list(itertools.product([TensorProto.FLOAT, TensorProto.FLOAT16], repeat=2)):
-
+    for type1, type2 in list(itertools.product([TensorProto.FLOAT, TensorProto.FLOAT16], repeat=2)):
         nodes = [
             helper.make_node("MatMul", ["input_0", "input_1"], ["product"], "MatMul_0"),
             helper.make_node("Cast", ["product"], ["product_cast"], "Cast_0", to=type1),
@@ -64,8 +62,7 @@ def gen_fuse_back2back_casts(model_path):
 
 
 def gen_fuse_sibling_casts(model_path):
-
-    for (type1, type2) in list(itertools.product([TensorProto.FLOAT, TensorProto.FLOAT16], repeat=2)):
+    for type1, type2 in list(itertools.product([TensorProto.FLOAT, TensorProto.FLOAT16], repeat=2)):
         input_type = (
             type2 if type1 != type2 else (TensorProto.FLOAT16 if type1 == TensorProto.FLOAT else TensorProto.FLOAT)
         )
@@ -298,10 +295,10 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
 
 
 def gen_bool_to_float16_cast(model_path):
-    X1 = helper.make_tensor_value_info("x1", TensorProto.INT64, [1, 1])
-    X2 = helper.make_tensor_value_info("x2", TensorProto.INT64, [1, 1])
-    X3 = helper.make_tensor_value_info("x3", TensorProto.FLOAT, [1, 1])
-    Y = helper.make_tensor_value_info("output", TensorProto.FLOAT16, [1, 1])
+    X1 = helper.make_tensor_value_info("x1", TensorProto.INT64, [1, 1])  # noqa: N806
+    X2 = helper.make_tensor_value_info("x2", TensorProto.INT64, [1, 1])  # noqa: N806
+    X3 = helper.make_tensor_value_info("x3", TensorProto.FLOAT, [1, 1])  # noqa: N806
+    Y = helper.make_tensor_value_info("output", TensorProto.FLOAT16, [1, 1])  # noqa: N806
 
     less1 = helper.make_node("Less", ["x1", "x2"], ["less1"], name="less1")
     cast1 = helper.make_node("Cast", ["less1"], ["cast1"], name="cast1", to=TensorProto.FLOAT16)
@@ -312,10 +309,10 @@ def gen_bool_to_float16_cast(model_path):
 
 
 def gen_bool_to_float_cast(model_path):
-    X1 = helper.make_tensor_value_info("x1", TensorProto.INT64, [1, 1])
-    X2 = helper.make_tensor_value_info("x2", TensorProto.INT64, [1, 1])
-    X3 = helper.make_tensor_value_info("x3", TensorProto.FLOAT16, [1, 1])
-    Y = helper.make_tensor_value_info("output", TensorProto.FLOAT16, [1, 1])
+    X1 = helper.make_tensor_value_info("x1", TensorProto.INT64, [1, 1])  # noqa: N806
+    X2 = helper.make_tensor_value_info("x2", TensorProto.INT64, [1, 1])  # noqa: N806
+    X3 = helper.make_tensor_value_info("x3", TensorProto.FLOAT16, [1, 1])  # noqa: N806
+    Y = helper.make_tensor_value_info("output", TensorProto.FLOAT16, [1, 1])  # noqa: N806
 
     less1 = helper.make_node("Less", ["x1", "x2"], ["less1"], name="less1")
     cast1 = helper.make_node("Cast", ["less1"], ["cast1"], name="cast1", to=TensorProto.FLOAT)
@@ -327,11 +324,11 @@ def gen_bool_to_float_cast(model_path):
 
 
 def gen_one_input_one_output_test(op, model_path, axes_attribute=False):
-    X = helper.make_tensor_value_info("x", TensorProto.FLOAT16, [2, 2])
+    X = helper.make_tensor_value_info("x", TensorProto.FLOAT16, [2, 2])  # noqa: N806
     output_shape = [2, 2]
     if op == "Unsqueeze":
         output_shape.append(1)
-    Y = helper.make_tensor_value_info("y", TensorProto.FLOAT16, output_shape)
+    Y = helper.make_tensor_value_info("y", TensorProto.FLOAT16, output_shape)  # noqa: N806
     node_inputs = []
     graph_inputs = [X]
     cast1 = helper.make_node("Cast", ["x"], ["cast1"], name="cast1", to=TensorProto.FLOAT)

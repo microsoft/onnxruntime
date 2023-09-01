@@ -16,7 +16,6 @@ class Pool : public CudaKernel, public PoolBase {
   Pool(const OpKernelInfo& info) : CudaKernel(info), PoolBase(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
 };
 
 template <typename T>

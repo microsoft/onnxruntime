@@ -15,15 +15,15 @@ bool DnnlSupportedGpuFound() {
 // If there is no GPU or CPU support for bfloat16 this assumption may cause unit tests to fail.
 // They will fail with a "Could not find an implementation for [operator]" error.
 #if defined(DNNL_GPU_RUNTIME)
- return true;
+  return true;
 #else
- return false;
+  return false;
 #endif
 }
 std::once_flag once_flag1;
 
 bool DnnlHasBF16Support() {
-  if (DnnlSupportedGpuFound()){
+  if (DnnlSupportedGpuFound()) {
     return true;
   }
   // HasAVX512Skylake checks for AVX512BW which can run bfloat16 but
@@ -51,5 +51,5 @@ bool DnnlHasBF16Support() {
   }
   return false;
 }
-}
-}
+}  // namespace test
+}  // namespace onnxruntime

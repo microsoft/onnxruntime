@@ -27,14 +27,14 @@ class OnnxConverter {
   ~OnnxConverter() { Clear(); }
 
   /** Get the supported subgraph.
-  */
+   */
   std::vector<std::vector<int>> GetSupportedNodes(
       const ONNX_NAMESPACE::ModelProto& model_proto);
 
   /** Convert onnx::ModelProto to rk::nn::Graph.
    *  Because some attributes of rk::nn::Tensor are used as input in onnx and these attributes
    *  can't be found in onnx::ModelProto, so additional input-related information is required.
-  */
+   */
   void Convert(const ONNX_NAMESPACE::ModelProto& model,
                rk::nn::Graph* graph,
                const std::vector<const void*>& input_bufs,

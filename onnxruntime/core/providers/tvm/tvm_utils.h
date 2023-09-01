@@ -12,7 +12,6 @@
 #include "core/framework/ortdevice.h"
 #include "core/common/common.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -65,7 +64,7 @@ inline DLDevice GetDLDevice(OrtMemoryInfoDeviceType device_type) {
 
 std::string readFromFile(const std::string& file_path);
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime
 
-#endif // TVM_UTILS_H
+#endif  // TVM_UTILS_H

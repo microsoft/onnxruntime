@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test.h"
-struct LearningModelApiTestsApi
-{
+struct LearningModelApiTestsApi {
   SetupClass LearningModelAPITestsClassSetup;
   VoidTest CreateModelFromFilePath;
   VoidTest CreateModelFromUnicodeFilePath;

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//this file contains implementations of the C API
+// this file contains implementations of the C API
 
 #include <cassert>
 
@@ -115,4 +115,8 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryIn
 
 onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
   return value_->UnregisterAllocator(mem_info);
+}
+
+onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+  return value_->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
 }

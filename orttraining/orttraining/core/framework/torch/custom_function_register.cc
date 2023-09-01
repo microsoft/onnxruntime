@@ -6,6 +6,8 @@
 #include "orttraining/core/framework/torch/refcount_tracker.h"
 #include "core/platform/env.h"
 #include <cstdio>
+#include <sstream>
+#include <string>
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -151,6 +153,15 @@ PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
   return iter->second.get();
 }
 
+void OrtTorchFunctionPool::RegisterMiscellaneousConstInput(PyObject* obj) {
+  ORT_ENFORCE(obj, "Cannot register NULL reference input.");
+  const void* address = static_cast<const void*>(obj);
+  std::stringstream ss;
+  ss << address;
+  std::string key = ss.str();
+  RegisterEntry(mutex_, key, obj, miscellaneous_const_input_pool_);
+}
+
 int64_t OrtTorchFunctionPool::RegisterContext(PyObject* autograd_context) {
   static int64_t index_ = 0x1000000;
   std::lock_guard<std::mutex> lock(mutex_);
@@ -185,12 +196,21 @@ PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
   return iter->second.get();
 }
 
-void OrtTorchFunctionPool::UnRegisterFunctions() {
+void OrtTorchFunctionPool::UnRegisterGlobalFunctions() {
   forward_runner_.reset();
   backward_runner_.reset();
+  func_context_pool_.clear();
+}
+
+void OrtTorchFunctionPool::UnRegisterModelSpecificFunctions() {
   forward_core_pool_.clear();
   backward_core_pool_.clear();
-  func_context_pool_.clear();
+  miscellaneous_const_input_pool_.clear();
+}
+
+void OrtTorchFunctionPool::UnRegisterFunctions() {
+  UnRegisterGlobalFunctions();
+  UnRegisterModelSpecificFunctions();
 }
 
 }  // namespace torch

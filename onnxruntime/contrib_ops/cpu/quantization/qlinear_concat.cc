@@ -13,7 +13,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-
 QLinearConcat::QLinearConcat(const OpKernelInfo& info) : OpKernel(info), ConcatBase(info) {
   size_t input_def_count = info.node().InputDefs().size();
   ORT_ENFORCE(input_def_count >= 5 && (input_def_count - 2) % 3 == 0,

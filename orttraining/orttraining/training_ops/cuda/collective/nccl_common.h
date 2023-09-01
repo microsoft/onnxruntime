@@ -37,7 +37,6 @@ class NcclContext final {
   ncclComm_t node_local_comm_;
   ncclComm_t cross_node_comm_;
   ncclComm_t horizontal_group_comm_;
-
 };
 
 // -----------------------------------------------------------------------

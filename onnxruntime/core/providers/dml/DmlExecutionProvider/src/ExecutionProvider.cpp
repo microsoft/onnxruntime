@@ -60,13 +60,15 @@ namespace Dml
         auto customRegistry = *abiRegistry->GetRegistries().begin();
         *registry = customRegistry->GetKernelRegistry();
         *internalRegInfoMap = abiRegistry->GetInternalRegInfoMap();
+
+        Dml::RegisterCpuOperatorsAsDml(registry->get());
     }
 
     ExecutionProvider::ExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider)
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -79,11 +81,6 @@ namespace Dml
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
-
-        // Register the allocators with ORT, through concrete ORT methods on the IExecutionProvider base class
-        InsertAllocator(m_impl->GetGpuAllocator());
-        InsertAllocator(m_impl->GetCpuInputAllocator());
-        InsertAllocator(m_impl->GetCpuOutputAllocator());
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -174,31 +171,45 @@ namespace Dml
             sizeof(featureLevels)
             ));
 
+        D3D12_FEATURE_DATA_D3D12_OPTIONS4 featureOptions = {};
+        if (SUCCEEDED(d3d12Device->CheckFeatureSupport(
+            D3D12_FEATURE_D3D12_OPTIONS4,
+            &featureOptions,
+            sizeof(featureOptions))))
+        {
+            m_native16BitShaderOpsSupported = featureOptions.Native16BitShaderOpsSupported;
+        }
+
         m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE);
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
-        // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
-        // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
-        m_allocator = std::make_shared<BucketizedBufferAllocator>(
-            m_d3d12Device.Get(),
-            m_context,
-            CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-            D3D12_HEAP_FLAG_NONE,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
-
-        m_context->SetAllocator(m_allocator);
-
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
 
-        // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-        m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
-        m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
-
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
+
+        m_lastUploadFlushTime = std::chrono::steady_clock::now();
+    }
+
+    std::vector<onnxruntime::AllocatorPtr> ExecutionProviderImpl::CreatePreferredAllocators() {
+        if (!m_allocator)
+        {
+            // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
+            // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
+            m_allocator = std::make_shared<BucketizedBufferAllocator>(m_d3d12Device.Get(),
+                m_context,  // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
+                CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
+            m_context->SetAllocator(m_allocator);
+            // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
+            m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
+        }
+
+        return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -432,10 +443,11 @@ namespace Dml
             ID3D12Resource* dstData = dstAllocInfo->GetResource();
             const void* srcData = src->GetData();
 
-            const uint64_t dstOffset = 0;
+            constexpr uint64_t dstOffset = 0;
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
+            FlushUploadsIfReady();
         }
         else if (!src->IsCpuData() && dst->IsCpuData())
         {
@@ -477,6 +489,57 @@ namespace Dml
         ORT_CATCH_RETURN
     }
 
+    HRESULT __stdcall ExecutionProviderImpl::CopyTensors(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept
+    {
+        ORT_TRY
+        {
+        ORT_THROW_HR_IF(E_INVALIDARG, dst.size() != src.size());
+
+        // Source and destination for batched GPU -> CPU copies
+        std::vector<ID3D12Resource*> srcDatas;
+        std::vector<void*> dstDatas;
+        std::vector<uint32_t> dataSizesInBytes;
+
+        assert(!m_closed);
+        auto provider = const_cast<ExecutionProviderImpl*>(this);
+
+        for (uint32_t i = 0; i < dst.size(); ++i)
+        {
+            // This batching implementation only handles GPU -> CPU copies.  Other copies do not require synchronization
+            // and are batched across multiple calls to CopyTensor.
+            if (src[i]->IsCpuData() || !dst[i]->IsCpuData())
+            {
+                ORT_THROW_IF_FAILED(CopyTensor(dst[i], src[i]));
+                continue;
+            }
+
+            const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst[i]);
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+
+            if (dataSizeInBytes == 0)
+            {
+                continue;
+            }
+
+            dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(*dst[i])));
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes.back() != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+
+            dstDatas.push_back(dst[i]->GetData());
+            const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src[i]).GetDataInterface().Get());
+
+            srcDatas.push_back(srcAllocInfo->GetResource());
+        }
+
+        const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
+
+        // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+
+        return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
     HRESULT STDMETHODCALLTYPE ExecutionProviderImpl::FillTensorWithPattern(
         IMLOperatorTensor* dst,
         gsl::span<const std::byte> rawValue // Data type agnostic rawValue, treated as raw bits
@@ -504,10 +567,21 @@ namespace Dml
         assert(!m_closed);
 
         m_uploadHeap->BeginUploadToGpu(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, AsByteSpan(srcData, static_cast<size_t>(srcDataSize)));
+        FlushUploadsIfReady();
 
         return S_OK;
         }
         ORT_CATCH_RETURN
+    }
+
+    void ExecutionProviderImpl::FlushUploadsIfReady() const
+    {
+        // Periodically flush uploads to make sure the GPU is not idle for too long
+        if (std::chrono::steady_clock::now() - m_lastUploadFlushTime > m_batchFlushInterval)
+        {
+            Flush();
+            m_lastUploadFlushTime = std::chrono::steady_clock::now();
+        }
     }
 
     uint32_t ExecutionProviderImpl::GetSupportedDeviceDataTypeMask() const
@@ -524,18 +598,35 @@ namespace Dml
 
     bool TryGetTensorDataType(
         const onnxruntime::NodeArg& nodeArg,
+        _Out_ MLOperatorEdgeType* edgeType,
         _Out_ MLOperatorTensorDataType* onnxElementType
     )
     {
         *onnxElementType = MLOperatorTensorDataType::Undefined;
+        *edgeType = MLOperatorEdgeType::Undefined;
 
         const ::onnx::TypeProto* typeProto = nodeArg.TypeAsProto();
-        if (typeProto != nullptr && typeProto->has_tensor_type())
+        if (typeProto != nullptr)
         {
-            const ::onnx::TypeProto_Tensor& tensorTypeProto = typeProto->tensor_type();
-            if (tensorTypeProto.has_elem_type())
+            const ::onnx::TypeProto_Tensor* tensorTypeProto;
+            if (typeProto->has_tensor_type())
             {
-                *onnxElementType = static_cast<MLOperatorTensorDataType>(tensorTypeProto.elem_type());
+                *edgeType = MLOperatorEdgeType::Tensor;
+                tensorTypeProto = &typeProto->tensor_type();
+            }
+            else if (typeProto->has_sequence_type())
+            {
+                *edgeType = MLOperatorEdgeType::SequenceTensor;
+                tensorTypeProto = &typeProto->sequence_type().elem_type().tensor_type();
+            }
+            else
+            {
+                return false;
+            }
+
+            if (tensorTypeProto->has_elem_type())
+            {
+                *onnxElementType = static_cast<MLOperatorTensorDataType>(tensorTypeProto->elem_type());
                 return true;
             }
         }
@@ -543,10 +634,68 @@ namespace Dml
         return false;
     }
 
+    bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
+    {
+        auto cpuOnDmlOperators = std::array<char*, 8>{
+            "SequenceAt",
+            "SequenceConstruct",
+            "SequenceEmpty",
+            "SequenceLength",
+            "SequenceErase",
+            "SequenceInsert",
+            "OptionalGetElement",
+            "OptionalHasElement"
+        };
+
+        for (auto& cpuOnDmlOperator : cpuOnDmlOperators)
+        {
+            if (strcmp(cpuOnDmlOperator, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool IsDmlSequenceOperator(const onnxruntime::Node& node)
+    {
+        auto sequence_ops = std::array<char*, 1>{
+            "ConcatFromSequence"
+        };
+
+        for (auto& sequence_op : sequence_ops)
+        {
+            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool IsCustomOpShader(const onnxruntime::Node& node)
+    {
+        auto custom_ops = std::array<char*, 3>{
+            "DFT",
+            "STFT",
+            "GridSample"
+        };
+
+        for (auto& custom_op : custom_ops)
+        {
+            if (strcmp(custom_op, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool DoesNodeContainSupportedDataTypes(
         const onnxruntime::Node& node,
         _In_opt_ const InternalRegistrationInfo* regInfo,
-        uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        bool native16BitShaderOpsSupported
         )
     {
         std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
@@ -576,8 +725,9 @@ namespace Dml
             // Use the enumeration from the proto instead of nodeArg.Type() which returns a string.
 
             // Reject node if undefined data type or non-tensor, as DML cannot handle it.
+            MLOperatorEdgeType edgeType;
             MLOperatorTensorDataType onnxElementType;
-            if (!TryGetTensorDataType(nodeArg, &onnxElementType))
+            if (!TryGetTensorDataType(nodeArg, &edgeType, &onnxElementType))
             {
                 // We shouldn't have arrived here because (1) no DML operators should have been
                 // registered which use non-tensor types (2) ONNX validation should have already
@@ -587,6 +737,24 @@ namespace Dml
                 // besides tensors, then remove the assert.
                 assert(false);
                 nodeContainsSupportedDataTypes = false;
+                return;
+            }
+
+            if (onnxElementType == MLOperatorTensorDataType::Float16 &&
+                !native16BitShaderOpsSupported &&
+                IsCustomOpShader(node))
+            {
+                nodeContainsSupportedDataTypes = false;
+                return;
+            }
+
+            // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
+            if (edgeType == MLOperatorEdgeType::SequenceTensor)
+            {
+                if (!IsCpuOnDmlOperator(node) && !IsDmlSequenceOperator(node))
+                {
+                    nodeContainsSupportedDataTypes = false;
+                }
                 return;
             }
 
@@ -650,7 +818,7 @@ namespace Dml
         }
 
         // Check whether the node uses any data types which are unsupported by the device.
-        if (!DoesNodeContainSupportedDataTypes(node, internalRegInfo.get(), supportedDeviceDataTypeMask))
+        if (!DoesNodeContainSupportedDataTypes(node, internalRegInfo.get(), supportedDeviceDataTypeMask, m_native16BitShaderOpsSupported))
         {
             return false;
         }
@@ -792,11 +960,6 @@ namespace Dml
     {
         assert(!m_closed);
         m_context->Flush();
-    }
-
-    void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-    {
-        m_allocator->SetDefaultRoundingMode(roundingMode);
     }
 
     void ExecutionProviderImpl::ReleaseCompletedReferences()
@@ -946,12 +1109,6 @@ namespace Dml
         return m_cpuInputAllocator;
     }
 
-    std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuOutputAllocator()
-    {
-        return m_cpuOutputAllocator;
-    }
-
-
     onnxruntime::common::Status ExecutionProviderImpl::OnSessionInitializationEnd()
     {
         // Flush and trim resources, including staging memory used to upload weights.
@@ -961,6 +1118,10 @@ namespace Dml
         m_context->GetCurrentCompletionEvent().WaitForSignal();
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
+
+        // Allocations after this point are potentially transient and their sizes are
+        // rounded to enable pooling.
+        m_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
 
         return onnxruntime::common::Status::OK();
     }
@@ -983,12 +1144,6 @@ namespace Dml
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->Flush();
-    }
-
-    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->SetDefaultRoundingMode(roundingMode);
     }
 
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider * provider)

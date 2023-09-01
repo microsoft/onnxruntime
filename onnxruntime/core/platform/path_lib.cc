@@ -20,13 +20,6 @@
 #include <PathCch.h>
 #pragma pop_macro("WINAPI_FAMILY")
 #pragma comment(lib, "PathCch.lib")
-#elif defined(USE_PATHCCH_LIB)
-#include <PathCch.h>
-#pragma comment(lib, "PathCch.lib")
-// Desktop apps need to support back to Windows 7, so we can't use PathCch.lib as it was added in Windows 8
-#elif WINVER < _WIN32_WINNT_WIN8
-#include <shlwapi.h>
-#pragma comment(lib, "Shlwapi.lib")
 #else
 #include <PathCch.h>
 #pragma comment(lib, "PathCch.lib")
@@ -45,33 +38,6 @@ namespace {
 
 Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
   assert(pszPath != nullptr && pszPath[0] != L'\0');
-#if WINVER < _WIN32_WINNT_WIN8 && !defined(USE_PATHCCH_LIB) && !defined(_GAMING_XBOX)
-  (void)cchPath;
-  for (PCWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
-    ;
-  PWSTR pszLast = PathSkipRootW(pszPath);
-  if (pszLast == nullptr) pszLast = pszPath;
-  if (*pszLast == L'\0') {
-    return Status::OK();
-  }
-  PWSTR beginning_of_the_last = pszLast;
-  for (PWSTR t;; beginning_of_the_last = t) {
-    t = PathFindNextComponentW(beginning_of_the_last);
-    if (t == nullptr) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "unexpected failure");
-    }
-    if (*t == L'\0')
-      break;
-  }
-  *beginning_of_the_last = L'\0';
-  if (*pszPath == L'\0') {
-    pszPath[0] = L'.';
-    pszPath[1] = L'\0';
-  } else
-    for (PCWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
-      ;
-  return Status::OK();
-#else
   // Remove any trailing backslashes
   auto result = PathCchRemoveBackslash(pszPath, cchPath);
   if (result == S_OK || result == S_FALSE) {
@@ -87,7 +53,6 @@ Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
     }
   }
   return Status(common::ONNXRUNTIME, common::FAIL, "unexpected failure");
-#endif
 }
 
 }  // namespace

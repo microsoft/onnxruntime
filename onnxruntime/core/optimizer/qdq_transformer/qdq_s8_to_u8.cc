@@ -15,10 +15,10 @@ namespace onnxruntime {
  * @brief Given a QuantizeLinear and DequantizeLinear pair with type int8_t,
  *        Convert them to uint8_t
  * @param graph
- * @param q_node 
- * @param dq_node 
+ * @param q_node
+ * @param dq_node
  * @return whether conversion happened
-*/
+ */
 static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
   auto& q_input_defs = q_node.MutableInputDefs();
   auto& dq_input_defs = dq_node.MutableInputDefs();
@@ -39,7 +39,7 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
     return false;
   }
 
-  //TODO(fuchen): need to augment this when we support per row quantization
+  // TODO(fuchen): need to augment this when we support per row quantization
   using ONNX_TENSOR_ELEM_TYPE = ONNX_NAMESPACE::TensorProto::DataType;
   Initializer q_zero_point(*q_zp_tensor_proto, graph.ModelPath());
   Initializer dq_zero_point(*dq_zp_tensor_proto, graph.ModelPath());
@@ -73,7 +73,6 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
   return true;
 }
 
-
 // Convert QuantizeLinear and DequantizeLinear pair with type int8_t to type uint8_t
 Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                        const logging::Logger& logger) const {
@@ -89,7 +88,7 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
-        continue;
+      continue;
     }
 
     // recognize Q + DQ pair

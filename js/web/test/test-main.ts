@@ -54,6 +54,9 @@ if (options.globalEnvFlags) {
   if (flags.wasm?.initTimeout !== undefined) {
     ort.env.wasm.initTimeout = flags.wasm.initTimeout;
   }
+  if (flags.webgpu?.profilingMode !== undefined) {
+    ort.env.webgpu.profilingMode = flags.webgpu.profilingMode;
+  }
 }
 
 // Set logging configuration
@@ -61,7 +64,7 @@ for (const logConfig of ORT_WEB_TEST_CONFIG.log) {
   Logger.set(logConfig.category, logConfig.config);
 }
 
-import {ModelTestContext, OpTestContext, runModelTestSet, runOpTest} from './test-runner';
+import {ModelTestContext, OpTestContext, ProtoOpTestContext, runModelTestSet, runOpTest} from './test-runner';
 import {readJsonFile} from './test-shared';
 
 // Unit test
@@ -83,14 +86,14 @@ function shouldSkipTest(test: Test.ModelTest|Test.OperatorTest) {
   if (!test.cases || test.cases.length === 0) {
     return true;
   }
-  if (!test.condition) {
+  if (!test.platformCondition) {
     return false;
   }
 
   if (!platform.description) {
     throw new Error('failed to check current platform');
   }
-  const regex = new RegExp(test.condition);
+  const regex = new RegExp(test.platformCondition);
   return !regex.test(platform.description);
 }
 
@@ -103,7 +106,8 @@ for (const group of ORT_WEB_TEST_CONFIG.model) {
         let context: ModelTestContext;
 
         before('prepare session', async () => {
-          context = await ModelTestContext.create(test, ORT_WEB_TEST_CONFIG.profile);
+          context = await ModelTestContext.create(
+              test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options.sessionOptions);
         });
 
         after('release session', () => {
@@ -127,22 +131,35 @@ for (const group of ORT_WEB_TEST_CONFIG.op) {
   describe(`#OpTest# - ${group.name}`, () => {
     for (const test of group.tests) {
       const describeTest = shouldSkipTest(test) ? describe.skip : describe;
-      describeTest(`[${test.backend!}]${test.operator} - ${test.name}`, () => {
-        let context: OpTestContext;
+      const backend = test.backend!;
+      const useProtoOpTest = backend !== 'webgl';
+      describeTest(`[${backend}]${test.operator} - ${test.name}`, () => {
+        let context: ProtoOpTestContext|OpTestContext;
 
         before('Initialize Context', async () => {
-          context = new OpTestContext(test);
+          context = useProtoOpTest ? new ProtoOpTestContext(test, ORT_WEB_TEST_CONFIG.options.sessionOptions) :
+                                     new OpTestContext(test);
           await context.init();
           if (ORT_WEB_TEST_CONFIG.profile) {
-            OpTestContext.profiler.start();
+            if (context instanceof ProtoOpTestContext) {
+              context.session.startProfiling();
+            } else {
+              OpTestContext.profiler.start();
+            }
           }
         });
 
-        after('Dispose Context', () => {
-          if (ORT_WEB_TEST_CONFIG.profile) {
-            OpTestContext.profiler.stop();
+        after('Dispose Context', async () => {
+          if (context) {
+            if (ORT_WEB_TEST_CONFIG.profile) {
+              if (context instanceof ProtoOpTestContext) {
+                context.session.endProfiling();
+              } else {
+                OpTestContext.profiler.stop();
+              }
+            }
+            await context.dispose();
           }
-          context.dispose();
         });
 
         for (const testCase of test.cases) {

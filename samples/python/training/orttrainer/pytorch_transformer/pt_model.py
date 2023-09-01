@@ -6,7 +6,7 @@ import torch.nn as nn
 
 class TransformerModel(nn.Module):
     def __init__(self, ntoken, ninp, nhead, nhid, nlayers, dropout=0.5):
-        super(TransformerModel, self).__init__()
+        super().__init__()
         from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
         self.model_type = "Transformer"
@@ -46,7 +46,7 @@ class TransformerModel(nn.Module):
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(PositionalEncoding, self).__init__()
+        super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
         pe = torch.zeros(max_len, d_model)

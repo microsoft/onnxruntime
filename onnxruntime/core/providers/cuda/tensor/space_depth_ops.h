@@ -39,4 +39,4 @@ class DepthToSpace final : public CudaKernel, SpaceDepthBase {
 };
 
 }  // namespace cuda
-}  //namespace onnxruntime
+}  // namespace onnxruntime

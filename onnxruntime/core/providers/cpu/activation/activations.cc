@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/activation/activations.h"
+#include "core/providers/cpu/fp16/fp16_activations.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/activations.h"
 #endif
-#include "core/mlas/inc/mlas.h"
 
 using namespace onnxruntime::common;
 
@@ -43,6 +44,14 @@ REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 14, float);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 14, double);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 14, int8_t);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 14, int32_t);
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 6, 12, MLFloat16);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 13, 13, MLFloat16);
+REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 14, MLFloat16);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(LeakyRelu, 6, 15, MLFloat16);
+REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(LeakyRelu, 16, MLFloat16);
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
+
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Selu, 6);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Sigmoid, 6, 12, float);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Sigmoid, 6, 12, double);

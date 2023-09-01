@@ -20,6 +20,7 @@ const std::vector<std::string> RoctracerManager::hip_api_calls_to_trace = {
     "hipMemset",
     "hipMemsetAsync",
     "hipExtModuleLaunchKernel",
+    "hipExtLaunchKernel",
 };
 
 // Implementation of RoctracerManager
@@ -231,6 +232,22 @@ bool RoctracerManager::CreateEventForActivityRecord(const roctracer_record_t* re
           {"block_y", std::to_string(launch_args.localWorkSizeY)},
           {"block_z", std::to_string(launch_args.localWorkSizeZ)},
       };
+      break;
+    }
+
+    case HIP_API_ID_hipExtLaunchKernel: {
+      auto const& launch_args = call_record.api_data_.args.hipExtLaunchKernel;
+      name = demangle(hipKernelNameRefByPtr(launch_args.function_address,
+                                            launch_args.stream));
+
+      args = {
+          {"stream", PointerToHexString((void*)(launch_args.stream))},
+          {"grid_x", std::to_string(launch_args.numBlocks.x)},
+          {"grid_y", std::to_string(launch_args.numBlocks.y)},
+          {"grid_z", std::to_string(launch_args.numBlocks.z)},
+          {"block_x", std::to_string(launch_args.dimBlocks.x)},
+          {"block_y", std::to_string(launch_args.dimBlocks.y)},
+          {"block_z", std::to_string(launch_args.dimBlocks.z)}};
       break;
     }
 

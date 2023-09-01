@@ -54,7 +54,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
     ratio = 0.5f;
   } else {
     if (use_float16_ratio) {
-      t.AddInput("ratio", {}, {MLFloat16(math::floatToHalf(ratio))});
+      t.AddInput("ratio", {}, {MLFloat16(ratio)});
     } else {
       t.AddInput("ratio", {}, {ratio});
     }
@@ -79,7 +79,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     ASSERT_GE(fetches.size(), 1);
-    const auto& output_tensor = FetchTensor(fetches[0]);
+    const auto& output_tensor = fetches[0].Get<Tensor>();
     auto output_span = output_tensor.DataAsSpan<float>();
 
     const auto num_dropped_values = std::count(output_span.begin(), output_span.end(), 0.0f);
@@ -100,7 +100,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 
     if (use_mask) {
       ASSERT_GE(fetches.size(), 2);
-      const auto& mask_tensor = FetchTensor(fetches[1]);
+      const auto& mask_tensor = fetches[1].Get<Tensor>();
       auto mask_span = mask_tensor.DataAsSpan<bool>();
       ASSERT_EQ(mask_span.size(), output_span.size()) << "provider: " << provider_type;
 
@@ -207,20 +207,20 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
 
 TEST(DropoutGradTest, Basic) {
   // N % 4 != 0
-  //Ratio 0.3, 2D
+  // Ratio 0.3, 2D
   RunDropoutGradTest(0.3f, {5, 6}, false);
 
   // N %4 == 0
-  //Ratio 0.2, 1D
+  // Ratio 0.2, 1D
   RunDropoutGradTest(0.2f, {16}, false);
 
-  //Ratio 0.3, 2D
+  // Ratio 0.3, 2D
   RunDropoutGradTest(0.3f, {8, 2}, false);
 
-  //Ratio 0.4, 3D
+  // Ratio 0.4, 3D
   RunDropoutGradTest(0.4f, {2, 4, 2}, false);
 
-  //default Ratio, 3D
+  // default Ratio, 3D
   RunDropoutGradTest(0.5f, {2, 4, 2});
 }
 TEST(DropoutGradTest, RatioLimit) {

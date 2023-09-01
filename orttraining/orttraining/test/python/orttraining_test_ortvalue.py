@@ -3,20 +3,22 @@
 # Licensed under the MIT License.
 # pylint: disable=W0212,C0114,C0116
 
-import unittest
 import copy
 import sys
+import unittest
+
+import _test_helpers
 import numpy as np
-from numpy.testing import assert_almost_equal
-import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import OrtValue as C_OrtValue, OrtValueVector
-from onnxruntime.training.ortmodule import ORTModule, _utils
-from onnxruntime.capi import _pybind_state as C
 import torch
+from numpy.testing import assert_almost_equal
 from torch._C import _from_dlpack
 from torch.utils.dlpack import from_dlpack
-import _test_helpers
 
+import onnxruntime as onnxrt
+from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi.onnxruntime_pybind11_state import OrtValue as C_OrtValue
+from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
+from onnxruntime.training.ortmodule import ORTModule, _utils
 
 has_cuda = torch.cuda.is_available()
 
@@ -69,7 +71,7 @@ class TestOrtValue(unittest.TestCase):
         self.assertEqual((1, 0), device)
 
     def testOrtValueDlPack_bool(self):
-        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.bool)
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=bool)
         ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
         self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
         ptr = ortvalue._ortvalue.data_ptr()
@@ -208,7 +210,7 @@ class TestOrtValue(unittest.TestCase):
     def test_ortmodule_dlpack(self):
         class NeuralNetTanh(torch.nn.Module):
             def __init__(self, input_size, hidden_size, num_classes):
-                super(NeuralNetTanh, self).__init__()
+                super().__init__()
 
                 self.fc1 = torch.nn.Linear(input_size, hidden_size)
                 self.tanh = torch.nn.Tanh()
@@ -224,11 +226,11 @@ class TestOrtValue(unittest.TestCase):
             loss.backward()
             return prediction, loss
 
-        N, D_in, H, D_out = 120, 1536, 500, 1536
+        N, D_in, H, D_out = 120, 1536, 500, 1536  # noqa: N806
         pt_model = NeuralNetTanh(D_in, H, D_out)
         ort_model = ORTModule(copy.deepcopy(pt_model))
 
-        for step in range(10):
+        for _step in range(10):
             pt_x = torch.randn(N, D_in, device="cpu", requires_grad=True)
             ort_x = copy.deepcopy(pt_x)
             ort_prediction, ort_loss = run_step(ort_model, ort_x)
@@ -240,7 +242,7 @@ class TestOrtValue(unittest.TestCase):
     def test_bool_input_and_output(self):
         class NeuralNetBoolInputOutput(torch.nn.Module):
             def __init__(self, input_size, num_classes):
-                super(NeuralNetBoolInputOutput, self).__init__()
+                super().__init__()
                 self.fc = torch.nn.Linear(input_size, num_classes)
                 self.relu = torch.nn.ReLU()
 
@@ -250,7 +252,7 @@ class TestOrtValue(unittest.TestCase):
                 return out1, out2
 
         device = "cpu"
-        N, D_in, D_out = 8, 16, 2
+        N, D_in, D_out = 8, 16, 2  # noqa: N806
         model = NeuralNetBoolInputOutput(D_in, D_out).to(device)
         model = ORTModule(model)
         condition = torch.randint(2, (N, D_in), dtype=torch.bool, device=device)

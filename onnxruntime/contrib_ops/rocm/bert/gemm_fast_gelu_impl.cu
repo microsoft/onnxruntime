@@ -20,6 +20,7 @@ namespace row_major {
 template <typename T, typename ScalarT>
 inline GEMMFASTGELU(T, ScalarT) {
   GemmFastGeluParams<T> params;
+  params.tuning_ctx = tuning_ctx;
   params.stream = stream;
   params.handle = handle;
 
@@ -46,23 +47,18 @@ inline GEMMFASTGELU(T, ScalarT) {
   params.c = c;
   params.ldc = ldc;
 
-  if (tunable) {
-    params.tuning = true;
+  if (tuning_ctx->IsTunableOpEnabled()) {
     if (opa == BlasOp::N && opb == BlasOp::N) {
       static internal::GemmFastGeluTunableOp<T, internal::Row, internal::Row> gemm_fast_gelu{};
-      gemm_fast_gelu.EnableTuning();
       return gemm_fast_gelu(&params);
     } else if (opa == BlasOp::T && opb == BlasOp::N) {
       static internal::GemmFastGeluTunableOp<T, internal::Col, internal::Row> gemm_fast_gelu{};
-      gemm_fast_gelu.EnableTuning();
       return gemm_fast_gelu(&params);
     } else if (opa == BlasOp::N && opb == BlasOp::T) {
       static internal::GemmFastGeluTunableOp<T, internal::Row, internal::Col> gemm_fast_gelu{};
-      gemm_fast_gelu.EnableTuning();
       return gemm_fast_gelu(&params);
     } else /*if (opa == BlasOp::T && opb == BlasOp::T)*/ {
       static internal::GemmFastGeluTunableOp<T, internal::Col, internal::Col> gemm_fast_gelu{};
-      gemm_fast_gelu.EnableTuning();
       return gemm_fast_gelu(&params);
     }
   }
@@ -71,7 +67,7 @@ inline GEMMFASTGELU(T, ScalarT) {
 }
 
 #define CALL_GEMMFASTGELU(T, ScalarT)                   \
-  GemmFastGelu<T, ScalarT>(tunable, stream, handle,     \
+  GemmFastGelu<T, ScalarT>(tuning_ctx, stream, handle,  \
                            opa, opb,                    \
                            m, n, k,                     \
                            alpha, a, lda, b, ldb, bias, \

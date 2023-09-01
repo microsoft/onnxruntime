@@ -49,7 +49,7 @@ class MlasNchwcPool2DTest : public MlasPool2DTest<PoolingKind, Threaded> {
                   NchwcOutput,
                   nullptr);
 
-    MlasReorderOutputNchw(OutputShape, NchwcOutput, Output);
+    MlasReorderOutputNchw(OutputShape, NchwcOutput, Output, nullptr);
   }
 
   MatrixGuardBuffer<float> BufferNchwcInput;

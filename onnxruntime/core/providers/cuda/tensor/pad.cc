@@ -135,14 +135,14 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> input_strides(input_pitches);
 
   auto output_dims(input_shape.AsShapeVector());
-  ORT_ENFORCE(static_cast<size_t>(dimension_count * 2) == p_pads->size(), "'pads' attribute has wrong number of values");
+  ORT_ENFORCE(static_cast<size_t>(dimension_count) * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding
   TArray<int64_t> lower_pads(dimension_count);
   TArray<int64_t> upper_pads(dimension_count);
   for (auto i = 0; i < dimension_count; i++) {
     lower_pads[i] = (*p_pads)[i] + (*p_slices)[i];
-    upper_pads[i] = (*p_pads)[i + dimension_count] + (*p_slices)[i + dimension_count];
+    upper_pads[i] = (*p_pads)[static_cast<int64_t>(i) + dimension_count] + (*p_slices)[static_cast<int64_t>(i) + dimension_count];
     output_dims[i] += lower_pads[i] + upper_pads[i];
   }
 

@@ -48,9 +48,7 @@ def onnx_compile(
             log.info("Build TVM graph executor")
             lib = relay.build(irmod, target=target, params=params)
         else:
-            log.error(
-                "Executor type {} is unsupported. ".format(executor) + 'Only "vm" and "graph" types are supported'
-            )
+            log.error(f'Executor type {executor} is unsupported. Only "vm" and "graph" types are supported')
             return None
         return lib
 
@@ -77,7 +75,7 @@ def onnx_compile(
     irmod = relay.transform.DynamicToStatic()(irmod)
 
     # Tuning file can be set by client through ep options
-    if tuning_logfile == "":
+    if not tuning_logfile:
         tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")
     lib = None
     tvm_target = tvm.target.Target(target, host=target_host)
@@ -89,8 +87,8 @@ def onnx_compile(
                 "nn.upsampling": ["NHWC", "default"],
                 "vision.roi_align": ["NHWC", "default"],
             }
-            log.info("Use tuning file from ", ANSOR_TYPE, ": ", tuning_logfile)
-            with auto_scheduler.ApplyHistoryBest(tuning_logfile):
+            log.info("Use tuning file from %s: %s", ANSOR_TYPE, tuning_logfile)
+            with auto_scheduler.ApplyHistoryBest(tuning_logfile):  # noqa: SIM117
                 with tvm.transform.PassContext(
                     opt_level=opt_level,
                     config={
@@ -111,13 +109,13 @@ def onnx_compile(
                     lib = get_tvm_executor(irmod, executor, tvm_target, params)
         elif tuning_type == AUTO_TVM_TYPE:
             with relay.build_config(opt_level=opt_level):
-                log.info("Use tuning file from ", AUTO_TVM_TYPE, ": ", tuning_logfile)
+                log.info("Use tuning file from %s: %s", AUTO_TVM_TYPE, tuning_logfile)
                 with autotvm.apply_history_best(tuning_logfile):
                     lib = get_tvm_executor(irmod, executor, tvm_target, params)
         else:
             log.error(
-                "Tuning log type {} is unsupported. ".format(tuning_type)
-                + "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE)
+                f"Tuning log type {tuning_type} is unsupported. "
+                f"Only {ANSOR_TYPE} and {AUTO_TVM_TYPE} types are supported"
             )
             return None
     else:
@@ -134,7 +132,7 @@ def onnx_compile(
         m = graph_executor.GraphModule(lib["default"](ctx))
     else:
         print(
-            "ERROR: Executor type {} is unsupported. ".format(executor),
+            f"ERROR: Executor type {executor} is unsupported. ",
             'Only "vm" and "graph" types are supported',
         )
         return None

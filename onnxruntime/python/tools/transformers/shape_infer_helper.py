@@ -15,7 +15,7 @@ if os.path.exists(os.path.join(file_path, "../tools/symbolic_shape_infer.py")):
 else:
     sys.path.append(os.path.join(file_path, ".."))
 
-from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy
+from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

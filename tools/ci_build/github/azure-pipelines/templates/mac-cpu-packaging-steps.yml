@@ -1,0 +1,104 @@
+parameters:
+- name: MacosArch
+  type: string
+  values:
+  - 'x86_64'
+  - 'arm64'
+  - 'universal2'
+  default: 'x86_64'
+
+- name: AdditionalBuildFlags
+  displayName: Additional build flags for build.py
+  type: string
+  default: ''
+
+- name: BuildJava
+  displayName: Build with Java
+  type: boolean
+  default: true
+
+- name: BuildNodejs
+  displayName: Build with Nodejs
+  type: boolean
+  default: false
+
+- name: WithCache
+  displayName: Build with Cache
+  type: boolean
+  default: false
+
+- name: CacheDir
+  displayName: Cache Directory
+  type: string
+  default: ''
+
+- name: Today
+  type: string
+  default: ""
+
+steps:
+- template: mac-build-step-with-cache.yml
+  parameters:
+    WithCache: ${{ parameters.WithCache }}
+    Today: ${{ parameters.Today }}
+    AdditionalKey: onnxruntime_${{ parameters.MacosArch }}
+    CacheDir: ${{ parameters.CacheDir }}
+    ChangeEveryCommit: true
+    BuildStep:
+      - script: |
+          rm -rf $(Build.BinariesDirectory)/Release
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+        displayName: 'Build ${{ parameters.MacosArch }}'
+        env:
+          CCACHE_DIR: ${{ parameters.CacheDir }}
+
+- ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+    displayName: 'Running Tests'
+
+- task: ShellScript@2
+  displayName: 'Copy build artifacts for zipping'
+  inputs:
+    scriptPath: 'tools/ci_build/github/linux/copy_strip_binary.sh'
+    args: '-r $(Build.BinariesDirectory) -a onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion) -l libonnxruntime.$(OnnxRuntimeVersion).dylib -c Release -s $(Build.SourcesDirectory) -t $(Build.SourceVersion)'
+    workingDirectory: '$(Build.BinariesDirectory)/Release'
+
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: '$(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)'
+    includeRootFolder: true
+    archiveType: 'tar' # Options: zip, 7z, tar, wim
+    tarCompression: 'gz'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion).tgz'
+    replaceExistingArchive: true
+
+- script: |
+   set -e -x
+   mkdir -p $(Build.ArtifactStagingDirectory)/testdata
+   cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
+  displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
+  condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
+
+- publish: '$(Build.ArtifactStagingDirectory)'
+  artifact: 'onnxruntime-osx-${{ parameters.MacosArch }}'
+
+- ${{ if eq(parameters.BuildJava, true) }}:
+    - template: java-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          arch: 'osx-${{ parameters.MacosArch }}'
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-java-osx-${{ parameters.MacosArch }}'
+          version: '$(OnnxRuntimeVersion)'
+          libraryName: 'libonnxruntime.dylib'
+          nativeLibraryName: 'libonnxruntime4j_jni.dylib'
+
+- ${{ if eq(parameters.BuildNodejs, true) }}:
+    - template: nodejs-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+              arch: x64
+          ${{ if eq(parameters.MacosArch, 'arm64') }}:
+              arch: arm64
+          os: 'darwin'
+          artifactName: 'drop-onnxruntime-nodejs-osx-${{ parameters.MacosArch }}'

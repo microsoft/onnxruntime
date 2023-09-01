@@ -15,13 +15,13 @@ class CPUIDInfo {
     return cpuid_info;
   }
 
-  bool HasAMX_BF16() const {return has_amx_bf16_;}
+  bool HasAMX_BF16() const { return has_amx_bf16_; }
   bool HasAVX() const { return has_avx_; }
   bool HasAVX2() const { return has_avx2_; }
   bool HasAVX512f() const { return has_avx512f_; }
-  bool HasAVX512_BF16() const {return has_avx512_bf16_;}
+  bool HasAVX512_BF16() const { return has_avx512_bf16_; }
   bool HasAVX512Skylake() const { return has_avx512_skylake_; }
-  bool HasF16C() const { return has_f16c_; }
+  bool HasF16C() const { return has_f16c_; } /*fp16 conversion inst*/
   bool HasSSE3() const { return has_sse3_; }
   bool HasSSE4_1() const { return has_sse4_1_; }
   bool IsHybrid() const { return is_hybrid_; }
@@ -33,7 +33,7 @@ class CPUIDInfo {
 
   /**
    * @return CPU core micro-architecture running the current thread
-  */
+   */
   int32_t GetCurrentUarch() const {
     if (core_uarchs_.empty()) {
       return -1;
@@ -48,7 +48,7 @@ class CPUIDInfo {
 
   /**
    * @return CPU core micro-architecture
-  */
+   */
   int32_t GetCoreUarch(uint32_t coreId) const {
     if (coreId >= core_uarchs_.size()) {
       return -1;
@@ -57,10 +57,10 @@ class CPUIDInfo {
   }
 
   /**
-  * @brief Some ARMv8 power efficient core has narrower 64b load/store
-  *        that needs specialized optimiztion in kernels
-  * @return whether the indicated core has narrower load/store device
-  */
+   * @brief Some ARMv8 power efficient core has narrower 64b load/store
+   *        that needs specialized optimiztion in kernels
+   * @return whether the indicated core has narrower load/store device
+   */
   bool IsCoreArmv8NarrowLd(uint32_t coreId) const {
     if (coreId >= is_armv8_narrow_ld_.size()) {
       return false;
@@ -69,10 +69,10 @@ class CPUIDInfo {
   }
 
   /**
-  * @brief Some ARMv8 power efficient core has narrower 64b load/store
-  *        that needs specialized optimiztion in kernels
-  * @return whether the current core has narrower load/store device
-  */
+   * @brief Some ARMv8 power efficient core has narrower 64b load/store
+   *        that needs specialized optimiztion in kernels
+   * @return whether the current core has narrower load/store device
+   */
   bool IsCurrentCoreArmv8NarrowLd() const {
     if (is_armv8_narrow_ld_.empty()) {
       return false;
@@ -85,6 +85,9 @@ class CPUIDInfo {
     return is_armv8_narrow_ld_[coreIdx];
   }
 
+  bool HasFp16VectorAcceleration() const {
+    return has_fp16_;
+  }
 
  private:
   CPUIDInfo() {
@@ -97,7 +100,6 @@ class CPUIDInfo {
     ArmWindowsInit();
 #endif /* (arm or arm64) and windows */
 #endif
-
   }
   bool has_amx_bf16_{false};
   bool has_avx_{false};
@@ -110,7 +112,7 @@ class CPUIDInfo {
   bool has_sse4_1_{false};
   bool is_hybrid_{false};
 
-  std::vector<uint32_t> core_uarchs_; // micro-arch of each core
+  std::vector<uint32_t> core_uarchs_;  // micro-arch of each core
 
   // In ARMv8 systems, some power efficient cores has narrower
   // 64b load/store devices. It takes longer for them to load
@@ -118,6 +120,7 @@ class CPUIDInfo {
   std::vector<bool> is_armv8_narrow_ld_;
 
   bool has_arm_neon_dot_{false};
+  bool has_fp16_{false};
 
 #ifdef CPUIDINFO_ARCH_X86
 
@@ -135,7 +138,6 @@ class CPUIDInfo {
 
 #endif /* (arm or arm64) and windows */
 #endif
-
 };
 
 }  // namespace onnxruntime

@@ -18,14 +18,36 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
   set(OUTPUT_STYLE xcode)
 endif()
 
+set(ONNXRUNTIME_PUBLIC_HEADERS
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
+)
+
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
+  list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
+  list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
+endif()
+
 # This macro is to get the path of header files for mobile packaging, for iOS and Android
 macro(get_mobile_api_headers _HEADERS)
   # include both c and cxx api
   set(${_HEADERS}
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
   )
+
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
+  endif()
 
   # need to add header files for enabled EPs
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
@@ -98,7 +120,7 @@ else()
 endif()
 
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
-target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
+target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
 target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${VERSION_MINOR_PART})
@@ -130,7 +152,7 @@ if (NOT WIN32)
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
-  elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
+  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   endif()
 endif()
@@ -178,13 +200,14 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
   ${PROVIDERS_NNAPI}
+  ${PROVIDERS_QNN}
   ${PROVIDERS_SNPE}
   ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
-  ${PROVIDERS_ROCM}
   ${PROVIDERS_VITISAI}
   ${PROVIDERS_XNNPACK}
-  ${PROVIDERS_CLOUD}
+  ${PROVIDERS_WEBNN}
+  ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
   ${onnxruntime_winml}
   onnxruntime_optimizer
@@ -205,6 +228,13 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   )
 endif()
 
+if (onnxruntime_USE_EXTENSIONS)
+  list(APPEND onnxruntime_INTERNAL_LIBRARIES
+    onnxruntime_extensions
+    ocos_operators
+  )
+endif()
+
 # If you are linking a new library, please add it to the list onnxruntime_INTERNAL_LIBRARIES or onnxruntime_EXTERNAL_LIBRARIES,
 # Please do not add a library directly to the target_link_libraries command
 target_link_libraries(onnxruntime PRIVATE
@@ -213,18 +243,21 @@ target_link_libraries(onnxruntime PRIVATE
 )
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
-set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
-
-
-set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})
+set_target_properties(onnxruntime PROPERTIES
+  PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+  LINK_DEPENDS ${SYMBOL_FILE}
+  VERSION ${ORT_VERSION}
+  FOLDER "ONNXRuntime"
+)
 
 install(TARGETS onnxruntime
+        EXPORT ${PROJECT_NAME}Targets
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime
         ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+        RUNTIME   DESTINATION ${CMAKE_INSTALL_LIBDIR}
         FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
 
 if (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
   # Workaround STL bug https://github.com/microsoft/STL/issues/434#issuecomment-921321254

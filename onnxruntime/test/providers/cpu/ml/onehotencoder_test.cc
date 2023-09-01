@@ -61,7 +61,7 @@ TEST(OneHotEncoderOpTest, IntegerWithInt64) {
 }
 
 /*
-// TODO: Support int32_t type kernel for the op and uncomment the test 
+// TODO: Support int32_t type kernel for the op and uncomment the test
 TEST(OneHotEncoderOpTest, IntegerWithInt32) {
   vector<int32_t> input{ 8, 1, 0, 0, 3, 7, 4 };
   TestIntCategory<int32_t>(input);
@@ -69,7 +69,7 @@ TEST(OneHotEncoderOpTest, IntegerWithInt32) {
 */
 
 TEST(OneHotEncoderOpTest, IntegerWithDouble) {
-  vector<double> input{ 8.1f, 1.2f, 0.0f, 0.7f, 3.4f, 7.9f, 4.4f };
+  vector<double> input{8.1f, 1.2f, 0.0f, 0.7f, 3.4f, 7.9f, 4.4f};
   TestIntCategory<double>(input);
 }
 

@@ -17,7 +17,7 @@ namespace onnxruntime::QDQ {
  *                data path
  * @param force   Perform conversion even when tensor values within [-64, 64]
  * @return        Whether the conversion happened.
-*/
+ */
 inline bool Int8TensorProto2Uint8(
     const ONNX_NAMESPACE::TensorProto* src,
     ONNX_NAMESPACE::TensorProto& dst,
@@ -50,7 +50,7 @@ inline bool Int8TensorProto2Uint8(
   Initializer temp(*src, graph.ModelPath());
   int8_t* p = temp.data<int8_t>();
   bool should_convert = false;
-  for (int i = 0; i < temp.size(); i++) {
+  for (size_t i = 0; i < temp.size(); i++) {
     if (*p < -64 || *p > 64) {
       should_convert = true;
     }
@@ -66,13 +66,13 @@ inline bool Int8TensorProto2Uint8(
 
 /**
  * @brief If the op_node has an single int8_t const weight tensor, convert it to uint8_t
- * @param graph 
- * @param op_node 
+ * @param graph
+ * @param op_node
  * @param weights_idx     input index of the weight tensor
  * @param weight_zp_idx   input index of the weight zero point tensor
  * @return true when conversion happened.
-*/
+ */
 extern bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
                                 size_t weights_idx, size_t weight_zp_idx);
 
-}
+}  // namespace onnxruntime::QDQ

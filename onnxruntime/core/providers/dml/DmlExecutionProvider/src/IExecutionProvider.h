@@ -37,7 +37,7 @@ namespace Dml
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputTensors
             ) const noexcept = 0;
-        
+
         STDMETHOD(ExecuteOperator)(
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
@@ -53,6 +53,7 @@ namespace Dml
             ) const noexcept = 0;
 
         STDMETHOD(CopyTensor)(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept = 0;
+        STDMETHOD(CopyTensors)(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept = 0;
 
         STDMETHOD(FillTensorWithPattern)(
             IMLOperatorTensor* dst,

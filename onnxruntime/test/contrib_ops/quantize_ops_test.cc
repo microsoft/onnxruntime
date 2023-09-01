@@ -36,8 +36,19 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int8) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
   test.AddOutput<float>("y", dims, {-40.0f, 14.0f, 220.0f, 274.0f});
-  //Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  // Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Scalar zero & scale with int32
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int32_cpu) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int32_t>("x", dims, {-300, -30, -1025, 1270});
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<int32_t>("zero_point", {}, {0}, true);
+  test.AddOutput<float>("y", dims, {-600.0f, -60.0f, -2050.0f, 2540.0f});
+  test.Run();
 }
 
 #ifdef USE_CUDA
@@ -59,7 +70,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_half_int8) {
   test.AddInput<MLFloat16>("x_scale", {}, ToFloat16({2.0f}));
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
   test.AddOutput<MLFloat16>("y", dims, ToFloat16({-40.0f, 14.0f, 220.0f, 274.0f}));
-  //Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  // Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif
@@ -103,7 +114,7 @@ TEST(DequantizeLinearContribOpTest, DequantizeLinear_1) {
                         {0, 22, 88, 264,
                          0, 24, 96, 288,
                          0, 40, 160, 480});
-  //Disable Tensorrt EP because only zero zero_point is supported.
+  // Disable Tensorrt EP because only zero zero_point is supported.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -150,7 +161,7 @@ TEST(DequantizeLinearContribOpTest, DequantizeLinear_2) {
 
                          42, 42, -7, 7,
                          21, 21, -7, 28});
-  //Disable Tensorrt EP because only zero zero_point is supported.
+  // Disable Tensorrt EP because only zero zero_point is supported.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -203,7 +214,7 @@ void TestQuantizeLinearPerTensorFloatUint8(bool use_initializer_except_x) {
                            255, 0,
                            255, 0,
                            255, 0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8) {
@@ -241,7 +252,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
                           127, -127,
                           127, -128,
                           127, -128});
-  //Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  // Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -270,7 +281,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
                            255, 0,
                            255, 0,
                            255, 0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
@@ -297,7 +308,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
                           127, -127,
                           127, -128,
                           127, -128});
-  //Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  // Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif
@@ -317,7 +328,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_channel) {
                           {0, 2, 3, 255,
                            0, 1, 2, 255,
                            0, 0, 1, 250});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
 // quantize with broadcasting and negative axis (-2 resolves to axis 0)
@@ -335,7 +346,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_channel_negative_axis) {
                           {0, 2, 3, 255,
                            0, 1, 2, 255,
                            0, 0, 1, 250});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 }  // namespace test
 }  // namespace onnxruntime

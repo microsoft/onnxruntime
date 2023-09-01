@@ -13,6 +13,8 @@ namespace cann {
 static int lower_bound = 8;   // Supported domain version lower bounds
 static int upper_bound = 15;  // Supported domain version upper bounds
 
+std::once_flag flag;
+
 /**
  * This function will been changed with the evolution of ONNX and CANN
  * and will be replaced by the corresponding API provided by CANN in the future, probably.
@@ -32,7 +34,7 @@ std::vector<NodeIndex> SupportONNXModel(const GraphViewer& graph_viewer) {
       "GatherElements", "GatherND", "Gemm", "GlobalAveragePool",
       "GlobalLpPool", "GlobalMaxPool", "Greater", "GreaterOrEqual",
       "Hardmax", "HardSigmoid", "HardSwish", "Identity",
-      "If", "InstanceNormalization", "LeakyRelu", "Less",
+      "InstanceNormalization", "LeakyRelu", "Less",
       "LessOrEqual", "Log", "LogSoftmax", "LpNormalization",
       "LpPool", "LRN", "LSTM", "MatMul",
       "Max", "MaxPool", "MaxRoiPool", "MaxUnpool",
@@ -94,19 +96,26 @@ Status ParserONNXModel(std::string string_model, ge::Graph& graph) {
 }
 
 Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc_name, std::string file_name,
-                      ge::ModelBufferData& model) {
+                      CANNExecutionProviderInfo& info, ge::ModelBufferData& model) {
+  std::call_once(flag, [&soc_name, &info]() {
+    std::map<ge::AscendString, ge::AscendString> options;
+    options.emplace(ge::ir_option::SOC_VERSION, soc_name);
+
+    if (!info.precision_mode.empty())
+      options.emplace(ge::ir_option::PRECISION_MODE, info.precision_mode.c_str());
+    if (!info.op_select_impl_mode.empty())
+      options.emplace(ge::ir_option::OP_SELECT_IMPL_MODE, info.op_select_impl_mode.c_str());
+    if (!info.optypelist_for_implmode.empty())
+      options.emplace(ge::ir_option::OPTYPELIST_FOR_IMPLMODE, info.optypelist_for_implmode.c_str());
+
+    CANN_CALL_THROW(ge::aclgrphBuildInitialize(options));
+  });
+
   std::map<ge::AscendString, ge::AscendString> options;
-
-  options.emplace(ge::ir_option::SOC_VERSION, soc_name);
-  CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphBuildInitialize(options));
-
-  options.clear();
   options.emplace(ge::ir_option::INPUT_SHAPE, input_shape.c_str());
   CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphBuildModel(graph, options, model));
 
   CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(file_name.c_str(), model));
-
-  ge::aclgrphBuildFinalize();
 
   return Status::OK();
 }

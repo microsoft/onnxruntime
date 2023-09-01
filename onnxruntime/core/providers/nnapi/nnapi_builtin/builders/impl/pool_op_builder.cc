@@ -146,7 +146,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ADD_SCALAR_OPERAND(model_builder, input_indices, kernel_shape[0]);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {  // nchw only supported on api 29+
+  if (model_builder.GetEffectiveFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {  // nchw only supported on api 29+
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 

@@ -17,7 +17,7 @@ namespace training {
 class Base {};
 class Derived1 : public Base {};
 class Derived2 : public Base {
-public: 
+public:
   Derived2(int val)
     : val_(val) {}
   int val_;
@@ -27,7 +27,7 @@ GenericRegistry<Base> reg;
 
 reg.Register<Derived1>("D1");
 
-// Although Derived2 accepts an int parameter, 
+// Although Derived2 accepts an int parameter,
 // its value must be binded during Register().
 // Because reg is with type GenericRegistry<Base>, not GenericRegistry<Base, int>.
 reg.Register<Derived2>("D2", []()->unique_ptr<Derived2> {return make_unique<Derived2>(100);});

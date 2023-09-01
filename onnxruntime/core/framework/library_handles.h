@@ -13,15 +13,15 @@
 namespace onnxruntime {
 
 /**
-  * Class that owns a collection of dynamic library handles and unloads the library handles when the class instance
-  * goes out of scope.
-  *
-  * Use LibraryHandles::Add() to add a dynamic library handle to an instance of this class.
-  * The destructor unloads all added library handles via Env::UnloadDynamicLibrary().
-  *
-  * This class is currently used in SessionOptions to manage the lifetime of custom operator library handles that have
-  * been registered via OrtApi::RegisterCustomOpsLibrary_V2.
-  */
+ * Class that owns a collection of dynamic library handles and unloads the library handles when the class instance
+ * goes out of scope.
+ *
+ * Use LibraryHandles::Add() to add a dynamic library handle to an instance of this class.
+ * The destructor unloads all added library handles via Env::UnloadDynamicLibrary().
+ *
+ * This class is currently used in SessionOptions to manage the lifetime of custom operator library handles that have
+ * been registered via OrtApi::RegisterCustomOpsLibrary_V2.
+ */
 struct LibraryHandles {
   LibraryHandles() = default;
   ~LibraryHandles() noexcept;

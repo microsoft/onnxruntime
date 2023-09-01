@@ -50,7 +50,7 @@ def add_github_dep(name, parsed_url):
     if segments[3] != "archive":
         print("unrecognized github url path:" + parsed_url.path)
         return
-    git_repo_url = "https://github.com/%s/%s.git" % (org_name, repo_name)
+    git_repo_url = f"https://github.com/{org_name}/{repo_name}.git"
     # For example, the path might be like '/myorg/myrepo/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip'
     # The last segment, segments[4], is '5a5f8a5935762397aa68429b5493084ff970f774.zip'
     if len(segments) == 5 and re.match(r"[0-9a-f]{40}", PurePosixPath(segments[4]).stem):
@@ -72,7 +72,7 @@ def add_github_dep(name, parsed_url):
             print("unrecognized github url path:" + parsed_url.path)
             return
         # Make a REST call to convert to tag to a git commit
-        url = "https://api.github.com/repos/%s/%s/git/refs/tags/%s" % (org_name, repo_name, tag)
+        url = f"https://api.github.com/repos/{org_name}/{repo_name}/git/refs/tags/{tag}"
         print("requesting %s ..." % url)
         res = requests.get(url, auth=(args.username, args.token))
         response_json = res.json()
@@ -92,7 +92,6 @@ def add_github_dep(name, parsed_url):
 
 with open(
     os.path.join(REPO_DIR, "tools", "ci_build", "github", "linux", "docker", "Dockerfile.manylinux2014_cuda11"),
-    mode="r",
 ) as f:
     for line in f:
         if not line.strip():
@@ -157,9 +156,8 @@ proc = subprocess.run(
     ],
     check=True,
     cwd=REPO_DIR,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    universal_newlines=True,
+    capture_output=True,
+    text=True,
 )
 
 

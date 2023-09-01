@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env, InferenceSession} from 'onnxruntime-common';
+import {Env, env, InferenceSession} from 'onnxruntime-common';
 
 import {OrtWasmMessage, SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import * as core from './wasm-core-impl';
@@ -98,7 +98,7 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
 
 const scriptSrc = typeof document !== 'undefined' ? (document?.currentScript as HTMLScriptElement)?.src : undefined;
 
-export const initWasm = async(): Promise<void> => {
+export const initializeWebAssemblyInstance = async(): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     if (initialized) {
       return;
@@ -115,7 +115,7 @@ export const initWasm = async(): Promise<void> => {
     // overwrite wasm filepaths
     if (env.wasm.wasmPaths === undefined) {
       if (scriptSrc && scriptSrc.indexOf('blob:') !== 0) {
-        env.wasm.wasmPaths = scriptSrc.substr(0, (scriptSrc as string).lastIndexOf('/') + 1);
+        env.wasm.wasmPaths = scriptSrc.substr(0, +(scriptSrc).lastIndexOf('/') + 1);
       }
     }
 
@@ -134,16 +134,16 @@ export const initWasm = async(): Promise<void> => {
   }
 };
 
-export const initOrt = async(numThreads: number, loggingLevel: number): Promise<void> => {
+export const initializeRuntime = async(env: Env): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<void>((resolve, reject) => {
       initOrtCallbacks = [resolve, reject];
-      const message: OrtWasmMessage = {type: 'init-ort', in : {numThreads, loggingLevel}};
+      const message: OrtWasmMessage = {type: 'init-ort', in : env};
       proxyWorker!.postMessage(message);
     });
   } else {
-    core.initOrt(numThreads, loggingLevel);
+    await core.initRuntime(env);
   }
 };
 

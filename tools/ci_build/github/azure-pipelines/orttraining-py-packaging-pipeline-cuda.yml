@@ -1,0 +1,36 @@
+trigger: none
+
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
+
+stages:
+- template: templates/py-packaging-training-cuda-stage.yml
+  parameters:
+    build_py_parameters: --enable_training --update --build
+    torch_version: '2.0.0'
+    opset_version: '15'
+    cuda_version: '11.8'
+    gcc_version: 11
+    cmake_cuda_architectures: 50;52;60;61;70;75;80;86;87
+    docker_file: Dockerfile.manylinux2014_training_cuda11_8
+    agent_pool: Onnxruntime-Linux-GPU
+    upload_wheel: 'yes'
+    debug_build: false
+
+- template: templates/py-packaging-training-cuda-stage.yml
+  parameters:
+    build_py_parameters: --enable_training --update --build
+    torch_version: '2.0.0'
+    opset_version: '15'
+    cuda_version: '11.8'
+    gcc_version: 11
+    cmake_cuda_architectures: 50;52;60;61;70;75;80;86;87
+    docker_file: Dockerfile.manylinux2014_training_cuda11_8
+    agent_pool: Onnxruntime-Linux-GPU
+    upload_wheel: 'no'
+    debug_build: true

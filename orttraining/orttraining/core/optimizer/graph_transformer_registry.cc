@@ -8,7 +8,7 @@ namespace training {
 
 #ifdef ORT_TRAINING_EXTERNAL_GRAPH_TRANSFORMERS
 void RegisterTrainingExternalTransformers();
-#endif 
+#endif
 
 void GraphTransformerRegistry::RegisterExternalGraphTransformers() {
 #ifdef ORT_TRAINING_EXTERNAL_GRAPH_TRANSFORMERS

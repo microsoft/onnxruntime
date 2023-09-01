@@ -1,14 +1,23 @@
 import logging
+import os
 import tempfile
 from enum import Enum
 from pathlib import Path
 
 import numpy
 import onnx
-from onnx import external_data_helper
+from onnx import ModelProto, TensorProto, external_data_helper
 from onnx import onnx_pb as onnx_proto
+from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+from onnx.reference import ReferenceEvaluator
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+
+try:
+    from onnx.reference.custom_element_types import float8e4m3fn
+except ImportError:
+    float8e4m3fn = None
+
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -20,24 +29,9 @@ DEQUANT_OP_NAME = "DequantizeLinear"
 DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
 TENSOR_NAME_QUANT_SUFFIX = "_quantized"
 
+FLOAT8_DISTRIBUTIONS = {}
 
-type_to_name = {
-    1: "FLOAT",
-    2: "UINT8",
-    3: "INT8",
-    4: "UINT16",
-    5: "INT16",
-    6: "INT32",
-    7: "INT64",
-    8: "STRING",
-    9: "BOOL",
-    10: "FLOAT16",
-    11: "DOUBLE",
-    12: "UINT32",
-    13: "UINT64",
-    14: "COMPLEX64",
-    15: "COMPLEX128",
-}
+type_to_name = {getattr(TensorProto, k): k for k in dir(TensorProto) if isinstance(getattr(TensorProto, k), int)}
 
 # Quantization mode
 # IntegerOps: Use IntegerOps in quantized model. Only ConvInteger and MatMulInteger ops are supported now.
@@ -56,7 +50,7 @@ class QuantizationMode(Enum):
         try:
             return QuantizationMode[mode]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantizedValueType(Enum):
@@ -71,12 +65,13 @@ class QuantizedValueType(Enum):
         try:
             return QuantizedValueType[v]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantType(Enum):
     QInt8 = 0
     QUInt8 = 1
+    QFLOAT8E4M3FN = 2
 
     def __str__(self):
         return self.name
@@ -86,7 +81,17 @@ class QuantType(Enum):
         try:
             return QuantType[t]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
+
+    @property
+    def tensor_type(self):
+        if self == QuantType.QInt8:
+            return TensorProto.INT8
+        if self == QuantType.QUInt8:
+            return TensorProto.UINT8
+        if self == QuantType.QFLOAT8E4M3FN:
+            return TensorProto.FLOAT8E4M3FN
+        raise ValueError(f"Unexpected value qtype={self!r}.")
 
 
 class QuantFormat(Enum):
@@ -101,25 +106,51 @@ class QuantFormat(Enum):
         try:
             return QuantFormat[format]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.INT8: numpy.dtype("int8"),
     onnx_proto.TensorProto.UINT8: numpy.dtype("uint8"),
+    onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
 }
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert (
-        qType in ONNX_TYPE_TO_NP_TYPE
-    ), "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType)
-    dtype = ONNX_TYPE_TO_NP_TYPE[qType]
-    cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
-    cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
-    arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
-    numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
-    return arr_fp32.astype(dtype)
+    assert qType in ONNX_TYPE_TO_NP_TYPE, f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
+    if qType in (
+        onnx_proto.TensorProto.FLOAT8E4M3FN,
+        onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
+        onnx_proto.TensorProto.FLOAT8E5M2,
+        onnx_proto.TensorProto.FLOAT8E5M2FNUZ,
+    ):
+        if zero_point != 0:
+            raise NotImplementedError(f"zero_point is expected to be null for float 8 not {zero_point!r}.")
+        onnx_model = make_model(
+            make_graph(
+                [
+                    make_node(
+                        "Constant", [], ["zero_point"], value=onnx.helper.make_tensor("zero_point", qType, [], [0])
+                    ),
+                    make_node("QuantizeLinear", ["X", "scale", "zero_point"], ["Y"]),
+                ],
+                "qu",
+                [
+                    make_tensor_value_info("X", TensorProto.FLOAT, None),
+                    make_tensor_value_info("scale", TensorProto.FLOAT, None),
+                ],
+                [make_tensor_value_info("Y", qType, None)],
+            )
+        )
+        ref = ReferenceEvaluator(onnx_model)
+        return ref.run(None, {"X": arr.astype(numpy.float32), "scale": scale.astype(numpy.float32)})[0]
+    else:
+        dtype = ONNX_TYPE_TO_NP_TYPE[qType]
+        cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
+        cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
+        arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
+        numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
+        return arr_fp32.astype(dtype)
 
 
 def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
@@ -140,7 +171,6 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
     :return: zero and scale [z, s]
 
     """
-
     if qmin > 0 or qmax < 0:
         raise ValueError(f"qmin and qmax must meet requirement: qmin <= 0 <= qmax while qmin:{qmin}, qmmax:{qmax}")
 
@@ -165,6 +195,34 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
     return [zero_point, scale]
 
 
+def compute_scale_zp_float8(element_type, std):
+    """Calculate the scale s for a float8 type (E4M3FN).
+    The function assumes the coefficient distribution and the float 8
+    distribution are similar to two gaussian laws.
+
+    :return: zero and scale [z, s]
+
+    More details in notebook `quantization_fp8.ipynb
+    <https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/quantization_fp8.ipynb>`_.
+    """
+    if element_type not in FLOAT8_DISTRIBUTIONS:
+        if element_type == TensorProto.FLOAT8E4M3FN:
+            from onnx.numpy_helper import float8e4m3_to_float32
+
+            all_values = [float8e4m3_to_float32(i) for i in range(0, 256)]
+            values = numpy.array(
+                [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
+            )
+        else:
+            raise ValueError(f"Quantization to element_type={element_type} not implemented.")
+        FLOAT8_DISTRIBUTIONS[element_type] = values
+
+    std_f8 = numpy.std(FLOAT8_DISTRIBUTIONS[element_type])
+    zero = 0
+    scale = std / std_f8
+    return [zero, scale]
+
+
 def quantize_data(data, qType, symmetric, reduce_range=False):
     """
     :param data: data to quantize
@@ -187,7 +245,6 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     - *S*: scale
     - *z*: zero point
     """
-
     rmin = 0
     rmax = 0
     zero_point = 0
@@ -195,16 +252,32 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     if len(data):
         rmin = min(data)
         rmax = max(data)
-        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
 
-        zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+    if qType == TensorProto.FLOAT8E4M3FN:
+        if reduce_range:
+            raise RuntimeError("Unsupported option reduce_range=True for float 8.")
+        std = numpy.std(data)
+        zero_point, scale = compute_scale_zp_float8(qType, std)
+        quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+        if any((quantized_data.astype(numpy.uint8).ravel() & 127) == 127):
+            np_data = numpy.asarray(data)
+            raise RuntimeError(
+                f"One of the quantized value is NaN data in [{np_data.min()}, {np_data.max()}], "
+                f"quantized_data in [{quantized_data.min()}, {quantized_data.max()}]."
+            )
+        return rmin, rmax, zero_point, scale, quantized_data
 
-    quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+    if qType in (TensorProto.INT8, TensorProto.UINT8):
+        if len(data):
+            qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
+            zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+        quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+        return rmin, rmax, zero_point, scale, quantized_data
 
-    return rmin, rmax, zero_point, scale, quantized_data
+    raise ValueError(f"Unexpected value for qType={qType}.")
 
 
-def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
+def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
     """
     Return qmin and qmax, the minimum and maximum value representable by the given qType
     :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
@@ -217,12 +290,14 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
             (qmin, qmax) = (-64, 64) if reduce_range else (-127, 127)
         else:
             (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
+    elif qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+        raise NotImplementedError("This function is not implemented for float 8 as not needed.")
     else:
-        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
+        raise ValueError(f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported.")
     return qmin, qmax
 
 
-def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):
+def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
     """
     Helper function to get the quantization range for a type.
         parameter qType: quantization type.
@@ -245,8 +320,8 @@ class QuantizedInitializer:
         rmaxs,
         zero_points,
         scales,
-        data=[],
-        quantized_data=[],
+        data=[],  # noqa: B006
+        quantized_data=[],  # noqa: B006
         axis=None,
     ):
         self.name = name
@@ -265,7 +340,7 @@ class QuantizedInitializer:
 
 class QuantizedValue:
     """
-    Represents a linearly quantized value (input\output\intializer)
+    Represents a linearly quantized value (input\\output\\intializer)
     """
 
     def __init__(
@@ -276,6 +351,8 @@ class QuantizedValue:
         zero_point_name,
         quantized_value_type,
         axis=None,
+        node_type=None,
+        node_qtype=None,
     ):
         self.original_name = name
         self.q_name = new_quantized_name
@@ -283,6 +360,8 @@ class QuantizedValue:
         self.zp_name = zero_point_name
         self.value_type = quantized_value_type
         self.axis = axis
+        self.node_type = node_type
+        self.node_qtype = node_qtype
 
 
 class BiasToQuantize:
@@ -303,7 +382,7 @@ def attribute_to_kwarg(attribute):
         :return: attribute in {key: value} format.
     """
     if attribute.type == 0:
-        raise ValueError("attribute {} does not have type specified.".format(attribute.name))
+        raise ValueError(f"attribute {attribute.name} does not have type specified.")
 
     # Based on attribute type definitions from AttributeProto
     # definition in https://github.com/onnx/onnx/blob/main/onnx/onnx.proto
@@ -328,7 +407,7 @@ def attribute_to_kwarg(attribute):
     elif attribute.type == 10:
         value = attribute.graphs
     else:
-        raise ValueError("attribute {} has unsupported type {}.".format(attribute.name, attribute.type))
+        raise ValueError(f"attribute {attribute.name} has unsupported type {attribute.type}.")
 
     return {attribute.name: value}
 
@@ -403,7 +482,7 @@ def write_calibration_table(calibration_cache):
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
 
-    logging.info("calibration cache: {}".format(calibration_cache))
+    logging.info(f"calibration cache: {calibration_cache}")
 
     with open("calibration.json", "w") as file:
         file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
@@ -441,7 +520,7 @@ def write_calibration_table(calibration_cache):
         file.write(buf)
 
     # Deserialize data (for validation)
-    if False:
+    if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
         cal_table = TrtTable.TrtTable.GetRootAsTrtTable(buf, 0)
         dict_len = cal_table.DictLength()
         for i in range(dict_len):
@@ -465,10 +544,8 @@ def smooth_distribution(p, eps=0.0001):
     Ref: http://web.engr.illinois.edu/~hanj/cs412/bk3/KL-divergence.pdf
          https://github.com//apache/incubator-mxnet/blob/master/python/mxnet/contrib/quantization.py
     """
-    import numpy as np
-
-    is_zeros = (p == 0).astype(np.float32)
-    is_nonzeros = (p != 0).astype(np.float32)
+    is_zeros = (p == 0).astype(numpy.float32)
+    is_nonzeros = (p != 0).astype(numpy.float32)
     n_zeros = is_zeros.sum()
     n_nonzeros = p.size - n_zeros
 
@@ -482,7 +559,7 @@ def smooth_distribution(p, eps=0.0001):
         eps1,
     )
 
-    hist = p.astype(np.float32)
+    hist = p.astype(numpy.float32)
     hist += eps * is_zeros + (-eps1) * is_nonzeros
     assert (hist <= 0).sum() == 0
 
@@ -507,10 +584,13 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     sess_option = SessionOptions()
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"])
+    kwargs = {}
+    # This will rename constant initializer names, disable it to make test pass.
+    kwargs["disabled_optimizers"] = ["ConstantSharing"]
+    _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"], **kwargs)
 
 
-def add_pre_process_metadata(model):
+def add_pre_process_metadata(model: ModelProto):
     """Tag the model that it went through quantization pre-processing"""
     metadata_props = {"onnx.quant.pre_process": "onnxruntime.quant"}
     if model.metadata_props:
@@ -519,7 +599,7 @@ def add_pre_process_metadata(model):
     onnx.helper.set_model_props(model, metadata_props)
 
 
-def model_has_pre_process_metadata(model):
+def model_has_pre_process_metadata(model: ModelProto) -> bool:
     """Check the model whether it went through quantization pre-processing"""
     if model.metadata_props:
         for prop in model.metadata_props:
@@ -528,7 +608,7 @@ def model_has_pre_process_metadata(model):
     return False
 
 
-def add_infer_metadata(model):
+def add_infer_metadata(model: ModelProto):
     metadata_props = {"onnx.infer": "onnxruntime.quant"}
     if model.metadata_props:
         for p in model.metadata_props:
@@ -536,7 +616,7 @@ def add_infer_metadata(model):
     onnx.helper.set_model_props(model, metadata_props)
 
 
-def model_has_infer_metadata(model):
+def model_has_infer_metadata(model: ModelProto) -> bool:
     if model.metadata_props:
         for p in model.metadata_props:
             if p.key == "onnx.infer" and p.value == "onnxruntime.quant":
@@ -544,44 +624,23 @@ def model_has_infer_metadata(model):
     return False
 
 
-def load_model_with_shape_infer(model_path: Path):
+def load_model_with_shape_infer(model_path: Path) -> ModelProto:
     inferred_model_path = generate_identified_filename(model_path, "-inferred")
     onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
     model = onnx.load(inferred_model_path.as_posix())
+    add_infer_metadata(model)
     inferred_model_path.unlink()
     return model
 
 
-def load_model(model_path: Path, need_optimize: bool):
-    with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
-        if need_optimize and not model_has_external_data(model_path):
-            opt_model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-            optimize_model(model_path, opt_model_path)
-            model_path = opt_model_path
-
-        model = load_model_with_shape_infer(model_path)
-        add_infer_metadata(model)
-        return model
-
-
-def save_and_reload_model(model):
+def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-        onnx.external_data_helper.convert_model_to_external_data(model, all_tensors_to_one_file=True)
-        onnx.save_model(model, model_path.as_posix())
-        return load_model(model_path, False)
+        onnx.save_model(model, model_path.as_posix(), save_as_external_data=True)
+        return load_model_with_shape_infer(model_path)
 
 
-def clone_model_with_shape_infer(model):
-    if model_has_infer_metadata(model):
-        cloned_model = onnx_proto.ModelProto()
-        cloned_model.CopyFrom(model)
-    else:
-        cloned_model = save_and_reload_model(model)
-    return cloned_model
-
-
-def tensor_proto_to_array(initializer):
+def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:
     if initializer.data_type == onnx_proto.TensorProto.FLOAT:
         return onnx.numpy_helper.to_array(initializer)
 
@@ -590,25 +649,25 @@ def tensor_proto_to_array(initializer):
     )
 
 
-def add_quant_suffix(tensor_name):
+def add_quant_suffix(tensor_name: str) -> str:
     return tensor_name + "_QuantizeLinear"
 
 
-def add_quant_input_suffix(tensor_name):
+def add_quant_input_suffix(tensor_name: str) -> str:
     return tensor_name + QUANT_INPUT_SUFFIX
 
 
-def add_quant_output_suffix(tensor_name):
+def add_quant_output_suffix(tensor_name) -> str:
     return tensor_name + "_QuantizeLinear_Output"
 
 
-def add_dequant_suffix(tensor_name):
+def add_dequant_suffix(tensor_name) -> str:
     return tensor_name + "_DequantizeLinear"
 
 
-def add_dequant_input_suffix(tensor_name):
+def add_dequant_input_suffix(tensor_name) -> str:
     return tensor_name + "_DequantizeLinear_Input"
 
 
-def add_dequant_output_suffix(tensor_name):
+def add_dequant_output_suffix(tensor_name) -> str:
     return tensor_name + DEQUANT_OUTPUT_SUFFIX

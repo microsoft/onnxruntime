@@ -35,7 +35,7 @@ def _parse_build_settings(args):
     setting_file = args.build_settings_file.resolve()
 
     if not setting_file.is_file():
-        raise FileNotFoundError("Build config file {} is not a file.".format(setting_file))
+        raise FileNotFoundError(f"Build config file {setting_file} is not a file.")
 
     with open(setting_file) as f:
         build_settings_data = json.load(f)
@@ -95,11 +95,42 @@ def _build_aar(args):
     exe_dir = os.path.join(intermediates_dir, "executables", build_config)
     base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"] + ["--config=" + build_config]
     header_files_path = ""
-
+    # Build and install protoc
+    protobuf_installation_script = os.path.join(
+        REPO_DIR,
+        "tools",
+        "ci_build",
+        "github",
+        "linux",
+        "docker",
+        "inference",
+        "x64",
+        "python",
+        "cpu",
+        "scripts",
+        "install_protobuf.sh",
+    )
+    subprocess.run(
+        [
+            protobuf_installation_script,
+            "-p",
+            os.path.join(build_dir, "protobuf"),
+            "-d",
+            os.path.join(REPO_DIR, "cmake", "deps.txt"),
+        ],
+        shell=False,
+        check=True,
+    )
     # Build binary for each ABI, one by one
     for abi in build_settings["build_abis"]:
         abi_build_dir = os.path.join(intermediates_dir, abi)
-        abi_build_command = base_build_command + ["--android_abi=" + abi, "--build_dir=" + abi_build_dir]
+        abi_build_command = [
+            *base_build_command,
+            "--android_abi=" + abi,
+            "--build_dir=" + abi_build_dir,
+            "--path_to_protoc_exe",
+            os.path.join(build_dir, "protobuf", "bin", "protoc"),
+        ]
 
         if ops_config_path is not None:
             abi_build_command += ["--include_ops_by_config=" + ops_config_path]
@@ -134,9 +165,11 @@ def _build_aar(args):
     aar_publish_dir = os.path.join(build_dir, "aar_out", build_config)
     os.makedirs(aar_publish_dir, exist_ok=True)
 
+    gradle_path = os.path.join(JAVA_ROOT, "gradlew" if not is_windows() else "gradlew.bat")
+
     # get the common gradle command args
     gradle_command = [
-        "gradle",
+        gradle_path,
         "--no-daemon",
         "-b=build-android.gradle",
         "-c=settings-android.gradle",
@@ -147,15 +180,15 @@ def _build_aar(args):
         "-DminSdkVer=" + str(build_settings["android_min_sdk_version"]),
         "-DtargetSdkVer=" + str(build_settings["android_target_sdk_version"]),
         "-DbuildVariant=" + str(build_settings["build_variant"]),
+        "-DENABLE_TRAINING_APIS=1"
+        if "--enable_training_apis" in build_settings["build_params"]
+        else "-DENABLE_TRAINING_APIS=0",
     ]
 
-    # If not using shell on Window, will not be able to find gradle in path
-    use_shell = True if is_windows() else False
-
     # clean, build, and publish to a local directory
-    subprocess.run(gradle_command + ["clean"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
-    subprocess.run(gradle_command + ["build"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
-    subprocess.run(gradle_command + ["publish"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
+    subprocess.run([*gradle_command, "clean"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
+    subprocess.run([*gradle_command, "build"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
+    subprocess.run([*gradle_command, "publish"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
 
 
 def parse_args():

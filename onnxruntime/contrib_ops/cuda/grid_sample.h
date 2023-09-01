@@ -19,7 +19,7 @@ class GridSample final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  int64_t mode_i_;  // 0: bilinear (default), 1: nearest 2: bicubic
+  int64_t mode_i_;          // 0: bilinear (default), 1: nearest 2: bicubic
   int64_t padding_mode_i_;  // 0:'zeros', 1: 'border', 2:'reflection'
   int64_t align_corners_;
 };

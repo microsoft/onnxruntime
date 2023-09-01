@@ -57,13 +57,12 @@ class DnnlTensor {
   void RemoveConsumer(const DnnlNodeArg& arg);
 
  private:
-
   const ONNX_NAMESPACE::TensorShapeProto* GetShape() const;
 
   std::string tensor_name_;
   ONNX_NAMESPACE::DataType arg_type_;
   std::unique_ptr<ONNX_NAMESPACE::TypeProto> arg_type_proto_;
-  //a tensor can have no producer (input.initializer) or no consumer (output for subgraph)
+  // a tensor can have no producer (input.initializer) or no consumer (output for subgraph)
   DnnlNodeArg producer_;
   std::vector<DnnlNodeArg> consumers_;
   bool isConstant_;
@@ -112,7 +111,7 @@ class DnnlSubgraph {
   std::vector<DnnlTensor*> GetDnnlInitializers();
   // build the subgraph IR
   void Build(const GraphViewer& graph_viewer);
-  //check whether the subgraph is dynamic
+  // check whether the subgraph is dynamic
   void TopoSort();
   bool IsDynamic();
   void AddNode(std::unique_ptr<DnnlNode> new_node);
@@ -121,13 +120,13 @@ class DnnlSubgraph {
   void RemoveTensor(const std::string& tensor_name);
 
  private:
-  //graph owns all nodes
+  // graph owns all nodes
   std::vector<std::unique_ptr<DnnlNode>> dnnl_nodes_;
   std::vector<size_t> nodes_in_topological_order_;
-  //graph owns all tensors
+  // graph owns all tensors
   std::unordered_map<std::string, std::unique_ptr<DnnlTensor>> dnnl_tensors_;
   std::vector<DnnlTensor*> inputs_;
-  std::vector<DnnlTensor*> outputs_; //output should never get deleted from graph transformation
+  std::vector<DnnlTensor*> outputs_;  // output should never get deleted from graph transformation
   std::vector<DnnlTensor*> initializers_;
   bool is_dynamic_;
 };

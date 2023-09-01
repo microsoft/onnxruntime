@@ -3,7 +3,7 @@ import onnx
 from onnx import TensorProto, helper
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [
         helper.make_node("Gather", ["embed_weights", "input_1"], ["gather_out"], "gather"),
         helper.make_node("Add", ["gather_out", "add_q_weight"], ["add_q_out"], "add_q"),

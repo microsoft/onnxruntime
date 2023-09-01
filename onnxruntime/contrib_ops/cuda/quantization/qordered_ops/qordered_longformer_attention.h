@@ -14,7 +14,7 @@ namespace cuda {
 class QOrderedLongformerAttention final : public CudaKernel, public LongformerAttentionBase {
  public:
   QOrderedLongformerAttention(const OpKernelInfo& info);
-  
+
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:

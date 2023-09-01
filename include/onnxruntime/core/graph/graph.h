@@ -16,28 +16,25 @@
 #pragma warning(disable : 4244)
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#include "core/common/inlined_containers.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
-
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
+
+#include "flatbuffers/flatbuffers.h"
 
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/common/inlined_containers.h"
+#endif
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/path.h"
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/function.h"
@@ -47,12 +44,6 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 class Graph;
@@ -84,7 +75,7 @@ class Node {
 
   explicit Node() = default;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Node(std::string_view name,
        std::string_view op_type,
        std::string_view description,
@@ -407,6 +398,12 @@ class Node {
   bool ClearAttribute(const std::string& attr_name);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+  /**
+   * Clears removable attributes. These are no longer needed after the initialization
+   * of the session. The function returns the number of removed attributes.
+   */
+  int PruneRemovableAttributes(gsl::span<const std::string> removable_attributes);
+
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's mutable attributes. */
   NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
@@ -560,12 +557,12 @@ class Node {
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
+  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   void Init(const std::string& name,
             const std::string& op_type,
             const std::string& description,
@@ -573,7 +570,9 @@ class Node {
             const std::vector<NodeArg*>& output_args,
             const NodeAttributes* attributes,
             const std::string& domain);
+#endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
   Definitions& MutableDefinitions() noexcept;
 
@@ -649,6 +648,9 @@ class Node {
 
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
+
+  // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
+  bool can_be_saved_;
 };
 
 /**
@@ -884,12 +886,11 @@ class Graph {
   @returns NodeArg reference.
   */
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
-    auto iter = node_args_.find(name);
-    if (iter != node_args_.end()) {
-      return *(iter->second);
+    auto insert_result = node_args_.emplace(name, nullptr);
+    if (insert_result.second) {
+      insert_result.first->second = std::make_unique<NodeArg>(name, p_arg_type);
     }
-    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
-    return *(result.first->second);
+    return *(insert_result.first->second);
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1110,6 +1111,7 @@ class Graph {
   @returns GraphProto serialization of the graph.
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                  const PathString& file_path,
                                                                   size_t initializer_size_threshold) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */

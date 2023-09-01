@@ -49,12 +49,12 @@ Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context)
   const Tensor* X = op_kernel_context->Input<Tensor>(input_index++);
   const auto& X_shape = X->Shape();
   const auto axis = HandleNegativeAxis(axis_, X_shape.NumDimensions());
-  ORT_ENFORCE(X_shape.SizeToDimension(axis) <= std::numeric_limits<Eigen::Index>::max());
-  ORT_ENFORCE(X_shape.SizeFromDimension(axis) <= std::numeric_limits<Eigen::Index>::max());
-  const auto N = static_cast<Eigen::Index>(X_shape.SizeToDimension(axis));
-  const auto M = static_cast<Eigen::Index>(X_shape.SizeFromDimension(axis));
+  ORT_ENFORCE(X_shape.SizeToDimension(gsl::narrow_cast<size_t>(axis)) <= std::numeric_limits<Eigen::Index>::max());
+  ORT_ENFORCE(X_shape.SizeFromDimension(gsl::narrow_cast<size_t>(axis)) <= std::numeric_limits<Eigen::Index>::max());
+  const auto N = static_cast<Eigen::Index>(X_shape.SizeToDimension(gsl::narrow_cast<size_t>(axis)));
+  const auto M = static_cast<Eigen::Index>(X_shape.SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
   ORT_ENFORCE(M != 1);
-  
+
   const Tensor* scale = op_kernel_context->Input<Tensor>(input_index++);
   const Tensor* mean;
   if (!simplified) {
@@ -95,10 +95,10 @@ Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context)
   Array X_mean_difference_over_std_var;
   if (simplified) {
     X_mean_difference_over_std_var =
-      X_arr.rowwise() * inv_std_var_vec.cast<T>().transpose();
+        X_arr.rowwise() * inv_std_var_vec.cast<T>().transpose();
   } else {
     X_mean_difference_over_std_var =
-      (X_arr.rowwise() - mean_vec.cast<T>().transpose()).rowwise() * inv_std_var_vec.cast<T>().transpose();
+        (X_arr.rowwise() - mean_vec.cast<T>().transpose()).rowwise() * inv_std_var_vec.cast<T>().transpose();
   }
   Array A = Y_grad_arr * X_mean_difference_over_std_var;
   Array B = (Y_grad_arr.colwise() * scale_vec).rowwise() * inv_std_var_vec.cast<T>().transpose();
@@ -139,10 +139,10 @@ Status InvertibleLayerNormGrad<T>::Compute(OpKernelContext* op_kernel_context) c
   const auto& Y_shape = Y_grad->Shape();
   const auto& X_shape = Y_shape;
   const auto axis = HandleNegativeAxis(axis_, X_shape.NumDimensions());
-  ORT_ENFORCE(X_shape.SizeToDimension(axis) <= std::numeric_limits<Eigen::Index>::max());
-  ORT_ENFORCE(X_shape.SizeFromDimension(axis) <= std::numeric_limits<Eigen::Index>::max());
-  const auto N = static_cast<Eigen::Index>(X_shape.SizeToDimension(axis));
-  const auto M = static_cast<Eigen::Index>(X_shape.SizeFromDimension(axis));
+  ORT_ENFORCE(X_shape.SizeToDimension(gsl::narrow_cast<size_t>(axis)) <= std::numeric_limits<Eigen::Index>::max());
+  ORT_ENFORCE(X_shape.SizeFromDimension(gsl::narrow_cast<size_t>(axis)) <= std::numeric_limits<Eigen::Index>::max());
+  const auto N = static_cast<Eigen::Index>(X_shape.SizeToDimension(gsl::narrow_cast<size_t>(axis)));
+  const auto M = static_cast<Eigen::Index>(X_shape.SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
   ORT_ENFORCE(M != 1);
   const auto& scale_shape = scale->Shape();
 

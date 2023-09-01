@@ -6,7 +6,6 @@
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
@@ -14,16 +13,14 @@ from typing import List, Optional, Union
 import numpy
 import onnx
 import torch
+from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
 from t5_decoder import T5DecoderInit
 from t5_encoder import T5Encoder, T5EncoderInputs
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import MT5Config, T5Config
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -125,9 +122,9 @@ class T5EncoderDecoderInitHelper:
         )
         input_list = inputs.to_list()
 
-        present_names = PastKeyValuesHelper.get_past_names(model.config.num_layers, present=True)
+        present_names = PastKeyValuesHelper.get_past_names(model.config.num_decoder_layers, present=True)
 
-        output_names = ["logits", "encoder_hidden_states"] + present_names
+        output_names = ["logits", "encoder_hidden_states", *present_names]
 
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
@@ -255,7 +252,7 @@ class T5EncoderDecoderInitHelper:
 
         test_cases = [(4, 11), (1, 2), (3, 1), (8, 5)]
         test_cases_max_diff = []
-        for (batch_size, encode_sequence_length) in test_cases[:max_cases]:
+        for batch_size, encode_sequence_length in test_cases[:max_cases]:
             inputs = T5EncoderDecoderInitInputs.create_dummy(
                 model.config,
                 batch_size,
@@ -271,6 +268,8 @@ class T5EncoderDecoderInitHelper:
             input_list = inputs.to_list()
             torch_outputs = model(*input_list)
 
+            num_decoder_layers = model.config.num_decoder_layers
+
             assert torch_outputs[0].cpu().numpy().shape == ort_outputs[0].shape
             max_diff = numpy.amax(numpy.abs(torch_outputs[0].cpu().numpy() - ort_outputs[0]))
             logger.debug(f"logits max_diff={max_diff}")
@@ -281,13 +280,13 @@ class T5EncoderDecoderInitHelper:
             logger.debug(f"encoder_hidden_states max_diff={max_diff}")
             max_diff_all = max(max_diff_all, max_diff)
 
-            for i in range(2 * model.config.num_layers):
+            for i in range(2 * num_decoder_layers):
                 max_diff = numpy.amax(numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[2 + i]))
                 logger.debug(f"self attention past state {i} max_diff={max_diff}")
 
-            for i in range(2 * model.config.num_layers):
+            for i in range(2 * num_decoder_layers):
                 max_diff = numpy.amax(
-                    numpy.abs(torch_outputs[3][i].cpu().numpy() - ort_outputs[2 + 2 * model.config.num_layers + i])
+                    numpy.abs(torch_outputs[3][i].cpu().numpy() - ort_outputs[2 + 2 * num_decoder_layers + i])
                 )
                 logger.debug(f"cross attention past state {i} max_diff={max_diff}")
                 max_diff_all = max(max_diff_all, max_diff)

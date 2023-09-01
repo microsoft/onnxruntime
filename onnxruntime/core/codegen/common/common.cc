@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <string_view>
 
-
 namespace onnxruntime {
 
 NodeKey GetKey(const onnxruntime::Node* node) {

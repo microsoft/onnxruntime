@@ -14,8 +14,8 @@ from torch._lazy.ts_backend import init as init_ts_backend
 init_ts_backend()
 
 # Handle ORT dependencies.
-import onnxruntime as ort
-from onnxruntime.capi import _pybind_state as C
+import onnxruntime as ort  # noqa: E402
+from onnxruntime.capi import _pybind_state as C  # noqa: E402
 
 # Set up ORT as torch.jit's sub-executor.
 C.register_ort_as_torch_jit_executor()

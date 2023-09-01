@@ -44,7 +44,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, {N, total_dimensions_});
   auto Y_data = Y->MutableData<float>();
 
-  auto out = gsl::make_span(Y_data,onnxruntime::narrow<size_t>(Y->Shape().Size()));
+  auto out = gsl::make_span(Y_data, onnxruntime::narrow<size_t>(Y->Shape().Size()));
 
   // init all to 0.f so we don't need to do that each loop if we have to add padding
   std::fill_n(out.data(), out.size(), 0.f);

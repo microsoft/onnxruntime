@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_ck.h"
-
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
@@ -24,6 +22,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
+#ifdef USE_COMPOSABLE_KERNEL
 template <typename T, typename ALayout, typename BLayout>
 class CKGemmFastGelu : public IKernelExplorer {
  public:
@@ -40,6 +39,7 @@ class CKGemmFastGelu : public IKernelExplorer {
     auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
     ORT_ENFORCE(supports_a && supports_b);
 
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     // rocblas handle is not used for ck
     params_.handle = nullptr;
@@ -48,13 +48,13 @@ class CKGemmFastGelu : public IKernelExplorer {
     params_.m = m;
     params_.n = n;
     params_.k = k;
-    params_.alpha = alpha;
+    params_.alpha = static_cast<float>(alpha);
     params_.a = static_cast<T*>(a.ptr());
     params_.lda = lda;
     params_.b = static_cast<T*>(b.ptr());
     params_.ldb = ldb;
     params_.bias = static_cast<T*>(bias.ptr());
-    params_.beta = beta;
+    params_.beta = static_cast<float>(beta);
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
@@ -90,7 +90,7 @@ class CKGemmFastGelu : public IKernelExplorer {
 
  private:
   using ParamsT = GemmFastGeluParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;
@@ -118,9 +118,10 @@ class CKGemmFastGelu : public IKernelExplorer {
   REGISTER_OP(type, Col, Row, "TN");      \
   REGISTER_OP(type, Col, Col, "TT");
 
-void InitComposableKernelGemmFastGelu(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_TRANSAB(float);
   REGISTER_OP_FOR_ALL_TRANSAB(half);
 }
+#endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace onnxruntime

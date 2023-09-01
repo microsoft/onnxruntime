@@ -44,6 +44,7 @@ class Subgraph {
   int vocab_size;
   int num_layers;
   bool past_present_share_buffer_;
+  bool has_decoder_masked_attention_;
 
   // Setup execution
   Status Setup(const SessionState& session_state,
@@ -64,6 +65,17 @@ class Subgraph {
   Status GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shape,
                        const ONNX_NAMESPACE::TensorShapeProto* logits_shape,
                        bool merged_past);
+
+  Status AppendPastSequenceLength(std::vector<OrtValue>& feeds,
+                                  AllocatorPtr cpu_allocator,
+                                  const int32_t init_value);
+
+  Status AppendBeamWidthAndCacheIndir(std::vector<OrtValue>& feeds,
+                                      AllocatorPtr cpu_allocator,
+                                      AllocatorPtr default_allocator,
+                                      const int64_t batch_size,
+                                      const int64_t num_beams,
+                                      const int64_t max_seq_len);
 
   AllocatorPtr allocator_;
   const SessionState* session_state_;

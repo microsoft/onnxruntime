@@ -1,3 +1,32 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 # Known Limits
 # 1. Anchors are not supported in GHA
 # https://github.community/t/support-for-yaml-anchors/16128/90
@@ -17,10 +46,14 @@ parameters:
   default: 0
 
 stages:
-- stage: BUILD_STAGE
+# Separate stage for building CPU vs NNAPI as we only want CodeQL to run on one of them so we don't get duplicate
+# issues for code that is built in both. We pick NNAPI as that includes the NNAPI EP code.
+- stage: BUILD_CPU_STAGE
+  variables:
+    Codeql.Enabled: false
   jobs:
   - job: Build_CPU_EP
-    pool: Linux-CPU-2019
+    pool: onnxruntime-Linux-CPU-For-Android-CI
     workspace:
       clean: all
     timeoutInMinutes: 30
@@ -34,13 +67,17 @@ stages:
       inputs:
         versionSpec: $(pythonVersion)
 
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+
     - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
       displayName: Install coreutils and ninja
 
     - template: "templates/use-android-ndk.yml"
-
-    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-      displayName: Setup gradle wrapper to use gradle 6.8.3
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -53,15 +90,6 @@ stages:
     - script: |
         env | grep ANDROID
       displayName: View Android ENVs
-
-    # Start switching to jdk 11 after the Android Emulator is started
-    # since Android SDK manager requires java 8
-    - task: JavaToolInstaller@0
-      displayName: Use jdk 11
-      inputs:
-        versionSpec: '11'
-        jdkArchitectureOption: 'x64'
-        jdkSourceOption: 'PreInstalled'
 
     - script: |
         python3 tools/ci_build/build.py \
@@ -109,9 +137,20 @@ stages:
 
     - template: templates/clean-agent-build-directory-step.yml
 
+- stage: BUILD_NNAPI_STAGE
+  variables:
+    Codeql.ProjectConfigPath: .github/workflows
+    Codeql.Enabled: true
+    Codeql.Language: cpp
+    ${{ if variables['Codeql.Enabled'] }}:
+      JobsTimeout: 120
+    ${{ else }}:
+      JobsTimeout: 60
+
+  jobs:
   - job: Build_NNAPI_EP
-    pool: Linux-CPU-2019
-    timeoutInMinutes: 60
+    pool: onnxruntime-Linux-CPU-For-Android-CI
+    timeoutInMinutes: ${{ variables.JobsTimeout }}
     workspace:
       clean: all
     condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
@@ -121,13 +160,17 @@ stages:
       inputs:
         versionSpec: $(pythonVersion)
 
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+
     - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
       displayName: Install coreutils and ninja
 
     - template: "templates/use-android-ndk.yml"
-
-    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-      displayName: Setup gradle wrapper to use gradle 6.8.3
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -140,14 +183,6 @@ stages:
     - script: |
         env | grep ANDROID
       displayName: View Android ENVs
-
-    # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
-    - task: JavaToolInstaller@0
-      displayName: Use jdk 11
-      inputs:
-        versionSpec: '11'
-        jdkArchitectureOption: 'x64'
-        jdkSourceOption: 'PreInstalled'
 
     - script: |
         python3 tools/ci_build/build.py \
@@ -197,11 +232,13 @@ stages:
     - template: templates/clean-agent-build-directory-step.yml
 
 - stage: TEST_STAGE
-  dependsOn: BUILD_STAGE
+  dependsOn: [BUILD_CPU_STAGE, BUILD_NNAPI_STAGE]
   jobs:
   - job: Test_CPU_EP
     pool:
-      vmImage: 'macOS-11'
+      # We need macOS-12 to run the Android emulator for now.
+      # https://github.com/actions/runner-images/issues/7671
+      vmImage: 'macOS-12'
     workspace:
       clean: all
     condition: succeeded()
@@ -229,27 +266,22 @@ stages:
         inputs:
           versionSpec: $(pythonVersion)
 
-      - template: "templates/use-android-ndk.yml"
-
-      - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-        displayName: Setup gradle wrapper to use gradle 6.8.3
-
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
-          --start --emulator-extra-args="-partition-size 4096" \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Start Android emulator
-
-      # Start switching to jdk 11 after the Android Emulator is started
-      # since Android SDK manager requires java 8
       - task: JavaToolInstaller@0
         displayName: Use jdk 11
         inputs:
           versionSpec: '11'
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
+
+      - template: "templates/use-android-ndk.yml"
+
+      - script: |
+          python3 tools/python/run_android_emulator.py \
+          --android-sdk-root ${ANDROID_SDK_ROOT} \
+          --create-avd --system-image "system-images;android-31;default;x86_64" \
+          --start --emulator-extra-args="-partition-size 4096" \
+          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+        displayName: Start Android emulator
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -275,7 +307,9 @@ stages:
 
   - job: Test_NNAPI_EP
     pool:
-      vmImage: 'macOS-11'
+      # We need macOS-12 to run the Android emulator for now.
+      # https://github.com/actions/runner-images/issues/7671
+      vmImage: 'macOS-12'
     timeoutInMinutes: 90
     workspace:
       clean: all
@@ -304,27 +338,22 @@ stages:
         inputs:
           versionSpec: $(pythonVersion)
 
-      - template: "templates/use-android-ndk.yml"
-
-      - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-        displayName: Setup gradle wrapper to use gradle 6.8.3
-
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
-          --start --emulator-extra-args="-partition-size 4096" \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Start Android emulator
-
-      # Start switching to jdk 11 after the Android Emulator is started
-      # since Android SDK manager requires java 8
       - task: JavaToolInstaller@0
         displayName: Use jdk 11
         inputs:
           versionSpec: '11'
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
+
+      - template: "templates/use-android-ndk.yml"
+
+      - script: |
+          python3 tools/python/run_android_emulator.py \
+          --android-sdk-root ${ANDROID_SDK_ROOT} \
+          --create-avd --system-image "system-images;android-31;default;x86_64" \
+          --start --emulator-extra-args="-partition-size 4096" \
+          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+        displayName: Start Android emulator
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -373,7 +402,9 @@ stages:
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
-      vmImage: 'macOS-11'
+      # We need macOS-12 to run the Android emulator for now.
+      # https://github.com/actions/runner-images/issues/7671
+      vmImage: 'macOS-12'
     timeoutInMinutes: 180
     workspace:
       clean: all
@@ -389,10 +420,14 @@ stages:
         inputs:
           versionSpec: $(pythonVersion)
 
-      - template: "templates/use-android-ndk.yml"
+      - task: JavaToolInstaller@0
+        displayName: Use jdk 11
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
 
-      - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-        displayName: Setup gradle wrapper to use gradle 6.8.3
+      - template: "templates/use-android-ndk.yml"
 
       # used by Build Minimal ORT
       - script: brew install coreutils ninja
@@ -409,19 +444,10 @@ stages:
       - script: |
           python3 tools/python/run_android_emulator.py \
           --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
+          --create-avd --system-image "system-images;android-31;default;x86_64" \
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
-
-      # Start switching to jdk 11 after the Android Emulator is started
-      # since Android SDK manager requires java 8
-      - task: JavaToolInstaller@0
-        displayName: Use jdk 11
-        inputs:
-          versionSpec: '11'
-          jdkArchitectureOption: 'x64'
-          jdkSourceOption: 'PreInstalled'
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -476,7 +502,7 @@ stages:
     variables:
     - name: skipComponentGovernanceDetection
       value: true
-    pool: 'Linux-CPU-2019'
+    pool: 'onnxruntime-Linux-CPU-For-Android-CI'
     condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
     dependsOn:
     - NNAPI_EP_MASTER

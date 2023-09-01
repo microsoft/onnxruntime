@@ -60,14 +60,11 @@ struct OrtStatus {
 #elif OPENVINO_CONFIG_GPU_FP16
 #define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
 
-#elif OPENVINO_CONFIG_MYRIAD
-#define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
+#elif OPENVINO_CONFIG_VPUX_FP16
+#define BACKEND_OPENVINO "-OPENVINO_VPUX_FP16"
 
-#elif OPENVINO_CONFIG_VAD_M
-#define BACKEND_OPENVINO "-OPENVINO_VAD_M"
-
-#elif OPENVINO_CONFIG_VAD_F
-#define BACKEND_OPENVINO "-OPENVINO_VAD_F"
+#elif OPENVINO_CONFIG_VPUX_U8
+#define BACKEND_OPENVINO "-OPENVINO_VPUX_U8"
 
 #elif OPENVINO_CONFIG_MULTI
 #define BACKEND_OPENVINO "-OPENVINO_MULTI"
@@ -152,9 +149,6 @@ extern std::string openvino_device_type;
 #ifdef USE_TVM
 #include "core/providers/tvm/tvm_ep_options.h"
 #endif
-#ifdef USE_VITISAI
-#include "core/providers/vitisai/vitisai_provider_factory.h"
-#endif
 #ifdef USE_ACL
 #include "core/providers/acl/acl_provider_factory.h"
 #endif
@@ -232,33 +226,36 @@ using PySessionOptions = OrtSessionOptions;
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
-  PyInferenceSession(Environment& env, const PySessionOptions& so) {
-    sess_ = std::make_unique<InferenceSession>(so.value, env);
+  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
+      : env_(std::move(env)) {
+    sess_ = std::make_unique<InferenceSession>(so.value, *env_);
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  PyInferenceSession(Environment& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
+  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
+      : env_(std::move(env)) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
-      sess_ = std::make_unique<InferenceSession>(so.value, env, arg);
+      sess_ = std::make_unique<InferenceSession>(so.value, *env_, arg);
     } else {
       // Given arg is the model content as bytes. Invoke the corresponding ctor().
       std::istringstream buffer(arg);
-      sess_ = std::make_unique<InferenceSession>(so.value, env, buffer);
+      sess_ = std::make_unique<InferenceSession>(so.value, *env_, buffer);
     }
   }
 #endif
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
-  virtual ~PyInferenceSession() {}
+  virtual ~PyInferenceSession() = default;
 
  protected:
-  PyInferenceSession(std::unique_ptr<InferenceSession> sess) {
-    sess_ = std::move(sess);
+  PyInferenceSession(std::shared_ptr<Environment> env, std::unique_ptr<InferenceSession> sess)
+      : env_(std::move(env)), sess_(std::move(sess)) {
   }
 
  private:
+  std::shared_ptr<Environment> env_;
   std::unique_ptr<InferenceSession> sess_;
 };
 
@@ -383,7 +380,7 @@ class SessionObjectInitializer {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-Environment& GetEnv();
+std::shared_ptr<Environment> GetEnv();
 
 // Initialize an InferenceSession.
 // Any provider_options should have entries in matching order to provider_types.
@@ -402,13 +399,11 @@ void addIoBindingMethods(pybind11::module& m);
 
 void addSparseTensorMethods(pybind11::module& m);
 
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
 void addGlobalSchemaFunctions(pybind11::module& m);
 
 void addOpKernelSubmodule(pybind11::module& m);
 
 void addOpSchemaSubmodule(pybind11::module& m);
-#endif
 
 const char* GetDeviceName(const OrtDevice& device);
 
@@ -444,8 +439,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* params);
 #ifdef USE_TVM
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);

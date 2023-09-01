@@ -47,7 +47,7 @@ void DnnlDequantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& 
   // Get descs
   auto x_md = x_mem.get_desc();
   auto x_scale_md = x_scale_mem.get_desc();
-  auto x_dims = x_md.dims().size();
+  auto x_dims = x_md.get_dims().size();
 
   // Fix scale dims
   int64_t axis = GetAxis(node, x_dims);
@@ -65,11 +65,11 @@ void DnnlDequantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& 
   }
 
   // Create dst mem
-  auto dst_md = dnnl::memory::desc(x_md.dims(), node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
+  auto dst_md = dnnl::memory::desc(x_md.get_dims(), node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
   dnnl::memory dst_mem;
 
   // If zero point exists and we are NOT dequantizing int32, then substract zp from x and scale
-  if (isZeroPointUseful && (x_mem.get_desc().data_type() != dnnl::memory::data_type::s32)) {
+  if (isZeroPointUseful && (x_mem.get_desc().get_data_type() != dnnl::memory::data_type::s32)) {
     // Get Zero point
     auto x_zp_mem = sp.GetMemory(node.Input(IN_X_ZERO_POINT));
     // Get mds for operands
@@ -84,8 +84,6 @@ void DnnlDequantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& 
       Padd(&x_zp_md, static_cast<uint64_t>(axis) + 1, x_dims);
     }
 
-    // Create binary desc
-    auto binary_d = dnnl::binary::desc(dnnl::algorithm::binary_sub, x_md, x_zp_md, dst_md);
     // Add post op scale
     dnnl::primitive_attr binary_attr;
     {
@@ -94,7 +92,8 @@ void DnnlDequantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& 
       binary_attr.set_post_ops(binary_ops);
     }
     // Add post op to scale result
-    auto binary_pd = dnnl::binary::primitive_desc(binary_d, binary_attr, dnnl_engine);
+    auto binary_pd = dnnl::binary::primitive_desc(dnnl_engine, dnnl::algorithm::binary_sub,
+                                                  x_md, x_zp_md, dst_md, binary_attr);
     // Move to GPU if available
     x_zp_mem = sp.GetMemoryAndReshape(node.Input(IN_X_ZERO_POINT), x_zp_md, dnnl_engine);
     // Create primitive and set dst mem
@@ -108,9 +107,9 @@ void DnnlDequantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& 
 
     // If zp doesn't exists or we are dequantizing from int32, only need to scale
   } else {
-    // Create binary and primitive desc
-    auto binary_d = dnnl::binary::desc(dnnl::algorithm::binary_mul, x_md, x_scale_md, dst_md);
-    auto binary_pd = dnnl::binary::primitive_desc(binary_d, dnnl_engine);
+    // Create binary primitive desc
+    auto binary_pd = dnnl::binary::primitive_desc(dnnl_engine, dnnl::algorithm::binary_mul,
+                                                  x_md, x_scale_md, dst_md);
 
     // Create primitive
     dst_mem = dnnl::memory(binary_pd.dst_desc(), dnnl_engine);
@@ -133,8 +132,8 @@ bool DnnlDequantizeLinear::isZeroPointNonZero(dnnl::memory* zp_mem) {
   // Because zp will always be int8, uint8 or int32, this cast is always valid
   auto zp_data = static_cast<uint8_t*>(zp_mem->get_data_handle());
   //  Adjust the iteration num
-  auto topline = zp_mem->get_desc().dims().size();
-  if (zp_mem->get_desc().data_type() == dnnl::memory::data_type::s32) {
+  auto topline = zp_mem->get_desc().get_dims().size();
+  if (zp_mem->get_desc().get_data_type() == dnnl::memory::data_type::s32) {
     topline *= 4;
   }
   // ZP is either a scalar or a 1-D vector so iterate over all the dimensions
@@ -150,7 +149,7 @@ bool DnnlDequantizeLinear::isZeroPointNonZero(dnnl::memory* zp_mem) {
 
 void DnnlDequantizeLinear::Padd(dnnl::memory::desc* target_md, size_t front_pad, size_t back_pad) {
   // Pads an input to broadcast the op correctly
-  auto target_dims = target_md->dims();
+  auto target_dims = target_md->get_dims();
 
   // Add front padding
   while (target_dims.size() < front_pad) {
@@ -185,8 +184,8 @@ int64_t DnnlDequantizeLinear::GetAxis(DnnlNode& node, size_t x_dims) {
 void DnnlDequantizeLinear::ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // We only need to validate when zp is provided
   if (node.Input(IN_X_ZERO_POINT).Exists()) {
-    auto x_scale_dims = sp.GetMemory(node.Input(IN_X_SCALE)).get_desc().dims();
-    auto x_zp_dims = sp.GetMemory(node.Input(IN_X_ZERO_POINT)).get_desc().dims();
+    auto x_scale_dims = sp.GetMemory(node.Input(IN_X_SCALE)).get_desc().get_dims();
+    auto x_zp_dims = sp.GetMemory(node.Input(IN_X_ZERO_POINT)).get_desc().get_dims();
 
     if (x_zp_dims != x_scale_dims) {
       ORT_THROW("x_scale and x_zero_point dimensions does not match");
@@ -200,7 +199,7 @@ void DnnlDequantizeLinear::ValidateType(DnnlSubgraphPrimitive& sp, DnnlNode& nod
     auto x_md = sp.GetMemory(node.Input(IN_X)).get_desc();
     auto x_zp_md = sp.GetMemory(node.Input(IN_X_ZERO_POINT)).get_desc();
 
-    if (x_md.data_type() != x_zp_md.data_type()) {
+    if (x_md.get_data_type() != x_zp_md.get_data_type()) {
       ORT_THROW("x and x_zero_point have different datatypes");
     }
   }

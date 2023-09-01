@@ -39,7 +39,7 @@ void decodeMIDR(
   switch (midr_get_implementer(midr)) {
     case 'A':
       switch (midr_get_part(midr)) {
-          //#if defined(_M_ARM) || defined(__arm__)
+          // #if defined(_M_ARM) || defined(__arm__)
         case 0xC05:
           *uarch = cpuinfo_uarch_cortex_a5;
           break;
@@ -60,16 +60,16 @@ void decodeMIDR(
           break;
         case 0xC0D:
           /*
-					 * Rockchip RK3288 only.
-					 * Core information is ambiguous: some sources specify Cortex-A12, others - Cortex-A17.
-					 * Assume it is Cortex-A12.
-					 */
+           * Rockchip RK3288 only.
+           * Core information is ambiguous: some sources specify Cortex-A12, others - Cortex-A17.
+           * Assume it is Cortex-A12.
+           */
           *uarch = cpuinfo_uarch_cortex_a12;
           break;
         case 0xC0F:
           *uarch = cpuinfo_uarch_cortex_a15;
           break;
-          //#endif /* ARM */
+          // #endif /* ARM */
         case 0xD01:
           *uarch = cpuinfo_uarch_cortex_a32;
           break;
@@ -101,11 +101,11 @@ void decodeMIDR(
         case 0xD0B:
           *uarch = cpuinfo_uarch_cortex_a76;
           break;
-          //#if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
+          // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
         case 0xD0C:
           *uarch = cpuinfo_uarch_neoverse_n1;
           break;
-          //#endif /* ARM64 && !defined(__ANDROID__) */
+          // #endif /* ARM64 && !defined(__ANDROID__) */
         case 0xD0D:
           *uarch = cpuinfo_uarch_cortex_a77;
           break;
@@ -118,14 +118,14 @@ void decodeMIDR(
         case 0xD44: /* Cortex-X1 */
           *uarch = cpuinfo_uarch_cortex_x1;
           break;
-          //#if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
+          // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
         case 0xD4A:
           *uarch = cpuinfo_uarch_neoverse_e1;
           break;
-          //#endif /* ARM64 && !defined(__ANDROID__) */
+          // #endif /* ARM64 && !defined(__ANDROID__) */
         default:
           switch (midr_get_part(midr) >> 8) {
-              //#if defined(_M_ARM) || defined(__arm__)
+              // #if defined(_M_ARM) || defined(__arm__)
             case 7:
               *uarch = cpuinfo_uarch_arm7;
               break;
@@ -135,7 +135,7 @@ void decodeMIDR(
             case 11:
               *uarch = cpuinfo_uarch_arm11;
               break;
-              //#endif /* ARM */
+              // #endif /* ARM */
             default:
               LOGS_DEFAULT(WARNING) << "unknown ARM CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
           }
@@ -149,17 +149,17 @@ void decodeMIDR(
         case 0x100:
           *uarch = cpuinfo_uarch_brahma_b53;
           break;
-          //#if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
+          // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
         case 0x516:
           /* Broadcom Vulkan was sold to Cavium before it reached the market, so we identify it as Cavium ThunderX2 */
           *uarch = cpuinfo_uarch_thunderx2;
           break;
-          //#endif
+          // #endif
         default:
           LOGS_DEFAULT(WARNING) << "unknown Broadcom CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
       }
       break;
-      //#if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
+      // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
     case 'C':
       switch (midr_get_part(midr)) {
         case 0x0A0: /* ThunderX */
@@ -175,14 +175,14 @@ void decodeMIDR(
           LOGS_DEFAULT(WARNING) << "unknown Cavium CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
       }
       break;
-      //#endif
+      // #endif
     case 'H':
       switch (midr_get_part(midr)) {
-          //#if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
+          // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
         case 0xD01: /* Kunpeng 920 series */
           *uarch = cpuinfo_uarch_taishan_v110;
           break;
-          //#endif
+          // #endif
         case 0xD40: /* Kirin 980 Big/Medium cores -> Cortex-A76 */
           *uarch = cpuinfo_uarch_cortex_a76;
           break;
@@ -190,7 +190,7 @@ void decodeMIDR(
           LOGS_DEFAULT(WARNING) << "unknown Huawei CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
       }
       break;
-      //#if defined(_M_ARM) || defined(__arm__)
+      // #if defined(_M_ARM) || defined(__arm__)
     case 'i':
       switch (midr_get_part(midr) >> 8) {
         case 2: /* PXA 210/25X/26X */
@@ -202,7 +202,7 @@ void decodeMIDR(
           LOGS_DEFAULT(WARNING) << "unknown Intel CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
       }
       break;
-      //#endif /* ARM */
+      // #endif /* ARM */
     case 'N':
       switch (midr_get_part(midr)) {
         case 0x000:
@@ -234,11 +234,11 @@ void decodeMIDR(
           // #if defined(_M_ARM) || defined(__arm__)
         case 0x00F:
           /* Mostly Scorpions, but some Cortex A5 may report this value as well */
-          //if (has_vfpv4) {
-          //  /* Unlike Scorpion, Cortex-A5 comes with VFPv4 */
-          //  *vendor = cpuinfo_vendor_arm;
-          //  *uarch = cpuinfo_uarch_cortex_a5;
-          //} else {
+          // if (has_vfpv4) {
+          //   /* Unlike Scorpion, Cortex-A5 comes with VFPv4 */
+          //   *vendor = cpuinfo_vendor_arm;
+          //   *uarch = cpuinfo_uarch_cortex_a5;
+          // } else {
           *uarch = cpuinfo_uarch_scorpion;
           //          }
           break;
@@ -247,24 +247,24 @@ void decodeMIDR(
           break;
         case 0x04D:
           /*
-					 * Dual-core Krait:
-					 * - r1p0 -> Krait 200
-					 * - r1p4 -> Krait 200
-					 * - r2p0 -> Krait 300
-					 */
+           * Dual-core Krait:
+           * - r1p0 -> Krait 200
+           * - r1p4 -> Krait 200
+           * - r2p0 -> Krait 300
+           */
         case 0x06F:
           /*
-					 * Quad-core Krait:
-					 * - r0p1 -> Krait 200
-					 * - r0p2 -> Krait 200
-					 * - r1p0 -> Krait 300
-					 * - r2p0 -> Krait 400 (Snapdragon 800 MSMxxxx)
-					 * - r2p1 -> Krait 400 (Snapdragon 801 MSMxxxxPRO)
-					 * - r3p1 -> Krait 450
-					 */
+           * Quad-core Krait:
+           * - r0p1 -> Krait 200
+           * - r0p2 -> Krait 200
+           * - r1p0 -> Krait 300
+           * - r2p0 -> Krait 400 (Snapdragon 800 MSMxxxx)
+           * - r2p1 -> Krait 400 (Snapdragon 801 MSMxxxxPRO)
+           * - r3p1 -> Krait 450
+           */
           *uarch = cpuinfo_uarch_krait;
           break;
-          //#endif              /* ARM */
+          // #endif              /* ARM */
         case 0x201: /* Qualcomm Snapdragon 821: Low-power Kryo "Silver" */
         case 0x205: /* Qualcomm Snapdragon 820 & 821: High-performance Kryo "Gold" */
         case 0x211: /* Qualcomm Snapdragon 820: Low-power Kryo "Silver" */
@@ -288,14 +288,14 @@ void decodeMIDR(
         case 0x805: /* Low-performance Kryo 485 "Silver" -> Cortex-A55 */
           *uarch = cpuinfo_uarch_cortex_a55;
           break;
-          //#if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
+          // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
         case 0xC00:
           *uarch = cpuinfo_uarch_falkor;
           break;
         case 0xC01:
           *uarch = cpuinfo_uarch_saphira;
           break;
-          //#endif /* ARM64 && !defined(__ANDROID__) */
+          // #endif /* ARM64 && !defined(__ANDROID__) */
         default:
           LOGS_DEFAULT(WARNING) << "unknown Qualcomm CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
       }
@@ -304,42 +304,42 @@ void decodeMIDR(
       switch (midr & (CPUINFO_ARM_MIDR_VARIANT_MASK | CPUINFO_ARM_MIDR_PART_MASK)) {
         case 0x00100010:
           /*
-					 * Exynos 8890 MIDR = 0x531F0011, assume Exynos M1 has:
-					 * - CPU variant 0x1
-					 * - CPU part 0x001
-					 */
+           * Exynos 8890 MIDR = 0x531F0011, assume Exynos M1 has:
+           * - CPU variant 0x1
+           * - CPU part 0x001
+           */
           *uarch = cpuinfo_uarch_exynos_m1;
           break;
         case 0x00400010:
           /*
-					 * Exynos 8895 MIDR = 0x534F0010, assume Exynos M2 has:
-					 * - CPU variant 0x4
-					 * - CPU part 0x001
-					 */
+           * Exynos 8895 MIDR = 0x534F0010, assume Exynos M2 has:
+           * - CPU variant 0x4
+           * - CPU part 0x001
+           */
           *uarch = cpuinfo_uarch_exynos_m2;
           break;
         case 0x00100020:
           /*
-					 * Exynos 9810 MIDR = 0x531F0020, assume Exynos M3 has:
-					 * - CPU variant 0x1
-					 * - CPU part 0x002
-					 */
+           * Exynos 9810 MIDR = 0x531F0020, assume Exynos M3 has:
+           * - CPU variant 0x1
+           * - CPU part 0x002
+           */
           *uarch = cpuinfo_uarch_exynos_m3;
           break;
         case 0x00100030:
           /*
-					 * Exynos 9820 MIDR = 0x531F0030, assume Exynos M4 has:
-					 * - CPU variant 0x1
-					 * - CPU part 0x003
-					 */
+           * Exynos 9820 MIDR = 0x531F0030, assume Exynos M4 has:
+           * - CPU variant 0x1
+           * - CPU part 0x003
+           */
           *uarch = cpuinfo_uarch_exynos_m4;
           break;
         case 0x00100040:
           /*
-					 * Exynos 9820 MIDR = 0x531F0040, assume Exynos M5 has:
-					 * - CPU variant 0x1
-					 * - CPU part 0x004
-					 */
+           * Exynos 9820 MIDR = 0x531F0040, assume Exynos M5 has:
+           * - CPU variant 0x1
+           * - CPU part 0x004
+           */
           *uarch = cpuinfo_uarch_exynos_m5;
           break;
         default:
@@ -347,7 +347,7 @@ void decodeMIDR(
                                 << std::hex << midr_get_variant(midr) << " part 0x" << std::hex << midr_get_part(midr) << " ignored";
       }
       break;
-      //#if defined(_M_ARM) || defined(__arm__)
+      // #if defined(_M_ARM) || defined(__arm__)
     case 'V':
       switch (midr_get_part(midr)) {
         case 0x581: /* PJ4 / PJ4B */
@@ -358,7 +358,7 @@ void decodeMIDR(
           LOGS_DEFAULT(WARNING) << "unknown Marvell CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
       }
       break;
-      //#endif /* ARM */
+      // #endif /* ARM */
     default:
       LOGS_DEFAULT(WARNING) << "unknown CPU uarch from MIDR value: 0x" << std::hex << midr;
   }

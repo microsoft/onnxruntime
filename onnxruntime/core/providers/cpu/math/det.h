@@ -17,4 +17,4 @@ class Det final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

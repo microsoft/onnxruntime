@@ -27,15 +27,15 @@ void DnnlGraphTransformer::Apply(DnnlSubgraph& subgraph, const onnxruntime::Grap
   MatMulIntegerBinaryEltwise(subgraph);
 }
 
-//resolve a fusion by replacing old_indices nodes with a new_node
-//unneeded tensors will be deleted, old news' edges will be cleared
-//new_node will be set with new edges and inserted to subgraph
+// resolve a fusion by replacing old_indices nodes with a new_node
+// unneeded tensors will be deleted, old news' edges will be cleared
+// new_node will be set with new edges and inserted to subgraph
 void DnnlGraphTransformer::ResolveFusion(DnnlSubgraph& subgraph, std::vector<size_t> old_indices, std::unique_ptr<DnnlNode> new_node) {
-  //the tensors to keep
+  // the tensors to keep
   std::unordered_set<std::string> keep_tensors;
 
-  //get keep tensors from new_node
-  //all tensors related to new_node needs to be kept
+  // get keep tensors from new_node
+  // all tensors related to new_node needs to be kept
   for (auto input : new_node->Inputs()) {
     if (input && input->Exists()) {
       keep_tensors.insert(input->Name());
@@ -48,7 +48,7 @@ void DnnlGraphTransformer::ResolveFusion(DnnlSubgraph& subgraph, std::vector<siz
     }
   }
 
-  //find out tensors to remove, cleanup tensor consumers and producer
+  // find out tensors to remove, cleanup tensor consumers and producer
   std::unordered_set<std::string> tensors_to_remove;
   for (auto index : old_indices) {
     auto cur_node = subgraph.GetDnnlNode(index);
@@ -74,27 +74,26 @@ void DnnlGraphTransformer::ResolveFusion(DnnlSubgraph& subgraph, std::vector<siz
     }
   }
 
-  //remove unused tensors
+  // remove unused tensors
   for (const auto& tensor_name : tensors_to_remove) {
     auto tensor = subgraph.GetDnnlTensor(tensor_name);
-    if(tensor){
-      //has consumer and producer
-      if(tensor->GetConsumers().size() || tensor->GetProducer().Exists()){
+    if (tensor) {
+      // has consumer and producer
+      if (tensor->GetConsumers().size() || tensor->GetProducer().Exists()) {
         continue;
-      }
-      else{
+      } else {
         subgraph.RemoveTensor(tensor_name);
       }
     }
-    //subgraph.RemoveTensor(tensor_name);
+    // subgraph.RemoveTensor(tensor_name);
   }
-  //remove unused nodes
+  // remove unused nodes
   for (auto index : old_indices) {
     subgraph.RemoveNode(index);
   }
 
-  //reestablish producer and consumer for tensors related to new node
-  //such tensors should not get deleted
+  // reestablish producer and consumer for tensors related to new node
+  // such tensors should not get deleted
   {
     size_t input_index = 0;
     for (auto input : new_node->Inputs()) {
@@ -114,12 +113,12 @@ void DnnlGraphTransformer::ResolveFusion(DnnlSubgraph& subgraph, std::vector<siz
     }
   }
 
-  //new node now has correct input output tensors as well as tensor connections
-  //subgraph now owns the new node
+  // new node now has correct input output tensors as well as tensor connections
+  // subgraph now owns the new node
   subgraph.AddNode(std::move(new_node));
 }
 
-//helper to determine whether a tensor acts as subgraph output
+// helper to determine whether a tensor acts as subgraph output
 bool DnnlGraphTransformer::IsGraphOutput(DnnlSubgraph& subgraph, DnnlTensor& tensor) {
   auto graph_outputs = subgraph.GetDnnlOutputs();
   if (std::find(graph_outputs.cbegin(), graph_outputs.cend(), &tensor) != graph_outputs.cend()) {
@@ -128,7 +127,7 @@ bool DnnlGraphTransformer::IsGraphOutput(DnnlSubgraph& subgraph, DnnlTensor& ten
   return false;
 }
 
-//helper to determien whether
+// helper to determien whether
 bool DnnlGraphTransformer::ProduceGraphOutput(DnnlSubgraph& subgraph, DnnlNode& node) {
   auto graph_outputs = subgraph.GetDnnlOutputs();
   for (auto output : node.Outputs()) {
@@ -141,21 +140,20 @@ bool DnnlGraphTransformer::ProduceGraphOutput(DnnlSubgraph& subgraph, DnnlNode& 
   return false;
 }
 
-
-bool DnnlGraphTransformer::IsNodeFusable(DnnlSubgraph& subgraph, DnnlNode* node) const{
+bool DnnlGraphTransformer::IsNodeFusable(DnnlSubgraph& subgraph, DnnlNode* node) const {
   if (node == nullptr) {
     return false;
   }
-  //isSingleOutput(DnnlNode* node);
+  // isSingleOutput(DnnlNode* node);
   if (node->OutputCount() != 1) {
     std::string s = "Invalid " + node->OpType() + " node";
     ORT_THROW(s);
   }
-  //isConsumedBySingleNode(DnnlNode* node);
+  // isConsumedBySingleNode(DnnlNode* node);
   if (node->Output(0).Exists() && node->Output(0).GetConsumers().size() != 1) {
     return false;
   }
-  //isOutputPartOfSubgraph(DnnlSubgraph& subgraph, DnnlNode* node);
+  // isOutputPartOfSubgraph(DnnlSubgraph& subgraph, DnnlNode* node);
   auto graph_outputs = subgraph.GetDnnlOutputs();
   if (std::find(graph_outputs.cbegin(), graph_outputs.cend(), &node->Output(0)) != graph_outputs.cend()) {
     return false;
@@ -170,7 +168,7 @@ bool IsScalar(const DnnlTensor& input_arg) {
 }
 
 bool DnnlGraphTransformer::IsInitilizedWithExpectedValue(const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlTensor& input_arg, float expected_value) {
-    if (!IsScalar(input_arg)) {
+  if (!IsScalar(input_arg)) {
     return false;
   }
 
@@ -209,7 +207,6 @@ bool DnnlGraphTransformer::IsInitilizedWithExpectedValue(const onnxruntime::Grap
   }
 
   return true;
-
 }
 
 DnnlNode* FirstParentByType(DnnlNode* node, const std::string& parent_type) {
@@ -243,7 +240,7 @@ DnnlNode* FirstParentByType(DnnlNode* node, const std::string& parent_type) {
 */
 void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer) {
   static int gelu_index = 0;
-  //traverse with max index as there will be empty nodes due to fusion
+  // traverse with max index as there will be empty nodes due to fusion
   size_t max_index = subgraph.GetMaxNodeIndex();
   for (size_t index = 0; index < max_index; index++) {
     auto div_node = subgraph.GetDnnlNode(index);
@@ -296,9 +293,9 @@ void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph, const onnxruntime::Graph
       continue;
     }
 
-    //if (!IsNodeFusable(subgraph, mul1_node)) {
-    //  continue;
-    //}
+    // if (!IsNodeFusable(subgraph, mul1_node)) {
+    //   continue;
+    // }
     gelu_indices.push_back(mul1_node->Index());
     //----------------------------
     // look for Mul(0.5) using pattern 1 shown above
@@ -342,7 +339,7 @@ void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph, const onnxruntime::Graph
     }
     gelu_indices.push_back(mul2_node->Index());
 
-    //construct new node
+    // construct new node
     auto new_node = std::make_unique<DnnlNode>();
     new_node->Name() = div_node->Name() + "_Gelu_" + std::to_string(gelu_index++);
     new_node->OpType() = "Gelu";
@@ -357,9 +354,9 @@ void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph, const onnxruntime::Graph
       }
     }
     // no attributes needed for Gelu if needed this can be updated
-    //new_node->Attributes().insert(div_node->Attributes());
+    // new_node->Attributes().insert(div_node->Attributes());
 
-    //insert new node, remove original nodes, connect new edges
+    // insert new node, remove original nodes, connect new edges
     ResolveFusion(subgraph, {gelu_indices}, std::move(new_node));
     if (debug_log_) {
       LOGS_DEFAULT(ERROR) << "Gelu fusion found [" << gelu_index << "]";
@@ -378,7 +375,7 @@ where x is the input.
 */
 void DnnlGraphTransformer::FastGelu(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer) {
   static int fastgelu_index = 0;
-  //traverse with max index as there will be empty nodes due to fusion
+  // traverse with max index as there will be empty nodes due to fusion
   size_t max_index = subgraph.GetMaxNodeIndex();
   for (size_t index = 0; index < max_index; index++) {
     auto dnnl_node = subgraph.GetDnnlNode(index);
@@ -622,7 +619,7 @@ bool DnnlGraphTransformer::FastGeluFormulaCommon(DnnlSubgraph& subgraph, const o
   }
   gelu_indices.push_back(prev_mul4_node->Index());
 
-  //construct new node
+  // construct new node
   auto new_node = std::make_unique<DnnlNode>();
   new_node->Name() = "Dnnl_FastGelu_" + std::to_string(fastgelu_index++);
   new_node->OpType() = "FastGelu";
@@ -631,23 +628,23 @@ bool DnnlGraphTransformer::FastGeluFormulaCommon(DnnlSubgraph& subgraph, const o
     new_node->Outputs().push_back(def);
   }
   // No Attributes needed for FastGelu. If they are needed this can be added in.
-  //new_node->Attributes().insert(gelu_start_node->Attributes());
+  // new_node->Attributes().insert(gelu_start_node->Attributes());
 
-  //insert new node, remove original nodes, connect new edges
+  // insert new node, remove original nodes, connect new edges
   ResolveFusion(subgraph, {gelu_indices}, std::move(new_node));
   return true;
 }
 
 void DnnlGraphTransformer::ConvRelu(DnnlSubgraph& subgraph) {
-  //global index of convrelu
+  // global index of convrelu
   static int conv_relu_index = 0;
 
-  //traverse with max index as there will be empty nodes due to fusion
+  // traverse with max index as there will be empty nodes due to fusion
   size_t max_index = subgraph.GetMaxNodeIndex();
   for (size_t index = 0; index < max_index; index++) {
     auto dnnl_node = subgraph.GetDnnlNode(index);
 
-    //look for conv relu pattern
+    // look for conv relu pattern
     if (dnnl_node == nullptr) {
       continue;
     }
@@ -657,7 +654,7 @@ void DnnlGraphTransformer::ConvRelu(DnnlSubgraph& subgraph) {
     }
 
     if (!IsNodeFusable(subgraph, dnnl_node)) {
-        continue;
+      continue;
     }
 
     auto next_dnnl_node = dnnl_node->Output(0).GetConsumers()[0].GetNode();
@@ -668,7 +665,7 @@ void DnnlGraphTransformer::ConvRelu(DnnlSubgraph& subgraph) {
       continue;
     }
 
-    //construct new node
+    // construct new node
     auto new_node = std::make_unique<DnnlNode>();
     new_node->Name() = dnnl_node->Name() + "_ConvRelu_" + std::to_string(conv_relu_index++);
     new_node->OpType() = "ConvRelu";
@@ -680,7 +677,7 @@ void DnnlGraphTransformer::ConvRelu(DnnlSubgraph& subgraph) {
     }
     new_node->Attributes().insert(dnnl_node->Attributes());
 
-    //insert new node, remove original nodes, connect new edges
+    // insert new node, remove original nodes, connect new edges
     if (debug_log_) {
       LOGS_DEFAULT(ERROR) << "ConvRelu fusion of [" << dnnl_node->Name() << "] and [" << next_dnnl_node->Name() << "]";
     }
@@ -717,7 +714,7 @@ void DnnlGraphTransformer::MatMulBinaryEltwise(DnnlSubgraph& subgraph) {
       continue;
     }
 
-    //construct new node
+    // construct new node
     auto fused_node = std::make_unique<DnnlNode>();
     fused_node->Name() = "MatMulPostOps_fusion" + std::to_string(fused_index++);
     std::string fused_node_name = "MatMulPostOps";
@@ -749,12 +746,12 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const o
   for (size_t index = 0; index < max_index; index++) {
     auto dnnl_node = subgraph.GetDnnlNode(index);
 
-    //look for matmulint
+    // look for matmulint
     if (dnnl_node == nullptr || dnnl_node->OpType() != "MatMulInteger") {
       continue;
     }
 
-    //if B zero point exists
+    // if B zero point exists
     if (!(dnnl_node->InputCount() >= 4 && dnnl_node->Input(3).Exists())) {
       continue;
     }
@@ -776,10 +773,10 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const o
       num_elements *= int(dims[i]);
     }
 
-    //check if b_zp is all zeros, assume data is s8 since only s8 weight is supported in onednn
+    // check if b_zp is all zeros, assume data is s8 since only s8 weight is supported in onednn
     bool all_zero = true;
     std::vector<int8_t> unpacked_tensor;
-    unpacked_tensor.resize(num_elements,1);
+    unpacked_tensor.resize(num_elements, 1);
     ORT_THROW_IF_ERROR(onnxruntime::utils::UnpackTensor(*tensor_proto, tensor_proto->has_raw_data() ? tensor_proto->raw_data().data() : nullptr, tensor_proto->has_raw_data() ? tensor_proto->raw_data().size() : 0, reinterpret_cast<int8_t*>(unpacked_tensor.data()), num_elements));
     for (const auto& val : unpacked_tensor) {
       if (val != 0) {
@@ -788,7 +785,6 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const o
       }
     }
 
-
     if (!all_zero) {
       continue;
     }
@@ -796,9 +792,9 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const o
     if (debug_log_) {
       LOGS_DEFAULT(ERROR) << "Remove weight ZP of [" << dnnl_node->Name() << "]";
     }
-    //remove b_zero_point's consumer matmulint
+    // remove b_zero_point's consumer matmulint
     b_zero_point.RemoveConsumer(DnnlNodeArg(dnnl_node, 3, false));
-    //detach b_zero_point from matmulint node
+    // detach b_zero_point from matmulint node
     dnnl_node->Inputs()[3] = nullptr;
   }
 }
@@ -848,7 +844,7 @@ void DnnlGraphTransformer::MatMulIntegerBinaryEltwise(DnnlSubgraph& subgraph) {
       continue;
     }
 
-    //construct new node
+    // construct new node
     auto fused_node = std::make_unique<DnnlNode>();
     fused_node->Name() = "MatMulIntegerPostOps_fusion" + std::to_string(fused_index++);
     std::string fused_node_name = "MatMulIntegerPostOps";

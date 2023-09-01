@@ -4,6 +4,7 @@
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamw.h"
 #include "orttraining/training_ops/cpu/optimizer/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/TensorSeq.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
@@ -136,7 +137,7 @@ Status AdamWOptimizer<T>::Compute(OpKernelContext* ctx) const {
   AdamWOptimizerBase::Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, p));
 
-  int64_t* updated_flag_ptr = p.updated_flag->template MutableData<int64_t>();
+  bool* updated_flag_ptr = p.updated_flag->template MutableData<bool>();
 
   const Tensor* update_signal = ctx->Input<Tensor>(6);
   if (update_signal == nullptr || *update_signal->template Data<bool>()) {
@@ -181,9 +182,9 @@ Status AdamWOptimizer<T>::Compute(OpKernelContext* ctx) const {
       }
     }
 
-    *updated_flag_ptr = 1;
+    *updated_flag_ptr = true;
   } else {
-    *updated_flag_ptr = 0;
+    *updated_flag_ptr = false;
   }
 
   if (p.updated_weights != nullptr) {

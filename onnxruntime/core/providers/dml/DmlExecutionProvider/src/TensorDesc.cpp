@@ -79,7 +79,7 @@ TensorDesc::TensorDesc(
             dimension0 *= dimensions[i];
         }
 
-        for (size_t i = coerceAxis + 1, ci = dimensions.size(); i < ci; ++i)
+        for (size_t i = static_cast<int64_t>(coerceAxis) + 1, ci = dimensions.size(); i < ci; ++i)
         {
             dimension1 *= dimensions[i];
         }

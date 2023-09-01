@@ -10,8 +10,8 @@ namespace onnxruntime {
 namespace training {
 
 TypeProto* BertLossLegacy::GetMaskedLMTypeProto(const NodeArg* prediction_arg,
-                                          ONNX_NAMESPACE::TensorProto_DataType data_type,
-                                          GraphAugmenter::GraphDefs& graph_defs) {
+                                                ONNX_NAMESPACE::TensorProto_DataType data_type,
+                                                GraphAugmenter::GraphDefs& graph_defs) {
   ORT_ENFORCE(prediction_arg != nullptr, "GetMaskedPredictionTypeProto's prediction_arg is nullptr");
   const auto* logits_type_proto = prediction_arg->TypeAsProto();
   const auto& dims = logits_type_proto->tensor_type().shape().dim();
@@ -29,7 +29,7 @@ TypeProto* BertLossLegacy::GetMaskedLMTypeProto(const NodeArg* prediction_arg,
 }
 
 TypeProto* BertLossLegacy::GetGatheredPredictionTypeProto(const NodeArg* prediction_arg,
-                                                    GraphAugmenter::GraphDefs& graph_defs) {
+                                                          GraphAugmenter::GraphDefs& graph_defs) {
   ORT_ENFORCE(prediction_arg != nullptr, "GetMaskedPredictionTypeProto's prediction_arg is nullptr");
   const auto* logits_type_proto = prediction_arg->TypeAsProto();
   const auto& dims = logits_type_proto->tensor_type().shape().dim();
@@ -86,7 +86,7 @@ GraphAugmenter::GraphDefs BertLossLegacy::operator()(const Graph& graph, const L
       else
         ORT_THROW("ONNX domain not found in this model");
     }
-    
+
     if (onnx_opset <= 12) {
       new_nodes.emplace_back(NodeDef("Unsqueeze",
                                      {ArgDef(masked_lm_positions, masked_lm_int64_type_proto)},
@@ -110,7 +110,7 @@ GraphAugmenter::GraphDefs BertLossLegacy::operator()(const Graph& graph, const L
                                      NodeAttributes(),
                                      "Mask_LM_Positions_Unsqueezed"));
     }
-    
+
     TypeProto* gathered_prediction_type_proto = GetGatheredPredictionTypeProto(prediction_arg,
                                                                                graph_defs);
     new_nodes.emplace_back(NodeDef(OpDef{"GatherND", kOnnxDomain, 12},

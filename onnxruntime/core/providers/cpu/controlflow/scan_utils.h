@@ -116,7 +116,7 @@ class OutputIterator {
     ORT_ENFORCE(final_output_mlvalue_, "Attempt to retrieve final output before it was set.");
     return *final_output_mlvalue_;
   }
-  //std::unique_ptr needs to access this function.
+  // std::unique_ptr needs to access this function.
   OutputIterator(OpKernelContextInternal& context,
                  int output_index,
                  bool is_loop_state_var,

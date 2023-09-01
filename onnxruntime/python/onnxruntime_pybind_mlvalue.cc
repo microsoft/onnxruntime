@@ -25,6 +25,10 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/provider_options_utils.h"
 
+#ifdef USE_DML
+#include "core/providers/dml/DmlExecutionProvider/src/DmlExternalBufferAllocator.h"
+#endif
+
 namespace onnxruntime {
 namespace python {
 
@@ -177,6 +181,76 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
   return GetProviderInfo_CUDA().CreateGPUDataTransfer();
+}
+
+#endif
+
+#ifdef USE_DML
+AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded DML allocation work, including maintaining a per-thread DML allocator.
+
+  // We are leaking this map so we do not accidentally destroy the DML Allocator instance
+  // after we unloaded DML provider library. Appeasing static analysis warning and using make_unique.
+  static auto* id_to_allocator_map = std::make_unique<std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>>().release();
+
+  auto hit = id_to_allocator_map->find(id);
+  if (hit == id_to_allocator_map->end()) {
+    auto dml_allocator = std::make_shared<Dml::DmlExternalBufferAllocator>(id);
+    hit = id_to_allocator_map->emplace(id, std::move(dml_allocator)).first;
+  }
+
+  return hit->second;
+}
+
+#endif
+
+#ifdef USE_CANN
+void CpuToCannMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_CANN().cannMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void CannToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_CANN().cannMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCannToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::NPU, CannToCpuMemCpy}};
+
+  return &map;
+}
+
+bool IsCannDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
+  int num_devices = GetProviderInfo_CANN().cannGetDeviceCount();
+
+  if (0 == num_devices) {
+    LOGS(logger, WARNING) << "your system does not have a CANN capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(logger, WARNING) << "cann_device=" << id << " is invalid, must choose device ID between 0 and "
+                          << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+AllocatorPtr GetCannAllocator(OrtDevice::DeviceId id) {
+  size_t npu_mem_limit = std::numeric_limits<size_t>::max();
+  onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+
+  static auto* id_to_allocator_map =
+      std::make_unique<std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>>().release();
+  auto hit = id_to_allocator_map->find(id);
+  if (hit == id_to_allocator_map->end()) {
+    auto cann_allocator = GetProviderInfo_CANN().CreateCannAllocator(id, npu_mem_limit, arena_extend_strategy, nullptr);
+    hit = id_to_allocator_map->emplace(id, std::move(cann_allocator)).first;
+  }
+
+  return hit->second;
 }
 
 #endif
@@ -495,26 +569,24 @@ static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_
     throw std::runtime_error("Input is not of sequence type");
   }
 
+  // set the seq type
+  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
+  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
+
   // populate the seq
-  std::vector<Tensor> tensors;
   auto list_size = PyList_Size(pylist_obj);
   if (list_size > 0) {
-    tensors.resize(list_size);
     for (Py_ssize_t i = 0; i < list_size; ++i) {
       auto* py_obj = PyList_GetItem(pylist_obj, i);
       if (!PyObjectCheck_NumpyArray(py_obj)) {
         throw std::runtime_error("CreateSequenceOfTensors: Input is not a tensor");
       }
       auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
-      tensors[i] = std::move(*p_tensor);
+      p_seq_tensors->Add(std::move(*p_tensor));
     }
   }
 
-  // set the seq type
-  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
-      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
-  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
-  p_seq_tensors->SetElements(std::move(tensors));
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   p_mlvalue->Init(p_seq_tensors.release(),
                   ml_tensor_sequence,

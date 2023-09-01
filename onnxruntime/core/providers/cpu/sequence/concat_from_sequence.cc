@@ -26,7 +26,7 @@ Status ConcatFromSequence::Compute(OpKernelContext* ctx) const {
   InlinedTensorsVector input_tensor_pointers;
   input_tensor_pointers.reserve(X->Size());
   for (const auto& t : *X) {
-    input_tensor_pointers.push_back(&t);
+    input_tensor_pointers.push_back(&t.Get<Tensor>());
   }
 
   // Validate inputs and prepare some metadata used during actual compute

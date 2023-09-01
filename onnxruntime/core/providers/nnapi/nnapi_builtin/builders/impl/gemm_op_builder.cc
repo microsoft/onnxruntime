@@ -84,7 +84,7 @@ class GemmOpBuilder : public BaseOpBuilder {
 // Add operator related
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetEffectiveFeatureLevel())) {
     // no initializers to skip for batch matmul
     return;
   }
@@ -125,7 +125,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetEffectiveFeatureLevel())) {
     return op_builder_helpers::BuildBatchMatMul(model_builder, node_unit);
   }
 

@@ -48,7 +48,7 @@ def main():
     condition_fp16 = get_table_condition(common, "fp16", args.ep, args.tolerance)
 
     common["greater"] = np.where((condition_fp32 | condition_fp16), True, False)
-    greater = common[common["greater"] == True].drop(["greater"], axis=1)
+    greater = common[common["greater"] is True].drop(["greater"], axis=1)
 
     # arrange columns
     keys = list(greater.keys().sort_values())

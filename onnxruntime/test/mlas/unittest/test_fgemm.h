@@ -56,7 +56,7 @@ class FgemmPackedContext<float, false> {
   }
 };
 
-#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_POWER)
 template <>
 class FgemmPackedContext<double, false> {
  public:
@@ -148,7 +148,7 @@ class MlasFgemmTest : public MlasTestBase {
     return suite_name.c_str();
   }
 
-  MlasFgemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) { }
+  MlasFgemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, T alpha, T beta) {
     Test(false, false, M, N, K, BatchSize, alpha, beta);
@@ -164,7 +164,7 @@ class MlasFgemmTest : public MlasTestBase {
     if constexpr (Packed) {
       if (N == 0 || K == 0)
         return;
-    }    
+    }
 
     const T* A = BufferA.GetBuffer(K * M * BatchSize);
     const T* B = BufferB.GetBuffer(N * K * BatchSize);

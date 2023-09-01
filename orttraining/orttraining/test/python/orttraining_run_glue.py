@@ -1,14 +1,14 @@
 # adapted from run_glue.py of huggingface transformers
 
-import dataclasses
+import dataclasses  # noqa: F401
 import logging
 import os
+import unittest
 from dataclasses import dataclass, field
 from typing import Dict, Optional
-import unittest
+
 import numpy as np
 from numpy.testing import assert_allclose
-
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
@@ -24,15 +24,12 @@ from transformers import (
 )
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
+from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer  # noqa: F401
 
 try:
-    from onnxruntime.capi._pybind_state import (
-        get_mpi_context_local_rank,
-        get_mpi_context_local_size,
-        get_mpi_context_world_rank,
-        get_mpi_context_world_size,
-    )
+    from onnxruntime.capi._pybind_state import get_mpi_context_local_size  # noqa: F401
+    from onnxruntime.capi._pybind_state import get_mpi_context_world_rank  # noqa: F401
+    from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_world_size
 
     has_get_mpi_context_internal_api = True
 except ImportError:
@@ -40,9 +37,8 @@ except ImportError:
     pass
 
 
+import torch  # noqa: F401
 from orttraining_transformer_trainer import ORTTransformerTrainer
-
-import torch
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +46,7 @@ logger = logging.getLogger(__name__)
 def verify_old_and_new_api_are_equal(results_per_api):
     new_api_results = results_per_api[True]
     old_api_results = results_per_api[False]
-    for key in new_api_results.keys():
+    for key in new_api_results:
         assert_allclose(new_api_results[key], old_api_results[key])
 
 
@@ -183,7 +179,7 @@ class ORTGlueTest(unittest.TestCase):
                 "outputs": [("loss", [], True), ("logits", ["batch", 2])],
             }
         else:
-            raise RuntimeError("unsupported base model name {}.".format(model_name))
+            raise RuntimeError(f"unsupported base model name {model_name}.")
 
         return model_desc
 
@@ -230,7 +226,7 @@ class ORTGlueTest(unittest.TestCase):
             num_labels = glue_tasks_num_labels[data_args.task_name]
             output_mode = glue_output_modes[data_args.task_name]
         except KeyError:
-            raise ValueError("Task not found: %s" % (data_args.task_name))
+            raise ValueError("Task not found: %s" % (data_args.task_name))  # noqa: B904
 
         config = AutoConfig.from_pretrained(
             model_args.config_name if model_args.config_name else model_args.model_name_or_path,
@@ -285,7 +281,7 @@ class ORTGlueTest(unittest.TestCase):
 
             result = trainer.evaluate()
 
-            logger.info("***** Eval results {} *****".format(data_args.task_name))
+            logger.info(f"***** Eval results {data_args.task_name} *****")
             for key, value in result.items():
                 logger.info("  %s = %s", key, value)
 

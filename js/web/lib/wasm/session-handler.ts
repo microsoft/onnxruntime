@@ -6,28 +6,9 @@ import {env, InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common'
 import {promisify} from 'util';
 
 import {SerializableModeldata} from './proxy-messages';
-import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
+import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
 
-let ortInit: boolean;
-
-
-const getLogLevel = (logLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
-  switch (logLevel) {
-    case 'verbose':
-      return 0;
-    case 'info':
-      return 1;
-    case 'warning':
-      return 2;
-    case 'error':
-      return 3;
-    case 'fatal':
-      return 4;
-    default:
-      throw new Error(`unsupported logging level: ${logLevel}`);
-  }
-};
-
+let runtimeInitialized: boolean;
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   private sessionId: number;
@@ -39,18 +20,21 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     // fetch model from url and move to wasm heap. The arraybufffer that held the http
     // response is freed once we return
     const response = await fetch(path);
+    if (response.status !== 200) {
+      throw new Error(`failed to load model: ${path}`);
+    }
     const arrayBuffer = await response.arrayBuffer();
     return createSessionAllocate(new Uint8Array(arrayBuffer));
   }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
-    if (!ortInit) {
-      await initOrt(env.wasm.numThreads!, getLogLevel(env.logLevel!));
-      ortInit = true;
+    if (!runtimeInitialized) {
+      await initializeRuntime(env);
+      runtimeInitialized = true;
     }
 
     if (typeof pathOrBuffer === 'string') {
-      if (typeof fetch === 'undefined') {
+      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
         // node
         const model = await promisify(readFile)(pathOrBuffer);
         [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);

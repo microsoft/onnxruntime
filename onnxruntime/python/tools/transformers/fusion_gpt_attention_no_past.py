@@ -4,10 +4,8 @@
 # --------------------------------------------------------------------------
 from logging import getLogger
 
-import numpy as np
 from fusion_base import Fusion
-from fusion_utils import FusionUtils
-from onnx import TensorProto, helper, numpy_helper
+from onnx import helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -23,6 +21,7 @@ class FusionGptAttentionNoPast(Fusion):
         super().__init__(model, "Attention", ["LayerNormalization", "SkipLayerNormalization"], "without past")
         # TODO: detect num_heads from graph like FusionAttention
         self.num_heads = num_heads
+        self.mask_filter_value = None
 
     def create_attention_node(self, gemm, gemm_qkv, input, output):
         attention_node_name = self.model.create_node_name("Attention")
@@ -39,6 +38,8 @@ class FusionGptAttentionNoPast(Fusion):
                 helper.make_attribute("unidirectional", 1),
             ]
         )
+        if self.mask_filter_value is not None:
+            attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
 
         matmul_node = helper.make_node(
             "MatMul",
@@ -143,9 +144,9 @@ class FusionGptAttentionNoPast(Fusion):
         # fused into a SkipLayerNorm. This can happen if the shapes to the Add node are different.
         # So, keep the following check if SkipLayerNorm fusion is turned ON or OFF.
         if another_input is not None:
-            if not another_input in layernorm_before_attention.input:
+            if another_input not in layernorm_before_attention.input:
                 # match openai-gpt
-                if not another_input in layernorm_before_attention.output:
+                if another_input not in layernorm_before_attention.output:
                     logger.debug("Add and (Skip)LayerNormalization shall have one same input")
                     return
 
@@ -176,6 +177,11 @@ class FusionGptAttentionNoPast(Fusion):
             if div_qk != div_mask:
                 logger.debug("fuse_attention: skip since div_qk != div_mask")
                 return
+            if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
+                _, mul_val = self.model.get_constant_input(mask_nodes[0])
+                if mul_val != -10000:
+                    self.mask_filter_value = mul_val
+
         else:
             # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.
             qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Where", "Div", "MatMul"], [0, 0, 1, 0])

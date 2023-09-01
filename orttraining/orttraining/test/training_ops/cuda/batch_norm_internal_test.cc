@@ -45,17 +45,17 @@ static void TestBatchNormInternal(bool test_double = false, bool T_is_half = fal
   std::vector<float> saved_inv_std = {1.2288f, 0.861317f};
 
   if (test_double) {
-    std::vector<double> X_double (X.begin(), X.end());
-    std::vector<double> scale_double (scale.begin(), scale.end());
-    std::vector<double> B_double (B.begin(), B.end());
-    std::vector<double> mean_double (mean.begin(), mean.end());
-    std::vector<double> var_double (var.begin(), var.end());
+    std::vector<double> X_double(X.begin(), X.end());
+    std::vector<double> scale_double(scale.begin(), scale.end());
+    std::vector<double> B_double(B.begin(), B.end());
+    std::vector<double> mean_double(mean.begin(), mean.end());
+    std::vector<double> var_double(var.begin(), var.end());
 
-    std::vector<double> Y_double (Y.begin(), Y.end());
-    std::vector<double> running_mean_double (running_mean.begin(), running_mean.end());
-    std::vector<double> running_var_double (running_var.begin(), running_var.end());
-    std::vector<double> saved_mean_double (saved_mean.begin(), saved_mean.end());
-    std::vector<double> saved_inv_std_double (saved_inv_std.begin(), saved_inv_std.end());
+    std::vector<double> Y_double(Y.begin(), Y.end());
+    std::vector<double> running_mean_double(running_mean.begin(), running_mean.end());
+    std::vector<double> running_var_double(running_var.begin(), running_var.end());
+    std::vector<double> saved_mean_double(saved_mean.begin(), saved_mean.end());
+    std::vector<double> saved_inv_std_double(saved_inv_std.begin(), saved_inv_std.end());
 
     test.AddInput<double>("X", input_output_dims, X_double);
     test.AddInput<double>("scale", channel_dims, scale_double);
@@ -132,37 +132,37 @@ static void TestBatchNormInternal(bool test_double = false, bool T_is_half = fal
            {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(CudaKernelTest, BNInternalBasic) { // float case
+TEST(CudaKernelTest, BNInternalBasic) {  // float case
   TestBatchNormInternal();
 }
 
-#ifndef USE_ROCM // MIOpen does not support double type
-TEST(CudaKernelTest, BNInternalDouble) { // double case
+#ifndef USE_ROCM                          // MIOpen does not support double type
+TEST(CudaKernelTest, BNInternalDouble) {  // double case
   TestBatchNormInternal(true);
 }
-#endif // ndef USE_ROCM
+#endif  // ndef USE_ROCM
 
-TEST(CudaKernelTest, BNInternalHalf) { // half case
+TEST(CudaKernelTest, BNInternalHalf) {  // half case
   TestBatchNormInternal(false, true, true, true);
 }
 
-TEST(CudaKernelTest, BNInternalHalfHalfFloat) { // half X/Y & scale/B, float mean/var
+TEST(CudaKernelTest, BNInternalHalfHalfFloat) {  // half X/Y & scale/B, float mean/var
   TestBatchNormInternal(false, true, true);
 }
 
-TEST(CudaKernelTest, BNInternalHalfFloatFloat) { // half X/Y, float scale/B & mean/var
+TEST(CudaKernelTest, BNInternalHalfFloatFloat) {  // half X/Y, float scale/B & mean/var
   TestBatchNormInternal(false, true);
 }
 
-TEST(CudaKernelTest, BNInternal3DInput) { // float case, 3d input
+TEST(CudaKernelTest, BNInternal3DInput) {  // float case, 3d input
   TestBatchNormInternal(false, false, false, false, {2, 2, 4});
 }
 
-TEST(CudaKernelTest, BNInternal5DInput) { // float case, 5d input
+TEST(CudaKernelTest, BNInternal5DInput) {  // float case, 5d input
   TestBatchNormInternal(false, false, false, false, {2, 2, 2, 1, 2});
 }
 
-TEST(CudaKernelTest, BNInternal1DInput) { // float case, 1d input
+TEST(CudaKernelTest, BNInternal1DInput) {  // float case, 1d input
   OpTester test("BatchNormInternal", 1, kMSDomain);
   float epsilon = 1e-05f;
   float momentum = 0.1f;
@@ -195,8 +195,8 @@ TEST(CudaKernelTest, BNInternal1DInput) { // float case, 1d input
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
-#endif // USE_CUDA || USE_ROCM
+#endif  // USE_CUDA || USE_ROCM
 
 }  // namespace test
-} // namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime

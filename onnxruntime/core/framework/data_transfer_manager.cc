@@ -135,7 +135,7 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
 
   // copy the first one as we already did the IDataTransfer lookup
   ORT_RETURN_IF_ERROR(first_pair.src_stream ? first_dt->CopyTensorAsync(first_pair.src.get(), first_pair.dst.get(), *(first_pair.src_stream))
-                        : first_dt->CopyTensor(first_pair.src.get(), first_pair.dst.get()));
+                                            : first_dt->CopyTensor(first_pair.src.get(), first_pair.dst.get()));
 
   for (auto cur_pair = src_dst_pairs.cbegin() + 1, end_pair = src_dst_pairs.cend(); cur_pair != end_pair; ++cur_pair) {
     ORT_RETURN_IF_ERROR(!cur_pair->src_stream ? CopyTensor(cur_pair->src, cur_pair->dst) : CopyTensorAsync(cur_pair->src, cur_pair->dst, *(cur_pair->src_stream)));

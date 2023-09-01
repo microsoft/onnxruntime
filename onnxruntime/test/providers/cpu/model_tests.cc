@@ -48,10 +48,15 @@
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-#define ASSERT_ORT_STATUS_OK(function)                                        \
-  do {                                                                        \
-    OrtStatus* _tmp_status = (function);                                      \
-    ASSERT_EQ(_tmp_status, nullptr) << OrtApis::GetErrorMessage(_tmp_status); \
+// asserts that the OrtStatus* result of `status_expr` does not indicate an error
+// note: this takes ownership of the OrtStatus* result
+#define ASSERT_ORT_STATUS_OK(status_expr)                                           \
+  do {                                                                              \
+    if (OrtStatus* _status = (status_expr); _status != nullptr) {                   \
+      std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> _rel_status{    \
+          _status, &OrtApis::ReleaseStatus};                                        \
+      FAIL() << "OrtStatus error: " << OrtApis::GetErrorMessage(_rel_status.get()); \
+    }                                                                               \
   } while (false)
 
 using namespace onnxruntime::common;
@@ -93,36 +98,22 @@ TEST_P(ModelTest, Run) {
   std::string provider_name = ToUTF8String(param.substr(0, pos));
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
   double per_sample_tolerance = 1e-3;
-  // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-  // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
   double relative_per_sample_tolerance = 1e-3;
-  if (provider_name == "openvino") {
-    relative_per_sample_tolerance = 0.009;
+
+  // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
+  if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
+    if (provider_name == "cuda" || provider_name == "openvino") {
+      relative_per_sample_tolerance = 1e-2;
+    }
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() != 14 && model_info->GetONNXOpSetVersion() != 15 &&
-      provider_name == "tensorrt") {
-    // TensorRT can run most of the model tests, but only part of
-    // them is enabled here to save CI build time.
-    // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will
-    // fail. That's one of reasons we skip those testcases and only test latest ONNX opsets.
-    SkipTest(" tensorrt only support opset 14 or 15");
-    return;
-  }
-  if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
-    // DNNL can run most of the model tests, but only part of
-    // them is enabled here to save CI build time.
-    SkipTest(" dnnl doesn't support opset 10");
-    return;
-  }
-#ifndef ENABLE_TRAINING
+
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-    SkipTest("It has training domain");
+    SkipTest("it has the training domain. No pipeline should need to run these tests.");
     return;
   }
-#endif
   std::set<BrokenTest> broken_tests = {
       {"slice_neg_steps",
        "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
@@ -133,7 +124,7 @@ TEST_P(ModelTest, Run) {
       {"mnist", "Input data isn't in valid range"},
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"opset9", "opset10"}},
-      {"constantofshape_int_zeros", "test data bug",  {"opset9", "opset10"}},
+      {"constantofshape_int_zeros", "test data bug", {"opset9", "opset10"}},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"opset9", "opset10"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
@@ -180,7 +171,7 @@ TEST_P(ModelTest, Run) {
       {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
       {"castlike_FLOAT_to_STRING", "type error", {}},
       {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
-      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.",  {"opset13", "opset14"}},
+      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"opset13", "opset14"}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},
       {"optional_get_element", "type error", {}},
@@ -195,6 +186,7 @@ TEST_P(ModelTest, Run) {
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
+      {"col2im_pads", "result mismatch", {"opset18"}},
 #ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -245,22 +237,6 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
-      // models from model zoo
-      {"BERT-Squad-int8", "failed in training", {"opset12"}},
-      {"DenseNet-121-12-int8", "failed in training", {"opset12"}},
-      {"EfficientNet-Lite4-int8", "failed in training", {"opset11"}},
-      {"EfficientNet-Lite4-qdq", "failed in training", {"opset11"}},
-      {"Faster R-CNN R-50-FPN-int8", "failed in training", {"opset12"}},
-      {"Inception-1-int8", "failed in training", {"opset12"}},
-      {"MobileNet v2-1.0-int8", "failed in traning", {"opset12"}},
-      {"MobileNet v2-1.0-qdq", "failed in training", {"opset12"}},
-      {"ResNet50-qdq", "failed in training", {"opset12"}},
-      {"ResNet50_int8", "failed in training", {"opset12"}},
-      {"ResNet50-int8", "failed in training", {"opset12"}},
-      {"ShuffleNet-v2-int8", "failed in training", {"opset12"}},
-      {"SSD-int8", "failed in training", {"opset12"}},
-      {"VGG 16-int8", "failed in training", {"opset12"}},
-      {"YOLOv3-12-int8", "failed in training", {"opset12"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
@@ -274,6 +250,9 @@ TEST_P(ModelTest, Run) {
 #ifdef _WIN32
     broken_tests.insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
     broken_tests.insert({"bidaf", "this test fails with new image since Aug 25."});
+    broken_tests.insert({"Candy", "Flaky test, need to investigate", {"opset9"}});
+#else
+    broken_tests.insert({"bidaf", "this test should be recovered when multi-gpu pipeline deprecates NV12", {"opset9"}});
 #endif
   }
 
@@ -458,6 +437,22 @@ TEST_P(ModelTest, Run) {
     broken_tests.insert({"conv_with_autopad_same",
                          "Internal Error (node_of_y: Cannot set more than one input unless network has Q/DQ layers.)"});
 
+    // unsupported tests since opset16
+    broken_tests.insert({"sequence_map_add_2_sequences", "not supported by TensorRT EP"});
+    broken_tests.insert({"sequence_map_extract_shapes", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_identity_1_sequence", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_identity_2_sequences", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor", "not supported by TensorRT EP."});
+    broken_tests.insert({"leakyrelu_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"leakyrelu_default_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"leakyrelu_example_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"prelu_broadcast_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"prelu_example_expanded", "not supported by TensorRT EP."});
+    broken_tests_keyword_set.insert({"scatternd_add"});
+    broken_tests_keyword_set.insert({"scatternd_multiply"});
+    broken_tests_keyword_set.insert({"scatter_elements_with_duplicate_indices"});
+
     // sce op is not supported
     broken_tests_keyword_set.insert({"sce"});
 
@@ -612,7 +607,7 @@ TEST_P(ModelTest, Run) {
     auto opset_version = model_info->GetNominalOpsetVersion();
     if (iter != broken_tests.end() &&
         (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
-         iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
+         iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
       SkipTest("It's in broken_tests");
       return;
     }
@@ -628,17 +623,17 @@ TEST_P(ModelTest, Run) {
 
   // TODO(leca): move the parallel run test list to a config file and load it in GetParameterStrings() to make the load process run only once
   std::set<std::string> tests_run_parallel = {"test_resnet18v2",
-      "test_resnet34v2",
-      "test_resnet50",
-      "test_resnet50v2",
-      "test_resnet101v2",
-      "test_resnet152v2",
-      "keras_lotus_resnet3D",
-      "coreml_Resnet50_ImageNet",
-      "mlperf_mobilenet",
-      "mlperf_resnet",
-      "mlperf_ssd_mobilenet_300",
-      "mlperf_ssd_resnet34_1200"};
+                                              "test_resnet34v2",
+                                              "test_resnet50",
+                                              "test_resnet50v2",
+                                              "test_resnet101v2",
+                                              "test_resnet152v2",
+                                              "keras_lotus_resnet3D",
+                                              "coreml_Resnet50_ImageNet",
+                                              "mlperf_mobilenet",
+                                              "mlperf_resnet",
+                                              "mlperf_ssd_mobilenet_300",
+                                              "mlperf_ssd_resnet34_1200"};
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
   if (provider_name == "cpu" && !is_single_node)
@@ -658,56 +653,68 @@ TEST_P(ModelTest, Run) {
 
   for (bool is_single_thread : use_single_thread) {
     for (ExecutionMode execution_mode : execution_modes) {
-      OrtSessionOptions* ortso;
-      ASSERT_ORT_STATUS_OK(OrtApis::CreateSessionOptions(&ortso));
+      Ort::SessionOptions ortso{};
       if (!is_single_thread) {
-        ASSERT_ORT_STATUS_OK(OrtApis::DisablePerSessionThreads(ortso));
+        ortso.DisablePerSessionThreads();
       } else {
-        ASSERT_ORT_STATUS_OK(OrtApis::SetIntraOpNumThreads(ortso, 1));
+        ortso.SetIntraOpNumThreads(1);
       }
-      ASSERT_ORT_STATUS_OK(OrtApis::SetSessionExecutionMode(ortso, execution_mode));
-      ASSERT_ORT_STATUS_OK(OrtApis::SetSessionLogId(ortso, ToUTF8String(test_case_name).c_str()));
-      ASSERT_ORT_STATUS_OK(OrtApis::SetSessionLogSeverityLevel(ortso, ORT_LOGGING_LEVEL_ERROR));
+      ortso.SetExecutionMode(execution_mode);
+      ortso.SetLogId(ToUTF8String(test_case_name).c_str());
+      ortso.SetLogSeverityLevel(ORT_LOGGING_LEVEL_ERROR);
       if (provider_name == "cuda") {
         OrtCUDAProviderOptionsV2* cuda_options = nullptr;
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2(ortso, cuda_options));
+        std::vector<const char*> keys{"device_id"};
+
+        std::vector<const char*> values;
+        std::string device_id = Env::Default().GetEnvironmentVar("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
+        values.push_back(device_id.empty() ? "0" : device_id.c_str());
+        ASSERT_ORT_STATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 1));
+        ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "rocm") {
         OrtROCMProviderOptions ep_options;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_ROCM(ortso, &ep_options));
+        ortso.AppendExecutionProvider_ROCM(ep_options);
       }
 #ifdef USE_DNNL
       else if (provider_name == "dnnl") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Dnnl(ortso, false));
+        OrtDnnlProviderOptions* ep_option;
+        ASSERT_ORT_STATUS_OK(OrtApis::CreateDnnlProviderOptions(&ep_option));
+        std::unique_ptr<OrtDnnlProviderOptions, decltype(&OrtApis::ReleaseDnnlProviderOptions)>
+            rel_dnnl_options(ep_option, &OrtApis::ReleaseDnnlProviderOptions);
+        ep_option->use_arena = 0;
+        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl(ortso, ep_option));
       }
 #endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
-                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0};
-          ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, &params));
+                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0, 0, 0, 0, 0,
+                                              3, -1, nullptr, nullptr, nullptr, nullptr, nullptr, 0};
+
+          ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
-          OrtTensorRTProviderOptionsV2* ep_option;
+          OrtTensorRTProviderOptionsV2* ep_option = nullptr;
           ASSERT_ORT_STATUS_OK(OrtApis::CreateTensorRTProviderOptions(&ep_option));
           std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(&OrtApis::ReleaseTensorRTProviderOptions)>
               rel_cuda_options(ep_option, &OrtApis::ReleaseTensorRTProviderOptions);
-          ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, ep_option));
+          ortso.AppendExecutionProvider_TensorRT_V2(*ep_option);
         }
         // Enable CUDA fallback
         OrtCUDAProviderOptionsV2* cuda_options = nullptr;
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2(ortso, cuda_options));
+        ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "migraphx") {
         OrtMIGraphXProviderOptions ep_options;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX(ortso, &ep_options));
+        ortso.AppendExecutionProvider_MIGraphX(ep_options);
       } else if (provider_name == "openvino") {
         OrtOpenVINOProviderOptions ep_options;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO(ortso, &ep_options));
+        ortso.AppendExecutionProvider_OpenVINO(ep_options);
       }
 #ifdef USE_NNAPI
       else if (provider_name == "nnapi") {
@@ -742,20 +749,17 @@ TEST_P(ModelTest, Run) {
       std::unique_ptr<OrtSession, decltype(&OrtApis::ReleaseSession)> rel_ort_session(ort_session,
                                                                                       &OrtApis::ReleaseSession);
       const size_t data_count = l->GetDataCount();
-#ifndef USE_DNNL // potential crash for DNNL pipeline
+#ifndef USE_DNNL  // potential crash for DNNL pipeline
       if (data_count > 1 && tests_run_parallel.find(l->GetTestCaseName()) != tests_run_parallel.end()) {
-        LOGS_DEFAULT(ERROR) << "Parallel test for " << l->GetTestCaseName();    // TODO(leca): change level to INFO or even delete the log once verified parallel test working
-        Ort::SessionOptions ort_session_options(ortso);
-        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(tp.get(), *l, *ort_env, ort_session_options, data_count, 1 /*repeat_count*/);
+        LOGS_DEFAULT(ERROR) << "Parallel test for " << l->GetTestCaseName();  // TODO(leca): change level to INFO or even delete the log once verified parallel test working
+        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(tp.get(), *l, *ort_env, ortso, data_count, 1 /*repeat_count*/);
         for (EXECUTE_RESULT res : results->GetExcutionResult()) {
           EXPECT_EQ(res, EXECUTE_RESULT::SUCCESS) << "is_single_thread:" << is_single_thread << ", execution_mode:" << execution_mode << ", provider_name:"
                                                   << provider_name << ", test name:" << results->GetName() << ", result: " << res;
         }
         continue;
       }
-#endif // !USE_DNNL
-      std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
-        ortso, &OrtApis::ReleaseSessionOptions);
+#endif  // !USE_DNNL
       // TODO(leca): leverage TestCaseRequestContext::Run() to make it short
       auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
@@ -854,44 +858,89 @@ TEST_P(ModelTest, Run) {
   }
 }
 
-// TODO: all providers
-::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
-  std::vector<const ORTCHAR_T*> provider_names;
-  provider_names.push_back(ORT_TSTR("cpu"));
+using ORT_STRING_VIEW = std::basic_string_view<ORTCHAR_T>;
+static ORT_STRING_VIEW opset7 = ORT_TSTR("opset7");
+static ORT_STRING_VIEW opset8 = ORT_TSTR("opset8");
+static ORT_STRING_VIEW opset9 = ORT_TSTR("opset9");
+static ORT_STRING_VIEW opset10 = ORT_TSTR("opset10");
+static ORT_STRING_VIEW opset11 = ORT_TSTR("opset11");
+static ORT_STRING_VIEW opset12 = ORT_TSTR("opset12");
+static ORT_STRING_VIEW opset13 = ORT_TSTR("opset13");
+static ORT_STRING_VIEW opset14 = ORT_TSTR("opset14");
+static ORT_STRING_VIEW opset15 = ORT_TSTR("opset15");
+static ORT_STRING_VIEW opset16 = ORT_TSTR("opset16");
+static ORT_STRING_VIEW opset17 = ORT_TSTR("opset17");
+static ORT_STRING_VIEW opset18 = ORT_TSTR("opset18");
+// TODO: enable opset19 tests
+// static ORT_STRING_VIEW opset19 = ORT_TSTR("opset19");
 
+static ORT_STRING_VIEW provider_name_cpu = ORT_TSTR("cpu");
+static ORT_STRING_VIEW provider_name_tensorrt = ORT_TSTR("tensorrt");
+#ifdef USE_MIGRAPHX
+static ORT_STRING_VIEW provider_name_migraphx = ORT_TSTR("migraphx");
+#endif
+static ORT_STRING_VIEW provider_name_openvino = ORT_TSTR("openvino");
+static ORT_STRING_VIEW provider_name_cuda = ORT_TSTR("cuda");
+#ifdef USE_ROCM
+static ORT_STRING_VIEW provider_name_rocm = ORT_TSTR("rocm");
+#endif
+static ORT_STRING_VIEW provider_name_dnnl = ORT_TSTR("dnnl");
+// For any non-Android system, NNAPI will only be used for ort model converter
+#if defined(USE_NNAPI) && defined(__ANDROID__)
+static ORT_STRING_VIEW provider_name_nnapi = ORT_TSTR("nnapi");
+#endif
+#ifdef USE_RKNPU
+static ORT_STRING_VIEW provider_name_rknpu = ORT_TSTR("rknpu");
+#endif
+#ifdef USE_ACL
+static ORT_STRING_VIEW provider_name_acl = ORT_TSTR("acl");
+#endif
+#ifdef USE_ARMNN
+static ORT_STRING_VIEW provider_name_armnn = ORT_TSTR("armnn");
+#endif
+static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
+
+::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
+  // Map key is provider name(CPU, CUDA, etc). Value is the ONNX node tests' opsets to run.
+  std::map<ORT_STRING_VIEW, std::vector<ORT_STRING_VIEW>> provider_names;
+  // The default CPU provider always supports all opsets, and must maintain backwards compatibility.
+  provider_names[provider_name_cpu] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+  // The other EPs can choose which opsets to test.
+  // If an EP doesn't have any CI build pipeline, then there is no need to specify any opset.
 #ifdef USE_TENSORRT
-  provider_names.push_back(ORT_TSTR("tensorrt"));
+  // tensorrt: only enable opset 14 to 17 of onnx tests
+  provider_names[provider_name_tensorrt] = {opset14, opset15, opset16, opset17};
 #endif
 #ifdef USE_MIGRAPHX
-  provider_names.push_back(ORT_TSTR("migraphx"));
+  provider_names[provider_name_migraphx] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
 #ifdef USE_OPENVINO
-  provider_names.push_back(ORT_TSTR("openvino"));
+  provider_names[provider_name_openvino] = {};
 #endif
 #ifdef USE_CUDA
-  provider_names.push_back(ORT_TSTR("cuda"));
+  provider_names[provider_name_cuda] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
 #ifdef USE_ROCM
-  provider_names.push_back(ORT_TSTR("rocm"));
+  provider_names[provider_name_rocm] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
 #ifdef USE_DNNL
-  provider_names.push_back(ORT_TSTR("dnnl"));
+  provider_names[provider_name_dnnl] = {opset10};
 #endif
 // For any non-Android system, NNAPI will only be used for ort model converter
 #if defined(USE_NNAPI) && defined(__ANDROID__)
-  provider_names.push_back(ORT_TSTR("nnapi"));
+  provider_names[provider_name_nnapi] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
 #ifdef USE_RKNPU
-  provider_names.push_back(ORT_TSTR("rknpu"));
+  provider_names[provider_name_rknpu] = {};
 #endif
 #ifdef USE_ACL
-  provider_names.push_back(ORT_TSTR("acl"));
+  provider_names[provider_name_acl] = {};
 #endif
 #ifdef USE_ARMNN
-  provider_names.push_back(ORT_TSTR("armnn"));
+  provider_names[provider_name_armnn] = {};
 #endif
 #ifdef USE_DML
-  provider_names.push_back(ORT_TSTR("dml"));
+  provider_names[provider_name_dml] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
@@ -989,8 +1038,7 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("Candy"),
       ORT_TSTR("SSD"),
       ORT_TSTR("ResNet101_DUC_HDC-12"),
-      ORT_TSTR("YOLOv3-12")
-      };
+      ORT_TSTR("YOLOv3-12")};
   static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                   ORT_TSTR("mlperf_ssd_mobilenet_300"),
                                                   ORT_TSTR("mask_rcnn"),
@@ -1022,6 +1070,7 @@ TEST_P(ModelTest, Run) {
                                                    ORT_TSTR("batchnorm_example_training_mode"),
                                                    ORT_TSTR("batchnorm_epsilon_training_mode"),
                                                    ORT_TSTR("mobilenetv2-1.0"),
+                                                   ORT_TSTR("shufflenet"),
                                                    ORT_TSTR("candy"),
                                                    ORT_TSTR("range_float_type_positive_delta_expanded"),
                                                    ORT_TSTR("range_int32_type_negative_delta_expanded"),
@@ -1067,22 +1116,47 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("conv_with_strides_padding"),
       ORT_TSTR("size")  // INVALID_ARGUMENT: Cannot find binding of given name: x
   };
-  for (const ORTCHAR_T* provider_name : provider_names) {
+  std::vector<std::basic_string<ORTCHAR_T>> paths;
+
+  for (std::pair<ORT_STRING_VIEW, std::vector<ORT_STRING_VIEW>> kvp : provider_names) {
+    // Setup ONNX node tests. The test data is preloaded on our CI build machines.
+#if !defined(_WIN32)
+    ORT_STRING_VIEW node_test_root_path = ORT_TSTR("/data/onnx");
+#else
+    ORT_STRING_VIEW node_test_root_path = ORT_TSTR("c:\\local\\data\\onnx");
+#endif
+    for (auto p : kvp.second) {
+      paths.push_back(ConcatPathComponent(node_test_root_path, p));
+    }
+
+    // Same as the above, except this one is for large models
+#if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
+#ifdef _WIN32
+    ORT_STRING_VIEW model_test_root_path = ORT_TSTR("..\\models");
+#else
+    ORT_STRING_VIEW model_test_root_path = ORT_TSTR("../models");
+#endif
+    for (auto p : kvp.second) {
+      paths.push_back(ConcatPathComponent(model_test_root_path, p));
+    }
+#endif
+
+    ORT_STRING_VIEW provider_name = kvp.first;
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
-    if (CompareCString(provider_name, ORT_TSTR("cuda")) == 0) {
+    if (provider_name == provider_name_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
-    } else if (CompareCString(provider_name, ORT_TSTR("dml")) == 0) {
+    } else if (provider_name == provider_name_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
-    } else if (CompareCString(provider_name, ORT_TSTR("dnnl")) == 0) {
+    } else if (provider_name == provider_name_dnnl) {
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
-    } else if (CompareCString(provider_name, ORT_TSTR("tensorrt")) == 0) {
+    } else if (provider_name == provider_name_tensorrt) {
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(tensorrt_disabled_tests), std::end(tensorrt_disabled_tests));
-    } else if (CompareCString(provider_name, ORT_TSTR("openvino")) == 0) {
+    } else if (provider_name == provider_name_openvino) {
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(openvino_disabled_tests), std::end(openvino_disabled_tests));
@@ -1107,28 +1181,13 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("ResNet101_DUC_HDC"),
                                                     ORT_TSTR("ResNet101_DUC_HDC-12"),
                                                     ORT_TSTR("FCN ResNet-101"),
-                                                    ORT_TSTR("SSD")
-    };
+                                                    ORT_TSTR("SSD")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
-
-    std::vector<std::basic_string<ORTCHAR_T>> paths;
-#if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
-#ifdef _WIN32
-    paths.push_back(ORT_TSTR("..\\models"));
-#else
-    paths.push_back(ORT_TSTR("../models"));
-#endif
-#endif
-
-// TENSORRT/OpenVino has too many test failures in the single node tests
-#if !defined(USE_OPENVINO)
-#if !defined(_WIN32)
-    paths.push_back(ORT_TSTR("/data/onnx"));
-#else
-    paths.push_back(ORT_TSTR("c:\\local\\data\\onnx"));
-#endif
-#endif
+    // fp16 models have different outputs with different kinds of hardware. We need to disable all fp16 models
+    all_disabled_tests.insert(ORT_TSTR("fp16_shufflenet"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_inception_v1"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_tiny_yolov2"));
 
     while (!paths.empty()) {
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
@@ -1139,7 +1198,7 @@ TEST_P(ModelTest, Run) {
           if (filename[0] == ORT_TSTR('.'))
             return true;
           if (f_type == OrtFileType::TYPE_DIR) {
-            std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename);
+            std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(node_data_root_path, filename);
             paths.push_back(p);
             return true;
           }
@@ -1162,10 +1221,9 @@ TEST_P(ModelTest, Run) {
             return true;
           }
 #endif
-          std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
-          std::basic_string<PATH_CHAR_TYPE> r = provider_name;
-          r.append(ORT_TSTR("_")).append(p);
-          v.emplace_back(r);
+          std::basic_ostringstream<PATH_CHAR_TYPE> oss;
+          oss << provider_name << ORT_TSTR("_") << ConcatPathComponent(node_data_root_path, filename_str);
+          v.emplace_back(oss.str());
           return true;
         });
       }
@@ -1205,7 +1263,7 @@ auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& 
     name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
   }
 #ifdef _WIN32
-  // Note: The return value of INSTANTIATE_TEST_SUITE_P accpets std::basic_string<char...>.
+  // Note: The return value of INSTANTIATE_TEST_SUITE_P accepts std::basic_string<char...>.
   // Need conversion of wchar_t to char.
   return std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(name);
 #else

@@ -11,14 +11,14 @@
 
 namespace onnxruntime {
 
-#define REGISTER_KERNEL_TYPED(T)                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                   \
-      GridSample,                                                   \
-      16,                                                           \
-      T,                                                            \
-      KernelDefBuilder()                                            \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),  \
+#define REGISTER_KERNEL_TYPED(T)                                   \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                  \
+      GridSample,                                                  \
+      16,                                                          \
+      T,                                                           \
+      KernelDefBuilder()                                           \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       GridSample<T>);
 
 REGISTER_KERNEL_TYPED(float)

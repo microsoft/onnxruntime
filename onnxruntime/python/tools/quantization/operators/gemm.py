@@ -1,27 +1,20 @@
 import logging
 
-import numpy as np
+import numpy as np  # noqa: F401
 import onnx
-from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import (
-    TENSOR_NAME_QUANT_SUFFIX,
-    QuantizedValue,
-    QuantizedValueType,
-    attribute_to_kwarg,
-    find_by_name,
-    get_mul_node,
-    ms_domain,
-)
-from .base_operator import QuantOperatorBase
+from ..quant_utils import find_by_name  # noqa: F401
+from ..quant_utils import get_mul_node  # noqa: F401
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from .base_operator import QuantOperatorBase  # noqa: F401
 from .matmul import QOpMatMul
 from .qdq_base_operator import QDQOperatorBase
 
 
-def is_B_transposed(gemm_node):
-    transB_attribute = [attr for attr in gemm_node.attribute if attr.name == "transB"]
+def is_B_transposed(gemm_node):  # noqa: N802
+    transB_attribute = [attr for attr in gemm_node.attribute if attr.name == "transB"]  # noqa: N806
     if len(transB_attribute):
-        return 0 < onnx.helper.get_attribute_value(transB_attribute[0])
+        return onnx.helper.get_attribute_value(transB_attribute[0]) > 0
 
     return False
 
@@ -67,7 +60,7 @@ class QLinearGemm(QOpMatMul):
             ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
                 node.input[1],
-                onnx_proto.TensorProto.INT8,
+                self.quantizer.weight_qType,
                 0 if is_B_transposed(node) else 1,
             )
             quantized_input_names.append(quant_weight_tuple[0])
@@ -101,12 +94,14 @@ class QLinearGemm(QOpMatMul):
             if not self.quantizer.is_input_a_initializer(node.input[2]):
                 return super().quantize()
 
+            # Note: if the quantized type is float 8, the bias is converted into float 16.
+            # cublasLtMatMul only supports (b)float16 or float32 bias.
             quantized_bias_name = self.quantizer.quantize_bias_static(
                 node.input[2], node.input[0], node.input[1], get_beta(self.node)
             )
 
         qgemm_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qgemm_name = qgemm_name = node.name + "_quant" if node.name != "" else ""
+        qgemm_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:
@@ -131,6 +126,8 @@ class QLinearGemm(QOpMatMul):
             output_scale_name,
             output_zp_name,
             QuantizedValueType.Input,
+            node_type=node.op_type,
+            node_qtype=self.quantizer.weight_qType,
         )
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 

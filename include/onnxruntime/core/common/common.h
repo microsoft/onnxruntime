@@ -37,7 +37,6 @@
 #include "core/common/make_string.h"
 #include "core/common/status.h"
 
-
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;

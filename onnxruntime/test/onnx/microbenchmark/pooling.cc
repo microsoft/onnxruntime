@@ -123,7 +123,7 @@ static void RunPool2D(const OrtThreadPoolParams& param, int64_t batch_size, benc
     output[i] = dist(gen);
   }
   int64_t x_step = input_shape[2] * input_shape[3];
-  //TODO: no hard code
+  // TODO: no hard code
   int64_t y_step = 3136;
 
   onnxruntime::MaxPool2DTask<float> task{input.data(), output.data(), nullptr, x_step, y_step, 1, 1, 56, 56, 2, 2, 112, 112, kernel_shape, padding, 0};

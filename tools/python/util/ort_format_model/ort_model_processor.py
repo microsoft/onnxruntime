@@ -17,15 +17,15 @@ class OrtFormatModelProcessor:
         :param processors: Operator type usage processors which will be called for each matching Node.
         """
         self._required_ops = required_ops  # dictionary of {domain: {opset:[operators]}}
-        self._file = open(model_path, "rb").read()
+        self._file = open(model_path, "rb").read()  # noqa: SIM115
         self._buffer = bytearray(self._file)
         if not fbs.InferenceSession.InferenceSession.InferenceSessionBufferHasIdentifier(self._buffer, 0):
-            raise RuntimeError("File does not appear to be a valid ORT format model: '{}'".format(model_path))
+            raise RuntimeError(f"File does not appear to be a valid ORT format model: '{model_path}'")
         self._model = fbs.InferenceSession.InferenceSession.GetRootAsInferenceSession(self._buffer, 0).Model()
         self._op_type_processors = processors
 
     @staticmethod
-    def _setup_type_info(graph: fbs.Graph, outer_scope_value_typeinfo={}):
+    def _setup_type_info(graph: fbs.Graph, outer_scope_value_typeinfo={}):  # noqa: B006
         """
         Setup the node args for this level of Graph.
         We copy the current list which represents the outer scope values, and add the local node args to that
@@ -43,9 +43,9 @@ class OrtFormatModelProcessor:
 
     def _add_required_op(self, domain: str, opset: int, op_type: str):
         if domain not in self._required_ops:
-            self._required_ops[domain] = {opset: set([op_type])}
+            self._required_ops[domain] = {opset: {op_type}}
         elif opset not in self._required_ops[domain]:
-            self._required_ops[domain][opset] = set([op_type])
+            self._required_ops[domain][opset] = {op_type}
         else:
             self._required_ops[domain][opset].add(op_type)
 

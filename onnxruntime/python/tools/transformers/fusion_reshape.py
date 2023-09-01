@@ -7,7 +7,7 @@ from logging import getLogger
 
 import numpy as np
 from fusion_base import Fusion
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -83,7 +83,7 @@ class FusionReshape(Fusion):
         path2 = []
         path3 = []
         shape_nodes = [shape_0, shape_1]
-        if len(concat_node.input) == 3 and self.model.get_initializer(concat_node.input[2]) is None:
+        if len(concat_node.input) == 3 and self.model.get_constant_value(concat_node.input[2]) is None:
             path2 = self.model.match_parent_path(
                 concat_node,
                 ["Unsqueeze", "Mul", "Gather", "Shape"],
@@ -119,16 +119,15 @@ class FusionReshape(Fusion):
             shape_nodes.extend([path2[-1], path3[-1]])
             shape.append(-1)
         elif len(concat_node.input) > 2:
-            concat_2 = self.model.get_initializer(concat_node.input[2])
-            if concat_2 is None:
+            concat_value = self.model.get_constant_value(concat_node.input[2])
+            if concat_value is None:
                 return
-            concat_value = numpy_helper.to_array(concat_2)
             if isinstance(concat_value, np.ndarray):
                 shape.extend(concat_value.tolist())
             else:
                 shape.append(concat_value)
 
-        if len(concat_node.input) == 4 and self.model.get_initializer(concat_node.input[3]) is None:
+        if len(concat_node.input) == 4 and self.model.get_constant_value(concat_node.input[3]) is None:
             if -1 in shape:
                 return
 
@@ -150,11 +149,10 @@ class FusionReshape(Fusion):
             shape_nodes.extend([path2[-1]])
             shape.append(-1)
         elif len(concat_node.input) > 3:
-            concat_3 = self.model.get_initializer(concat_node.input[3])
-            if concat_3 is None:
+            concat_value = self.model.get_constant_value(concat_node.input[3])
+            if concat_value is None:
                 return
 
-            concat_value = numpy_helper.to_array(concat_3)
             if isinstance(concat_value, np.ndarray):
                 shape.extend(concat_value.tolist())
             else:

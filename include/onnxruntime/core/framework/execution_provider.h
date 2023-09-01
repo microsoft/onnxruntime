@@ -26,10 +26,12 @@ class Node;
 
 #include "core/common/basic_types.h"
 #include "core/common/profiler_common.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
+#include "core/framework/tuning_context.h"
 
 namespace onnxruntime {
 
@@ -58,26 +60,22 @@ enum class DataLayout {
 class IExecutionProvider {
  protected:
   IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
-      : type_{type} {
+      : IExecutionProvider(type, OrtDevice(), use_metadef_id_creator) {}
+
+  IExecutionProvider(const std::string& type, OrtDevice device, bool use_metadef_id_creator = false)
+      : default_device_(device), type_{type} {
     if (use_metadef_id_creator) {
       metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
   }
 
+  /*
+     default device for this ExecutionProvider
+  */
+  const OrtDevice default_device_;
+
  public:
   virtual ~IExecutionProvider() = default;
-
-  /**
-     Get all IAllocators for <*this> execution provider.
-  */
-  const std::vector<AllocatorPtr>& GetAllocators() const {
-    return allocator_list_;
-  }
-
-  /**
-   * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
-   */
-  virtual AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -146,6 +144,20 @@ class IExecutionProvider {
   virtual ProviderOptions GetProviderOptions() const { return {}; }
 
   /**
+     Get provider specific custom op domain list.
+     Provider has the responsibility to release OrtCustomOpDomain instances it creates.
+
+     NOTE: In the case of ONNX model having EP specific custom nodes and don't want to ask user to register those nodes,
+     EP might need to a way to register those custom nodes. This API is added for the purpose where EP can use it to
+     leverage ORT custom op to register those custom nodes with one or more custom op domains.
+
+     For example, TensorRT EP uses this API to support TRT plugins where each custom op is mapped to TRT plugin and no
+     kernel implementation is needed for custom op since the real implementation is inside TRT. This custom op acts as
+     a role to help pass ONNX model validation.
+   */
+  virtual void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& /*provider custom op domain list*/) const {};
+
+  /**
      Returns an opaque handle whose exact type varies based on the provider
      and is interpreted accordingly by the corresponding kernel implementation.
      For Direct3D operator kernels, this may return an IUnknown supporting
@@ -209,9 +221,6 @@ class IExecutionProvider {
      clean up its temporary resources to reduce memory and ensure the first run is fast.
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
-
-  void InsertAllocator(AllocatorPtr allocator);
-  void ReplaceAllocator(AllocatorPtr allocator);
 
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
@@ -278,12 +287,6 @@ class IExecutionProvider {
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
 
-  /**
-     Register allocators for EP, potentially re-using existing allocators for a device from allocator_manager.
-     If the EP implements this it should generally delay creating any allocators until this is called.
-  */
-  virtual void RegisterAllocator(AllocatorManager& /*allocator_manager*/);
-
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
   }
@@ -294,27 +297,40 @@ class IExecutionProvider {
     return DataLayout::NCHW;
   }
 
-  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, AllocatorMap&) const {}
 
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
   virtual bool ConcurrentRunSupported() const { return true; }
 
+  /**
+   * Return the tuning context which holds all TunableOp state.
+   */
+  virtual ITuningContext* GetTuningContext() const {
+    return nullptr;
+  }
+
+  /**
+   * Return the appropriate OrtDevice object given OrtMemType.
+   */
+  virtual OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const {
+    if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+      return OrtDevice();  // default return CPU device.
+    }
+    return default_device_;
+  };
+
+  /**
+   * Create Preferred allocators for the current Execution Provider
+   * This function is a stateless function which creates new instances of Allocator, without storing them in EP.
+   */
+  virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
+
  private:
   const std::string type_;
 
-  // allocator lookup is done by combining the device id and OrtMemType.
-  // there's also an implicit connection to the underlying OrtDevice involved that is dependent on the EP.
-  // e.g. for a CPU based EP, 'default' memory is a CPU device, and for a GPU based EP 'default' memory is a
-  // GPU device.
-  using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
-  AllocatorMap allocators_;
-
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
-  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
-  // contains the same instances as allocators_
-  std::vector<AllocatorPtr> allocator_list_;
 
   // helper to generate ids that are unique to model and deterministic, even if the execution provider is shared across
   // multiple sessions.

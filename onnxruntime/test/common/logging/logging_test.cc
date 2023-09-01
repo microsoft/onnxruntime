@@ -10,7 +10,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 
 #include "test/common/logging/helpers.h"
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26400)
 #endif

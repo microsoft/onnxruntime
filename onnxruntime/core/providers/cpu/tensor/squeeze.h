@@ -72,7 +72,7 @@ class Squeeze final : public OpKernel, public SqueezeBase {
 
     TensorShapeVector axes;
     size_t num_inputs = context->InputCount();
-    if (num_inputs == 2) {  //axes is an input
+    if (num_inputs == 2) {  // axes is an input
       const Tensor* axes_tensor = context->Input<Tensor>(1);
       ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
       ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,

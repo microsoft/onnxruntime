@@ -7,11 +7,10 @@
 
 #include <random>
 
-
 void ArgsProduct(benchmark::internal::Benchmark* bench,
                  const std::vector<std::vector<int64_t>>& arglists);
 
-template<typename ElementType>
+template <typename ElementType>
 std::vector<ElementType> RandomVectorUniform(
     size_t N,
     ElementType min_value = std::numeric_limits<ElementType>::lowest(),
@@ -21,7 +20,7 @@ std::vector<ElementType> RandomVectorUniform(
   }
   std::default_random_engine generator(static_cast<unsigned>(N));
   std::uniform_real_distribution<double> distribution(static_cast<double>(min_value), static_cast<double>(max_value));
-  
+
   std::vector<ElementType> r(N);
   for (size_t i = 0; i < N; i++) {
     r[i] = static_cast<ElementType>(distribution(generator));

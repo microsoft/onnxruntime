@@ -16,7 +16,7 @@ namespace test {
 /// erasure functionality. Unlike std::function, it
 /// does NOT do any memory allocations and it is cheap to copy.
 /// </summary>
-/// 
+///
 /// <example>
 /// Plain function:
 ///   int g(void* context, float);
@@ -27,38 +27,33 @@ namespace test {
 /// class A {
 ///    int f(float);
 /// };
-/// 
+///
 /// A a;
 /// CallableFactory<A, int, float> f(&a);
 /// - We get back Callable<int, float> as above but call instance method
 /// auto cb = f.GetCallable<&A::f>();
 /// int result = cb.Invoke(1.2f);
 /// </example>
-/// 
+///
 /// <typeparam name="Result">Call back result type</typeparam>
 /// <typeparam name="...Args">Types of args for the callable</typeparam>
-template <typename    Result,
+template <typename Result,
           typename... Args>
 class Callable {
-public:
+ public:
+  using ContextType = void;
 
-  using
-  ContextType = void;
+  using ResultType = Result;
 
-  using
-  ResultType = Result;
-
-  using
-  FunctionType = ResultType(*)(ContextType*, Args...);
+  using FunctionType = ResultType (*)(ContextType*, Args...);
 
   // You can use this directly if you have a simple
   // function like C-function or a stateless lambda
   // For methods we want to make use of AsyncMethodCallback
   // And covert it to a Callable
-  Callable(ContextType*  context,
-    FunctionType func) :
-    context_(context),
-    func_(func) {
+  Callable(ContextType* context,
+           FunctionType func) : context_(context),
+                                func_(func) {
   }
 
   Callable() : Callable(nullptr, nullptr) {}
@@ -85,7 +80,7 @@ public:
   // Differentiate instantiation on the presence
   // of return value. The below two overloads
   // must be mutually exclusive
-  template<typename T = ResultType>
+  template <typename T = ResultType>
   typename std::enable_if<!std::is_same<void, T>::value, T>::type
   Invoke(Args... args) const {
     return func_(context_, std::forward<Args>(args)...);
@@ -97,54 +92,48 @@ public:
     func_(context_, std::forward<Args>(args)...);
   }
 
-private:
-  ContextType*  context_;
-  FunctionType  func_;
+ private:
+  ContextType* context_;
+  FunctionType func_;
 };
 
-template<typename ObjectType,
+template <typename ObjectType,
           typename ResultType,
           typename... Args>
 class CallableFactory {
-public:
+ public:
+  using CallableType = Callable<ResultType, Args...>;
 
-  using
-  CallableType = Callable<ResultType,Args...>;
-
-  explicit
-  CallableFactory(ObjectType* obj) :
-    obj_(obj) {
+  explicit CallableFactory(ObjectType* obj) : obj_(obj) {
   }
 
-  template<typename ResultType2,
-          ResultType2 (ObjectType::*MethodPtr)(Args...)>
+  template <typename ResultType2,
+            ResultType2 (ObjectType::*MethodPtr)(Args...)>
   struct Binder {
-    static
-    ResultType2 InvokeMethod(void* obj, Args... args) {
+    static ResultType2 InvokeMethod(void* obj, Args... args) {
       return (reinterpret_cast<ObjectType*>(obj)->*MethodPtr)(
-        std::forward<Args>(args)...);
+          std::forward<Args>(args)...);
     }
   };
 
   // UnaVOIDable void specialization
-  template<ResultType (ObjectType::*MethodPtr)(Args...)>
-  struct Binder<void,MethodPtr> {
-    static
-    void InvokeMethod(void* obj, Args... args) {
+  template <ResultType (ObjectType::*MethodPtr)(Args...)>
+  struct Binder<void, MethodPtr> {
+    static void InvokeMethod(void* obj, Args... args) {
       (reinterpret_cast<ObjectType*>(obj)->*MethodPtr)(
-        std::forward<Args>(args)...);
+          std::forward<Args>(args)...);
     }
   };
 
-  template<ResultType (ObjectType::*MethodPtr)(Args...)>
+  template <ResultType (ObjectType::*MethodPtr)(Args...)>
   CallableType GetCallable() const {
-    CallableType result(obj_, &Binder<ResultType,MethodPtr>::InvokeMethod);
-      return result;
+    CallableType result(obj_, &Binder<ResultType, MethodPtr>::InvokeMethod);
+    return result;
   }
 
-private:
+ private:
   ObjectType* obj_;
 };
 
-} // test
-} // onnxruntime
+}  // namespace test
+}  // namespace onnxruntime

@@ -5,7 +5,6 @@
 
 #include <utility>
 #include "core/common/safeint.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/utils.h"
@@ -102,6 +101,12 @@ void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape,
                           gsl::span<const int64_t> strides) {
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   auto p_tensor = std::make_unique<Tensor>(p_type, shape, p_data, std::move(allocator), offset, strides);
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+}
+
+void Tensor::InitOrtValue(Tensor&& tensor, OrtValue& ort_value) {
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  auto p_tensor = std::make_unique<Tensor>(std::move(tensor));
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 }
 

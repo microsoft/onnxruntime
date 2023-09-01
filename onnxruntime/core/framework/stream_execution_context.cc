@@ -9,28 +9,30 @@
 
 namespace onnxruntime {
 #ifdef ORT_ENABLE_STREAM
-StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
-                                                int32_t num_streams,
-                                                gsl::span<const size_t> notification_owners,
-                                                size_t num_barriers,
-                                                const DeviceStreamCollection* device_stream_map,
-                                                gsl::span<const int> feed_mlvalue_idxs,
-                                                gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
-                                                std::vector<OrtValue>& fetches,
-                                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                                const logging::Logger& sess_logger,
-                                                bool single_thread_mode) : session_state_(&sess_state),
-                                                                           frame_(feed_mlvalue_idxs,
-                                                                                  feeds,
-                                                                                  fetch_mlvalue_idxs,
-                                                                                  fetches,
-                                                                                  fetch_allocators,
-                                                                                  sess_state,
-                                                                                  device_stream_map ? device_stream_map->GetStreams() : gsl::span<Stream*>({})),
-                                                                           logger_(&sess_logger),
-                                                                           single_thread_mode_(single_thread_mode),
-                                                                           device_stream_map_(device_stream_map),
-                                                                           count_down_barriers_(num_barriers) {
+StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
+                                               int32_t num_streams,
+                                               gsl::span<const size_t> notification_owners,
+                                               size_t num_barriers,
+                                               const DeviceStreamCollection* device_stream_map,
+                                               gsl::span<const int> feed_mlvalue_idxs,
+                                               gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                               std::vector<OrtValue>& fetches,
+                                               const std::unordered_map<size_t, IExecutor::CustomAllocator>&
+                                                   fetch_allocators,
+                                               const logging::Logger& sess_logger,
+                                               bool single_thread_mode)
+    : session_state_(&sess_state),
+      frame_(feed_mlvalue_idxs,
+             feeds,
+             fetch_mlvalue_idxs,
+             fetches,
+             fetch_allocators,
+             device_stream_map,
+             sess_state),
+      logger_(&sess_logger),
+      single_thread_mode_(single_thread_mode),
+      device_stream_map_(device_stream_map),
+      count_down_barriers_(num_barriers) {
   notifications_.reserve(notification_owners.size());
   for (size_t i = 0; i < notification_owners.size(); ++i) {
     auto* stream = device_stream_map_ ? device_stream_map_->GetStream(notification_owners[i]) : nullptr;
@@ -49,7 +51,7 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
 #pragma warning(pop)
 #endif
 
-  // init barreris
+  // init barriers
   for (size_t i = 0; i < num_barriers; ++i) {
     count_down_barriers_[i].Set(2);
   }
@@ -78,23 +80,24 @@ Stream* StreamExecutionContext ::GetDeviceStream(size_t idx) {
 }
 
 #else
-StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
-                                                int32_t num_streams,
-                                                gsl::span<const int> feed_mlvalue_idxs,
-                                                gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
-                                                std::vector<OrtValue>& fetches,
-                                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                                const logging::Logger& sess_logger,
-                                                bool single_thread_mode) : session_state_(&sess_state),
-                                                                           frame_(feed_mlvalue_idxs,
-                                                                                  feeds,
-                                                                                  fetch_mlvalue_idxs,
-                                                                                  fetches,
-                                                                                  fetch_allocators,
-                                                                                  sess_state,
-                                                                                  {}),
-                                                                           logger_(&sess_logger),
-                                                                           single_thread_mode_(single_thread_mode) {
+StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
+                                               int32_t num_streams,
+                                               gsl::span<const int> feed_mlvalue_idxs,
+                                               gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                               std::vector<OrtValue>& fetches,
+                                               const std::unordered_map<size_t, IExecutor::CustomAllocator>&
+                                                   fetch_allocators,
+                                               const logging::Logger& sess_logger,
+                                               bool single_thread_mode)
+    : session_state_(&sess_state),
+      frame_(feed_mlvalue_idxs,
+             feeds,
+             fetch_mlvalue_idxs,
+             fetches,
+             fetch_allocators,
+             sess_state),
+      logger_(&sess_logger),
+      single_thread_mode_(single_thread_mode) {
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 26409 26400)
@@ -158,25 +161,37 @@ void StreamExecutionContext ::SetStatus(Status& status) {
     task_status_ = status;
 }
 
-StreamExecutionContext ::~StreamExecutionContext() {}
+StreamExecutionContext::~StreamExecutionContext() {}
 
-void StreamExecutionContext ::RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
+void StreamExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
   auto* execution_plan = session_state_->GetExecutionPlan();
   for (auto idx : execution_plan->node_release_list[node_index]) {
     if (--release_plan_[idx] == 0) {
       ORT_ENFORCE(frame_.ReleaseMLValue(static_cast<int>(execution_plan->release_actions[idx].value_index)).IsOK());
-      LOGS(*logger_, INFO) << "ort value " << execution_plan->release_actions[idx].value_index << " released";
+      LOGS(*logger_, VERBOSE) << "ort value " << execution_plan->release_actions[idx].value_index << " released";
     }
   }
 }
 
-void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag,
-              size_t since, bool is_downstream) {
+void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag, size_t since) {
   if (!ctx.TaskStatus().IsOK()) {
     // already in bad status, terminate it
     ctx.CompleteTask();
     return;
   }
+
+#ifdef USE_CANN
+  // For CANN EP, it is necessary to explicitly create a corresponding Context for each thread in the thread pool,
+  // which is different from CUDA Runtime API, but similar to CUDA Driver API.
+  auto& execution_providers = ctx.GetSessionState().GetExecutionProviders();
+  for (auto& xp : execution_providers) {
+    auto status = xp->OnRunStart();
+    if (!status.IsOK()) {
+      ctx.SetStatus(status);
+      return;
+    }
+  }
+#endif
 
   // get logic stream
   auto& execution_plan = ctx.GetSessionState().GetExecutionPlan()->execution_plan;
@@ -186,54 +201,6 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
   auto* range = ctx.GetCurrentRange();
   if (range)
     end = std::min(end, range->stream_pc_range[stream_idx].second);
-#endif
-
-#ifdef ENABLE_TRAINING
-  // this is a special handle for training
-  // with ORTModule, we are partially execute the graph with a shared context.
-  // there is a case that in forward pass we want to trigger downstream which
-  // not in current range. We need to execute one step to consume the Barrier
-  // counter otherwise later in backward the downstream won't execute correctly.
-  // this is ugly, hopefully we won't need to worry about if deprecate ORTModule
-  // by Torch Dynamo.
-  // We only need to do this on a triggered downstream. For example if the barrier is the first step of whole CPU plan,
-  // and the forward part is empty, the normal run of the forward part will not do this extra barrier handling.
-  if (is_downstream && since >= end && since < logic_stream->steps_.size() &&
-      logic_stream->steps_[since]->IsBarrier()) {
-    if (!ctx.TaskStatus().IsOK()) {
-      ctx.CompleteTask();
-      return;
-    }
-    if (terminate_flag) {
-      Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
-      ctx.SetStatus(status_made);
-      ctx.CompleteTask();
-      return;
-    }
-    bool continue_flag = true;
-    Status status;
-    ORT_TRY {
-      status = logic_stream->steps_[since]->Execute(ctx, stream_idx, session_scope, terminate_flag, continue_flag);
-    }
-    ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
-      });
-    }
-    if (!status.IsOK()) {
-      // terminate it
-      ctx.SetStatus(status);
-      ctx.CompleteTask();
-      return;
-    }
-    if (continue_flag) {
-      ORT_THROW("Execute the barrier step in backward range passed! this is not expected.");
-    }
-    ctx.CompleteTask();
-    return;
-  }
-#else
-  ORT_UNUSED_PARAMETER(is_downstream);
 #endif
 
   while (since < end) {
@@ -286,7 +253,7 @@ void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single
       // increase the task count before schedule down-stream
       ctx.AddTask();
       concurrency::ThreadPool::Schedule(tp, [&ctx, downstream, &terminate_flag, &session_scope]() {
-        RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second, true);
+        RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second);
       });
     }
   }

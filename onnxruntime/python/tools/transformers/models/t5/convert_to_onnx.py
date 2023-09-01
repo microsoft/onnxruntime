@@ -8,13 +8,10 @@ import argparse
 import copy
 import logging
 import os
-import sys
 
 import torch
+from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS, T5Helper
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -127,6 +124,13 @@ def parse_arguments():
     )
     parser.set_defaults(use_int64_inputs=False)
 
+    parser.add_argument(
+        "--state_dict_path",
+        type=str,
+        default="",
+        help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
+    )
+
     args = parser.parse_args()
 
     return args
@@ -147,10 +151,13 @@ def export_onnx_models(
     disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
     model_type: str = "t5",
+    state_dict_path: str = "",
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
-    models = T5Helper.load_model(model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, model_type)
+    models = T5Helper.load_model(
+        model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, model_type, state_dict_path
+    )
     config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_layers > 24):
@@ -203,6 +210,7 @@ def export_onnx_models(
                     config.hidden_size,
                     use_external_data_format,
                     auto_mixed_precision=not disable_auto_mixed_precision,
+                    use_gpu=use_gpu,
                 )
             else:
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")

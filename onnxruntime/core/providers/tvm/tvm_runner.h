@@ -9,12 +9,11 @@
 
 #include "tvm_runner_impl.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
 class TVMRunner {
-public:
+ public:
   TVMRunner() = delete;
   virtual ~TVMRunner() = default;
 
@@ -25,11 +24,11 @@ public:
 
   common::Status operator()(FunctionState state, const OrtApi* api, OrtKernelContext* context);
 
-private:
+ private:
   std::shared_ptr<RunnerImpl> runner_;
 };
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime
 
 #endif  // TVM_TVM_RUNNER_H

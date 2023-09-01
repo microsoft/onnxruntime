@@ -2,25 +2,26 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+# isort: skip_file
+# Import ordering is important in this module to avoid circular dependencies
 
 from ._torch_module_factory import TorchModuleFactory
-from ._torch_module_pytorch import TorchModulePytorch
 from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
-from .debug_options import DebugOptions
+from .options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
+from ._logger import configure_ortmodule_logger
 from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
 
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Callable
-
+from typing import Iterator, Optional, OrderedDict, Tuple, TypeVar, Callable
 
 # Needed to override PyTorch methods
-T = TypeVar("T", bound="Module")
+T = TypeVar("T", bound="torch.nn.Module")
 
 
 class ORTModule(torch.nn.Module):
@@ -34,8 +35,7 @@ class ORTModule(torch.nn.Module):
         debug_options (:obj:`DebugOptions`, optional): debugging options for ORTModule.
     """
 
-    def __init__(self, module, debug_options=None):
-
+    def __init__(self, module: torch.nn.Module, debug_options: Optional[DebugOptions] = None):
         # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
         #       (for example PyTorch Lightning), will trigger regular re-exports. This is
         #       because ORTModule auto detects such setattrs on the original module and
@@ -53,9 +53,14 @@ class ORTModule(torch.nn.Module):
         if not debug_options:
             debug_options = DebugOptions()
 
+        self._logger = configure_ortmodule_logger(debug_options.logging.log_level)
+
         # Fallback settings
         self._fallback_manager = _FallbackManager(
-            pytorch_module=module, policy=ortmodule.ORTMODULE_FALLBACK_POLICY, retry=ortmodule.ORTMODULE_FALLBACK_RETRY
+            pytorch_module=module,
+            policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
+            retry=ortmodule.ORTMODULE_FALLBACK_RETRY,
+            logger=self._logger,
         )
 
         try:
@@ -63,21 +68,23 @@ class ORTModule(torch.nn.Module):
             if ortmodule._FALLBACK_INIT_EXCEPTION:
                 raise ortmodule._FALLBACK_INIT_EXCEPTION
 
-            super(ORTModule, self).__init__()
+            super().__init__()
 
-            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager, self._logger)
 
             _utils.patch_ortmodule_forward_method(self)
 
             # Support contrib OPs
             pytorch_export_contrib_ops.register()
-            CustomOpSymbolicRegistry.register_all()
+            CustomOpSymbolicRegistry.register_all(
+                self._torch_module._execution_manager(module.training)._runtime_options.onnx_opset_version
+            )
             CustomGradientRegistry.register_all()
 
             # Warn user if there are name collisions between user model's and ORTModule attributes
             # And if there are custom methods defined on the user's model, copy and bind them to
             # ORTModule.
-            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
+            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module, self._logger)
 
         except ORTModuleFallbackException as e:
             # Although backend is switched to PyTorch here,
@@ -104,12 +111,15 @@ class ORTModule(torch.nn.Module):
         # else, they will be assigned to self._torch_module.original_module instead.
         self._is_initialized = True
 
+        # del the ort._modules so that all reference to  ort._modules will be forward to the underlying torch_model
+        # through '__getattr__'
+        del self._modules
+
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only
     # The actual forward implementation is bound during ORTModule initialization
     def forward(self, *inputs, **kwargs):
-        """Delegate the :meth:`~torch.nn.Module.forward` pass of PyTorch training to
-        ONNX Runtime.
+        """Delegate the :meth:`~torch.nn.Module.forward` pass of PyTorch training to ONNX Runtime.
 
         The first call to forward performs setup and checking steps. During this call,
         ORTModule determines whether the module can be trained with ONNX Runtime. For
@@ -117,9 +127,8 @@ class ORTModule(torch.nn.Module):
         Execution is interupted if ONNX Runtime cannot process the model for training.
 
         Args:
-            *inputs and **kwargs represent the positional, variable positional, keyword
-            and variable keyword arguments defined in the user's PyTorch module's forward
-            method. Values can be torch tensors and primitive types.
+            inputs:  positional, variable positional inputs to the PyTorch module's forward method.
+            kwargs: keyword and variable keyword arguments to the PyTorch module's forward method.
 
         Returns:
             The output as expected from the forward method defined by the user's
@@ -145,7 +154,7 @@ class ORTModule(torch.nn.Module):
 
         return self._torch_module._replicate_for_data_parallel()
 
-    def add_module(self, name: str, module: Optional["Module"]) -> None:
+    def add_module(self, name: str, module: Optional[torch.nn.Module]) -> None:
         """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
         self._torch_module.add_module(name, module)
@@ -176,7 +185,7 @@ class ORTModule(torch.nn.Module):
         self._torch_module._apply(fn)
         return self
 
-    def apply(self: T, fn: Callable[["Module"], None]) -> T:
+    def apply(self: T, fn: Callable[[torch.nn.Module], None]) -> T:
         """Override :meth:`~torch.nn.Module.apply` to delegate execution to ONNX Runtime"""
 
         self._torch_module.apply(fn)
@@ -203,7 +212,7 @@ class ORTModule(torch.nn.Module):
 
         return self._torch_module.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
 
-    def load_state_dict(self, state_dict: "OrderedDict[str, Tensor]", strict: bool = True):
+    def load_state_dict(self, state_dict: "OrderedDict[str, torch.Tensor]", strict: bool = True):
         """Override :meth:`~torch.nn.Module.load_state_dict` to delegate execution to ONNX Runtime"""
 
         return self._torch_module.load_state_dict(state_dict, strict=strict)
@@ -257,12 +266,12 @@ class ORTModule(torch.nn.Module):
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )
 
-    def named_children(self) -> Iterator[Tuple[str, "Module"]]:
+    def named_children(self) -> Iterator[Tuple[str, torch.nn.Module]]:
         """Override :meth:`~torch.nn.Module.named_children`"""
 
         yield from self._torch_module.named_children()
 
-    def modules(self) -> Iterator["Module"]:
+    def modules(self) -> Iterator[torch.nn.Module]:
         """Override :meth:`~torch.nn.Module.modules`"""
 
         yield from self._torch_module.modules()
@@ -280,16 +289,14 @@ class ORTModule(torch.nn.Module):
             assert "_torch_module" in self.__dict__, "ORTModule does not have a reference to the user's model"
             return getattr(self.module, name)
         else:
-            return super(ORTModule, self).__getattr__(name)
+            return super().__getattr__(name)
 
     def __setattr__(self, name: str, value) -> None:
-
         if name in self.__dict__:
             # If the name is an attribute of ORTModule, update only ORTModule
             self.__dict__[name] = value
 
         elif "_is_initialized" in self.__dict__ and self.__dict__["_is_initialized"] is True:
-
             assert "_torch_module" in self.__dict__, "ORTModule does not have a reference to the user's model"
 
             # If the name is an attribute of user model, or is a new attribute, update there.
@@ -312,4 +319,15 @@ class ORTModule(torch.nn.Module):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-        _utils.reinitialize_ortmodule(self)
+        # Re-register contrib OPs
+        pytorch_export_contrib_ops.register()
+        CustomOpSymbolicRegistry.register_all(
+            self._torch_module._execution_manager(self.module.training)._runtime_options.onnx_opset_version
+        )
+        CustomGradientRegistry.register_all()
+
+        # Re-initialize the ORTModule forward method
+        _utils.patch_ortmodule_forward_method(self)
+
+        # Re-bind users custom methods to ORTModule
+        _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, self.module, self._logger)

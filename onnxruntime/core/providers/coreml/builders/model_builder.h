@@ -3,10 +3,8 @@
 
 #pragma once
 
-#include <core/graph/graph_viewer.h>
-#include "coreml/Model.pb.h"
-
-namespace COREML_SPEC = CoreML::Specification;
+#include "core/graph/graph_viewer.h"
+#include "core/providers/coreml/builders/coreml_spec.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -20,8 +18,8 @@ class ModelBuilder {
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger, uint32_t coreml_flags);
   ~ModelBuilder() = default;
 
-  [[nodiscard]] Status Compile(std::unique_ptr<Model>& model, const std::string& path);
-  [[nodiscard]] Status SaveCoreMLModel(const std::string& path);
+  Status Compile(std::unique_ptr<Model>& model, const std::string& path);
+  Status SaveCoreMLModel(const std::string& path);
 
   // Accessors for members
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
@@ -48,25 +46,25 @@ class ModelBuilder {
   std::unordered_set<std::string> int64_outputs_;
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
 
-  std::unordered_set<std::string> skipped_initializers_;
+  std::unordered_map<std::string, int> initializer_usage_;
   std::unordered_set<std::string> skipped_inputs_;
 
   uint32_t name_token_{0};
   std::unordered_set<std::string> unique_names_;
 
   // Convert the onnx model to CoreML::Specification::Model
-  [[nodiscard]] Status Initialize();
+  Status Initialize();
 
   // If a CoreML operation will use initializers directly, we will add the initializers to the skip list
   void PreprocessInitializers();
 
   // Copy and process all the initializers to CoreML model
-  [[nodiscard]] Status RegisterInitializers();
+  Status RegisterInitializers();
 
-  [[nodiscard]] Status AddOperations();
-  [[nodiscard]] Status RegisterModelInputs();
-  [[nodiscard]] Status RegisterModelOutputs();
-  [[nodiscard]] Status RegisterModelInputOutput(const NodeArg& node_arg, bool is_input);
+  Status AddOperations();
+  Status RegisterModelInputs();
+  Status RegisterModelOutputs();
+  Status RegisterModelInputOutput(const NodeArg& node_arg, bool is_input);
 
   // Record the onnx scalar output names
   void AddScalarOutput(const std::string& output_name);

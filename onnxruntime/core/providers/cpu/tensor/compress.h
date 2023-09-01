@@ -14,7 +14,7 @@ class Compress final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
-  private:
+ private:
   int64_t axis_;
   bool has_axis_;
 };

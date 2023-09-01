@@ -24,6 +24,15 @@ struct TrainingGraphTransformerConfiguration : public GraphTransformerConfigurat
 
   // Enable compute optimizer.
   bool enable_compute_optimizer{false};
+
+  // Enable embedding sparsity compute optimization for the input names in the below list.
+  std::vector<std::string> sparse_embedding_input_names;
+
+  // Enable label sparsity compute optimization for the input names in the below list.
+  std::vector<std::string> sparse_label_input_names;
+
+  // Path for serialization of the transformed optimized model. If empty, serialization is disabled.
+  std::string optimized_pre_grad_filepath;
 };
 
 }  // namespace training

@@ -40,7 +40,7 @@ class T5EncoderSubgraph : public Subgraph {
     return first_present_output_index_;
   }
 
- private:
+ protected:
   int first_present_output_index_;
 };
 

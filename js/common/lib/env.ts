@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {EnvImpl} from './env-impl';
+import {env as envImpl} from './env-impl.js';
+
 export declare namespace Env {
   export type WasmPrefixOrFilePaths = string|{
+    /* eslint-disable @typescript-eslint/naming-convention */
     'ort-wasm.wasm'?: string;
     'ort-wasm-threaded.wasm'?: string;
     'ort-wasm-simd.wasm'?: string;
     'ort-wasm-simd-threaded.wasm'?: string;
+    /* eslint-enable @typescript-eslint/naming-convention */
   };
   export interface WebAssemblyFlags {
     /**
@@ -59,6 +62,10 @@ export declare namespace Env {
      */
     contextId?: 'webgl'|'webgl2';
     /**
+     * Get the WebGL rendering context.
+     */
+    readonly context: WebGLRenderingContext;
+    /**
      * Set or get the maximum batch size for matmul. 0 means to disable batching.
      *
      * @deprecated
@@ -83,6 +90,22 @@ export declare namespace Env {
      */
     async?: boolean;
   }
+
+  export interface WebGpuFlags {
+    /**
+     * Set or get the profiling mode.
+     */
+    profilingMode?: 'off'|'default';
+    /**
+     * Get the device for WebGPU.
+     *
+     * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
+     * Use `const device = env.webgpu.device as GPUDevice;` in TypeScript to access this property with correct type.
+     *
+     * see comments on {@link GpuBufferType} for more details about why not use types defined in "@webgpu/types".
+     */
+    readonly device: unknown;
+  }
 }
 
 export interface Env {
@@ -100,14 +123,30 @@ export interface Env {
   debug?: boolean;
 
   /**
+   * Get version of the current package.
+   */
+  readonly versions: {
+    readonly common: string;
+    readonly web?: string;
+    readonly node?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    readonly 'react-native'?: string;
+  };
+
+  /**
    * Represent a set of flags for WebAssembly
    */
-  wasm: Env.WebAssemblyFlags;
+  readonly wasm: Env.WebAssemblyFlags;
 
   /**
    * Represent a set of flags for WebGL
    */
-  webgl: Env.WebGLFlags;
+  readonly webgl: Env.WebGLFlags;
+
+  /**
+   * Represent a set of flags for WebGPU
+   */
+  readonly webgpu: Env.WebGpuFlags;
 
   [name: string]: unknown;
 }
@@ -115,4 +154,4 @@ export interface Env {
 /**
  * Represent a set of flags as a global singleton.
  */
-export const env: Env = new EnvImpl();
+export const env: Env = envImpl;

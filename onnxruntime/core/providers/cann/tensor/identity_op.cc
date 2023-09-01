@@ -53,13 +53,23 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .Alias(0, 0),
     IdentityOp<false>);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Identity,
     kOnnxDomain,
-    14,
+    14, 18,
     kCannExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes())
+        .Alias(0, 0),
+    IdentityOp<false>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    Identity,
+    kOnnxDomain,
+    19,
+    kCannExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9())
         .Alias(0, 0),
     IdentityOp<false>);
 

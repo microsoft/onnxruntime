@@ -15,10 +15,10 @@
 #include "contrib_ops/cpu/fused_activation.h"
 
 namespace onnxruntime {
-namespace acl{
+namespace acl {
 
 class FusedConv final : public acl::Conv<float> {
-public:
+ public:
   explicit FusedConv(const OpKernelInfo& info) : acl::Conv<float>(info) {
     ORT_ENFORCE(info.GetAttr<std::string>("activation", &(this->activation_type)).IsOK());
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());

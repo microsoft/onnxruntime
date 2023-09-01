@@ -105,6 +105,12 @@ void CpuTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, in
   DumpCpuTensor<MLFloat16>(name, tensor, dim0, dim1);
 }
 
+void CpuTensorConsoleDumper::Print(const char* name, const size_t* tensor, int dim0, int dim1) const {
+  if (!is_enabled_)
+    return;
+  DumpCpuTensor<size_t>(name, tensor, dim0, dim1);
+}
+
 void CpuTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1) const {
   if (!is_enabled_)
     return;
@@ -178,6 +184,9 @@ void CpuTensorConsoleDumper::Print(const char*, const float*, int, int) const {
 }
 
 void CpuTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int) const {
+}
+
+void CpuTensorConsoleDumper::Print(const char*, const size_t*, int, int) const {
 }
 
 void CpuTensorConsoleDumper::Print(const char*, const int64_t*, int, int) const {

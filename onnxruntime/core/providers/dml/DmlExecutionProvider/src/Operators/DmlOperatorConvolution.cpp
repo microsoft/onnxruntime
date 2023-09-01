@@ -15,10 +15,11 @@ public:
         const MLOperatorKernelCreationContext& kernelInfo,
         DML_CONVOLUTION_MODE mode,
         DML_CONVOLUTION_DIRECTION direction,
-        bool hasDynamicPads
+        bool hasDynamicPads,
+        bool isNhwc
         )
     :   DmlOperator(kernelInfo),
-        ConvolutionHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), direction == DML_CONVOLUTION_DIRECTION_BACKWARD, hasDynamicPads, 0, 1)
+        ConvolutionHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), direction == DML_CONVOLUTION_DIRECTION_BACKWARD, hasDynamicPads, isNhwc, 0, 1)
     {
         uint32_t biasIndex = hasDynamicPads ? 3 : 2;
         bool hasBiasInput = kernelInfo.GetInputCount() > biasIndex;
@@ -33,6 +34,43 @@ public:
         // e.g. [2,3,4] becomes [2,3,1,4]
         m_inputTensorDescs[0] = CreateTensorDescFromInput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
         m_inputTensorDescs[1] = CreateTensorDescFromInput(kernelInfo, 1, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
+        m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
+
+        if (isNhwc)
+        {
+            // Restrict to 4D like other implementations
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[0].GetDimensionCount() == 4);
+            const auto inputSizes = m_inputTensorDescs[0].GetSizes();
+            const uint32_t inputBatch = inputSizes[0];
+            const uint32_t inputHeight = inputSizes[1];
+            const uint32_t inputWidth = inputSizes[2];
+            const uint32_t inputChannels = inputSizes[3];
+            const std::array<uint32_t, 4> nchwInputSizes = {inputBatch, inputChannels, inputHeight, inputWidth};
+            const std::array<uint32_t, 4> nchwInputStrides = {inputHeight * inputWidth * inputChannels, 1, inputWidth * inputChannels, inputChannels};
+            m_inputTensorDescs[0] = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), nchwInputSizes, nchwInputStrides);
+
+            // Restrict to 4D like other implementations
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[1].GetDimensionCount() == 4);
+            const auto weightSizes = m_inputTensorDescs[1].GetSizes();
+            const uint32_t featureMaps = weightSizes[0];
+            const uint32_t kernelHeight = weightSizes[1];
+            const uint32_t kernelWidth = weightSizes[2];
+            const uint32_t channelsPerGroup = weightSizes[3];
+            const std::array<uint32_t, 4> nchwKernelSizes = {featureMaps, channelsPerGroup, kernelHeight, kernelWidth};
+            const std::array<uint32_t, 4> nchwKernelStrides = {kernelHeight * kernelWidth * channelsPerGroup, 1, kernelWidth * channelsPerGroup, channelsPerGroup};
+            m_inputTensorDescs[1] = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), nchwKernelSizes, nchwKernelStrides);
+
+            // Restrict to 4D like other implementations
+            ML_CHECK_VALID_ARGUMENT(m_outputTensorDescs[0].GetDimensionCount() == 4);
+            const auto outputSizes = m_outputTensorDescs[0].GetSizes();
+            const uint32_t outputBatch = outputSizes[0];
+            const uint32_t outputHeight = outputSizes[1];
+            const uint32_t outputWidth = outputSizes[2];
+            const uint32_t outputChannels = outputSizes[3];
+            const std::array<uint32_t, 4> nchwOutputSizes = {outputBatch, outputChannels, outputHeight, outputWidth};
+            const std::array<uint32_t, 4> nchwOutputStrides = {outputHeight * outputWidth * outputChannels, 1, outputWidth * outputChannels, outputChannels};
+            m_outputTensorDescs[0] = TensorDesc(m_outputTensorDescs[0].GetDmlDataType(), nchwOutputSizes, nchwOutputStrides);
+        }
 
         // Bias is optional so only adjust it if it exists.
         if (hasBiasInput)
@@ -47,17 +85,15 @@ public:
             // Resize the bias to be the same dimension as the input tensor.
             // The 1D tensor needs to be moved to the C channel.
             m_inputTensorDescs[biasIndex] = CreateTensorDescFromInput(
-                kernelInfo, 
-                biasIndex, 
-                TensorAxis::DoNotCoerce, 
+                kernelInfo,
+                biasIndex,
+                TensorAxis::DoNotCoerce,
                 TensorAxis::C,
                 TensorAxis::LeftAligned,
                 std::nullopt,
                 dmlDimSize
                 );
         }
-
-        m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
 
         std::optional<ActivationOperatorDesc> fusedActivation = FusionHelpers::TryGetFusedActivationDesc(kernelInfo);
         DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->GetDmlDesc() : DML_OPERATOR_DESC();
@@ -95,20 +131,21 @@ public:
 };
 
 // A specific type of operation for registration.
-template <DML_CONVOLUTION_MODE Mode, DML_CONVOLUTION_DIRECTION Direction, bool hasDynamicPads = false>
+template <DML_CONVOLUTION_MODE Mode, DML_CONVOLUTION_DIRECTION Direction, bool hasDynamicPads = false, bool isNhwc = false>
 class DmlOperatorConvolutionTemplate : public DmlOperatorConvolution
 {
 public:
     DmlOperatorConvolutionTemplate(const MLOperatorKernelCreationContext& kernelInfo)
-    :   DmlOperatorConvolution(kernelInfo, Mode, Direction, hasDynamicPads)
+    :   DmlOperatorConvolution(kernelInfo, Mode, Direction, hasDynamicPads, isNhwc)
     {
     }
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Conv,                           DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_FORWARD>);
+DML_OP_DEFINE_CREATION_FUNCTION(NhwcConv,                       DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_FORWARD, false, true>);
 DML_OP_DEFINE_CREATION_FUNCTION(ConvTranspose,                  DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_BACKWARD>);
-DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedConv,                      DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_FORWARD>);
-DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedConvTranspose,             DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_BACKWARD>);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedConv,                   DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_FORWARD>);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedConvTranspose,          DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_BACKWARD>);
 DML_OP_DEFINE_CREATION_FUNCTION(ConvTransposeWithDynamicPads,   DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_BACKWARD, true>);
 
 } // namespace Dml

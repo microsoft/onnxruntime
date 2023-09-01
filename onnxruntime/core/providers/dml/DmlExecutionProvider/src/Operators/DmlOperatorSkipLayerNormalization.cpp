@@ -13,25 +13,55 @@ public:
     :   DmlOperator(kernelCreationContext)
     {
         std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2, 3, 4};
+        std::vector<std::optional<uint32_t>> kernelOutputIndices = {0, 1, 2, 3};
 
-        DmlOperator::Initialize(
+        const auto inputShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(inputShape.size() == 2 || inputShape.size() == 3);
+        const uint32_t batchSize = inputShape[0];
+        const uint32_t sequenceLength = inputShape.size() == 3 ? inputShape[1] : 1;
+        const uint32_t hiddenSize = inputShape.back();
+
+        std::array<uint32_t, 4> tensorShape = {batchSize, sequenceLength, hiddenSize, 1};
+        std::array<uint32_t, 4> vectorShape = {1, 1, hiddenSize, 1};
+        std::array<uint32_t, 4> scalarShape = {1, 1, 1, 1};
+
+        std::array<gsl::span<const uint32_t>, 5> inputShapes = {
+            tensorShape,
+            tensorShape,
+            vectorShape,
+            vectorShape,
+            vectorShape,
+        };
+
+        std::array<gsl::span<const uint32_t>, 4> outputShapes = {
+            tensorShape,
+            scalarShape,
+            scalarShape,
+            tensorShape,
+        };
+
+        DmlOperator::InitializeWithShapes(
             kernelCreationContext,
             kernelInputIndices,
-            std::nullopt,
-            kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0),
-            std::nullopt,
-            kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0));
+            kernelOutputIndices,
+            inputShapes,
+            outputShapes);
+
+        if (m_inputTensorDescs[4].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        {
+            // The needs to be broadcasted since it's not used as part of MVN
+            std::array<uint32_t, 4> biasStrides = {0, 0, 1, 0};
+            m_inputTensorDescs[4] = TensorDesc(
+                m_inputTensorDescs[0].GetDmlDataType(),
+                m_inputTensorDescs[0].GetSizes(),
+                biasStrides);
+        }
 
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
-
-        int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
-        uint32_t inputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
-        onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
-        std::vector<uint32_t> onnxAxes(static_cast<size_t>(inputDimCount) - static_cast<size_t>(onnxAxis));
-        std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
+        std::array<uint32_t, 2> axes = {2, 3};
 
         assert(m_inputTensorDescs.size() == 5);
-        assert(m_outputTensorDescs.size() == 1);
+        assert(m_outputTensorDescs.size() == 4);
 
         auto inputDesc = m_inputTensorDescs[0].GetDmlDesc();
         auto skipDesc = m_inputTensorDescs[1].GetDmlDesc();
@@ -39,29 +69,27 @@ public:
         auto betaDesc = m_inputTensorDescs[3].GetDmlDesc();
         auto biasDesc = m_inputTensorDescs[4].GetDmlDesc();
         auto outputDesc = m_outputTensorDescs[0].GetDmlDesc();
-
-        TensorDesc inputSkipBiasTensorDesc(m_inputTensorDescs[0].GetDmlDataType(), m_inputTensorDescs[0].GetSizes());
-        DML_TENSOR_DESC inputSkipBiasDmlTensorDesc = inputSkipBiasTensorDesc.GetDmlDesc();
+        auto inputSkipBiasSum = m_outputTensorDescs[3].GetDmlDesc();
 
         DML_ELEMENT_WISE_ADD_OPERATOR_DESC inputSkipAddDesc = {};
         inputSkipAddDesc.ATensor = &inputDesc;
         inputSkipAddDesc.BTensor = &skipDesc;
-        inputSkipAddDesc.OutputTensor = &inputSkipBiasDmlTensorDesc;
+        inputSkipAddDesc.OutputTensor = &inputDesc;
         DML_OPERATOR_DESC inputSkipAddOpDesc = { DML_OPERATOR_ELEMENT_WISE_ADD, &inputSkipAddDesc };
 
         DML_ELEMENT_WISE_ADD_OPERATOR_DESC inputSkipBiasAddDesc = {};
-        inputSkipBiasAddDesc.ATensor = &inputSkipBiasDmlTensorDesc;
+        inputSkipBiasAddDesc.ATensor = &inputDesc;
         inputSkipBiasAddDesc.BTensor = &biasDesc;
-        inputSkipBiasAddDesc.OutputTensor = &inputSkipBiasDmlTensorDesc;
+        inputSkipBiasAddDesc.OutputTensor = &inputDesc;
         DML_OPERATOR_DESC inputSkipBiasAddOpDesc = { DML_OPERATOR_ELEMENT_WISE_ADD, &inputSkipBiasAddDesc };
 
         DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC mvnDesc = {};
-        mvnDesc.InputTensor = &inputSkipBiasDmlTensorDesc;
+        mvnDesc.InputTensor = &inputDesc;
         mvnDesc.ScaleTensor = &gammaDesc;
         mvnDesc.BiasTensor = betaDesc.Desc ? &betaDesc : nullptr;
         mvnDesc.OutputTensor = &outputDesc;
-        mvnDesc.Axes = onnxAxes.data();
-        mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(onnxAxes.size());
+        mvnDesc.Axes = axes.data();
+        mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(axes.size());
         mvnDesc.NormalizeVariance = true;
         mvnDesc.Epsilon = epsilon;
         mvnDesc.FusedActivation = nullptr;
@@ -112,6 +140,23 @@ public:
             biasInputEdge.ToNodeIndex = 1;
             biasInputEdge.ToNodeInputIndex = 1;
             inputEdges.push_back(std::move(biasInputEdge));
+
+            if (inputSkipBiasSum.Desc)
+            {
+                DML_OUTPUT_GRAPH_EDGE_DESC inputSkipBiasSumEdge = {};
+                inputSkipBiasSumEdge.FromNodeIndex = 1;
+                inputSkipBiasSumEdge.FromNodeOutputIndex = 0;
+                inputSkipBiasSumEdge.GraphOutputIndex = 3;
+                outputEdges.push_back(std::move(inputSkipBiasSumEdge));
+            }
+        }
+        else if (inputSkipBiasSum.Desc)
+        {
+            DML_OUTPUT_GRAPH_EDGE_DESC inputSkipBiasSumEdge = {};
+            inputSkipBiasSumEdge.FromNodeIndex = 0;
+            inputSkipBiasSumEdge.FromNodeOutputIndex = 0;
+            inputSkipBiasSumEdge.GraphOutputIndex = 3;
+            outputEdges.push_back(std::move(inputSkipBiasSumEdge));
         }
 
         // Insert the MVN operation into the graph
@@ -158,6 +203,25 @@ public:
         SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
 };
+
+void CALLBACK QuerySkipLayerNormalization(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+{
+    *isSupported = false;
+
+    // `mean` output tensor is not supported yet
+    if (context->IsOutputValid(1))
+    {
+        return;
+    }
+
+    // `inv_std_var` output tensor is not supported yet
+    if (context->IsOutputValid(2))
+    {
+        return;
+    }
+
+    *isSupported = true;
+}
 
 DML_OP_DEFINE_CREATION_FUNCTION(SkipLayerNormalization, DmlOperatorSkipLayerNormalization);
 

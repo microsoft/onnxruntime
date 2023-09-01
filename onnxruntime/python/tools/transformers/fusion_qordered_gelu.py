@@ -81,7 +81,7 @@ class FusionQOrderedGelu(Fusion):
             input_name_to_nodes,
             output_name_to_node,
         ):
-            logger.debug(f"It is not safe to fuse QOrderedGelu node. Skip")
+            logger.debug("It is not safe to fuse QOrderedGelu node. Skip")
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)

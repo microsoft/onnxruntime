@@ -12,21 +12,21 @@ from onnxruntime_test_training_unittest_utils import process_dropout
 import onnxruntime
 from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
 
-torch.manual_seed(1)
-onnxruntime.set_seed(1)
-
 
 class TestTrainingDropout(unittest.TestCase):
-    def testTrainingAndEvalDropout(self):
-        # Temporarily disable this test.
-        # The graph below will trigger ORT
-        # to sort backward graph before forward graph which gives incorrect result.
-        # TODO Re-enable when that is fixed.
-        return
+    def setUp(self):
+        torch.manual_seed(1)
+        onnxruntime.set_seed(1)
 
+    @unittest.skip(
+        "Temporarily disable this test. The graph below will trigger ORT to "
+        "sort backward graph before forward graph which gives incorrect result. "
+        "https://github.com/microsoft/onnxruntime/issues/16801"
+    )
+    def test_training_and_eval_dropout(self):
         class TwoDropoutNet(nn.Module):
             def __init__(self, drop_prb_1, drop_prb_2, dim_size):
-                super(TwoDropoutNet, self).__init__()
+                super().__init__()
                 self.drop_1 = nn.Dropout(drop_prb_1)
                 self.drop_2 = nn.Dropout(drop_prb_2)
                 self.weight_1 = torch.nn.Parameter(torch.zeros(dim_size, dtype=torch.float32))

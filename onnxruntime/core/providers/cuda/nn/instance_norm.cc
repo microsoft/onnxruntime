@@ -70,23 +70,23 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     ORT_RETURN_IF_ERROR(stats_desc.Set(data_desc, CUDNN_BATCHNORM_SPATIAL));
 
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
-                              GetCudnnHandle(p_op_kernel_context),
-                              CUDNN_BATCHNORM_SPATIAL,
-                              &one,
-                              &zero,
-                              data_desc,
-                              x_data,
-                              data_desc,
-                              y_data,
-                              stats_desc,
-                              scale_data,
-                              bias_data,
-                              1.0f,
-                              nullptr,
-                              nullptr,
-                              epsilon_,
-                              nullptr,
-                              nullptr));
+        GetCudnnHandle(p_op_kernel_context),
+        CUDNN_BATCHNORM_SPATIAL,
+        &one,
+        &zero,
+        data_desc,
+        x_data,
+        data_desc,
+        y_data,
+        stats_desc,
+        scale_data,
+        bias_data,
+        1.0f,
+        nullptr,
+        nullptr,
+        epsilon_,
+        nullptr,
+        nullptr));
   } else {
     // we use cudnnBatchNormalizationForwardTraining to compute mean/variance
     // so collapsing NC into channel
@@ -117,23 +117,23 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
-                              GetCudnnHandle(p_op_kernel_context),
-                              CUDNN_BATCHNORM_SPATIAL,
-                              &one,
-                              &zero,
-                              data_desc,
-                              x_data,
-                              data_desc,
-                              y_data,  // use y temporarily, would be rewritten later
-                              stats_desc,
-                              unused_scale.get(),
-                              unused_bias.get(),
-                              1.0f,
-                              mean.get(),
-                              variance.get(),
-                              CUDNN_BN_MIN_EPSILON,
-                              nullptr,
-                              nullptr));
+        GetCudnnHandle(p_op_kernel_context),
+        CUDNN_BATCHNORM_SPATIAL,
+        &one,
+        &zero,
+        data_desc,
+        x_data,
+        data_desc,
+        y_data,  // use y temporarily, would be rewritten later
+        stats_desc,
+        unused_scale.get(),
+        unused_bias.get(),
+        1.0f,
+        mean.get(),
+        variance.get(),
+        CUDNN_BN_MIN_EPSILON,
+        nullptr,
+        nullptr));
 
     // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
     // X/Y is (N,C,H,W)
@@ -208,23 +208,23 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), bias_data, bias_data_fp32.get(), C);
 
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
-                              GetCudnnHandle(p_op_kernel_context),
-                              CUDNN_BATCHNORM_SPATIAL,
-                              &one,
-                              &zero,
-                              data_desc,
-                              x_data,
-                              data_desc,
-                              y_data,
-                              stats_desc,
-                              scale_data_fp32.get(),
-                              bias_data_fp32.get(),
-                              1.0f,
-                              nullptr,
-                              nullptr,
-                              epsilon_,
-                              nullptr,
-                              nullptr));
+        GetCudnnHandle(p_op_kernel_context),
+        CUDNN_BATCHNORM_SPATIAL,
+        &one,
+        &zero,
+        data_desc,
+        x_data,
+        data_desc,
+        y_data,
+        stats_desc,
+        scale_data_fp32.get(),
+        bias_data_fp32.get(),
+        1.0f,
+        nullptr,
+        nullptr,
+        epsilon_,
+        nullptr,
+        nullptr));
   } else {
     // we use cudnnBatchNormalizationForwardTraining to compute mean/variance
     // so collapsing NC into channel
@@ -260,23 +260,23 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
-                              GetCudnnHandle(p_op_kernel_context),
-                              CUDNN_BATCHNORM_SPATIAL,
-                              &one,
-                              &zero,
-                              data_desc,
-                              x_data,
-                              data_desc,
-                              y_data,  // use y temporarily, would be rewritten later
-                              stats_desc,
-                              unused_scale.get(),
-                              unused_bias.get(),
-                              1.0f,
-                              mean.get(),
-                              variance.get(),
-                              CUDNN_BN_MIN_EPSILON,
-                              nullptr,
-                              nullptr));
+        GetCudnnHandle(p_op_kernel_context),
+        CUDNN_BATCHNORM_SPATIAL,
+        &one,
+        &zero,
+        data_desc,
+        x_data,
+        data_desc,
+        y_data,  // use y temporarily, would be rewritten later
+        stats_desc,
+        unused_scale.get(),
+        unused_bias.get(),
+        1.0f,
+        mean.get(),
+        variance.get(),
+        CUDNN_BN_MIN_EPSILON,
+        nullptr,
+        nullptr));
 
     // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
     // X/Y is (N,C,H,W)

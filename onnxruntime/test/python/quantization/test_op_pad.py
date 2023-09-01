@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -19,7 +18,7 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, q
 class TestOpQuatizerPad(unittest.TestCase):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
@@ -128,7 +127,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         data_reader=None,
         activation_type=QuantType.QUInt8,
         weight_type=QuantType.QUInt8,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         if data_reader is not None:
             quantize_static(
@@ -152,8 +151,8 @@ class TestOpQuatizerPad(unittest.TestCase):
 
     def verify_should_not_trigger(self, quantize_mode="static"):
         np.random.seed(108)
-        model_fp32_path = "qop_pad_notrigger_fp32_{}.onnx".format(quantize_mode)
-        model_i8_path = "qop_pad_notrigger_i8_{}.onnx".format(quantize_mode)
+        model_fp32_path = f"qop_pad_notrigger_fp32_{quantize_mode}.onnx"
+        model_i8_path = f"qop_pad_notrigger_i8_{quantize_mode}.onnx"
         data_reader = self.input_feeds(1, {"input": [1, 16, 31, 31]})
         self.construct_model_pad(model_fp32_path, "constant", [1, 16, 31, 31], [0, 0, 1, 2, 0, 0, 3, 4])
         self.quantize_model(
@@ -194,7 +193,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         np.random.seed(108)
         tag_pad_mode = pad_mode if pad_mode is not None else "none"
         tag_constant_value = "" if constant_value is None else "_value"
-        model_fp32_path = "qop_pad_{}_fp32_{}{}.onnx".format(quantize_mode, tag_pad_mode, tag_constant_value)
+        model_fp32_path = f"qop_pad_{quantize_mode}_fp32_{tag_pad_mode}{tag_constant_value}.onnx"
         edge_case = "dual_feed" in extra_options and extra_options["dual_feed"] and constant_value is not None
         if edge_case:
             data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33], "padding_value": [1]})

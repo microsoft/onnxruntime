@@ -35,6 +35,14 @@ dmlep_related_header_files = [
     "onnxruntime_cxx_inline.h",
     "dml_provider_factory.h",
 ]
+training_related_header_files = [
+    "onnxruntime_c_api.h",
+    "onnxruntime_cxx_api.h",
+    "onnxruntime_cxx_inline.h",
+    "onnxruntime_training_c_api.h",
+    "onnxruntime_training_cxx_api.h",
+    "onnxruntime_training_cxx_inline.h",
+]
 
 
 def parse_arguments():
@@ -48,14 +56,14 @@ def parse_arguments():
     parser.add_argument(
         "--package_path",
         required=True,
-        help="Path containing the package to be validated." + "Must only contain only one package within this.",
+        help="Path containing the package to be validated. Must only contain only one package within this.",
     )
     parser.add_argument(
         "--platforms_supported", required=True, help="Comma separated list (no space). Ex: linux-x64,win-x86,osx-x64"
     )
     parser.add_argument(
         "--verify_nuget_signing",
-        help="Flag indicating if Nuget package signing is to be verified. " "Only accepts 'true' or 'false'",
+        help="Flag indicating if Nuget package signing is to be verified. Only accepts 'true' or 'false'",
     )
 
     return parser.parse_args()
@@ -84,12 +92,19 @@ def check_if_headers_are_present(header_files, header_folder, file_list_in_packa
 
 
 def check_if_dlls_are_present(
-    package_type, is_windows_ai_package, is_gpu_package, is_dml_package, platforms_supported, zip_file, package_path
+    package_type,
+    is_windows_ai_package,
+    is_gpu_package,
+    is_dml_package,
+    is_training_package,
+    platforms_supported,
+    zip_file,
+    package_path,
 ):
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
         file_list_in_package = list()
-        for (dirpath, dirnames, filenames) in os.walk(package_path):
+        for dirpath, _dirnames, filenames in os.walk(package_path):
             file_list_in_package += [os.path.join(dirpath, file) for file in filenames]
     else:
         file_list_in_package = zip_file.namelist()
@@ -122,6 +137,11 @@ def check_if_dlls_are_present(
 
             if is_dml_package:
                 check_if_headers_are_present(dmlep_related_header_files, header_folder, file_list_in_package, platform)
+
+            if is_training_package:
+                check_if_headers_are_present(
+                    training_related_header_files, header_folder, file_list_in_package, platform
+                )
 
         elif platform.startswith("linux"):
             if package_type == "nuget":
@@ -199,11 +219,13 @@ def validate_tarball(args):
     is_windows_ai_package = False
     zip_file = None
     is_dml_package = False
+    is_training_package = False
     check_if_dlls_are_present(
         args.package_type,
         is_windows_ai_package,
         is_gpu_package,
         is_dml_package,
+        is_training_package,
         args.platforms_supported,
         zip_file,
         package_folder,
@@ -227,12 +249,14 @@ def validate_zip(args):
 
     is_windows_ai_package = False
     is_dml_package = False
+    is_training_package = False
     zip_file = zipfile.ZipFile(package_name)
     check_if_dlls_are_present(
         args.package_type,
         is_windows_ai_package,
         is_gpu_package,
         is_dml_package,
+        is_training_package,
         args.platforms_supported,
         zip_file,
         package_folder,
@@ -259,10 +283,15 @@ def validate_nuget(args):
     else:
         is_dml_package = False
 
+    if "Training" in nuget_file_name:
+        is_training_package = True
+    else:
+        is_training_package = False
+
     exit_code = 0
 
-    nupkg_copy_name = "NugetCopy" + ".nupkg"
-    zip_copy_name = "NugetCopy" + ".zip"
+    nupkg_copy_name = "NugetCopy.nupkg"
+    zip_copy_name = "NugetCopy.zip"
     zip_file = None
 
     # Remove any residual files
@@ -290,6 +319,7 @@ def validate_nuget(args):
             is_windows_ai_package,
             is_gpu_package,
             is_dml_package,
+            is_training_package,
             args.platforms_supported,
             zip_file,
             None,
@@ -335,7 +365,7 @@ def main():
     elif args.package_type == "zip":
         validate_zip(args)
     else:
-        print("Package type {} is not supported".format(args.package_type))
+        print(f"Package type {args.package_type} is not supported")
 
 
 if __name__ == "__main__":

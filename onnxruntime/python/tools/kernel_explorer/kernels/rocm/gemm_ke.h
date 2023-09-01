@@ -43,4 +43,4 @@ class IBatchedGemmKernelExplorer : public IKernelExplorer {
   std::shared_ptr<T*> dev_cs_;
 };
 
-}
+}  // namespace onnxruntime

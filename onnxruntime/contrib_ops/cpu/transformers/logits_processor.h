@@ -138,6 +138,19 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
   float presence_penalty_;
 };
 
+template <typename T>
+class TimestampLogitsProcessor : public ILogitsProcessor<T> {
+ public:
+  TimestampLogitsProcessor(int eos_token_id, int max_initial_timestamp_index);
+
+  void Process(const ISequences* sequences,
+               NextTokenScores<T>& next_token_scores) override;
+
+ private:
+  int eos_token_id_;
+  int max_initial_timestamp_index_;
+};
+
 class LogitsProcessorList : public ILogitsProcessorList {
  public:
   LogitsProcessorList() = default;
@@ -147,7 +160,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
   void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step);
 
  private:
-  template<typename GenerationParametersT>
+  template <typename GenerationParametersT>
   void LogitsProcessorInitImpl(const GenerationParametersT& parameters) {
     processor_list_.clear();
 
@@ -159,8 +172,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
 
     if (parameters.no_repeat_ngram_size > 0) {
       no_repeat_ngram_processor_ = std::make_unique<
-                                     NoRepeatNGramLogitsProcessor<float>
-                                   >(parameters.no_repeat_ngram_size);
+          NoRepeatNGramLogitsProcessor<float>>(parameters.no_repeat_ngram_size);
       processor_list_.push_back(no_repeat_ngram_processor_.get());
     }
 
@@ -171,9 +183,8 @@ class LogitsProcessorList : public ILogitsProcessorList {
 
     if (!parameters.prefix_vocab_mask.empty()) {
       prefix_vocab_mask_processor_ = std::make_unique<
-                                       PrefixVocabMaskLogitsProcessor<float>
-                                     >(parameters.prefix_vocab_mask,
-                                       parameters.batch_size);
+          PrefixVocabMaskLogitsProcessor<float>>(parameters.prefix_vocab_mask,
+                                                 parameters.batch_size);
       processor_list_.push_back(prefix_vocab_mask_processor_.get());
     }
 
@@ -190,10 +201,16 @@ class LogitsProcessorList : public ILogitsProcessorList {
 
     if (!parameters.presence_mask.empty()) {
       presence_penalty_processor_ = std::make_unique<
-                                     PresencePenaltyLogitsProcessor<float>
-                                   >(parameters.presence_mask,
-                                     parameters.presence_penalty);
+          PresencePenaltyLogitsProcessor<float>>(parameters.presence_mask,
+                                                 parameters.presence_penalty);
       processor_list_.push_back(presence_penalty_processor_.get());
+    }
+
+    // Add timestamp processor for whisper model
+    if (parameters.model_type == IGenerationParameters::kModelTypeWhisper && parameters.logits_processor == IGenerationParameters::kLogitsProcessorTypeWhisper) {
+      constexpr int max_initial_timestamp_index = 50;
+      timestamp_processor_ = std::make_unique<TimestampLogitsProcessor<float>>(parameters.eos_token_id, max_initial_timestamp_index);
+      processor_list_.push_back(timestamp_processor_.get());
     }
 
     batch_beam_size_ = parameters.BatchBeamSize();
@@ -211,6 +228,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
   std::unique_ptr<MinLengthLogitsProcessor<float>> min_length_processor_;
   std::unique_ptr<TemperatureLogitsProcessor<float>> temperature_processor_;
   std::unique_ptr<PresencePenaltyLogitsProcessor<float>> presence_penalty_processor_;
+  std::unique_ptr<TimestampLogitsProcessor<float>> timestamp_processor_;
 };
 
 }  // namespace transformers

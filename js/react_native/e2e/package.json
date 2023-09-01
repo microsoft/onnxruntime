@@ -16,6 +16,8 @@
     "@babel/core": "^7.17.0",
     "@babel/runtime": "^7.17.0",
     "babel-plugin-module-resolver": "^4.0.0",
+    "detox": "^20.7.0",
+    "jest": "^29",
     "metro-react-native-babel-preset": "^0.67.0"
   }
 }

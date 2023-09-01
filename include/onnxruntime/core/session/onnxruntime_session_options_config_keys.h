@@ -44,8 +44,14 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // It controls to run quantization model in QDQ (QuantizelinearDeQuantizelinear) format or not.
 // "0": enable. ORT does fusion logic for QDQ format.
 // "1": disable. ORT doesn't do fusion logic for QDQ format.
-// Its default value is "0"
+// Its default value is "0" unless the DirectML execution provider is registered, in which case it defaults to "1".
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
+
+// It controls whether to enable Double QDQ remover and Identical Children Consolidation
+// "0": not to disable. ORT does remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
+// "1": disable. ORT doesn't remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
+// Its default value is "0"
+static const char* const kOrtSessionOptionsDisableDoubleQDQRemover = "session.disable_double_qdq_remover";
 
 // If set to "1", enables the removal of QuantizeLinear/DequantizeLinear node pairs once all QDQ handling has been
 // completed. e.g. If after all QDQ handling has completed and we have -> FloatOp -> Q -> DQ -> FloatOp -> the
@@ -159,6 +165,11 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
 
+// "1": every model using a more recent opset than the latest released one will fail
+// "0": the model may or may not work if onnxruntime cannot find an implementation, this option
+// is used for development purpose.
+static const char* const kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly = "session.allow_released_opsets_only";
+
 // The file saves configuration for partitioning node among logic streams
 static const char* const kNodePartitionConfigFile = "session.node_partition_config_file";
 
@@ -178,3 +189,39 @@ static const char* const kNodePartitionConfigFile = "session.node_partition_conf
 //    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
 //    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
 static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "session.intra_op_thread_affinities";
+
+// This option will dump out the model to assist debugging any issues with layout transformation,
+// and is primarily intended for developer usage. It is only relevant if an execution provider that requests
+// NHWC layout is enabled such as NNAPI, XNNPACK or QNN.
+//
+// Default is off. Set to "1" to enable.
+//
+// If modified by layout transformation the model will be dumped after these steps:
+//   1) insertion of the layout transformation Transpose nodes
+//   2) after those are optimized using the transpose optimizer,
+//   3) after the L1 transformers are applied to the updated graph.
+// The model will be saved to filename post_layout_transform_step_<step_number>.onnx.
+static const char* const kDebugLayoutTransformation = "session.debug_layout_transformation";
+
+// Graph nodes that are not supported by the execution providers (EPs) explicitly added to the session are
+// assigned (i.e., "fallback") to the CPU EP by default.
+//
+// This option allows the user to disable the fallback of unsupported graph nodes to the CPU EP.
+// If this option is set to "1", session creation will fail if the execution providers other than the CPU EP cannot
+// fully support all of the nodes in the graph.
+//
+// It is invalid to set this option and explicitly add the CPU EP to the session. In this case, session creation
+// will also fail with an error.
+//
+// Option values:
+// - "0": CPU EP fallback is not disabled. [DEFAULT]
+// - "1": CPU EP fallback is disabled.
+static const char* const kOrtSessionOptionsDisableCPUEPFallback = "session.disable_cpu_ep_fallback";
+
+// Use this config when serializing a large model after optimization to specify an external initializers file
+static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFileName =
+    "session.optimized_model_external_initializers_file_name";
+
+// Use this config to control the minimum size of the initializer when externalizing it during serialization
+static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
+    "session.optimized_model_external_initializers_min_size_in_bytes";

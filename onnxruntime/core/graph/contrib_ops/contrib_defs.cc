@@ -3,11 +3,8 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 
 #include <cmath>
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
+#include "core/graph/onnx_protobuf.h"
+
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 
@@ -16,7 +13,9 @@
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/mlas/inc/mlas_q4.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 #include "onnx/defs/function.h"
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
@@ -24,6 +23,17 @@
 #pragma warning(disable : 26426)
 #endif
 namespace ONNX_NAMESPACE {
+
+inline int64_t HandleNegativeAxis(int64_t axis, int64_t rank) {
+  if (rank < 0 || axis >= rank || axis < -rank) {
+    fail_shape_inference("axis ", axis,
+                         " is not in valid range [-", rank, ",", rank - 1, "]");
+  }
+
+  // Handle negative axis
+  return axis < 0 ? axis + rank : axis;
+}
+
 void convPoolShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     bool use_dilation, bool require_kernel_shape,
@@ -410,8 +420,17 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
   auto& input_ids_shape = getInputShape(ctx, 0);
   auto& input_ids_dims = input_ids_shape.dim();
-  if (input_ids_dims.size() != 2) {
-    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+  auto model_type_attr = ctx.getAttribute("model_type");
+  int64_t model_type = model_type_attr ? static_cast<int64_t>(model_type_attr->i()) : -1;
+  if (model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper) {
+    if (input_ids_dims.size() != 3) {
+      fail_shape_inference("Inputs 0 shall be 3 dimensions in whisper graph");
+    }
+    if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value() && input_ids_dims[2].has_dim_value())) {
+      return;
+    }
+  } else if (input_ids_dims.size() != 2) {
+    fail_shape_inference("Inputs 0 shall be 2 dimensions", model_type);
   }
   if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
     return;
@@ -1060,7 +1079,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                       "Size of the vocabulary. "
                                       "If not provided, it will be inferred from the decoder subgraph's output shape",
                                       AttributeProto::INT, static_cast<int64_t>(-1))
-                                .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+                                .Input(0, "input_ids", "The sequence used as a prompt for the generation in the encoder subgraph. Shape is (batch_size, sequence_length)", "F")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
                                 .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
@@ -1074,6 +1093,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Input(7, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
                                 .Input(8, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "M", OpSchema::Optional)
                                 .Input(9, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
+                                .Input(10, "decoder_input_ids", "The forced input id sequence for the decoder subgraph. Shape is (batch_size, initial_sequence_length)", "I", OpSchema::Optional)
+                                .Input(11, "logits_processor", "Specific logits processor for different types of beamsearch models. Default value 0 means no specific logit processor. Accepts value >= 0. Shape is (1)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
                                 .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
                                 .Output(2, "scores",
@@ -1081,7 +1102,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                         "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                                         "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
                                         "T", OpSchema::Optional)
-                                .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
+                                .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -1155,6 +1177,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
                                 .Input(5, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
                                 .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Input(7, "presence_mask", "Presence penalty mask. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
+                                .Input(8, "seed", "Seed for random number generator. Shape is (1)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
                                 .Output(1, "filtered_logits", "Filtered logits as input to the mutinomial function for debug purpose. Shape is (batch_size, vocab_size)", "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
@@ -1217,22 +1240,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MaxpoolWithMask, 1,
 
 ONNX_MS_OPERATOR_SET_SCHEMA(Rfft, 1,
                             OpSchema()
-                                .SetDoc(R"DOC()DOC")
-                                .Input(0, "X", "input tensor", "T")
-                                .Attr("signal_ndim", "", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Output(0, "Y", "output tensor", "T")
+                                .SetDoc(R"DOC(This function computes the n-point one dimensional Fourier transform for a real-valued input where n is an even number.)DOC")
+                                .Input(0, "X", "input tensor of size n in the signal dim", "T")
+                                .Attr("signal_ndim", "number of dimensions comprising the signal, collected in reverse order (e.g. 1 = last dimension is the signal)", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("normalized", "must be 0, normalization currently not supported", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("onesided", "must be 1, only one sided FFTs supported", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Output(0, "Y", "output tensor of size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts", "T")
                                 .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(Irfft, 1,
                             OpSchema()
-                                .SetDoc(R"DOC()DOC")
-                                .Input(0, "X", "input tensor", "T")
-                                .Attr("signal_ndim", "", AttributeProto::INT)
-                                .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Output(0, "Y", "output tensor", "T")
+                                .SetDoc(R"DOC(This function computes the inverse of the one-dimensional n-point RFFT computed in 'com.microsoft.rfft'.)DOC")
+                                .Input(0, "X", "input tensor with size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts", "T")
+                                .Attr("signal_ndim", "number of dimensions comprising the signal", AttributeProto::INT)
+                                .Attr("normalized", "must be 0, normalization currently not supported", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("onesided", "must be 1, only one sided FFTs supported", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Output(0, "Y", "output tensor with size n in the signal dim", "T")
                                 .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(ComplexMul, 1,
@@ -1663,6 +1686,140 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
                                   ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
                                 }));
 
+/**
+ * @brief Shape inference for MatMul with right hand side matrix quantized into int4
+ * @param ctx
+ * @param input_a_idx         points to the left hand size matrix input
+ * @param input_b_idx         points to the quantized right hand side matrix
+ * @param input_bshape_idx    points to the shape tensor of the right hand side matrix
+ */
+static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input_a_idx, int input_b_idx, int input_bshape_idx, MLAS_BLK_QUANT_TYPE blk_quant_type) {
+  if (!hasInputShape(ctx, input_a_idx) || !hasInputShape(ctx, input_b_idx)) {
+    return;
+  }
+
+  const auto& a_shape = ctx.getInputType(input_a_idx)->tensor_type().shape();
+  if (a_shape.dim_size() == 0) {
+    fail_shape_inference("Input tensors of wrong rank (0).");
+  }
+
+  const auto& blob_shape = ctx.getInputType(input_b_idx)->tensor_type().shape();
+  const auto& shape_shape = ctx.getInputType(input_bshape_idx)->tensor_type().shape();
+  if (shape_shape.dim_size() != 1 && shape_shape.dim(0).dim_value() != 2) {
+    fail_shape_inference("B input for MatMul must be a 2-D matrix!");
+  }
+
+  const TensorProto* b_shape_tensor = ctx.getInputData(input_bshape_idx);
+  if (nullptr == b_shape_tensor) {
+    // Can't find shape info, quiting
+    return;
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
+
+  std::vector<int64_t> shape_r_data = ParseData<int64_t>(b_shape_tensor);
+  for (int d = 0; d < 2; d++) {
+    shapeR.add_dim()->set_dim_value(shape_r_data[d]);
+  }
+
+  // First promote each shape to at least rank-2. This logic is
+  // specific to matmul, not generic broadcasting.
+  {
+    if (a_shape.dim_size() == 1) {
+      shapeL.add_dim()->set_dim_value(1);
+      *shapeL.add_dim() = a_shape.dim(0);
+    } else {
+      *shapeL.mutable_dim() = a_shape.dim();
+    }
+  }
+
+  size_t expectedPackSize = MlasQ4GemmPackBSize(
+      blk_quant_type,
+      static_cast<size_t>(shapeR.dim(shapeR.dim_size() - 1).dim_value()),
+      static_cast<size_t>(shapeR.dim(shapeR.dim_size() - 2).dim_value()));
+  if (expectedPackSize == 0) {
+    fail_shape_inference("4b quantization not yet supported on this hardware platform!");
+  }
+  if (blob_shape.dim_size() != 1 && (size_t)blob_shape.dim(0).dim_value() != expectedPackSize) {
+    fail_shape_inference("Input q4 tensors of wrong size!");
+  }
+
+  // Check for compatible matrix multiply dimensions
+  {
+    const auto& dimL = shapeL.dim(shapeL.dim_size() - 1);
+    const auto& dimR = shapeR.dim(shapeR.dim_size() - 2);
+    if (dimL.has_dim_value() && dimR.has_dim_value() && dimL.dim_value() != dimR.dim_value()) {
+      fail_shape_inference("Incompatible dimensions for matrix multiplication");
+    }
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto resultShape;
+
+  // Now call out to generic multidimensional broadcasting for
+  // the broadcastable prefixes.
+  {
+    ONNX_NAMESPACE::TensorShapeProto prefixShapeL, prefixShapeR;
+    for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
+      *prefixShapeL.add_dim() = shapeL.dim(i);
+    }
+    for (int i = 0; i < shapeR.dim_size() - 2; ++i) {
+      *prefixShapeR.add_dim() = shapeR.dim(i);
+    }
+    bidirectionalBroadcastShapeInference(prefixShapeL, prefixShapeR, resultShape);
+  }
+
+  // Back to matmul-specific. Add the trailing dimensions back in.
+  {
+    if (a_shape.dim_size() != 1) {
+      *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
+    }
+    *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
+  }
+
+  *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
+}
+
+#ifndef ORT_MINIMAL_BUILD
+ONNX_MS_OPERATOR_SET_SCHEMA(MatMulFpQ4, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(
+Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
+During quantization, the matrix is divided into blocks, where each block is a
+continguous subset inside each column. Each block is quantized into a
+sequence of 4b integers with a scaling factor and an optional offset.
+Currently 3 quantization types are supported:
+(0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
+no offset
+)DOC")
+                                .Attr("blk_quant_type", "Quantization type", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Input(0, "A", "N-dimensional matrix A", "T1")
+                                .Input(1, "B", "1-dimensional data blob", "T2")
+                                .Input(2, "B_shape", "Shape information of B", "T3")
+                                .Output(0, "Y", "Matrix multiply results from A * B", "T1")
+                                .TypeConstraint("T1", {"tensor(float)"}, "Constrain input matrix data types as single precision float tensor")
+                                .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain input B data types as data blob")
+                                .TypeConstraint("T3", {"tensor(int64)"}, "Constrain shape of B must be int64 tensor.")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  auto a_type = ctx.getInputType(0);
+                                  auto b_type = ctx.getInputType(1);
+                                  auto b_shape_type = ctx.getInputType(2);
+                                  auto y_type = ctx.getOutputType(0);
+                                  if (nullptr == a_type || nullptr == b_type || nullptr == b_shape_type || nullptr == y_type ||
+                                      a_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+                                      b_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+                                      b_shape_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+                                    fail_type_inference(
+                                        "inputs are expected to have tensor type and output type should not be null.");
+                                  }
+
+                                  y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+                                  auto blk_quant_v = getAttribute(ctx, "blk_quant_type", 1);
+                                  MLAS_BLK_QUANT_TYPE blk_quant_type = blk_quant_v == 0 ? BlkQ4Sym : BlkQ4Zp8;
+
+                                  matmulQ4ShapeInference(ctx, 0, 1, 2, blk_quant_type);
+                                }));
+#endif
+
 constexpr const char* TransposeMatMul_doc = R"DOC(
 Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility.
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
@@ -1670,6 +1827,10 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
 
 constexpr const char* FusedMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
+)DOC";
+
+constexpr const char* FusedMatMulActivation_doc = R"DOC(
+Executes the same operation as FusedMatMul, but also has an activation function fused to its output.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(TransposeMatMul, 1,
@@ -1722,6 +1883,53 @@ ONNX_MS_OPERATOR_SET_SCHEMA(FusedMatMul, 1,
                                 .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                                                 "Constrain input and output types to float tensors.")
                                 .SetDoc(FusedMatMul_doc)
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(FusedMatMulActivation, 1,
+                            OpSchema()
+                                .Input(0, "A", "N-dimensional matrix A", "T")
+                                .Input(1, "B", "N-dimensional matrix B", "T")
+                                .Attr("alpha", "Scalar multiplier for the product of the input tensors.", AttributeProto::FLOAT, 1.0f)
+                                .Attr("transA", "Whether A should be transposed on the last two dimensions before doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transB", "Whether B should be transposed on the last two dimensions before doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transBatchA",
+                                      "Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+                                      "doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transBatchB",
+                                      "Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+                                      "doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr(
+                                    "activation",
+                                    "",
+                                    AttributeProto::STRING)
+                                .Attr(
+                                    "activation_alpha",
+                                    "",
+                                    AttributeProto::FLOAT,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "activation_beta",
+                                    "",
+                                    AttributeProto::FLOAT,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "activation_gamma",
+                                    "",
+                                    AttributeProto::FLOAT,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "activation_axis",
+                                    "",
+                                    AttributeProto::INT,
+                                    OPTIONAL_VALUE)
+                                .Output(0, "Y", "Matrix multiply results", "T")
+                                .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                                                "Constrain input and output types to float tensors.")
+                                .SetDoc(FusedMatMulActivation_doc)
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SparseToDenseMatMul, 1,
@@ -2235,9 +2443,7 @@ void RegisterContribSchemas() {
         if (axis_proto) {
           axis = axis_proto->i();
         }
-        if (axis < 0) {
-          axis += input_ndim;
-        }
+        axis = HandleNegativeAxis(axis, input_ndim);
 
         if (ctx.getNumOutputs() > 1) {
           auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
@@ -2379,9 +2585,7 @@ void RegisterContribSchemas() {
         if (axis_proto) {
           axis = axis_proto->i();
         }
-        if (axis < 0) {
-          axis += input_ndim;
-        }
+        axis = HandleNegativeAxis(axis, input_ndim);
 
         if (ctx.getNumOutputs() > 1) {
           auto saved_inv_std_var_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
@@ -2389,6 +2593,12 @@ void RegisterContribSchemas() {
           saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
         }
       });
+
+  // ORT will not regsiter TRT plugins as contrib ops, instead it will use custom ops handled by TRT EP.
+  // In order not to break the old models using those TRT plugins which were registered with ONNX domain and maintain backward compatible,
+  // we still keep EfficientNMS_TRT, MultilevelCropAndResize_TRT, PyramidROIAlign_TRT and DisentangledAttention_TRT as legacy code.
+  // We don't need to add new schema definition when a new TRT plugin is introduced, TRT EP will register it as custom op for us.
+  // Moving forward, please create TRT plugin node with "trt.plugins" domain.
 
   static const char* EfficientNMS_TRT_ver1_doc =
       R"DOC(Efficient NMS TensorRT Plugin.)DOC";
@@ -2592,6 +2802,8 @@ void RegisterContribSchemas() {
         propagateShapeFromInputToOutput(ctx, 0, 0);
       });
 
+  // Please note that we don't need to add new schema definition when a new TRT plugin is introduced, TRT EP will register it as custom op for us.
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Snpe)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2697,8 +2909,91 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
               /*min_arity*/ 1)
       .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
       .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(),
                       "Allow inputs and outputs to be any kind of tensor.");
+#endif
+
+#ifdef ENABLE_TRAINING_OPS
+  // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+  // 2). this is needed by inference for other purpose.
+
+  static const char* ShrunkenGather_ver1_doc = R"DOC(
+    This op is a specialised case of Gather-13, adding additional constraint including: indices being 1D,
+and indices count < input element count on the specified axis.
+
+Having this op allows runtime to do operator re-ordering to reduce compute FLOPs.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ShrunkenGather)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(ShrunkenGather_ver1_doc)
+      .AllowUncheckedAttributes()
+      .Attr(
+          "axis",
+          "Which axis to gather on. Negative value means "
+          "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "data", "Tensor of rank r >= 1.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(
+          1,
+          "indices",
+          "Tensor of int64 indices, with rank = 1. All index values are expected to be within bounds [-s, s-1] "
+          "along axis of size s. It is an error if any of the index values are out of bounds."
+          "The number of elements in indices must be less than the number of elements in the input tensor,"
+          "which is the reason why this op is called ShrunkenGather.",
+          "Tind",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(0, "output", "Tensor of rank r.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types_ir4(),
+          "Constrain input and output types to any tensor type.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        if (!hasNInputShapes(ctx, 2)) {
+          return;
+        }
+
+        const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        int r = data_shape.dim_size();
+        if (r < 1) {
+          fail_shape_inference("data tensor must have rank >= 1");
+        }
+        int q = indices_shape.dim_size();
+        int axis = static_cast<int>(getAttribute(ctx, "axis", 0));
+        if (axis < -r || axis >= r) {
+          fail_shape_inference("axis must be in [-r, r-1]");
+        }
+        if (axis < 0) {
+          axis += r;
+        }
+
+        int out_rank = q + r - 1;
+        auto final_output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        int i = 0;
+        for (; i < axis; ++i) {
+          *final_output_shape->add_dim() = data_shape.dim(i);
+        }
+
+        for (; i < axis + q; ++i) {
+          *final_output_shape->add_dim() = indices_shape.dim(i - axis);
+        }
+
+        for (; i < out_rank; ++i) {
+          *final_output_shape->add_dim() = data_shape.dim(i - q + 1);
+        }
+      });
+
 #endif
 
 #ifndef _OPSCHEMA_LIB_
@@ -2706,6 +3001,10 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+#endif
+
+#ifdef USE_MPI
+  RegisterCollectiveOps();
 #endif
 }
 

@@ -6,7 +6,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-constexpr int kMaxSequenceLength = 4096;
+constexpr int kMaxSequenceLength = 16384;
 
 void GreedySearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
   model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", 0));

@@ -4,6 +4,7 @@
 #include "string_normalizer.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#include "onnxruntime_config.h"
 
 #ifdef _MSC_VER
 #include <codecvt>
@@ -13,11 +14,21 @@
 #else
 #include <limits>
 #include <iconv.h>
+
 #endif  // _MSC_VER
 
 #include <locale>
 #include <functional>
 #include <unordered_set>
+
+#if defined(__GNUC__)
+// Allow deprecated-declarations warning - std::wstring_convert is deprecated.
+// TODO find a suitable replacement
+// Note: GNU libiconv (e.g., on Apple platforms) is not suitable due to its LGPL license.
+#if defined(HAS_DEPRECATED_DECLARATIONS)
+#pragma GCC diagnostic warning "-Wdeprecated-declarations"
+#endif  // defined(HAS_DEPRECATED_DECLARATIONS)
+#endif  // defined(__GNUC__)
 
 namespace onnxruntime {
 
@@ -76,7 +87,7 @@ using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
 
 const std::string default_locale("en-US");
 
-#else  // MS_VER
+#else  // _MSC_VER
 
 class Locale {
  public:
@@ -111,10 +122,12 @@ class Locale {
 };
 
 #if defined(__APPLE__) || defined(__ANDROID__)
+
 using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
+
 #else
 
-// All others (Linux)
+// All others (not Windows, Apple, or Android)
 class Utf8Converter {
  public:
   Utf8Converter(const std::string&, const std::wstring&) {}
@@ -186,11 +199,11 @@ class Utf8Converter {
   }
 };
 
-#endif  // __APPLE__
+#endif
 
 const std::string default_locale("en_US.UTF-8");  // All non-MS
 
-#endif  // MS_VER
+#endif  // _MSC_VER
 
 template <class ForwardIter>
 Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,

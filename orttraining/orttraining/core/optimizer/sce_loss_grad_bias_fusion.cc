@@ -34,7 +34,7 @@ Status SceLossGradBiasFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     NodeArg* sce_grad_def = node.MutableOutputDefs()[0];
     Node* p_next = graph.GetNode(node.OutputNodesBegin()->Index());
     Node* p_reshape = nullptr;
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*p_next, "Reshape", {5, 13, 14}) &&
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*p_next, "Reshape", {5, 13, 14, 19}) &&
         graph_utils::IsSupportedProvider(*p_next, GetCompatibleExecutionProviders()) &&
         p_next->GetOutputEdgesCount() == 1) {
       p_reshape = p_next;

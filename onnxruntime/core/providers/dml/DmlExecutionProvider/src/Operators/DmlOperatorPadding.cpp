@@ -15,7 +15,7 @@ public:
     {
         const uint32_t inputCount = kernelInfo.GetInputCount();
         ML_CHECK_VALID_ARGUMENT((opsetVersion >= 2 && opsetVersion < 11 && inputCount == 1)
-                             || (opsetVersion >= 11 && inputCount >= 2 && inputCount <= 3));
+                             || (opsetVersion >= 11 && inputCount >= 2 && inputCount <= 4));
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
         std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 }; // Only bind GPU to first 'data' tensor.
@@ -68,12 +68,12 @@ public:
         paddingDesc.EndPadding = m_endPadding.data();
         // PaddingValueDataType will always be equal to inputDataTensorDataType
         // Assigning paddingValueDataType to inputDataTensorDataType because this field
-        // has to be assigned even if program does not go through below conditional 
+        // has to be assigned even if program does not go through below conditional
         // logic for some corner test case (like opsetVersion >= 11, but no validInput at index 2)
         // Same applies to paddingValue.
         paddingDesc.PaddingValueDataType = this->m_inputTensorDescs[0].GetDmlDataType();
         CastToClampedScalarUnion<float>(paddingDesc.PaddingValueDataType, 0.0f, /*out*/&paddingDesc.PaddingValue);
-        
+
         // Read the constant value which can come from an attribute or tensor.
         if (opsetVersion >= 11)
         {
@@ -107,7 +107,7 @@ void CALLBACK QueryPad(IMLOperatorSupportQueryContextPrivate* context, /*out*/ b
     *isSupported = true;
 
     MLOperatorAttributes attributes(context);
-    
+
     std::vector<int32_t> padding = attributes.GetOptionalAttributeVectorInt32(AttrName::Pads);
     *isSupported = std::none_of(padding.begin(), padding.end(), [](int32_t padCount) {return padCount < 0; });
 }
@@ -115,5 +115,6 @@ void CALLBACK QueryPad(IMLOperatorSupportQueryContextPrivate* context, /*out*/ b
 DML_OP_DEFINE_CREATION_FUNCTION(Pad7, VersionedKernel<DmlOperatorPadding, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Pad11, VersionedKernel<DmlOperatorPadding, 11>);
 DML_OP_DEFINE_CREATION_FUNCTION(Pad13, VersionedKernel<DmlOperatorPadding, 13>);
+DML_OP_DEFINE_CREATION_FUNCTION(Pad18, VersionedKernel<DmlOperatorPadding, 18>);
 
 } // namespace Dml

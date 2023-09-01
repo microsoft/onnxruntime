@@ -39,7 +39,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
+  const auto android_feature_level = model_builder.GetEffectiveFeatureLevel();
   NodeAttrHelper helper(node_unit);
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();

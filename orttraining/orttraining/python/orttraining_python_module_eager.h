@@ -6,4 +6,4 @@ namespace python {
 torch_ort::eager::ORTBackendsManager& GetORTBackendsManager();
 
 }
-}
+}  // namespace onnxruntime

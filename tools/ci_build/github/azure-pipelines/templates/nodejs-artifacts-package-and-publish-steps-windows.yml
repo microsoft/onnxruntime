@@ -14,6 +14,7 @@ parameters:
   default: ''
   
 steps:
+  - ${{ if eq(parameters.DoEsrp, true) }}:
     - template: win-esrp-dll.yml
       parameters:
         FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}'
@@ -21,7 +22,7 @@ steps:
         DoEsrp: ${{parameters.DoEsrp}}
         Pattern: '*.node'
 
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}\onnxruntime_binding.node' 
-        artifactName: '${{parameters.artifactName}}'
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}\onnxruntime_binding.node' 
+      artifactName: '${{parameters.artifactName}}'

@@ -3,4 +3,4 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from .backend import is_compatible, prepare, run, supports_device
+from .backend import is_compatible, prepare, run, supports_device  # noqa: F401

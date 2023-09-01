@@ -15,7 +15,7 @@ struct MIGraphXExecutionProviderInfo {
   std::string target_device;
   int device_id{0};
   bool fp16_enable{false};
-  bool int8_enable{false}; 
+  bool int8_enable{false};
 
   static MIGraphXExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const MIGraphXExecutionProviderInfo& info);

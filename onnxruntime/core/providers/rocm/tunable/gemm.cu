@@ -20,7 +20,7 @@ namespace row_major {
 
 namespace {
 // a simple utility function that normalize alpha or beta to the desired datatype by an optional casting
-template<typename DesiredT, typename ScalarT>
+template <typename DesiredT, typename ScalarT>
 inline DesiredT NormalizeScalar(ScalarT v) {
   if constexpr (!std::is_same_v<DesiredT, ScalarT> && std::is_same_v<ScalarT, float>) {
     return ToHipType<DesiredT>::FromFloat(std::forward<DesiredT>(v));
@@ -28,11 +28,12 @@ inline DesiredT NormalizeScalar(ScalarT v) {
     return v;
   }
 }
-}
+}  // namespace
 
 template <typename T, typename ScalarT>
 inline GEMM(T, ScalarT) {
   GemmParams<T> params;
+  params.tuning_ctx = tuning_ctx;
   params.stream = stream;
   params.handle = handle;
 
@@ -50,22 +51,18 @@ inline GEMM(T, ScalarT) {
   params.c = c;
   params.ldc = ldc;
 
-  if (tunable) {
+  if (tuning_ctx->IsTunableOpEnabled()) {
     if (opa == BlasOp::N && opb == BlasOp::N) {
       static internal::GemmTunableOp<T, internal::Row, internal::Row> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     } else if (opa == BlasOp::T && opb == BlasOp::N) {
       static internal::GemmTunableOp<T, internal::Col, internal::Row> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     } else if (opa == BlasOp::N && opb == BlasOp::T) {
       static internal::GemmTunableOp<T, internal::Row, internal::Col> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     } else /*if (opa == BlasOp::T && opb == BlasOp::T)*/ {
       static internal::GemmTunableOp<T, internal::Col, internal::Col> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     }
   }
@@ -76,6 +73,7 @@ inline GEMM(T, ScalarT) {
 template <typename T, typename ScalarT>
 inline BATCHED_GEMM(T, ScalarT) {
   BatchedGemmParams<T> params;
+  params.tuning_ctx = tuning_ctx;
   params.stream = stream;
   params.handle = handle;
 
@@ -94,22 +92,18 @@ inline BATCHED_GEMM(T, ScalarT) {
   params.ldc = ldc;
   params.batch = batch;
 
-  if (tunable) {
+  if (tuning_ctx->IsTunableOpEnabled()) {
     if (opa == BlasOp::N && opb == BlasOp::N) {
       static internal::BatchedGemmTunableOp<T, internal::Row, internal::Row> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     } else if (opa == BlasOp::T && opb == BlasOp::N) {
       static internal::BatchedGemmTunableOp<T, internal::Col, internal::Row> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     } else if (opa == BlasOp::N && opb == BlasOp::T) {
       static internal::BatchedGemmTunableOp<T, internal::Row, internal::Col> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     } else /*if (opa == BlasOp::T && opb == BlasOp::T)*/ {
       static internal::BatchedGemmTunableOp<T, internal::Col, internal::Col> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     }
   }
@@ -117,10 +111,10 @@ inline BATCHED_GEMM(T, ScalarT) {
   return internal::RocBlasBatchedGemmOp(&params);
 }
 
-
 template <typename T, typename ScalarT>
 inline STRIDED_BATCHED_GEMM(T, ScalarT) {
   StridedBatchedGemmParams<T> params;
+  params.tuning_ctx = tuning_ctx;
   params.stream = stream;
   params.handle = handle;
 
@@ -142,22 +136,18 @@ inline STRIDED_BATCHED_GEMM(T, ScalarT) {
   params.stride_c = stride_c;
   params.batch = batch;
 
-  if (tunable) {
+  if (tuning_ctx->IsTunableOpEnabled()) {
     if (opa == BlasOp::N && opb == BlasOp::N) {
       static internal::StridedBatchedGemmTunableOp<T, internal::Row, internal::Row> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     } else if (opa == BlasOp::T && opb == BlasOp::N) {
       static internal::StridedBatchedGemmTunableOp<T, internal::Col, internal::Row> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     } else if (opa == BlasOp::N && opb == BlasOp::T) {
       static internal::StridedBatchedGemmTunableOp<T, internal::Row, internal::Col> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     } else /*if (opa == BlasOp::T && opb == BlasOp::T)*/ {
       static internal::StridedBatchedGemmTunableOp<T, internal::Col, internal::Col> gemm{};
-      gemm.EnableTuning();
       return gemm(&params);
     }
   }
@@ -165,16 +155,16 @@ inline STRIDED_BATCHED_GEMM(T, ScalarT) {
   return internal::RocBlasStridedBatchedGemmOp(&params);
 }
 
-#define CALL_GEMM(T, ScalarT)               \
-  Gemm<T, ScalarT>(tunable, stream, handle, \
-                   opa, opb,                \
-                   m, n, k,                 \
-                   alpha, a, lda, b, ldb,   \
+#define CALL_GEMM(T, ScalarT)                  \
+  Gemm<T, ScalarT>(tuning_ctx, stream, handle, \
+                   opa, opb,                   \
+                   m, n, k,                    \
+                   alpha, a, lda, b, ldb,      \
                    beta, c, ldc)
 
 #define CALL_BATCHED_GEMM(T, ScalarT) \
   BatchedGemm<T, ScalarT>(            \
-      tunable, stream, handle,        \
+      tuning_ctx, stream, handle,     \
       opa, opb,                       \
       m, n, k,                        \
       alpha, as, lda, bs, ldb,        \
@@ -182,7 +172,7 @@ inline STRIDED_BATCHED_GEMM(T, ScalarT) {
 
 #define CALL_STRIDED_BATCHED_GEMM(T, ScalarT) \
   StridedBatchedGemm<T, ScalarT>(             \
-      tunable, stream, handle,                \
+      tuning_ctx, stream, handle,             \
       opa, opb,                               \
       m, n, k,                                \
       alpha,                                  \
@@ -225,16 +215,16 @@ STRIDED_BATCHED_GEMM(BFloat16, float   ) { return CALL_STRIDED_BATCHED_GEMM(BFlo
 
 namespace column_major {
 
-#define CALL_GEMM_WITH_AB_SWAPPED(T, ScalarT)          \
-  row_major::Gemm<T, ScalarT>(tunable, stream, handle, \
-                              opb, opa,                \
-                              n, m, k,                 \
-                              alpha, b, ldb, a, lda,   \
+#define CALL_GEMM_WITH_AB_SWAPPED(T, ScalarT)             \
+  row_major::Gemm<T, ScalarT>(tuning_ctx, stream, handle, \
+                              opb, opa,                   \
+                              n, m, k,                    \
+                              alpha, b, ldb, a, lda,      \
                               beta, c, ldc)
 
 #define CALL_BATCHED_GEMM_WITH_AB_SWAPPED(T, ScalarT) \
   row_major::BatchedGemm<T, ScalarT>(                 \
-      tunable, stream, handle,                        \
+      tuning_ctx, stream, handle,                     \
       opb, opa,                                       \
       n, m, k,                                        \
       alpha, bs, ldb, as, lda,                        \
@@ -242,7 +232,7 @@ namespace column_major {
 
 #define CALL_STRIDED_BATCHED_GEMM_WITH_AB_SWAPPED(T, ScalarT) \
   row_major::StridedBatchedGemm<T, ScalarT>(                  \
-      tunable, stream, handle,                                \
+      tuning_ctx, stream, handle,                             \
       opb, opa,                                               \
       n, m, k,                                                \
       alpha,                                                  \

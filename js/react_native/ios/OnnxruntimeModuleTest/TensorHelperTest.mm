@@ -3,6 +3,7 @@
 
 #import "TensorHelper.h"
 
+#import "FakeRCTBlobManager.h"
 #import <XCTest/XCTest.h>
 #import <onnxruntime/onnxruntime_cxx_api.h>
 #include <vector>
@@ -12,6 +13,14 @@
 @end
 
 @implementation TensorHelperTest
+
+FakeRCTBlobManager *testBlobManager = nil;
+
++ (void)initialize {
+  if (self == [TensorHelperTest class]) {
+    testBlobManager = [FakeRCTBlobManager new];
+  }
+}
 
 template <typename T>
 static void testCreateInputTensorT(const std::array<T, 3> &outValues, std::function<NSNumber *(T value)> &convert,
@@ -34,12 +43,13 @@ static void testCreateInputTensorT(const std::array<T, 3> &outValues, std::funct
     typePtr[i] = outValues[i];
   }
 
-  NSString *dataEncoded = [byteBufferRef base64EncodedStringWithOptions:0];
-  inputTensorMap[@"data"] = dataEncoded;
+  XCTAssertNotNil(testBlobManager);
+  inputTensorMap[@"data"] = [testBlobManager testCreateData:byteBufferRef];
 
   Ort::AllocatorWithDefaultOptions ortAllocator;
   std::vector<Ort::MemoryAllocation> allocations;
-  Ort::Value inputTensor = [TensorHelper createInputTensor:inputTensorMap
+  Ort::Value inputTensor = [TensorHelper createInputTensor:testBlobManager
+                                                     input:inputTensorMap
                                               ortAllocator:ortAllocator
                                                allocations:allocations];
 
@@ -56,9 +66,9 @@ static void testCreateInputTensorT(const std::array<T, 3> &outValues, std::funct
 }
 
 - (void)testCreateInputTensorFloat {
-  std::array<float_t, 3> outValues{std::numeric_limits<float_t>::min(), 2.0f, std::numeric_limits<float_t>::max()};
-  std::function<NSNumber *(float_t value)> convert = [](float_t value) { return [NSNumber numberWithFloat:value]; };
-  testCreateInputTensorT<float_t>(outValues, convert, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, JsTensorTypeFloat);
+  std::array<float, 3> outValues{std::numeric_limits<float>::min(), 2.0f, std::numeric_limits<float>::max()};
+  std::function<NSNumber *(float value)> convert = [](float value) { return [NSNumber numberWithFloat:value]; };
+  testCreateInputTensorT<float>(outValues, convert, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, JsTensorTypeFloat);
 }
 
 - (void)testCreateInputTensorDouble {
@@ -126,7 +136,8 @@ static void testCreateInputTensorT(const std::array<T, 3> &outValues, std::funct
 
   Ort::AllocatorWithDefaultOptions ortAllocator;
   std::vector<Ort::MemoryAllocation> allocations;
-  Ort::Value inputTensor = [TensorHelper createInputTensor:inputTensorMap
+  Ort::Value inputTensor = [TensorHelper createInputTensor:testBlobManager
+                                                     input:inputTensorMap
                                               ortAllocator:ortAllocator
                                                allocations:allocations];
 
@@ -194,10 +205,11 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
     typePtr[i] = outValues[i];
   }
 
-  NSString *dataEncoded = [byteBufferRef base64EncodedStringWithOptions:0];
-  inputTensorMap[@"data"] = dataEncoded;
+  inputTensorMap[@"data"] = [testBlobManager testCreateData:byteBufferRef];
+  ;
   std::vector<Ort::MemoryAllocation> allocations;
-  Ort::Value inputTensor = [TensorHelper createInputTensor:inputTensorMap
+  Ort::Value inputTensor = [TensorHelper createInputTensor:testBlobManager
+                                                     input:inputTensorMap
                                               ortAllocator:ortAllocator
                                                allocations:allocations];
 
@@ -208,16 +220,31 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
   auto output = session.Run(runOptions, inputNames.data(), feeds.data(), inputNames.size(), outputNames.data(),
                             outputNames.size());
 
-  NSDictionary *resultMap = [TensorHelper createOutputTensor:outputNames values:output];
+  NSDictionary *resultMap = [TensorHelper createOutputTensor:testBlobManager outputNames:outputNames values:output];
 
-  XCTAssertTrue([[resultMap objectForKey:@"output"] isEqualToDictionary:inputTensorMap]);
+  // Compare output & input, but data.blobId is different
+
+  NSDictionary *outputMap = [resultMap objectForKey:@"output"];
+
+  // dims
+  XCTAssertTrue([outputMap[@"dims"] isEqualToArray:inputTensorMap[@"dims"]]);
+
+  // type
+  XCTAssertEqual(outputMap[@"type"], jsTensorType);
+
+  // data ({ blobId, offset, size })
+  NSDictionary *data = outputMap[@"data"];
+
+  XCTAssertNotNil(data[@"blobId"]);
+  XCTAssertEqual([data[@"offset"] longValue], 0);
+  XCTAssertEqual([data[@"size"] longValue], byteBufferSize);
 }
 
 - (void)testCreateOutputTensorFloat {
-  std::array<float_t, 5> outValues{std::numeric_limits<float_t>::min(), 1.0f, 2.0f, 3.0f,
-                                   std::numeric_limits<float_t>::max()};
-  std::function<NSNumber *(float_t value)> convert = [](float_t value) { return [NSNumber numberWithFloat:value]; };
-  testCreateOutputTensorT<float_t>(outValues, convert, JsTensorTypeFloat, @"test_types_float", @"ort");
+  std::array<float, 5> outValues{std::numeric_limits<float>::min(), 1.0f, 2.0f, 3.0f,
+                                 std::numeric_limits<float>::max()};
+  std::function<NSNumber *(float value)> convert = [](float value) { return [NSNumber numberWithFloat:value]; };
+  testCreateOutputTensorT<float>(outValues, convert, JsTensorTypeFloat, @"test_types_float", @"ort");
 }
 
 - (void)testCreateOutputTensorDouble {

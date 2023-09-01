@@ -65,7 +65,7 @@ void TestCaseDriver::OnTestCaseComplete(size_t test_case_id, std::shared_ptr<Tes
   assert(test_case_id < results_.size());
   {
     std::lock_guard<std::mutex> g(mut_);
-    results_ [test_case_id] = std::move(result);
+    results_[test_case_id] = std::move(result);
   }
 
   const auto& tests = env_.GetTests();

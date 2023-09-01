@@ -3,7 +3,7 @@
 
 #include "conv_transpose.h"
 
-// To suppress FP static analyzer warnings: 
+// To suppress FP static analyzer warnings:
 // https://msdata.visualstudio.com/Vienna/_workitems/edit/1944928 and
 // https://msdata.visualstudio.com/Vienna/_workitems/edit/1944950
 #ifdef _WIN32

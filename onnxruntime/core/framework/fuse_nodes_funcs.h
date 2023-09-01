@@ -15,7 +15,7 @@ class FuncManager {
 
   Status AddFuncInfo(const std::string& name, NodeComputeInfo&& compute_info);
 
-  //Do not call AddFuncInfo after this function is called.
+  // Do not call AddFuncInfo after this function is called.
   Status GetFuncs(const std::string& name, const NodeComputeInfo*& compute_info);
 
   size_t NumFuncs() const { return fused_funcs_->size(); }

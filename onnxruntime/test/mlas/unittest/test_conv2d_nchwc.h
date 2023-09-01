@@ -137,7 +137,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
     // Reorder the output buffer.
     //
 
-    MlasReorderOutputNchw(OutputShape, NchwcOutput, Output);
+    MlasReorderOutputNchw(OutputShape, NchwcOutput, Output, MlasConv2DTest<Threaded>::threadpool_);
   }
 
   const size_t BlockSize = MlasNchwcGetBlockSize();

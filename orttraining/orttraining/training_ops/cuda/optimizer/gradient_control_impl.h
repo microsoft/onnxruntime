@@ -15,6 +15,5 @@ void InPlaceAccumulatorImpl(
     const T_GRAD* gradient,
     T* accumulated_gradient,
     size_t count);
-}
+}  // namespace cuda
 }  // namespace onnxruntime
-

@@ -66,8 +66,8 @@ class MemoryOptimizer : public GraphTransformer {
     UserConfig user_optimizer_config;
     int total_frequency{0};  // The occurrence of this subgraph pattern in the graph.
 
-    int applied_count{0};  // The number of times this subgraph pattern has been really applied in this transformer.
-    int skip_count{0};     // The number of times this subgraph instance has been skipped in reversed topological order.
+    int applied_count{0};      // The number of times this subgraph pattern has been really applied in this transformer.
+    int skip_count{0};         // The number of times this subgraph instance has been skipped in reversed topological order.
     float saving_ratio{1.0f};  // For compromised memory saving, the ratio of memory saving.
   };
 
@@ -197,20 +197,20 @@ class MemoryOptimizer : public GraphTransformer {
       const logging::Logger& logger) const;
 
   /**
- * @brief Apply graph modifications based on user configs.
- *
- * @param graph Graph to iterate and modify.
- * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
+   * @brief Apply graph modifications based on user configs.
+   *
+   * @param graph Graph to iterate and modify.
+   * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
    *   Used to re-order the collected subgraph nodes.
- * @param candidate_output_args_map  A map from node to its candidate activations, which are consumed by both fw and
+   * @param candidate_output_args_map  A map from node to its candidate activations, which are consumed by both fw and
    *  bw ops.
- * @param logger Logger.
- * @param boundary_op_order_in_topological_sort index of the boundary op between fw and bw.
- * @param subgraph_stores  A store to maintain all found subgraphs.
- * @param node The node we used to look for corresponding optimization graphs.
- * @return true
- * @return false
- */
+   * @param logger Logger.
+   * @param boundary_op_order_in_topological_sort index of the boundary op between fw and bw.
+   * @param subgraph_stores  A store to maintain all found subgraphs.
+   * @param node The node we used to look for corresponding optimization graphs.
+   * @return true
+   * @return false
+   */
   bool ModifyGraph(Graph& graph,
                    const InlinedHashMap<NodeIndex, size_t>& node_index_to_its_order_in_topological_sort_map,
                    const InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map,

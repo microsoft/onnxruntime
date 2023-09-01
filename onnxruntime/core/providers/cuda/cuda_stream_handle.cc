@@ -1,5 +1,6 @@
-//// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/providers/cuda/cuda_resource.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/common/spin_pause.h"
@@ -102,7 +103,7 @@ struct CpuBuffersInfo {
   // should contain all values in
   // deferred_release_buffer_pool_[my_stream]
   // when release my_stream's buffers.
-  void** buffers;
+  std::unique_ptr<void*[]> buffers;
   // CPU buffer buffers[i].
   // Number of buffer points in "buffers".
   size_t n_buffers;
@@ -117,7 +118,6 @@ static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
   for (size_t i = 0; i < info->n_buffers; ++i) {
     info->allocator->Free(info->buffers[i]);
   }
-  delete[] info->buffers;
 }
 
 Status CudaStream::CleanUpOnRunEnd() {
@@ -128,7 +128,7 @@ Status CudaStream::CleanUpOnRunEnd() {
   if (release_cpu_buffer_on_cuda_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {
     std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     cpu_buffers_info->allocator = cpu_allocator_;
-    cpu_buffers_info->buffers = new void*[deferred_cpu_buffers_.size()];
+    cpu_buffers_info->buffers = std::make_unique<void*[]>(deferred_cpu_buffers_.size());
     for (size_t i = 0; i < deferred_cpu_buffers_.size(); ++i) {
       cpu_buffers_info->buffers[i] = deferred_cpu_buffers_.at(i);
     }
@@ -147,6 +147,25 @@ Status CudaStream::CleanUpOnRunEnd() {
 
   deferred_cpu_buffers_.clear();
   return Status::OK();
+}
+
+void* CudaStream::GetResource(int version, int id) const {
+  ORT_ENFORCE(version <= ORT_CUDA_RESOUCE_VERSION, "resource version unsupported!");
+  void* resource{};
+  switch (id) {
+    case CudaResource::cuda_stream_t:
+      return reinterpret_cast<void*>(GetHandle());
+      break;
+    case CudaResource::cudnn_handle_t:
+      return reinterpret_cast<void*>(cudnn_handle_);
+      break;
+    case CudaResource::cublas_handle_t:
+      return reinterpret_cast<void*>(cublas_handle_);
+      break;
+    default:
+      break;
+  }
+  return resource;
 }
 
 // CPU Stream command handles
@@ -173,8 +192,8 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   if (!use_existing_stream)
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream](const OrtDevice& device) {
       cudaStream_t stream = nullptr;
-      // CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-      CUDA_CALL_THROW(cudaStreamCreate(&stream));
+      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+      // CUDA_CALL_THROW(cudaStreamCreate(&stream));
       return std::make_unique<CudaStream>(stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, true, nullptr, nullptr);
     });
   else

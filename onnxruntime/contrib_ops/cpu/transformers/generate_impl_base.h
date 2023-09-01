@@ -33,6 +33,40 @@ gsl::span<T> AllocateBuffer(AllocatorPtr allocator,
   return span;
 }
 
+template <typename ElementType>
+inline void AllocateTempBufferForGetGreedySearchTopOne(
+    int32_t batch_size,
+    AllocatorPtr allocator,
+    BufferUniquePtr& buffer,
+    gsl::span<ElementType>& stage_1_scores,  // shape (batch_size, parts_of_vocab)
+    gsl::span<int32_t>& stage_1_tokens,      // shape (batch_size, parts_of_vocab)
+    gsl::span<ElementType>& output_scores,   // shape (batch_size)
+    gsl::span<int32_t>& output_tokens        // shape (batch_size)
+) {
+  constexpr size_t kMaxPartsPerVocab = 128;
+  const size_t stage_1_element_size = kMaxPartsPerVocab * batch_size;
+  const size_t output_element_size = batch_size;
+
+  // Note: use float to allocate buffer for temporary value buffer to avoid unalignment
+  void* topk_data = allocator->Alloc((stage_1_element_size + output_element_size) * (sizeof(float) + sizeof(int32_t)));
+  BufferUniquePtr temp_buffer(topk_data, BufferDeleter(allocator));
+  buffer = std::move(temp_buffer);
+
+  ElementType* stage_1_scores_data = reinterpret_cast<ElementType*>(topk_data);
+  stage_1_scores = gsl::make_span<ElementType>(stage_1_scores_data, stage_1_element_size);
+
+  int32_t* stage_1_token_data = reinterpret_cast<int32_t*>(
+      reinterpret_cast<float*>(stage_1_scores_data) + stage_1_element_size);
+  stage_1_tokens = gsl::make_span<int32_t>(stage_1_token_data, stage_1_element_size);
+
+  ElementType* output_score_data = reinterpret_cast<ElementType*>(stage_1_token_data + stage_1_element_size);
+  output_scores = gsl::make_span<ElementType>(output_score_data, output_element_size);
+
+  int32_t* output_token_data = reinterpret_cast<int32_t*>(
+      reinterpret_cast<float*>(output_score_data) + output_element_size);
+  output_tokens = gsl::make_span<int32_t>(output_token_data, output_element_size);
+}
+
 class GenerateBase {
  public:
   GenerateBase(OpKernelContextInternal& context,
@@ -48,13 +82,13 @@ class GenerateBase {
         implicit_inputs_(context_.GetImplicitInputs()),
         ort_stream_(ort_stream),
         cuda_dumper_(cuda_dumper),
-        cpu_allocator_(nullptr),
+        cpu_allocator_(decoder_session_state.GetAllocator(
+            decoder_session_state.GetExecutionProviders()
+                .Get(onnxruntime::kCpuExecutionProvider)
+                ->GetOrtDeviceByMemType(OrtMemTypeDefault))),
         temp_space_allocator_(nullptr),
         topk_func_(topk_func),
         device_copy_func_(device_copy_func) {
-    cpu_allocator_ = decoder_session_state.GetExecutionProviders()
-                         .Get(onnxruntime::kCpuExecutionProvider)
-                         ->GetAllocator(0, OrtMemTypeDefault);
   }
 
   virtual ~GenerateBase() = default;
@@ -67,19 +101,19 @@ class GenerateBase {
 
   Status CheckScalarInput(const std::string& name, int index, bool required) const {
     auto* scalar_tensor = context_.Input<Tensor>(index);
-      if (scalar_tensor) {
-        if (!scalar_tensor->Shape().IsScalar()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME,
-                                 FAIL,
-                                 "Node input ", name, " should be a scalar. Got shape of ",
-                                 scalar_tensor->Shape());
-        }
-      } else if (required) {
+    if (scalar_tensor) {
+      if (!scalar_tensor->Shape().IsScalar()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME,
                                FAIL,
-                               "Node input ", name, " is required");
+                               "Node input ", name, " should be a scalar. Got shape of ",
+                               scalar_tensor->Shape());
       }
-      return Status::OK();
+    } else if (required) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME,
+                             FAIL,
+                             "Node input ", name, " is required");
+    }
+    return Status::OK();
   }
 
   template <typename ParametersT>
@@ -88,9 +122,22 @@ class GenerateBase {
                          const Tensor* vocab_mask,
                          const Tensor* prefix_vocab_mask,
                          const Tensor* attention_mask,
-                         const Tensor* presence_mask) const {
+                         const Tensor* presence_mask,
+                         const Tensor* decoder_input_ids) const {
     const auto& dims = input_ids->Shape().GetDims();
-    if (dims.size() != 2) {
+    if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
+      if (dims.size() != 3) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'input_features' is expected to have 3 dimensions, got ", dims.size());
+      }
+      if (decoder_input_ids != nullptr) {
+        const auto& decoder_dims = decoder_input_ids->Shape().GetDims();
+        if (decoder_dims.size() != 2) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Input 'decoder_input_ids' is expected to have 2 dimensions, got ", decoder_dims.size());
+        }
+      }
+    } else if (dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
     }
@@ -140,16 +187,20 @@ class GenerateBase {
 
     if (attention_mask != nullptr) {
       const auto& dims_attn = attention_mask->Shape().GetDims();
-      if (dims_attn.size() != 2) {
+      if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
+        if (dims_attn.size() != 3) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Input 'attention_mask' is expected to have 3 dimensions, got ", dims_attn.size());
+        }
+      } else if (dims_attn.size() != 2) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
       }
-      if (!SpanEq(dims_attn, dims)) {
+      if (parameters->model_type != IGenerationParameters::kModelTypeWhisper && !SpanEq(dims_attn, dims)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'attention_mask' is expected to have same shape as input_ids");
       }
     }
-
     if (presence_mask != nullptr) {
       const auto& dims_presence = presence_mask->Shape().GetDims();
       if (dims_presence.size() != 2) {
@@ -175,11 +226,14 @@ class GenerateBase {
     return Status::OK();
   }
 
-
  protected:
-  bool IsCuda() const { return ort_stream_ != nullptr; }
+  bool IsCuda() const {
+    return ort_stream_ != nullptr;
+  }
 
-  const IConsoleDumper* GetConsoleDumper() const { return IsCuda() ? cuda_dumper_ : &(cpu_dumper_); }
+  const IConsoleDumper* GetConsoleDumper() const {
+    return IsCuda() ? cuda_dumper_ : &(cpu_dumper_);
+  }
 
   OpKernelContextInternal& context_;
 

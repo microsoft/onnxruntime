@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument("--android-sdk-root", required=True, help="Path to the Android SDK root.")
     parser.add_argument(
         "--system-image",
-        default="system-images;android-29;google_apis;x86_64",
+        default="system-images;android-31;default;x86_64",
         help="The Android system image package name.",
     )
     parser.add_argument("--avd-name", default="ort_android", help="The Android virtual device name.")
@@ -80,10 +80,10 @@ def main():
         emulator_proc = android.start_emulator(**start_emulator_args)
 
         with open(args.emulator_pid_file, mode="w") as emulator_pid_file:
-            print("{}".format(emulator_proc.pid), file=emulator_pid_file)
+            print(f"{emulator_proc.pid}", file=emulator_pid_file)
 
     elif args.stop:
-        with open(args.emulator_pid_file, mode="r") as emulator_pid_file:
+        with open(args.emulator_pid_file) as emulator_pid_file:
             emulator_pid = int(emulator_pid_file.readline().strip())
 
         android.stop_emulator(emulator_pid)

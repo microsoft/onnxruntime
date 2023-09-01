@@ -19,8 +19,9 @@ This android application is mainly aimed for testing:
 
 ### Requirements
 
-- JDK version 8 or later is required.
-- The [Gradle](https://gradle.org/) build system is required for building the APKs used to run [android instrumentation tests](https://source.android.com/compatibility/tests/development/instrumentation). Version 6 or newer is required.
+- JDK version 11 or later is required.
+- The [Gradle](https://gradle.org/) build system is required for building the APKs used to run [android instrumentation tests](https://source.android.com/compatibility/tests/development/instrumentation). Version 7.5 or newer is required.
+  The Gradle wrapper at `java/gradlew[.bat]` may be used.
 
 ### Building
 

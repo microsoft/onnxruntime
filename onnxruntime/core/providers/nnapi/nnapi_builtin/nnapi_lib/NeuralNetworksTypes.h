@@ -272,7 +272,7 @@ enum {
  * will be immediately copied into the model.
  *
  * The size is in bytes.
-*/
+ */
 enum {
   ANEURALNETWORKS_MAX_SIZE_OF_IMMEDIATELY_COPIED_VALUES = 128
 };

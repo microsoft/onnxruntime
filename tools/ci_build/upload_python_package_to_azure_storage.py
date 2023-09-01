@@ -25,7 +25,7 @@ def parse_nightly_and_local_version_from_whl_name(blob_name):
 
 
 def run_subprocess(args, cwd=None):
-    log.warning("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
+    log.warning(f"Running subprocess in '{cwd or os.getcwd()}'\n{args}")
     return subprocess.run(args, cwd=cwd, check=True)
 
 
@@ -36,11 +36,11 @@ def upload_whl(python_wheel_path, final_storage=False):
 
     nightly_build, local_version = parse_nightly_and_local_version_from_whl_name(blob_name)
     if local_version:
-        html_blob_name = "onnxruntime_{}_{}.html".format(nightly_build, local_version)
+        html_blob_name = f"onnxruntime_{nightly_build}_{local_version}.html"
     else:
-        html_blob_name = "onnxruntime_{}.html".format(nightly_build)
+        html_blob_name = f"onnxruntime_{nightly_build}.html"
 
-    download_path_to_html = "./onnxruntime_{}.html".format(nightly_build)
+    download_path_to_html = f"./onnxruntime_{nightly_build}.html"
 
     run_subprocess(
         [
@@ -64,7 +64,7 @@ def upload_whl(python_wheel_path, final_storage=False):
             for item in lines:
                 f.write("%s\n" % item)
     else:
-        warnings.warn("'{}' exists in {}. The html file is not updated.".format(new_line, download_path_to_html))
+        warnings.warn(f"'{new_line}' exists in {download_path_to_html}. The html file is not updated.")
     run_subprocess(
         [
             "azcopy",

@@ -1,4 +1,4 @@
-//Part of the algo is derived from tensorflow.
+// Part of the algo is derived from tensorflow.
 
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 Licensed under the Apache License, Version 2.0 (the "License");

@@ -8,7 +8,6 @@
 
 #include "armnn/ArmNN.hpp"
 
-
 namespace onnxruntime {
 namespace armnn_ep {
 

@@ -23,7 +23,7 @@ template <typename T>
 class Relu final : public Activations {
  public:
   Relu(const OpKernelInfo& info) : Activations(info) {}
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
 }  // namespace cann

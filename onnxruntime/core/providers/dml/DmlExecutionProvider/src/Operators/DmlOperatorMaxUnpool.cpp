@@ -34,10 +34,10 @@ public:
         poolingDesc.IndicesTensor = &inputDescs[1];
         poolingDesc.OutputTensor = outputDescs.data();
 
-        DML_OPERATOR_DESC operaterDesc = {};
-        operaterDesc.Type = DML_OPERATOR_MAX_UNPOOLING;
-        operaterDesc.Desc = &poolingDesc;
-        SetDmlOperatorDesc(operaterDesc, kernelCreationContext);
+        DML_OPERATOR_DESC operatorDesc = {};
+        operatorDesc.Type = DML_OPERATOR_MAX_UNPOOLING;
+        operatorDesc.Desc = &poolingDesc;
+        SetDmlOperatorDesc(operatorDesc, kernelCreationContext);
     }
 };
 

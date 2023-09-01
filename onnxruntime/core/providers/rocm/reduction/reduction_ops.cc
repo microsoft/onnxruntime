@@ -206,9 +206,10 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   MiopenReduceDescriptor reduce_desc;
-  if constexpr(std::is_same<T, MLFloat16>::value)
-  ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, MiopenTensor::GetDataType<float>(), ReduceTensorIndices));
-  else ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, ReduceTensorIndices));
+  if constexpr (std::is_same<T, MLFloat16>::value)
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, MiopenTensor::GetDataType<float>(), ReduceTensorIndices));
+  else
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, ReduceTensorIndices));
 
   const auto one = ReduceConsts<HipT>::One;
   const auto zero = ReduceConsts<HipT>::Zero;
@@ -440,7 +441,7 @@ Status PrepareForReduce(const Tensor* X,
 
 // `input_shape_override` is the input shape for compute purposes (if provided)
 template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
-Status ReduceComputeCore(const ROCMExecutionProvider& rocm_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
                          gsl::span<const int64_t> axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction, Stream* ort_stream,
@@ -469,7 +470,7 @@ Status ReduceComputeCore(const ROCMExecutionProvider& rocm_ep, const Tensor& inp
       IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
       const HipT* input_data = reinterpret_cast<const HipT*>(input.Data<T>());
       if (calculate_sqt) {
-        input_data_buffer = rocm_ep.GetScratchBuffer<T>(input_count, ort_stream, WaitRocmNotificationOnDevice);
+        input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitRocmNotificationOnDevice);
         input_data = reinterpret_cast<HipT*>(input_data_buffer.get());
         fast_divmod tmp_div;
         Impl_Mul<HipT>(stream, static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
@@ -486,7 +487,7 @@ Status ReduceComputeCore(const ROCMExecutionProvider& rocm_ep, const Tensor& inp
         } break;
         case ApplicableMatrixReduction::Columns: {
           const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<HipT>(m, n);
-          auto buffer = rocm_ep.GetScratchBuffer<void>(buffer_size_bytes, ort_stream, WaitRocmNotificationOnDevice);
+          auto buffer = buffer_size_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<void>(gpu_allocator, buffer_size_bytes, false, ort_stream, WaitRocmNotificationOnDevice);
           ORT_RETURN_IF_ERROR(reduce_matrix_columns(stream, input_data,
                                                     reinterpret_cast<HipT*>(output.MutableData<T>()), m, n,
                                                     buffer.get(), buffer_size_bytes));
@@ -524,7 +525,7 @@ Status ReduceComputeCore(const ROCMExecutionProvider& rocm_ep, const Tensor& inp
   if ((ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) ||
       (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
     // ArgMax/ArgMin with FP16 are not supported by miopen, so convert input to fp32 then call miopen
-    temp_X = rocm_ep.GetScratchBuffer<float>(input_count, ort_stream, WaitRocmNotificationOnDevice);
+    temp_X = IAllocator::MakeUniquePtr<float>(gpu_allocator, input_count, false, ort_stream, WaitRocmNotificationOnDevice);
     Impl_Cast<HipT, float>(stream, reinterpret_cast<const HipT*>(input.Data<T>()), temp_X.get(), input_shape.Size());
   } else {
     miopen_type_X = MiopenTensor::GetDataType<HipT>();
@@ -548,18 +549,18 @@ Status ReduceComputeCore(const ROCMExecutionProvider& rocm_ep, const Tensor& inp
   RocmStream* rocm_stream = static_cast<RocmStream*>(ort_stream);
   MIOPEN_RETURN_IF_ERROR(miopenGetReductionWorkspaceSize(RocmKernel::GetMiopenHandle(rocm_stream), reduce_desc,
                                                          input_tensor, output_tensor, &workspace_bytes));
-  auto workspace_rocm = rocm_ep.GetScratchBuffer<HipT>(workspace_bytes, ort_stream, WaitRocmNotificationOnDevice);
+  auto workspace_rocm = workspace_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<HipT>(gpu_allocator, workspace_bytes, false, ort_stream, WaitRocmNotificationOnDevice);
 
   size_t indices_bytes = 0;
   MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(RocmKernel::GetMiopenHandle(rocm_stream), reduce_desc,
                                                        input_tensor, output_tensor, &indices_bytes));
-  auto indices_rocm = rocm_ep.GetScratchBuffer<uint32_t>(indices_bytes, ort_stream, WaitRocmNotificationOnDevice);
+  auto indices_rocm = indices_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream, WaitRocmNotificationOnDevice);
 
   if (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_NO_INDICES) {
     IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
     HipT* input_data = nullptr;
     if (calculate_sqt) {
-      input_data_buffer = rocm_ep.GetScratchBuffer<T>(input_count, ort_stream, WaitRocmNotificationOnDevice);
+      input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitRocmNotificationOnDevice);
       input_data = reinterpret_cast<HipT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<HipT>(stream,
@@ -586,7 +587,7 @@ Status ReduceComputeCore(const ROCMExecutionProvider& rocm_ep, const Tensor& inp
         size_t indices_bytes_max = 0;
         MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(RocmKernel::GetMiopenHandle(rocm_stream), reduce_max_desc,
                                                              input_tensor, output_tensor, &indices_bytes_max));
-        auto indices_rocm_max = rocm_ep.GetScratchBuffer<uint32_t>(indices_bytes, ort_stream, WaitRocmNotificationOnDevice);
+        auto indices_rocm_max = indices_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream, WaitRocmNotificationOnDevice);
         MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
             RocmKernel::GetMiopenHandle(rocm_stream), reduce_max_desc, indices_rocm_max.get(), indices_bytes_max,
             workspace_rocm.get(), workspace_bytes,
@@ -596,9 +597,9 @@ Status ReduceComputeCore(const ROCMExecutionProvider& rocm_ep, const Tensor& inp
 
       // Exp(X-ReduceMax)
       const TensorShape output_shape(output_dims);
-      auto exp_result_buffer = rocm_ep.GetScratchBuffer<T>(input_count, ort_stream, WaitRocmNotificationOnDevice);
+      auto exp_result_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitRocmNotificationOnDevice);
       auto exp_result = exp_result_buffer.get();
-      auto log_sum_result_buffer = rocm_ep.GetScratchBuffer<T>(output_count, ort_stream, WaitRocmNotificationOnDevice);
+      auto log_sum_result_buffer = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<T>(gpu_allocator, output_count, false, ort_stream, WaitRocmNotificationOnDevice);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape));
@@ -665,7 +666,7 @@ Status ReduceComputeCore(const ROCMExecutionProvider& rocm_ep, const Tensor& inp
         }
       } else {
         if (temp_X) {
-          auto temp_output = rocm_ep.GetScratchBuffer<float>(output_count, ort_stream, WaitRocmNotificationOnDevice);
+          auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream, WaitRocmNotificationOnDevice);
           MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
               RocmKernel::GetMiopenHandle(rocm_stream), reduce_desc, indices_rocm.get(), indices_bytes,
               workspace_rocm.get(), workspace_bytes,
@@ -690,14 +691,14 @@ Status ReduceComputeCore(const ROCMExecutionProvider& rocm_ep, const Tensor& inp
       HIP_RETURN_IF_ERROR(hipMemsetAsync(output.MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t), stream));
     } else {
       if (temp_X) {
-        auto temp_output = rocm_ep.GetScratchBuffer<float>(output_count, ort_stream, WaitRocmNotificationOnDevice);
+        auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream, WaitRocmNotificationOnDevice);
         MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
             RocmKernel::GetMiopenHandle(rocm_stream), reduce_desc, indices_rocm.get(), indices_bytes,
             workspace_rocm.get(), workspace_bytes,
             &one, input_tensor, temp_X.get(),
             &zero, output_tensor, temp_output.get()));
       } else {
-        auto temp_output = rocm_ep.GetScratchBuffer<HipT>(output_count, ort_stream, WaitRocmNotificationOnDevice);
+        auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<HipT>(gpu_allocator, output_count, false, ort_stream, WaitRocmNotificationOnDevice);
         MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
             RocmKernel::GetMiopenHandle(rocm_stream), reduce_desc, indices_rocm.get(), indices_bytes,
             workspace_rocm.get(), workspace_bytes,
@@ -728,7 +729,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenR
 
   size_t num_inputs = ctx->InputCount();
   if (num_inputs == 2) {
-    //override the attribute value with the input value for reduction_axes
+    // override the attribute value with the input value for reduction_axes
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
     ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
     ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
@@ -754,92 +755,92 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenR
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
-  return ReduceComputeCore<T, ReduceTensorIndices>(*rocm_ep_, *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
+  return ReduceComputeCore<T, ReduceTensorIndices>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction, ctx->GetComputeStream());
 }
 
-#define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                              \
-  template <>                                                                                                                \
-  template <>                                                                                                                \
-  Status ReduceKernel<true>::ComputeImpl<T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(                                                \
-      OpKernelContext * ctx, miopenReduceTensorOp_t miopen_reduce_op) const {                                                \
-    typedef typename ToHipType<T>::MappedType HipT;                                                                          \
-    const Tensor* X = ctx->Input<Tensor>(0);                                                                                 \
-    TensorShapeVector axes;                                                                                                  \
-    size_t num_inputs = ctx->InputCount();                                                                                   \
-    if (num_inputs == 2) {                                                                                                   \
-      const Tensor* axes_tensor = ctx->Input<Tensor>(1);                                                                     \
-      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");                                                             \
-      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");                     \
-      auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);                                                             \
-      const auto* data = axes_tensor->Data<int64_t>();                                                              \
-      axes.assign(data, data + nDims);                                                                                       \
-    } else {                                                                                                                 \
-      axes.assign(axes_.begin(), axes_.end());                                                                               \
-    }                                                                                                                        \
-                                                                                                                             \
-    if (axes.empty() && noop_with_empty_axes_) {                                                                             \
-      auto* Y = ctx->Output(0, X->Shape());                                                                                  \
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->MutableData<T>(), X->Data<T>(), X->SizeInBytes(),              \
-                                         hipMemcpyDeviceToDevice, Stream(ctx)));                                                \
-      return Status::OK();                                                                                                   \
-    }                                                                                                                        \
-                                                                                                                             \
-    PrepareReduceMetadata prepare_reduce_metadata;                                                                           \
-    ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));                                      \
-                                                                                                                             \
-    Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);                                                \
-                                                                                                                             \
-    int64_t input_count = prepare_reduce_metadata.input_count;                                                               \
-    int64_t output_count = prepare_reduce_metadata.output_count;                                                             \
-    auto& input_dims_miopen = prepare_reduce_metadata.input_dims_miopen;                                                     \
-    auto& output_dims_miopen = prepare_reduce_metadata.output_dims_miopen;                                                   \
-                                                                                                                             \
-    if (input_count == 0) {                                                                                                  \
-      assert(Y->Shape().Size() == 0);                                                                                        \
-      return Status::OK();                                                                                                   \
-    }                                                                                                                        \
-                                                                                                                             \
-    if (input_count == output_count) {                                                                                       \
-      if (Y->MutableData<T>() != X->Data<T>()) {                                                           \
-        HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->MutableData<T>(), X->Data<T>(),                              \
-                                           input_count * sizeof(T), hipMemcpyDeviceToDevice, Stream(ctx)));                     \
-      }                                                                                                                      \
-      return Status::OK();                                                                                                   \
-    }                                                                                                                        \
-                                                                                                                             \
-    HIP_RETURN_IF_ERROR(hipMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream(ctx)));                                 \
-                                                                                                                             \
-    size_t indices_bytes = 0;                                                                                                \
-    size_t workspace_bytes = 0;                                                                                              \
-    MiopenTensor input_tensor;                                                                                               \
-    MiopenTensor output_tensor;                                                                                              \
-    MiopenReduceDescriptor reduce_desc;                                                                                      \
-                                                                                                                             \
-    miopenDataType_t miopen_type_X = miopenFloat;                                                                            \
-    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, ctx->GetComputeStream());                                                \
-    Impl_Cast<HipT, float>(Stream(ctx), reinterpret_cast<const HipT*>(X->Data<T>()), temp_X.get(), X->Shape().Size()); \
-                                                                                                                             \
-    ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, MIOPEN_REDUCE_TENSOR_NO_INDICES));                  \
-    ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));                                                 \
-    ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_miopen, miopen_type_X));                                               \
-    MIOPEN_RETURN_IF_ERROR(                                                                                                  \
-        miopenGetReductionIndicesSize(GetMiopenHandle(ctx), reduce_desc, input_tensor, output_tensor, &indices_bytes));            \
-    MIOPEN_RETURN_IF_ERROR(                                                                                                  \
-        miopenGetReductionWorkspaceSize(GetMiopenHandle(ctx), reduce_desc, input_tensor, output_tensor, &workspace_bytes));        \
-    IAllocatorUniquePtr<uint32_t> indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes, ctx->GetComputeStream());                                  \
-    IAllocatorUniquePtr<HipT> workspace_rocm = GetScratchBuffer<HipT>(workspace_bytes, ctx->GetComputeStream());                                      \
-                                                                                                                             \
-    const auto one = Consts<float>::One;                                                                                     \
-    const auto zero = Consts<float>::Zero;                                                                                   \
-    auto temp_Y = GetScratchBuffer<float>(output_count, ctx->GetComputeStream());                                                                     \
-    MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(GetMiopenHandle(ctx), reduce_desc, indices_rocm.get(), indices_bytes,                \
-                                              workspace_rocm.get(), workspace_bytes, &one, input_tensor, temp_X.get(),       \
-                                              &zero, output_tensor, temp_Y.get()));                                          \
-                                                                                                                             \
-    Impl_Cast<float, HipT>(Stream(ctx), temp_Y.get(), reinterpret_cast<HipT*>(Y->MutableData<T>()), output_count);     \
-                                                                                                                             \
-    return Status::OK();                                                                                                     \
+#define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                             \
+  template <>                                                                                                               \
+  template <>                                                                                                               \
+  Status ReduceKernel<true>::ComputeImpl<T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(                                               \
+      OpKernelContext * ctx, miopenReduceTensorOp_t miopen_reduce_op) const {                                               \
+    typedef typename ToHipType<T>::MappedType HipT;                                                                         \
+    const Tensor* X = ctx->Input<Tensor>(0);                                                                                \
+    TensorShapeVector axes;                                                                                                 \
+    size_t num_inputs = ctx->InputCount();                                                                                  \
+    if (num_inputs == 2) {                                                                                                  \
+      const Tensor* axes_tensor = ctx->Input<Tensor>(1);                                                                    \
+      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");                                                            \
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");                    \
+      auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);                                                            \
+      const auto* data = axes_tensor->Data<int64_t>();                                                                      \
+      axes.assign(data, data + nDims);                                                                                      \
+    } else {                                                                                                                \
+      axes.assign(axes_.begin(), axes_.end());                                                                              \
+    }                                                                                                                       \
+                                                                                                                            \
+    if (axes.empty() && noop_with_empty_axes_) {                                                                            \
+      auto* Y = ctx->Output(0, X->Shape());                                                                                 \
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->MutableData<T>(), X->Data<T>(), X->SizeInBytes(),                               \
+                                         hipMemcpyDeviceToDevice, Stream(ctx)));                                            \
+      return Status::OK();                                                                                                  \
+    }                                                                                                                       \
+                                                                                                                            \
+    PrepareReduceMetadata prepare_reduce_metadata;                                                                          \
+    ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));                                     \
+                                                                                                                            \
+    Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);                                               \
+                                                                                                                            \
+    int64_t input_count = prepare_reduce_metadata.input_count;                                                              \
+    int64_t output_count = prepare_reduce_metadata.output_count;                                                            \
+    auto& input_dims_miopen = prepare_reduce_metadata.input_dims_miopen;                                                    \
+    auto& output_dims_miopen = prepare_reduce_metadata.output_dims_miopen;                                                  \
+                                                                                                                            \
+    if (input_count == 0) {                                                                                                 \
+      assert(Y->Shape().Size() == 0);                                                                                       \
+      return Status::OK();                                                                                                  \
+    }                                                                                                                       \
+                                                                                                                            \
+    if (input_count == output_count) {                                                                                      \
+      if (Y->MutableData<T>() != X->Data<T>()) {                                                                            \
+        HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->MutableData<T>(), X->Data<T>(),                                               \
+                                           input_count * sizeof(T), hipMemcpyDeviceToDevice, Stream(ctx)));                 \
+      }                                                                                                                     \
+      return Status::OK();                                                                                                  \
+    }                                                                                                                       \
+                                                                                                                            \
+    HIP_RETURN_IF_ERROR(hipMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream(ctx)));                             \
+                                                                                                                            \
+    size_t indices_bytes = 0;                                                                                               \
+    size_t workspace_bytes = 0;                                                                                             \
+    MiopenTensor input_tensor;                                                                                              \
+    MiopenTensor output_tensor;                                                                                             \
+    MiopenReduceDescriptor reduce_desc;                                                                                     \
+                                                                                                                            \
+    miopenDataType_t miopen_type_X = miopenFloat;                                                                           \
+    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, ctx->GetComputeStream());                      \
+    Impl_Cast<HipT, float>(Stream(ctx), reinterpret_cast<const HipT*>(X->Data<T>()), temp_X.get(), X->Shape().Size());      \
+                                                                                                                            \
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, MIOPEN_REDUCE_TENSOR_NO_INDICES));                 \
+    ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));                                                \
+    ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_miopen, miopen_type_X));                                              \
+    MIOPEN_RETURN_IF_ERROR(                                                                                                 \
+        miopenGetReductionIndicesSize(GetMiopenHandle(ctx), reduce_desc, input_tensor, output_tensor, &indices_bytes));     \
+    MIOPEN_RETURN_IF_ERROR(                                                                                                 \
+        miopenGetReductionWorkspaceSize(GetMiopenHandle(ctx), reduce_desc, input_tensor, output_tensor, &workspace_bytes)); \
+    IAllocatorUniquePtr<uint32_t> indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes, ctx->GetComputeStream());        \
+    IAllocatorUniquePtr<HipT> workspace_rocm = GetScratchBuffer<HipT>(workspace_bytes, ctx->GetComputeStream());            \
+                                                                                                                            \
+    const auto one = Consts<float>::One;                                                                                    \
+    const auto zero = Consts<float>::Zero;                                                                                  \
+    auto temp_Y = GetScratchBuffer<float>(output_count, ctx->GetComputeStream());                                           \
+    MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(GetMiopenHandle(ctx), reduce_desc, indices_rocm.get(), indices_bytes,         \
+                                              workspace_rocm.get(), workspace_bytes, &one, input_tensor, temp_X.get(),      \
+                                              &zero, output_tensor, temp_Y.get()));                                         \
+                                                                                                                            \
+    Impl_Cast<float, HipT>(Stream(ctx), temp_Y.get(), reinterpret_cast<HipT*>(Y->MutableData<T>()), output_count);          \
+                                                                                                                            \
+    return Status::OK();                                                                                                    \
   }
 
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int32_t)
@@ -850,7 +851,7 @@ SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(uint8_t)
 namespace ReductionOps {
 
 template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
-std::unique_ptr<Tensor> ReduceCompute(const ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
+std::unique_ptr<Tensor> ReduceCompute(const AllocatorPtr& gpu_allocator, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
                                       bool fast_reduction, Stream* stream, const TensorShape* input_shape_override) {
@@ -867,7 +868,7 @@ std::unique_ptr<Tensor> ReduceCompute(const ROCMExecutionProvider& rocm_ep, miop
 
   auto output = Tensor::Create(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, std::move(allocator));
 
-  status = ReduceComputeCore<T, ReduceTensorIndices>(rocm_ep, input, prepare_reduce_metadata, *output, miopen_reduce_op, axes,
+  status = ReduceComputeCore<T, ReduceTensorIndices>(gpu_allocator, input, prepare_reduce_metadata, *output, miopen_reduce_op, axes,
                                                      calculate_log, calculate_sqt, log_sum_exp, fast_reduction, stream, input_shape_override);
 
   if (!status.IsOK()) {
@@ -880,7 +881,7 @@ std::unique_ptr<Tensor> ReduceCompute(const ROCMExecutionProvider& rocm_ep, miop
 // Explicit template instantiation (needed to be used in einsum_auxiliary_ops.cc)
 
 template std::unique_ptr<Tensor> ReduceCompute<float, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
-    const ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op,
+    const AllocatorPtr& gpu_allocator, miopenReduceTensorOp_t miopen_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
@@ -894,7 +895,7 @@ template std::unique_ptr<Tensor> ReduceCompute<float, MIOPEN_REDUCE_TENSOR_NO_IN
 //     bool fast_reduction, const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
-    const ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op,
+    const AllocatorPtr& gpu_allocator, miopenReduceTensorOp_t miopen_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
@@ -904,7 +905,7 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, MIOPEN_REDUCE_TENSOR_N
 
 #define REGISTER_KERNEL_HFD(name)        \
   REGISTER_KERNEL_TYPED(name, MLFloat16) \
-  REGISTER_KERNEL_TYPED(name, float) \
+  REGISTER_KERNEL_TYPED(name, float)     \
   REGISTER_KERNEL_TYPED(name, BFloat16)
 // REGISTER_KERNEL_TYPED(name, double)
 
@@ -938,7 +939,7 @@ REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, uint8_t)
 
 REGISTER_KERNEL_TYPED_14(ReduceMin, MLFloat16)
 REGISTER_KERNEL_TYPED_14(ReduceMin, float)
-//REGISTER_KERNEL_TYPED_14(ReduceMin, double)
+// REGISTER_KERNEL_TYPED_14(ReduceMin, double)
 REGISTER_KERNEL_TYPED_14(ReduceMin, int32_t)
 REGISTER_KERNEL_TYPED_14(ReduceMin, int8_t)
 REGISTER_KERNEL_TYPED_14(ReduceMin, uint8_t)

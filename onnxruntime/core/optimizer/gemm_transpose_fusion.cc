@@ -26,15 +26,15 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
 
   // check if input A is a Transpose
   if (A_node_ptr != nullptr && A_node_ptr->OpType() == "Transpose") {
-    // make sure all consumers are gemm nodes to avoid possible double transpose 
+    // make sure all consumers are gemm nodes to avoid possible double transpose
     std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*A_node_ptr, "Gemm");
     if (gemm_nodes.size() == A_node_ptr->GetOutputEdgesCount()) {
       Node& A_node = *graph.GetNode(A_node_ptr->Index());
       transA = !transA;
       if (A_node.GetOutputEdgesCount() > 1) {
-        // remove only the edge between the Transpose and Gemm nodes, the Transpose won't be removed 
+        // remove only the edge between the Transpose and Gemm nodes, the Transpose won't be removed
         // since it's still connected to other Gemm. When transformation for the last connected Gemm is
-        // being processed, it would fall into the else {} below to remove the Transpose node 
+        // being processed, it would fall into the else {} below to remove the Transpose node
         int output_idx = graph_utils::GetNodeOutputIndexFromOutputName(A_node, gemm_node.MutableInputDefs()[0]->Name());
         graph.RemoveEdge(A_node.Index(), gemm_node.Index(), output_idx, 0);
       } else {
@@ -106,11 +106,11 @@ bool GemmTransposeFusion::SatisfyCondition(const Graph& graph, const Node& node,
         !graph.NodeProducesGraphOutput(*node_it) &&
         // Make sure the two nodes do not span execution providers.
         node_it->GetExecutionProviderType() == node.GetExecutionProviderType()) {
-          // acceptable if all consumer(s) are gemm node(s) 
-          std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*node_it, "Gemm");
-          if (gemm_nodes.size() == node_it->GetOutputEdgesCount()) {
-            return true;
-          }
+      // acceptable if all consumer(s) are gemm node(s)
+      std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*node_it, "Gemm");
+      if (gemm_nodes.size() == node_it->GetOutputEdgesCount()) {
+        return true;
+      }
     }
   }
 

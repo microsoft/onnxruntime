@@ -30,11 +30,10 @@ thread_local std::map<OpKernel*, ACLNEPool> MaxPoolV8<T>::maxPoolLayers;
 
 template <typename T>
 ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
-                     arm_compute::PoolingType pool_type,
-                     onnxruntime::PoolAttributes pool_attrs,
-                     PoolLayersIterator it,
-                     bool insert){
-
+                        arm_compute::PoolingType pool_type,
+                        onnxruntime::PoolAttributes pool_attrs,
+                        PoolLayersIterator it,
+                        bool insert) {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
@@ -69,7 +68,7 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
       aclStrides[1] = strides[0];
 
       InlinedVector<int64_t> aclPads(4);
-    // The pad order in acl is: pad_left, pad_right, pad_top, pad_bottom
+      // The pad order in acl is: pad_left, pad_right, pad_top, pad_bottom
       if (pads.size() == 2) {
         if (strides.size() == 1) {
           aclPads[0] = 0;
@@ -175,12 +174,12 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     return onnxruntime::Pool<T, PoolType>::Compute(context);
   }
 
-  PoolLayersIterator it = Pool::poolLayers.find((OpKernel*) this);
+  PoolLayersIterator it = Pool::poolLayers.find((OpKernel*)this);
   bool insert = it == Pool::poolLayers.end();
   ACLNEPool pPool = PoolOperation<T>(context, pool_type, PoolBase::pool_attrs_, it, insert);
-  if(insert){
+  if (insert) {
     std::pair<PoolLayersIterator, bool> ret;
-    ret = Pool::poolLayers.insert(std::pair<OpKernel*, ACLNEPool>((OpKernel*) this, pPool));
+    ret = Pool::poolLayers.insert(std::pair<OpKernel*, ACLNEPool>((OpKernel*)this, pPool));
   }
 
   LOGS_DEFAULT(VERBOSE) << std::endl;
@@ -211,12 +210,12 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
 
   LOGS_DEFAULT(VERBOSE) << "MaxPoolV8";
 
-  PoolLayersIterator it = MaxPoolV8::maxPoolLayers.find((OpKernel*) this);
+  PoolLayersIterator it = MaxPoolV8::maxPoolLayers.find((OpKernel*)this);
   bool insert = it == MaxPoolV8::maxPoolLayers.end();
   ACLNEPool pPool = PoolOperation<T>(context, arm_compute::PoolingType::MAX, PoolBase::pool_attrs_, it, insert);
-  if(insert){
+  if (insert) {
     std::pair<PoolLayersIterator, bool> ret;
-    ret = MaxPoolV8::maxPoolLayers.insert(std::pair<OpKernel*, ACLNEPool>((OpKernel*) this, pPool));
+    ret = MaxPoolV8::maxPoolLayers.insert(std::pair<OpKernel*, ACLNEPool>((OpKernel*)this, pPool));
   }
 
   LOGS_DEFAULT(VERBOSE) << std::endl;
@@ -241,15 +240,15 @@ POOLING_KERNEL(AveragePool, float, AveragePool, 10, 10)
 POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1, 8)
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1, 8)
 
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                            \
-      MaxPool,                                                                      \
-      kOnnxDomain,                                                                  \
-      8,                                                                            \
-      11,                                                                           \
-      float,                                                                        \
-      kAclExecutionProvider,                                                        \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
-      MaxPoolV8<float>);
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
+    MaxPool,
+    kOnnxDomain,
+    8,
+    11,
+    float,
+    kAclExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    MaxPoolV8<float>);
 
 ONNX_OPERATOR_KERNEL_EX(
     MaxPool,
@@ -266,7 +265,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kAclExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pool<float, AveragePool>);
-
 
 }  // namespace acl
 }  // namespace onnxruntime

@@ -32,17 +32,40 @@ int GetMinRequiredCudaComputeCapability<BFloat16>() {
   return 800;
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <>
+int GetMinRequiredCudaComputeCapability<Float8E4M3FN>() {
+  return 800;
+}
+
+template <>
+int GetMinRequiredCudaComputeCapability<Float8E5M2>() {
+  return 800;
+}
+
+#endif
+
+enum Saturate { True,
+                False,
+                None };
+
 template <typename SrcType,
           typename DstType>
 void TestCastOp(gsl::span<const SrcType> input,
                 gsl::span<const DstType> output,
-                const std::vector<int64_t> &dimensions,
+                const BaseTester::DimsVariant& dimensions,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                const std::string& expected_failure_string = "") {
-  OpTester test("Cast", 13);
+                const std::string& expected_failure_string = "",
+                int opset = 13,
+                Saturate saturate = Saturate::None) {
+  OpTester test("Cast", opset);
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
   test.AddInput<SrcType>("input", dimensions, input.data(), input.size());
   test.AddOutput<DstType>("output", dimensions, output.data(), output.size());
+  if (saturate != Saturate::None) {
+    test.AddAttribute<int64_t>("saturate", saturate == Saturate::True ? 1 : 0);
+  }
 
   std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
   const auto min_required_cuda_compute_capability =
@@ -113,7 +136,7 @@ struct CastNonStringTester {
     auto output_span = gsl::make_span<DstType>(output_buffer.get(), size);
     CastSpan<SrcType, DstType>(input_span, output_span);
 
-    TestCastOp<SrcType, DstType>(input_span, output_span, GetShapeVector(shape));
+    TestCastOp<SrcType, DstType>(input_span, output_span, shape.AsShapeVector());
   }
 };
 
@@ -188,6 +211,70 @@ TEST(CastOpTest, ToString) {
   const std::vector<int16_t> int_16_input = {0, 1, 2, 3, 4, 5, 6, 7};
   TestCastOp(gsl::make_span(int_16_input), gsl::make_span(int_string_data), shape);
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <typename F8>
+void CastOpTestFloat8(Saturate saturate) {
+  ASSERT_NE(saturate, Saturate::None);
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<float> float_input = {NAN, -1.f, 0.0391877927f, 0.296140194f, -0.120196559f, 5.0f,
+                                          -std::numeric_limits<float>::infinity(),
+                                          std::numeric_limits<float>::infinity()};
+
+  // float output precision is 8, so the expected output differs slightly from the input due to that
+  std::vector<F8> output;
+  output.reserve(float_input.size());
+  for (size_t i = 0; i < float_input.size(); ++i) {
+    output.emplace_back(F8(float_input[i], saturate == Saturate::True));
+  }
+  TestCastOp<float, F8>(gsl::make_span(float_input), gsl::make_span(output), shape, OpTester::ExpectResult::kExpectSuccess, "", 19, saturate);
+
+  const std::vector<MLFloat16> float16_input =
+      CastedValues<float, MLFloat16>(gsl::make_span(float_input));
+
+  TestCastOp<MLFloat16, F8>(gsl::make_span(float16_input), gsl::make_span(output), shape, OpTester::ExpectResult::kExpectSuccess, "", 19, saturate);
+}
+
+TEST(CastOpTest, ToFloat8E4M3FN) {
+  constexpr int min_cuda_architecture = 11080;
+  bool enable_cuda = (nullptr != DefaultCudaExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+
+  if (enable_cpu || enable_cuda) {
+    CastOpTestFloat8<Float8E4M3FN>(Saturate::True);
+    CastOpTestFloat8<Float8E4M3FN>(Saturate::False);
+  }
+}
+
+TEST(CastOpTest, ToFloat8E4M3FNUZ) {
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+  if (enable_cpu) {
+    CastOpTestFloat8<Float8E4M3FNUZ>(Saturate::True);
+    CastOpTestFloat8<Float8E4M3FNUZ>(Saturate::False);
+  }
+}
+
+TEST(CastOpTest, ToFloat8E5M2) {
+  constexpr int min_cuda_architecture = 11080;
+  bool enable_cuda = (nullptr != DefaultCudaExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+
+  if (enable_cpu || enable_cuda) {
+    CastOpTestFloat8<Float8E5M2>(Saturate::True);
+    CastOpTestFloat8<Float8E5M2>(Saturate::False);
+  }
+}
+
+TEST(CastOpTest, ToFloat8E5M2FNUZ) {
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+  if (enable_cpu) {
+    CastOpTestFloat8<Float8E5M2FNUZ>(Saturate::True);
+    CastOpTestFloat8<Float8E5M2FNUZ>(Saturate::False);
+  }
+}
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -9,7 +9,7 @@ MAINTAINER Changming Sun "chasun@microsoft.com"
 ADD . /code
 
 
-RUN /code/dockerfiles/scripts/install_centos_arm64.sh && cd /code && CC=/opt/rh/devtoolset-10/root/usr/bin/gcc CXX=/opt/rh/devtoolset-10/root/usr/bin/g++ ./build.sh --skip_submodule_sync --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) 
+RUN /code/dockerfiles/scripts/install_centos_arm64.sh && cd /code && CC=/opt/rh/devtoolset-10/root/usr/bin/gcc CXX=/opt/rh/devtoolset-10/root/usr/bin/g++ ./build.sh --allow_running_as_root --skip_submodule_sync --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
 
 FROM arm64v8/centos:7
 COPY --from=0 /code/build/Linux/Release/dist /root

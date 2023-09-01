@@ -8,14 +8,13 @@
 
 namespace onnxruntime {
 
-inline constexpr bool QDQIsInt8Allowed(){
+inline constexpr bool QDQIsInt8Allowed() {
 #if !defined(MLAS_TARGET_ARM_ANY)
   return false;
 #else
   return true;
 #endif
 }
-
 
 /**
 Transformer that fuses QDQ and fp32 ops into quantized ops.

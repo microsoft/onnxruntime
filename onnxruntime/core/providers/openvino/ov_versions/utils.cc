@@ -9,8 +9,15 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include <ngraph/ngraph.hpp>
+
+#include "openvino/core/deprecated.hpp"
+#define IN_OV_COMPONENT
+#define NGRAPH_LEGACY_HEADER_INCLUDED
 #include <ngraph/frontend/onnx_import/onnx.hpp>
+
+#undef NGRAPH_LEGACY_HEADER_INCLUDED
+#undef IN_OV_COMPONENT
+
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
 #elif __GNUC__
@@ -20,7 +27,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-//Gets the input count of given node
+// Gets the input count of given node
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
   int count = 0;
   for (const auto& input : node->InputDefs()) {
@@ -33,18 +40,20 @@ int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set)
   return count;
 }
 
-//Ops which are supported only in models(as intermediate nodes) and not in unit tests
+// Ops which are supported only in models(as intermediate nodes) and not in unit tests
 bool IsOpSupportedOnlyInModel(std::string name) {
   std::set<std::string> ops_supported_only_in_model = {
       "Cast",
       "Concat",
       "ConstantOfShape",
       "Dropout",
+      "Einsum",
       "Expand",
       "EyeLike",
       "Exp",
       "GatherND",
       "Identity",
+      "LayerNormalization",
       "NonMaxSuppression",
       "NonZero",
       "Not",
@@ -87,14 +96,15 @@ int GetOnnxOpSet(const GraphViewer& graph_viewer) {
 
 std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_opset) {
   std::map<std::string, std::set<std::string>> ng_supported_ops;
+  OPENVINO_SUPPRESS_DEPRECATED_START
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
-  const std::set<std::string> ng_disabled_ops = {"LSTM"};  //Place-holder for ops not supported.
+  const std::set<std::string> ng_disabled_ops = {"LSTM"};  // Place-holder for ops not supported.
 
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
   }
-
+  OPENVINO_SUPPRESS_DEPRECATED_END
   return ng_supported_ops;
 }
 
@@ -115,11 +125,13 @@ GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const st
     if (!this_cluster.empty()) {
       ng_clusters.push_back(std::move(this_cluster));
     }
-    // Point prev to node idx past this unsuported node.
-    prev = ++it;
+    if (it != topological_order.end()) {
+      // Point prev to node idx past this unsuported node.
+      prev = ++it;
+    }
   }
 
-  //Tail
+  // Tail
   std::vector<NodeIndex> this_cluster{prev, topological_order.end()};
   if (!this_cluster.empty()) {
     ng_clusters.push_back(std::move(this_cluster));
@@ -212,7 +224,7 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     }
   }
 
-  //Extract initializers used by this_cluster.
+  // Extract initializers used by this_cluster.
   std::unordered_set<std::string> original_graph_inputs;
   for (const auto& node_arg : graph_viewer.GetInputsIncludingInitializers()) {
     original_graph_inputs.insert(node_arg->Name());

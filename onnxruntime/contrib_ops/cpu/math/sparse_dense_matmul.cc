@@ -62,9 +62,9 @@ inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrix
   }
 }
 
-template<> inline
-void SparseDenseMatMulImpl<float>(const ComputeCtx& ctx, const ConstSparseMatrixMap<float>& map_A,
-                                  const ConstEigenMatrixMapRowMajor<float>& map_B, EigenMatrixMapRowMajor<float>& output_map) {
+template <>
+inline void SparseDenseMatMulImpl<float>(const ComputeCtx& ctx, const ConstSparseMatrixMap<float>& map_A,
+                                         const ConstEigenMatrixMapRowMajor<float>& map_B, EigenMatrixMapRowMajor<float>& output_map) {
   if (ctx.trans_A && ctx.trans_B) {
     output_map = map_A.transpose() * ctx.alpha * map_B.transpose();
   } else if (ctx.trans_A && !ctx.trans_B) {
@@ -97,15 +97,15 @@ struct SparseToDenseCsr {
   }
 };
 
-#endif  //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
+#endif  //! defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
-template<typename T> inline
-T Mul(T a_value, float, T b_value) {
+template <typename T>
+inline T Mul(T a_value, float, T b_value) {
   return a_value * b_value;
 }
 
-template <> inline
-constexpr float Mul<float>(float a_value, float alpha, float b_value) {
+template <>
+inline constexpr float Mul<float>(float a_value, float alpha, float b_value) {
   return a_value * alpha * b_value;
 }
 
@@ -203,7 +203,7 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "WASM and 32-bit builds support only COO format");
   }
-#endif //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
+#endif  //! defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
   return Status::OK();
 }
@@ -211,4 +211,4 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif //!defined(DISABLE_SPARSE_TENSORS)
+#endif  //! defined(DISABLE_SPARSE_TENSORS)

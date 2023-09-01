@@ -54,9 +54,10 @@ def run_onnxruntime_test_all_ctest(cwd, log, filter):
 def run_training_api_tests(cwd, log):
     """Runs the onnxruntime_test_all executable with the TrainingApiTest* gtest filter."""
 
-    log.debug("Running: TrainingApi tests")
+    log.debug("Running: TrainingApi and TrainingCApi tests")
 
     run_onnxruntime_test_all_ctest(cwd, log, "TrainingApiTest*")
+    run_onnxruntime_test_all_ctest(cwd, log, "TrainingCApiTest*")
 
 
 def run_checkpoint_api_tests(cwd, log):
@@ -74,6 +75,8 @@ def main():
     log.info("Running ortmodule tests pipeline")
 
     run_onnxblock_tests(cwd, log)
+
+    run_training_apis_python_api_tests(cwd, log)
 
     run_training_api_tests(cwd, log)
 

@@ -6,7 +6,7 @@
 # Requires a .clang-format config file to be in the current directory or a parent directory from where the script is run.
 # Expected usage is to run it from its current location so that source in 'core' and 'test' is updated.
 
-gci -Recurse -Include  *.h, *.cc | foreach { 
-    Write-Host "Updating " $_.FullName 
-    clang-format -i $_ 
+gci -Recurse -Include  *.h, *.cc | foreach {
+    Write-Host "Updating " $_.FullName
+    clang-format -i $_
 }

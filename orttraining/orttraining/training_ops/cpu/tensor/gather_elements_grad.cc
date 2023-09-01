@@ -21,20 +21,20 @@ ONNX_OPERATOR_KERNEL_EX(
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElementsGrad);
 
-#define TYPED_GRAD_FUNCTION_CALL(T)                                             \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                   \
-    if (Tind_type == DataTypeImpl::GetType<int32_t>()) {                        \
-      return GatherElementsGradImpl<int32_t, T>(indices_tensor, dY, axis, dX);  \
-    }                                                                           \
-    if (Tind_type == DataTypeImpl::GetType<int64_t>()) {                        \
-      return GatherElementsGradImpl<int64_t, T>(indices_tensor, dY, axis, dX);  \
-    }                                                                           \
+#define TYPED_GRAD_FUNCTION_CALL(T)                                            \
+  if (T_type == DataTypeImpl::GetType<T>()) {                                  \
+    if (Tind_type == DataTypeImpl::GetType<int32_t>()) {                       \
+      return GatherElementsGradImpl<int32_t, T>(indices_tensor, dY, axis, dX); \
+    }                                                                          \
+    if (Tind_type == DataTypeImpl::GetType<int64_t>()) {                       \
+      return GatherElementsGradImpl<int64_t, T>(indices_tensor, dY, axis, dX); \
+    }                                                                          \
   }
 
 Status GatherElementsGrad::Compute(OpKernelContext* context) const {
   const auto* dY = context->Input<Tensor>(0);
   const Tensor* shape = context->Input<Tensor>(1);
-  const TensorShape data_shape(shape->template Data<int64_t>(), shape->Shape().Size());
+  const TensorShape data_shape(shape->template DataAsSpan<int64_t>());
 
   const int axis = static_cast<int>(HandleNegativeAxis(axis_, data_shape.NumDimensions()));
 

@@ -16,8 +16,8 @@ using ExpectResult = OpTester::ExpectResult;
 
 template <typename T>
 void SplitTrainingOpTester(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAndData<T>& input,
-             const std::vector<ShapeAndData<T>>& outputs, bool is_initializer = true,
-             bool expect_failure = false, const std::string& err_msg = {}) {
+                           const std::vector<ShapeAndData<T>>& outputs, bool is_initializer = true,
+                           bool expect_failure = false, const std::string& err_msg = {}) {
   OpTester test("SplitTraining", 1, onnxruntime::kMSDomain);
 
   test.AddAttribute("axis", axis);
@@ -56,20 +56,19 @@ TEST(SplitTrainingOpTest, Axis0EqualSplitFloat) {
                      {5.f, 6.f,
                       7.f, 8.f}});
 
-  SplitTrainingOpTester<float>(axis, {}, input, outputs);  
+  SplitTrainingOpTester<float>(axis, {}, input, outputs);
 }
 
-std::tuple<ShapeAndFloatData, std::vector<ShapeAndFloatData>> 
+std::tuple<ShapeAndFloatData, std::vector<ShapeAndFloatData>>
 Setup_Axis0EqualSplitFloat_N_inputs(const int num_outputs) {
-
   float counter = 1.0f;
-  std::vector<float> data(4*num_outputs);
+  std::vector<float> data(4 * num_outputs);
   std::iota(data.begin(), data.end(), counter);
-  ShapeAndFloatData input = {{2*num_outputs, 2}, data};
+  ShapeAndFloatData input = {{2 * num_outputs, 2}, data};
 
   data.resize(4);
   std::vector<ShapeAndFloatData> outputs;
-  for (int i = 0; i < num_outputs; i++) { 
+  for (int i = 0; i < num_outputs; i++) {
     std::iota(data.begin(), data.end(), counter);
     outputs.push_back({{2, 2}, data});
     counter += (float)data.size();
@@ -85,7 +84,7 @@ TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_16_outputs) {
   auto io = Setup_Axis0EqualSplitFloat_N_inputs(16);
   SplitTrainingOpTester<float>(axis, {}, std::get<0>(io), std::get<1>(io));
 }
- 
+
 // > 32 with same sizes passes output addresses as device buffer
 TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_64_outputs) {
   constexpr int64_t axis = 0;
@@ -113,9 +112,8 @@ TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat) {
                       5.f, 6.f,
                       7.f, 8.f}});
 
-  SplitTrainingOpTester<float>(axis, splits, input, outputs);  
+  SplitTrainingOpTester<float>(axis, splits, input, outputs);
 }
-
 
 TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_not_initializer) {
   constexpr int64_t axis = 0;
@@ -136,7 +134,7 @@ TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_not_initializer) {
                      {5.f, 6.f,
                       7.f, 8.f}});
 
-  SplitTrainingOpTester<float>(axis, {}, input, outputs, false);  
+  SplitTrainingOpTester<float>(axis, {}, input, outputs, false);
 }
 
 TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat_not_initializer) {
@@ -159,7 +157,7 @@ TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat_not_initializer) {
                       5.f, 6.f,
                       7.f, 8.f}});
 
-  SplitTrainingOpTester<float>(axis, splits, input, outputs, false);  
+  SplitTrainingOpTester<float>(axis, splits, input, outputs, false);
 }
 
 }  // namespace test

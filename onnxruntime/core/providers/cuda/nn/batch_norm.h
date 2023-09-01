@@ -50,7 +50,7 @@ class BatchNorm final : public CudaKernel {
   int64_t spatial_ = 1;  // default as per spec
   cudnnBatchNormMode_t cudnn_batch_norm_mode_;
   double momentum_;
-  bool is_training_mode_ = 0;  //default as per spec
+  bool is_training_mode_ = 0;  // default as per spec
 };
 
 }  // namespace cuda

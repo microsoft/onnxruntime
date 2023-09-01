@@ -161,7 +161,7 @@ MaxPool::MaxPool(const OpKernelInfo& info)
   struct xnn_operator* p = nullptr;
   float foutput_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
   float foutput_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
-  if (input_dtype== ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     maxpool_type_ = OpComputeType::op_compute_type_fp32;
     status = xnn_create_max_pooling2d_nhwc_f32(input_padding_top, input_padding_right,
                                                input_padding_bottom, input_padding_left,
@@ -170,7 +170,7 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                                dilation_height, dilation_width,
                                                C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                                foutput_min, foutput_max, flags, &p);
-  } else if (input_dtype== ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     maxpool_type_ = OpComputeType::op_compute_type_qu8;
     const uint8_t output_min = 0;
     const uint8_t output_max = 255;
@@ -181,7 +181,7 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                               dilation_height, dilation_width,
                                               C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                               output_min, output_max, flags, &p);
-  } else if (input_dtype== ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     maxpool_type_ = OpComputeType::op_compute_type_qs8;
     const int8_t output_min = -128;
     const int8_t output_max = 127;

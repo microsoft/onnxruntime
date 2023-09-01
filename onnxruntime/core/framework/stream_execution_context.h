@@ -46,7 +46,9 @@ class StreamExecutionContext {
       return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
     }
 
-    int32_t Get() { return v_.load(std::memory_order_relaxed); }
+    int32_t Get() {
+      return gsl::narrow_cast<int32_t>(v_.load(std::memory_order_relaxed));
+    }
 
     void Inc() {
       ++v_;
@@ -185,8 +187,7 @@ void RunSince(size_t stream_idx,
               StreamExecutionContext& ctx,
               SessionScope& session_scope,
               const bool& terminate_flag,
-              size_t since,
-              bool is_downstream = false);
+              size_t since);
 
 // Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
 void ScheduleDownstream(StreamExecutionContext& ctx,

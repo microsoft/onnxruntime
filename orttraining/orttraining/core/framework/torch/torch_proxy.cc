@@ -53,7 +53,7 @@ void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item
 void CheckArguments(
     const size_t len,
     const std::vector<int64_t>& requires_grads,
-    const std::vector<OrtValue>& tensor_args,
+    const std::vector<std::optional<OrtValue>>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*> obj_args,
     const std::vector<int64_t>& obj_indices) {
@@ -71,7 +71,8 @@ void CheckArguments(
   ORT_ENFORCE(obj_args.size() == obj_indices.size());
 
   for (const auto i : requires_grads) {
-    ORT_ENFORCE(i == 0 || i == 1, "Flag of requiring gradient must be either 0 (not required) or 1 (required) but got ", i);
+    ORT_ENFORCE(i == 0 || i == 1,
+                "Flag of requiring gradient must be either 0 (not required) or 1 (required) but got ", i);
   }
 
   std::vector<int64_t> counts(len, 0);
@@ -150,15 +151,19 @@ void InvokeRunner(
     // from Pytorch.
     PyObject* py_obj = PyTuple_GetItem(result_ptr.get(), 0);
     if (is_training_mode) {
-      const auto& refcnt = Py_REFCNT(py_obj);
-      // We don't need do ref increase here because, python returns tensor.grad_fn as part of
-      // tuple, who increased the refcnt already (and tensor persist until the backward kernels completed).
-      // Pytorch also increases refcnt before apply() return, so we should expect refcount >= 2.
-      // We say "at least" 2 because user could increase the context refcnt as well in their autograd forward()
-      // and backward() functions.
-      ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
-      if (refcnt > 2) {
-        LOGS_DEFAULT(WARNING) << "Autograd context refcnt > 2";
+      if (py_obj == Py_None) {
+        LOGS_DEFAULT(VERBOSE) << "Under training mode, autograd context found to be Py_None.";
+      } else {
+        const auto refcnt = Py_REFCNT(py_obj);
+        // We don't need do ref increase here because, python returns tensor.grad_fn as part of
+        // tuple, who increased the refcnt already (and tensor persist until the backward kernels completed).
+        // Pytorch also increases refcnt before apply() return, so we should expect refcount >= 2.
+        // We say "at least" 2 because user could increase the context refcnt as well in their autograd forward()
+        // and backward() functions.
+        ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
+        if (refcnt > 2) {
+          LOGS_DEFAULT(VERBOSE) << "Autograd context refcnt > 2, refcnt: " << refcnt;
+        }
       }
     } else {
       ORT_ENFORCE(py_obj == Py_None, "Under inference mode, autograd context should be Py_None.");
@@ -187,18 +192,19 @@ PythonObjectPtr CreatePythonCallArguments(
     PyObject* callback,
     const size_t len,
     const std::vector<int64_t>& requires_grads,
-    const std::vector<OrtValue>& tensor_args,
+    const std::vector<std::optional<OrtValue>>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     const bool is_training_mode,
-    const bool is_inplace) {
+    const bool is_inplace,
+    const std::string& invoke_id) {
   ORT_ENFORCE(PyCallable_Check(callback), "Forward callback is not callable.");
   // The number of variables before those of
   // autograd.Function.apply and autograd.Function.backward.
   // The extra variables are used to configure the launch
   // forward and backward runners.
-  constexpr int64_t num_control_args = 5;
+  constexpr int64_t num_control_args = 6;
 
   // All arguments created for Python call will be destroyed along with PythonObjectPtr.
   PythonObjectPtr args(Ort_PyTuple_New(num_control_args + len, "forward_arguments_tuple"), PythonObjectDeleter);
@@ -212,11 +218,19 @@ PythonObjectPtr CreatePythonCallArguments(
   Ort_PyTuple_SetItem_Incref(args.get(), 3, is_training_mode_arg, "is_training_mode");
   PyObject* is_inplace_arg = is_inplace ? Py_True : Py_False;
   Ort_PyTuple_SetItem_Incref(args.get(), 4, is_inplace_arg, "is_inplace_mode");
+  PyObject* kernel_invoke_id_arg = PyBytes_FromStringAndSize(invoke_id.c_str(), invoke_id.size());
+  Ort_PyTuple_SetItem_NoIncref(args.get(), 5, kernel_invoke_id_arg, "kernel_invoke_id_arg");
 
   // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
+    if (!tensor_args[i].has_value()) {
+      Ort_PyTuple_SetItem_Incref(args.get(), num_control_args + tensor_indices[i], Py_None,
+                                 "non_tensor_args");
+      continue;
+    }
+
     // Wrap with DLPack, then transfer to Python for its release.
-    PyObject* dl_tensor = training::framework::torch::ToDlpack(tensor_args[i]);
+    PyObject* dl_tensor = training::framework::torch::ToDlpack(tensor_args[i].value());
     Ort_PyTuple_SetItem_NoIncref(args.get(), num_control_args + tensor_indices[i], dl_tensor,
                                  "dltensor");
   }
@@ -235,14 +249,15 @@ void Invoke(
     PyObject* runner,
     PyObject* callback,
     const std::vector<int64_t>& requires_grads,
-    const std::vector<OrtValue>& tensor_args,
+    const std::vector<std::optional<OrtValue>>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     void** diff_ctx,
     std::vector<OrtValue>& returned_ortvalues,
     const bool is_training_mode,
-    const bool is_inplace) {
+    const bool is_inplace,
+    const std::string& invoke_id) {
   const auto len = tensor_args.size() + obj_args.size();
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
   RefCountTracker::GetInstance().Reset();
@@ -256,7 +271,8 @@ void Invoke(
         obj_args,
         obj_indices,
         is_training_mode,
-        is_inplace);
+        is_inplace,
+        invoke_id);
 
     RefCountTracker::GetInstance().DumpDetails("Before Invoke Python Call");
     InvokeRunner(runner, args.get(), is_training_mode, diff_ctx, returned_ortvalues);
@@ -268,14 +284,15 @@ void Invoke(
 void TorchProxy::Forward(
     void* callback,
     const std::vector<int64_t>& requires_grads,
-    const std::vector<OrtValue>& tensor_args,
+    const std::vector<std::optional<OrtValue>>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     void** diff_ctx,
     std::vector<OrtValue>& returned_ortvalues,
     const bool is_training_mode,
-    const bool is_inplace) {
+    const bool is_inplace,
+    const std::string& invoke_id) {
   // Semantically, this lock uniquely takes the ownership of TorchProxy
   // so that there will be only one of TorchProxy::Forward TorchProxy::Backward
   // can be run at one time.
@@ -294,17 +311,19 @@ void TorchProxy::Forward(
       diff_ctx,
       returned_ortvalues,
       is_training_mode,
-      is_inplace);
+      is_inplace,
+      invoke_id);
 }
 
 void TorchProxy::Backward(
     void* callback,
-    const std::vector<OrtValue>& tensor_args,
+    const std::vector<std::optional<OrtValue>>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     std::vector<OrtValue>& returned_ortvalues,
-    const bool is_inplace) {
+    const bool is_inplace,
+    const std::string& invoke_id) {
   // Semantically, this lock uniquely takes the ownership of TorchProxy
   // so that there will be only one of TorchProxy::Forward TorchProxy::Backward
   // can be run at one time.
@@ -327,7 +346,8 @@ void TorchProxy::Backward(
       nullptr /* context to store */,
       returned_ortvalues,
       true /* is_training_mode */,
-      is_inplace);
+      is_inplace,
+      invoke_id);
 }
 }  // namespace torch
 }  // namespace language_interop_ops

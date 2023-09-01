@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import Enum  # noqa: F401
 
 import onnx
 from onnx import TensorProto, helper
 
 
-def GenerateModel(model_name, sign, b_zp=True, bias=False):
+def GenerateModel(model_name, sign, b_zp=True, bias=False):  # noqa: N802
     nodes = [  # DynamicQuantizeMatMul subgraph
         helper.make_node(
             "DynamicQuantizeLinear",

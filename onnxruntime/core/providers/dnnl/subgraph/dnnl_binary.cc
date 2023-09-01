@@ -19,8 +19,8 @@ void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto src_0_ori_md = binary_src0_mem.get_desc();
   auto src_1_ori_md = binary_src1_mem.get_desc();
 
-  auto src_0_dims = src_0_ori_md.dims();
-  auto src_1_dims = src_1_ori_md.dims();
+  auto src_0_dims = src_0_ori_md.get_dims();
+  auto src_1_dims = src_1_ori_md.get_dims();
   if (src_0_dims.size() != src_1_dims.size()) {
     while (src_0_dims.size() < src_1_dims.size()) {
       src_0_dims.insert(src_0_dims.begin(), 1);
@@ -42,8 +42,7 @@ void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
 
-  auto binary_d = dnnl::binary::desc(algo, src_0_md, src_1_md, dst_md);
-  auto binary_pd = dnnl::binary::primitive_desc(binary_d, eng);
+  auto binary_pd = dnnl::binary::primitive_desc(eng, algo, src_0_md, src_1_md, dst_md);
 
   auto binary_dst_mem = dnnl::memory(binary_pd.dst_desc(), eng);
   auto binary_prim = dnnl::binary(binary_pd);

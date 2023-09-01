@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "onnxruntime_c_api.h"
-
 #include <memory>
+
+#include "core/framework/onnxruntime_typeinfo.h"
 
 namespace ONNX_NAMESPACE {
 class TypeProto;
@@ -12,15 +12,15 @@ class TypeProto;
 
 struct OrtSequenceTypeInfo {
  public:
-  explicit OrtSequenceTypeInfo(OrtTypeInfo* sequence_key_type) noexcept;
+  explicit OrtSequenceTypeInfo(std::unique_ptr<OrtTypeInfo> sequence_key_type) noexcept;
+  ~OrtSequenceTypeInfo();
 
-  std::unique_ptr<OrtTypeInfo, decltype(OrtApi::ReleaseTypeInfo)> sequence_key_type_;
+  std::unique_ptr<OrtTypeInfo> sequence_key_type_;
 
-  OrtStatus* Clone(OrtSequenceTypeInfo** out);
+  std::unique_ptr<OrtSequenceTypeInfo> Clone() const;
 
-  static OrtStatus* FromTypeProto(const ONNX_NAMESPACE::TypeProto*, OrtSequenceTypeInfo** out);
+  static std::unique_ptr<OrtSequenceTypeInfo> FromTypeProto(const ONNX_NAMESPACE::TypeProto&);
 
- private:
   OrtSequenceTypeInfo(const OrtSequenceTypeInfo& other) = delete;
   OrtSequenceTypeInfo& operator=(const OrtSequenceTypeInfo& other) = delete;
 };

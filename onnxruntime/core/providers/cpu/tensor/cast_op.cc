@@ -4,8 +4,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <string>
-
-#include "boost/mp11.hpp"
+#include <type_traits>
 
 #include "core/common/gsl.h"
 
@@ -33,16 +32,15 @@ namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    element_type_lists::All);
+    element_type_lists::AllIRv9);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
     bool, int32_t, int64_t);
 
-
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    element_type_lists::All);
+    element_type_lists::AllIRv9);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
@@ -57,6 +55,11 @@ using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecu
 
 template <typename T>
 using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>, T>;
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+template <typename T>
+using IsOrtFloat8Type = boost::mp11::mp_contains<element_type_lists::AllFloat8, T>;
+#endif
 
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
@@ -113,7 +116,11 @@ CastToString(const SrcType& input, std::string& output) {
 }
 
 template <typename SrcType>
-typename std::enable_if<IsOrtFloat16Type<SrcType>::value, void>::type
+#if !defined(DISABLE_FLOAT8_TYPES)
+typename std::enable_if<IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value, void>::type
+#else
+typename std::enable_if<IsOrtFloat16Type<SrcType>::value>::type
+#endif
 CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
@@ -143,11 +150,15 @@ CastFromString(const std::string& input, DstType& output) {
 }
 
 template <typename DstType>
+#if !defined(DISABLE_FLOAT8_TYPES)
+typename std::enable_if<IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value, void>::type
+#else
 typename std::enable_if<IsOrtFloat16Type<DstType>::value, void>::type
+#endif
 CastFromString(const std::string& input, DstType& output) {
   float intermediate;
   CastFromString(input, intermediate);
-  output = static_cast<DstType>(intermediate);
+  output = DstType(intermediate);
 }
 
 // type that is usable with Eigen cast
@@ -167,7 +178,6 @@ template <>
 struct EigenCastType<BFloat16> {
   using type = Eigen::bfloat16;
 };
-
 // generic tensor X -> Y
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCaster {
@@ -209,6 +219,38 @@ struct TensorCaster<std::string, DstType> {
     }
   }
 };
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+// tensor X -> float 8
+template <typename SrcType, typename DstType, typename Enable = void>
+struct TensorCasterNoSat {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<SrcType>();
+    auto* out_data = out.MutableData<DstType>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      out_data[i] = DstType(static_cast<float>(in_data[i]), false);
+    }
+  }
+};
+
+// tensor string -> float 8
+template <typename DstType>
+struct TensorCasterNoSat<std::string, DstType> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<std::string>();
+    auto* out_data = out.MutableData<DstType>();
+    float float_value;
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      CastFromString(in_data[i], float_value);
+      out_data[i] = DstType(float_value, false);
+    }
+  }
+};
+
+#endif
 
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
@@ -266,12 +308,28 @@ class Cast final : public OpKernel {
     Status status = info.GetAttr("to", &to);
     ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
     to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
+
+    int64_t saturate = info.GetAttrOrDefault("saturate", int64_t{1});
+#if !defined(DISABLE_FLOAT8_TYPES)
+    if (saturate == 0 && (to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ)) {
+      ORT_THROW("Attribute saturate is only used for cast to float 8 types.");
+    }
+#else
+    if (saturate == 0) {
+      ORT_THROW("Attribute saturate is only used for cast to float 8 types.");
+    }
+#endif
+    saturate_ = saturate == 1;
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   ONNX_NAMESPACE::TensorProto_DataType to_;
+  bool saturate_;
 };
 
 template <typename TSrc, typename TDst>
@@ -280,6 +338,17 @@ struct Dispatcher {
     TensorCaster<TSrc, TDst>{}.Cast(context, shape, src, dst);
   }
 };
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <typename TSrc, typename TDst>
+struct DispatcherNoSat {
+  void operator()(const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
+    TensorCasterNoSat<TSrc, TDst>{}.Cast(context, shape, src, dst);
+  }
+};
+
+#endif
 
 template <typename TSrc>
 struct SrcDispatcher {
@@ -291,6 +360,23 @@ struct SrcDispatcher {
     dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(context, shape, src, dst);
   }
 };
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <typename TSrc>
+struct SrcDispatcherNoSat {
+  void operator()(
+      int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
+    using EnabledDstTypeOnlyFloat8 = boost::mp11::mp_set_intersection<
+        EnabledDstTypes, element_type_lists::AllFloat8>;
+    using EnabledDstTypesWithoutSrcType =
+        boost::mp11::mp_remove_if_q<EnabledDstTypeOnlyFloat8, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
+    utils::MLTypeCallDispatcherFromTypeList<EnabledDstTypesWithoutSrcType> dispatcher{to};
+    dispatcher.template InvokeWithLeadingTemplateArgs<DispatcherNoSat, TypeList<TSrc>>(context, shape, src, dst);
+  }
+};
+
+#endif
 
 Status Cast::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
@@ -309,8 +395,20 @@ Status Cast::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
-  dispatcher.Invoke<SrcDispatcher>(to_, *context, shape, *X, *Y);
+#if !defined(DISABLE_FLOAT8_TYPES)
+  if (saturate_) {
+#endif
+    utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
+    dispatcher.Invoke<SrcDispatcher>(to_, *context, shape, *X, *Y);
+#if !defined(DISABLE_FLOAT8_TYPES)
+  } else if (to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN ||
+             to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ ||
+             to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 ||
+             to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ) {
+    utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
+    dispatcher.Invoke<SrcDispatcherNoSat>(to_, *context, shape, *X, *Y);
+  }
+#endif
 
   return Status::OK();
 }
@@ -326,9 +424,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
     13,
+    18,
+    KernelDefBuilder()
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
+        .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
+    Cast);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Cast,
+    19,
     KernelDefBuilder()
         .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
         .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())

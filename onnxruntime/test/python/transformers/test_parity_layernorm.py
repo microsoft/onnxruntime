@@ -9,7 +9,7 @@ import unittest
 
 import onnx
 import torch
-from parity_utilities import *
+from parity_utilities import export_onnx, find_transformers_source, optimize_onnx, parse_arguments, run_parity
 from torch import nn
 
 if find_transformers_source():
@@ -155,11 +155,7 @@ def run(
     if optimized:
         optimized_onnx_path = "./temp/layer_norm_{}_formula{}_opt.onnx".format("fp16" if float16 else "fp32", formula)
         if (not float16) or cast_fp16:
-            optimize_onnx(
-                onnx_model_path,
-                optimized_onnx_path,
-                expected_op=LayerNorm.get_fused_op(),
-            )
+            optimize_onnx(onnx_model_path, optimized_onnx_path, expected_op=LayerNorm.get_fused_op(), verbose=verbose)
         else:
             if cast_onnx_only:
                 optimize_fp16_onnx_with_cast(onnx_model_path, optimized_onnx_path, epsilon=epsilon)
@@ -180,7 +176,7 @@ def run(
         device,
         optimized,
         test_cases,
-        verbose=verbose,
+        verbose,
     )
 
     # clean up onnx file
@@ -192,12 +188,13 @@ def run(
 
 
 class TestLayerNormParity(unittest.TestCase):
+    verbose = False
+    optimized = True
+
     def setUp(self):
-        self.optimized = True  # Change it to False if you want to test parity of non optimized ONNX
         self.test_cases = 100  # Number of test cases per test run
         self.sequence_length = 2
         self.hidden_size = 768
-        self.verbose = False
 
     def run_test(
         self,
@@ -211,6 +208,7 @@ class TestLayerNormParity(unittest.TestCase):
         formula=0,
         epsilon=0.00001,
         enable_assert=True,
+        verbose=False,
     ):
         if float16 and device.type == "cpu":  # CPU does not support FP16
             return
@@ -227,12 +225,12 @@ class TestLayerNormParity(unittest.TestCase):
             cast_fp16,
             cast_onnx_only,
             formula,
-            verbose=self.verbose,
+            verbose=verbose,
         )
         if enable_assert:
             self.assertTrue(num_failure == 0, "Failed: " + test_name)
 
-    def run_one(self, optimized, device, hidden_size=768, run_extra_tests=False):
+    def run_one(self, optimized, device, hidden_size=768, run_extra_tests=False, verbose=False):
         for batch_size in [4]:
             for formula in [0, 1]:
                 for epsilon in [1e-5]:  # [1e-5, 1e-12]
@@ -244,6 +242,7 @@ class TestLayerNormParity(unittest.TestCase):
                         device=device,
                         formula=formula,
                         epsilon=epsilon,
+                        verbose=verbose,
                     )
 
                     self.run_test(
@@ -257,6 +256,7 @@ class TestLayerNormParity(unittest.TestCase):
                         formula=formula,
                         epsilon=epsilon,
                         enable_assert=False,  # This setting has small chance to exceed tollerance threshold 0.001
+                        verbose=verbose,
                     )
 
                     if not run_extra_tests:
@@ -274,6 +274,7 @@ class TestLayerNormParity(unittest.TestCase):
                             formula=formula,
                             epsilon=epsilon,
                             enable_assert=False,  # This setting cannot pass tollerance threshold
+                            verbose=verbose,
                         )
 
                     self.run_test(
@@ -287,21 +288,25 @@ class TestLayerNormParity(unittest.TestCase):
                         formula=formula,
                         epsilon=epsilon,
                         enable_assert=False,  # This setting cannot pass tollerance threshold
+                        verbose=verbose,
                     )
 
     def test_cpu(self):
         cpu = torch.device("cpu")
-        self.run_one(self.optimized, cpu, hidden_size=self.hidden_size)
+        self.run_one(self.optimized, cpu, hidden_size=self.hidden_size, verbose=self.verbose)
 
     def test_cuda(self):
         if not torch.cuda.is_available():
-            import pytest
-
-            pytest.skip("test requires GPU and torch+cuda")
+            self.skipTest("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
-            self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, run_extra_tests=True)
+            self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, run_extra_tests=True, verbose=self.verbose)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    args, remaining_args = parse_arguments(namespace_filter=unittest)
+
+    TestLayerNormParity.verbose = args.log_verbose
+    TestLayerNormParity.optimized = args.optimize
+
+    unittest.main(argv=remaining_args)

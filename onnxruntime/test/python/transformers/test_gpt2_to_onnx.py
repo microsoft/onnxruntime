@@ -14,7 +14,7 @@ from parity_utilities import find_transformers_source
 from onnxruntime import get_available_providers
 
 if find_transformers_source(sub_dir_paths=["models", "gpt2"]):
-    from convert_to_onnx import main as gpt2_to_onnx
+    from models.gpt2.convert_to_onnx import main as gpt2_to_onnx
 else:
     from onnxruntime.transformers.models.gpt2.convert_to_onnx import main as gpt2_to_onnx
 

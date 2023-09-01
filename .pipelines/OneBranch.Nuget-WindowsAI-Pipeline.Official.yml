@@ -12,7 +12,7 @@ variables:
   ComponentDetection.Timeout: 1200
 
 resources:
-  repositories: 
+  repositories:
     - repository: templates
       type: git
       name: OneBranch.Pipelines/GovernedTemplates
@@ -22,7 +22,7 @@ extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
   parameters:
     nugetPublishing:
-      feeds:      
+      feeds:
       - name: PublicPackages/ORT-Nightly
         files_to_publish: '*.nupkg;!*.symbols.nupkg'
         continueOnConflict: true
@@ -30,7 +30,7 @@ extends:
       submodules: false
     globalSdl: # https://aka.ms/obpipelines/sdl
       tsa:
-        enabled: true      
+        enabled: true
       prefast:
         enabled: false
       cg:
@@ -47,42 +47,42 @@ extends:
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: x64
-          
+
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
-          
+
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: arm
-          
+
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
-          
+
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: x64
           Runtime: static
-          
+
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
           Runtime: static
-          
+
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: arm
           Runtime: static
-          
+
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
           Runtime: static
-          
-          
+
+
       - job: NuGet_Packaging
         pool:
           type: windows
@@ -113,7 +113,7 @@ extends:
           inputs:
             artifactName: 'drop_Windows_Build_Windows_Packaging_x86_dynamic'
             targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
-      
+
         - task: DownloadPipelineArtifact@0
           displayName: 'Download Pipeline Artifact - NuGet DirectML arm64'
           inputs:
@@ -275,7 +275,7 @@ extends:
 
               $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
               Start-Process -FilePath "7z" -ArgumentList "-tzip a -r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
-        
+
             workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
         - task: PowerShell@2
@@ -326,7 +326,7 @@ extends:
 
               Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.pdb'))                  $arm64_runtime_path_new
               Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.pdb')) $arm64_runtime_path_new
-        
+
               Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.pdb'))                    $arm_runtime_path_new
               Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))   $arm_runtime_path_new
 
@@ -343,14 +343,39 @@ extends:
 
               # Now we combine the DLLs and PDBs together, put them back in a folder under $(Build.SourcesDirectory)
               # We won't upload the unzipped folder. We will just feed it to BinSkim.
-              7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget     
+              7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget
               7z -y x -o$(Build.SourcesDirectory)\unzipped $merged_nuget_without_pdb
-              
+
             workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
-            
+
         - script: |
             dir $(Build.SourcesDirectory)\unzipped\runtimes\win-x64\_native
-            
+
+        - task: EsrpCodeSigning@2
+          displayName: "Sign Nuget package"
+          inputs:
+            ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
+            FolderPath: $(Build.ArtifactStagingDirectory)
+            Pattern: '*.nupkg'
+            signConfigType: inlineSignParams
+            inlineOperation: |
+               [
+                   {
+                       "keyCode": "CP-401405",
+                       "operationSetCode": "NuGetSign",
+                       "parameters": [ ],
+                       "toolName": "sign",
+                       "toolVersion": "1.0"
+                   },
+                   {
+                       "keyCode": "CP-401405",
+                       "operationSetCode": "NuGetVerify",
+                       "parameters": [ ],
+                       "toolName": "sign",
+                       "toolVersion": "1.0"
+                   }
+               ]
+
       - job: NuGet_Publishing
         pool:
           type: windows
@@ -359,7 +384,7 @@ extends:
           ob_sdl_binskim_enabled: false
           ob_pipelineartifacts_enabled: false
           ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
-            ob_nugetPublishing_enabled: true          
+            ob_nugetPublishing_enabled: true
         dependsOn:
         - NuGet_Packaging
         condition: succeeded()
@@ -367,13 +392,13 @@ extends:
         - task: DownloadPipelineArtifact@2
           displayName: 'Download Pipeline Artifact'
           inputs:
-            buildType: 'current'        
+            buildType: 'current'
             artifactName: 'drop_Windows_Build_NuGet_Packaging'
             itemPattern: 'merged/**'
             targetPath: '$(Build.BinariesDirectory)'
-            
+
         - powershell: |
            Rename-Item  -Path merged packages
-           
+
           workingDirectory: '$(Build.BinariesDirectory)'
           displayName: 'Rename nuget folder'

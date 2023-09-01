@@ -15,7 +15,7 @@ class MatMul final : public CannKernel {
   MatMul(const OpKernelInfo& info)
       : CannKernel(info) {}
 
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
 }  // namespace cann

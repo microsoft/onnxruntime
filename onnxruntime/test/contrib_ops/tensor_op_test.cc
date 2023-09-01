@@ -66,7 +66,7 @@ TEST(CropContribOpTest, CropBorderAndScale) {
 }
 
 TEST(ImageScalerContribOpTest, ImageScalerTest) {
-  // TODO: Unskip when fixed #41968513
+  // Won't fix for DML which only accepts 1 or 3 channels, as the op was only experimental and since removed.
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
   }
@@ -120,7 +120,7 @@ void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normaliz
   test.AddAttribute("normalize_variance", normalize_variance ? one : zero);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider}); //OpenVINO doesn't support MVN operator below opset 9. TensorRT doesn't support opset 8 of MVN operator.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  // OpenVINO doesn't support MVN operator below opset 9. TensorRT doesn't support opset 8 of MVN operator.
 }
 
 void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_variance) {
@@ -187,7 +187,7 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
   test.AddAttribute("normalize_variance", normalize_variance ? one : zero);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider}); //OpenVINO doesn't support MVN operator below opset 9. TensorRT doesn't support opset 8 of MVN operator.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  // OpenVINO doesn't support MVN operator below opset 9. TensorRT doesn't support opset 8 of MVN operator.
 }
 
 TEST(MVNContribOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {

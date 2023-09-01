@@ -19,5 +19,5 @@ void ImageScalerImpl(
     const size_t N);
 
 }  // namespace cuda
-}  //namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime

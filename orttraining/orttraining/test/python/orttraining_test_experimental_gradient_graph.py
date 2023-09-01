@@ -4,8 +4,9 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-import onnxruntime
 import torch
+
+import onnxruntime
 from onnxruntime.training.experimental import export_gradient_graph
 
 
@@ -15,7 +16,7 @@ class NeuralNet(torch.nn.Module):
     """
 
     def __init__(self, input_size: int, embedding_size: int, hidden_size: int, num_classes: int):
-        super(NeuralNet, self).__init__()
+        super().__init__()
 
         self.frozen_layer = torch.nn.Linear(input_size, embedding_size, bias=False)
         # Freeze a layer (mainly to test that gradients don't get output for it).

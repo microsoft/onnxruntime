@@ -38,8 +38,8 @@ void DnnlMatMulInteger::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& nod
     }
   }
 
-  auto src_dims = sp.GetMemory(node.Input(IN_A)).get_desc().dims();
-  auto weights_dims = sp.GetMemory(node.Input(IN_B)).get_desc().dims();
+  auto src_dims = sp.GetMemory(node.Input(IN_A)).get_desc().get_dims();
+  auto weights_dims = sp.GetMemory(node.Input(IN_B)).get_desc().get_dims();
 
   if (src_dims.size() != weights_dims.size()) {
     while (src_dims.size() < weights_dims.size()) {
@@ -70,11 +70,11 @@ void DnnlMatMulInteger::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& nod
   bool has_b_zero_point = node.Input(IN_B_ZERO_POINT).Name() != "";
 
   if (has_a_zero_point) {
-    matmul_attr.set_zero_points(DNNL_ARG_SRC, /* mask */ 0, {DNNL_RUNTIME_S32_VAL});
+    matmul_attr.set_zero_points_mask(DNNL_ARG_SRC, /* mask */ 0);
   }
 
   if (has_b_zero_point) {
-    matmul_attr.set_zero_points(DNNL_ARG_WEIGHTS, /* mask */ 0, {DNNL_RUNTIME_S32_VAL});
+    matmul_attr.set_zero_points_mask(DNNL_ARG_WEIGHTS, /* mask */ 0);
   }
 
   /*
@@ -94,7 +94,7 @@ void DnnlMatMulInteger::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& nod
       // Handle Binary post ops including the input memory
       if (binary_ops.count(post_ops[i]) != 0) {
         auto ori_binary_md = sp.GetMemory(node.Input(IN_BINARY_0 + binary_count).Name()).get_desc();
-        auto ori_binary_dims = ori_binary_md.dims();
+        auto ori_binary_dims = ori_binary_md.get_dims();
         auto binary_mem_dims = ori_binary_dims;
         if (ori_binary_dims.size() != output_shape.size()) {
           if (ori_binary_dims.size() > output_shape.size()) {
@@ -129,17 +129,22 @@ void DnnlMatMulInteger::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& nod
             post_op_alpha = GetFloatAttr(node, "alpha", /*default_alpha*/ 1.0f);
             break;
           }
+          case dnnl::algorithm::eltwise_soft_relu: {
+            if (post_ops[i] == "Softplus") {
+              post_op_alpha = 1.0f;
+            }
+            break;
+          }
           default:
             post_op_alpha = 0.0;
         }
-        ops.append_eltwise(1.0f, algo, post_op_alpha, 0.0f);
+        ops.append_eltwise(algo, post_op_alpha, 0.0f);
       }
     }
     matmul_attr.set_post_ops(ops);
   }
 
-  auto matmul_d = dnnl::matmul::desc(src_md, weights_md, dst_md);
-  auto matmul_pd = dnnl::matmul::primitive_desc(matmul_d, matmul_attr, eng);
+  auto matmul_pd = dnnl::matmul::primitive_desc(eng, src_md, weights_md, dst_md, matmul_attr);
 
   auto matmul_src_mem = sp.GetMemoryAndReshape(node.Input(IN_A), matmul_pd.src_desc(), eng);
   auto matmul_weights_mem = sp.GetMemoryAndReshape(node.Input(IN_B), matmul_pd.weights_desc(), eng);

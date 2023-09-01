@@ -14,6 +14,7 @@ const char * const ORTJNI_OnnxValueClassName = "ai/onnxruntime/OnnxValue";
 const char * const ORTJNI_NodeInfoClassName = "ai/onnxruntime/NodeInfo";
 const char * const ORTJNI_MetadataClassName = "ai/onnxruntime/OnnxModelMetadata";
 
+
 /*
  * Class:     ai_onnxruntime_OrtSession
  * Method:    createSession
@@ -333,28 +334,28 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEnv
   jobjectArray outputArray = NULL;
 
   // Create the buffers for the Java input & output strings, and the input pointers
-  const char** inputNames = malloc(sizeof(char*) * numInputs);
+  const char** inputNames = allocarray(numInputs, sizeof(char*));
   if (inputNames == NULL) {
     // Nothing to cleanup, return and throw exception
     return outputArray;
   }
-  const char** outputNames = malloc(sizeof(char*) * numOutputs);
+  const char** outputNames = allocarray(numOutputs, sizeof(char*));
   if (outputNames == NULL) {
     goto cleanup_input_names;
   }
-  jobject* javaInputStrings = malloc(sizeof(jobject) * numInputs);
+  jobject* javaInputStrings = allocarray(numInputs, sizeof(jobject));
   if (javaInputStrings == NULL) {
     goto cleanup_output_names;
   }
-  jobject* javaOutputStrings = malloc(sizeof(jobject) * numOutputs);
+  jobject* javaOutputStrings = allocarray(numOutputs, sizeof(jobject));
   if (javaOutputStrings == NULL) {
     goto cleanup_java_input_strings;
   }
-  const OrtValue** inputValuePtrs = malloc(sizeof(OrtValue*) * numInputs);
+  const OrtValue** inputValuePtrs = allocarray(numInputs, sizeof(OrtValue*));
   if (inputValuePtrs == NULL) {
     goto cleanup_java_output_strings;
   }
-  OrtValue** outputValues = malloc(sizeof(OrtValue*) * numOutputs);
+  OrtValue** outputValues = allocarray(numOutputs, sizeof(OrtValue*));
   if (outputValues == NULL) {
     goto cleanup_input_values;
   }

@@ -45,12 +45,20 @@
 #include "orttraining/training_ops/cpu/tensor/split.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 #include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
+
+// Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+// 2). this is needed by inference for other purpose.
+#include "contrib_ops/cpu/tensor/shrunken_gather.h"
 #endif
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/controlflow/record.h"
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
+#endif
+
+#ifdef ENABLE_TRITON
+#include "orttraining/training_ops/cpu/triton/triton_op.h"
 #endif
 
 #include "cpu_provider_shared.h"
@@ -198,12 +206,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                     const TensorShape& bias_shape,
                                     const Tensor*& mask_index,
                                     const Tensor* past,
-                                    const Tensor* extra_add_qk,
+                                    const Tensor* relative_position_bias,
                                     void* parameters,
                                     const int max_threads_per_block,
                                     const Tensor* past_seq_len) override {
     return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
-                                                  extra_add_qk,
+                                                  relative_position_bias,
                                                   parameters,
                                                   max_threads_per_block,
                                                   past_seq_len);
@@ -275,6 +283,11 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
     return p->SGDOptimizerV2Base::PrepareForCompute(ctx,
                                                     reinterpret_cast<contrib::SGDOptimizerV2Base::Prepare&>(prepare));
   }
+  void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p, const Tensor* input_tensor,
+                                                 const Tensor* indices_tensor, int64_t axis_in) const override {
+    return p->ShrunkenGatherCommon::CheckInput(input_tensor, indices_tensor, axis_in);
+  }
+
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -291,6 +304,19 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
     return contrib::ExecuteReduceSumATen(p_ctx, axes, keepdims);
   }
 #endif
+
+#ifdef ENABLE_TRITON
+  Status contrib__TritonOp__Compute(const contrib::TritonOp* p, OpKernelContext* context) override {
+    return p->TritonOp::Compute(context);
+  }
+  bool contrib__IsTritonOpExecutorInitialized() override { return contrib::IsTritonOpExecutorInitialized(); }
+  Status contrib__ExecuteTritonOpByFuncName(
+      OpKernelContext* p_ctx, const std::string& func_name, size_t input_count, size_t output_count,
+      const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) override {
+    return contrib::ExecuteTritonOpByFuncName(p_ctx, func_name, input_count, output_count, kwargs);
+  }
+#endif
+
 #endif
 };
 #if defined(_MSC_VER) && !defined(__clang__)

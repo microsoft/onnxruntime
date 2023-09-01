@@ -7,6 +7,9 @@
 #include <utility>
 #include <vector>
 
+#ifdef USE_COMPOSABLE_KERNEL
+#include "core/providers/rocm/composable_kernel_common.h"
+
 #include "ck/ck.hpp"
 #include "ck/library/tensor_operation_instance/gpu/batched_gemm.hpp"
 #include "ck/library/tensor_operation_instance/gpu/gemm.hpp"
@@ -14,6 +17,7 @@
 #include "ck/tensor_operation/gpu/device/device_batched_gemm.hpp"
 #include "ck/tensor_operation/gpu/device/device_gemm.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
+#endif
 
 #include "core/providers/rocm/tunable/gemm_common.h"
 
@@ -23,20 +27,7 @@ namespace tunable {
 namespace blas {
 namespace internal {
 
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
-
-template <>
-struct DataTypeAdaptor<BFloat16> {
-  using type = ck::bhalf16_t;
-};
+#ifdef USE_COMPOSABLE_KERNEL
 
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
@@ -45,7 +36,7 @@ using Nop = ck::tensor_operation::element_wise::PassThrough;
 
 template <typename T, typename ALayout, typename BLayout>
 auto GetCKGemmTypeStringAndOps() {
-  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using CKDataType = typename CKDataTypeAdaptor<T>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -55,17 +46,6 @@ auto GetCKGemmTypeStringAndOps() {
   std::vector<std::pair<std::string, Op<GemmParams<T>>>> ret;
   for (auto&& impl : InstanceFactory::GetInstances()) {
     auto type_string = impl->GetTypeString();
-
-    // FIXME: ck upstream have bugs in some input shapes coupled with specific impls. The `IsSupportedArgument` is not
-    // sound, we exclude those implementation here for now. Check back later when AMD fixed them.
-    //
-    // The DeviceGemmXdl<256, 128, 144, 8, 8, 16, 16, 2, 9> and DeviceGemmXdl<256, 128, 144, 4, 8, 16, 16, 2, 9> only
-    // occurs in DeviceGemm<Row, Col> for FP16. When k < 8, the result is wrong.
-    if (type_string == "DeviceGemmXdl<256, 128, 144, 8, 8, 16, 16, 2, 9>" ||
-        type_string == "DeviceGemmXdl<256, 128, 144, 4, 8, 16, 16, 2, 9>") {
-      continue;
-    }
-
     auto invoker = impl->MakeInvokerPointer();
     auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
       auto one = ToHipType<T>::FromFloat(1.0f);
@@ -81,7 +61,7 @@ auto GetCKGemmTypeStringAndOps() {
                                            nop, nop, nop);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemm_op)));
@@ -91,7 +71,7 @@ auto GetCKGemmTypeStringAndOps() {
 
 template <typename T, typename ALayout, typename BLayout>
 auto GetCKStridedBatchedGemmTypeStringAndOps() {
-  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using CKDataType = typename CKDataTypeAdaptor<T>::type;
   using DeviceStridedBatchedGemm = ck::tensor_operation::device::DeviceBatchedGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -120,13 +100,17 @@ auto GetCKStridedBatchedGemmTypeStringAndOps() {
                                            nop, nop, nop);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemm_op)));
   }
   return ret;
 }
+#else
+struct Row {};
+struct Col {};
+#endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace internal
 }  // namespace blas

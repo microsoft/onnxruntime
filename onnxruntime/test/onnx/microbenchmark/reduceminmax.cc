@@ -115,4 +115,3 @@ BENCHMARK(BM_FindMinMaxMlasAvx)
     ->Arg(80000)
     ->Arg(98304)
     ->Arg(160000);
-

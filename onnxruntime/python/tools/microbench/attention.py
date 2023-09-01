@@ -23,6 +23,7 @@ class BenchmarkAttention(BenchmarkOp):
     def __init__(self, args):
         BenchmarkOp.__init__(self, args)
 
+    @classmethod
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
         input_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(
@@ -50,6 +51,7 @@ class BenchmarkAttention(BenchmarkOp):
         op_param = OpParam(1, 384, 768, 768 * 3, data_type)
         self.add_case(op_param, model)
 
+    @classmethod
     def case_profile(cls, op_param, time):
         profile = f"(batch_size seq_len length) = ({op_param.batch_size} {op_param.seq_len} {op_param.length}), {time:7.4f} ms"
         return profile

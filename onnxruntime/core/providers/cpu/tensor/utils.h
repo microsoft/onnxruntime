@@ -282,7 +282,6 @@ struct SliceIteratorBase {
 
   // Assumes SolitaryInnerStep() == true
   void* CopyInnermostAxisSolitaryInnerStep(void* output) {
-
     byte* out_bytes = reinterpret_cast<byte*>(output);
     auto bytes_to_copy = inner_extent_ * element_size_;
 

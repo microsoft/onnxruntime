@@ -55,6 +55,20 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             );
 
+        void InitializeInputsWithShapes(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            );
+
+        void InitializeOutputsWithShapes(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            );
+
         bool AllowHalfPrecisionComputation() const;
         DML_EXECUTION_FLAGS GetExecutionFlags() const;
 
@@ -106,6 +120,16 @@ namespace Dml
         void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
 
         TensorDesc CreateTensorDescFromInput(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            uint32_t index,
+            int32_t coerceAxis = TensorAxis::DoNotCoerce,
+            int32_t placement = TensorAxis::W,
+            int32_t leftAlignedDimensionCount = TensorAxis::RightAligned,
+            std::optional<gsl::span<const uint32_t>> tensorShape = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            ) const;
+
+        TensorSequenceDesc CreateTensorSequenceDescFromInput(
             const MLOperatorKernelCreationContext& kernelInfo,
             uint32_t index,
             int32_t coerceAxis = TensorAxis::DoNotCoerce,

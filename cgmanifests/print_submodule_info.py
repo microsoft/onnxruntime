@@ -15,15 +15,13 @@ proc = subprocess.run(
     check=True,
     cwd=path,
     stdout=subprocess.PIPE,
-    universal_newlines=True,
+    text=True,
 )
 
 url = proc.stdout.strip()
 
-proc = subprocess.run(
-    ["git", "rev-parse", "HEAD"], check=True, cwd=path, stdout=subprocess.PIPE, universal_newlines=True
-)
+proc = subprocess.run(["git", "rev-parse", "HEAD"], check=True, cwd=path, stdout=subprocess.PIPE, text=True)
 
 commit = proc.stdout.strip()
 
-print("{} {} {}".format(path, url, commit))
+print(f"{path} {url} {commit}")

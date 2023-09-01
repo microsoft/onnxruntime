@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -11,13 +10,9 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from op_test_utils import (
-    TestDataFeeds,
-    check_model_correctness,
-    check_op_type_count,
-    check_op_type_order,
-    check_qtype_by_node_type,
-)
+from op_test_utils import TestDataFeeds  # noqa: F401
+from op_test_utils import check_op_type_order  # noqa: F401
+from op_test_utils import check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime.quantization import DynamicQuantConfig, QuantType, quantize, quantize_dynamic
 
@@ -65,7 +60,7 @@ class TestONNXModel(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         onnx.save(model, model_path)
 
-    def dynamic_quant_conv_test(self, weight_type, extra_options={}, use_quant_config=False):
+    def dynamic_quant_conv_test(self, weight_type, extra_options={}, use_quant_config=False):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "conv_bias.fp32.onnx"
         self.construct_model(model_fp32_path)
@@ -73,7 +68,7 @@ class TestONNXModel(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8
         activation_type_str = "u8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "conv_bias.quant.{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = f"conv_bias.quant.{activation_type_str}{weight_type_str}.onnx"
 
         if use_quant_config:
             quant_config = DynamicQuantConfig(weight_type=weight_type, extra_options=extra_options)

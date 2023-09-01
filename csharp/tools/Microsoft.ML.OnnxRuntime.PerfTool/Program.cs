@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 using CommandLine;
-using Google.Protobuf;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;

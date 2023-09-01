@@ -2,21 +2,19 @@
 # https://github.com/huggingface/transformers/blob/master/examples/multiple-choice/utils_multiple_choice.py
 
 import csv
-import glob
-import json
+import glob  # noqa: F401
+import json  # noqa: F401
 import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
 
+import torch
 import tqdm
 from filelock import FileLock
-
-from transformers import PreTrainedTokenizer, is_tf_available, is_torch_available
-
-import torch
 from torch.utils.data.dataset import Dataset
+from transformers import PreTrainedTokenizer, is_tf_available, is_torch_available  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +114,6 @@ class MultipleChoiceDataset(Dataset):
         # and the others will use the cache.
         lock_path = cached_features_file + ".lock"
         with FileLock(lock_path):
-
             if os.path.exists(cached_features_file) and not overwrite_cache:
                 logger.info(f"Loading features from cached file {cached_features_file}")
                 self.features = torch.load(cached_features_file)
@@ -155,17 +152,17 @@ class SwagProcessor(DataProcessor):
 
     def get_train_examples(self, data_dir):
         """See base class."""
-        logger.info("LOOKING AT {} train".format(data_dir))
+        logger.info(f"LOOKING AT {data_dir} train")
         return self._create_examples(self._read_csv(os.path.join(data_dir, "train.csv")), "train")
 
     def get_dev_examples(self, data_dir):
         """See base class."""
-        logger.info("LOOKING AT {} dev".format(data_dir))
+        logger.info(f"LOOKING AT {data_dir} dev")
         return self._create_examples(self._read_csv(os.path.join(data_dir, "val.csv")), "dev")
 
     def get_test_examples(self, data_dir):
         """See base class."""
-        logger.info("LOOKING AT {} dev".format(data_dir))
+        logger.info(f"LOOKING AT {data_dir} dev")
         raise ValueError(
             "For swag testing, the input file does not contain a label column. It can not be tested in current code"
             "setting!"
@@ -177,7 +174,7 @@ class SwagProcessor(DataProcessor):
         return ["0", "1", "2", "3"]
 
     def _read_csv(self, input_file):
-        with open(input_file, "r", encoding="utf-8") as f:
+        with open(input_file, encoding="utf-8") as f:
             return list(csv.reader(f))
 
     def _create_examples(self, lines: List[List[str]], type: str):
@@ -218,11 +215,11 @@ def convert_examples_to_features(
     label_map = {label: i for i, label in enumerate(label_list)}
 
     features = []
-    for (ex_index, example) in tqdm.tqdm(enumerate(examples), desc="convert examples to features"):
+    for ex_index, example in tqdm.tqdm(enumerate(examples), desc="convert examples to features"):
         if ex_index % 10000 == 0:
             logger.info("Writing example %d of %d" % (ex_index, len(examples)))
         choices_inputs = []
-        for ending_idx, (context, ending) in enumerate(zip(example.contexts, example.endings)):
+        for _ending_idx, (context, ending) in enumerate(zip(example.contexts, example.endings)):
             text_a = context
             if example.question.find("_") != -1:
                 # this is for cloze question

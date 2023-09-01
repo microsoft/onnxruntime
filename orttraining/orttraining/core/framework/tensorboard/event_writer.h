@@ -7,10 +7,10 @@
 #include "core/platform/path_lib.h"
 
 namespace tensorboard {
-  class Event;
-  class HistogramProto;
-  class Summary;
-}
+class Event;
+class HistogramProto;
+class Summary;
+}  // namespace tensorboard
 
 namespace onnxruntime {
 namespace training {

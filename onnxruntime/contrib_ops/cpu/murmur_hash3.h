@@ -18,10 +18,10 @@ class MurmurHash3 final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
-private:
+ private:
   void MurmurHash3_x86_32(const void* key, int len, uint32_t seed, void* out) const;
 
-private :
+ private:
   uint32_t seed_;
   bool is_positive_{true};
 };

@@ -3,6 +3,7 @@
 
 #include "onnxruntime_c_api.h"
 #include "core/framework/provider_options.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 class IAllocator;
@@ -20,13 +21,11 @@ class NvtxRangeCreator;
 }
 
 struct ProviderInfo_CUDA {
-  virtual ~ProviderInfo_CUDA() {} // This is declared due to a TSA warning, the only instantiation of this class is a global variable of automatic storage.
-
   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
 
   virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAPinnedAllocator(const char* name) = 0;
   virtual std::unique_ptr<onnxruntime::IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
@@ -34,8 +33,8 @@ struct ProviderInfo_CUDA {
   virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
+  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
 
   virtual void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) = 0;
   virtual void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) = 0;
@@ -43,7 +42,7 @@ struct ProviderInfo_CUDA {
   virtual int cudaGetDeviceCount() = 0;
   virtual void CUDAExecutionProviderInfo__FromProviderOptions(const onnxruntime::ProviderOptions& options, onnxruntime::CUDAExecutionProviderInfo& info) = 0;
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
   virtual onnxruntime::cuda::INcclService& GetINcclService() = 0;
 #endif
 
@@ -53,13 +52,16 @@ struct ProviderInfo_CUDA {
 #endif
 
   virtual std::shared_ptr<onnxruntime::IExecutionProviderFactory> CreateExecutionProviderFactory(const onnxruntime::CUDAExecutionProviderInfo& info) = 0;
-  virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) = 0;
+  virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) = 0;
 
-#ifndef NDEBUG
-  // This function is the entry point to CUDA EP's internal (aka not accessible from bridge code for shared library)
-  // tests and is only called from onnxruntime_test_all. Release builds don't need this function.
-  virtual bool TestAll() = 0;
-#endif
+  // This function is the entry point to CUDA EP's UT cases.
+  // All tests ared only called from onnxruntime_test_all.
+  virtual void TestAll() {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is only implements in test code path.");
+  }
+
+ protected:
+  ~ProviderInfo_CUDA() = default;  // Can only be destroyed through a subclass instance
 };
 
 }  // namespace onnxruntime

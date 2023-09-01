@@ -57,12 +57,23 @@ class Sampling : public IControlFlowKernel {
     init_greedy_state_fp16_func_ = init_greedy_state_fp16_func;
   }
 
+#ifdef USE_CUDA
+  void SetDeviceHelpers_Cuda(const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func) {
+    reorder_past_state_func_ = reorder_past_state_func;
+  }
+#endif
+
   void SetDeviceHelpers_Gpt(
       const GenerationDeviceHelper::UpdateGptFeedsFunc<float>& update_gpt_feeds_func,
       const GenerationDeviceHelper::UpdateGptFeedsFunc<MLFloat16>& update_gpt_feeds_fp16_func) {
     update_gpt_feeds_func_ = update_gpt_feeds_func;
     update_gpt_feeds_fp16_func_ = update_gpt_feeds_fp16_func;
   }
+
+#ifdef USE_CUDA
+  const void* gpu_device_prop_ = nullptr;
+  int gpu_device_arch_ = 0;
+#endif
 
  private:
   // Device specific functions
@@ -75,6 +86,10 @@ class Sampling : public IControlFlowKernel {
 
   GenerationDeviceHelper::InitGreedyStateFunc<float> init_greedy_state_func_;
   GenerationDeviceHelper::InitGreedyStateFunc<MLFloat16> init_greedy_state_fp16_func_;
+
+#ifdef USE_CUDA
+  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
+#endif
 
   //------------------------------------------------------------
   // Device specific functions for GPT

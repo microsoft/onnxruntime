@@ -44,7 +44,7 @@ bool IdenticalChildrenConsolidation::IsSupportedParentNode(const Node* node) con
 std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenticalChildrenIntoGroups(
     const Graph& graph,
     Node* node,
-    const string_view& op) const {
+    const string_view& op) {
   unordered_map<string_view, std::vector<NodeIndex>> identical_children_map;
   for (auto i = node->OutputEdgesBegin(); i != node->OutputEdgesEnd(); ++i) {
     if (i->GetNode().OpType() == op) {
@@ -60,65 +60,69 @@ std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenti
   return groups;
 }
 
-string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, const Node& node) const {
-  std::string identity;
+std::string IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, const Node& node) {
+  std::ostringstream identity;
   for (const auto* input_def : node.InputDefs()) {
     if (input_def->Exists() && !input_def->Name().empty()) {
       auto name = input_def->Name();
       if (graph_utils::NodeArgIsConstant(graph, *input_def)) {
         if (optimizer_utils::IsScalar(*input_def)) {
           const auto* data = graph_utils::GetConstantInitializer(graph, name);
-          identity.append(constant_prefix);
+          identity << constant_prefix;
           Initializer value{*data, graph.ModelPath()};
           switch (static_cast<TensorProto::DataType>(data->data_type())) {
             case TensorProto::DataType::TensorProto_DataType_INT8:
-              identity.append(std::to_string(value.data<int8_t>()[0]));
+              identity << *value.data<int8_t>();
               break;
             case TensorProto::DataType::TensorProto_DataType_INT16:
-              identity.append(std::to_string(value.data<int16_t>()[0]));
+              identity << *value.data<int16_t>();
               break;
             case TensorProto::DataType::TensorProto_DataType_INT32:
-              identity.append(std::to_string(value.data<int32_t>()[0]));
+              identity << *value.data<int32_t>();
               break;
             case TensorProto::DataType::TensorProto_DataType_UINT8:
-              identity.append(std::to_string(value.data<uint8_t>()[0]));
+              identity << *value.data<uint8_t>();
               break;
             case TensorProto::DataType::TensorProto_DataType_UINT16:
-              identity.append(std::to_string(value.data<uint16_t>()[0]));
+              identity << *value.data<uint16_t>();
               break;
             case TensorProto::DataType::TensorProto_DataType_BOOL:
-              identity.append(std::to_string(value.data<bool>()[0]));
+              identity << *value.data<bool>();
               break;
             case TensorProto::DataType::TensorProto_DataType_INT64:
-              identity.append(std::to_string(value.data<int64_t>()[0]));
+              identity << *value.data<int64_t>();
               break;
             case TensorProto::DataType::TensorProto_DataType_UINT32:
-              identity.append(std::to_string(value.data<uint32_t>()[0]));
+              identity << *value.data<uint32_t>();
               break;
             case TensorProto::DataType::TensorProto_DataType_UINT64:
-              identity.append(std::to_string(value.data<uint64_t>()[0]));
+              identity << *value.data<uint64_t>();
               break;
             case TensorProto::DataType::TensorProto_DataType_FLOAT:
-              identity.append(std::to_string(value.data<float>()[0]));
+              identity << *value.data<float>();
               break;
             case TensorProto::DataType::TensorProto_DataType_DOUBLE:
-              identity.append(std::to_string(value.data<double>()[0]));
+              identity << *value.data<double>();
               break;
             case TensorProto::DataType::TensorProto_DataType_STRING:
-              identity.append(value.data<std::string>()[0]);
+              identity << *value.data<std::string>();
               break;
             default:
               break;
           }
         } else {
           // TODO: handle non-scalar constant inputs, using checksum or something else
-          return ignore_identity;
+          return std::string{ignore_identity};
         }
       } else {
-        identity.append(name);
+        identity << name;
       }
+    } else {
+      return std::string{ignore_identity};
     }
+    identity << "####";
   }
-  return {identity.append("####")};
+
+  return identity.str();
 }
 }  // namespace onnxruntime

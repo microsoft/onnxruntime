@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -59,10 +59,6 @@ public class InferenceTest {
 
   private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
 
-  public static Path getResourcePath(String path) {
-    return new File(InferenceTest.class.getResource(path).getFile()).toPath();
-  }
-
   @Test
   public void environmentTest() {
     // Checks that the environment instance is the same.
@@ -70,6 +66,12 @@ public class InferenceTest {
     assertSame(env, otherEnv);
     otherEnv = OrtEnvironment.getEnvironment("test-name");
     assertSame(env, otherEnv);
+  }
+
+  @Test
+  public void testVersion() {
+    String version = env.getVersion();
+    Assertions.assertFalse(version.isEmpty());
   }
 
   @Test
@@ -630,6 +632,12 @@ public class InferenceTest {
     runProvider(OrtProvider.XNNPACK);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_COREML", matches = "1")
+  public void testCoreML() throws OrtException {
+    runProvider(OrtProvider.CORE_ML);
+  }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
@@ -648,11 +656,96 @@ public class InferenceTest {
         OnnxValue resultTensor = result.get(0);
         float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
         assertEquals(expectedOutput.length, resultArray.length);
-        assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        if (provider == OrtProvider.CORE_ML) {
+          // CoreML gives slightly different answers on a 2020 13" M1 MBP
+          assertArrayEquals(expectedOutput, resultArray, 1e-2f);
+        } else {
+          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        }
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to execute a scoring operation", e);
       }
       OnnxValue.close(container.values());
+    }
+  }
+
+  @Test
+  public void testExternalInitializers() throws IOException, OrtException {
+    String modelPath = TestHelpers.getResourcePath("/java-external-matmul.onnx").toString();
+
+    // Run by loading the external initializer from disk
+    // initializer is 1...16 in a 4x4 matrix.
+    try (SessionOptions options = new SessionOptions()) {
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {90, 100, 110, 120}, outputArr[0]);
+        }
+      }
+    }
+    // Run by overriding the initializer with the identity matrix
+    try (SessionOptions options = new SessionOptions()) {
+      OnnxTensor tensor = TestHelpers.makeIdentityMatrixBuf(env, 4);
+      options.addExternalInitializers(Collections.singletonMap("tensor", tensor));
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {1, 2, 3, 4}, outputArr[0]);
+        }
+      }
+      tensor.close();
+    }
+    // Run by overriding the initializer with the identity matrix loaded from a byte array
+    byte[] modelBytes =
+        Files.readAllBytes(TestHelpers.getResourcePath("/java-external-matmul.onnx"));
+    try (SessionOptions options = new SessionOptions()) {
+      OnnxTensor tensor = TestHelpers.makeIdentityMatrixBuf(env, 4);
+      options.addExternalInitializers(Collections.singletonMap("tensor", tensor));
+      try (OrtSession session = env.createSession(modelBytes, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {1, 2, 3, 4}, outputArr[0]);
+        }
+      }
+      tensor.close();
+    }
+  }
+
+  @Test
+  public void testOverridingInitializer() throws OrtException {
+    String modelPath = TestHelpers.getResourcePath("/java-matmul.onnx").toString();
+
+    // Run with the normal initializer
+    // initializer is 1...16 in a 4x4 matrix.
+    try (SessionOptions options = new SessionOptions()) {
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {90, 100, 110, 120}, outputArr[0]);
+        }
+      }
+    }
+    // Run by overriding the initializer with the identity matrix
+    try (SessionOptions options = new SessionOptions()) {
+      OnnxTensor tensor = TestHelpers.makeIdentityMatrixBuf(env, 4);
+      options.addInitializer("tensor", tensor);
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {1, 2, 3, 4}, outputArr[0]);
+        }
+      }
+      tensor.close();
     }
   }
 
@@ -685,6 +778,24 @@ public class InferenceTest {
     skipModels.put("mask_rcnn_keras", "Pad is not a registered function/op");
 
     return skipModels;
+  }
+
+  private static String getCustomOpLibraryName() {
+    String customLibraryName = "";
+    String osName = System.getProperty("os.name").toLowerCase();
+    if (osName.contains("windows")) {
+      // In windows we start in the wrong working directory relative to the custom_op_library.dll
+      // So we look it up as a classpath resource and resolve it to a real path
+      customLibraryName = TestHelpers.getResourcePath("/custom_op_library.dll").toString();
+    } else if (osName.contains("mac")) {
+      customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.dylib").toString();
+    } else if (osName.contains("linux")) {
+      customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.so").toString();
+    } else {
+      fail("Unknown os/platform '" + osName + "'");
+    }
+
+    return customLibraryName;
   }
 
   public static List<String[]> getModelsForTest() throws IOException {
@@ -1016,19 +1127,7 @@ public class InferenceTest {
   public void testLoadCustomLibrary() throws OrtException {
     // This test is disabled on Android.
     if (!OnnxRuntime.isAndroid()) {
-      String customLibraryName = "";
-      String osName = System.getProperty("os.name").toLowerCase();
-      if (osName.contains("windows")) {
-        // In windows we start in the wrong working directory relative to the custom_op_library.dll
-        // So we look it up as a classpath resource and resolve it to a real path
-        customLibraryName = TestHelpers.getResourcePath("/custom_op_library.dll").toString();
-      } else if (osName.contains("mac")) {
-        customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.dylib").toString();
-      } else if (osName.contains("linux")) {
-        customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.so").toString();
-      } else {
-        fail("Unknown os/platform '" + osName + "'");
-      }
+      String customLibraryName = getCustomOpLibraryName();
       String customOpLibraryTestModel =
           TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
 
@@ -1074,6 +1173,55 @@ public class InferenceTest {
   }
 
   @Test
+  public void testLoadCustomOpsUsingFunction() throws OrtException {
+    // This test is disabled on Android.
+    if (!OnnxRuntime.isAndroid()) {
+      String customLibraryName = getCustomOpLibraryName();
+      String customOpLibraryTestModel =
+          TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
+
+      try (SessionOptions options = new SessionOptions()) {
+        String osName = System.getProperty("os.name").toLowerCase();
+        boolean isWindows = osName.contains("windows");
+        boolean isMac = osName.contains("mac");
+
+        // on Windows and mac, Java.System.load will make the symbols from the loaded library
+        // available.
+        // on other platforms the dlsym uses RTLD_LOCAL so they're not. Would need to use something
+        // like
+        // https://github.com/java-native-access/jna to achieve that.
+        // As we have unit tests that validate the custom op registration across all platforms, we
+        // settle for just
+        // making sure the ORT API function can be called and behaves as expected.
+        try {
+          // manually load the library. typically we'd expect the user to link against the library,
+          // but doing that here would conflict with testLoadCustomLibrary needing to test ORT
+          // loading
+          // the library.
+          System.load(customLibraryName);
+          options.registerCustomOpsUsingFunction("RegisterCustomOps");
+
+          if (isWindows || isMac) {
+            if (OnnxRuntime.extractCUDA()) {
+              options.addCUDA();
+            }
+            try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
+              // if model was loaded the op registration was successful
+            }
+          } else {
+            fail("Expected to throw OrtException due System.load not using RTLD_GLOBAL");
+          }
+        } catch (OrtException e) {
+          System.out.println(e.getMessage());
+          assertTrue(
+              !(isWindows || isMac), "Expected to not throw OrtException on Windows or macOS");
+          assertTrue(e.getMessage().contains("Failed to get symbol RegisterCustomOps"));
+        }
+      }
+    }
+  }
+
+  @Test
   public void testModelMetadata() throws OrtException {
     String modelPath =
         TestHelpers.getResourcePath("/model_with_valid_ort_config_json.onnx").toString();
@@ -1111,8 +1259,11 @@ public class InferenceTest {
         OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
+      long[] shape = new long[] {1, 5};
+
+      // Test array input
       boolean[] flatInput = new boolean[] {true, false, true, false, true};
-      Object tensorIn = OrtUtil.reshape(flatInput, new long[] {1, 5});
+      Object tensorIn = OrtUtil.reshape(flatInput, shape);
       OnnxTensor ov = OnnxTensor.createTensor(env, tensorIn);
       container.put(inputName, ov);
       try (OrtSession.Result res = session.run(container)) {
@@ -1120,6 +1271,41 @@ public class InferenceTest {
         assertArrayEquals(flatInput, resultArray);
       }
       OnnxValue.close(container);
+      container.clear();
+
+      // Test direct buffer input
+      ByteBuffer dirBuf = ByteBuffer.allocateDirect(5).order(ByteOrder.nativeOrder());
+      dirBuf.put((byte) 1);
+      dirBuf.put((byte) 0);
+      dirBuf.put((byte) 1);
+      dirBuf.put((byte) 0);
+      dirBuf.put((byte) 1);
+      dirBuf.rewind();
+      ov = OnnxTensor.createTensor(env, dirBuf, shape, OnnxJavaType.BOOL);
+      container.put(inputName, ov);
+      try (OrtSession.Result res = session.run(container)) {
+        boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
+        assertArrayEquals(flatInput, resultArray);
+      }
+      OnnxValue.close(container);
+      container.clear();
+
+      // Test non-direct buffer input
+      ByteBuffer buf = ByteBuffer.allocate(5);
+      buf.put((byte) 1);
+      buf.put((byte) 0);
+      buf.put((byte) 1);
+      buf.put((byte) 0);
+      buf.put((byte) 1);
+      buf.rewind();
+      ov = OnnxTensor.createTensor(env, buf, shape, OnnxJavaType.BOOL);
+      container.put(inputName, ov);
+      try (OrtSession.Result res = session.run(container)) {
+        boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
+        assertArrayEquals(flatInput, resultArray);
+      }
+      OnnxValue.close(container);
+      container.clear();
     }
   }
 

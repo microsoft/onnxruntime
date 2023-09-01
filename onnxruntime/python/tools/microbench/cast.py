@@ -30,6 +30,7 @@ class BenchmarkCast(BenchmarkOp):
     def __init__(self, args):
         BenchmarkOp.__init__(self, args)
 
+    @classmethod
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
         input_data = np.random.rand(op_param.x, op_param.y, op_param.m, op_param.n).astype(op_param.input_data_type)
@@ -89,6 +90,7 @@ class BenchmarkCast(BenchmarkOp):
         model_param = ModelParam(32, 1024)
         self.add_model_cases(model_param, model, input_data_type, output_data_type)
 
+    @classmethod
     def case_profile(cls, op_param, time):
         profile = f"(x y m n input_data_type) = ({op_param.x} {op_param.y} {op_param.m} {op_param.n} {op_param.input_data_type}), {time:7.4f} ms"
         return profile

@@ -8,7 +8,7 @@
 #include "core/framework/tensor.h"
 #endif
 #include <sstream>
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // Chance of arithmetic overflow could be reduced
@@ -35,8 +35,8 @@ class BatchNormHelper {
     int kNumInputBiasDimensions = (is_spatial ? 1 : num_feature_dims + 1);
     int kNumInputMeanDimensions = (is_spatial ? 1 : num_feature_dims + 1);
     int kNumInputVarianceDimensions = (is_spatial ? 1 : num_feature_dims + 1);
-    //constexpr int kMinCudaNumDims = 4;
-    //constexpr int kMaxCudaNumDims = 5;
+    // constexpr int kMinCudaNumDims = 4;
+    // constexpr int kMaxCudaNumDims = 5;
 
     // validate 'scales' shape
     const auto& scale_dims = scale->Shape().GetDims();

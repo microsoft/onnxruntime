@@ -209,7 +209,7 @@ Status launch_lamb_compute_direction(
   ORT_ENFORCE(group_count == static_cast<int>(epsilons.size()));
 
   constexpr int tensor_count_per_group = 6;
-  const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  constexpr int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::map<std::tuple<float, float, float, float, float>, std::vector<std::vector<void*>>> buckets;
@@ -309,7 +309,7 @@ Status launch_lamb_reduction(
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
   std::vector<int> tensor_sizes_in_buckets;
-  const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  constexpr int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       ORT_RETURN_IF_ERROR(reduce_square_sum(
@@ -348,6 +348,13 @@ Status launch_lamb_reduction(
 
   // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_buckets.size() > 0 && buckets.size() > 0) {
+    if (ctx->GetUseDeterministicCompute()) {
+      static std::once_flag log_warning;
+      std::call_once(log_warning, []() {
+        LOGS_DEFAULT(WARNING) << "Non-deterministic Lamb GPU kernel is called, its outputs may still be nondeterministic.";
+      });
+    }
+
     typedef LambMultiTensorReductionFunctor<CudaTIn1, CudaTIn2, CudaTNorm, CudaTNorm, CudaTNorm> TReducer;
     TReducer reducer;
     launch_multi_tensor_functor<tensor_count_per_group, TReducer>(
@@ -396,7 +403,7 @@ Status launch_lamb_update(
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
   std::vector<int> tensor_sizes_in_bucket;
-  const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  constexpr int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       LambUpdate(

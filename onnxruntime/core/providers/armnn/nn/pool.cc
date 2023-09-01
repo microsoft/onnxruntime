@@ -30,8 +30,7 @@ thread_local std::map<OpKernel*, armnn::NetworkId> MaxPoolV8<T>::maxPoolLayers;
 template <typename T>
 armnn::IRuntimePtr MaxPoolV8<T>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
-armnn::Pooling2dDescriptor createDescriptor(std::vector<int64_t> pads, std::vector<int64_t> strides, std::vector<int64_t> kernel_shape, armnn::PoolingAlgorithm pool_type, onnxruntime::PoolAttributes pool_attrs){
-
+armnn::Pooling2dDescriptor createDescriptor(std::vector<int64_t> pads, std::vector<int64_t> strides, std::vector<int64_t> kernel_shape, armnn::PoolingAlgorithm pool_type, onnxruntime::PoolAttributes pool_attrs) {
   std::vector<int64_t> armnnStrides(2);
   armnnStrides[0] = (strides.size() == 2) ? strides[1] : 1;
   armnnStrides[1] = strides[0];
@@ -87,7 +86,6 @@ armnn::Pooling2dDescriptor createDescriptor(std::vector<int64_t> pads, std::vect
 
 template <typename T, typename PoolType>
 Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
-
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
@@ -128,12 +126,11 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   armnn::NetworkId* pNetworkId;
   PoolLayersIterator it = Pool::poolLayers.find((OpKernel*)this);
   if (it == Pool::poolLayers.end()) {
-
     armnn::PoolingAlgorithm pool_type;
-    if (PoolBase::op_name_ == "GlobalAveragePool" || PoolBase::op_name_ == "AveragePool"){
+    if (PoolBase::op_name_ == "GlobalAveragePool" || PoolBase::op_name_ == "AveragePool") {
       pool_type = armnn::PoolingAlgorithm::Average;
       LOGS_DEFAULT(VERBOSE) << "AveragePool";
-    } else if (PoolBase::op_name_ == "GlobalMaxPool" || PoolBase::op_name_ == "MaxPool"){
+    } else if (PoolBase::op_name_ == "GlobalMaxPool" || PoolBase::op_name_ == "MaxPool") {
       pool_type = armnn::PoolingAlgorithm::Max;
       LOGS_DEFAULT(VERBOSE) << "MaxPool";
     } else {
@@ -147,17 +144,17 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
     armnn::Pooling2dDescriptor poolDescriptor = createDescriptor(pads, strides, kernel_shape, pool_type, PoolBase::pool_attrs_);
 
-    armnn::IConnectableLayer *pool_armnn = myNetwork->AddPooling2dLayer(poolDescriptor, "pool_armnn");
+    armnn::IConnectableLayer* pool_armnn = myNetwork->AddPooling2dLayer(poolDescriptor, "pool_armnn");
     armnn::TensorShape inputShape = ArmNNTensorShape(X->Shape());
     armnn::TensorShape outputShape = ArmNNTensorShape(Y->Shape());
 
-    armnn::IConnectableLayer *InputLayer  = myNetwork->AddInputLayer(0);
-    armnn::IConnectableLayer *OutputLayer = myNetwork->AddOutputLayer(0);
+    armnn::IConnectableLayer* InputLayer = myNetwork->AddInputLayer(0);
+    armnn::IConnectableLayer* OutputLayer = myNetwork->AddOutputLayer(0);
 
     InputLayer->GetOutputSlot(0).Connect(pool_armnn->GetInputSlot(0));
     pool_armnn->GetOutputSlot(0).Connect(OutputLayer->GetInputSlot(0));
 
-    //Set the tensors in the network.
+    // Set the tensors in the network.
     armnn::TensorInfo inputTensorInfo(inputShape, armnn::DataType::Float32);
     InputLayer->GetOutputSlot(0).SetTensorInfo(inputTensorInfo);
 
@@ -168,8 +165,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Pool::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
-        LOGS_DEFAULT(WARNING) << "Got invalid operation; defaulting to cpu implementation";
-        return onnxruntime::Pool<T, PoolType>::Compute(context);
+      LOGS_DEFAULT(WARNING) << "Got invalid operation; defaulting to cpu implementation";
+      return onnxruntime::Pool<T, PoolType>::Compute(context);
     }
 
     // Load graph into runtime
@@ -196,7 +193,6 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
-
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
@@ -231,24 +227,23 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
   armnn::NetworkId* pNetworkId;
   PoolLayersIterator it = MaxPoolV8::maxPoolLayers.find((OpKernel*)this);
   if (it == MaxPoolV8::maxPoolLayers.end()) {
-
     armnn::NetworkId networkId;
 
     armnn::INetworkPtr myNetwork = armnn::INetwork::Create();
 
     armnn::Pooling2dDescriptor poolDescriptor = createDescriptor(pads, strides, kernel_shape, armnn::PoolingAlgorithm::Max, PoolBase::pool_attrs_);
 
-    armnn::IConnectableLayer *pool_armnn = myNetwork->AddPooling2dLayer(poolDescriptor, "pool_armnn");
+    armnn::IConnectableLayer* pool_armnn = myNetwork->AddPooling2dLayer(poolDescriptor, "pool_armnn");
     armnn::TensorShape inputShape = ArmNNTensorShape(X->Shape());
     armnn::TensorShape outputShape = ArmNNTensorShape(Y->Shape());
 
-    armnn::IConnectableLayer *InputLayer  = myNetwork->AddInputLayer(0);
-    armnn::IConnectableLayer *OutputLayer = myNetwork->AddOutputLayer(0);
+    armnn::IConnectableLayer* InputLayer = myNetwork->AddInputLayer(0);
+    armnn::IConnectableLayer* OutputLayer = myNetwork->AddOutputLayer(0);
 
     InputLayer->GetOutputSlot(0).Connect(pool_armnn->GetInputSlot(0));
     pool_armnn->GetOutputSlot(0).Connect(OutputLayer->GetInputSlot(0));
 
-    //Set the tensors in the network.
+    // Set the tensors in the network.
     armnn::TensorInfo inputTensorInfo(inputShape, armnn::DataType::Float32);
     InputLayer->GetOutputSlot(0).SetTensorInfo(inputTensorInfo);
 
@@ -259,8 +254,8 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, MaxPoolV8::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
-        LOGS_DEFAULT(WARNING) << "Got invalid operation; defaulting to cpu implementation";
-        return onnxruntime::MaxPoolV8::Compute(context);
+      LOGS_DEFAULT(WARNING) << "Got invalid operation; defaulting to cpu implementation";
+      return onnxruntime::MaxPoolV8::Compute(context);
     }
 
     // Load graph into runtime
@@ -313,15 +308,15 @@ POOLING_KERNEL(AveragePool, float, AveragePool, 11)
 POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1)
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1)
 
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                            \
-      MaxPool,                                                                      \
-      kOnnxDomain,                                                                  \
-      8,                                                                            \
-      11,                                                                           \
-      float,                                                                        \
-      kArmNNExecutionProvider,                                                      \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
-      MaxPoolV8<float>);
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
+    MaxPool,
+    kOnnxDomain,
+    8,
+    11,
+    float,
+    kArmNNExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    MaxPoolV8<float>);
 
 ONNX_OPERATOR_KERNEL_EX(
     MaxPool,

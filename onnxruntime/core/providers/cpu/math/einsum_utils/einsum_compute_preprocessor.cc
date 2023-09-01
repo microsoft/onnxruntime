@@ -261,7 +261,7 @@ Status EinsumComputePreprocessor::PostProcessBroadcastedDims() {
       size_t num_broadcasted_indices = 0;
       while (dim_iter < current_input_dim_indices_to_subscript_indices.size()) {
         auto value = current_input_dim_indices_to_subscript_indices[dim_iter];
-        if (value == EinsumOp::num_of_letters) {  //This is a broadcasted dim
+        if (value == EinsumOp::num_of_letters) {  // This is a broadcasted dim
           // Shouldn't hit this error - just a sanity check
           ORT_ENFORCE(num_broadcasted_indices < num_of_ellipsis_dims_);
           temp_current_input_dim_indices_to_subscript_indices.push_back(static_cast<int64_t>(num_broadcasted_indices));
@@ -372,8 +372,8 @@ Status EinsumComputePreprocessor::CalculateOutputShape() {
       auto letter_index = EinsumOp::LetterToIndex(subscript_label);
       if (letter_index == -1) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "The only subscript labels allowed are lower-cased letters (a-z) and "
-                              "upper-cased letters (A-Z)");
+                               "The only subscript labels allowed are lower-cased letters (a-z) and "
+                               "upper-cased letters (A-Z)");
       }
 
       if (output_letter_to_count[onnxruntime::narrow<size_t>(letter_index)] != 0) {

@@ -23,12 +23,12 @@
 
 #ifdef USE_CUDA
 namespace onnxruntime {
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
 }  // namespace onnxruntime
 #endif
 #ifdef USE_ROCM
 namespace onnxruntime {
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
 }  // namespace onnxruntime
 #endif
 
@@ -60,14 +60,14 @@ static SessionOptions session_options = {
     false,                             // use_deterministic_compute
     {},                                // config_options
     {},                                // initializers_to_share_map
-#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-    {},                                // external_initializers
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    {},  // external_initializers
 #endif
-    nullptr,                           // custom_create_thread_fn
-    nullptr,                           // custom_thread_creation_options
-    nullptr,                           // custom_join_thread_fn
+    nullptr,  // custom_create_thread_fn
+    nullptr,  // custom_thread_creation_options
+    nullptr,  // custom_join_thread_fn
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-    {},                                // custom_op_libs
+    {},  // custom_op_libs
 #endif
 };
 
@@ -631,7 +631,7 @@ void setup_training_params(BertParameters& params) {
     info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 
     params.providers.emplace(kCudaExecutionProvider, CudaProviderFactoryCreator::Create(&info));
-    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
+    params.input_allocator = CreateCUDAPinnedAllocator(CUDA_PINNED);
   }
 #endif
 
@@ -644,10 +644,10 @@ void setup_training_params(BertParameters& params) {
     if (params.gpu_mem_limit_in_gb > 0) {
       info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
-    info.miopen_conv_exhaustive_search = true; // true, exhaustive search (slow)
+    info.miopen_conv_exhaustive_search = true;  // true, exhaustive search (slow)
 
     params.providers.emplace(kRocmExecutionProvider, RocmProviderFactoryCreator::Create(&info));
-    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
+    params.input_allocator = CreateROCMPinnedAllocator(HIP_PINNED);
   }
 #endif
 

@@ -3,10 +3,13 @@
 
 #pragma once
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/optional.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 
+struct NnApi;
 namespace onnxruntime {
 namespace nnapi {
 class Model;
@@ -40,5 +43,10 @@ class NnapiExecutionProvider : public IExecutionProvider {
   const std::unordered_set<std::string> partitioning_stop_ops_;
 
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
+
+  // For Android NNAPI and stub implementation.
+  const NnApi* nnapi_handle_ = nullptr;
+  nnapi::DeviceWrapperVector nnapi_target_devices_;
+  nnapi::TargetDeviceOption target_device_option_;
 };
 }  // namespace onnxruntime

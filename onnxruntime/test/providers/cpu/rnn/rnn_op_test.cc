@@ -123,7 +123,7 @@ TEST(RNNTest, RNN_bidirectional_bias_initial_zigged_batch) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
-//Doesn't work with CUDA 11.4 on Windows. Need investigation.
+// Doesn't work with CUDA 11.4 on Windows. Need investigation.
 #if defined(USE_CUDA) && defined(_WIN32)
 TEST(RNNTest, DISABLED_RNN_bidirectional_zigged_batch) {
 #else
@@ -278,7 +278,7 @@ TEST(RNNTest, RNN_reverse_direction_zigged_batch) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
-//Doesn't work with CUDA 11.4 on Windows. Need investigation.
+// Doesn't work with CUDA 11.4 on Windows. Need investigation.
 #if defined(USE_CUDA) && defined(_WIN32)
 TEST(RNNTest, DISABLED_RNN_forward_direction_zigged_batch) {
 #else
@@ -357,7 +357,7 @@ TEST(RNNTest, RNN_forward_direction_zigged_batch) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-//Doesn't work with CUDA 11.4 on Windows. Need investigation.
+// Doesn't work with CUDA 11.4 on Windows. Need investigation.
 #if defined(USE_CUDA) && defined(_WIN32)
 TEST(RNNTest, DISABLED_RNN_bidirectional_0) {
 #else
@@ -424,7 +424,7 @@ TEST(RNNTest, RNN_bidirectional_0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-//Doesn't work with CUDA 11.4 on Windows. Need investigation.
+// Doesn't work with CUDA 11.4 on Windows. Need investigation.
 #if defined(USE_CUDA) && defined(_WIN32)
 TEST(RNNTest, DISABLED_RNN_bidirectional_1) {
 #else

@@ -2,6 +2,10 @@
 // Licensed under the MIT License.
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 
+#include <iostream>
+#include <chrono>
+#include <thread>
+
 #include "orttraining/core/framework/torch/python_common.h"
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel_context_internal.h"
@@ -15,19 +19,36 @@ using namespace onnxruntime::language_interop_ops::torch;
 namespace onnxruntime {
 namespace contrib {
 
-std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
-                                         const size_t begin_index,
-                                         const size_t num_arg) {
+namespace {
+
+std::string GetInvokeIdString(const void* ptr) {
+  const auto now = std::chrono::high_resolution_clock::now();
+  std::ostringstream oss;
+  oss << std::this_thread::get_id() << "-"
+      << std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count()
+      << "-" << std::rand() % 1000000 << "-" << reinterpret_cast<uint64_t>(ptr);
+  return oss.str();
+}
+
+std::vector<std::optional<OrtValue>> CreateOrtValueArgs(OpKernelContext* context,
+                                                        const int begin_index,
+                                                        const int num_arg) {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  std::vector<OrtValue> args;
-  for (size_t i = 0; i < num_arg; ++i) {
-    args.push_back(*ctx_internal->GetInputMLValue(static_cast<int>(begin_index + i)));
+  std::vector<std::optional<OrtValue>> args;
+  for (int i = 0; i < num_arg; ++i) {
+    int input_index = begin_index + i;
+    if (context->Input<Tensor>(input_index)) {
+      args.push_back(*ctx_internal->GetInputMLValue(input_index));
+    } else {  // if the grad input is not provided.
+      args.push_back(std::nullopt);
+    }
   }
   return args;
 }
+}  // namespace
 
 void PythonOpBase::Init(const OpKernelInfo& info) {
-  ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
+  ORT_THROW_IF_ERROR(info.GetAttr("func_name", &name_));
   ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
 
   is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
@@ -41,6 +62,12 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
 
   ORT_ENFORCE(input_tensor_types_.size() == info.node().InputDefs().size());
 
+  // Input bool scalars.
+  input_bool_scalars_ = info.GetAttrsOrDefault("input_bool_scalars", std::vector<int64_t>());
+  input_bool_scalar_positions_ = info.GetAttrsOrDefault("input_bool_scalar_positions", std::vector<int64_t>());
+
+  ORT_ENFORCE(input_bool_scalars_.size() == input_bool_scalar_positions_.size());
+
   // Input int scalars.
   input_int_scalars_ = info.GetAttrsOrDefault("input_int_scalars", std::vector<int64_t>());
   input_int_scalar_positions_ = info.GetAttrsOrDefault("input_int_scalar_positions", std::vector<int64_t>());
@@ -52,6 +79,13 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
   input_float_scalar_positions_ = info.GetAttrsOrDefault("input_float_scalar_positions", std::vector<int64_t>());
 
   ORT_ENFORCE(input_float_scalars_.size() == input_float_scalar_positions_.size());
+
+  // Input bool tuples.
+  input_bool_tuples_ = info.GetAttrsOrDefault("input_bool_tuples", std::vector<int64_t>());
+  input_bool_tuple_positions_ = info.GetAttrsOrDefault("input_bool_tuple_positions", std::vector<int64_t>());
+  input_bool_tuple_begins_ = info.GetAttrsOrDefault("input_bool_tuple_begins", std::vector<int64_t>());
+
+  ORT_ENFORCE(input_bool_tuple_positions_.size() == input_bool_tuple_begins_.size());
 
   // Input int tuples.
   input_int_tuples_ = info.GetAttrsOrDefault("input_int_tuples", std::vector<int64_t>());
@@ -71,8 +105,11 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
   input_pointer_scalar_positions_ = info.GetAttrsOrDefault("input_pointer_scalar_positions", std::vector<int64_t>());
 
   ORT_ENFORCE(input_pointer_scalars_.size() == input_pointer_scalar_positions_.size());
-  auto non_tensor_input_count = input_int_scalars_.size() + input_float_scalars_.size() +
-                                input_int_tuple_positions_.size() + input_float_tuple_positions_.size() +
+  auto non_tensor_input_count = input_bool_scalars_.size() + input_int_scalars_.size() +
+                                input_float_scalars_.size() +
+                                input_bool_tuple_positions_.size() +
+                                input_int_tuple_positions_.size() +
+                                input_float_tuple_positions_.size() +
                                 input_pointer_scalars_.size();
   ORT_ENFORCE(non_tensor_input_count + input_tensor_types_.size() == input_convention_.size(),
               "Total input (tensor + non-tensor) count did not match.");
@@ -82,12 +119,17 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
 
   CreateConstArgs();
   CreateArgPositions();
+
+  kernel_invoke_id_ = GetInvokeIdString(this);
 }
 
 void PythonOpBase::Clear() {
-  for (auto ptr : const_args_) {
-    auto obj = reinterpret_cast<PyObject*>(ptr);
-    Py_DECREF(obj);
+  for (const auto& arg : const_arg_set_.GetArgs()) {
+    // Only release owned PyObject.
+    if (arg.is_owned) {
+      auto obj = reinterpret_cast<PyObject*>(arg.data_ptr);
+      Py_DECREF(obj);
+    }
   }
 }
 
@@ -96,19 +138,20 @@ void PythonOpBase::RunForward(OpKernelContext* context,
                               std::vector<OrtValue>& returned_ortvalues) const {
   // Create non-constant arguments for calling Python function.
   // Constant arguments are created in ctor.
-  std::vector<OrtValue> args = CreateOrtValueArgs(context, 0, context->InputCount());
+  std::vector<std::optional<OrtValue>> args = CreateOrtValueArgs(context, 0, context->InputCount());
   // Invoke Python calls.
   TorchProxy::GetInstance().Forward(
       OrtTorchFunctionPool::GetInstance().GetForwardCore(name_),
       input_requires_grads_,
       args,
       arg_positions_,
-      const_args_,
-      const_arg_positions_,
+      const_arg_set_.GetDataPtrs(),
+      const_arg_set_.GetPositions(),
       diff_ctx,
       returned_ortvalues,
       is_training_mode_,
-      inplace_ != 0);
+      inplace_ != 0,
+      kernel_invoke_id_);
 
   ORT_ENFORCE(1 + returned_ortvalues.size() == static_cast<size_t>(context->OutputCount()),
               "Output count mismatch for PythonOp run");
@@ -119,71 +162,94 @@ void PythonOpBase::SetOutputs(OpKernelContext* context, void* diff_ctx, std::vec
   SetOtherOutputs(context, returned_args);
 }
 
-void PythonOpBase::AddIntScalarArgs() {
-  ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
+void PythonOpBase::AddPrimitiveTypeScalarArgs() {
+  for (size_t i = 0; i < input_bool_scalars_.size(); ++i) {
+    const_arg_set_.Add(input_bool_scalar_positions_.at(i), PyBool_FromLong(input_bool_scalars_.at(i)), true /*owned*/);
+  }
+
   for (size_t i = 0; i < input_int_scalars_.size(); ++i) {
-    const_arg_positions_.emplace_back(input_int_scalar_positions_.at(i));
-    const_args_.emplace_back(Py_BuildValue("L", static_cast<long long>(input_int_scalars_.at(i))));
+    const_arg_set_.Add(input_int_scalar_positions_.at(i),
+                       Py_BuildValue("L", static_cast<long long>(input_int_scalars_.at(i))),
+                       true /*owned*/);
   }
 
   for (size_t i = 0; i < input_float_scalars_.size(); ++i) {
-    const_arg_positions_.emplace_back(input_float_scalar_positions_.at(i));
-    const_args_.emplace_back(Py_BuildValue("f", input_float_scalars_.at(i)));
+    const_arg_set_.Add(input_float_scalar_positions_.at(i), Py_BuildValue("f", input_float_scalars_.at(i)),
+                       true /*owned*/);
   }
 }
 
 void PythonOpBase::AddInputTupleArgs() {
-  ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
+  for (size_t i = 0; i < input_bool_tuple_begins_.size(); ++i) {
+    // Process i-th tuple.
+    // Starting index of i-th tuple in the concatenation buffer.
+    const size_t begin = input_bool_tuple_begins_.at(i);
+    // Endding (exclusive) index of i-th tuple in the concatenation buffer.
+    const size_t end =
+        (i + 1 == input_bool_tuple_begins_.size()) ? input_bool_tuples_.size() : input_bool_tuple_begins_.at(i + 1);
+    PyObject* tuple = PyTuple_New(end - begin);
+    for (size_t j = begin; j < end; ++j) {
+      PyObject* item = PyBool_FromLong(input_bool_tuples_.at(j));
+      PyTuple_SetItem(tuple, j - begin, item);
+    }
+
+    const_arg_set_.Add(input_bool_tuple_positions_.at(i), tuple, true /*owned*/);
+  }
+
   for (size_t i = 0; i < input_int_tuple_begins_.size(); ++i) {
     // Process i-th tuple.
     // Starting index of i-th tuple in the concatenation buffer.
     const size_t begin = input_int_tuple_begins_.at(i);
     // Endding (exclusive) index of i-th tuple in the concatenation buffer.
-    const size_t end = (i + 1 == input_int_tuple_begins_.size()) ? input_int_tuples_.size() : input_int_tuple_begins_.at(i + 1);
+    const size_t end =
+        (i + 1 == input_int_tuple_begins_.size()) ? input_int_tuples_.size() : input_int_tuple_begins_.at(i + 1);
     PyObject* tuple = PyTuple_New(end - begin);
     for (size_t j = begin; j < end; ++j) {
       PyObject* item = Py_BuildValue("L", input_int_tuples_.at(j));
       PyTuple_SetItem(tuple, j - begin, item);
     }
-    const_arg_positions_.emplace_back(input_int_tuple_positions_.at(i));
-    const_args_.emplace_back(tuple);
+
+    const_arg_set_.Add(input_int_tuple_positions_.at(i), tuple, true /*owned*/);
   }
 }
 
 void PythonOpBase::AddFloatTupleArgs() {
-  ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
   for (size_t i = 0; i < input_float_tuple_begins_.size(); ++i) {
     // Process i-th tuple.
     // Starting index of i-th tuple in the concatenation buffer.
     const size_t begin = input_float_tuple_begins_.at(i);
     // Endding (exclusive) index of i-th tuple in the concatenation buffer.
-    const size_t end = (i + 1 == input_float_tuple_begins_.size()) ? input_float_tuples_.size() : input_float_tuple_begins_.at(i + 1);
+    const size_t end =
+        (i + 1 == input_float_tuple_begins_.size()) ? input_float_tuples_.size() : input_float_tuple_begins_.at(i + 1);
     PyObject* tuple = PyTuple_New(end - begin);
     for (size_t j = begin; j < end; ++j) {
       PyObject* item = Py_BuildValue("f", input_float_tuples_.at(j));
       PyTuple_SetItem(tuple, j - begin, item);
     }
-    const_arg_positions_.emplace_back(input_float_tuple_positions_.at(i));
-    const_args_.emplace_back(tuple);
+
+    const_arg_set_.Add(input_float_tuple_positions_.at(i), tuple, true /*owned*/);
   }
 }
 
 void PythonOpBase::AddPointerScalarArgs() {
-  ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
   for (size_t i = 0; i < input_pointer_scalars_.size(); ++i) {
-    const_arg_positions_.emplace_back(input_pointer_scalar_positions_.at(i));
     PyObject* ptr = reinterpret_cast<PyObject*>(input_pointer_scalars_.at(i));
-    const_args_.emplace_back(ptr);
+    // We don't want to own the Python object from C++ side because once C++ destructor called through pybind,
+    // it may trigger python side object destroying, potentially requires GILs, resulting in a hang.
+    // Instead, we have mechanism during exporting we increase the reference count already.
+    const_arg_set_.Add(input_pointer_scalar_positions_.at(i), ptr, false /*owned*/);
   }
 }
 
 void PythonOpBase::CreateConstArgs() {
-  ORT_ENFORCE(const_args_.size() == 0);
-  ORT_ENFORCE(const_arg_positions_.size() == 0);
-  AddIntScalarArgs();
+  ORT_ENFORCE(const_arg_set_.Size() == 0);
+  AddPrimitiveTypeScalarArgs();
   AddInputTupleArgs();
   AddFloatTupleArgs();
   AddPointerScalarArgs();
+
+  // Freeze the constant arg.
+  const_arg_set_.Finalize();
 }
 
 void PythonOpBase::CreateArgPositions() {
@@ -191,11 +257,11 @@ void PythonOpBase::CreateArgPositions() {
 
   // occupied[i] being true means the i-th input argument
   // to Python function has been set.
-  std::vector<bool> occupied(input_tensor_types_.size() + const_args_.size(), false);
+  std::vector<bool> occupied(input_tensor_types_.size() + const_arg_set_.Size(), false);
 
   // We know all non-tensors were set above, so let's catch up.
-  for (const auto pos : const_arg_positions_) {
-    occupied.at(pos) = true;
+  for (auto& arg : const_arg_set_.GetArgs()) {
+    occupied.at(arg.position) = true;
   }
 
   // Search for empty slots for tensors.
@@ -228,20 +294,23 @@ void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValu
 }
 
 void PythonOpGradBase::Init(const OpKernelInfo& info) {
-  ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
+  ORT_THROW_IF_ERROR(info.GetAttr("func_name", &name_));
   ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
   ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
   ORT_THROW_IF_ERROR(info.GetAttr("output_convention", &output_convention_));
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
   output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
-  ORT_ENFORCE(output_tensor_types_.size() == output_tensor_requires_grads_.size(), "backward tensor output count mismatch");
+  ORT_ENFORCE(output_tensor_types_.size() == output_tensor_requires_grads_.size(),
+              "backward tensor output count mismatch");
 
   SetPositions();
+
+  kernel_invoke_id_ = GetInvokeIdString(this);
 }
 
 void PythonOpGradBase::RunBackward(OpKernelContext* context,
                                    std::vector<OrtValue>& returned_ortvalues) const {
-  auto args = CreateOrtValueArgs(context, 1, context->InputCount() - 1);
+  std::vector<std::optional<OrtValue>> args = CreateOrtValueArgs(context, 1, context->InputCount() - 1);
   // This is called "const" because that's how Pytorch calls all non-tensor inputs.
   const Tensor* context_id_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
@@ -258,7 +327,8 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
       const_args,
       const_arg_positions_,
       returned_ortvalues,
-      inplace_ != 0);
+      inplace_ != 0,
+      kernel_invoke_id_);
 
   OrtTorchFunctionPool::GetInstance().UnregisterContext(*context_index_ptr);
 }

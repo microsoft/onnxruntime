@@ -371,7 +371,7 @@ class MlasQgemmTest<AType, BType, int32_t, Packed, Threaded> : public MlasQgemmT
                 Test(M, N + 1, K, 7 + a, offa, offb);
                 Test(M + 12, N, K, 7 + a, offa, offb);
                 Test(M, N + 15, K, 7 + a, offa, offb);
-                Test(M + 15, N + 15, K,7 + a, offa, offb);
+                Test(M + 15, N + 15, K, 7 + a, offa, offb);
               }
             }
           }
@@ -453,7 +453,7 @@ class MlasQgemmTest<AType, BType, float, Packed, Threaded> : public MlasQgemmTes
                AFloat + K * M * b, lda,
                BFloat + N * K * b, ldb, 0.0f,
                CReference + N * M * b, ldc,
-          MlasQgemmTestBase<Packed, Threaded>::threadpool_);
+               MlasQgemmTestBase<Packed, Threaded>::threadpool_);
     }
 
     if (Bias != nullptr) {

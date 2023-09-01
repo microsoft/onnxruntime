@@ -4,7 +4,7 @@
 #pragma once
 
 namespace onnxruntime {
-    
+
 namespace training {
 
 void RegisterTrainingOpSchemas();

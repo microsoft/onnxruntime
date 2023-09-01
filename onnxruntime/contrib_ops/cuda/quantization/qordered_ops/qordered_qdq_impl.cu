@@ -14,8 +14,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
 template <typename FloatT>
 struct DequantizeVec {
 };
@@ -509,8 +507,6 @@ int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order
       return 0;
   }
 }
-
-#endif
 
 }  // namespace cuda
 }  // namespace contrib

@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_rocblas.h"
-
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
@@ -32,8 +30,10 @@ class RocBlasGemm : public IKernelExplorer {
               DeviceArray& a, int64_t lda,
               DeviceArray& b, int64_t ldb,
               double beta,
-              DeviceArray& c, int64_t ldc) {
+              DeviceArray& c, int64_t ldc)
+      : params_{} {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -49,6 +49,16 @@ class RocBlasGemm : public IKernelExplorer {
     params_.beta = beta;
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
+
+    type_strings_.emplace_back("RocBlasGemmDefault");
+    ops_.emplace_back([](auto* params) { return RocBlasGemmOp<T>(params); });
+
+#ifdef USE_ROCBLAS_EXTENSION_API
+    for (auto&& [type_string, op] : GetRocBlasGemmTypeStringAndOps<T>()) {
+      type_strings_.emplace_back(std::move(type_string));
+      ops_.emplace_back(std::move(op));
+    }
+#endif
   }
 
   ~RocBlasGemm() {
@@ -57,25 +67,35 @@ class RocBlasGemm : public IKernelExplorer {
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(op_(&params_));
+    ORT_THROW_IF_ERROR(ops_[selected_op_](&params_));
   }
 
   std::vector<std::string> ListOps() const {
-    return {"Rocblas"};
+    return type_strings_;
   }
 
   bool SelectOp(const std::string& name) {
-    return name == "Rocblas";
+    for (size_t i = 0; i < ops_.size(); i++) {
+      if (type_strings_[i] == name) {
+        selected_op_ = i;
+        Status status = ops_[i](&params_);
+        return status.IsOK();
+      }
+    }
+
+    ORT_THROW("Cannot find implementation ", name);
   }
 
  private:
   rocblas_handle rocblas_handle_;
 
   using ParamsT = GemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
 
   ParamsT params_{};
-  OpT op_{RocBlasGemmOp<T>};
+  std::vector<OpT> ops_;
+  std::vector<std::string> type_strings_;
+  size_t selected_op_{};
 };
 
 template <typename T>
@@ -88,9 +108,11 @@ class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
                      std::vector<DeviceArray>& bs, int64_t ldb,
                      double beta,
                      std::vector<DeviceArray>& cs, int64_t ldc,
-                     int64_t batch) {
+                     int64_t batch)
+      : params_{} {
     this->CopyAsBsCsPointersToDevice(as, bs, cs, batch);
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.tuning_ctx = this->TuningContext();
     params_.stream = this->Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -107,6 +129,16 @@ class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
     params_.cs = this->dev_cs_.get();
     params_.ldc = ldc;
     params_.batch = batch;
+
+    type_strings_.emplace_back("RocBlasBatchedGemmDefault");
+    ops_.emplace_back([](auto* params) { return RocBlasBatchedGemmOp<T>(params); });
+
+#ifdef USE_ROCBLAS_EXTENSION_API
+    for (auto&& [type_string, op] : GetRocBlasBatchedGemmTypeStringAndOps<T>()) {
+      type_strings_.emplace_back(std::move(type_string));
+      ops_.emplace_back(std::move(op));
+    }
+#endif
   }
 
   ~RocBlasBatchedGemm() {
@@ -115,25 +147,35 @@ class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(op_(&params_));
+    ORT_THROW_IF_ERROR(ops_[selected_op_](&params_));
   }
 
   std::vector<std::string> ListOps() const {
-    return {"Rocblas"};
+    return type_strings_;
   }
 
   bool SelectOp(const std::string& name) {
-    return name == "Rocblas";
+    for (size_t i = 0; i < ops_.size(); i++) {
+      if (type_strings_[i] == name) {
+        selected_op_ = i;
+        Status status = ops_[i](&params_);
+        return status.IsOK();
+      }
+    }
+
+    ORT_THROW("Cannot find implementation ", name);
   }
 
  private:
   rocblas_handle rocblas_handle_;
 
   using ParamsT = BatchedGemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
 
   ParamsT params_{};
-  OpT op_{RocBlasBatchedGemmOp<T>};
+  std::vector<OpT> ops_;
+  std::vector<std::string> type_strings_;
+  size_t selected_op_{};
 };
 
 template <typename T>
@@ -146,8 +188,10 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
                             DeviceArray& b, int64_t ldb, int64_t stride_b,
                             double beta,
                             DeviceArray& c, int64_t ldc, int64_t stride_c,
-                            int64_t batch) {
+                            int64_t batch)
+      : params_{} {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -167,6 +211,16 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
     params_.ldc = ldc;
     params_.stride_c = stride_c;
     params_.batch = batch;
+
+    type_strings_.emplace_back("RocBlasStridedBatchedGemmDefault");
+    ops_.emplace_back([](auto* params) { return RocBlasStridedBatchedGemmOp<T>(params); });
+
+#ifdef USE_ROCBLAS_EXTENSION_API
+    for (auto&& [type_string, op] : GetRocBlasStridedBatchedGemmTypeStringAndOps<T>()) {
+      type_strings_.emplace_back(std::move(type_string));
+      ops_.emplace_back(std::move(op));
+    }
+#endif
   }
 
   ~RocBlasStridedBatchedGemm() {
@@ -175,25 +229,35 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(op_(&params_));
+    ORT_THROW_IF_ERROR(ops_[selected_op_](&params_));
   }
 
   std::vector<std::string> ListOps() const {
-    return {"Rocblas"};
+    return type_strings_;
   }
 
   bool SelectOp(const std::string& name) {
-    return name == "Rocblas";
+    for (size_t i = 0; i < ops_.size(); i++) {
+      if (type_strings_[i] == name) {
+        selected_op_ = i;
+        Status status = ops_[i](&params_);
+        return status.IsOK();
+      }
+    }
+
+    ORT_THROW("Cannot find implementation ", name);
   }
 
  private:
   rocblas_handle rocblas_handle_;
 
   using ParamsT = StridedBatchedGemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
 
   ParamsT params_{};
-  OpT op_{RocBlasStridedBatchedGemmOp<T>};
+  std::vector<OpT> ops_;
+  std::vector<std::string> type_strings_;
+  size_t selected_op_{};
 };
 
 #define REGISTER_OP_COMMON(type, dtype)            \
@@ -233,7 +297,7 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
                     DeviceArray&, int64_t, int64_t,            \
                     int64_t>())
 
-void InitRocBlasGemm(py::module mod) {
+KE_REGISTER(mod) {
   REGISTER_GEMM(float);
   REGISTER_GEMM(half);
 

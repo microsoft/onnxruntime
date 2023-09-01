@@ -47,7 +47,7 @@ TEST(KernelRegistryTests, dup_simple) {
   ASSERT_STATUS_NOT_OK(RegKernels(r, function_table, CreateFakeKernel));
 }
 
-//duplicated registration. One in default("") domain, another in "ai.onnx" domain
+// duplicated registration. One in default("") domain, another in "ai.onnx" domain
 TEST(KernelRegistryTests, dup_simple2) {
   KernelRegistry r;
   std::vector<std::unique_ptr<KernelDef>> function_table;
@@ -56,7 +56,7 @@ TEST(KernelRegistryTests, dup_simple2) {
   ASSERT_STATUS_NOT_OK(RegKernels(r, function_table, CreateFakeKernel));
 }
 
-//One in default("") domain, another in ms domain. Should be ok
+// One in default("") domain, another in ms domain. Should be ok
 TEST(KernelRegistryTests, one_op_name_in_two_domains) {
   KernelRegistry r;
   std::vector<std::unique_ptr<KernelDef>> function_table;
@@ -65,7 +65,7 @@ TEST(KernelRegistryTests, one_op_name_in_two_domains) {
   ASSERT_STATUS_OK(RegKernels(r, function_table, CreateFakeKernel));
 }
 
-//One op two versions
+// One op two versions
 TEST(KernelRegistryTests, two_versions) {
   KernelRegistry r;
   std::vector<std::unique_ptr<KernelDef>> function_table;
@@ -74,7 +74,7 @@ TEST(KernelRegistryTests, two_versions) {
   ASSERT_STATUS_OK(RegKernels(r, function_table, CreateFakeKernel));
 }
 
-//One op two versions
+// One op two versions
 TEST(KernelRegistryTests, two_versions2) {
   KernelRegistry r;
   std::vector<std::unique_ptr<KernelDef>> function_table;
@@ -83,7 +83,7 @@ TEST(KernelRegistryTests, two_versions2) {
   ASSERT_STATUS_NOT_OK(RegKernels(r, function_table, CreateFakeKernel));
 }
 
-//One op two versions
+// One op two versions
 TEST(KernelRegistryTests, two_versions3) {
   KernelRegistry r;
   std::vector<std::unique_ptr<KernelDef>> function_table;
@@ -92,7 +92,7 @@ TEST(KernelRegistryTests, two_versions3) {
   ASSERT_STATUS_OK(RegKernels(r, function_table, CreateFakeKernel));
 }
 
-//One op two versions
+// One op two versions
 TEST(KernelRegistryTests, two_versions4) {
   KernelRegistry r;
   std::vector<std::unique_ptr<KernelDef>> function_table;

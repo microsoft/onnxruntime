@@ -1,22 +1,18 @@
 import argparse
-import os
+import os  # noqa: F401
 import sys
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Sequence, Text, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Text, Tuple, TypeVar, Union, cast  # noqa: F401
 
-import numpy as np
+import numpy as np  # noqa: F401
 import onnx
-from onnx import (
-    AttributeProto,
-    GraphProto,
-    SparseTensorProto,
-    TensorProto,
-    ValueInfoProto,
-    helper,
-    mapping,
-    numpy_helper,
-    utils,
-)
+from onnx import AttributeProto  # noqa: F401
+from onnx import GraphProto  # noqa: F401
+from onnx import SparseTensorProto  # noqa: F401
+from onnx import mapping  # noqa: F401
+from onnx import numpy_helper  # noqa: F401
+from onnx import utils  # noqa: F401
+from onnx import TensorProto, ValueInfoProto, helper
 from onnx.helper import make_opsetid
 
 
@@ -57,7 +53,7 @@ def make_sparse_tensor_value_info(
 
         if shape_denotation:
             if len(shape_denotation) != len(shape):
-                raise ValueError("Invalid shape_denotation. " "Must be of the same length as shape.")
+                raise ValueError("Invalid shape_denotation. Must be of the same length as shape.")
 
         for i, d in enumerate(shape):
             dim = sparse_tensor_shape_proto.dim.add()
@@ -68,7 +64,7 @@ def make_sparse_tensor_value_info(
             elif isinstance(d, str):
                 dim.dim_param = d
             else:
-                raise ValueError("Invalid item in shape: {}. " "Needs to be one of `int` or `text`.".format(d))
+                raise ValueError(f"Invalid item in shape: {d}. Needs to be one of `int` or `text`.")
 
             if shape_denotation:
                 dim.denotation = shape_denotation[i]
@@ -85,9 +81,9 @@ def create_model(output_file_name):
         domain="com.microsoft",
     )
 
-    value_info_A = make_sparse_tensor_value_info("sparse_A", TensorProto.FLOAT, [9, 9])
-    value_info_B = helper.make_tensor_value_info("dense_B", TensorProto.FLOAT, [9, 9])
-    value_info_Y = helper.make_tensor_value_info("dense_Y", TensorProto.FLOAT, [9, 9])
+    value_info_A = make_sparse_tensor_value_info("sparse_A", TensorProto.FLOAT, [9, 9])  # noqa: N806
+    value_info_B = helper.make_tensor_value_info("dense_B", TensorProto.FLOAT, [9, 9])  # noqa: N806
+    value_info_Y = helper.make_tensor_value_info("dense_Y", TensorProto.FLOAT, [9, 9])  # noqa: N806
 
     graph_def = helper.make_graph(
         nodes=[matmul_node],

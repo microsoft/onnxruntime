@@ -22,10 +22,10 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   // There is only one output in inference mode
   Tensor* Y = ctx->Output(0, X->Shape());
 
-  IAllocatorUniquePtr<void> pbatch_mean = GetScratchBuffer<void>(mean->SizeInBytes());
-  IAllocatorUniquePtr<void> pbatch_variance = GetScratchBuffer<void>(var->SizeInBytes());
-  IAllocatorUniquePtr<void> preserver_space_1 = GetScratchBuffer<void>(mean->SizeInBytes());
-  IAllocatorUniquePtr<void> preserver_space_2 = GetScratchBuffer<void>(var->SizeInBytes());
+  IAllocatorUniquePtr<void> pbatch_mean = GetScratchBuffer<void>(mean->SizeInBytes(), ctx->GetComputeStream());
+  IAllocatorUniquePtr<void> pbatch_variance = GetScratchBuffer<void>(var->SizeInBytes(), ctx->GetComputeStream());
+  IAllocatorUniquePtr<void> preserver_space_1 = GetScratchBuffer<void>(mean->SizeInBytes(), ctx->GetComputeStream());
+  IAllocatorUniquePtr<void> preserver_space_2 = GetScratchBuffer<void>(var->SizeInBytes(), ctx->GetComputeStream());
 
   const aclDataType aclType = getACLType<T>();
   aclFormat format = ACL_FORMAT_NCHW;
@@ -76,7 +76,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
                                               ACL_ENGINE_SYS,
                                               ACL_COMPILE_SYS,
                                               NULL,
-                                              Stream()));
+                                              Stream(ctx)));
 
   return Status::OK();
 }

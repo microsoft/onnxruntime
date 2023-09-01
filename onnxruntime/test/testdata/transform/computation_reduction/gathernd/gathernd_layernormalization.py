@@ -1,6 +1,6 @@
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen", 128])
 unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
@@ -10,12 +10,12 @@ unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
 )
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", 128])
 
-layer_norm1_weight_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+layer_norm1_weight_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape(128)
 layer_norm1_weight_initializer = numpy_helper.from_array(
     layer_norm1_weight_np_vals, "bert.encoder.layer.2.output.LayerNorm.weight"
 )
 
-layer_norm1_bias_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+layer_norm1_bias_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape(128)
 layer_norm1_bias_initializer = numpy_helper.from_array(
     layer_norm1_bias_np_vals, "bert.encoder.layer.2.output.LayerNorm.bias"
 )

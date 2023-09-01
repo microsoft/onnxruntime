@@ -5,7 +5,7 @@ parameters:
 
 steps:
 - ${{ if eq(parameters['DoEsrp'], 'true') }}:
-  - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+  - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@2
     displayName: ${{ parameters.DisplayName }}
     inputs:
       ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
@@ -13,7 +13,7 @@ steps:
       Pattern: '*.nupkg'
       signConfigType: inlineSignParams
       inlineOperation: |
-       [ 
+       [
            {
                "keyCode": "CP-401405",
                "operationSetCode": "NuGetSign",

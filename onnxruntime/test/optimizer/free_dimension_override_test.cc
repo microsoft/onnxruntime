@@ -67,15 +67,15 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
   graph_transformer = std::make_unique<FreeDimensionOverrideTransformer>(overrides);
   bool modified = false;
   ASSERT_TRUE(graph_transformer->Apply(graph, modified,
-    DefaultLoggingManager().DefaultLogger()).IsOK());
-  ASSERT_FALSE(modified); // no overrides apply anymore
+                                       DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
+  ASSERT_FALSE(modified);  // no overrides apply anymore
 }
-
 
 TEST(FreeDimensionOverrideDenotationTransformerTest, Test) {
   TestFreeDimensions(FreeDimensionOverrideType::Denotation);
   TestFreeDimensions(FreeDimensionOverrideType::Name);
 }
-  
+
 }  // namespace test
 }  // namespace onnxruntime

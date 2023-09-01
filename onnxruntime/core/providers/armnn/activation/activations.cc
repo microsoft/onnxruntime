@@ -23,7 +23,6 @@ armnn::IRuntimePtr Relu<T>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
 template <typename T>
 Status Relu<T>::Compute(OpKernelContext* context) const {
-
   const Tensor* X = context->Input<Tensor>(0);
   Tensor* Y = context->Output(0, X->Shape());
 
@@ -33,7 +32,6 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
   armnn::NetworkId* pNetworkId;
   ReluLayersIterator it = Relu::reluLayers.find((OpKernel*)this);
   if (it == Relu::reluLayers.end()) {
-
     armnn::NetworkId networkId;
     armnn::INetworkPtr myNetwork = armnn::INetwork::Create();
 
@@ -45,13 +43,13 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
 
     armnn::IConnectableLayer* activation = myNetwork->AddActivationLayer(desc, "relu_armnn");
 
-    armnn::IConnectableLayer *InputLayer  = myNetwork->AddInputLayer(0);
-    armnn::IConnectableLayer *OutputLayer = myNetwork->AddOutputLayer(0);
+    armnn::IConnectableLayer* InputLayer = myNetwork->AddInputLayer(0);
+    armnn::IConnectableLayer* OutputLayer = myNetwork->AddOutputLayer(0);
 
     InputLayer->GetOutputSlot(0).Connect(activation->GetInputSlot(0));
     activation->GetOutputSlot(0).Connect(OutputLayer->GetInputSlot(0));
 
-    //Set the tensors in the network.
+    // Set the tensors in the network.
     armnn::TensorInfo inputTensorInfo(inputShape, armnn::DataType::Float32);
     InputLayer->GetOutputSlot(0).SetTensorInfo(inputTensorInfo);
 

@@ -11,8 +11,8 @@ namespace onnxruntime {
 namespace cann {
 
 template <typename T>
-Status MaxPool<T>::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
+Status MaxPool<T>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
   const auto X_dims = X_shape.GetDims();
 
@@ -35,7 +35,7 @@ Status MaxPool<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto Y_dims = pool_attrs_.SetOutputSize(X_shape, X_shape[1], &pads);
   TensorShape Y_shape(Y_dims);
-  Tensor* Y = context->Output(0, Y_shape);
+  Tensor* Y = ctx->Output(0, Y_shape);
   if (Y_shape.Size() == 0)
     return Status::OK();
 
@@ -85,7 +85,7 @@ Status MaxPool<T>::ComputeInternal(OpKernelContext* context) const {
                                               ACL_ENGINE_SYS,
                                               ACL_COMPILE_SYS,
                                               NULL,
-                                              Stream()));
+                                              Stream(ctx)));
 
   return Status::OK();
 }

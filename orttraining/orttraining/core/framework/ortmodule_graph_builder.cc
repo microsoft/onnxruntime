@@ -66,7 +66,8 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
 // shape info to constants, the optimized graph (before gradient graph building) can not be shared.
 // So each time we need to start from the beginning, i.e., 1) replace input shapes, 2) apply graph optimizers,
 // 3) build gradient graph, and finally 4) adjust the graph inputs and outputs.
-Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr) {
+Status OrtModuleGraphBuilder::Build(const TrainingGraphTransformerConfiguration& pre_grad_graph_transformer_config,
+                                    const std::vector<std::vector<int64_t>>* input_shapes_ptr) {
   // Make a copy of the original model.
   auto original_model_proto = original_model_->ToProto();
   ORT_RETURN_IF_ERROR(Model::Load(original_model_proto, forward_model_, nullptr, *logger_));
@@ -82,9 +83,9 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
     return Status::OK();
   }
 
-  // Optimize the inference graph and build the gradient graph.
+  // Optimize the forward graph and then build the gradient graph.
   std::unordered_set<std::string> x_node_arg_names;
-  ORT_RETURN_IF_ERROR(OptimizeForwardGraph(x_node_arg_names));
+  ORT_RETURN_IF_ERROR(OptimizeForwardGraph(pre_grad_graph_transformer_config, x_node_arg_names));
   ORT_RETURN_IF_ERROR(BuildGradientGraph(x_node_arg_names));
 
   if (config_.enable_caching) {
@@ -147,12 +148,13 @@ Status OrtModuleGraphBuilder::SetConcreteInputShapes(const std::vector<std::vect
   return forward_graph.Resolve();
 }
 
-Status OrtModuleGraphBuilder::OptimizeForwardGraph(std::unordered_set<std::string>& x_node_arg_names) {
+Status OrtModuleGraphBuilder::OptimizeForwardGraph(const TrainingGraphTransformerConfiguration& config,
+                                                   std::unordered_set<std::string>& x_node_arg_names) {
   // Resolve original graph, register and apply transformers for pre-training.
   Graph& forward_graph = forward_model_->MainGraph();
   ORT_RETURN_IF_ERROR(forward_graph.Resolve());
 
-  GraphTransformerManager graph_transformation_mgr{2};
+  GraphTransformerManager graph_transformation_mgr{3};
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
@@ -161,7 +163,7 @@ Status OrtModuleGraphBuilder::OptimizeForwardGraph(std::unordered_set<std::strin
                  std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider);
+        level, x_node_arg_names, config, *cpu_execution_provider);
     for (auto& entry : transformers_to_register) {
       ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), level));
     }
@@ -178,6 +180,10 @@ Status OrtModuleGraphBuilder::OptimizeForwardGraph(std::unordered_set<std::strin
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     ORT_RETURN_IF_ERROR(
         graph_transformation_mgr.ApplyTransformers(forward_graph, static_cast<TransformerLevel>(i), *logger_));
+  }
+
+  if (!config.optimized_pre_grad_filepath.empty()) {
+    ORT_RETURN_IF_ERROR(Model::Save(*forward_model_, config.optimized_pre_grad_filepath));
   }
 
   return Status::OK();
@@ -303,7 +309,9 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
 
     if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) ==
         non_differentiable_indices.end()) {
-      yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+      NodeArg* grad_node_arg = gradient_graph.GetNodeArg(grad_name);
+      ORT_ENFORCE(grad_node_arg != nullptr, "Differentiable param grad node arg should exist.");
+      yield_output_node_args.emplace_back(grad_node_arg);
       graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }
@@ -329,9 +337,10 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
 
   attributes.insert({full_shape_outputs_name, full_shape_outputs});
 
-  // Handle potential duplciated output_gradient names
+  // Handle potential duplicated output_gradient names
   std::unordered_map<std::string, std::vector<size_t>> name_to_idx;
   for (size_t i = 0; i < yield_output_node_args.size(); ++i) {
+    ORT_ENFORCE(yield_output_node_args[i] != nullptr);
     const std::string& name = yield_output_node_args[i]->Name();
     auto it = name_to_idx.find(name);
     if (it == name_to_idx.end()) {

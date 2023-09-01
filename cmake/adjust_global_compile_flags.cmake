@@ -15,11 +15,11 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
   string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
 endif()
 
-if (onnxruntime_ENABLE_EAGER_MODE)
-  string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI}")
-endif()
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  string(APPEND CMAKE_C_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
+  string(APPEND CMAKE_CXX_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_UNIMPLEMENTED_SYSCALLS=1")
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
   # Enable LTO for release single-thread build
   if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     # NOTES:
@@ -51,10 +51,8 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
 
   # Build WebAssembly with multi-threads support.
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    string(APPEND CMAKE_C_FLAGS " -pthread")
-    string(APPEND CMAKE_CXX_FLAGS " -pthread")
-    string(APPEND CMAKE_C_FLAGS " -s USE_PTHREADS=1 -Wno-pthreads-mem-growth")
-    string(APPEND CMAKE_CXX_FLAGS " -s USE_PTHREADS=1 -Wno-pthreads-mem-growth")
+    string(APPEND CMAKE_C_FLAGS " -pthread -Wno-pthreads-mem-growth")
+    string(APPEND CMAKE_CXX_FLAGS " -pthread -Wno-pthreads-mem-growth")
   endif()
 endif()
 
@@ -222,27 +220,30 @@ endmacro()
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
 if (MSVC)
-  enable_language(ASM_MASM)
-  if (CMAKE_GENERATOR_PLATFORM)
+  if (CMAKE_VS_PLATFORM_NAME)
     # Multi-platform generator
-    set(onnxruntime_target_platform ${CMAKE_GENERATOR_PLATFORM})
+    set(onnxruntime_target_platform ${CMAKE_VS_PLATFORM_NAME})
   else()
     set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
   endif()
   if (onnxruntime_target_platform STREQUAL "ARM64")
     set(onnxruntime_target_platform "ARM64")
+    enable_language(ASM_MARMASM)
   elseif (onnxruntime_target_platform STREQUAL "ARM64EC")
-    set(onnxruntime_target_platform "ARM64EC")
+    enable_language(ASM_MARMASM)
   elseif (onnxruntime_target_platform STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
     set(onnxruntime_target_platform "ARM")
+    enable_language(ASM_MARMASM)
   elseif (onnxruntime_target_platform STREQUAL "x64" OR onnxruntime_target_platform STREQUAL "x86_64" OR onnxruntime_target_platform STREQUAL "AMD64" OR CMAKE_GENERATOR MATCHES "Win64")
     set(onnxruntime_target_platform "x64")
+    enable_language(ASM_MASM)
   elseif (onnxruntime_target_platform STREQUAL "Win32" OR onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "i386" OR onnxruntime_target_platform STREQUAL "i686")
     set(onnxruntime_target_platform "x86")
-    if (NOT onnxruntime_BUILD_WEBASSEMBLY)
-      message("Enabling SAFESEH for x86 build")
-      set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
-    endif()
+    enable_language(ASM_MASM)
+    message("Enabling SAFESEH for x86 build")
+    set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
+  else()
+    message(FATAL_ERROR "Unknown CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
   endif()
 
 
@@ -253,15 +254,8 @@ if (MSVC)
 
     string(APPEND CMAKE_CXX_FLAGS " /wd26812")
     string(APPEND CMAKE_C_FLAGS " /wd26812")
-    # warning C4805: '|': unsafe mix of type 'uintptr_t' and type 'bool' in operation (from c10/core/TensorImpl.h)
-    if (onnxruntime_ENABLE_EAGER_MODE)
-      string(APPEND CMAKE_CXX_FLAGS " /wd4805")
-    endif()
   endif()
-  # We do not treat 3rd-party libraries' warnings as errors. In order to do that, we need to add their header files locations to /external:I.
-  # However, if a 3rd-party library was installed to a non-standard location and cmake find it and use it from there, you may see build errors
-  # like: "error C2220: the following warning is treated as an error"
-  string(APPEND CMAKE_CXX_FLAGS " /experimental:external /external:W0 /external:templates- /external:I ${CMAKE_CURRENT_SOURCE_DIR} /external:I ${CMAKE_CURRENT_BINARY_DIR}")
+
   if (onnxruntime_USE_AVX)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX")
@@ -275,15 +269,8 @@ if (MSVC)
 
   if (NOT GDK_PLATFORM)
     add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
-    if (onnxruntime_USE_WINML OR NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-        message("Building ONNX Runtime for Windows 8 and newer")
-        add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 8 and newer
-    else()
-        message("Building ONNX Runtime for Windows 7 and newer")
-        # For people who build ONNX Runtime from source, the result binary may still support Windows 7
-        # Windows 7 doesn't have OneCore. So if CMAKE_CXX_STANDARD_LIBRARIES is for OneCore, the build won't come here
-        add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
-    endif()
+    message("Building ONNX Runtime for Windows 10 and newer")
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)
   endif()
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
@@ -365,12 +352,12 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     #For Mac compliance
     message("Adding flags for Mac builds")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
-endif()
-
-if (WIN32)
+elseif (WIN32)
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP")
     # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
     string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH")
+else()
+    add_compile_definitions("_GNU_SOURCE")
 endif()

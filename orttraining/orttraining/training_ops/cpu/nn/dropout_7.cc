@@ -34,8 +34,8 @@ Status Dropout_7::Compute(OpKernelContext* context) const {
     const void* source = X.DataRaw(X_type);
     void* target = Y.MutableDataRaw(X_type);
     if (target != source) {
-      //If source and target pointers are not equal, we need to copy the data.
-      memcpy(target, source, shape.Size() * X_type->Size());
+      // If source and target pointers are not equal, we need to copy the data.
+      memcpy(target, source, X.SizeInBytes());
     }
   } else {
     float scale = 1.0f / keep_prob_;

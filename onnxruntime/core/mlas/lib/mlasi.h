@@ -17,14 +17,24 @@ Abstract:
 
 #pragma once
 
-#include <mlas.h>
-#include <memory.h>
 #include <algorithm>
-#include <limits>
 #include <cmath>
-#include <type_traits>
-#include <stdexcept>
 #include <functional>
+#include <limits>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+
+#ifdef MLAS_NO_EXCEPTION
+#if defined(__ANDROID__)
+#include <android/log.h>
+#else
+#include <iostream>
+#endif
+#endif  // MLAS_NO_EXCEPTION
+
+#include "mlas.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -41,7 +51,14 @@ Abstract:
 #endif
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
+#if defined(__GNUC__) && __GNUC__ >= 12
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  // GCC 12 warns about uninitialized variables in immintrin.h.
 #include <immintrin.h>
+#pragma GCC diagnostic pop
+#else
+#include <immintrin.h>
+#endif
 #endif
 #if defined(__VSX__)
 #include <altivec.h>
@@ -93,6 +110,38 @@ Abstract:
 
 #define MLAS_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
+#ifdef MLAS_NO_EXCEPTION
+
+MLAS_FORCEINLINE
+void
+MlasPrintFinalMessage(const std::string& msg)
+{
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_ERROR, "mlas", "%s", msg.c_str());
+#else
+    // TODO, consider changing the output of the error message from std::cerr to logging when the
+    // exceptions are disabled, since using std::cerr might increase binary size, and std::cerr
+    // output might not be easily accesible on some systems such as mobile
+    // TODO, see if we need to change the output of the error message from std::cerr to NSLog for
+    // iOS
+    std::cerr << msg << std::endl;
+#endif
+}
+
+#define MLAS_THROW_EX(ex, what)     \
+    do {                            \
+        std::string msg = #ex;      \
+        msg.append(what);           \
+        MlasPrintFinalMessage(msg); \
+        abort();                    \
+    } while (false)
+
+#else
+
+#define MLAS_THROW_EX(ex, ...) throw ex(__VA_ARGS__)
+
+#endif  // MLAS_NO_EXCEPTION
+
 //
 // Select the threading model.
 //
@@ -106,6 +155,8 @@ Abstract:
 
 #include "core/common/cpuid_info.h"
 using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
+
+#include "core/framework/float16.h"
 
 #else  // BUILD_MLAS_NO_ONNXRUNTIME
 
@@ -121,6 +172,8 @@ class MLASCPUIDInfo
     // ARM
     bool HasArmNeonDot() const { return has_arm_neon_dot_; }
 
+    bool HasFp16VectorAcceleration() const { return has_fp16_; }
+
     uint32_t GetCurrentCoreIdx() const { return 0xFFFFFFFF; }
 
     int32_t GetCurrentUarch() const { return -1; }
@@ -135,6 +188,7 @@ class MLASCPUIDInfo
     MLASCPUIDInfo();
 
     bool has_arm_neon_dot_{false};
+    bool has_fp16_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
@@ -179,7 +233,49 @@ enum MlasUArch {
 
 #endif // MLAS_TARGET_ARM64
 
-#endif // BUILD_MLAS_NO_ONNXRUNTIME
+//
+// Define MLAS_FP16
+//
+#include "mlas_float16.h"
+
+namespace onnxruntime
+{
+struct MLFloat16 {
+    uint16_t val{0};
+
+    MLFloat16() = default;
+    explicit constexpr MLFloat16(uint16_t x) : val(x) {}
+    explicit MLFloat16(float ff) : val(MLAS_Float2Half(ff)) {}
+
+    float ToFloat() const { return MLAS_Half2Float(val); }
+
+    operator float() const { return ToFloat(); }
+
+    MLFloat16& operator=(float ff)
+    {
+        val = MLAS_Float2Half(ff);
+        return *this;
+    }
+};
+
+inline bool
+operator==(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val == right.val;
+}
+
+inline bool
+operator!=(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val != right.val;
+}
+
+}
+
+#endif  // BUILD_MLAS_NO_ONNXRUNTIME
+
+static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
+
 
 //
 // Define the maximum number of threads supported by this implementation.
@@ -693,16 +789,16 @@ extern "C" {
 // value.
 //
 
-#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     32
+#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     64
 
 //
 // Define the target number of per-thread multiplies before using another
 // thread to perform additional work.
 //
 
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_QGEMM_THREAD_COMPLEXITY                65536
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
@@ -735,9 +831,7 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
-#ifdef MLAS_AMX_SUPPORTED
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAmx;
-#endif
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
@@ -767,6 +861,14 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot;
+
+struct MLAS_Q8Q4GEMM_DISPATCH;
+
+extern const MLAS_Q8Q4GEMM_DISPATCH MlasQ8Q4GemmDispatchAvx512vnni;
+
+struct MLAS_FPQ4GEMM_DISPATCH;
+
+extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
 
 //
 // Quantized depthwise convolution kernels.
@@ -838,7 +940,9 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
 #elif defined(MLAS_TARGET_ARM64)
-    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch;
 #endif
     const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
 
@@ -891,6 +995,8 @@ struct MLAS_PLATFORM {
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 
+    const MLAS_FPQ4GEMM_DISPATCH* FpQ4GemmDispatch{nullptr};
+    const MLAS_Q8Q4GEMM_DISPATCH* Q8Q4GemmDispatch{nullptr};
 };
 
 inline
@@ -2029,7 +2135,7 @@ MlasMultiplyFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2)
 #endif
 }
 
-#endif
+#endif  // !MLAS_FLOAT64X2_UNSUPPORTED
 
 //
 // Reads a platform specific time stamp counter.

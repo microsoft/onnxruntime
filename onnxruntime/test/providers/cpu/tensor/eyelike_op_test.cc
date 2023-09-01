@@ -9,7 +9,7 @@ namespace test {
 
 TEST(EyeLikeOpTest, EyeLikeDefault) {
   OpTester test("EyeLike", 9);
-  test.AddInput<float>("T1", {3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});  
+  test.AddInput<float>("T1", {3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
   test.AddOutput<float>("T2", {3, 2}, {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f});
   test.Run();
 }

@@ -17,29 +17,147 @@
 #ifndef SHARED_PROVIDER
 #include "core/common/type_list.h"
 #include "core/framework/data_types.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #endif
 
 namespace onnxruntime {
 namespace utils {
 
-  // The following primitives are strongly recommended for switching on tensor input datatypes for
-  // kernel implementations.
-  //
-  //  1) If you need to handle all of the primitive tensor contained datatypes, the best choice would be macros
-  //     DispatchOnTensorType or DispatchOnTensorTypeWithReturn. Use inline wrappers so your function can be invoked as function<T>().
-  //  2) if you have a few types, use Tensor.IsDataType<T>()/IsDataTypeString() or use utils::IsPrimitiveDataType<T>()
-  //     if you have a standalone MLDatatType with a sequence of if/else statements.
-  //  3) For something in between, we suggest to use CallDispatcher pattern.
-  //
-  // Invoking DataTypeImpl::GetType<T>() for switching on input types is discouraged and should be avoided.
-  // Every primitive type carries with it an integer constant that can be used for quick switching on types.
+// The following primitives are strongly recommended for switching on tensor input datatypes for
+// kernel implementations.
+//
+//  1) If you need to handle all of the primitive tensor contained datatypes, the best choice would be macros
+//     DispatchOnTensorType or DispatchOnTensorTypeWithReturn. Use inline wrappers so your function can be invoked as function<T>().
+//  2) if you have a few types, use Tensor.IsDataType<T>()/IsDataTypeString() or use utils::IsPrimitiveDataType<T>()
+//     if you have a standalone MLDatatType with a sequence of if/else statements.
+//  3) For something in between, we suggest to use CallDispatcher pattern.
+//
+// Invoking DataTypeImpl::GetType<T>() for switching on input types is discouraged and should be avoided.
+// Every primitive type carries with it an integer constant that can be used for quick switching on types.
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+#define DispatchOnTensorType(tensor_type, function, ...)          \
+  switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {    \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:              \
+      function<float>(__VA_ARGS__);                               \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:               \
+      function<bool>(__VA_ARGS__);                                \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:             \
+      function<double>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_STRING:             \
+      function<std::string>(__VA_ARGS__);                         \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:               \
+      function<int8_t>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:              \
+      function<uint8_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:              \
+      function<int16_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:             \
+      function<uint16_t>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:              \
+      function<int32_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:             \
+      function<uint32_t>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:              \
+      function<int64_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:             \
+      function<uint64_t>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:            \
+      function<MLFloat16>(__VA_ARGS__);                           \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:           \
+      function<BFloat16>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:       \
+      function<Float8E4M3FN>(__VA_ARGS__);                        \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:     \
+      function<Float8E4M3FNUZ>(__VA_ARGS__);                      \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:         \
+      function<Float8E5M2>(__VA_ARGS__);                          \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:     \
+      function<Float8E5M2FNUZ>(__VA_ARGS__);                      \
+      break;                                                      \
+    default:                                                      \
+      ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type); \
+  }
+
+#define DispatchOnTensorTypeWithReturn(tensor_type, retval, function, ...) \
+  switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {             \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                       \
+      retval = function<float>(__VA_ARGS__);                               \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:                        \
+      retval = function<bool>(__VA_ARGS__);                                \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:                      \
+      retval = function<double>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_STRING:                      \
+      retval = function<std::string>(__VA_ARGS__);                         \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:                        \
+      retval = function<int8_t>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:                       \
+      retval = function<uint8_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:                      \
+      retval = function<uint16_t>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:                       \
+      retval = function<int16_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:                       \
+      retval = function<int32_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:                      \
+      retval = function<uint32_t>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:                       \
+      retval = function<int64_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:                      \
+      retval = function<uint64_t>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:                     \
+      retval = function<MLFloat16>(__VA_ARGS__);                           \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:                    \
+      retval = function<BFloat16>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:                \
+      retval = function<Float8E4M3FN>(__VA_ARGS__);                        \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:              \
+      retval = function<Float8E4M3FNUZ>(__VA_ARGS__);                      \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:                  \
+      retval = function<Float8E5M2>(__VA_ARGS__);                          \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:              \
+      retval = function<Float8E5M2FNUZ>(__VA_ARGS__);                      \
+      break;                                                               \
+    default:                                                               \
+      ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type);          \
+  }
+
+#else
 
 #define DispatchOnTensorType(tensor_type, function, ...)          \
   switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {    \
@@ -136,6 +254,8 @@ namespace utils {
     default:                                                               \
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type);          \
   }
+
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Use the following primitives if you have a few types to switch on so you
@@ -498,11 +618,10 @@ class ContainerChecker {
         ORT_ENFORCE(++index < c.size(), "Sequence is missing type entry for its element");
         constexpr int32_t prim_type = ToTensorProtoElementType<T>();
         // Check if this is a primitive type and it matches
-        if constexpr(prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+        if constexpr (prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
           return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                  c[index].IsPrimType(prim_type);
-        }
-        else {
+        } else {
           // T is not primitive, check next entry for non-primitive proto
           return IsContainerOfType<T>::check(c, index);
         }
@@ -528,11 +647,11 @@ class ContainerChecker {
       }
       ORT_ENFORCE(++index < c.size(), "Map is missing type entry for its value");
       constexpr int32_t val_type = ToTensorProtoElementType<V>();
-      if constexpr(val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      if constexpr (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
         return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                c[index].IsPrimType(val_type);
-      }
-      else return IsContainerOfType<V>::check(c, index);
+      } else
+        return IsContainerOfType<V>::check(c, index);
     }
   };
 

@@ -7,7 +7,6 @@
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 
-
 namespace onnxruntime {
 namespace contrib {
 class BifurcationDetector : public OpKernel {

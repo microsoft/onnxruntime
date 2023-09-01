@@ -13,28 +13,46 @@ parameters:
 - name: UseImageCacheContainerRegistry
   type: boolean
   default: true
+- name: UsePipelineCache
+  type: boolean
+  default: false
 - name: ScriptName
   type: string
-  default: "tools/ci_build/get_docker_image.py" 
+  default: "tools/ci_build/get_docker_image.py"
 - name: UpdateDepsTxt
   type: boolean
   default: true
-  
+- name: IMAGE_CACHE_DIR
+  type: string
+  default: $(Agent.TempDirectory)/docker
+
 steps:
 
 - ${{ if eq(parameters.UpdateDepsTxt, true)}}:
-  - template: download-deps.yml  
+  - template: download-deps.yml
 
 - ${{ if contains(parameters.Dockerfile, 'manylinux') }}:
     - checkout: manylinux
     - script: |
-        set -e -x 
+        set -e -x
         mv manylinux onnxruntime
         mv onnxruntime ..
         cd ..
         rmdir $(Build.SourcesDirectory)
         mv onnxruntime $(Build.SourcesDirectory)
       displayName: "Move Manylinux source code to ORT folder"
+    # It makes the files in context keep consistent before and after docker build step.
+    - task: PythonScript@0
+      inputs:
+        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/patch_manylinux.py
+        arguments: --dockerfile "${{ parameters.Dockerfile }}" --context "${{ parameters.Context }}"
+        pythonInterpreter: /usr/bin/python3
+      displayName: patch manylinux
+
+- script: |
+    docker image ls
+    docker system df
+  displayName: Check Docker Images
 
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
   - template: with-container-registry-steps.yml
@@ -50,13 +68,52 @@ steps:
         displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
       ContainerRegistry: onnxruntimebuildcache
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, false) }}:
+  - task: Cache@2
+    displayName: Cache Docker Image Task
+    inputs:
+      key: ' "${{ parameters.Repository }}" | "$(Build.SourceVersion)" '
+      path: ${{ parameters.IMAGE_CACHE_DIR }}
+      restoreKeys: |
+        "${{ parameters.Repository }}" | "$(Build.SourceVersion)"
+        "${{ parameters.Repository }}"
+      cacheHitVar: CACHE_RESTORED
+    condition: eq('${{ parameters.UsePipelineCache }}', 'true')
+
   - script: |
+      test -f ${{ parameters.IMAGE_CACHE_DIR }}/cache.tar && docker load -i ${{ parameters.IMAGE_CACHE_DIR }}/cache.tar
+      docker image ls
+    displayName: Docker restore
+    condition: eq('${{ parameters.UsePipelineCache }}', 'true')
+
+  - script: |
+      if [ ${{ parameters.UsePipelineCache}} ]
+      then
+        use_imagecache="--use_imagecache"
+      else
+        use_imagecache=""
+      fi
       ${{ parameters.ScriptName }} \
         --dockerfile "${{ parameters.Dockerfile }}" \
         --context "${{ parameters.Context }}" \
         --docker-build-args "${{ parameters.DockerBuildArgs }}" \
-        --repository "${{ parameters.Repository }}"
+        --repository "${{ parameters.Repository }}" \
+        $use_imagecache
     displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
+
+  - script: |
+      set -ex
+      mkdir -p "${{ parameters.IMAGE_CACHE_DIR }}"
+      docker save -o "${{ parameters.IMAGE_CACHE_DIR }}/cache.tar" ${{ parameters.Repository }}
+      docker image ls
+      docker system df
+    displayName: Docker save
+    condition: eq('${{ parameters.UsePipelineCache }}', 'true')
+
+  - script: |
+      echo ${{ parameters.IMAGE_CACHE_DIR }}
+      ls -lah ${{ parameters.IMAGE_CACHE_DIR }}
+    displayName: Display docker dir
+    condition: eq('${{ parameters.UsePipelineCache }}', 'true')
 
 - ${{ if and(eq(parameters.UpdateDepsTxt, true), or(eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29'),eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c'))) }}:
   - task: PythonScript@0

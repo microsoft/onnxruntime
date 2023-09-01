@@ -97,8 +97,15 @@ class QDQQuantizer(ONNXQuantizer):
             False if "AddQDQPairToWeight" not in extra_options else extra_options["AddQDQPairToWeight"]
         )
 
+        # Some scenarios do not need the bias quantized. For example, in the case of Quantization Aware Training,
+        # quantizing the bias is not needed. This is because in QAT, all model parameters are expected to be in
+        # floating point format. To that end, we can use the FakeQuant operator for weights and activations that
+        # can always have QDQ pairs (by using AddQDQPairToWeight). But for biases in a quantized model, we can't use
+        # FakeQuant because it only ever appears before a DQ (since it is quantized as int32).
+        self.quantize_bias = True if "QuantizeBias" not in extra_options else extra_options["QuantizeBias"]
+
         # The default behavior is that multiple nodes can share a QDQ pair as their inputs.
-        # In TRT, QDQ pair can’t be shared between nodes, so it will create dedicated QDQ pairs for each node.
+        # In TRT, QDQ pair can`t be shared between nodes, so it will create dedicated QDQ pairs for each node.
         self.dedicated_qdq_pair = (
             False if "DedicatedQDQPair" not in extra_options else extra_options["DedicatedQDQPair"]
         )
@@ -120,7 +127,7 @@ class QDQQuantizer(ONNXQuantizer):
         if weight is not None:
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 return True
-        elif tensor_name in self.value_infos.keys():
+        elif tensor_name in self.value_infos:
             vi = self.value_infos[tensor_name]
             if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type == TensorProto.FLOAT:
                 return True
@@ -179,9 +186,7 @@ class QDQQuantizer(ONNXQuantizer):
                     tensor_type=QDQQuantTensorType.WEIGHT, axis=axis
                 )
         else:
-            logging.warning(
-                "only support per-channel quantization on weight. Tensor: {} is not quantized.".format(tensor_name)
-            )
+            logging.warning(f"only support per-channel quantization on weight. Tensor: {tensor_name} is not quantized.")
 
     def quantize_bias_tensor(self, bias_name, input_name, weight_name, beta=1.0):
         weight = find_by_name(bias_name, self.model.initializer())
@@ -189,7 +194,7 @@ class QDQQuantizer(ONNXQuantizer):
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 self.bias_to_quantize.append((bias_name, input_name, weight_name, beta))
         else:
-            logging.warning("Expected {} to be a weight".format(bias_name))
+            logging.warning(f"Expected {bias_name} to be a weight")
 
     def remove_node(self, node):
         self.nodes_to_remove.append(node)
@@ -211,7 +216,8 @@ class QDQQuantizer(ONNXQuantizer):
 
         self._quantize_normal_tensors()
         self._quantize_sharing_param_tensors()
-        self._quantize_bias_tensors()
+        if self.quantize_bias:
+            self._quantize_bias_tensors()
         self.remove_nodes()
         if not self.add_qdq_pair_to_weight:
             self.model.clean_initializers()
@@ -223,7 +229,7 @@ class QDQQuantizer(ONNXQuantizer):
 
     def try_replacing_upstream_output(self, upstream_output_name, output_name):
         if (
-            output_name in self.quantization_params.keys()
+            output_name in self.quantization_params
             and len(self.model.input_name_to_nodes()[upstream_output_name]) == 1
             and not self.model.is_graph_output(upstream_output_name)
             and not self.model.is_graph_input(upstream_output_name)
@@ -259,7 +265,10 @@ class QDQQuantizer(ONNXQuantizer):
             if self.opset_version < 13:
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
-                weight_name, onnx_proto.TensorProto.INT8, axis, keep_float_weight=self.add_qdq_pair_to_weight
+                weight_name,
+                self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
+                axis,
+                keep_float_weight=self.add_qdq_pair_to_weight,
             )
         else:
             q_weight_name, zp_name, scale_name = self.quantize_initializer(
@@ -305,13 +314,15 @@ class QDQQuantizer(ONNXQuantizer):
                 postfix = f"_{i + 1}"
                 tensor_name_quant_output_postfix = add_quant_output_suffix(tensor_name) + postfix
                 tensor_name_dequant_output_postfix = add_dequant_output_suffix(tensor_name) + postfix
+                quant_node_name_postfix = add_quant_suffix(tensor_name) + postfix
+                dequant_node_name_postfix = add_dequant_suffix(tensor_name) + postfix
                 self._create_qdq_nodes(
                     tensor_name,
                     tensor_name_quant_output_postfix,
-                    add_quant_suffix(tensor_name),
+                    quant_node_name_postfix,
                     tensor_name_quant_output_postfix,
                     tensor_name_dequant_output_postfix,
-                    add_dequant_suffix(tensor_name),
+                    dequant_node_name_postfix,
                     scale_name,
                     zp_name,
                 )
@@ -359,7 +370,7 @@ class QDQQuantizer(ONNXQuantizer):
 
     def _quantize_normal_tensors(self):
         for tensor_name, tensor_info in self.tensors_to_quantize.copy().items():
-            if tensor_name in self.quantized_value_map.keys():
+            if tensor_name in self.quantized_value_map:
                 continue
 
             if not tensor_info.is_shared:
@@ -399,29 +410,49 @@ class QDQQuantizer(ONNXQuantizer):
 
     def _quantize_bias_tensors(self):
         for bias_name, input_name, weight_name, beta in self.bias_to_quantize:
-            if bias_name in self.quantized_value_map.keys():
+            if bias_name in self.quantized_value_map:
                 continue
             # Quantize the input
             self.quantize_bias_static(bias_name, input_name, weight_name, beta)
             self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
             quant_value = self.quantized_value_map[bias_name]
-            inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
-            node_name = add_dequant_suffix(bias_name)
-            if quant_value.axis is not None:
+            if quant_value.node_type == "Cast":
+                # simple cast to float 16 and not DequantizeLinear
+                # cublasLtMatmul only supports (b)float16, float bias.
+                node_name = add_dequant_suffix(bias_name)
                 dequant_node = onnx.helper.make_node(
-                    "DequantizeLinear",
-                    inputs,
+                    "Cast",
+                    [quant_value.q_name],
                     [bias_name],
-                    node_name,
-                    axis=quant_value.axis,
+                    name=node_name,
+                    to=onnx.TensorProto.FLOAT,
                 )
+            elif quant_value.node_type in (None, "DequantizeLinear"):
+                if quant_value.node_qtype in {
+                    onnx.TensorProto.FLOAT16,
+                    onnx.TensorProto.BFLOAT16,
+                    onnx.TensorProto.FLOAT,
+                }:
+                    raise RuntimeError(f"Unexpected quantize type {quant_value.node_qtype} for DequantizeLinear.")
+                inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
+                node_name = add_dequant_suffix(bias_name)
+                if quant_value.axis is not None:
+                    dequant_node = onnx.helper.make_node(
+                        "DequantizeLinear",
+                        inputs,
+                        [bias_name],
+                        node_name,
+                        axis=quant_value.axis,
+                    )
+                else:
+                    dequant_node = onnx.helper.make_node(
+                        "DequantizeLinear",
+                        inputs,
+                        [bias_name],
+                        node_name,
+                    )
             else:
-                dequant_node = onnx.helper.make_node(
-                    "DequantizeLinear",
-                    inputs,
-                    [bias_name],
-                    node_name,
-                )
+                raise RuntimeError(f"Unexpected operator type {quant_value.node_type!r}.")
             self.model.add_node(dequant_node)
 
     def is_tensor_quantized(self, tensor_name):

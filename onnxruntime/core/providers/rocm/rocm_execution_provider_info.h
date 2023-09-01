@@ -38,7 +38,9 @@ struct ROCMExecutionProviderExternalAllocatorInfo {
 
 namespace rocm {
 struct TunableOpInfo {
-  bool enabled{false};
+  bool enable{false};
+  bool tuning_enable{false};
+  int max_tuning_duration_ms{};
 };
 }  // namespace rocm
 
@@ -56,20 +58,26 @@ struct ROCMExecutionProviderInfo {
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
-  bool miopen_conv_use_max_workspace{false};
+
+  // By default, try to use as much as possible memory for algo search.
+  // If set to false, use fix workspace size (32M) for Conv algo search, the final algo might not be the best.
+  bool miopen_conv_use_max_workspace{true};
 
   rocm::TunableOpInfo tunable_op{};
 
   static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
+  static ProviderOptions ToProviderOptions(const OrtROCMProviderOptions& info);
 };
 }  // namespace onnxruntime
 
-template<>
+template <>
 struct std::hash<::onnxruntime::rocm::TunableOpInfo> {
   size_t operator()(const ::onnxruntime::rocm::TunableOpInfo& info) const {
     size_t seed_and_value{0xbc9f1d34};
-    onnxruntime::HashCombine(info.enabled, seed_and_value);
+    onnxruntime::HashCombine(info.enable, seed_and_value);
+    onnxruntime::HashCombine(info.tuning_enable, seed_and_value);
+    onnxruntime::HashCombine(info.max_tuning_duration_ms, seed_and_value);
     return seed_and_value;
   }
 };

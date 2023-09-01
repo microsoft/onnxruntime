@@ -9,4 +9,4 @@ namespace acl {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }
-}
+}  // namespace onnxruntime

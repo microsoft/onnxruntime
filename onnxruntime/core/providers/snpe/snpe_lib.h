@@ -17,11 +17,9 @@ struct UserBufferAttribute {
  public:
   UserBufferAttribute(size_t size,
                       const std::vector<size_t>& buffer_strides,
-                      zdl::DlSystem::UserBufferEncoding* const buffer_encoding) :
-      buffer_size(size),
-      strides(buffer_strides),
-      user_buffer_encoding(buffer_encoding)
-  {}
+                      zdl::DlSystem::UserBufferEncoding* const buffer_encoding) : buffer_size(size),
+                                                                                  strides(buffer_strides),
+                                                                                  user_buffer_encoding(buffer_encoding) {}
 
   size_t buffer_size;
   std::vector<size_t> strides;

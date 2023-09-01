@@ -90,7 +90,7 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
 
     import re
 
-    if re.search(".zip$", tf_ckpt_url) != None:
+    if re.search(".zip$", tf_ckpt_url) is not None:
         zip_dir = download_compressed_file(tf_ckpt_url, ckpt_dir)
 
         # unzip file
@@ -102,7 +102,7 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
 
         return get_ckpt_prefix_path(ckpt_dir)
 
-    elif re.search(".tar.gz$", tf_ckpt_url) != None:
+    elif re.search(".tar.gz$", tf_ckpt_url) is not None:
         tar_dir = download_compressed_file(tf_ckpt_url, ckpt_dir)
 
         # untar file
@@ -137,7 +137,7 @@ def init_pytorch_model(model_name, tf_checkpoint_path):
     config_path = glob.glob(parent_path + "/*config.json")
     config = model_config() if len(config_path) == 0 else model_config.from_json_file(str(config_path[0]))
 
-    if TFMODELS[model_name][2] == "":
+    if not TFMODELS[model_name][2]:
         from transformers import AutoModelForPreTraining
 
         init_model = AutoModelForPreTraining.from_config(config)
@@ -190,7 +190,7 @@ def tf2pt_pipeline_test():
     import torch
 
     logger = logging.getLogger("")
-    for model_name in TFMODELS.keys():
+    for model_name in TFMODELS:
         config, model = tf2pt_pipeline(model_name)
         assert config.model_type is TFMODELS[model_name][0]
 

@@ -57,8 +57,8 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        std::optional<ActivationOperatorDesc> fusedActivation = FusionHelpers::TryGetFusedActivationDesc(kernelInfo);
-        DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->GetDmlDesc() : DML_OPERATOR_DESC();
+        std::optional<ActivationOperatorDescWrapper> fusedActivation = FusionHelpers::TryGetGraphFusedActivationDesc(kernelInfo);
+        DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->desc.GetDmlDesc() : DML_OPERATOR_DESC();
 
         const float alpha = kernelInfo.GetOptionalAttribute<float>(AttrName::Alpha, 1.0f);
 
@@ -79,5 +79,6 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(FusedMatMul, DmlOperatorFusedMatMul);
+DML_OP_DEFINE_CREATION_FUNCTION(FusedMatMulActivation, DmlOperatorFusedMatMul);
 
 } // namespace Dml

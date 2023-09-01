@@ -183,7 +183,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   ORT_RETURN_IF_NOT(total_num_accumulations > 0, "total_num_accumulations <= 0");
 
   auto scale_divisor = total_num_accumulations;
-  //If Adasum GPU hierarchical reduce is used, then divide gradients by local size.
+  // If Adasum GPU hierarchical reduce is used, then divide gradients by local size.
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
     scale_divisor *= opt_graph_config_.local_size;
   }
@@ -234,7 +234,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
                                                      graph_defs,
                                                      opt_graph_config_.adasum_reduction_type));
 
-  //check if allreduced deltas are finite
+  // check if allreduced deltas are finite
   ArgDef adasum_global_grad_finite_argdef;
   if (opt_graph_config_.use_mixed_precision) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(

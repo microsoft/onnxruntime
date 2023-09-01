@@ -245,6 +245,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Squeeze = 11;
         static const int sc_sinceVer_TopK = 11;
         static const int sc_sinceVer_Unsqueeze = 11;
+        static const int sc_sinceVer_ConcatFromSequence = 11;
     } // namespace OnnxOperatorSet11
 
     namespace OnnxOperatorSet12
@@ -378,12 +379,34 @@ namespace OperatorHelper
         static const int sc_sinceVer_Where = 16;
         static const int sc_sinceVer_GreaterOrEqual = 16;
         static const int sc_sinceVer_LessOrEqual = 16;
+        static const int sc_sinceVer_ScatterND = 16;
+        static const int sc_sinceVer_ScatterElements = 16;
+        static const int sc_sinceVer_RoiAlign = 16;
     } // namespace OnnxOperatorSet16
 
     namespace OnnxOperatorSet17
     {
         static const int sc_sinceVer_LayerNormalization = 17;
     } // namespace OnnxOperatorSet17
+
+    namespace OnnxOperatorSet18
+    {
+        static const int sc_sinceVer_ReduceL1 = 18;
+        static const int sc_sinceVer_ReduceL2 = 18;
+        static const int sc_sinceVer_ReduceLogSum = 18;
+        static const int sc_sinceVer_ReduceLogSumExp = 18;
+        static const int sc_sinceVer_ReduceMax = 18;
+        static const int sc_sinceVer_ReduceMean = 18;
+        static const int sc_sinceVer_ReduceMin = 18;
+        static const int sc_sinceVer_ReduceProd = 18;
+        static const int sc_sinceVer_ReduceSumSquare = 18;
+        static const int sc_sinceVer_BitwiseAnd = 18;
+        static const int sc_sinceVer_BitwiseOr = 18;
+        static const int sc_sinceVer_BitwiseXor = 18;
+        static const int sc_sinceVer_BitwiseNot = 18;
+        static const int sc_sinceVer_Pad = 18;
+        static const int sc_sinceVer_Split = 18;
+    }
 
     namespace MsftOperatorSet1
     {
@@ -403,10 +426,17 @@ namespace OperatorHelper
         static const int sc_sinceVer_Gelu = 1;
         static const int sc_sinceVer_BiasGelu = 1;
         static const int sc_sinceVer_FusedMatMul = 1;
+        static const int sc_sinceVer_FusedMatMulActivation = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
         static const int sc_sinceVer_Attention = 1;
+        static const int sc_sinceVer_MultiHeadAttention = 1;
         static const int sc_sinceVer_SkipLayerNormalization = 1;
         static const int sc_sinceVer_EmbedLayerNormalization = 1;
+        static const int sc_sinceVer_BiasSplitGelu = 1;
+        static const int sc_sinceVer_NhwcConv = 1;
+        static const int sc_sinceVer_BiasAdd = 1;
+        static const int sc_sinceVer_QuickGelu = 1;
+        static const int sc_sinceVer_GroupNorm = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

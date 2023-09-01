@@ -31,7 +31,7 @@ class SessionScope;
 struct AllocPlanPerValue {
   AllocKind alloc_kind{AllocKind::kNotSet};
   MLDataType value_type{nullptr};
-  OrtMemoryInfo location;
+  OrtDevice location;
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
   // which OrtValue's buffer must be reused for this OrtValue.
   OrtValueIndex reused_buffer{0};
@@ -79,7 +79,7 @@ struct AllocPlanPerValue {
   ProgramCounter program_counter;
 
  public:
-  AllocPlanPerValue() : location(CPU, OrtInvalidAllocator) {}
+  AllocPlanPerValue() : location() {}
 };
 
 using NotificationIndex = size_t;
@@ -109,6 +109,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // 3. Wait on a notificaiton
   class ExecutionStep {
    public:
+    ExecutionStep(NodeIndex node_index) : node_index_(node_index) {}
     virtual ~ExecutionStep() {}
     virtual Status Execute(StreamExecutionContext& ctx,
                            size_t stream_idx,
@@ -116,21 +117,19 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
                            const bool& terminate_flag,
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
-#ifdef ENABLE_TRAINING
-    // the partial execution mode for training needs special handling for barrier
-    virtual bool IsBarrier() const { return false; }
-#endif
+    inline NodeIndex GetNodeIndex() { return node_index_; }
+
+   protected:
+    NodeIndex node_index_;
   };
   // LogicStream is a sequence of execution steps that can be executed independetly.
   // The steps within a sequence are executed in order, and happened on the same device.
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
-    const OrtDevice& device_;
-#ifdef ENABLE_TRAINING
-    std::vector<NodeIndex> step_pc;
-#endif
+    const OrtDevice device_;
+
    public:
-    LogicStream(const OrtDevice& device) : device_(device) {}
+    LogicStream(const OrtDevice device) : device_(device) {}
   };
   // a execution plan is composed by multiple logic stream.
   // by default all the nodes with the same device will be group in to the same stream.
@@ -168,6 +167,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
 #ifdef ENABLE_TRAINING
   InlinedVector<NodeIndex> node_execution_order_in_training;
+  InlinedHashMap<NodeIndex, size_t> node_index_2_toposort_index;
 #endif
 
   const std::vector<AllocPlanPerValue>& GetAllocationPlan() const {
@@ -178,16 +178,16 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     return value_to_stream_map;
   }
 
-  const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
+  const OrtDevice& GetLocation(size_t ort_value_index) const override {
     return allocation_plan[ort_value_index].location;
   }
 
-  void SetLocation(size_t ort_value_index, const struct OrtMemoryInfo& info) override {
+  void SetLocation(size_t ort_value_index, const struct OrtDevice& info) override {
     allocation_plan[ort_value_index].location = info;
   }
 
-  InlinedHashSet<OrtMemoryInfo> GetAllLocations() const override {
-    InlinedHashSet<OrtMemoryInfo> locations;
+  InlinedHashSet<OrtDevice> GetAllLocations() const override {
+    InlinedHashSet<OrtDevice> locations;
     locations.reserve(allocation_plan.size());
     for (auto& alloc_plan : allocation_plan) {
       locations.insert(alloc_plan.location);

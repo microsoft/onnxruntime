@@ -116,7 +116,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   InitializedTensorSet initializers_consumed;
   // find defs that require copy
   for (auto& node : graph_.Nodes()) {
-    //as we process the defs, collect all the initializers consumed at the current graph level
+    // as we process the defs, collect all the initializers consumed at the current graph level
     ProcessDefs(node, kernel_registries, initializers_consumed);
   }
 
@@ -255,7 +255,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     // This is because we don't want to add copy nodes on account of implicit
     // inputs to nodes.
     // We will rely on utils::CopyInputsAcrossDevices() to do the job.
-    //for (const auto* arg : node.ImplicitInputDefs()) {
+    // for (const auto* arg : node.ImplicitInputDefs()) {
     //  if (arg->Exists())
     //    non_provider_input_defs_.insert(arg);
     //}
@@ -267,7 +267,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
   }
 }
 
-//for non_provider defs, collect the nodes that expect it is provider tensor as input/output.
+// for non_provider defs, collect the nodes that expect it is provider tensor as input/output.
 void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries) {
   for (auto& it : graph_.Nodes()) {
     if (it.OpType() == "MemcpyFromHost" || it.OpType() == "MemcpyToHost") continue;

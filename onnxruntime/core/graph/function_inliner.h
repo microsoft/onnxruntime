@@ -18,7 +18,7 @@ class FunctionInliner : public onnxruntime::RewriteRule {
   FunctionInliner(const std::string& name, const std::string& desc)
       : RewriteRule(name, desc) {}
 
-  Status Apply(onnxruntime::Graph/*graph_editor*/, onnxruntime::Node* /*node*/, bool* /*modified*/) override {
+  Status Apply(onnxruntime::Graph /*graph_editor*/, onnxruntime::Node* /*node*/, bool* /*modified*/) override {
     return Status::OK();
   }
 };

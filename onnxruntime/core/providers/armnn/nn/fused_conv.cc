@@ -18,10 +18,10 @@
 #include <mutex>
 
 namespace onnxruntime {
-namespace armnn_ep{
+namespace armnn_ep {
 
 class FusedConv final : public armnn_ep::Conv<float> {
-public:
+ public:
   explicit FusedConv(const OpKernelInfo& info) : armnn_ep::Conv<float>(info) {
     ORT_ENFORCE(info.GetAttr<std::string>("activation", &(this->activation_type)).IsOK());
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
