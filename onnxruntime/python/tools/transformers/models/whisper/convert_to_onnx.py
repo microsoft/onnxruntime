@@ -180,22 +180,25 @@ def parse_arguments(argv=None):
         "--quantize_embedding_layer",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize MatMul, GEMM, and Gather.",
     )
+    parser.set_defaults(quantize_embedding_layer=False)
 
     parser.add_argument(
         "--quantize_per_channel",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize weights per each channel.",
     )
+    parser.set_defaults(quantize_per_channel=False)
 
     parser.add_argument(
         "--quantize_reduce_range",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize weights with 7 bits.",
     )
+    parser.set_defaults(quantize_reduce_range=False)
 
     parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
 
@@ -316,7 +319,6 @@ def export_onnx_models(
                         use_external_data_format=use_external_data_format,
                         per_channel=quantize_per_channel,
                         reduce_range=quantize_reduce_range,
-                        optimize_model=False,
                         extra_options={"MatMulConstBOnly": True},
                     )
             else:
@@ -374,6 +376,7 @@ def main(argv=None):
         args.provider,
     )
 
+    max_diff = 0
     if args.chain_model:
         logger.info("Chaining model ... :")
         args.beam_model_output_dir = WhisperHelper.get_onnx_path(
@@ -418,6 +421,7 @@ def main(argv=None):
         output_paths = [args.beam_model_output_dir]
 
     logger.info(f"Done! Outputs: {output_paths}")
+    return max_diff
 
 
 if __name__ == "__main__":

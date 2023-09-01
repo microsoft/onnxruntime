@@ -1,9 +1,9 @@
-ARG BASEIMAGE=centos:7
-ARG POLICY=manylinux2014
+ARG BASEIMAGE=amd64/almalinux:8
+ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
-ARG DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root
-ARG LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
-ARG PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin:
+ARG DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
+ARG LD_LIBRARY_PATH_ARG=${DEVTOOLSET_ROOTPATH}/usr/lib64:${DEVTOOLSET_ROOTPATH}/usr/lib:${DEVTOOLSET_ROOTPATH}/usr/lib64/dyninst:${DEVTOOLSET_ROOTPATH}/usr/lib/dyninst:/usr/local/lib64
+ARG PREPEND_PATH=${DEVTOOLSET_ROOTPATH}/usr/bin:
 
 #Build manylinux2014 docker image begin
 FROM $BASEIMAGE AS runtime_base
@@ -98,6 +98,8 @@ RUN export OPENSSL_ROOT=openssl-1.1.1q && \
 COPY build_scripts/build-cpython.sh /build_scripts/
 
 
+
+
 FROM build_cpython AS build_cpython38
 COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.8.13
@@ -117,9 +119,12 @@ COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.2
 
 FROM build_cpython AS all_python
-COPY build_scripts/finalize-python.sh \
+COPY build_scripts/install-pypy.sh \
+     build_scripts/pypy.sha256 \
+     build_scripts/finalize-python.sh \
      /build_scripts/
-
+RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.8 7.3.9
+RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.9 7.3.9
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
 COPY --from=build_cpython310 /opt/_internal /opt/_internal/
@@ -134,6 +139,7 @@ COPY --from=all_python /opt/_internal /opt/_internal/
 COPY build_scripts/finalize.sh \
      build_scripts/update-system-packages.sh \
      build_scripts/python-tag-abi-tag.py \
+
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
      build_scripts/requirements3.10.txt \
@@ -149,12 +155,13 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 
+ENV PATH ${DEVTOOLSET_ROOTPATH}/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
-

@@ -503,10 +503,10 @@ stages:
         parameters:
           arch: 'aarch64'
           machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
-          base_image: 'arm64v8/centos:7'
-          devtoolset_rootpath: /opt/rh/devtoolset-10/root
-          ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
-          prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
+          base_image: 'arm64v8/almalinux:8'
+          devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
+          ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+          prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
@@ -515,10 +515,10 @@ stages:
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-          base_image: 'centos:7'
-          devtoolset_rootpath: /opt/rh/devtoolset-11/root
-          ld_library_path_arg: /opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
-          prepend_path: '/opt/rh/devtoolset-11/root/usr/bin:'
+          base_image: 'registry.access.redhat.com/ubi8/ubi'
+          devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
+          ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+          prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
