@@ -158,74 +158,6 @@ inline __device__ TVec_m LoadQ8(const TVec_m* q8, const float unit_scale) {
   return DequantizeVec<TVec_m>(quant_vec_m, unit_scale);
 }
 
-
-// template <typename TVec_kernel>
-// inline __device__ TVec_kernel LoadQ8(const TVec_kernel* q8, const __half2 scale2);
-
-// template <>
-// inline __device__ uint32_t LoadQ8(const uint32_t* q8, const __half2 scale2) {
-//   char2 ch2 = *(const char2*)q8;
-//   union __align__(4) {
-//     __half2 h2;
-//     uint32_t whole;
-//   } vec;
-//   vec.h2 = DequantizeChar2(ch2, scale2);
-//   return vec.whole;
-// }
-
-// template <>
-// inline __device__ uint2 LoadQ8(const uint2* q8, const __half2 scale2) {
-//   struct __align__(4) Char2x2 {
-//     char2 x;
-//     char2 y;
-//   } ch2x2;
-//   ch2x2 = *(const Char2x2 *)q8;
-
-//   union __align__(8) {
-//     struct __align__(8) {
-//       __half2 h2x;
-//       __half2 h2y;
-//     };
-//     uint2 whole;
-//   } vec;
-//   vec.h2x = DequantizeChar2(ch2x2.x, scale2);
-//   vec.h2y = DequantizeChar2(ch2x2.y, scale2);
-//   return vec.whole;
-// }
-
-// // template <>
-// // inline __device__ uint4 LoadQ8(const uint4* q8, const __half2 scale2) {
-// //   // for test speed, it got similar speed as pure fp16 code with this hack.
-// //   uint2 u2 = *(const uint2*)q8;
-// //   return uint4{u2.x, u2.y, u2.x, u2.y};
-// // }
-
-// template <>
-// inline __device__ uint4 LoadQ8(const uint4* q8, const __half2 scale2) {
-//   struct __align__(8) Char2x4 {
-//     char2 x;
-//     char2 y;
-//     char2 z;
-//     char2 w;
-//   } ch2x4;
-//   ch2x4 = *(const Char2x4 *)q8;
-
-//   union __align__(16) {
-//     struct __align__(16) {
-//       __half2 h2x;
-//       __half2 h2y;
-//       __half2 h2z;
-//       __half2 h2w;
-//     };
-//     uint4 whole;
-//   } vec;
-//   vec.h2x = DequantizeChar2(ch2x4.x, scale2);
-//   vec.h2y = DequantizeChar2(ch2x4.y, scale2);
-//   vec.h2z = DequantizeChar2(ch2x4.z, scale2);
-//   vec.h2w = DequantizeChar2(ch2x4.w, scale2);
-//   return vec.whole;
-// }
-
 template <typename TVec>
 inline __device__ __half MaxAbsFloat(const TVec v);
 
@@ -575,17 +507,36 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       __syncthreads();
     }
 
-    TFp max_abs_k = MaxAbsFloat(k);
+    float max_abs_k = (float)MaxAbsFloat(k);
     // Perform the final reduction to compute the max inside each warp.
     const int qk_threads_per_scale = params.quant_kv_block_size / QK_VEC_SIZE;
-    if (qk_threads_per_scale <= WARP_SIZE) {
-      for (int mask = qk_threads_per_scale / 2; mask >= 1; mask /= 2) {
-        max_abs_k = __hmax(max_abs_k, __shfl_xor_sync(uint32_t(-1), max_abs_k, mask, qk_threads_per_scale));
+    const int qk_threads_per_scale_in_warp = min(qk_threads_per_scale, WARP_SIZE);
+    for (int mask = qk_threads_per_scale_in_warp / 2; mask >= 1; mask /= 2) {
+      max_abs_k = fmaxf(max_abs_k, __shfl_xor_sync(uint32_t(-1), max_abs_k, mask));
+    }
+
+    if (qk_threads_per_scale > WARP_SIZE) {
+      // Decompose the thread index into warp and lane.
+      const int warp = tidx / WARP_SIZE;
+      const int lane = tidx % WARP_SIZE;
+
+      // The warp leader writes the max to shared memory.
+      if (lane == 0) {
+        red_smem[warp] = max_abs_k;
       }
-    } else {
-      assert(qk_threads_per_scale / WARP_SIZE == 2);
-      float max_abs_k_fp32 = (float)max_abs_k;
-      max_abs_k = (TFp)block_sum<2>(&red_smem[2], max_abs_k_fp32);
+
+      // Make sure the products are in shared memory.
+      __syncthreads();
+
+      // The warps finalize the reduction.
+      max_abs_k = lane < WARPS_PER_BLOCK ? red_smem[lane] : -FLT_MAX;
+    #pragma unroll
+      for (int mask = WARPS_PER_BLOCK / 2; mask >= 1; mask /= 2) {
+        max_abs_k = fmaxf(max_abs_k, __shfl_xor_sync(uint32_t(-1), max_abs_k, mask));
+      }
+
+      // Broadcast to all the threads in the warp.
+      max_abs_k = __shfl_sync(uint32_t(-1), max_abs_k, 0);
     }
 
     if (is_active_qk_thread) {
@@ -605,10 +556,10 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       int offset = bhi * params.max_sequence_length * head_size + co * params.max_sequence_length * QK_ELTS_IN_16B +
                    tlength * QK_ELTS_IN_16B + ci;
       // Trigger the stores to global memory.
-      QuantizeTo(&params_k_cache[offset], vec_conversion<Qk_vec_m, Qk_vec_k>(k), __half2half2(max_abs_k));
+      QuantizeTo(&params_k_cache[offset], vec_conversion<Qk_vec_m, Qk_vec_k>(k), __float2half2_rn(max_abs_k));
       if (tidx % qk_threads_per_scale == 0) {
         const int scale_offset = (bhi * params.max_sequence_length + tlength) *scales_per_head + tidx / qk_threads_per_scale;
-        *(((TFp*)params.k_scale) + scale_offset) = (TFp)(max_abs_k ? (127.0f / (float)max_abs_k) : 0.0f);
+        *(((TFp*)params.k_scale) + scale_offset) = (TFp)(max_abs_k / 127.0f);
       }
 
       // Compute \sum_i Q[i] * K^T[i] for the current timestep.
@@ -871,22 +822,22 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       v = add_vec(v, v_bias);
     }
 
-    static_assert(THREADS_PER_VALUE <= WARP_SIZE / 2);
-    TFp max_abs_v = MaxAbsFloat(v);
+    static_assert(THREADS_PER_VALUE <= WARP_SIZE);
+    float max_abs_v = (float)MaxAbsFloat(v);
     const uint32_t group_id = (tidx % WARP_SIZE) / THREADS_PER_VALUE;
     const uint32_t group_masks =  ((1u << THREADS_PER_VALUE) - 1) << (group_id * THREADS_PER_VALUE);
     #pragma unroll
     for (int mask = THREADS_PER_VALUE / 2; mask >= 1; mask /= 2) {
-      max_abs_v = __hmax(max_abs_v, __shfl_xor_sync(group_masks, max_abs_v, mask, THREADS_PER_VALUE));
+      max_abs_v = fmaxf(max_abs_v, __shfl_xor_sync(group_masks, max_abs_v, mask, THREADS_PER_VALUE));
     }
 
     // Store the values with bias back to global memory in the cache for V.
     //*reinterpret_cast<V_vec_m*>(&v_cache[tlength * head_size]) = vec_conversion<V_vec_m, V_vec_k>(v);
-    QuantizeTo(&v_cache[tlength * head_size], vec_conversion<V_vec_m, V_vec_k>(v), __half2half2(max_abs_v));
+    QuantizeTo(&v_cache[tlength * head_size], vec_conversion<V_vec_m, V_vec_k>(v), __float2half2_rn(max_abs_v));
     if (vi % params.quant_kv_block_size == 0) {
       const int scales_per_head = head_size / params.quant_kv_block_size;
       const int scale_offset = (bhi * params.max_sequence_length + tlength) * scales_per_head + vi / params.quant_kv_block_size;
-      *(((TFp*)params.v_scale) + scale_offset) = (TFp)(max_abs_v ? (127.0f / (float)max_abs_v) : 0.0f);
+      *(((TFp*)params.v_scale) + scale_offset) = (TFp)(max_abs_v / 127.0f);
     }
 
     // Initialize the output value with the current timestep.
