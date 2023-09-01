@@ -184,7 +184,7 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
     scale_Y = ctx->Input<Tensor>(5);
     ORT_ENFORCE(scale_A->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     ORT_ENFORCE(scale_B->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    ORT_ENFORCE(scale_Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    ORT_ENFORCE(scale_Y == nullptr || scale_Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     if (ctx->Input<Tensor>(2) != nullptr) {
       input_C = ctx->Input<Tensor>(2);
       has_bias = true;
@@ -223,7 +223,7 @@ Status GemmFloat8::ComputeRowMajor(
                      has_bias ? input_C->DataRaw() : nullptr,
                      has_scales ? scale_A->DataRaw() : nullptr,
                      has_scales ? scale_B->DataRaw() : nullptr,
-                     has_scales ? scale_Y->DataRaw() : nullptr,
+                     has_scales && scale_Y != nullptr ? scale_Y->DataRaw() : nullptr,
                      Y->MutableDataRaw(), M, N, K, lda, ldb, ldd);
 }
 
@@ -255,7 +255,7 @@ Status GemmFloat8::ComputeColMajor(
                      has_bias ? input_C->DataRaw() : nullptr,
                      has_scales ? scale_B->DataRaw() : nullptr,
                      has_scales ? scale_A->DataRaw() : nullptr,
-                     has_scales ? scale_Y->DataRaw() : nullptr,
+                     has_scales && scale_Y != nullptr ? scale_Y->DataRaw() : nullptr,
                      Y->MutableDataRaw(), N, M, K, ldb, lda, ldd);
 }
 
