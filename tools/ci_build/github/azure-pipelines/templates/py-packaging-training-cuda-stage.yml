@@ -124,7 +124,7 @@ stages:
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
             --build-arg BUILD_UID=$(id -u)
-            --network=host --build-arg POLICY=manylinux2_28 --build-arg PLATFORM=x86_64
+            --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
             --build-arg DEVTOOLSET_ROOTPATH=/usr
             --build-arg PREPEND_PATH=/usr/local/cuda/bin:
             --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
