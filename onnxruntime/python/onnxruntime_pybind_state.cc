@@ -284,21 +284,10 @@ py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data
 //   return ep_factory->CreateProvider();
 // }
 
-static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExternalExecutionProvider(const std::string& ep_shared_lib_path,
-    const ProviderOptions& provider_options = {},
-    const std::string& entry_symbol_name = "GetExternalProvider"){
-
-  void* handle;
-  const auto path_str = ToPathString(ep_shared_lib_path);
-  auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
-  if (!error.IsOK()) {
-    throw std::runtime_error(error.ErrorMessage());
-  }
-
-  CustomExecutionProvider* (*PGetExternalProvider)(const void*);
-  OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetExternalProvider));
-
-  return std::make_unique<ExternalExecutionProvider>(PGetExternalProvider(&provider_options));
+static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExternalExecutionProvider(const ProviderOptions& provider_options,
+    const std::string& provider_type){
+  auto env = GetEnv();
+  return std::make_unique<ExternalExecutionProvider>(env->CreateExternalEPInstance(provider_type, provider_options));
 }
 
 #ifdef USE_CUDA
@@ -879,8 +868,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
-      if (shared_lib_path_it != it->second.end()) {
         // this is an EP with dynamic loading
         // construct the provider option
         ProviderOptions provider_options;
@@ -893,8 +880,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           }
         }
         // return LoadExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
-        return LoadExternalExecutionProvider(shared_lib_path_it->second, provider_options);
-      }
+        return LoadExternalExecutionProvider(provider_options, type);
     }
     // unknown provider
     throw std::runtime_error("Unknown Provider Type: " + type);
@@ -1058,6 +1044,13 @@ void addGlobalMethods(py::module& m) {
         auto st = env->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
         if (!st.IsOK()) {
           throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
+        }
+      });
+  m.def("load_execution_provider_info", [](const std::string& provider_type, const std::string& library_path) -> void {
+        auto env = GetEnv();
+        auto st = env->LoadExternalExecutionProvider(provider_type, library_path);
+        if (!st.IsOK()) {
+          throw std::runtime_error("Error when loading external EP: " + st.ErrorMessage());
         }
       });
 
