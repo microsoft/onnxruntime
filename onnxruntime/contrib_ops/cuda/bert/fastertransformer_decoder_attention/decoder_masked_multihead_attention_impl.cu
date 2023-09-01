@@ -346,7 +346,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // The keys loaded from the key cache.
   K_vec_k k_vec[2][K_VECS_PER_THREAD];
-  int k_index = 0;
+  constexpr int k_index = 0;
 
   if (has_beams) {
 #pragma unroll
