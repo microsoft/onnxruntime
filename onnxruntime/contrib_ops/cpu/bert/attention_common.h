@@ -82,6 +82,25 @@ struct PackedAttentionParameters {
   bool broadcast_res_pos_bias;
 };
 
+// Parameters deduced from node attributes and inputs/outputs.
+struct GroupQueryAttentionParameters {
+  int batch_size;
+  int sequence_length;
+  int past_sequence_length;   // sequence length in past state of K or V
+  int kv_sequence_length;     // input sequence length of K or V
+  int total_sequence_length;  // total sequence length of K or V
+  int max_sequence_length;    // max sequence length from 4D mask TODO(aciddelgado): remove htis or above lengths?
+  int hidden_size;            // hidden size of Q
+  int num_heads;
+  int head_size;
+  int kv_hidden_size;         // hidden size of K or V
+  int kv_num_heads;           // number of heads for K or V
+  bool is_unidirectional;     // causal
+  bool do_rotary;
+  float scale;
+  AttentionQkvFormat qkv_format;
+};
+
 namespace attention {
 // Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION";

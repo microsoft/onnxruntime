@@ -5,7 +5,7 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
-#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cuda/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
@@ -27,7 +27,7 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       GroupQueryAttention<T>);
 
-REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(float) // TODO(aciddelgado): support regular float?
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
@@ -39,19 +39,11 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   int64_t num_heads = 0;
   int64_t num_heads_k = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads_k).IsOK() && num_heads_k > 0);
+  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads_k).IsOK() && num_heads_k > 0 && num_heads >= num_heads_k);
   num_heads_ = static_cast<int>(num_heads);
   num_heads_k_ = static_cast<int>(num_heads_k);
 
-  mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
-
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
-
-  disable_fused_self_attention_ = sizeof(T) != 2 ||
-                                  ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
-
-  enable_trt_flash_attention_ = sizeof(T) == 2 &&
-                                !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
 
 #if USE_FLASH_ATTENTION
   disable_flash_attention_ = sizeof(T) != 2 ||
@@ -63,15 +55,6 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   disable_flash_attention_ = true;
   min_seq_len_for_flash_attention_packed_qkv_ = 0;
 #endif
-
-#if USE_MEMORY_EFFICIENT_ATTENTION
-  disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
-
-  disable_fused_cross_attention_ = sizeof(T) != 2 ||
-                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
 
   // Allocate cache buffers
   constexpr size_t cache_bytes = sizeof(int32_t) * (static_cast<size_t>(kCumulatedSequenceLengthCacheMaxBatchSize) + 1);
@@ -87,30 +70,23 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(3);
-  const Tensor* key_padding_mask = context->Input<Tensor>(4);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
-  const Tensor* past_key = context->Input<Tensor>(6);
+  const Tensor* past_key = context->Input<Tensor>(6); // TODO(aciddelgado): support past kv??
   const Tensor* past_value = context->Input<Tensor>(7);
 
   auto& device_prop = GetDeviceProp();
-  AttentionParameters parameters;
-  // TODO: new function or mod this one?
-  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
-                                                                      key,
-                                                                      value,
-                                                                      bias,
-                                                                      key_padding_mask,
-                                                                      relative_position_bias,
-                                                                      past_key,
-                                                                      past_value,
-                                                                      nullptr,  // past_seq_len
-                                                                      &parameters,
-                                                                      num_heads_,
-                                                                      mask_filter_value_,
-                                                                      scale_,
-                                                                      false,  // past_present_share_buffer
-                                                                      false,  // dmmha_packing
-                                                                      device_prop.maxThreadsPerBlock));
+  GroupQueryAttentionParameters parameters;
+  // TODO(aciddelgado): THIS funtion
+  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs<Tensor>(query,
+                                                                        key,
+                                                                        value,
+                                                                        bias,
+                                                                        past_key,
+                                                                        past_value,
+                                                                        &parameters,
+                                                                        num_heads_,
+                                                                        num_heads_k_,
+                                                                        scale_,
+                                                                        device_prop.maxThreadsPerBlock));
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);
@@ -162,7 +138,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t workspace_bytes;
   constexpr size_t element_size = sizeof(T);
-  // TODO: change this for different kv num head
+  // TODO(aciddelgado): change this for different kv num head
   workspace_bytes = GetAttentionWorkspaceSize(element_size,
                                               parameters.batch_size,
                                               parameters.num_heads,
@@ -179,7 +155,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
-  // TODO: past k and v?
+  // TODO(aciddelgado): past k and v?
   const size_t past_k_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.num_heads_k * parameters.head_size;
   const size_t past_v_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.num_heads_k * parameters.v_head_size;
   const bool use_temp_k_v_workspace = parameters.pass_past_in_kv || use_memory_efficient_attention || use_flash_attention;
@@ -217,7 +193,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
-  // TODO: QkvToContext in new group impl file or adapt existing?
+  // (aciddelgado): QkvToContext in new group impl file or adapt existing?
   return QkvToContext<CudaT>(
       device_prop, cublas, context->GetComputeStream(), parameters, data);
 }
