@@ -4,6 +4,7 @@
 import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
 import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
+import {constantOfShape, parseConstantOfShapeAttributes} from './ops/constant-of-shape';
 import {conv, parseConvAttributes} from './ops/conv';
 import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
 import {expand} from './ops/expand';
@@ -47,6 +48,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ClipV10', [unaryOps.clipV10]],
   ['Clip', [unaryOps.clip]],
   ['Concat', [concat, parseConcatAttributes]],
+  ['ConstantOfShape', [constantOfShape, parseConstantOfShapeAttributes]],
   ['Conv', [conv, parseConvAttributes]],
   ['ConvTranspose', [convTranspose, parseConvTransposeAttributes]],
   ['Cos', [unaryOps.cos]],

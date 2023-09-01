@@ -444,6 +444,8 @@
       // "test_concat_3d_axis_negative_1",
       // "test_concat_3d_axis_negative_2",
       // "test_concat_3d_axis_negative_3",
+      "test_constantofshape_float_ones",
+      "test_constantofshape_int_zeros",
       "test_conv_with_autopad_same",
       "test_conv_with_strides_and_asymmetric_padding",
       "test_conv_with_strides_no_padding",

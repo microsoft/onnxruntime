@@ -25,6 +25,7 @@ Do not modify directly.*
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
 | Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
+| ConstantOfShape | ai.onnx(9-19,20+) |  |
 | Conv | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) | need perf optimization; conv3d is not supported; need implementing activation |
 | ConvTranspose | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) | need perf optimization; ConvTranspose3d is not supported; need implementing activation |
 | Cos | ai.onnx(7+) |  |
