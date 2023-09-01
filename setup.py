@@ -199,12 +199,19 @@ try:
                     "libcufft.so.10",
                 ]
                 rocm_dependencies = [
-                    "librccl.so",
-                    "libamdhip64.so",
-                    "librocblas.so",
-                    "libMIOpen.so",
-                    "libhsa-runtime64.so",
-                    "libhsakmt.so",
+                    "librccl.so.1",
+                    "libnuma.so.1",
+                    "libamd_comgr.so.2",
+                    "libdrm.so.2",
+                    "librocblas.so.0",
+                    "libdrm_amdgpu.so.1",
+                    "libamdhip64.so.5",
+                    "libroctracer64.so.4",
+                    "libMIOpen.so.1",
+                    "libtinfo.so.6",
+                    "libelf.so.1",
+                    "librocm_smi64.so.5",
+                    "libhsa-runtime64.so.1",
                 ]
 
                 tensorrt_dependencies = ["libnvinfer.so.8.6", "libnvinfer_plugin.so.8.6", "libnvonnxparser.so.8.6"]
