@@ -30,6 +30,12 @@ class SimpleOpBuilder : public BaseOpBuilder {
 
  private:
   Status ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
+  Status ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wrapper,
+                                    const NodeUnit& node_unit,
+                                    std::vector<std::string>&& input_names,
+                                    std::vector<std::string>&& param_tensor_names,
+                                    const logging::Logger& logger,
+                                    bool do_op_validation) const ORT_MUST_USE_RESULT;
 
   static constexpr std::array<std::string_view, 2> gridsample_supported_modes = {"bilinear", "nearest"};
   static constexpr std::array<std::string_view, 3> gridsample_supported_padding_modes = {"zeros", "border", "reflection"};
@@ -261,47 +267,101 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     ORT_RETURN_IF_ERROR(ProcessGridSampleAttributes(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
-  // TODO(adrianlizarraga): Refactor processing of Sigmoid/Tanh to a separate function (or op-builder file).
-  if (op_type != "Sigmoid" && op_type != "Tanh") {
-    return ProcessOutputs(qnn_model_wrapper, node_unit,
-                          std::move(input_names),
-                          std::move(param_tensor_names),
-                          logger, do_op_validation, GetQnnOpType(op_type));
+  if (op_type == "Sigmoid" || op_type == "Tanh") {
+    // QNN requires 16-bit QDQ Sigmoid and Tanh to use specific output scale and zero-point values
+    // regardless of floating-point range.
+    return ProcessSigmoidOrTanhOutput(qnn_model_wrapper,
+                                      node_unit,
+                                      std::move(input_names),
+                                      std::move(param_tensor_names),
+                                      logger, do_op_validation);
   }
 
-  // int16 Sigmoid and Tanh require specific output scale and zero-point values (regardless of floating-point range).
+  return ProcessOutputs(qnn_model_wrapper, node_unit,
+                        std::move(input_names),
+                        std::move(param_tensor_names),
+                        logger, do_op_validation, GetQnnOpType(op_type));
+}
+
+/**
+ * Overrides offset and scale quantization parameters for operators (e.g., Sigmoid or Tanh) that require
+ * specific values. Returns true if the quantization parameters were overridden.
+ *
+ * \param op_type The ONNX operator type.
+ * \param qnn_data_type The QNN tensor data type.
+ * \param quant_params Output scale/offset parameter that may be overridden.
+ * \return True if the offset and scale were overridden.
+ */
+static bool OverrideQuantParams(const std::string& op_type, Qnn_DataType_t qnn_data_type,
+                                Qnn_ScaleOffset_t& quant_params) {
+  const int32_t orig_offset = quant_params.offset;
+  const float orig_scale = quant_params.scale;
+
+  if (op_type == "Sigmoid") {
+    switch (qnn_data_type) {
+      case QNN_DATATYPE_UFIXED_POINT_16:
+        quant_params.offset = 0;
+        quant_params.scale = 1.0f / 65536.0f;
+        break;
+      case QNN_DATATYPE_SFIXED_POINT_16:
+        quant_params.offset = 0;
+        quant_params.scale = 1.0f / 32768.0f;
+        break;
+      default:
+        break;  // Do nothing.
+    }
+  }
+
+  if (op_type == "Tanh") {
+    switch (qnn_data_type) {
+      case QNN_DATATYPE_UFIXED_POINT_16:
+        quant_params.offset = -32768;
+        quant_params.scale = 1.0f / 32768.0f;
+        break;
+      case QNN_DATATYPE_SFIXED_POINT_16:
+        quant_params.offset = 0;
+        quant_params.scale = 1.0f / 32768.0f;
+        break;
+      default:
+        break;  // Do nothing.
+    }
+  }
+
+  return quant_params.offset != orig_offset || quant_params.scale != orig_scale;
+}
+
+/**
+ * Processes the output for Sigmoid or Tanh operators and creates the corresponding QNN operator.
+ * These operator types are handled separately because QNN requires 16-bit QDQ Sigmoid and Tanh operators to use
+ * specific scale and zero-point values regardless of floating-point range.
+ *
+ * \param qnn_model_wrapper The QNN model wrapper object.
+ * \param node_unit The QDQ node unit for the Sigmoid or Tanh node.
+ * \param input_names List of input names.
+ * \param param_tensor_names List of param tensor names.
+ * \param logger Logger used to report information.
+ * \param do_op_validation True if the new QNN node should be validated.
+ */
+Status SimpleOpBuilder::ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wrapper,
+                                                   const NodeUnit& node_unit,
+                                                   std::vector<std::string>&& input_names,
+                                                   std::vector<std::string>&& param_tensor_names,
+                                                   const logging::Logger& logger,
+                                                   bool do_op_validation) const {
+  const std::string& op_type = node_unit.OpType();
   const auto& output = node_unit.Outputs()[0];
   const std::string& output_name = output.node_arg.Name();
 
   OnnxInputInfo output_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(output, output_info));
 
-  const bool is_16bit_quant = output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 ||
-                              output_info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16;
+  if (output_info.quant_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+    if (OverrideQuantParams(op_type, output_info.qnn_data_type, output_info.quant_param.scaleOffsetEncoding)) {
+      const int32_t offset = output_info.quant_param.scaleOffsetEncoding.offset;
+      const float scale = output_info.quant_param.scaleOffsetEncoding.scale;
 
-  if (is_16bit_quant) {
-    const bool is_s16 = output_info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16;
-    int32_t& offset = output_info.quant_param.scaleOffsetEncoding.offset;
-    float& scale = output_info.quant_param.scaleOffsetEncoding.scale;
-
-    constexpr std::array<int32_t, 2> sigmoid_offset = {0, 0};
-    constexpr std::array<float, 2> sigmoid_scale = {1.0f / 65536.0f, 1.0f / 32768.0f};
-    constexpr std::array<int32_t, 2> tanh_offset = {-32768, 0};
-    constexpr std::array<float, 2> tanh_scale = {1.0f / 32768.0f, 1.0f / 32768.0f};
-
-    const int32_t expected_offset = op_type == "Sigmoid" ? sigmoid_offset[is_s16] : tanh_offset[is_s16];
-    if (offset != expected_offset) {
-      LOGS(logger, WARNING) << "QNN EP requires that 16-bit " << op_type << " operators use an offset of "
-                            << expected_offset << ". Offset for " << node_unit.Name() << " will be overridden";
-      offset = expected_offset;
-    }
-
-    const float expected_scale = op_type == "Sigmoid" ? sigmoid_scale[is_s16] : tanh_scale[is_s16];
-
-    if (scale != expected_scale) {
-      LOGS(logger, WARNING) << "QNN EP requires that 16-bit " << op_type << " operators use an scale equal to "
-                            << expected_scale << ". The scale for " << node_unit.Name() << " will be overridden.";
-      scale = expected_scale;
+      LOGS(logger, VERBOSE) << "QNN requires that 16-bit quantized " << op_type << " operators use offset/scale values "
+                            << "of <" << offset << ", " << scale << ">. QNN EP will override the original values.";
     }
   }
 
