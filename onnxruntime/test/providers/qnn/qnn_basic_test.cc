@@ -301,8 +301,9 @@ TEST_F(QnnHTPBackendTests, ContribQDQ16bit_Add) {
 
     // Run session and get outputs
     std::array<const char*, 1> output_names{"output"};
-    std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
-                                                      ort_inputs.size(), output_names.data(), output_names.size());
+    std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(),
+                                                      ort_inputs.data(), ort_inputs.size(), output_names.data(),
+                                                      output_names.size());
 
     // Check output shape.
     Ort::Value& ort_output = ort_outputs[0];
@@ -350,8 +351,9 @@ TEST(QnnEp, CPU_EP_QDQ16bit_Add) {
 
     // Run session and get outputs
     std::array<const char*, 1> output_names{"output"};
-    std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
-                                                      ort_inputs.size(), output_names.data(), output_names.size());
+    std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(),
+                                                      ort_inputs.data(), ort_inputs.size(), output_names.data(),
+                                                      output_names.size());
 
     // Check output shape.
     Ort::Value& ort_output = ort_outputs[0];

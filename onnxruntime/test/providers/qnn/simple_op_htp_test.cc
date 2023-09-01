@@ -299,7 +299,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Gelu) {
 }
 
 // Tests accuracy of 16-bit QDQ GeLu.
-// TODO: Inaccuracy detected for output 'output', element 5.
+// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 5.
 // Output quant params: scale=0.00015259021893143654, zero_point=0.
 // Expected val: 10
 // QNN QDQ val: 9.997406005859375 (err 0.002593994140625)
@@ -313,7 +313,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Gelu_U16) {
                               ExpectedEPNodeAssignment::All,
                               kMSDomain,  // GeLu is a contrib op.
                               true,       // Use MS domain Q/DQ ops.
-                              0.0025f);   // TODO: Accuracy
+                              0.0025f);   // TODO(adrianlizarraga): Accuracy
 }
 
 // Check that QNN compiles DQ -> Elu -> Q as a single unit.
@@ -327,7 +327,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Elu) {
 }
 
 // Tests accuracy of 16-bit QDQ Elu.
-// TODO: Inaccuracy detected for output 'output', element 1.
+// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 1.
 // Output quant params: scale=0.00011093531065853313, zero_point=8992.
 // Expected val: -0.99751651287078857
 // QNN QDQ val: 6.2726154327392578 (err 7.2701320648193359)
@@ -354,7 +354,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish) {
 }
 
 // Tests accuracy of 16-bit QDQ HardSwish
-// TODO: Inaccuracy detected for output 'output', element 5.
+// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 5.
 // Output quant params: scale=0.00015259021893143654, zero_point=0.
 // Expected val: 10
 // QNN QDQ val: 9.999237060546875 (err 0.000762939453125)
@@ -368,7 +368,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish_U16) {
                               ExpectedEPNodeAssignment::All,
                               kOnnxDomain,
                               true,
-                              0.001f);  // TODO: Remove additional tolerance needed for inaccuracy
+                              0.001f);  // TODO(adrianlizarraga): Remove additional tolerance needed for inaccuracy
 }
 
 // Check that QNN compiles DQ -> Atan -> Q as a single unit.

@@ -1,5 +1,5 @@
-#include "mlasi.h"
 #include <type_traits>
+#include "mlasi.h"
 #include <altivec.h>
 
 template<typename OutputType>
