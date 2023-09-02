@@ -132,7 +132,6 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
               }
             } else {
               num_of_ellipsis_dims_ = static_cast<size_t>(current_num_of_ellipsis_dims);
-              LOGS_DEFAULT(VERBOSE) << "num_of_ellipsis_dims = " << num_of_ellipsis_dims_;
             }
 
             // We reserve 'EinsumOp::num_of_letters' for broadcasted dims as we only allow 'a' - 'z'
@@ -211,10 +210,6 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
                                "Einsum subscripts does not contain enough subscript labels and there is no ellipsis for input ",
                                input_index);
       }
-    }
-    LOGS_DEFAULT(VERBOSE) << "Input subscript indices: ";
-    for (auto i : current_subscript_indices) {
-      LOGS_DEFAULT(VERBOSE) << i << " ";
     }
 
     input_subscript_indices_.push_back(std::move(current_subscript_indices));
@@ -298,10 +293,6 @@ Status EinsumComputePreprocessor::PostProcessBroadcastedDims() {
       // Shouldn't hit this error - just a sanity check
       ORT_ENFORCE(dim_iter == rank);
       current_input_dim_indices_to_subscript_indices = std::move(temp_current_input_dim_indices_to_subscript_indices);
-      LOGS_DEFAULT(VERBOSE) << "Input subscript indices: " << i;;
-      for (auto i : current_input_dim_indices_to_subscript_indices) {
-        LOGS_DEFAULT(VERBOSE) << i << " ";
-      }
     }
   }
 
