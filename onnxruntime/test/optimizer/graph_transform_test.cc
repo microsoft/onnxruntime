@@ -155,44 +155,43 @@ TEST_F(GraphTransformationTests, IdentityWithSharedNodeArgNotEliminated) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
+// Runs a model to ensure that common subexpression elimination does not eliminate
+// DequantizeLinear nodes.
+static void RunDequantizeLinearNotEliminatedTestCase(const ORTCHAR_T* model_uri,
+                                                     bool use_contrib_qdq,
+                                                     const logging::Logger& logger) {
+  const char* dq_key = use_contrib_qdq ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count[dq_key], 25);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
+                                                     TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
+
+  // CommonSubexpressionElimination should skip the DequantizeLinear nodes
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count[dq_key], 25);
+}
+
 TEST_F(GraphTransformationTests, DequantizeLinearNodeNotEliminated) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.onnx";
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["DequantizeLinear"], 25);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
-                                                     TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  // CommonSubexpressionElimination should skip the DequantizeLinear nodes
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["DequantizeLinear"], 25);
-}
-
+  RunDequantizeLinearNotEliminatedTestCase(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.onnx",
+                                           false,  // use_contrib_qdq
+                                           *logger_);
 #if !defined(DISABLE_CONTRIB_OPS)
-// Test that com.microsoft.DequantizeLinear is not eliminated in CommonSubexpressionElimination
-TEST_F(GraphTransformationTests, MsDomainDequantizeLinearNodeNotEliminated) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx";
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 25);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
-                                                     TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  // CommonSubexpressionElimination should skip the DequantizeLinear nodes
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 25);
-}
+  // Test with 8-bit com.microsoft.DequantizeLinear
+  RunDequantizeLinearNotEliminatedTestCase(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx",
+                                           true,  // use_contrib_qdq
+                                           *logger_);
+  // Test with 16-bit com.microsoft.DequantizeLinear
+  RunDequantizeLinearNotEliminatedTestCase(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq16_contrib.onnx",
+                                           true,  // use_contrib_qdq
+                                           *logger_);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
+}
 
 TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "scan9_sum.onnx";

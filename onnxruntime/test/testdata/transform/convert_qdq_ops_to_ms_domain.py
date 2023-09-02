@@ -13,6 +13,7 @@ python3 convert_qdq_ops_to_ms_domain.py --input_model <input onnx model> --outpu
 
 Models created with this script:
 - qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx
+- qdq_with_multi_consumer_dq_nodes.fixed.qdq16_contrib.onnx
 - fusion/constant_folding_dequantizelinear.qdq_contrib.onnx
 - fusion/constant_folding_qdq_node_unit.qdq_contrib.onnx
 - fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx
@@ -28,41 +29,54 @@ import onnx
 QDQ_OPS = ("QuantizeLinear", "DequantizeLinear")
 
 
+def convert_initializer_to_16bit(initializer: onnx.TensorProto):
+    byte_order = ">" if sys.byteorder == "big" else "<"
+
+    # Convert uint8 to uint16, int8 to int16
+    if initializer.data_type == onnx.TensorProto.UINT8:
+        # Do not support external data
+        if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
+            raise Exception("Do not support initializers with external data")
+
+        if initializer.HasField("raw_data"):
+            num_byte_vals = len(initializer.raw_data)
+
+            # Extract uint8 values as int32s
+            int32_vals = struct.unpack(f"{byte_order}{num_byte_vals}B", initializer.raw_data)
+
+            # Repack int32 values as uint16s
+            initializer.raw_data = struct.pack(f"{byte_order}{num_byte_vals}H", *int32_vals)
+
+        initializer.data_type = onnx.TensorProto.UINT16
+
+    elif initializer.data_type == onnx.TensorProto.INT8:
+        # Do not support external data
+        if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
+            raise Exception("Do not support initializers with external data")
+
+        if initializer.HasField("raw_data"):
+            num_byte_vals = len(initializer.raw_data)
+
+            # Extract int8 values as int32s
+            int32_vals = struct.unpack(f"{byte_order}{num_byte_vals}b", initializer.raw_data)
+
+            # Repack int32 values as int16s
+            initializer.raw_data = struct.pack(f"{byte_order}{num_byte_vals}h", *int32_vals)
+
+        initializer.data_type = onnx.TensorProto.INT16
+
+
 def convert_zero_point_to_16bit(name_to_initializer: Dict[str, onnx.TensorProto], node: onnx.NodeProto):
+    input0 = node.input[0]
     zp_input = node.input[2] if len(node.input) > 2 else None
 
     if zp_input in name_to_initializer:
         initializer = name_to_initializer[zp_input]
+        convert_initializer_to_16bit(initializer)
 
-        # Do not support external data
-        if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
-            raise Exception("Do not support zero-point initializers with external data")
-
-        byte_order = ">" if sys.byteorder == "big" else "<"
-
-        # Convert uint8 to uint16, int8 to int16
-        if initializer.data_type == onnx.TensorProto.UINT8:
-            if initializer.HasField("raw_data"):
-                num_zps = len(initializer.raw_data)  # Number of zero-point byte values
-
-                # Extract uint8 zero-points as int32s
-                zp_int32s = struct.unpack(f"{byte_order}{num_zps}B", initializer.raw_data)
-
-                # Repack int32 zero-points as uint16s
-                initializer.raw_data = struct.pack(f"{byte_order}{num_zps}H", *zp_int32s)
-
-            initializer.data_type = onnx.TensorProto.UINT16
-        elif initializer.data_type == onnx.TensorProto.INT8:
-            if initializer.HasField("raw_data"):
-                num_zps = len(initializer.raw_data)  # Number of zero-point values
-
-                # Extract int8 zero-points as int32s
-                zp_int32s = struct.unpack(f"{byte_order}{num_zps}b", initializer.raw_data)
-
-                # Repack int32 zero-points as int16s
-                initializer.raw_data = struct.pack(f"{byte_order}{num_zps}h", *zp_int32s)
-
-            initializer.data_type = onnx.TensorProto.INT16
+        if node.op_type == "DequantizeLinear" and input0 in name_to_initializer:
+            input_initializer = name_to_initializer[input0]
+            convert_initializer_to_16bit(input_initializer)
     else:
         raise Exception("Only support Q/DQ ops with explicit zero-point inputs")
 
