@@ -45,6 +45,7 @@
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
+#include "core/optimizer/lora_weights_folding.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
@@ -191,6 +192,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
   switch (level) {
     case TransformerLevel::Level1: {
+      // LoraWeightsFolding needs to come before other transformers since they may remove "no-op" constant initializers
+      // (e.g. Mul with a value of 1), regardless of whether the initializer is overridden by initializers_to_share_map
+      transformers.emplace_back(std::make_unique<LoraWeightsFolding>(cpu_execution_provider, session_options.initializers_to_share_map));
+
       // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
       // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
       // CommonSubexpressionElimination and TransposeOptimizer to do.
