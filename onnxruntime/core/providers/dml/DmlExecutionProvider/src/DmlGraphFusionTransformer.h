@@ -8,26 +8,28 @@
 
 namespace Dml
 {
-	class ExecutionProviderImpl;
+    class ExecutionProviderImpl;
 
-	class DmlGraphFusionTransformer : public onnxruntime::GraphTransformer
-	{
-	public:
-		DmlGraphFusionTransformer(
-			const std::string& name,
-			const onnxruntime::IExecutionProvider* provider
-		);
+    class DmlGraphFusionTransformer : public onnxruntime::GraphTransformer
+    {
+    public:
+        DmlGraphFusionTransformer(
+            const std::string& name,
+            const onnxruntime::IExecutionProvider* provider,
+            const std::unordered_map<std::string, const OrtValue*>& initializerOverrides
+        );
 
-	public:
-		inline const static char* const DML_GRAPH_FUSION_NODE_NAME_PREFIX = "DmlFusedNode_";
-		inline const static char* const DML_GRAPH_FUSION_NODE_DOMAIN = "DmlFusedNodeDomain";
+    public:
+        inline const static char* const DML_GRAPH_FUSION_NODE_NAME_PREFIX = "DmlFusedNode_";
+        inline const static char* const DML_GRAPH_FUSION_NODE_DOMAIN = "DmlFusedNodeDomain";
 
-	private:
-		onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph, 
-											  bool& modified, 
-											  int graph_level, 
-											  const onnxruntime::logging::Logger& logger) const final;
-	private:
-		const ExecutionProviderImpl* m_providerImpl = nullptr;
-	};
+    private:
+        onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph,
+                                              bool& modified,
+                                              int graph_level,
+                                              const onnxruntime::logging::Logger& logger) const final;
+    private:
+        const ExecutionProviderImpl* m_providerImpl = nullptr;
+        const std::unordered_map<std::string, const OrtValue*>& m_initializerOverrides;
+    };
 }
