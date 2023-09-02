@@ -576,14 +576,10 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       const TScale* scales_in_head = ((const TScale*)params.k_scale) + ((mapped_bhi * params.max_sequence_length + ti) * scales_per_head);
       float unit_scale_k = 0.0f;
       int in_head_elem_idx = ki;
-      int renew_scale_elem_idx = 0; // reload scale when in_head_elem_idx >= renew_scale_elem_idx
 #pragma unroll
       for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        if (in_head_elem_idx >= renew_scale_elem_idx) {
-          int in_head_scale_idx = in_head_elem_idx / params.quant_kv_block_size;
-          renew_scale_elem_idx = (in_head_scale_idx + 1) * params.quant_kv_block_size;
-          unit_scale_k = (float)scales_in_head[in_head_scale_idx];
-        }
+        const int in_head_scale_idx = in_head_elem_idx / params.quant_kv_block_size;
+        unit_scale_k = (float)scales_in_head[in_head_scale_idx];
         in_head_elem_idx += QK_ELTS_IN_16B;
         int jj = ii * params.max_sequence_length + ti;
         k_vec[ii] = LoadQuantVec((const K_vec_k*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), unit_scale_k);
