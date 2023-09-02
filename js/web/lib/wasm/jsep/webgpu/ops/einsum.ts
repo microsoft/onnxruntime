@@ -15,15 +15,17 @@ export interface EinsumAttributes extends AttributeWithCacheKey {
 // separated by '->'. Ex. "ij,jk -> ik" expresses matrix multiplication
 //     "ij->ji" expresses matrix transpose
 //      "ii->i" diagonal elements of a square matrix
-// LHS consists of a sequence of terms seperated by comma. Each term corresponds to an input variable.
+// LHS consists of a sequence of terms separated by commas. Each term corresponds to an input variable.
 // Each symbol corresponds to a dimension in the input variable. The symbol can be either a letter, 'a' to 'z' or 'A' to
 // 'Z' or '...' to represent arbitrary dimensions.
+
 const symbolPattern =
     '[a-zA-Z]|\\.\\.\\.';  // The pattern each symbol in each term in the symbolic equation should match
 const termPattern = '(' + symbolPattern + ')+';   // The pattern each term in the symbolic equation should match
 const termPatternOnly = '^' + termPattern + '$';  // The patterns only matchs a term begin to end.
 const lhsPattern = '(' + termPattern + ',)*' + termPattern;  // The pattern the LHS should match
 const lhsPatternOnly = '^' + lhsPattern + '$';               // The patterns only matchs a LHS begin to end.
+
 class EinsumTerm {
   constructor(
       inputIndex = -1, symbols: string[] = [], symbolToIndices: Map<string, number[]> = new Map<string, number[]>()) {
