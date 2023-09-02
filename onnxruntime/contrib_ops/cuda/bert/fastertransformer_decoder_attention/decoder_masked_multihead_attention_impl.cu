@@ -30,6 +30,8 @@
 #include "decoder_masked_multihead_attention_impl_utils.h"
 #include <cfloat>
 
+#define INDEX 0
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -346,7 +348,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // The keys loaded from the key cache.
   K_vec_k k_vec[2][K_VECS_PER_THREAD];
-  constexpr int k_index = 0;
 
   if (has_beams) {
 #pragma unroll
@@ -355,7 +356,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
       if (ko < tlength) {
         const int beam_offset = beam_indices[ko] * params.num_heads * params.max_sequence_length * head_size;
-        k_vec[k_index][ii] = vec_conversion<K_vec_k, K_vec_m>(
+        k_vec[INDEX][ii] = vec_conversion<K_vec_k, K_vec_m>(
             (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
       }
     }
@@ -365,7 +366,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       int jj = ii * params.max_sequence_length + ko;
 
       if (ko < tlength) {
-        k_vec[k_index][ii] = vec_conversion<K_vec_k, K_vec_m>(
+        k_vec[INDEX][ii] = vec_conversion<K_vec_k, K_vec_m>(
             (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
       }
     }
@@ -381,7 +382,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
         if ((ti + K_PER_ITER) < tlength) {
           const int beam_offset = beam_indices[ti + K_PER_ITER] * params.num_heads * params.max_sequence_length * head_size;
-          k_vec[(k_index + 1) % 2][ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[(INDEX + 1) % 2][ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
         }
       }
@@ -391,7 +392,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
         int jj = ii * params.max_sequence_length + (ti + K_PER_ITER);
 
         if ((ti + K_PER_ITER) < tlength) {
-          k_vec[(k_index + 1) % 2][ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[(INDEX + 1) % 2][ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
       }
@@ -401,7 +402,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
     float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec[k_index]) * inv_sqrt_dh;
 
-    k_index = (k_index + 1) % 2;
+    INDEX = (INDEX + 1) % 2;
 
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to
@@ -525,7 +526,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // Loop over the timesteps to compute the partial outputs (with double buffering)
   V_vec_k v[2];
-  constexpr int v_index = 0;
+  INDEX = 0;
 
   {
     int ti = vo;
@@ -533,7 +534,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     if (ti < tlength) {
       const int beam_src = has_beams ? params.cache_indir[bi_max_seq_length + ti] : 0;
       const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
-      v[v_index] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
+      v[INDEX] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
     }
   }
 
@@ -545,13 +546,13 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
 
       // Load the values from the cache.
-      v[(v_index + 1) % 2] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + (ti + V_PER_ITER) * head_size]));
+      v[(INDEX + 1) % 2] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + (ti + V_PER_ITER) * head_size]));
     }
 
     // Load the logits from shared memory.
     T logit = logits_smem[ti];
-    out = fma(logit, v[v_index], out);
-    v_index = (v_index + 1) % 2;
+    out = fma(logit, v[INDEX], out);
+    INDEX = (INDEX + 1) % 2;
   }
 
   // One group of threads computes the product(s) for the current timestep.
