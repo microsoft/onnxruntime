@@ -25,7 +25,6 @@ from typing import Dict
 
 import onnx
 
-
 QDQ_OPS = ("QuantizeLinear", "DequantizeLinear")
 
 
@@ -44,7 +43,7 @@ def convert_zero_point_to_16bit(name_to_initializer: Dict[str, onnx.TensorProto]
         # Convert uint8 to uint16, int8 to int16
         if initializer.data_type == onnx.TensorProto.UINT8:
             if initializer.HasField("raw_data"):
-                num_zps = len(initializer.raw_data) # Number of zero-point byte values
+                num_zps = len(initializer.raw_data)  # Number of zero-point byte values
 
                 # Extract uint8 zero-points as int32s
                 zp_int32s = struct.unpack(f"{byte_order}{num_zps}B", initializer.raw_data)
@@ -55,7 +54,7 @@ def convert_zero_point_to_16bit(name_to_initializer: Dict[str, onnx.TensorProto]
             initializer.data_type = onnx.TensorProto.UINT16
         elif initializer.data_type == onnx.TensorProto.INT8:
             if initializer.HasField("raw_data"):
-                num_zps = len(initializer.raw_data) # Number of zero-point values
+                num_zps = len(initializer.raw_data)  # Number of zero-point values
 
                 # Extract int8 zero-points as int32s
                 zp_int32s = struct.unpack(f"{byte_order}{num_zps}b", initializer.raw_data)
@@ -72,7 +71,6 @@ def update_qdq_node_domains(graph: onnx.GraphProto, use_16bit_qdq: bool):
     name_to_initializer = {initializer.name: initializer for initializer in graph.initializer}
 
     for node in graph.node:
-
         # Handle subgraphs:
         for attr in node.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
