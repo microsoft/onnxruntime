@@ -41,6 +41,45 @@ python -m pip install git+https://github.com/microsoft/onnxruntime-extensions.gi
 dotnet add package Microsoft.ML.OnnxRuntime.Extensions --version 0.8.1-alpha
 ```
 
+### **iOS installation**
+
+In your CocoaPods `Podfile`, add the `onnxruntime-extensions-c` pod.
+
+  ```ruby
+  use_frameworks!
+
+  # onnxruntime C/C++ full package
+  pod 'onnxruntime-c'
+
+  # onnxruntime-extensions C/C++ package
+  pod 'onnxruntime-extensions-c'
+  ```
+
+Run `pod install`.
+
+### **Android installation**
+
+In your Android Studio Project, make the following changes to:
+
+1. build.gradle (Project):
+
+   ```gradle
+    repositories {
+        mavenCentral()
+    }
+   ```
+
+2. build.gradle (Module):
+
+    ```gradle
+    dependencies {
+        // onnxruntime full package
+        implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'
+        // onnxruntime-extensions package
+        implementation 'com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.release'
+    }
+    ```
+
 ## Add pre and post-processing to the model
 There are multiple ways to add pre and post processing to an ONNX graph:
 - [Use the pre-processing pipeline API if the model and its pre-processing is supported by the pipeline API](https://github.com/microsoft/onnxruntime-extensions/blob/main/onnxruntime_extensions/tools/pre_post_processing/pre_post_processor.py)
@@ -81,16 +120,43 @@ so.register_custom_ops_library(_lib_path())
 sess = _ort.InferenceSession(model, so)
 sess.run (...)
 ```
+
 ### C++
-
+Register Extensions with a path to the Extensions shared library.
 ```c++
-  // The line loads the customop library into ONNXRuntime engine to load the ONNX model with the custom op
-  Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &handle));
+Ort::Env env = ...;
 
-  // The regular ONNXRuntime invoking to run the model.
-  Ort::Session session(env, model_uri, session_options);
-  RunSession(session, inputs, outputs);
+// Note: use `wchar_t` instead of `char` for paths on Windows
+const char* model_uri = "/path/to/the/model.onnx";
+const char* custom_op_library_filename = "/path/to/the/onnxruntime-extensions/shared/library";
+
+Ort::SessionOptions session_options;
+
+// Register Extensions custom ops with the session options.
+Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary_V2(static_cast<OrtSessionOptions*(session_options),
+                                                            custom_op_library_filename));
+
+// Create a session.
+Ort::Session session(env, model_uri, session_options);
 ```
+
+Register Extensions by calling the `RegisterCustomOps` function directly.
+```c++
+Ort::Env env = ...;
+
+// Note: use `wchar_t` instead of `char` for paths on Windows
+const char* model_uri = "/path/to/the/model.onnx";
+
+Ort::SessionOptions session_options;
+
+// Register Extensions custom ops with the session options.
+// `RegisterCustomOps` is declared in onnxruntime_extensions.h.
+Ort::ThrowOnError(RegisterCustomOps(static_cast<OrtSessionOptions*>(session_options), OrtGetApiBase()));
+
+// Create a session.
+Ort::Session session(env, model_uri, session_options);
+```
+
 ### Java
 ```java
 var env = OrtEnvironment.getEnvironment();
