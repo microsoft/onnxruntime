@@ -115,8 +115,8 @@ def main():
         suffix = ".qdq16_contrib" if args.use_16bit_qdq else ".qdq_contrib"
         output_model_path = base_model_name + suffix + ".onnx"
 
-    print(f"[INFO] Saved model: {output_model_path}")
     onnx.save_model(model, output_model_path)
+    print(f"[INFO] Saved model: {output_model_path}")
 
 
 if __name__ == "__main__":
