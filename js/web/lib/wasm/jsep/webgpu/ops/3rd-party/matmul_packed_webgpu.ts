@@ -416,24 +416,23 @@ const matMulReadWriteFnSource =
 
 export const createMatmulProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
-     outputShape: readonly number[]): ProgramInfo => {
+     outputShape: readonly number[], reshapedOutputShape?: readonly number[]): ProgramInfo => {
       const aShape = inputs[0].dims;
       const bShape = inputs[1].dims;
 
       const outerDimsA = aShape.slice(0, -2);
       const outerDimsB = bShape.slice(0, -2);
-      const outerDims = outputShape.slice(0, -2);
+      const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
       const batchDims = inputVariable('batchDims', inputs[0].dataType, outerDims);
       const batchADims = inputVariable('batchADims', inputs[0].dataType, outerDimsA);
       const batchBDims = inputVariable('batchBDims', inputs[0].dataType, outerDimsB);
       const variables = [batchADims, batchBDims, batchDims];
       const batchSize = ShapeUtil.size(outerDims);
 
-      const dimAOuter = outputShape[outputShape.length - 2];
+      const dimAOuter = aShape[aShape.length - 2];
       const dimInner = aShape[aShape.length - 1];
-      const dimBOuter = outputShape[outputShape.length - 1];
+      const dimBOuter = bShape[bShape.length - 1];
       const isVec4 = dimInner % 4 === 0 && dimBOuter % 4 === 0;
-      const component = isVec4 ? 4 : 1;
       const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
       // TODO: fine tune size
@@ -455,7 +454,7 @@ export const createMatmulProgramInfo =
       variables.push(output);
       const inputVariables = [A, B];
       const hasBias = inputs.length > 2;
-      const declareFunctions = matMulReadWriteFnSource(component, hasBias, applyActivation, variables);
+      const declareFunctions = matMulReadWriteFnSource(components, hasBias, applyActivation, variables);
       if (hasBias) {
         inputVariables.push(inputVariable('bias', inputs[2].dataType, [dimBOuter / components], components));
       }
