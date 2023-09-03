@@ -7,6 +7,7 @@ parameters:
   NuPackScript : ''
   ArtifactName: 'drop-nuget'
   DoNodejsPack: 'false'
+  BuildNodejs: 'true'
   DoEsrp: 'false'
   DoTestCoverage: 'false'
   BuildArch: 'x64' # Optional. Options: x86, x64
@@ -265,6 +266,24 @@ stages:
            7z x $(Build.ArtifactStagingDirectory)\onnxruntime-*.tar
           displayName: 'Unzip package to test'
           workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
+      - ${{ if eq(parameters.BuildNodejs, 'true') }}:
+        - task: CopyFiles@2
+          displayName: 'Copy DirectML binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+          inputs:
+            SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+            Contents: 'DirectML.dll'
+            TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+        - template: ../../templates/win-esrp-dll.yml
+          parameters:
+            FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+            DisplayName: 'ESRP - Sign Node.js binding binaries'
+            DoEsrp: ${{ parameters.DoEsrp }}
+            Pattern: '*.node'
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'
 
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
         - template: ../../templates/compliance.yml

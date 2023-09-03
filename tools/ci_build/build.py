@@ -166,6 +166,15 @@ def parse_arguments():
         help="Use parallel build. The optional value specifies the maximum number of parallel jobs. "
         "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.",
     )
+    parser.add_argument(
+        "--nvcc_threads",
+        nargs="?",
+        default=-1,
+        type=int,
+        help="Maximum number of NVCC threads to be used in parallel. "
+        "If the optional value is negative or unspecified, the value of --parallel is used.",
+    )
+
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
     parser.add_argument(
@@ -550,11 +559,6 @@ def parse_arguments():
         default=None,
         help="Specify the generator that CMake invokes.",
     )
-    parser.add_argument(
-        "--enable_multi_device_test",
-        action="store_true",
-        help="Test with multi-device. Mostly used for multi-device GPU",
-    )
     parser.add_argument("--use_dml", action="store_true", help="Build with DirectML.")
     parser.add_argument(
         "--dml_path",
@@ -631,6 +635,13 @@ def parse_arguments():
     )
     # Please note in our CMakeLists.txt this is already default on. But in this file we reverse it to default OFF.
     parser.add_argument("--disable_rtti", action="store_true", help="Disable RTTI (reduces binary size)")
+    parser.add_argument(
+        "--disable_types",
+        nargs="+",
+        default=[],
+        choices=["float8", "optional", "sparsetensor"],
+        help="Disable selected data types (reduces binary size)",
+    )
     parser.add_argument(
         "--disable_exceptions",
         action="store_true",
@@ -894,8 +905,11 @@ def generate_build_tree(
     if not use_dev_mode(args):
         cmake_args += ["--compile-no-warning-as-error"]
 
+    types_to_disable = args.disable_types
     # enable/disable float 8 types
-    disable_float8_types = args.use_rocm or args.android or args.minimal_build
+    disable_float8_types = args.use_rocm or args.android or ("float8" in types_to_disable)
+    disable_optional_type = "optional" in types_to_disable
+    disable_sparse_tensors = "sparsetensor" in types_to_disable
 
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
@@ -995,6 +1009,8 @@ def generate_build_tree(
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
         "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
+        "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
+        "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
@@ -1028,7 +1044,11 @@ def generate_build_tree(
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_cuda:
-        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(args.parallel))
+        if args.nvcc_threads >= 0:
+            nvcc_threads = args.nvcc_threads
+        else:
+            nvcc_threads = args.parallel
+        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
@@ -2239,6 +2259,8 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
+
+    print(args)
 
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True

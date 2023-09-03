@@ -60,7 +60,7 @@ onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::Pat
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionOptions, OrtSessionOptions** out) {
   API_IMPL_BEGIN
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   *out = new OrtSessionOptions();
   return nullptr;
   API_IMPL_END
@@ -72,7 +72,7 @@ ORT_API(void, OrtApis::ReleaseSessionOptions, _Frees_ptr_opt_ OrtSessionOptions*
 
 ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out) {
   API_IMPL_BEGIN
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   *out = new OrtSessionOptions(*input);
   return nullptr;
   API_IMPL_END
