@@ -569,8 +569,9 @@ class TestQDQFormatConvRelu(TestQDQFormat):
     def verify_qdq(self, per_channel, activation_type, weight_type, extra_options=None):
         np.random.seed(1)
         model_fp32_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_fp32.{per_channel}.onnx")
-        model_qdq_path = str(Path(self._tmp_model_dir.name) / (f"conv_relu_quant_qdq.{activation_type}."
-                                                               f"{weight_type}.{per_channel}.onnx"))
+        model_qdq_path = str(
+            Path(self._tmp_model_dir.name) / f"conv_relu_quant_qdq.{activation_type}.{weight_type}.{per_channel}.onnx"
+        )
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
         self.construct_model_conv_relu(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31])
         quantize_static(
