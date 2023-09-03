@@ -276,7 +276,7 @@ __global__ void MatMul4BitsWeightKernelBlockNoZeroPoint(
   typename Scalar2<T>::type res_pair;
   __shared__ T a_data_vec[256];
   const typename Scalar2<T>::type* a_data_vec_2 = reinterpret_cast<const typename Scalar2<T>::type*>(a_data_vec);
-  for (int k_step = 0; k_step < k_iter; k++) {
+  for (int k_step = 0; k_step < k_iter; k_step++) {
     a_data_vec[thread_id] = a_data[k_step * 256 + thread_id];
     __syncthreads();
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_step * 128 + lane_id * 4));
