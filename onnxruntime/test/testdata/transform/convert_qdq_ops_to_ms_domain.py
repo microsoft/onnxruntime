@@ -15,8 +15,11 @@ Models created with this script:
 - qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx
 - qdq_with_multi_consumer_dq_nodes.fixed.qdq16_contrib.onnx
 - fusion/constant_folding_dequantizelinear.qdq_contrib.onnx
+- fusion/constant_folding_dequantizelinear.qdq16_contrib.onnx
 - fusion/constant_folding_qdq_node_unit.qdq_contrib.onnx
+- fusion/constant_folding_qdq_node_unit.qdq16_contrib.onnx
 - fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx
+- fusion/constant_folding_qdq_node_unit.graph_output.qdq16_contrib.onnx
 """
 import argparse
 import os
@@ -70,34 +73,42 @@ def convert_qdq_op_to_16bit(
     if zp_input in name_to_initializer:
         zp_initializer = name_to_initializer[zp_input]
 
-        target_type = QDQ_CONVERT_TYPES.get(zp_initializer.data_type)
-        if not target_type:
-            return
-
-        convert_initializer_to_16bits(zp_initializer, target_type)
+        zp_target_type = QDQ_CONVERT_TYPES.get(zp_initializer.data_type)
+        if zp_target_type:
+            convert_initializer_to_16bits(zp_initializer, zp_target_type)
 
         if node.op_type == "DequantizeLinear":
             input0 = node.input[0]
 
             if input0 in name_to_initializer:
                 input_initializer = name_to_initializer[input0]
-                convert_initializer_to_16bits(input_initializer, target_type)
+                input_target_type = QDQ_CONVERT_TYPES.get(input_initializer.data_type)
+                if input_target_type:
+                    convert_initializer_to_16bits(input_initializer, input_target_type)
             elif input0 in name_to_values:
                 input_val = name_to_values[input0]
-                input_val.type.tensor_type.elem_type = target_type
+                input_target_type = QDQ_CONVERT_TYPES.get(input_val.type.tensor_type.elem_type)
+                if input_target_type:
+                    input_val.type.tensor_type.elem_type = input_target_type
             elif input0 in name_to_inputs:
                 input_val = name_to_inputs[input0]
-                input_val.type.tensor_type.elem_type = target_type
+                input_target_type = QDQ_CONVERT_TYPES.get(input_val.type.tensor_type.elem_type)
+                if input_target_type:
+                    input_val.type.tensor_type.elem_type = input_target_type
         else:
             # QuantizeLinear
             output0 = node.output[0]
 
             if output0 in name_to_values:
                 output_val = name_to_values[output0]
-                output_val.type.tensor_type.elem_type = target_type
+                output_target_type = QDQ_CONVERT_TYPES.get(output_val.type.tensor_type.elem_type)
+                if output_target_type:
+                    output_val.type.tensor_type.elem_type = output_target_type
             elif output0 in name_to_outputs:
                 output_val = name_to_outputs[output0]
-                output_val.type.tensor_type.elem_type = target_type
+                output_target_type = QDQ_CONVERT_TYPES.get(output_val.type.tensor_type.elem_type)
+                if output_target_type:
+                    output_val.type.tensor_type.elem_type = output_target_type
     else:
         raise Exception("Only support Q/DQ ops with explicit zero-point inputs")
 
