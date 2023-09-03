@@ -14,21 +14,63 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+struct QKVPath {
+  Node* q_lora_down_node;
+  Node* q_lora_up_node;
+  Node* q_scale_node;
+  Node* q_alpha_node;
+  Node* q_reshape_node;
+  Node* k_lora_down_node;
+  Node* k_lora_up_node;
+  Node* k_scale_node;
+  Node* k_alpha_node;
+  Node* k_reshape_node;
+  Node* v_lora_down_node;
+  Node* v_lora_up_node;
+  Node* v_scale_node;
+  Node* v_alpha_node;
+  Node* v_reshape_node;
+  Node* concat_node;
+  Node* reshape_node;
+  Node* qkv_matmul_node;
+};
+
+struct QPath {
+  Node* q_lora_down_node;
+  Node* q_lora_up_node;
+  Node* q_scale_node;
+  Node* q_alpha_node;
+  Node* left_add_node;
+  Node* left_matmul_node;
+};
+
+struct KVPath {
+  Node* k_lora_down_node;
+  Node* k_lora_up_node;
+  Node* k_scale_node;
+  Node* k_alpha_node;
+  Node* k_reshape_node;
+  Node* v_lora_down_node;
+  Node* v_lora_up_node;
+  Node* v_scale_node;
+  Node* v_alpha_node;
+  Node* v_reshape_node;
+  Node* concat_node;
+  Node* reshape_node;
+  Node* kv_matmul_node;
+};
+
 static Node& CreateCastNode(Graph& graph, NodeArg* cast_input, ONNX_NAMESPACE::TensorProto_DataType target_type) {
   ONNX_NAMESPACE::TypeProto cast_output_type_proto;
   cast_output_type_proto.mutable_tensor_type()->set_elem_type(target_type);
 
   auto& output_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("Cast"), &cast_output_type_proto);
-
-  const std::array input_defs{cast_input};
-  const std::array output_defs{&output_node_arg};
-
   Node& cast_node = graph.AddNode(
       graph.GenerateNodeName("Cast"),
       "Cast",
       "",
-      input_defs,
-      output_defs);
+      {cast_input},
+      {&output_node_arg});
   cast_node.AddAttribute("to", static_cast<int64_t>(target_type));
   cast_node.SetExecutionProviderType(kCpuExecutionProvider);
   graph.SetOpSchemaFromRegistryForNode(cast_node);
@@ -38,15 +80,12 @@ static Node& CreateCastNode(Graph& graph, NodeArg* cast_input, ONNX_NAMESPACE::T
 
 static Node& CreateMatMulNode(Graph& graph, NodeArg* matmul_input_a, NodeArg* matmul_input_b) {
   auto& output_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MatMul"), matmul_input_a->TypeAsProto());
-  const std::array input_defs{matmul_input_a, matmul_input_b};
-  const std::array output_defs{&output_node_arg};
-
   Node& matmul_node = graph.AddNode(
       graph.GenerateNodeName("MatMul"),
       "MatMul",
       "",
-      input_defs,
-      output_defs);
+      {matmul_input_a, matmul_input_b},
+      {&output_node_arg});
   matmul_node.SetExecutionProviderType(kCpuExecutionProvider);
   graph.SetOpSchemaFromRegistryForNode(matmul_node);
 
@@ -55,14 +94,12 @@ static Node& CreateMatMulNode(Graph& graph, NodeArg* matmul_input_a, NodeArg* ma
 
 static Node& CreateConcatNode(Graph& graph, gsl::span<NodeArg* const> input_defs, int64_t axis) {
   auto& output_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("Concat"), input_defs[0]->TypeAsProto());
-  const std::array output_defs{&output_node_arg};
-
   Node& concat_node = graph.AddNode(
       graph.GenerateNodeName("Concat"),
       "Concat",
       "",
       input_defs,
-      output_defs);
+      {&output_node_arg});
   concat_node.AddAttribute("axis", axis);
   concat_node.SetExecutionProviderType(kCpuExecutionProvider);
   concat_node.MutableInputArgsCount() = {static_cast<int>(input_defs.size())};
@@ -73,15 +110,12 @@ static Node& CreateConcatNode(Graph& graph, gsl::span<NodeArg* const> input_defs
 
 static Node& CreateAddNode(Graph& graph, NodeArg* original_qkv_input, NodeArg* lora_qkv_input) {
   auto& output_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("Add"), original_qkv_input->TypeAsProto());
-  const std::array input_defs{original_qkv_input, lora_qkv_input};
-  const std::array output_defs{&output_node_arg};
-
   Node& add_node = graph.AddNode(
       graph.GenerateNodeName("Add"),
       "Add",
       "",
-      input_defs,
-      output_defs);
+      {original_qkv_input, lora_qkv_input},
+      {&output_node_arg});
   add_node.SetExecutionProviderType(kCpuExecutionProvider);
   graph.SetOpSchemaFromRegistryForNode(add_node);
 
@@ -90,15 +124,12 @@ static Node& CreateAddNode(Graph& graph, NodeArg* original_qkv_input, NodeArg* l
 
 static Node& CreateReshapeNode(Graph& graph, NodeArg* reshape_input, NodeArg* reshape_shape) {
   auto& output_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("Reshape"), reshape_input->TypeAsProto());
-  const std::array input_defs{reshape_input, reshape_shape};
-  const std::array output_defs{&output_node_arg};
-
   Node& reshape_node = graph.AddNode(
       graph.GenerateNodeName("Reshape"),
       "Reshape",
       "",
-      input_defs,
-      output_defs);
+      {reshape_input, reshape_shape},
+      {&output_node_arg});
   reshape_node.SetExecutionProviderType(kCpuExecutionProvider);
   graph.SetOpSchemaFromRegistryForNode(reshape_node);
 
@@ -132,6 +163,20 @@ static Node& CreateSliceNode(Graph& graph, NodeArg* data, int64_t start, int64_t
   graph.SetOpSchemaFromRegistryForNode(slice_node);
 
   return slice_node;
+}
+
+static Node& CreateMulNode(Graph& graph, NodeArg* input_a, NodeArg* input_b) {
+  auto& output_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("Mul"), input_a->TypeAsProto());
+  Node& mul_node = graph.AddNode(
+      graph.GenerateNodeName("Mul"),
+      "Mul",
+      "",
+      {input_a, input_b},
+      {&output_node_arg});
+  mul_node.SetExecutionProviderType(kCpuExecutionProvider);
+  graph.SetOpSchemaFromRegistryForNode(mul_node);
+
+  return mul_node;
 }
 
 static Status RunSubgraph(
@@ -202,37 +247,43 @@ static Status MergeQKVWeights(
     Graph& graph,
     const IExecutionProvider& cpu_execution_provider,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
-    Node& original_qkv_node,
-    Node& q_lora_down_node,
-    Node& q_lora_up_node,
-    Node& q_lora_reshape_node,
-    Node& k_lora_down_node,
-    Node& k_lora_up_node,
-    Node& k_lora_reshape_node,
-    Node& v_lora_down_node,
-    Node& v_lora_up_node,
-    Node& v_lora_reshape_node,
-    Node& qkv_lora_reshape_node,
+    const QKVPath& path,
     const logging::Logger& logger) {
-  Node& original_qkv_cast_node = CreateCastNode(graph, original_qkv_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& original_qkv_cast_node = CreateCastNode(graph, path.qkv_matmul_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-  Node& q_lora_down_cast_node = CreateCastNode(graph, q_lora_down_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  Node& q_lora_up_cast_node = CreateCastNode(graph, q_lora_up_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  // Cast the nodes to fp32 since the CPU doesn't support fp16
+  Node& q_lora_down_cast_node = CreateCastNode(graph, path.q_lora_down_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& q_lora_up_cast_node = CreateCastNode(graph, path.q_lora_up_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& q_alpha_cast_node = CreateCastNode(graph, path.q_alpha_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& q_scale_cast_node = CreateCastNode(graph, path.q_scale_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
   Node& q_lora_matmul_node = CreateMatMulNode(graph, q_lora_down_cast_node.MutableOutputDefs()[0], q_lora_up_cast_node.MutableOutputDefs()[0]);
-  Node& q_slice_node = CreateSliceNode(graph, q_lora_reshape_node.MutableInputDefs()[1], 1, INT_MAX);
-  Node& q_reshape_node = CreateReshapeNode(graph, q_lora_matmul_node.MutableOutputDefs()[0], q_slice_node.MutableOutputDefs()[0]);
+  Node& q_lora_alpha_mul_node = CreateMulNode(graph, q_lora_matmul_node.MutableOutputDefs()[0], q_alpha_cast_node.MutableOutputDefs()[0]);
+  Node& q_lora_scale_mul_node = CreateMulNode(graph, q_lora_alpha_mul_node.MutableOutputDefs()[0], q_scale_cast_node.MutableOutputDefs()[0]);
+  Node& q_slice_node = CreateSliceNode(graph, path.q_reshape_node->MutableInputDefs()[1], 1, INT_MAX);
+  Node& q_reshape_node = CreateReshapeNode(graph, q_lora_scale_mul_node.MutableOutputDefs()[0], q_slice_node.MutableOutputDefs()[0]);
 
-  Node& k_lora_down_cast_node = CreateCastNode(graph, k_lora_down_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  Node& k_lora_up_cast_node = CreateCastNode(graph, k_lora_up_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& k_lora_down_cast_node = CreateCastNode(graph, path.k_lora_down_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& k_lora_up_cast_node = CreateCastNode(graph, path.k_lora_up_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& k_alpha_cast_node = CreateCastNode(graph, path.k_alpha_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& k_scale_cast_node = CreateCastNode(graph, path.k_scale_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
   Node& k_lora_matmul_node = CreateMatMulNode(graph, k_lora_down_cast_node.MutableOutputDefs()[0], k_lora_up_cast_node.MutableOutputDefs()[0]);
-  Node& k_slice_node = CreateSliceNode(graph, k_lora_reshape_node.MutableInputDefs()[1], 1, INT_MAX);
-  Node& k_reshape_node = CreateReshapeNode(graph, k_lora_matmul_node.MutableOutputDefs()[0], k_slice_node.MutableOutputDefs()[0]);
+  Node& k_lora_alpha_mul_node = CreateMulNode(graph, k_lora_matmul_node.MutableOutputDefs()[0], k_alpha_cast_node.MutableOutputDefs()[0]);
+  Node& k_lora_scale_mul_node = CreateMulNode(graph, k_lora_alpha_mul_node.MutableOutputDefs()[0], k_scale_cast_node.MutableOutputDefs()[0]);
+  Node& k_slice_node = CreateSliceNode(graph, path.k_reshape_node->MutableInputDefs()[1], 1, INT_MAX);
+  Node& k_reshape_node = CreateReshapeNode(graph, k_lora_scale_mul_node.MutableOutputDefs()[0], k_slice_node.MutableOutputDefs()[0]);
 
-  Node& v_lora_down_cast_node = CreateCastNode(graph, v_lora_down_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  Node& v_lora_up_cast_node = CreateCastNode(graph, v_lora_up_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& v_lora_down_cast_node = CreateCastNode(graph, path.v_lora_down_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& v_lora_up_cast_node = CreateCastNode(graph, path.v_lora_up_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& v_alpha_cast_node = CreateCastNode(graph, path.v_alpha_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& v_scale_cast_node = CreateCastNode(graph, path.v_scale_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
   Node& v_lora_matmul_node = CreateMatMulNode(graph, v_lora_down_cast_node.MutableOutputDefs()[0], v_lora_up_cast_node.MutableOutputDefs()[0]);
-  Node& v_slice_node = CreateSliceNode(graph, v_lora_reshape_node.MutableInputDefs()[1], 1, INT_MAX);
-  Node& v_reshape_node = CreateReshapeNode(graph, v_lora_matmul_node.MutableOutputDefs()[0], v_slice_node.MutableOutputDefs()[0]);
+  Node& v_lora_alpha_mul_node = CreateMulNode(graph, v_lora_matmul_node.MutableOutputDefs()[0], v_alpha_cast_node.MutableOutputDefs()[0]);
+  Node& v_lora_scale_mul_node = CreateMulNode(graph, v_lora_alpha_mul_node.MutableOutputDefs()[0], v_scale_cast_node.MutableOutputDefs()[0]);
+  Node& v_slice_node = CreateSliceNode(graph, path.v_reshape_node->MutableInputDefs()[1], 1, INT_MAX);
+  Node& v_reshape_node = CreateReshapeNode(graph, v_lora_scale_mul_node.MutableOutputDefs()[0], v_slice_node.MutableOutputDefs()[0]);
 
   std::array concat_inputs = {
       q_reshape_node.MutableOutputDefs()[0],
@@ -241,7 +292,7 @@ static Status MergeQKVWeights(
   };
 
   Node& concat_node = CreateConcatNode(graph, concat_inputs, 2);
-  Node& slice_node = CreateSliceNode(graph, qkv_lora_reshape_node.MutableInputDefs()[1], 1, INT_MAX);
+  Node& slice_node = CreateSliceNode(graph, path.reshape_node->MutableInputDefs()[1], 1, INT_MAX);
   Node& reshape_node = CreateReshapeNode(graph, concat_node.MutableOutputDefs()[0], slice_node.MutableOutputDefs()[0]);
   Node& add_node = CreateAddNode(graph, original_qkv_cast_node.MutableOutputDefs()[0], reshape_node.MutableOutputDefs()[0]);
   Node& final_cast_node = CreateCastNode(graph, add_node.MutableOutputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
@@ -250,17 +301,29 @@ static Status MergeQKVWeights(
       &original_qkv_cast_node,
       &q_lora_down_cast_node,
       &q_lora_up_cast_node,
+      &q_alpha_cast_node,
+      &q_scale_cast_node,
       &q_lora_matmul_node,
+      &q_lora_alpha_mul_node,
+      &q_lora_scale_mul_node,
       &q_slice_node,
       &q_reshape_node,
       &k_lora_down_cast_node,
       &k_lora_up_cast_node,
+      &k_alpha_cast_node,
+      &k_scale_cast_node,
       &k_lora_matmul_node,
+      &k_lora_alpha_mul_node,
+      &k_lora_scale_mul_node,
       &k_slice_node,
       &k_reshape_node,
       &v_lora_down_cast_node,
       &v_lora_up_cast_node,
+      &v_alpha_cast_node,
+      &v_scale_cast_node,
       &v_lora_matmul_node,
+      &v_lora_alpha_mul_node,
+      &v_lora_scale_mul_node,
       &v_slice_node,
       &v_reshape_node,
       &concat_node,
@@ -271,23 +334,29 @@ static Status MergeQKVWeights(
   };
 
   std::array subgraph_initializer_names = {
-      original_qkv_node.InputDefs()[1]->Name(),
-      q_lora_down_node.InputDefs()[1]->Name(),
-      q_lora_up_node.InputDefs()[1]->Name(),
-      q_lora_reshape_node.InputDefs()[1]->Name(),
+      path.qkv_matmul_node->InputDefs()[1]->Name(),
+      path.q_lora_down_node->InputDefs()[1]->Name(),
+      path.q_lora_up_node->InputDefs()[1]->Name(),
+      path.q_alpha_node->InputDefs()[1]->Name(),
+      path.q_scale_node->InputDefs()[1]->Name(),
+      path.q_reshape_node->InputDefs()[1]->Name(),
       q_slice_node.InputDefs()[1]->Name(),
       q_slice_node.InputDefs()[2]->Name(),
-      k_lora_down_node.InputDefs()[1]->Name(),
-      k_lora_up_node.InputDefs()[1]->Name(),
-      k_lora_reshape_node.InputDefs()[1]->Name(),
+      path.k_lora_down_node->InputDefs()[1]->Name(),
+      path.k_lora_up_node->InputDefs()[1]->Name(),
+      path.k_alpha_node->InputDefs()[1]->Name(),
+      path.k_scale_node->InputDefs()[1]->Name(),
+      path.k_reshape_node->InputDefs()[1]->Name(),
       k_slice_node.InputDefs()[1]->Name(),
       k_slice_node.InputDefs()[2]->Name(),
-      v_lora_down_node.InputDefs()[1]->Name(),
-      v_lora_up_node.InputDefs()[1]->Name(),
-      v_lora_reshape_node.InputDefs()[1]->Name(),
+      path.v_lora_down_node->InputDefs()[1]->Name(),
+      path.v_lora_up_node->InputDefs()[1]->Name(),
+      path.v_alpha_node->InputDefs()[1]->Name(),
+      path.v_scale_node->InputDefs()[1]->Name(),
+      path.v_reshape_node->InputDefs()[1]->Name(),
       v_slice_node.InputDefs()[1]->Name(),
       v_slice_node.InputDefs()[2]->Name(),
-      qkv_lora_reshape_node.InputDefs()[1]->Name(),
+      path.reshape_node->InputDefs()[1]->Name(),
       slice_node.InputDefs()[1]->Name(),
       slice_node.InputDefs()[2]->Name(),
   };
@@ -298,7 +367,7 @@ static Status MergeQKVWeights(
       initializers_to_share_map,
       subgraph_initializer_names,
       subgraph_nodes,
-      original_qkv_node.InputDefs()[1]->Name(),
+      path.qkv_matmul_node->InputDefs()[1]->Name(),
       logger);
 }
 
@@ -306,30 +375,39 @@ static Status MergeQWeights(
     Graph& graph,
     const IExecutionProvider& cpu_execution_provider,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
-    Node& left_matmul_node,
-    Node& q_lora_down_node,
-    Node& q_lora_up_node,
+    const QPath& path,
     const logging::Logger& logger) {
-  Node& left_matmul_cast_node = CreateCastNode(graph, left_matmul_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  Node& q_lora_down_cast_node = CreateCastNode(graph, q_lora_down_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  Node& q_lora_up_cast_node = CreateCastNode(graph, q_lora_up_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& left_matmul_cast_node = CreateCastNode(graph, path.left_matmul_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& q_lora_down_cast_node = CreateCastNode(graph, path.q_lora_down_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& q_lora_up_cast_node = CreateCastNode(graph, path.q_lora_up_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& q_alpha_cast_node = CreateCastNode(graph, path.q_alpha_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& q_scale_cast_node = CreateCastNode(graph, path.q_scale_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
   Node& q_lora_matmul_node = CreateMatMulNode(graph, q_lora_down_cast_node.MutableOutputDefs()[0], q_lora_up_cast_node.MutableOutputDefs()[0]);
-  Node& add_node = CreateAddNode(graph, left_matmul_cast_node.MutableOutputDefs()[0], q_lora_matmul_node.MutableOutputDefs()[0]);
+  Node& q_lora_alpha_mul_node = CreateMulNode(graph, q_lora_matmul_node.MutableOutputDefs()[0], q_alpha_cast_node.MutableOutputDefs()[0]);
+  Node& q_lora_scale_mul_node = CreateMulNode(graph, q_lora_alpha_mul_node.MutableOutputDefs()[0], q_scale_cast_node.MutableOutputDefs()[0]);
+  Node& add_node = CreateAddNode(graph, left_matmul_cast_node.MutableOutputDefs()[0], q_lora_scale_mul_node.MutableOutputDefs()[0]);
   Node& final_cast_node = CreateCastNode(graph, add_node.MutableOutputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
 
-  std::vector<const Node*> new_nodes = {
+  std::vector<const Node*> subgraph_nodes = {
       &left_matmul_cast_node,
       &q_lora_down_cast_node,
       &q_lora_up_cast_node,
+      &q_alpha_cast_node,
+      &q_scale_cast_node,
       &q_lora_matmul_node,
+      &q_lora_alpha_mul_node,
+      &q_lora_scale_mul_node,
       &add_node,
       &final_cast_node,
   };
 
   std::array subgraph_initializer_names = {
-      left_matmul_node.InputDefs()[1]->Name(),
-      q_lora_down_node.InputDefs()[1]->Name(),
-      q_lora_up_node.InputDefs()[1]->Name(),
+      path.left_matmul_node->InputDefs()[1]->Name(),
+      path.q_lora_down_node->InputDefs()[1]->Name(),
+      path.q_lora_up_node->InputDefs()[1]->Name(),
+      path.q_alpha_node->InputDefs()[1]->Name(),
+      path.q_scale_node->InputDefs()[1]->Name(),
   };
 
   return RunSubgraph(
@@ -337,8 +415,8 @@ static Status MergeQWeights(
       cpu_execution_provider,
       initializers_to_share_map,
       subgraph_initializer_names,
-      new_nodes,
-      left_matmul_node.InputDefs()[1]->Name(),
+      subgraph_nodes,
+      path.left_matmul_node->InputDefs()[1]->Name(),
       logger);
 }
 
@@ -346,28 +424,31 @@ static Status MergeKVWeights(
     Graph& graph,
     const IExecutionProvider& cpu_execution_provider,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
-    Node& original_kv_node,
-    Node& k_lora_down_node,
-    Node& k_lora_up_node,
-    Node& k_lora_reshape_node,
-    Node& v_lora_down_node,
-    Node& v_lora_up_node,
-    Node& v_lora_reshape_node,
-    Node& kv_lora_reshape_node,
+    const KVPath& path,
     const logging::Logger& logger) {
-  Node& original_kv_cast_node = CreateCastNode(graph, original_kv_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& original_kv_cast_node = CreateCastNode(graph, path.kv_matmul_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-  Node& k_lora_down_cast_node = CreateCastNode(graph, k_lora_down_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  Node& k_lora_up_cast_node = CreateCastNode(graph, k_lora_up_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& k_lora_down_cast_node = CreateCastNode(graph, path.k_lora_down_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& k_lora_up_cast_node = CreateCastNode(graph, path.k_lora_up_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& k_alpha_cast_node = CreateCastNode(graph, path.k_alpha_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& k_scale_cast_node = CreateCastNode(graph, path.k_scale_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
   Node& k_lora_matmul_node = CreateMatMulNode(graph, k_lora_down_cast_node.MutableOutputDefs()[0], k_lora_up_cast_node.MutableOutputDefs()[0]);
-  Node& k_slice_node = CreateSliceNode(graph, k_lora_reshape_node.MutableInputDefs()[1], 1, INT_MAX);
-  Node& k_reshape_node = CreateReshapeNode(graph, k_lora_matmul_node.MutableOutputDefs()[0], k_slice_node.MutableOutputDefs()[0]);
+  Node& k_lora_alpha_mul_node = CreateMulNode(graph, k_lora_matmul_node.MutableOutputDefs()[0], k_alpha_cast_node.MutableOutputDefs()[0]);
+  Node& k_lora_scale_mul_node = CreateMulNode(graph, k_lora_alpha_mul_node.MutableOutputDefs()[0], k_scale_cast_node.MutableOutputDefs()[0]);
+  Node& k_slice_node = CreateSliceNode(graph, path.k_reshape_node->MutableInputDefs()[1], 1, INT_MAX);
+  Node& k_reshape_node = CreateReshapeNode(graph, k_lora_scale_mul_node.MutableOutputDefs()[0], k_slice_node.MutableOutputDefs()[0]);
 
-  Node& v_lora_down_cast_node = CreateCastNode(graph, v_lora_down_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  Node& v_lora_up_cast_node = CreateCastNode(graph, v_lora_up_node.MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& v_lora_down_cast_node = CreateCastNode(graph, path.v_lora_down_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& v_lora_up_cast_node = CreateCastNode(graph, path.v_lora_up_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& v_alpha_cast_node = CreateCastNode(graph, path.v_alpha_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  Node& v_scale_cast_node = CreateCastNode(graph, path.v_scale_node->MutableInputDefs()[1], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
   Node& v_lora_matmul_node = CreateMatMulNode(graph, v_lora_down_cast_node.MutableOutputDefs()[0], v_lora_up_cast_node.MutableOutputDefs()[0]);
-  Node& v_slice_node = CreateSliceNode(graph, v_lora_reshape_node.MutableInputDefs()[1], 1, INT_MAX);
-  Node& v_reshape_node = CreateReshapeNode(graph, v_lora_matmul_node.MutableOutputDefs()[0], v_slice_node.MutableOutputDefs()[0]);
+  Node& v_lora_alpha_mul_node = CreateMulNode(graph, v_lora_matmul_node.MutableOutputDefs()[0], v_alpha_cast_node.MutableOutputDefs()[0]);
+  Node& v_lora_scale_mul_node = CreateMulNode(graph, v_lora_alpha_mul_node.MutableOutputDefs()[0], v_scale_cast_node.MutableOutputDefs()[0]);
+  Node& v_slice_node = CreateSliceNode(graph, path.v_reshape_node->MutableInputDefs()[1], 1, INT_MAX);
+  Node& v_reshape_node = CreateReshapeNode(graph, v_lora_scale_mul_node.MutableOutputDefs()[0], v_slice_node.MutableOutputDefs()[0]);
 
   std::array concat_inputs = {
       k_reshape_node.MutableOutputDefs()[0],
@@ -375,7 +456,7 @@ static Status MergeKVWeights(
   };
 
   Node& concat_node = CreateConcatNode(graph, concat_inputs, 2);
-  Node& slice_node = CreateSliceNode(graph, kv_lora_reshape_node.MutableInputDefs()[1], 1, INT_MAX);
+  Node& slice_node = CreateSliceNode(graph, path.reshape_node->MutableInputDefs()[1], 1, INT_MAX);
   Node& reshape_node = CreateReshapeNode(graph, concat_node.MutableOutputDefs()[0], slice_node.MutableOutputDefs()[0]);
   Node& add_node = CreateAddNode(graph, original_kv_cast_node.MutableOutputDefs()[0], reshape_node.MutableOutputDefs()[0]);
   Node& final_cast_node = CreateCastNode(graph, add_node.MutableOutputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
@@ -384,12 +465,20 @@ static Status MergeKVWeights(
       &original_kv_cast_node,
       &k_lora_down_cast_node,
       &k_lora_up_cast_node,
+      &k_alpha_cast_node,
+      &k_scale_cast_node,
       &k_lora_matmul_node,
+      &k_lora_alpha_mul_node,
+      &k_lora_scale_mul_node,
       &k_slice_node,
       &k_reshape_node,
       &v_lora_down_cast_node,
       &v_lora_up_cast_node,
+      &v_alpha_cast_node,
+      &v_scale_cast_node,
       &v_lora_matmul_node,
+      &v_lora_alpha_mul_node,
+      &v_lora_scale_mul_node,
       &v_slice_node,
       &v_reshape_node,
       &concat_node,
@@ -400,18 +489,22 @@ static Status MergeKVWeights(
   };
 
   std::array subgraph_initializer_names = {
-      original_kv_node.InputDefs()[1]->Name(),
-      k_lora_down_node.InputDefs()[1]->Name(),
-      k_lora_up_node.InputDefs()[1]->Name(),
-      k_lora_reshape_node.InputDefs()[1]->Name(),
+      path.kv_matmul_node->InputDefs()[1]->Name(),
+      path.k_lora_down_node->InputDefs()[1]->Name(),
+      path.k_lora_up_node->InputDefs()[1]->Name(),
+      path.k_alpha_node->InputDefs()[1]->Name(),
+      path.k_scale_node->InputDefs()[1]->Name(),
+      path.k_reshape_node->InputDefs()[1]->Name(),
       k_slice_node.InputDefs()[1]->Name(),
       k_slice_node.InputDefs()[2]->Name(),
-      v_lora_down_node.InputDefs()[1]->Name(),
-      v_lora_up_node.InputDefs()[1]->Name(),
-      v_lora_reshape_node.InputDefs()[1]->Name(),
+      path.v_lora_down_node->InputDefs()[1]->Name(),
+      path.v_lora_up_node->InputDefs()[1]->Name(),
+      path.v_alpha_node->InputDefs()[1]->Name(),
+      path.v_scale_node->InputDefs()[1]->Name(),
+      path.v_reshape_node->InputDefs()[1]->Name(),
       v_slice_node.InputDefs()[1]->Name(),
       v_slice_node.InputDefs()[2]->Name(),
-      kv_lora_reshape_node.InputDefs()[1]->Name(),
+      path.reshape_node->InputDefs()[1]->Name(),
       slice_node.InputDefs()[1]->Name(),
       slice_node.InputDefs()[2]->Name(),
   };
@@ -422,55 +515,9 @@ static Status MergeKVWeights(
       initializers_to_share_map,
       subgraph_initializer_names,
       subgraph_nodes,
-      original_kv_node.InputDefs()[1]->Name(),
+      path.kv_matmul_node->InputDefs()[1]->Name(),
       logger);
 }
-
-struct QKVPath {
-  Node* q_lora_down_node;
-  Node* q_lora_up_node;
-  Node* q_scale_node;
-  Node* q_alpha_node;
-  Node* q_reshape_node;
-  Node* k_lora_down_node;
-  Node* k_lora_up_node;
-  Node* k_scale_node;
-  Node* k_alpha_node;
-  Node* k_reshape_node;
-  Node* v_lora_down_node;
-  Node* v_lora_up_node;
-  Node* v_scale_node;
-  Node* v_alpha_node;
-  Node* v_reshape_node;
-  Node* concat_node;
-  Node* reshape_node;
-  Node* qkv_matmul_node;
-};
-
-struct QPath {
-  Node* q_lora_down_node;
-  Node* q_lora_up_node;
-  Node* q_scale_node;
-  Node* q_alpha_node;
-  Node* left_add_node;
-  Node* left_matmul_node;
-};
-
-struct KVPath {
-  Node* k_lora_down_node;
-  Node* k_lora_up_node;
-  Node* k_scale_node;
-  Node* k_alpha_node;
-  Node* k_reshape_node;
-  Node* v_lora_down_node;
-  Node* v_lora_up_node;
-  Node* v_scale_node;
-  Node* v_alpha_node;
-  Node* v_reshape_node;
-  Node* concat_node;
-  Node* reshape_node;
-  Node* kv_matmul_node;
-};
 
 static bool HaveConstantCpuWeights(
     Graph& graph,
@@ -894,17 +941,7 @@ Status LoraWeightsFolding::ApplyImpl(Graph& graph, bool& modified, int graph_lev
           graph,
           cpu_execution_provider_,
           initializers_to_share_map_,
-          *qkv_path.qkv_matmul_node,
-          *qkv_path.q_lora_down_node,
-          *qkv_path.q_lora_up_node,
-          *qkv_path.q_reshape_node,
-          *qkv_path.k_lora_down_node,
-          *qkv_path.k_lora_up_node,
-          *qkv_path.k_reshape_node,
-          *qkv_path.v_lora_down_node,
-          *qkv_path.v_lora_up_node,
-          *qkv_path.v_reshape_node,
-          *qkv_path.reshape_node,
+          qkv_path,
           logger));
 
       nodes_to_remove.push_back(*qkv_path.q_lora_down_node);
@@ -937,9 +974,7 @@ Status LoraWeightsFolding::ApplyImpl(Graph& graph, bool& modified, int graph_lev
           graph,
           cpu_execution_provider_,
           initializers_to_share_map_,
-          *q_path.left_matmul_node,
-          *q_path.q_lora_down_node,
-          *q_path.q_lora_up_node,
+          q_path,
           logger));
 
       nodes_to_remove.push_back(*q_path.q_lora_down_node);
@@ -966,14 +1001,7 @@ Status LoraWeightsFolding::ApplyImpl(Graph& graph, bool& modified, int graph_lev
           graph,
           cpu_execution_provider_,
           initializers_to_share_map_,
-          *kv_path.kv_matmul_node,
-          *kv_path.k_lora_down_node,
-          *kv_path.k_lora_up_node,
-          *kv_path.k_reshape_node,
-          *kv_path.v_lora_down_node,
-          *kv_path.v_lora_up_node,
-          *kv_path.v_reshape_node,
-          *kv_path.reshape_node,
+          kv_path,
           logger));
 
       nodes_to_remove.push_back(*kv_path.k_lora_down_node);
