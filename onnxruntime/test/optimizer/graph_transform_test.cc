@@ -805,64 +805,51 @@ static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<s
   }
 }
 
-TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx";
+// Runs a model that checks constant folding with DequantizeLinear nodes.
+static void RunConstantFoldingDequantizeLinearTestCase(const ORTCHAR_T* model_uri,
+                                                       bool use_contrib_qdq,
+                                                       const logging::Logger& logger) {
+  const char* q_key = use_contrib_qdq ? "com.microsoft.QuantizeLinear" : "QuantizeLinear";
+  const char* dq_key = use_contrib_qdq ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
+
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["QuantizeLinear"] == 1);
-  ASSERT_TRUE(op_to_count["DequantizeLinear"] == 3);
+  ASSERT_TRUE(op_to_count[q_key] == 1);
+  ASSERT_TRUE(op_to_count[dq_key] == 3);
   ASSERT_TRUE(op_to_count["Conv"] == 1);
 
-  std::unordered_map<std::string, int> expected_op_counts = {{"QuantizeLinear", 1},
-                                                             {"DequantizeLinear", 3},
+  std::unordered_map<std::string, int> expected_op_counts = {{q_key, 1},
+                                                             {dq_key, 3},
                                                              {"Conv", 1}};
 
   SessionOptions session_options;
   // Check DequantizeLinear aren't constant folded for default setting.
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
 
   // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0"));
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
 
   // set SessionOptionsEnableQuantQDQ to disable it
-  expected_op_counts["DequantizeLinear"] = 1;
+  expected_op_counts[dq_key] = 1;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
+  RunConstantFoldingDequantizeLinearTestCase(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx",
+                                             false, *logger_);
 #if !defined(DISABLE_CONTRIB_OPS)
-// Test constant folding with a com.microsoft.DequantizeLinear node
-TEST_F(GraphTransformationTests, ConstantFoldingWithMsDomainDequantizeLinear) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq_contrib.onnx";
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["com.microsoft.QuantizeLinear"], 1);
-  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 3);
-  ASSERT_EQ(op_to_count["Conv"], 1);
-
-  std::unordered_map<std::string, int> expected_op_counts = {{"com.microsoft.QuantizeLinear", 1},
-                                                             {"com.microsoft.DequantizeLinear", 3},
-                                                             {"Conv", 1}};
-
-  SessionOptions session_options;
-  // Check DequantizeLinear aren't constant folded for default setting.
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
-
-  // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0"));
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
-
-  // set SessionOptionsEnableQuantQDQ to disable it
-  expected_op_counts["com.microsoft.DequantizeLinear"] = 1;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
-}
+  // Test with 8-bit contrib QDQ ops
+  RunConstantFoldingDequantizeLinearTestCase(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq_contrib.onnx",
+                                             true, *logger_);
+  // Test with 16-bit contrib QDQ ops
+  RunConstantFoldingDequantizeLinearTestCase(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16_contrib.onnx",
+                                             true, *logger_);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
+}
 
 // model with 2 QDQ node units that can be constant folded as they are simple DQ -> Node -> Q where DQ and Node have
 // single consumer and do not produce graph outputs. Node is deterministic.

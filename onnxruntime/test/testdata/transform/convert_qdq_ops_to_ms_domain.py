@@ -25,64 +25,85 @@ import sys
 from typing import Dict
 
 import onnx
+from onnx import shape_inference
 
 QDQ_OPS = ("QuantizeLinear", "DequantizeLinear")
+QDQ_CONVERT_TYPES = {onnx.TensorProto.UINT8: onnx.TensorProto.UINT16,
+                     onnx.TensorProto.INT8: onnx.TensorProto.INT16}
+TYPE_TO_STRUCT_LABEL = {onnx.TensorProto.UINT8: "B",
+                        onnx.TensorProto.INT8: "b",
+                        onnx.TensorProto.UINT16: "H",
+                        onnx.TensorProto.INT16: "h"}
 
 
-def convert_initializer_to_16bit(initializer: onnx.TensorProto):
+def convert_initializer_to_16bits(initializer: onnx.TensorProto, target_type: onnx.TensorProto.DataType):
     byte_order = ">" if sys.byteorder == "big" else "<"
+    byte_label = TYPE_TO_STRUCT_LABEL[initializer.data_type]
+    short_label = TYPE_TO_STRUCT_LABEL[target_type]
 
-    # Convert uint8 to uint16, int8 to int16
-    if initializer.data_type == onnx.TensorProto.UINT8:
-        # Do not support external data
-        if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
-            raise Exception("Do not support initializers with external data")
+    # Do not support external data
+    if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
+        raise Exception("Do not support initializers with external data")
 
-        if initializer.HasField("raw_data"):
-            num_byte_vals = len(initializer.raw_data)
+    if initializer.HasField("raw_data"):
+        num_byte_vals = len(initializer.raw_data)
 
-            # Extract uint8 values as int32s
-            int32_vals = struct.unpack(f"{byte_order}{num_byte_vals}B", initializer.raw_data)
+        # Extract 8-bit values as int32s
+        int32_vals = struct.unpack(f"{byte_order}{num_byte_vals}{byte_label}", initializer.raw_data)
 
-            # Repack int32 values as uint16s
-            initializer.raw_data = struct.pack(f"{byte_order}{num_byte_vals}H", *int32_vals)
+        # Repack int32 values as 16-bit values
+        initializer.raw_data = struct.pack(f"{byte_order}{num_byte_vals}{short_label}", *int32_vals)
 
-        initializer.data_type = onnx.TensorProto.UINT16
-
-    elif initializer.data_type == onnx.TensorProto.INT8:
-        # Do not support external data
-        if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
-            raise Exception("Do not support initializers with external data")
-
-        if initializer.HasField("raw_data"):
-            num_byte_vals = len(initializer.raw_data)
-
-            # Extract int8 values as int32s
-            int32_vals = struct.unpack(f"{byte_order}{num_byte_vals}b", initializer.raw_data)
-
-            # Repack int32 values as int16s
-            initializer.raw_data = struct.pack(f"{byte_order}{num_byte_vals}h", *int32_vals)
-
-        initializer.data_type = onnx.TensorProto.INT16
+    initializer.data_type = target_type
 
 
-def convert_zero_point_to_16bit(name_to_initializer: Dict[str, onnx.TensorProto], node: onnx.NodeProto):
-    input0 = node.input[0]
+def convert_qdq_op_to_16bit(name_to_initializer: Dict[str, onnx.TensorProto],
+                            name_to_values: Dict[str, onnx.ValueInfoProto],
+                            name_to_inputs: Dict[str, onnx.ValueInfoProto],
+                            name_to_outputs: Dict[str, onnx.ValueInfoProto],
+                            node: onnx.NodeProto):
     zp_input = node.input[2] if len(node.input) > 2 else None
 
     if zp_input in name_to_initializer:
-        initializer = name_to_initializer[zp_input]
-        convert_initializer_to_16bit(initializer)
+        zp_initializer = name_to_initializer[zp_input]
 
-        if node.op_type == "DequantizeLinear" and input0 in name_to_initializer:
-            input_initializer = name_to_initializer[input0]
-            convert_initializer_to_16bit(input_initializer)
+        target_type = QDQ_CONVERT_TYPES.get(zp_initializer.data_type)
+        if not target_type:
+            return
+
+        convert_initializer_to_16bits(zp_initializer, target_type)
+
+        if node.op_type == "DequantizeLinear":
+            input0 = node.input[0]
+
+            if input0 in name_to_initializer:
+                input_initializer = name_to_initializer[input0]
+                convert_initializer_to_16bits(input_initializer, target_type)
+            elif input0 in name_to_values:
+                input_val = name_to_values[input0]
+                input_val.type.tensor_type.elem_type = target_type
+            elif input0 in name_to_inputs:
+                input_val = name_to_inputs[input0]
+                input_val.type.tensor_type.elem_type = target_type
+        else:
+            # QuantizeLinear
+            output0 = node.output[0]
+
+            if output0 in name_to_values:
+                output_val = name_to_values[output0]
+                output_val.type.tensor_type.elem_type = target_type
+            elif output0 in name_to_outputs:
+                output_val = name_to_outputs[output0]
+                output_val.type.tensor_type.elem_type = target_type
     else:
         raise Exception("Only support Q/DQ ops with explicit zero-point inputs")
 
 
 def update_qdq_node_domains(graph: onnx.GraphProto, use_16bit_qdq: bool):
     name_to_initializer = {initializer.name: initializer for initializer in graph.initializer}
+    name_to_values = {value.name: value for value in graph.value_info}
+    name_to_inputs = {g_input.name: g_input for g_input in graph.input}
+    name_to_outputs = {g_output.name: g_output for g_output in graph.output}
 
     for node in graph.node:
         # Handle subgraphs:
@@ -98,7 +119,11 @@ def update_qdq_node_domains(graph: onnx.GraphProto, use_16bit_qdq: bool):
             node.domain = "com.microsoft"
 
             if use_16bit_qdq:
-                convert_zero_point_to_16bit(name_to_initializer, node)
+                convert_qdq_op_to_16bit(name_to_initializer,
+                                        name_to_values,
+                                        name_to_inputs,
+                                        name_to_outputs,
+                                        node)
 
 
 def main():
@@ -121,6 +146,7 @@ def main():
         model.opset_import.extend([onnx.helper.make_opsetid("com.microsoft", 1)])
 
     update_qdq_node_domains(model.graph, args.use_16bit_qdq)
+    model = shape_inference.infer_shapes(model)
     onnx.checker.check_model(model, True)
 
     output_model_path = args.output_model
