@@ -28,12 +28,13 @@ import onnx
 from onnx import shape_inference
 
 QDQ_OPS = ("QuantizeLinear", "DequantizeLinear")
-QDQ_CONVERT_TYPES = {onnx.TensorProto.UINT8: onnx.TensorProto.UINT16,
-                     onnx.TensorProto.INT8: onnx.TensorProto.INT16}
-TYPE_TO_STRUCT_LABEL = {onnx.TensorProto.UINT8: "B",
-                        onnx.TensorProto.INT8: "b",
-                        onnx.TensorProto.UINT16: "H",
-                        onnx.TensorProto.INT16: "h"}
+QDQ_CONVERT_TYPES = {onnx.TensorProto.UINT8: onnx.TensorProto.UINT16, onnx.TensorProto.INT8: onnx.TensorProto.INT16}
+TYPE_TO_STRUCT_LABEL = {
+    onnx.TensorProto.UINT8: "B",
+    onnx.TensorProto.INT8: "b",
+    onnx.TensorProto.UINT16: "H",
+    onnx.TensorProto.INT16: "h",
+}
 
 
 def convert_initializer_to_16bits(initializer: onnx.TensorProto, target_type: onnx.TensorProto.DataType):
@@ -57,11 +58,13 @@ def convert_initializer_to_16bits(initializer: onnx.TensorProto, target_type: on
     initializer.data_type = target_type
 
 
-def convert_qdq_op_to_16bit(name_to_initializer: Dict[str, onnx.TensorProto],
-                            name_to_values: Dict[str, onnx.ValueInfoProto],
-                            name_to_inputs: Dict[str, onnx.ValueInfoProto],
-                            name_to_outputs: Dict[str, onnx.ValueInfoProto],
-                            node: onnx.NodeProto):
+def convert_qdq_op_to_16bit(
+    name_to_initializer: Dict[str, onnx.TensorProto],
+    name_to_values: Dict[str, onnx.ValueInfoProto],
+    name_to_inputs: Dict[str, onnx.ValueInfoProto],
+    name_to_outputs: Dict[str, onnx.ValueInfoProto],
+    node: onnx.NodeProto,
+):
     zp_input = node.input[2] if len(node.input) > 2 else None
 
     if zp_input in name_to_initializer:
@@ -119,11 +122,7 @@ def update_qdq_node_domains(graph: onnx.GraphProto, use_16bit_qdq: bool):
             node.domain = "com.microsoft"
 
             if use_16bit_qdq:
-                convert_qdq_op_to_16bit(name_to_initializer,
-                                        name_to_values,
-                                        name_to_inputs,
-                                        name_to_outputs,
-                                        node)
+                convert_qdq_op_to_16bit(name_to_initializer, name_to_values, name_to_inputs, name_to_outputs, node)
 
 
 def main():
