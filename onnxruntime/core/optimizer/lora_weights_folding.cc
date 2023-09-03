@@ -472,7 +472,38 @@ struct KVPath {
   Node* kv_matmul_node;
 };
 
-static bool MatchQKVPath(Graph& graph, Node& add_node, QKVPath& path, const logging::Logger& logger) {
+static bool HaveConstantCpuWeights(
+    Graph& graph,
+    const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
+    gsl::span<const Node* const> nodes) {
+  for (const auto& node : nodes) {
+    auto input_defs = node->InputDefs();
+
+    if (input_defs.size() != 2) {
+      return false;
+    }
+
+    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(input_defs[1]->Name(), true);
+    if (initializer == nullptr) {
+      return false;
+    }
+
+    auto iter = initializers_to_share_map.find(input_defs[1]->Name());
+
+    if (iter != initializers_to_share_map.end() && iter->second->Get<Tensor>().Location().device.Type() != OrtDevice::CPU) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool MatchQKVPath(
+    Graph& graph,
+    const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
+    Node& add_node,
+    QKVPath& path,
+    const logging::Logger& logger) {
   // Look for the self attention path that looks like the following:
   //
   //                  <AnyNode>
@@ -603,22 +634,7 @@ static bool MatchQKVPath(Graph& graph, Node& add_node, QKVPath& path, const logg
 
   // Make sure that the B input of each MatMul and Mul node is a constant initializer (i.e. an initializer
   // that cannot be overridden by an input at runtime).
-  const bool have_constant_weights = std::all_of(all_nodes.begin(), all_nodes.end(), [&graph](auto node) {
-    auto input_defs = node->InputDefs();
-
-    if (input_defs.size() != 2) {
-      return false;
-    }
-
-    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(input_defs[1]->Name(), true);
-    if (initializer == nullptr) {
-      return false;
-    }
-
-    return true;
-  });
-
-  if (!have_constant_weights) {
+  if (!HaveConstantCpuWeights(graph, initializers_to_share_map, all_nodes)) {
     return false;
   }
 
@@ -634,7 +650,12 @@ static bool MatchQKVPath(Graph& graph, Node& add_node, QKVPath& path, const logg
   return true;
 }
 
-static bool MatchQPath(Graph& graph, Node& add_node, QPath& path, const logging::Logger& logger) {
+static bool MatchQPath(
+    Graph& graph,
+    const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
+    Node& add_node,
+    QPath& path,
+    const logging::Logger& logger) {
   // Look for the attention's output path that looks like one of the following graphs:
   //
   //          <AnyNode>                          <AnyNode>
@@ -707,22 +728,7 @@ static bool MatchQPath(Graph& graph, Node& add_node, QPath& path, const logging:
 
   // Make sure that the B input of each MatMul and Mul node is a constant initializer (i.e. an initializer
   // that cannot be overridden by an input at runtime).
-  const bool have_constant_weights = std::all_of(all_nodes.begin(), all_nodes.end(), [&graph](auto node) {
-    auto input_defs = node->InputDefs();
-
-    if (input_defs.size() != 2) {
-      return false;
-    }
-
-    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(input_defs[1]->Name(), true);
-    if (initializer == nullptr) {
-      return false;
-    }
-
-    return true;
-  });
-
-  if (!have_constant_weights) {
+  if (!HaveConstantCpuWeights(graph, initializers_to_share_map, all_nodes)) {
     return false;
   }
 
@@ -736,7 +742,11 @@ static bool MatchQPath(Graph& graph, Node& add_node, QPath& path, const logging:
   return true;
 }
 
-static bool MatchKVPath(Graph& graph, Node& add_node, KVPath& path, const logging::Logger& logger) {
+static bool MatchKVPath(
+    Graph& graph,
+    const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
+    Node& add_node, KVPath& path,
+    const logging::Logger& logger) {
   // Look for the self attention path that looks like the following:
   //
   //                  <AnyNode>
@@ -844,22 +854,7 @@ static bool MatchKVPath(Graph& graph, Node& add_node, KVPath& path, const loggin
 
   // Make sure that the B input of each MatMul and Mul node is a constant initializer (i.e. an initializer
   // that cannot be overridden by an input at runtime).
-  const bool have_constant_weights = std::all_of(all_nodes.begin(), all_nodes.end(), [&graph](auto node) {
-    auto input_defs = node->InputDefs();
-
-    if (input_defs.size() != 2) {
-      return false;
-    }
-
-    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(input_defs[1]->Name(), true);
-    if (initializer == nullptr) {
-      return false;
-    }
-
-    return true;
-  });
-
-  if (!have_constant_weights) {
+  if (!HaveConstantCpuWeights(graph, initializers_to_share_map, all_nodes)) {
     return false;
   }
 
@@ -890,7 +885,7 @@ Status LoraWeightsFolding::ApplyImpl(Graph& graph, bool& modified, int graph_lev
     QKVPath qkv_path;
     KVPath kv_path;
     QPath q_path;
-    if (MatchQKVPath(graph, add_node, qkv_path, logger)) {
+    if (MatchQKVPath(graph, initializers_to_share_map_, add_node, qkv_path, logger)) {
       // Run a small graph that will perform the following operations on the CPU:
       // 1. MatMul operation between the up/down initializers of the LoRA Q/K/V weights
       // 2. Joining the results of the matmuls into a single tensor
@@ -934,7 +929,7 @@ Status LoraWeightsFolding::ApplyImpl(Graph& graph, bool& modified, int graph_lev
       // Now that we removed the Add node, hook the left MatMul node directly to the output of the Add node
       graph_utils::ReplaceDownstreamNodeInput(graph, add_node, 0, *qkv_path.qkv_matmul_node, 0);
       modified = true;
-    } else if (MatchQPath(graph, add_node, q_path, logger)) {
+    } else if (MatchQPath(graph, initializers_to_share_map_, add_node, q_path, logger)) {
       // Run a small graph that will perform the following operations on the CPU:
       // 1. MatMul operation between the up/down initializers of the LoRA Q weights
       // 2. Adding the result to the original model's Q weights
@@ -962,7 +957,7 @@ Status LoraWeightsFolding::ApplyImpl(Graph& graph, bool& modified, int graph_lev
       }
 
       modified = true;
-    } else if (MatchKVPath(graph, add_node, kv_path, logger)) {
+    } else if (MatchKVPath(graph, initializers_to_share_map_, add_node, kv_path, logger)) {
       // Run a small graph that will perform the following operations on the CPU:
       // 1. MatMul operation between the up/down initializers of the LoRA K/V weights
       // 2. Joining the results of the matmuls into a single tensor
