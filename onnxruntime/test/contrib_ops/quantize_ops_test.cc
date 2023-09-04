@@ -40,6 +40,17 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Scalar zero & scale with int32
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int32_cpu) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int32_t>("x", dims, {-300, -30, -1025, 1270});
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<int32_t>("zero_point", {}, {0}, true);
+  test.AddOutput<float>("y", dims, {-600.0f, -60.0f, -2050.0f, 2540.0f});
+  test.Run();
+}
+
 #ifdef USE_CUDA
 TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_half_uint8) {
   OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
