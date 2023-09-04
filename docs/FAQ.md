@@ -8,7 +8,7 @@ The default CUDA build supports 3 standard quantization operators: QuantizeLinea
 Setting the severity level to VERBOSE is most useful when debugging errors.
 
 Refer to the API documentation:
-* Python - [RunOptions.log_severity_level](https://microsoft.github.io/onnxruntime/python/api_summary.html#onnxruntime.RunOptions.log_severity_level)
+* Python - [RunOptions.log_severity_level](https://onnxruntime.ai/docs/api/python/api_summary.html#onnxruntime.RunOptions.log_severity_level)
 ```
 import onnxruntime as ort
 ort.set_default_logger_severity(0)
