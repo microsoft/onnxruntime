@@ -76,7 +76,7 @@ stages:
           mkdir -p $HOME/.onnx
           docker run --rm \
             --volume /data/onnx:/data/onnx:ro \
-            --volume /data/models: /data/models:ro \
+            --volume /data/models:/data/models:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
