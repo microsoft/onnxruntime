@@ -283,10 +283,10 @@ __global__ void MatMul4BitsWeightKernelBlockNoZeroPoint(
     EightElementsDequant<T> eight_elements;
     typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + k_step * 256 / 32]);
     eight_elements.Dequant(value, scale_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[lane_id << 3 + 0], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[lane_id << 3 + 1], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[2], a_data_vec_2[lane_id << 3 + 2], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[3], a_data_vec_2[lane_id << 3 + 3], res_pair);
+    res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[(lane_id << 2) + 0], res_pair);
+    res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[(lane_id << 2) + 1], res_pair);
+    res_pair = Scalar2<T>::MulAdd(eight_elements.values[2], a_data_vec_2[(lane_id << 2) + 2], res_pair);
+    res_pair = Scalar2<T>::MulAdd(eight_elements.values[3], a_data_vec_2[(lane_id << 2) + 3], res_pair);
   }
 
   // reminder
@@ -296,7 +296,10 @@ __global__ void MatMul4BitsWeightKernelBlockNoZeroPoint(
   for (int i = 16; i > 0; i = i / 2) {
     sum += __shfl_down_sync(0xffffffff, sum, i);
   }
-  output[m_id * n + n_id] = sum;
+
+  if(lane_id == 0){
+    output[m_id * n + n_id] = sum;
+  }
 }
 
 template <class T>
