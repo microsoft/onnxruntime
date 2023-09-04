@@ -83,7 +83,7 @@ stages:
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            onnxruntimecpubuild \
+            onnxruntimecpubuildpythonx86_64 \
             /bin/bash -c "
               set -ex; \
               dotnet help "
