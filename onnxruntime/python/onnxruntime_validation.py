@@ -73,6 +73,9 @@ def validate_build_package_info():
     except ImportError:
         # ORTModule not present
         has_ortmodule = False
+    except AttributeError:
+        # ORTModule not present, this is for Python3.6 compatibility.
+        has_ortmodule = False
     except Exception as e:
         # this may happen if Cuda is not installed, we want to raise it after
         # for any exception other than not having ortmodule, we want to continue
