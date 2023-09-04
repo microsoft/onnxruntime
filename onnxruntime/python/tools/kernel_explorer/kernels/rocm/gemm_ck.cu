@@ -60,6 +60,14 @@ class CKGemm : public IKernelExplorer {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
+    for (auto&& [type_string, op] : GetCKStreamKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+      type_strings_.emplace_back(std::move(type_string));
+      ops_.emplace_back(std::move(op));
+    }
+    for (auto&& [type_string, op] : GetCKSplitKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+      type_strings_.emplace_back(std::move(type_string));
+      ops_.emplace_back(std::move(op));
+    }
     ORT_ENFORCE(!ops_.empty());
   }
 
