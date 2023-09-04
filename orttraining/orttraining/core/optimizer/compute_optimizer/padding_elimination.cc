@@ -375,6 +375,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   int64_t handled_output_count = 0;
   int64_t expanded_input_count = 0;
 
+  NodeArg* invalid_value_node_arg = nullptr;
   // Find the valid embedding node
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
@@ -410,8 +411,34 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         for (auto output_defs : embedding_node->MutableOutputDefs()) {
           subgraph.insert(output_defs);
         }
+        invalid_value_node_arg = embedding_node->MutableInputDefs()[2];
         break;
       }
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gather", {1, 11, 13})) {
+      if (std::find(sparse_embedding_input_names_.begin(), sparse_embedding_input_names_.end(),
+                    node.InputDefs()[1]->Name()) == sparse_embedding_input_names_.end()) {
+        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                   ") due to embedding input [" + node.InputDefs()[1]->Name() +
+                                   "] is not in the sparse embedding input list.");
+        continue;
+      }
+
+      embedding_node = &node;
+      input_ids_arg = embedding_node->MutableInputDefs()[1];
+      for (auto output_defs : embedding_node->MutableOutputDefs()) {
+        subgraph.insert(output_defs);
+      }
+
+      const ONNX_NAMESPACE::TypeProto* index_input_type = input_ids_arg->TypeAsProto();
+      int elem_type = index_input_type->tensor_type().elem_type();
+      ONNX_NAMESPACE::TensorProto const_tensor;
+      const_tensor.set_name(graph.GenerateNodeArgName("0"));
+      const_tensor.set_data_type(elem_type);
+      static const InlinedVector<int64_t> dims = {};
+      InlinedVector<int64_t> values{1};  // hard code padding index to be 0
+      const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
+      invalid_value_node_arg = &graph_utils::AddInitializer(graph, const_tensor);
+      break;
     }
   }
 
@@ -466,7 +493,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   reshape_node.SetExecutionProviderType(embedding_node->GetExecutionProviderType());
 
   NodeArg* squeeze_out_arg = InsertNodesForValidIndices(
-      graph, reshape_output_args[0], embedding_node->MutableInputDefs()[2], embedding_node->GetExecutionProviderType());
+      graph, reshape_output_args[0], invalid_value_node_arg, embedding_node->GetExecutionProviderType());
 
   // Get the first two dims value of input_ids which is [batch_size, seq_len]
   NodeArg* first_two_dims_arg = GetDimsValue(graph,

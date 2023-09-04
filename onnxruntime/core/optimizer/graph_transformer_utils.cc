@@ -76,7 +76,10 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#include "orttraining/core/optimizer/memory_optimizer.h"
+#include "orttraining/core/optimizer/shape_optimizer.h"
 #endif
 #ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
@@ -229,6 +232,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
 
+#ifdef ENABLE_TRAINING
+      // Put fine-grained optimizer (e.g. ShapeOptimizer) after ReshapeFusion to avoid it breaks the strong patterns
+      // it defines. ReshapeFusion depends on subgraph pattern matching and do replacement accordingly, ShapeOptimizer
+      // potentially will optimize out some nodes defined in the subgraph patterns. So we put it after ReshapeFusion.
+      transformers.emplace_back(std::make_unique<ShapeOptimizer>(no_limit_empty_ep_list));
+#endif
+
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
 
@@ -337,6 +347,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
+      const auto flag = std::getenv("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER");
+      if (flag != nullptr && std::string(flag) == "1") {
+        std::vector<std::string> sparse_embedding_input_names{"input_ids"};  // input_ids is the embedding input name as graph input.
+        transformers.emplace_back(std::make_unique<PaddingElimination>(cuda_rocm_eps, sparse_embedding_input_names));
+      }
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_rocm_eps));
