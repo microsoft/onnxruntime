@@ -36,8 +36,10 @@ class SimpleOpBuilder : public BaseOpBuilder {
 };
 
 Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
+  const std::string& op_type = node_unit.OpType();
+
   // QNN Softmax only supports an axis value equal to input_rank - 1 (i.e., same as -1).
-  if (node_unit.OpType() == "Softmax") {
+  if (op_type == "Softmax") {
     int32_t axis = node_unit.SinceVersion() < 13 ? 1 : -1;  // Default axis changed from 1 to -1 in opset 13.
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
     ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
@@ -48,7 +50,7 @@ Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper,
                   "QNN Softmax only supports an `axis` attribute equal to input_rank-1 (or -1)");
   }
 
-  if (node_unit.OpType() == "GridSample") {
+  if (op_type == "GridSample") {
     NodeAttrHelper node_helper(node_unit);
     std::string mode = node_helper.Get("mode", "linear");
     ORT_RETURN_IF_NOT(utils::ArrayHasString(gridsample_supported_modes, mode), "GridSample does not support mode ",
@@ -56,6 +58,13 @@ Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper,
     std::string padding_mode = node_helper.Get("padding_mode", "zeros");
     ORT_RETURN_IF_NOT(utils::ArrayHasString(gridsample_supported_padding_modes, padding_mode), "GridSample does not support padding_mode ",
                       padding_mode.c_str());
+  }
+
+  // ONNX's Min and Max operators accept a variable number of inputs (i.e., variadic).
+  // However, QNN's Min and Max operators must take in exactly two inputs.
+  if (op_type == "Min" || op_type == "Max") {
+    ORT_RETURN_IF_NOT(node_unit.Inputs().size() == 2,
+                      "QNN EP only supports Min and Max operators with exactly 2 inputs.");
   }
 
   return Status::OK();
