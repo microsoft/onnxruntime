@@ -133,7 +133,7 @@ const char* custom_op_library_filename = "/path/to/the/onnxruntime-extensions/sh
 Ort::SessionOptions session_options;
 
 // Register Extensions custom ops with the session options.
-Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary_V2(static_cast<OrtSessionOptions*(session_options),
+Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary_V2(static_cast<OrtSessionOptions*>(session_options),
                                                             custom_op_library_filename));
 
 // Create a session.
