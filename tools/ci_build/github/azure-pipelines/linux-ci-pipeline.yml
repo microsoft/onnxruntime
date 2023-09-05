@@ -125,6 +125,7 @@ stages:
             --volume /data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
             -e NIGHTLY_BUILD \
