@@ -577,7 +577,7 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_Broadcast) {
 // Test accuracy of QDQ Pow
 TEST_F(QnnHTPBackendTests, BinaryOp_Pow) {
   std::vector<float> bases_input = {-10.0f, -8.0f, -6.0f, 1.0f, 2.0f, 3.0f, 5.5f, 10.0f};
-  std::vector<float> exponents_input = {-2.0f, -1.0f, 0.0f, 0.5f, 1.0f, 2.0f, 2.0f, 2.0f};
+  std::vector<float> exponents_input = {-2.0f, -1.0f, 0.0f, 0.5f, 1.0f, 2.0f, 1.5f, 0.2f};
   RunQDQOpTest<uint8_t>("Pow",
                         TestInputDef<float>({1, 2, 2, 2}, false, bases_input),
                         TestInputDef<float>({1, 2, 2, 2}, false, exponents_input),
