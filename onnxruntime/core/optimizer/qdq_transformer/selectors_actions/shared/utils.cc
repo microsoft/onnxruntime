@@ -72,6 +72,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Log", {}},
           {"LRN", {}},
           {"Ceil", {}},
+          {"Floor", {}},
           {"Abs", {}},
           {"DepthToSpace", {}},
           {"SpaceToDepth", {}}};

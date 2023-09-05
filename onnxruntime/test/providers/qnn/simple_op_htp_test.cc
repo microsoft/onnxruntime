@@ -339,10 +339,20 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Abs) {
 
 // Test QDQ Ceil op.
 TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
-  RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, -100.0f, 100.0f),
-                    "Ceil",
-                    {},
-                    13, ExpectedEPNodeAssignment::All);
+  const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
+  RunQDQUnaryOpTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
+                             "Ceil",
+                             {},
+                             13, ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Floor op.
+TEST_F(QnnHTPBackendTests, UnaryOp_Floor) {
+  const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
+  RunQDQUnaryOpTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
+                             "Floor",
+                             {},
+                             13, ExpectedEPNodeAssignment::All);
 }
 
 // Test QDQ DepthToSpace.
