@@ -562,6 +562,30 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Pow) {
                         ExpectedEPNodeAssignment::All);
 }
 
+// Test accuracy of QDQ PRelu with dynamic slopes.
+TEST_F(QnnHTPBackendTests, BinaryOp_PRelu_DynamicSlopes) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  std::vector<float> slopes_data = GetFloatDataInRange(-1.0f, 1.0f, 8);
+  RunQDQOpTest<uint8_t>("PRelu",
+                        TestInputDef<float>({1, 2, 2, 2}, false, input_data),
+                        TestInputDef<float>({1, 2, 2, 2}, false, slopes_data),
+                        {},
+                        16,
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test accuracy of QDQ PRelu with static slope weights.
+TEST_F(QnnHTPBackendTests, BinaryOp_PRelu_StaticSlopes) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  std::vector<float> slopes_data = GetFloatDataInRange(-1.0f, 1.0f, 8);
+  RunQDQOpTest<uint8_t>("PRelu",
+                        TestInputDef<float>({1, 2, 2, 2}, false, input_data),
+                        TestInputDef<float>({1, 2, 2, 2}, true, slopes_data),
+                        {},
+                        16,
+                        ExpectedEPNodeAssignment::All);
+}
+
 TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_SmallInputs) {
   RunQDQOpTest<uint8_t>("Div",
                         TestInputDef<float>({1, 2, 2, 2}, false, {-10.0f, -8.0f, -1.0f, 0.0f, 1.0f, 2.1f, 8.0f, 10.0f}),

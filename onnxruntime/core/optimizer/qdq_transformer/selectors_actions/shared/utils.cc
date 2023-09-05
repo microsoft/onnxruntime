@@ -84,6 +84,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
           {"Mul", {}},
           {"Pow", {}},
           {"Sub", {}},
+          {"PRelu", {}},
           {"GridSample", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
