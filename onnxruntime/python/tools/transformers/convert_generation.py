@@ -883,7 +883,8 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
-    require_raw_data: bool = False,
+    signature_cache1: Optional[dict] = None,
+    signature_cache2: Optional[dict] = None,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -892,7 +893,8 @@ def remove_shared_initializers(
         graph2 (GraphProto): the second graph to process
         shared_prefix (str): add prefix to the shared initializers among two graphs
         min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
-        require_raw_data (bool, optional): Only remove tensors with raw_data field to speed up method
+        signature_cache1 (dict): Optional dictionary to store data signatures of tensors in graph1 in order to speed up comparison
+        signature_cache2 (dict): Optional dictionary to store data signatures of tensors in graph2 in order to speed up comparison
     """
 
     mapping_initializers_1 = {}
@@ -909,7 +911,7 @@ def remove_shared_initializers(
             if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
-            if OnnxModel.has_same_value(initializer1, initializer2, require_raw_data=True):
+            if OnnxModel.has_same_value(initializer1, initializer2, signature_cache1, signature_cache2):
                 mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
                 shared_initializers_1.append(initializer1)
 
@@ -982,14 +984,17 @@ def remove_shared_initializers(
     return shared_initializers_2
 
 
-def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto, require_raw_data: bool = False):
+def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto):
     encoder = OnnxModel(encoder_model)
     decoder = OnnxModel(decoder_model)
     encoder.add_prefix_to_names("e_")
     decoder.add_prefix_to_names("d_")
-    encoder.remove_duplicated_initializer(require_raw_data)
-    decoder.remove_duplicated_initializer(require_raw_data)
-    initializers = remove_shared_initializers(decoder.model.graph, encoder.model.graph, "s_", require_raw_data)
+    signature_cache1, signature_cache2 = {}, {}
+    encoder.remove_duplicated_initializer(signature_cache1)
+    decoder.remove_duplicated_initializer(signature_cache2)
+    initializers = remove_shared_initializers(
+        decoder.model.graph, encoder.model.graph, "s_", signature_cache1, signature_cache2
+    )
     return initializers
 
 
