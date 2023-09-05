@@ -18,6 +18,14 @@ def dtype_to_funcs(dtype):
     }
     return type_map[dtype]
 
+def dtype_to_funcs_cublas(dtype):
+    type_map = {
+        "float16": list(filter(lambda x: "GemmBenchmark_half" in x, dir(ke))),
+        "float32": list(filter(lambda x: "GemmBenchmark_float" in x, dir(ke))),
+    }
+    return type_map[dtype]
+
+
 
 dtypes = ["float16", "float32"]
 
@@ -32,7 +40,7 @@ class MatrixFpInt4Metric(ke.BandwidthMetric):
         return f"{self.duration:6.2f} us {self.gbps:5.2f} GB/s {self.dtype} m={self.m} n={self.n} k={self.k} {self.name}"
 
 
-def profile_vector_add_func(m, n, k, dtype, func):
+def profile_matmul_fp_int4_func(m, n, k, dtype, func):
     np.random.seed(0)
     output = np.random.rand(m, n).astype(dtype)
     a = np.random.rand(m, k).astype(dtype)
@@ -50,11 +58,30 @@ def profile_vector_add_func(m, n, k, dtype, func):
 
     ke.report(MatrixFpInt4Metric(func, dtype, duration_ms, total_bytes, m, n, k))
 
+def profile_gemm_func(m, n, k, dtype, func):
+    np.random.seed(0)
+    output = np.random.rand(m, n).astype(dtype)
+    a = np.random.rand(m, k).astype(dtype)
+    b = np.random.rand(k, n).astype(dtype)
+
+    output_d = ke.DeviceArray(output)
+    a_d = ke.DeviceArray(a)
+    b_d = ke.DeviceArray(b)
+    f = getattr(ke, func)
+    my_op = f(output_d, a_d, b_d, m, n, k)
+    duration_ms = my_op.Profile()
+    total_bytes = (m * k + n * k + m * n) * (dtype_to_bytes(dtype))
+
+    ke.report(MatrixFpInt4Metric(func, dtype, duration_ms, total_bytes, m, n, k))
+
 
 def profile_with_args(m, n, k, dtype, sort):
     with ke.benchmark(sort):
         for func in dtype_to_funcs(dtype):
-            profile_vector_add_func(m, n, k, dtype, func)
+            profile_matmul_fp_int4_func(m, n, k, dtype, func)
+
+        for func in dtype_to_funcs_cublas(dtype):
+            profile_gemm_func(m, n, k, dtype, func)
 
 
 def profile():
