@@ -35,6 +35,26 @@ static GetTestModelFn BuildUnaryOpTestCase(const std::string& op_type, const Tes
   };
 }
 
+// Runs non-quantized op on the QNN HTP backend and compares outputs to ORT CPU EP.
+template <typename InputType>
+static void RunUnaryOpTest(const std::string& op_type, const TestInputDef<InputType>& input_def,
+                           const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                           int opset_version,
+                           ExpectedEPNodeAssignment expected_ep_assignment,
+                           const std::string& domain = kOnnxDomain) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  RunQnnModelTest(BuildUnaryOpTestCase<InputType>(op_type, input_def, attrs, domain),
+                  provider_options,
+                  opset_version,
+                  expected_ep_assignment);
+}
+
 // Creates the graph:
 //                       _______________________
 //                      |                       |
@@ -298,6 +318,15 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Neg) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, input_data),
                     "Neg", {}, 13, ExpectedEPNodeAssignment::All);
+}
+
+// Test Not operator on HTP backend.
+TEST_F(QnnCPUBackendTests, UnaryOp_Not) {
+  RunUnaryOpTest<bool>("Not",
+                       TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
+                       {},
+                       17,
+                       ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
