@@ -72,25 +72,6 @@ stages:
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=amd64/almalinux:8 --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root"
           Repository: onnxruntimecpubuild
 
-      - bash: |
-          mkdir -p $HOME/.onnx
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume /data/models:/data/models:ro \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            onnxruntimecpubuild \
-            /bin/bash -c "
-              set -ex; \
-              dotnet --help; \
-              dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
-              dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; "
-        displayName: 'Run dotnet tests'
-
       - template: templates/linux-build-step-with-cache.yml
         parameters:
           WithCache: true
@@ -135,16 +116,28 @@ stages:
                       ccache -z"
                 workingDirectory: $(Build.SourcesDirectory)
 
-      - task: UseDotNet@2
-        displayName: "Setup dotnet"
-        inputs:
-          version: '6.0.408'
-
-      - task: DotNetCoreCLI@2
-        displayName: "Restore C# packages"
-        inputs:
-          command: 'restore'
-          projects: '$(Build.SourcesDirectory)/csharp/OnnxRuntime.DesktopOnly.CSharp.sln'
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume /data/models:/data/models:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+            /bin/bash -c "
+              set -ex; \
+              dotnet --help; \
+              pushd /onnxruntime_src/csharp; \
+              dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
+              dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
+              dotnet test /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; -f net6.0 --no-build -l \"console;verbosity=normal\" \
+              popd
+              "
+        displayName: 'Run dotnet tests'
 
       # the props file was generated with docker container paths. convert to the 'real' path by replacing the
       # the container path of '/build'. The '>' prefix is to match the closing angle bracket of the tag.
