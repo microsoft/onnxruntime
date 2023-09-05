@@ -137,7 +137,7 @@ stages:
               "
         displayName: 'Dotnet build C# sln and Test'
 
-      - scripts: |
+      - script: |
           ln -s /data/models $(Build.BinariesDirectory)/models
         displayName: link model dir
 
