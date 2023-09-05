@@ -16,8 +16,7 @@ fi
 # Install dotnet
 if [ -f /etc/redhat-release ]; then
     dnf update --refresh \
-    && dnf install -y dotnet-sdk-6.0 \
-    && dnf install -y dotnet-runtime-6.0
+    && dnf install -y dotnet-sdk-6.0
 elif [ -f /etc/os-release ]; then
     apt-get update \
     && apt-get install -y dotnet-sdk-6.0

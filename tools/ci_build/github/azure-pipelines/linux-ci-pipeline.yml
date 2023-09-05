@@ -137,6 +137,10 @@ stages:
               "
         displayName: 'Dotnet build C# sln and Test'
 
+      - scripts: |
+          ln -s /data/models $(Build.BinariesDirectory)/models
+        displayName: link model dir
+
       - task: CmdLine@2
         displayName: 'Install python deps'
         inputs:
