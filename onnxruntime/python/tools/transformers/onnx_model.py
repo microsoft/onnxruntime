@@ -19,6 +19,7 @@ from onnx import (
     NodeProto,
     TensorProto,
     ValueInfoProto,
+    external_data_helper,
     helper,
     numpy_helper,
     save_model,
@@ -1031,15 +1032,25 @@ class OnnxModel:
                 if os.listdir(output_dir):
                     raise RuntimeError(f"Output directory ({output_dir}) for external data is not empty.")
 
-            save_model(
+            external_data_helper.convert_model_to_external_data(
                 model,
-                output_path,
-                save_as_external_data=True,
                 all_tensors_to_one_file=all_tensors_to_one_file,
                 location=location,
                 size_threshold=size_threshold,
                 convert_attribute=convert_attribute,
             )
+
+            save_model(model, output_path)
+
+            # save_model(
+            #     model,
+            #     output_path,
+            #     save_as_external_data=True,
+            #     all_tensors_to_one_file=all_tensors_to_one_file,
+            #     location=location,
+            #     size_threshold=size_threshold,
+            #     convert_attribute=convert_attribute,
+            # )
         else:
             save_model(model, output_path)
 
