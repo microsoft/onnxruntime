@@ -97,27 +97,8 @@ class FusionSkipLayerNormalization(Fusion):
         if self.model.is_safe_to_fuse_nodes([add, node], outputs_to_keep, input_name_to_nodes, output_name_to_node):
             self.nodes_to_remove.extend([add, node])
 
-            # The Add has one parent is skip and another is output projection MatMul+Add.
-            is_parent_0_add_matmul = (
-                (add.input[0] in output_name_to_node)
-                and output_name_to_node[add.input[0]].op_type == "Add"
-                and self.model.find_first_parent_by_type(
-                    output_name_to_node[add.input[0]], "MatMul", output_name_to_node
-                )
-                is not None
-            )
-            is_parent_1_add_matmul = (
-                (add.input[1] in output_name_to_node)
-                and output_name_to_node[add.input[1]].op_type == "Add"
-                and self.model.find_first_parent_by_type(
-                    output_name_to_node[add.input[1]], "MatMul", output_name_to_node
-                )
-                is not None
-            )
-            skip_index = 0 if (is_parent_1_add_matmul and not is_parent_0_add_matmul) else 1
-
             inputs = (
-                [add.input[1 - skip_index], add.input[skip_index], node.input[1], node.input[2]]
+                [add.input[0], add.input[1], node.input[1], node.input[2]]
                 if not simplified
                 else [add.input[0], add.input[1], node.input[1]]
             )

@@ -41,18 +41,9 @@ class TestFusion(unittest.TestCase):
         self.assertEqual(len(nodes), len(expected_model.model.graph.node))
 
         for i in range(len(nodes)):
-            if nodes[i] != expected_model.model.graph.node[i]:
-                print(nodes[i])
-                print(expected_model.model.graph.node[i])
             self.assertEqual(nodes[i], expected_model.model.graph.node[i])
 
         for expected_initializer in expected_model.model.graph.initializer:
-            if not OnnxModel.has_same_value(
-                optimized_model.get_initializer(expected_initializer.name), expected_initializer
-            ):
-                print(optimized_model.get_initializer(expected_initializer.name))
-                print(expected_initializer)
-
             self.assertTrue(
                 OnnxModel.has_same_value(
                     optimized_model.get_initializer(expected_initializer.name), expected_initializer

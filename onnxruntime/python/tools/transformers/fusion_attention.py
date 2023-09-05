@@ -751,9 +751,9 @@ class FusionAttention(Fusion):
             )
             return None
 
-        qw = numpy_helper.to_array(q_weight)
-        kw = numpy_helper.to_array(k_weight)
-        vw = numpy_helper.to_array(v_weight)
+        qw = NumpyHelper.to_array(q_weight)
+        kw = NumpyHelper.to_array(k_weight)
+        vw = NumpyHelper.to_array(v_weight)
 
         # assert q and k have same shape as expected
         assert qw.shape == kw.shape
