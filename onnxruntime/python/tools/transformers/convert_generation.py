@@ -883,8 +883,8 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
-    signature_cache1: dict = None,
-    signature_cache2: dict = None,
+    signature_cache1: Optional[dict] = None,
+    signature_cache2: Optional[dict] = None,
 ):
     """Remove initializers with same value from two graphs.
 
