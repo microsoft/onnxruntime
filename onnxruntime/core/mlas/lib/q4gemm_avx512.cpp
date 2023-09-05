@@ -85,10 +85,10 @@ MlasQ4GemmKernelAvx512f(
 
         int64_t nblk = (int64_t)(CountN) - 4;
         while (nblk >= 0) {
-            __m512 acc_lo0 = _mm512_setzero();
-            __m512 acc_lo1 = _mm512_setzero();
-            __m512 acc_lo2 = _mm512_setzero();
-            __m512 acc_lo3 = _mm512_setzero();
+            __m512 acc_lo0 = _mm512_setzero_ps();
+            __m512 acc_lo1 = _mm512_setzero_ps();
+            __m512 acc_lo2 = _mm512_setzero_ps();
+            __m512 acc_lo3 = _mm512_setzero_ps();
             const auto* b = b_col;
 
             for (size_t k = 0; k < CountK; k += Q4Type::BlkLen) {
@@ -1092,7 +1092,7 @@ MlasQ80BlkQuantRow(const float* A, void* Qblob, size_t size)
     for (size_t k = 0; k < size; k += QType::BlkLen) {
         const size_t step = std::min(QType::BlkLen, size - k);
 
-        __m512 maxAbs = _mm512_setzero();
+        __m512 maxAbs = _mm512_setzero_ps();
         for (size_t kk = 0; kk < step; kk += 16) {
             const size_t klen = std::min(size_t(16), step - kk);
 
