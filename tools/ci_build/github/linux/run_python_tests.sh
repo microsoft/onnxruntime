@@ -37,6 +37,7 @@ fi
 # We assume the machine doesn't have gcc and python development header files, so we don't build onnxruntime from source
 sudo rm -rf /build /onnxruntime_src
 sudo ln -s $BUILD_SOURCESDIRECTORY /onnxruntime_src
+python3 -m pip install --upgrade pip
 python3 -m pip uninstall -y $PYTHON_PACKAGE_NAME ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
 # Install the packages that are needed for installing the onnxruntime python package
 python3 -m pip install -r $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/requirements.txt

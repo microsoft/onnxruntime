@@ -68,7 +68,7 @@ inline std::vector<Value> TrainingSession::EvalStep(const std::vector<Value>& in
   RunOptions run_options;
   ThrowOnError(GetTrainingApi().EvalStep(
       p_, run_options, input_values.size(), ort_input_values,
-      training_model_output_count_, ort_output_values));
+      eval_model_output_count_, ort_output_values));
 
   return output_values;
 }
