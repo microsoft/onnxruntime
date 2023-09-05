@@ -155,18 +155,21 @@ template <typename InputQType>
 static GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_type,
                                                         const TestInputDef<float>& input0_def,
                                                         const TestInputDef<float>& input1_def,
-                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [op_type, input0_def, input1_def, attrs](ModelTestBuilder& builder,
-                                                  std::vector<QuantParams<InputQType>>& output_qparams) {
+                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                                        bool use_contrib_qdq) {
+  return [op_type, input0_def, input1_def, attrs,
+          use_contrib_qdq](ModelTestBuilder& builder, std::vector<QuantParams<InputQType>>& output_qparams) {
     NodeArg* input0 = MakeTestInput(builder, input0_def);
     NodeArg* input1 = MakeTestInput(builder, input1_def);
 
     // input -> Q -> DQ -> Op
-    QuantParams<InputQType> input0_qparams = GetTestInputQuantParams(input0_def);
-    auto* qdq0_output = AddQDQNodePair<InputQType>(builder, input0, input0_qparams.scale, input0_qparams.zero_point);
+    QuantParams<InputQType> input0_qparams = GetTestInputQuantParams<InputQType>(input0_def);
+    auto* qdq0_output = AddQDQNodePair<InputQType>(builder, input0, input0_qparams.scale, input0_qparams.zero_point,
+                                                   use_contrib_qdq);
 
-    QuantParams<InputQType> input1_qparams = GetTestInputQuantParams(input1_def);
-    auto* qdq1_output = AddQDQNodePair<InputQType>(builder, input1, input1_qparams.scale, input1_qparams.zero_point);
+    QuantParams<InputQType> input1_qparams = GetTestInputQuantParams<InputQType>(input1_def);
+    auto* qdq1_output = AddQDQNodePair<InputQType>(builder, input1, input1_qparams.scale, input1_qparams.zero_point,
+                                                   use_contrib_qdq);
 
     // Op -> op_output
     auto* op_output = builder.MakeIntermediate();
@@ -178,7 +181,7 @@ static GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_ty
 
     // op_output -> Q -> DQ -> output
     AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, op_output, output_qparams[0].scale,
-                                                      output_qparams[0].zero_point);
+                                                      output_qparams[0].zero_point, use_contrib_qdq);
   };
 }
 
@@ -188,7 +191,9 @@ static void RunQDQOpTest(const std::string& op_type,
                          const TestInputDef<float>& input1_def,
                          const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                          int opset_version,
-                         ExpectedEPNodeAssignment expected_ep_assignment) {
+                         ExpectedEPNodeAssignment expected_ep_assignment,
+                         bool use_contrib_qdq = false,
+                         float fp32_abs_err = 1e-4f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -197,10 +202,11 @@ static void RunQDQOpTest(const std::string& op_type,
 #endif
 
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input0_def, input1_def, attrs),
-                       BuildQDQOpTestCase<InputQType>(op_type, input0_def, input1_def, attrs),
+                       BuildQDQOpTestCase<InputQType>(op_type, input0_def, input1_def, attrs, use_contrib_qdq),
                        provider_options,
                        opset_version,
-                       expected_ep_assignment);
+                       expected_ep_assignment,
+                       fp32_abs_err);
 }
 
 template <typename InputType = float>
@@ -381,6 +387,24 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Atan) {
                     ExpectedEPNodeAssignment::All);
 }
 
+// Tests accuracy of 16-bit QDQ Atan
+// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 1.
+// Output quant params: scale=4.4895936298416927e-05, zero_point=32768.
+// Expected val: -1.4219063520431519
+// QNN QDQ val: -1.4220787286758423 (err 0.00017237663269042969)
+// CPU QDQ val: -1.4218991994857788 (err 7.152557373046875e-06)
+TEST_F(QnnHTPBackendTests, UnaryOp_Atan_U16) {
+  const std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, input_data),  // Input range [-10.0, 10.0f]
+                              "Atan",
+                              {},
+                              14,
+                              ExpectedEPNodeAssignment::All,
+                              kOnnxDomain,  // Atan domain
+                              true,         // Q/DQ op domain is com.microsoft
+                              1.8e-4f);
+}
+
 // Check that QNN compiles DQ -> Asin -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, UnaryOp_Asin) {
@@ -395,6 +419,18 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Sign) {
   RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),
                     "Sign", {},
                     13, ExpectedEPNodeAssignment::All);
+}
+
+// Tests accuracy of 16-bit QDQ Sign
+TEST_F(QnnHTPBackendTests, UnaryOp_Sign_U16) {
+  const std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
+                              "Sign",
+                              {},
+                              13,
+                              ExpectedEPNodeAssignment::All,
+                              kOnnxDomain,  // Sign op domain
+                              true);        // Use com.microsoft Q/DQ op domains
 }
 
 // Check that QNN compiles DQ -> Sin -> Q as a single unit.
@@ -415,7 +451,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Cos) {
 
 // Check that QNN compiles DQ -> Cos -> Q as a single unit.
 // Use an input of rank 3.
-TEST_F(QnnHTPBackendTests, UnaryOp_Cos_Inaccurate) {
+TEST_F(QnnHTPBackendTests, UnaryOp_Cos2) {
   RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, {-3.14159f, -1.88436f, -0.542863f, 0.0f, 1.05622f, 3.14159f}),
                     "Cos", {},
                     11, ExpectedEPNodeAssignment::All);
@@ -429,6 +465,18 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Log) {
                     11, ExpectedEPNodeAssignment::All);
 }
 
+// Tests accuracy of 16-bit QDQ Log
+TEST_F(QnnHTPBackendTests, UnaryOp_Log_U16) {
+  const std::vector<float> input_data = GetFloatDataInRange(1.0f, 128.0f, 6);
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
+                              "Log",
+                              {},
+                              11,
+                              ExpectedEPNodeAssignment::All,
+                              kOnnxDomain,  // Log op domain
+                              true);        // Use com.microsoft domain for Q/DQ ops
+}
+
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
 // Test that the default axis (-1) for SoftMax opset 13 works.
 TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_DefaultAxis) {
@@ -436,6 +484,18 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_DefaultAxis) {
                     "Softmax",
                     {},  // Uses default axis of -1 for opset 13
                     13, ExpectedEPNodeAssignment::All);
+}
+
+// Tests accuracy of 16-bit QDQ Softmax (opset 13) with default axis
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_U16_DefaultAxis) {
+  const std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
+                              "Softmax",
+                              {},  // Uses default axis of -1 for opset 13
+                              13,
+                              ExpectedEPNodeAssignment::All,
+                              kOnnxDomain,  // Sofmax's domain
+                              true);        // Use com.microsoft domain for Q/DQ ops
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
@@ -465,7 +525,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Softmax11_SetValidAxis) {
                     11, ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ Abs op.
+// Test accuracy of QDQ Abs op.
 TEST_F(QnnHTPBackendTests, UnaryOp_Abs) {
   RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, -10.0f, 10.0f),
                     "Abs",
@@ -473,12 +533,37 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Abs) {
                     13, ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ Ceil op.
+// Test accuracy of 16-bit QDQ Abs op.
+TEST_F(QnnHTPBackendTests, UnaryOp_Abs_U16) {
+  const std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
+                              "Abs",
+                              {},
+                              13,
+                              ExpectedEPNodeAssignment::All,
+                              kOnnxDomain,  // Abs op's domain
+                              true);        // Use com.microsoft domain for Q/DQ ops
+}
+
+// Test accuracy of QDQ Ceil op.
 TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
-  RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, -100.0f, 100.0f),
-                    "Ceil",
-                    {},
-                    13, ExpectedEPNodeAssignment::All);
+  const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
+  RunQDQUnaryOpTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
+                             "Ceil",
+                             {},
+                             13, ExpectedEPNodeAssignment::All);
+}
+
+// Test accuracy of 16-bit QDQ Ceil op.
+TEST_F(QnnHTPBackendTests, UnaryOp_Ceil_U16) {
+  const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 3}, false, input_data),
+                              "Ceil",
+                              {},
+                              13,
+                              ExpectedEPNodeAssignment::All,
+                              kOnnxDomain,  // Ceil op's domain
+                              true);        // Use com.microsoft domain for Q/DQ ops
 }
 
 // Test QDQ DepthToSpace.
@@ -496,6 +581,26 @@ TEST_F(QnnHTPBackendTests, DepthToSpaceOp_CRD) {
                     {utils::MakeAttribute("blocksize", static_cast<int64_t>(2)),
                      utils::MakeAttribute("mode", "CRD")},
                     11, ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ DepthToSpace.
+TEST_F(QnnHTPBackendTests, DepthToSpaceOp_U16_CRD) {
+  const std::vector<float> X = {0., 1., 2.,
+                                3., 4., 5.,
+                                9., 10., 11.,
+                                12., 13., 14.,
+                                18., 19., 20.,
+                                21., 22., 23.,
+                                27., 28., 29.,
+                                30., 31., 32.};
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 4, 2, 3}, false, X),
+                              "DepthToSpace",
+                              {utils::MakeAttribute("blocksize", static_cast<int64_t>(2)),
+                               utils::MakeAttribute("mode", "CRD")},
+                              11,
+                              ExpectedEPNodeAssignment::All,
+                              kOnnxDomain,  // Op's domain
+                              true);        // Use com.microsoft domain for Q/DQ ops
 }
 
 // Test QDQ DepthToSpace.
@@ -526,6 +631,22 @@ TEST_F(QnnHTPBackendTests, SpaceToDepthOp) {
                     "SpaceToDepth",
                     {utils::MakeAttribute("blocksize", static_cast<int64_t>(2))},
                     11, ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ SpaceToDepth.
+TEST_F(QnnHTPBackendTests, SpaceToDepthOp_U16) {
+  const std::vector<float> X = {0.0f, 0.1f, 0.2f, 0.3f,
+                                1.0f, 1.1f, 1.2f, 1.3f,
+
+                                2.0f, 2.1f, 2.2f, 2.3f,
+                                3.0f, 3.1f, 3.2f, 3.3f};
+  RunQDQUnaryOpTest<uint16_t>(TestInputDef<float>({1, 2, 2, 4}, false, X),
+                              "SpaceToDepth",
+                              {utils::MakeAttribute("blocksize", static_cast<int64_t>(2))},
+                              11,
+                              ExpectedEPNodeAssignment::All,
+                              kOnnxDomain,  // Op's domain
+                              true);        // Use com.microsoft domain for Q/DQ ops
 }
 
 // Run QDQ model on HTP twice
@@ -602,7 +723,7 @@ TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {
                   ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ Add
+// Test 8-bit QDQ Add
 TEST_F(QnnHTPBackendTests, BinaryOp_Add4D) {
   RunQDQOpTest<uint8_t>("Add",
                         TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
@@ -612,7 +733,19 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Add4D) {
                         ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ Sub
+// Test 16-bit QDQ Add
+TEST_F(QnnHTPBackendTests, BinaryOp_Add4D_U16) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  RunQDQOpTest<uint16_t>("Add",
+                         TestInputDef<float>({1, 2, 2, 2}, false, input_data),
+                         TestInputDef<float>({1, 2, 2, 2}, false, input_data),
+                         {},
+                         17,
+                         ExpectedEPNodeAssignment::All,
+                         true);  // Use com.microsoft Q/DQ ops
+}
+
+// Test 8-bit QDQ Sub
 TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D) {
   RunQDQOpTest<uint8_t>("Sub",
                         TestInputDef<float>({1, 3, 8, 8}, false, -10.0f, 10.0f),
@@ -620,6 +753,18 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D) {
                         {},
                         17,
                         ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ Sub
+TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_U16) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  RunQDQOpTest<uint16_t>("Sub",
+                         TestInputDef<float>({1, 3, 8, 8}, false, input_data),
+                         TestInputDef<float>({1, 3, 8, 8}, false, input_data),
+                         {},
+                         17,
+                         ExpectedEPNodeAssignment::All,
+                         true);  // Use com.microsoft Q/DQ ops
 }
 
 TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_LargeInputs) {
@@ -641,12 +786,27 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_Broadcast) {
 }
 
 TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_SmallInputs) {
+  std::vector<float> input0_data = {-10.0f, -8.0f, -1.0f, 0.0f, 1.0f, 2.1f, 8.0f, 10.0f};
+  std::vector<float> input1_data = {5.0f, 4.0f, 1.0f, 1.0f, 1.0f, 4.0f, 4.0f, 5.0f};
   RunQDQOpTest<uint8_t>("Div",
-                        TestInputDef<float>({1, 2, 2, 2}, false, {-10.0f, -8.0f, -1.0f, 0.0f, 1.0f, 2.1f, 8.0f, 10.0f}),
-                        TestInputDef<float>({1, 2, 2, 2}, false, {5.0f, 4.0f, 1.0f, 1.0f, 1.0f, 4.0f, 4.0f, 5.0f}),
+                        TestInputDef<float>({1, 2, 2, 2}, false, input0_data),
+                        TestInputDef<float>({1, 2, 2, 2}, false, input1_data),
                         {},
                         17,
                         ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ Sub with small input values.
+TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_U16_SmallInputs) {
+  std::vector<float> input0_data = {-10.0f, -8.0f, -1.0f, 0.0f, 1.0f, 2.1f, 8.0f, 10.0f};
+  std::vector<float> input1_data = {5.0f, 4.0f, 1.0f, 1.0f, 1.0f, 4.0f, 4.0f, 5.0f};
+  RunQDQOpTest<uint16_t>("Div",
+                         TestInputDef<float>({1, 2, 2, 2}, false, input0_data),
+                         TestInputDef<float>({1, 2, 2, 2}, false, input1_data),
+                         {},
+                         17,
+                         ExpectedEPNodeAssignment::All,
+                         true);  // Use com.microsoft Q/DQ ops
 }
 
 // TODO: Enable when this is fixed.
@@ -673,7 +833,7 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Div4D_Broadcast) {
                         ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ Mul
+// Test 8-bit QDQ Mul
 TEST_F(QnnHTPBackendTests, BinaryOp_Mul4D) {
   RunQDQOpTest<uint8_t>("Mul",
                         TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
@@ -681,6 +841,18 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Mul4D) {
                         {},
                         17,
                         ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ Mul
+TEST_F(QnnHTPBackendTests, BinaryOp_Mul4D_U16) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  RunQDQOpTest<uint16_t>("Mul",
+                         TestInputDef<float>({1, 2, 2, 2}, false, input_data),
+                         TestInputDef<float>({1, 2, 2, 2}, false, input_data),
+                         {},
+                         17,
+                         ExpectedEPNodeAssignment::All,
+                         true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test And
@@ -703,7 +875,7 @@ TEST_F(QnnCPUBackendTests, BinaryOp_HTP_Or_Unsupported) {
                   ExpectedEPNodeAssignment::None);
 }
 
-// Test QDQ GridSample with bilinear
+// Test 8-bit QDQ GridSample with bilinear
 TEST_F(QnnHTPBackendTests, GridSample_Bilinear) {
   RunQDQOpTest<uint8_t>("GridSample",
                         TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
@@ -715,7 +887,20 @@ TEST_F(QnnHTPBackendTests, GridSample_Bilinear) {
                         ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ GridSample with align corners
+// Test 16-bit QDQ GridSample with bilinear
+TEST_F(QnnHTPBackendTests, GridSample_U16_Bilinear) {
+  RunQDQOpTest<uint16_t>("GridSample",
+                         TestInputDef<float>({1, 1, 3, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 6)),
+                         TestInputDef<float>({1, 2, 4, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 16)),
+                         {utils::MakeAttribute("align_corners", static_cast<int64_t>(0)),
+                          utils::MakeAttribute("mode", "bilinear"),
+                          utils::MakeAttribute("padding_mode", "zeros")},
+                         17,
+                         ExpectedEPNodeAssignment::All,
+                         true);  // Use com.microsoft Q/DQ ops
+}
+
+// Test 8-bit QDQ GridSample with align corners
 TEST_F(QnnHTPBackendTests, GridSample_AlignCorners) {
   RunQDQOpTest<uint8_t>("GridSample",
                         TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
@@ -725,6 +910,19 @@ TEST_F(QnnHTPBackendTests, GridSample_AlignCorners) {
                          utils::MakeAttribute("padding_mode", "zeros")},
                         17,
                         ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ GridSample with align corners
+TEST_F(QnnHTPBackendTests, GridSample_U16_AlignCorners) {
+  RunQDQOpTest<uint16_t>("GridSample",
+                         TestInputDef<float>({1, 1, 3, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 6)),
+                         TestInputDef<float>({1, 2, 4, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 16)),
+                         {utils::MakeAttribute("align_corners", static_cast<int64_t>(1)),
+                          utils::MakeAttribute("mode", "bilinear"),
+                          utils::MakeAttribute("padding_mode", "zeros")},
+                         17,
+                         ExpectedEPNodeAssignment::All,
+                         true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test QDQ GridSample with padding mode: border
@@ -743,7 +941,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_GridSample_BorderPadding) {
                         ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ GridSample with nearest mode
+// Test 8-bit QDQ GridSample with nearest mode
 TEST_F(QnnHTPBackendTests, GridSample_Nearest) {
   RunQDQOpTest<uint8_t>("GridSample",
                         TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
@@ -751,6 +949,17 @@ TEST_F(QnnHTPBackendTests, GridSample_Nearest) {
                         {utils::MakeAttribute("mode", "nearest")},
                         17,
                         ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ GridSample with nearest mode
+TEST_F(QnnHTPBackendTests, GridSample_U16_Nearest) {
+  RunQDQOpTest<uint16_t>("GridSample",
+                         TestInputDef<float>({1, 1, 3, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 6)),
+                         TestInputDef<float>({1, 2, 4, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 16)),
+                         {utils::MakeAttribute("mode", "nearest")},
+                         17,
+                         ExpectedEPNodeAssignment::All,
+                         true);
 }
 
 // Test QDQ GridSample with reflection padding mode
