@@ -496,14 +496,16 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
-  const std::vector<int64_t> dense_shape{3, 3};
-  std::vector<float> dense_data = {
-      0, 0, 1.764052391052246f,
-      0.40015721321105957f, 0, 0.978738009929657f,
-      0, 0, 0};
+  constexpr std::array<int64_t, 2> dense_shape{3, 3};
 
-  const std::vector<float> expected_values = {1.764052391052246f, 0.40015721321105957f, 0.978738009929657f};
-  const std::vector<int64_t> expected_linear_indices = {2, 3, 5};
+  // Tensor data in a dense form, useful for debugging and reference.
+  // constexpr std::array<float, 9> dense_data = {
+  //     0, 0, 1.764052391052246f,
+  //     0.40015721321105957f, 0, 0.978738009929657f,
+  //     0, 0, 0};
+
+  constexpr std::array<float, 3> expected_values = {1.764052391052246f, 0.40015721321105957f, 0.978738009929657f};
+  constexpr std::array<int64_t, 3> expected_linear_indices = {2, 3, 5};
 
   // sparse_initializer_as_output.onnx
   SessionOptions so;
@@ -515,14 +517,18 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     ASSERT_STATUS_OK(session.Initialize());
 
     auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-    auto p_tensor = std::make_unique<SparseTensor>();
 
     std::vector<OrtValue> results;
     results.resize(1);
-    auto ml_type = DataTypeImpl::GetType<SparseTensor>();
-    results[0].Init(p_tensor.release(), ml_type, ml_type->GetDeleteFunc());
+
+    // Initialize the output value as a SparseTensor with pre-allocated memory
+    // this is done here to test output types.
+    auto element_type = DataTypeImpl::GetSparseTensorType<float>()->AsSparseTensorType()->GetElementType();
+    SparseTensor::InitOrtValue(element_type, TensorShape(dense_shape), allocator, results[0]);
+
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(), EmptySpan<OrtValue>(), AsSpan<std::string>({"values"}), &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(), EmptySpan<OrtValue>(),
+                                 AsSpan<std::string>({"values"}), &results, nullptr));
 
     ASSERT_TRUE(results[0].IsAllocated());
     ASSERT_TRUE(results[0].IsSparseTensor());
