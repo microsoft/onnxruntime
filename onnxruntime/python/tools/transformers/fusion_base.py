@@ -4,9 +4,10 @@
 # --------------------------------------------------------------------------
 from collections import defaultdict
 from logging import getLogger
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
-from onnx import NodeProto
+import numpy as np
+from onnx import NodeProto, helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -86,3 +87,27 @@ class Fusion:
             self.model.prune_graph()
         elif self.nodes_to_remove or self.nodes_to_add:
             self.model.update_graph()
+
+    def add_initializer(self, name: str, data_type: int, dims: Sequence[int], vals: Any, raw: bool = False):
+        if raw:
+            assert isinstance(vals, np.ndarray)
+            np_type = helper.tensor_dtype_to_np_dtype(data_type)
+            bytes = vals.astype(np_type).tobytes()
+            tensor = helper.make_tensor(
+                name=name,
+                data_type=data_type,
+                dims=dims,
+                vals=bytes,
+                raw=True,
+            )
+        else:
+            tensor = helper.make_tensor(
+                name=name,
+                data_type=data_type,
+                dims=dims,
+                vals=vals,
+                raw=False,
+            )
+
+        self.model.add_initializer(tensor, self.this_graph_name)
+        return tensor
