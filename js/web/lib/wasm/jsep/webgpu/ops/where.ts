@@ -95,25 +95,6 @@ const createOpProgramShader =
     };
 
 export const where = (context: ComputeContext): void => {
-  const type = inputVariable('input', context.inputs[1].dataType, context.inputs[1].dims).type.value;
-  context.compute(
-      createOpProgramInfoLoader(
-          context.inputs, 'Where', ({
-            scalar: (a, b, c) => `where_custom(${a}, ${b}, ${c})`,
-            vector: (a, b, c) => `where_vector_custom(${a}, ${b}, ${c})`
-          }),
-          createOpProgramShader, `
-  fn where_custom(a : ${type}, b : ${type}, cond : bool) -> ${type} {
-    if cond == true {
-      return a;
-    }
-    return b;
-  }
-
-  fn where_vector_custom(x : vec4<${type}>, y : vec4<${type}>, cond : vec4<bool>) -> vec4<${type}> {
-    return vec4<${type}>(where_custom(x.x, y.x, cond.x), where_custom(x.y, y.y, cond.y),
-             where_custom(x.z, y.z, cond.z), where_custom(x.w, y.w, cond.w));
-   }
-   `),
-  );
+  context.compute(createOpProgramInfoLoader(
+      context.inputs, 'Where', (a, b, c) => `select(${b}, ${a}, ${c})`, createOpProgramShader));
 };
