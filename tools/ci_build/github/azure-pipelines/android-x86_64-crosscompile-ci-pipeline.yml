@@ -1,8 +1,4 @@
-# Known Limits
-# 1. Anchors are not supported in GHA
-# https://github.community/t/support-for-yaml-anchors/16128/90
-# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM,
-# which is the no.1 blocker for running tests on modern Android Emulators (especially on recent API levels) on CI.
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -10,6 +6,10 @@ trigger:
     - rel-*
   paths:
     exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
 pr:
@@ -19,8 +19,20 @@ pr:
     - rel-*
   paths:
     exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
+# Known Limits
+# 1. Anchors are not supported in GHA
+# https://github.community/t/support-for-yaml-anchors/16128/90
+# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM,
+# which is the no.1 blocker for running tests on modern Android Emulators (especially on recent API levels) on CI.
+
 # It'd better to check out https://github.com/microsoft/onnxruntime/wiki/Leverage-Existing-Artifacts
 # to save debugging time.
 parameters:
