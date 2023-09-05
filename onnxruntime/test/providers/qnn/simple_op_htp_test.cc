@@ -293,6 +293,13 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Exp) {
                     "Exp", {}, 13, ExpectedEPNodeAssignment::All);
 }
 
+// Test accuracy of 8-bit QDQ Neg
+TEST_F(QnnHTPBackendTests, UnaryOp_Neg) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, input_data),
+                    "Neg", {}, 13, ExpectedEPNodeAssignment::All);
+}
+
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
 // Test that the default axis (-1) for SoftMax opset 13 works.
 TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_DefaultAxis) {
