@@ -242,7 +242,7 @@ void InferenceModel(const std::string& model_data, const char* log_id,
 template <typename QuantType = uint8_t>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
                                  const ProviderOptions& qnn_options, int opset_version,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err,
+                                 ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-4f,
                                  logging::Severity log_severity = logging::Severity::kERROR) {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
