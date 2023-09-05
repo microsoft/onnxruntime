@@ -1218,13 +1218,13 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
     // required, optional and invalid input
     status = RunOptionalInputTest(true, true, true, version, sess_env);
     ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid input name"));
 
     // missing required
     status = RunOptionalInputTest(false, true, false, version, sess_env);
     ASSERT_FALSE(status.IsOK());
     if (version == 3) {
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid input name"));
     } else {
       EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
     }
