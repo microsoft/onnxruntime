@@ -61,7 +61,7 @@ void CompareOrtValuesToTensorProtoValues(
     ASSERT_EQ(tensor_proto.data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     OrtValue ort_value;
     ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), model_path.c_str(), tensor_proto,
-                                                     tmp_allocator, ort_value));
+                                                  tmp_allocator, ort_value));
 
     name_to_ort_value_from_tensor_proto.emplace(name, ort_value);
   }
