@@ -96,7 +96,7 @@ def _openvino_verify_device_type(device_read):
                 break
 
     def invalid_hetero_build():
-        print("\nIf trying to build Hetero/Multi/Auto, specifiy the supported devices along with it.\n")
+        print("\nIf trying to build Hetero/Multi/Auto, specify the supported devices along with it.\n")
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
@@ -107,7 +107,7 @@ def _openvino_verify_device_type(device_read):
         sys.exit("Wrong Build Type selected")
 
     if res is False:
-        print("\nYou have selcted wrong configuration for the build.")
+        print("\nYou have selected wrong configuration for the build.")
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
@@ -172,7 +172,7 @@ def parse_arguments():
         default=-1,
         type=int,
         help="Maximum number of NVCC threads in each parallel job."
-        "If the value is unspecified, it will be computed based on avaiable memory and number of parallel jobs.",
+        "If the value is unspecified, it will be computed based on available memory and number of parallel jobs.",
     )
 
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
@@ -431,7 +431,7 @@ def parse_arguments():
     parser.add_argument("--wasm_run_tests_in_browser", action="store_true", help="Run WebAssembly tests in browser")
 
     parser.add_argument(
-        "--enable_wasm_profiling", action="store_true", help="Enable WebAsselby profiling and preserve function names"
+        "--enable_wasm_profiling", action="store_true", help="Enable WebAssembly profiling and preserve function names"
     )
     parser.add_argument(
         "--enable_wasm_debug_info", action="store_true", help="Build WebAssembly with DWARF format debug info"
@@ -528,7 +528,7 @@ def parse_arguments():
         "--llvm_config",
         type=str,
         default="",
-        help="Path to llvm-config.exe for LLVM buit from sources. It is strongly needed for build on Windows",
+        help="Path to llvm-config.exe for LLVM built from sources. It is strongly needed for build on Windows",
     )
     parser.add_argument(
         "--skip_onnx_tests",
@@ -890,7 +890,7 @@ def number_of_nvcc_threads(args):
         available_memory = psutil.virtual_memory().available
         if isinstance(available_memory, int) and available_memory > 0:
             if available_memory > 60 * 1024 * 1024 * 1024:
-                # When avaiable memory is large enough, chance of OOM is small.
+                # When available memory is large enough, chance of OOM is small.
                 nvcc_threads = 4
             else:
                 # NVCC need a lot of memory to compile 8 flash attention cu files in Linux or 4 cutlass fmha cu files in Windows.
