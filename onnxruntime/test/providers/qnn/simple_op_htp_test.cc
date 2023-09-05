@@ -238,6 +238,23 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Elu) {
                     ExpectedEPNodeAssignment::All);
 }
 
+// Tests accuracy of QDQ Relu
+// TODO: Relu does not set negative values to zero!
+// Could be due to ORT's ReluQuantFusion!
+//
+// Inaccuracy detected for output 'output', element 0.
+// Output quant params: scale=0.039215687662363052, zero_point=0.
+// Expected val: 0
+// QNN QDQ val: -10 (err 10)
+// CPU QDQ val: 0 (err 0)
+TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Relu) {
+  RunQDQUnaryOpTest(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6)),
+                    "Relu",
+                    {},
+                    14,
+                    ExpectedEPNodeAssignment::All);
+}
+
 // Check that QNN compiles DQ -> HardSwish -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish) {
