@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e -x
 mkdir -p /tmp/src
 cd /tmp/src
 
