@@ -120,7 +120,7 @@ In your CocoaPods `Podfile`, add the `onnxruntime-c`, `onnxruntime-mobile-c`, `o
 
 #### C/C++
 
-  ```pod
+  ```ruby
   use_frameworks!
 
   # choose one of the two below:
@@ -130,7 +130,7 @@ In your CocoaPods `Podfile`, add the `onnxruntime-c`, `onnxruntime-mobile-c`, `o
 
 #### Objective-C
 
-  ```pod
+  ```ruby
   use_frameworks!
 
   # choose one of the two below:
