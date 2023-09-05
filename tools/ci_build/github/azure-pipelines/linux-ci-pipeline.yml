@@ -88,7 +88,7 @@ stages:
               set -ex; \
               dotnet --help; \
               dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
-              dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \"
+              dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; "
         displayName: 'Run dotnet tests'
 
       - template: templates/linux-build-step-with-cache.yml
