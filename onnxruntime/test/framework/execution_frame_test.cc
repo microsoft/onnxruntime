@@ -497,6 +497,8 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
   constexpr std::array<int64_t, 2> dense_shape{3, 3};
+
+  // Tensor data in a dense form, useful for debugging and reference.
   // constexpr std::array<float, 9> dense_data = {
   //     0, 0, 1.764052391052246f,
   //     0.40015721321105957f, 0, 0.978738009929657f,

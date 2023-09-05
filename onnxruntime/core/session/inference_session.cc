@@ -1836,7 +1836,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_output_nam
   if (shape_size != expected_shape_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid rank for ", input_output_moniker, ": ",
                            input_output_name, " Got: ", shape_size, " Expected: ", expected_shape_size,
-                           " Please fix either the inputs or the model.");
+                           " Please fix either the inputs/outputs or the model.");
   }
 
   InlinedVector<size_t> invalid_dim_indices;
@@ -1880,10 +1880,10 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
                                                        ArgType arg_type) const {
   ORT_ENFORCE(arg_type == ArgType::kInput || arg_type == ArgType::kOutput, "Valid values kInput, kOutput");
 
-  auto is_inputs = [](ArgType arg_type) -> bool { return arg_type == ArgType::kInput; };
+  const bool is_inputs = arg_type == ArgType::kInput;
 
-  const char* const input_output_moniker = is_inputs(arg_type) ? "input" : "output";
-  const char* const feed_fetches_moniker = is_inputs(arg_type) ? "feed" : "fetch";
+  const char* const input_output_moniker = is_inputs ? "input" : "output";
+  const char* const feed_fetches_moniker = is_inputs ? "feed" : "fetch";
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   auto is_sparse_initializer = [this](const std::string& name) -> bool {
@@ -1911,7 +1911,7 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
     const auto& input_output_ml_value = feeds_fetches[i];
 
     // For outputs the user may supply an unallocated placeholder.
-    if (!is_inputs(arg_type) && !input_output_ml_value.IsAllocated()) {
+    if (!is_inputs && !input_output_ml_value.IsAllocated()) {
       continue;
     }
 
