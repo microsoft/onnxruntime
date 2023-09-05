@@ -1,13 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
+import {
+  fillVector,
+  getMaxComponents,
+  inputVariable,
+  outputVariable,
+  ShaderHelper, sumVector, tensorTypeToWsglStorageType,
+} from './common';
 
 export interface SkipLayerNormAttributes extends AttributeWithCacheKey {
   epsilon: number;
@@ -18,9 +23,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('layerNorm requires at least 3 inputs.');
   }
 
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('inputs should be float type');
-  }
   const input: TensorView = inputs[0];
   const skip: TensorView = inputs[1];
   const gamma: TensorView = inputs[2];
@@ -84,40 +86,46 @@ const createSkipLayerNormProgramInfo =
       const meanInvStdDevDim = isTraining ? inputShape.slice(0, -1).concat(1) : [];
       const hasBetaInput = inputs.length > 3;
       const hasBiasInput = inputs.length > 4;
-      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
       const hasMeanOutput = isTraining && outputCount > 1;
       const hasInvStdDevOutput = isTraining && outputCount > 2;
       const hasInputSkipBiasSumOutput = outputCount > 3;
-      let bindingNumber = 0;
+
+      const components = getMaxComponents(hiddenSize);
+      const variables = [
+        inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
+        inputVariable('skip', inputs[1].dataType, inputs[1].dims, components),
+        inputVariable('gamma', inputs[2].dataType, inputs[2].dims, components),
+      ];
+      if (hasBetaInput) {
+        variables.push(inputVariable('beta', inputs[3].dataType, inputs[3].dims, components));
+      }
+      if (hasBiasInput) {
+        variables.push(inputVariable('bias', inputs[4].dataType, inputs[4].dims, components));
+      }
+      variables.push(outputVariable('output', inputs[0].dataType, outputShape, components));
+      if (hasMeanOutput) {
+        variables.push(outputVariable('meanOutput', inputs[0].dataType, meanInvStdDevDim));
+      }
+      if (hasInvStdDevOutput) {
+        variables.push(outputVariable('invStdOutput', inputs[0].dataType, meanInvStdDevDim));
+      }
+      if (hasInputSkipBiasSumOutput) {
+        variables.push(outputVariable('inputSkipBiasSum', inputs[0].dataType, outputShape, components));
+      }
+      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       const hiddenSize: u32 = ${hiddenSize};
-      const epsilon: f32 = ${attributes.epsilon};
+      const hiddenSizeVectorized: u32 = ${hiddenSize / components};
+      const epsilon: ${dataType} = ${attributes.epsilon};
 
-      @group(0) @binding(${bindingNumber++}) var<storage, read> x : array<${dataType}>;
-      @group(0) @binding(${bindingNumber++}) var<storage, read> skip : array<${dataType}>;
-      @group(0) @binding(${bindingNumber++}) var<storage, read> gamma : array<${dataType}>;
-      ${hasBetaInput ? `@group(0) @binding(${bindingNumber++}) var<storage, read> beta : array<${dataType}>;` : ''}
-      ${hasBiasInput ? `@group(0) @binding(${bindingNumber++}) var<storage, read> bias : array<${dataType}>;` : ''}
-      @group(0) @binding(${bindingNumber++}) var<storage, read_write> output : array<${dataType}>;
-      ${
-          hasMeanOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> meanOutput : array<${dataType}>;` :
-              ''}
-      ${
-          hasInvStdDevOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> invStdOutput : array<${dataType}>;` :
-              ''}
-      ${
-          hasInputSkipBiasSumOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> inputSkipBiasSum : array<${dataType}>;` :
-              ''}
+      ${shaderHelper.declareVariables(...variables)}
 
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize / hiddenSize)}
-        let offset = global_idx * hiddenSize;
-        var sum: f32 = 0.0;
-        var squareSum: f32 = 0.0;
-        for (var i: u32 = 0; i < hiddenSize; i++) {
+        let offset = global_idx * hiddenSizeVectorized;
+        var sum = ${fillVector(dataType, components)};
+        var squareSum = ${fillVector(dataType, components)};
+        for (var i: u32 = 0; i < hiddenSizeVectorized; i++) {
           let skipValue = skip[offset + i];
           let biasValue = ${hasBiasInput ? 'bias[i]' : '0.0'};
           let inputValue = x[offset + i];
@@ -127,11 +135,12 @@ const createSkipLayerNormProgramInfo =
           sum += value;
           squareSum += value * value;
         }
-        let mean: f32 = sum / f32(hiddenSize);
-        let variance: f32 = sqrt(squareSum / f32(hiddenSize) - mean * mean + epsilon);
+        let mean: ${dataType} = ${sumVector('sum', components)} / ${dataType}(hiddenSize);
+        let variance: ${dataType} = sqrt(${sumVector('squareSum', components)} 
+          / ${dataType}(hiddenSize) - mean * mean + epsilon);
         ${hasMeanOutput ? 'meanOutput[global_idx] = mean;' : ''}
         ${hasInvStdDevOutput ? 'invStdOutput[global_idx] = 1.0 / variance;' : ''}
-        for (var i: u32 = 0; i < hiddenSize; i++) {
+        for (var i: u32 = 0; i < hiddenSizeVectorized; i++) {
           output[offset + i] = (output[offset + i] - mean) / variance * gamma[i] + ${hasBetaInput ? 'beta[i]' : '0.0'};
         }
       }`;

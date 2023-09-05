@@ -194,9 +194,8 @@ export interface IndicesHelper {
 const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, string] => {
   // return type is [ storage type, runtime type ] or a single string for both
   switch (type) {
-    // TODO: enable after "shader-f16" WSGL extension release
-    // case DataType.float16:
-    //   return components > 1 ? `vec${components}<f16>` : 'f16';
+    case DataType.float16:
+      return components > 1 ? `vec${components}<f16>` : 'f16';
     case DataType.float:
       return components > 1 ? `vec${components}<f32>` : 'f32';
     case DataType.int32:
@@ -232,6 +231,37 @@ export const tensorTypeToWsglStorageType = (type: DataType, components: 1|2|3|4 
 export const tensorTypeToWsglValueType = (type: DataType, components: 1|2|3|4 = 1) => {
   const mappedType = getWgslMappedType(type, components);
   return typeof mappedType === 'string' ? mappedType : mappedType[1];
+};
+
+export const getMaxComponents = (size: number) => {
+  // we cannot use vec3 type since it has alignment of 16 bytes
+  if (size % 4 === 0) {
+    return 4;
+  } else if (size % 2 === 0) {
+    return 2;
+  }
+
+  return 1;
+};
+
+export const fillVector = (dataType = 'f32', components?: number, value = '0') => {
+  if (!components || components === 1) {
+    return `${dataType}(${value})`;
+  }
+
+  return `vec${components}<${dataType}>(${new Array(components).fill(value).join(',')})`;
+};
+
+export const sumVector = (name: string, components: number) => {
+  if (components === 4) {
+    return `(${name}.x + ${name}.y + ${name}.z + ${name}.w)`;
+  } else if (components === 2) {
+    return `(${name}.x + ${name}.y)`;
+  } else if (components === 3) {
+    return `(${name}.x + ${name}.y + ${name}.z)`;
+  }
+
+  return name;
 };
 
 /**

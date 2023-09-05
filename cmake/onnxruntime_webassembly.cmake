@@ -93,6 +93,12 @@ if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   set_property(TARGET re2 PROPERTY COMPILE_OPTIONS )
 endif()
 
+if (onnxruntime_ENABLE_WEBASSEMBLY_FLOAT16)
+  add_compile_definitions(
+    ENABLE_WEBASSEMBLY_FLOAT16
+  )
+endif()
+
 target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)

@@ -24,8 +24,8 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   }
 
   if (inputs[0].dataType !== DataType.float && inputs[0].dataType !== DataType.int32 &&
-      inputs[0].dataType !== DataType.uint32) {
-    throw new Error('Transpose only support float, int32, and uint32 data types');
+      inputs[0].dataType !== DataType.uint32 && inputs[0].dataType !== DataType.float16) {
+    throw new Error('Transpose only support float, float16, int32, and uint32 data types');
   }
 };
 

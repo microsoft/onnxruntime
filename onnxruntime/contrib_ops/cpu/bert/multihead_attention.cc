@@ -139,11 +139,29 @@ Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V dat
                                });
   }
 
+  std::cout << "After bias add.";
+  std::cout << std::endl;
+  auto tensor = qkv_with_bias.GetMutable<Tensor>();
+  auto data = tensor->MutableData<float>();
+  for (size_t i = 0; i < batch_size * sequence_length * hidden_size; ++i) {
+    std::cout << data[i] << " ";
+  }
+  std::cout << std::endl;
+
   // Reshape Q from BxSxD to BxSxNxH
   ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(qkv_with_bias.GetMutable<Tensor>(), batch_size, sequence_length, num_heads, head_size));
 
   // Transpose Q from BxSxNxH to BxNxSxH
   ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH(qkv_with_bias.GetMutable<Tensor>(), qkv_with_bias_transposed));
+
+  std::cout << "After transpose.";
+  std::cout << std::endl;
+  tensor = qkv_with_bias_transposed.GetMutable<Tensor>();
+  data = tensor->MutableData<float>();
+  for (size_t i = 0; i < batch_size * sequence_length * hidden_size; ++i) {
+    std::cout << data[i] << " ";
+  }
+  std::cout << std::endl;
 
   return Status::OK();
 }

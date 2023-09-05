@@ -145,8 +145,8 @@ export class Tensor implements TensorInterface {
               // Throw error here because when user try to use number array as data,
               // e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
               // Uint16Array.from(arg1) which generates wrong data.
-              throw new TypeError(
-                  'Creating a float16 tensor from number array is not supported. Please use Uint16Array as data.');
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              data = (typedArrayConstructor as any).from(arg1);
             } else if (arg0 === 'uint64' || arg0 === 'int64') {
               // use 'as any' here because:
               // 1. TypeScript's check on type of 'Array.isArray()' does not work with readonly arrays.

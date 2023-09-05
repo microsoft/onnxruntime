@@ -9,7 +9,7 @@
 #include "core/providers/js/js_kernel.h"
 namespace onnxruntime {
 namespace js {
-template <typename T, bool is_channels_last>
+template <bool is_channels_last>
 class ConvTranspose : public JsKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : JsKernel(info), conv_transpose_attrs_(info), w_is_const_(false) {

@@ -12,7 +12,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     1, 1,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T", JsepSupportedFloatTypes())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Split_1);
 
@@ -22,7 +22,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     2, 10,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", JsepSupportedFloatTypes()),
     Split_2_10);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -31,7 +31,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     11, 12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", JsepSupportedFloatTypes()),
     Split_11_12);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -40,7 +40,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     13, 17,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T", JsepSupportedFloatTypes())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Split_13_17);
 
@@ -50,7 +50,7 @@ ONNX_OPERATOR_KERNEL_EX(
     18,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T", JsepSupportedFloatTypes())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Split_18);
 

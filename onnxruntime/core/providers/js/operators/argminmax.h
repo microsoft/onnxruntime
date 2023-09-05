@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace js {
 #define JSEP_DEFINE_ARGMINMAX_KERNEL(ArgMinMaxKernel)                                                      \
-  template <typename T, bool allow_multi_axes = false>                                                     \
+  template <bool allow_multi_axes = false>                                                                 \
   class ArgMinMaxKernel : public JsKernel, public ReduceKernelBase<allow_multi_axes> {                     \
    public:                                                                                                 \
     using ReduceKernelBase<allow_multi_axes>::axes_;                                                       \

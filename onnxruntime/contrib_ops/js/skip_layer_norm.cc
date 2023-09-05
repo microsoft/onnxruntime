@@ -2,10 +2,13 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/js/skip_layer_norm.h"
+#include "core/providers/js/js_data_types.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace js {
+
+using onnxruntime::js::JsepSupportedFloatTypes;
 
 ONNX_OPERATOR_KERNEL_EX(
     SkipLayerNormalization,
@@ -13,8 +16,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("U", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", JsepSupportedFloatTypes())
+        .TypeConstraint("U", JsepSupportedFloatTypes()),
     SkipLayerNorm);
 
 }  // namespace js

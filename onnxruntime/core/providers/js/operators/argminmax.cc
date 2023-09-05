@@ -7,27 +7,25 @@ namespace onnxruntime {
 namespace js {
 
 #define REGISTER_ARGMAX_ELEMENTWISE_VERSIONED_KERNEL(ArgMinMaxOp, sinceVersion, endVersion) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                  \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                        \
       ArgMinMaxOp,                                                                          \
       kOnnxDomain,                                                                          \
       sinceVersion, endVersion,                                                             \
-      float,                                                                                \
       kJsExecutionProvider,                                                                 \
       (*KernelDefBuilder::Create())                                                         \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),                       \
-      ArgMinMaxOp<float>);
+          .TypeConstraint("T", JsepSupportedFloatTypes()),                                  \
+      ArgMinMaxOp<>);
 
 #define REGISTER_ARGMAX_ELEMENTWISE_KERNEL(ArgMinMaxOp, sinceVersion) \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+  ONNX_OPERATOR_KERNEL_EX(                                            \
       ArgMinMaxOp,                                                    \
       kOnnxDomain,                                                    \
       sinceVersion,                                                   \
-      float,                                                          \
       kJsExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                   \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())  \
+          .TypeConstraint("T", JsepSupportedFloatTypes())             \
           .InputMemoryType(OrtMemTypeCPU, 1),                         \
-      ArgMinMaxOp<float>);
+      ArgMinMaxOp<>);
 
 REGISTER_ARGMAX_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 1, 10);
 REGISTER_ARGMAX_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 11, 12);
