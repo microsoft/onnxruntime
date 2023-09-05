@@ -96,7 +96,7 @@ def _openvino_verify_device_type(device_read):
                 break
 
     def invalid_hetero_build():
-        print("\nIf trying to build Hetero/Multi/Auto, specifiy the supported devices along with it.\n")
+        print("\nIf trying to build Hetero/Multi/Auto, specify the supported devices along with it.\n")
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
@@ -107,7 +107,7 @@ def _openvino_verify_device_type(device_read):
         sys.exit("Wrong Build Type selected")
 
     if res is False:
-        print("\nYou have selcted wrong configuration for the build.")
+        print("\nYou have selected wrong configuration for the build.")
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
@@ -171,8 +171,8 @@ def parse_arguments():
         nargs="?",
         default=-1,
         type=int,
-        help="Maximum number of NVCC threads to be used in parallel. "
-        "If the optional value is negative or unspecified, the value of --parallel is used.",
+        help="Maximum number of NVCC threads in each parallel job."
+        "If the value is unspecified, it will be computed based on available memory and number of parallel jobs.",
     )
 
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
@@ -431,7 +431,7 @@ def parse_arguments():
     parser.add_argument("--wasm_run_tests_in_browser", action="store_true", help="Run WebAssembly tests in browser")
 
     parser.add_argument(
-        "--enable_wasm_profiling", action="store_true", help="Enable WebAsselby profiling and preserve function names"
+        "--enable_wasm_profiling", action="store_true", help="Enable WebAssembly profiling and preserve function names"
     )
     parser.add_argument(
         "--enable_wasm_debug_info", action="store_true", help="Build WebAssembly with DWARF format debug info"
@@ -528,7 +528,7 @@ def parse_arguments():
         "--llvm_config",
         type=str,
         default="",
-        help="Path to llvm-config.exe for LLVM buit from sources. It is strongly needed for build on Windows",
+        help="Path to llvm-config.exe for LLVM built from sources. It is strongly needed for build on Windows",
     )
     parser.add_argument(
         "--skip_onnx_tests",
@@ -875,6 +875,43 @@ def normalize_arg_list(nested_list):
     return [i for j in nested_list for i in j] if nested_list else []
 
 
+def number_of_parallel_jobs(args):
+    return os.cpu_count() if args.parallel == 0 else args.parallel
+
+
+def number_of_nvcc_threads(args):
+    if args.nvcc_threads >= 0:
+        return args.nvcc_threads
+
+    nvcc_threads = 1
+    try:
+        import psutil
+
+        available_memory = psutil.virtual_memory().available
+        if isinstance(available_memory, int) and available_memory > 0:
+            if available_memory > 60 * 1024 * 1024 * 1024:
+                # When available memory is large enough, chance of OOM is small.
+                nvcc_threads = 4
+            else:
+                # NVCC need a lot of memory to compile 8 flash attention cu files in Linux or 4 cutlass fmha cu files in Windows.
+                # Here we select number of threads to ensure each thread has enough memory (>= 4 GB). For example,
+                # Standard_NC4as_T4_v3 has 4 CPUs and 28 GB memory. When parallel=4 and nvcc_threads=2,
+                # total nvcc threads is 4 * 2, which is barely able to build in 28 GB memory so we will use nvcc_threads=1.
+                memory_per_thread = 4 * 1024 * 1024 * 1024
+                fmha_cu_files = 4 if is_windows() else 8
+                fmha_parallel_jobs = min(fmha_cu_files, number_of_parallel_jobs(args))
+                nvcc_threads = max(1, int(available_memory / (memory_per_thread * fmha_parallel_jobs)))
+                print(
+                    f"nvcc_threads={nvcc_threads} to ensure memory per thread >= 4GB for available_memory={available_memory} and fmha_parallel_jobs={fmha_parallel_jobs}"
+                )
+    except ImportError:
+        print(
+            "Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads. Use nvcc_threads=1"
+        )
+
+    return nvcc_threads
+
+
 def generate_build_tree(
     cmake_path,
     source_dir,
@@ -1044,10 +1081,7 @@ def generate_build_tree(
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_cuda:
-        if args.nvcc_threads >= 0:
-            nvcc_threads = args.nvcc_threads
-        else:
-            nvcc_threads = args.parallel
+        nvcc_threads = number_of_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
@@ -2547,7 +2581,7 @@ def main():
     if args.build:
         if args.parallel < 0:
             raise BuildError(f"Invalid parallel job count: {args.parallel}")
-        num_parallel_jobs = os.cpu_count() if args.parallel == 0 else args.parallel
+        num_parallel_jobs = number_of_parallel_jobs(args)
         build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.target)
 
     if args.test:
