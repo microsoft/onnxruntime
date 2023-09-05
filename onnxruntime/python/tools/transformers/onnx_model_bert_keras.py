@@ -435,7 +435,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                     "SkipLayerNormalization",
                 ],
                 [None, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            )  # yapf: disable
+            )
             if path is None:
                 continue
 

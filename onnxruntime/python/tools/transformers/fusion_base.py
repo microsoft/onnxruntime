@@ -88,11 +88,13 @@ class Fusion:
         elif self.nodes_to_remove or self.nodes_to_add:
             self.model.update_graph()
 
-    def add_initializer(self, name: str, data_type: int, dims: Sequence[int], vals: Any, raw: bool = False):
+    def add_initializer(self, name: str, data_type: int, dims: Sequence[int], vals: Any, raw: bool = True):
         if raw:
-            assert isinstance(vals, np.ndarray)
             np_type = helper.tensor_dtype_to_np_dtype(data_type)
-            bytes = vals.astype(np_type).tobytes()
+            if not isinstance(vals, np.ndarray):
+                bytes = np.array(vals, dtype=np_type).tobytes()
+            else:
+                bytes = vals.astype(np_type).tobytes()
             tensor = helper.make_tensor(
                 name=name,
                 data_type=data_type,

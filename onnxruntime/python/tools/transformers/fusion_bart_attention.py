@@ -264,7 +264,7 @@ class FusionBartAttention(FusionAttention):
                     empty_bias_name,
                     TensorProto.FLOAT,
                     dims=[bias_dim],
-                    vales=np.array([0.0] * bias_dim, dtype=np.float32),
+                    vals=np.array([0.0] * bias_dim, dtype=np.float32),
                 )
 
             add_name = self.model.create_node_name("Add")
