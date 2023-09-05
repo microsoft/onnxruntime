@@ -185,14 +185,6 @@ try:
                 logger.info("copying %s -> %s", source, dest)
                 copyfile(source, dest)
 
-                dependencies = [
-                    "librccl.so",
-                    "libamdhip64.so",
-                    "librocblas.so",
-                    "libMIOpen.so",
-                    "libhsa-runtime64.so",
-                    "libhsakmt.so",
-                ]
                 to_preload = []
                 to_preload_cuda = []
                 to_preload_tensorrt = []
@@ -207,15 +199,22 @@ try:
                     "libcufft.so.10",
                 ]
                 rocm_dependencies = [
-                    "librccl.so",
-                    "libamdhip64.so",
-                    "librocblas.so",
-                    "libMIOpen.so",
-                    "libhsa-runtime64.so",
-                    "libhsakmt.so",
+                    "librccl.so.1",
+                    "libnuma.so.1",
+                    "libamd_comgr.so.2",
+                    "libdrm.so.2",
+                    "librocblas.so.0",
+                    "libdrm_amdgpu.so.1",
+                    "libamdhip64.so.5",
+                    "libroctracer64.so.4",
+                    "libMIOpen.so.1",
+                    "libtinfo.so.6",
+                    "libelf.so.1",
+                    "librocm_smi64.so.5",
+                    "libhsa-runtime64.so.1",
                 ]
 
-                tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
+                tensorrt_dependencies = ["libnvinfer.so.8.6", "libnvinfer_plugin.so.8.6", "libnvonnxparser.so.8.6"]
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
@@ -240,7 +239,7 @@ try:
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in dependencies + cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
+                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
                 try:
