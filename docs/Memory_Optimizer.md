@@ -23,7 +23,7 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 2. Integrate models using `ORTModule`, be noted log_level should be equal or lower than INFO.
 	> ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.INFO))
 3. Run the training as usual and redirect all outputs into log file; then stop it after training few steps.
-4. Check the logging file, search "Summary", you could possibly find something like this:
+4. Check the logging file, and search "Summary", you could find something like this:
 	```
 	MemoryOptimizer Summary:
 	User config:

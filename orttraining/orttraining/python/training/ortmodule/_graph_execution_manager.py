@@ -316,10 +316,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         """
 
         # VERBOSE -> FULL export verbose log + FULL torch other logs from stdout and stderr (C++ backend)
-        # INFO -> FULL export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
+        # DEVINFO -> FULL export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
+        # INFO -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # WARNING/ERROR -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # Be noted: rank 0 log only is controlled by logger configured in _logger.py
-        torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
+        torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.DEVINFO
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)

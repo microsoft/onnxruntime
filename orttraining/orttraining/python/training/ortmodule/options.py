@@ -137,7 +137,7 @@ class DebugOptions:
     def torch_exporter_filter(self):
         """Accessor for the filter export logs configuration."""
         torch_version = get_runtime_pytorch_version()
-        if self.log_level >= LogLevel.INFO:
+        if self.log_level >= LogLevel.DEVINFO:
             if torch_version < version.parse("2.0"):
                 return [
                     # WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
@@ -167,7 +167,7 @@ class DebugOptions:
     @property
     def onnxruntime_log_filter(self):
         """Accessor for the filter onnxruntime logs configuration."""
-        if self.log_level >= LogLevel.INFO:
+        if self.log_level >= LogLevel.DEVINFO:
             return [
                 "CleanUnusedInitializersAndNodeArgs] Removing initializer",
                 "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED",
