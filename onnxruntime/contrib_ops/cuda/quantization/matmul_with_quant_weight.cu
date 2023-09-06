@@ -26,15 +26,15 @@ struct EightElementsDequant<float> {
   inline __device__ void Dequant(uint32_t values_quant, float2 scale, float2 scale_x_zp) {
     values[0] = {float(values_quant & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 4) & 0xF) * scale.y + scale_x_zp.y};
     values[1] = {float((values_quant >> 8) & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 12) & 0xF) * scale.y + scale_x_zp.y};
-    values[1] = {float((values_quant >> 16) & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 20) & 0xF) * scale.y + scale_x_zp.y};
-    values[1] = {float((values_quant >> 24) & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 28) & 0xF) * scale.y + scale_x_zp.y};
+    values[2] = {float((values_quant >> 16) & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 20) & 0xF) * scale.y + scale_x_zp.y};
+    values[3] = {float((values_quant >> 24) & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 28) & 0xF) * scale.y + scale_x_zp.y};
   }
 
   inline __device__ void Dequant(uint32_t values_quant, float2 scale) {
     values[0] = {float(values_quant & 0xF) * scale.x, float((values_quant >> 4) & 0xF) * scale.y};
     values[1] = {float((values_quant >> 8) & 0xF) * scale.x, float((values_quant >> 12) & 0xF) * scale.y};
-    values[1] = {float((values_quant >> 16) & 0xF) * scale.x, float((values_quant >> 20) & 0xF) * scale.y};
-    values[1] = {float((values_quant >> 24) & 0xF) * scale.x, float((values_quant >> 28) & 0xF) * scale.y};
+    values[2] = {float((values_quant >> 16) & 0xF) * scale.x, float((values_quant >> 20) & 0xF) * scale.y};
+    values[3] = {float((values_quant >> 24) & 0xF) * scale.x, float((values_quant >> 28) & 0xF) * scale.y};
   }
 };
 
@@ -274,7 +274,8 @@ __global__ void MatMulFloat4BitKernelNoZeroPoint(
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_step * 128 + lane_id * 4));
     EightElementsDequant<T> eight_elements;
     typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + k_step * 256 / 32]);
-    eight_elements.Dequant(value, scale_pair);
+    typename Scalar2<T>::type scale_zp_pair = Scalar2<T>::MakeScalar2(-(scale_pair.x * static_cast<T>(8.0f)));
+    eight_elements.Dequant(value, scale_pair, scale_zp_pair);
     res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[(lane_id << 2) + 0], res_pair);
     res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[(lane_id << 2) + 1], res_pair);
     res_pair = Scalar2<T>::MulAdd(eight_elements.values[2], a_data_vec_2[(lane_id << 2) + 2], res_pair);
@@ -296,7 +297,8 @@ __global__ void MatMulFloat4BitKernelNoZeroPoint(
       uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_iter * 128 + lane_id * 4));
       EightElementsDequant<T> eight_elements;
       typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size]);
-      eight_elements.Dequant(value, scale_pair);
+      typename Scalar2<T>::type scale_zp_pair = Scalar2<T>::MakeScalar2(-(scale_pair.x * static_cast<T>(8.0f)));
+      eight_elements.Dequant(value, scale_pair, scale_zp_pair);
       res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[(lane_id << 2) + 0], res_pair);
       res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[(lane_id << 2) + 1], res_pair);
       res_pair = Scalar2<T>::MulAdd(eight_elements.values[2], a_data_vec_2[(lane_id << 2) + 2], res_pair);
@@ -401,7 +403,6 @@ Status MatMul4BitsWeight(
     cudaStream_t stream) {
   dim3 blocks((n + BLOCKSIZEN - 1) / BLOCKSIZEN, m);
   dim3 threads(32, 8);
-  // int shared_mem_size = sizeof(T) * (k + (k-group_size + 1)/group_size * 16);
   int shared_mem_size = sizeof(T) * ((k + group_size - 1) / group_size * 8);
 
   // printf("group size %d\n", group_size);
