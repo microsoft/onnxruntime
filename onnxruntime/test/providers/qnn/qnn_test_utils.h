@@ -206,79 +206,6 @@ inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& inp
 }
 
 /**
- * Returns a function that builds a model with a single operator with N inputs of the same element type.
- *
- * \param op_type The operator to instantiate.
- * \param input_defs List of input definitions.
- * \param attrs List of operator attributes.
- * \param op_domain The operator's domain. Defaults to the ONNX domain (i.e., "").
- * \returns A model building function.
- */
-template <typename InputType>
-inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
-                                      const std::vector<TestInputDef<InputType>>& input_defs,
-                                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                      const std::string& op_domain = kOnnxDomain) {
-  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder) {
-    std::vector<NodeArg*> op_inputs;
-    op_inputs.reserve(input_defs.size());
-
-    for (const auto& input_def : input_defs) {
-      NodeArg* input = MakeTestInput(builder, input_def);
-      op_inputs.push_back(input);
-    }
-
-    auto* output = builder.MakeOutput();
-    Node& onnx_node = builder.AddNode(op_type, op_inputs, {output}, op_domain);
-
-    for (const auto& attr : attrs) {
-      onnx_node.AddAttributeProto(attr);
-    }
-  };
-}
-
-/**
- * Returns a function that builds a model with a single QDQ operator with N inputs of the same element type.
- *
- * \param op_type The operator to instantiate.
- * \param input_defs List of input definitions.
- * \param attrs List of operator attributes.
- * \param op_domain The operator's domain. Defaults to the ONNX domain (i.e., "").
- * \returns A model building function.
- */
-template <typename InputQType>
-inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_type,
-                                                        const std::vector<TestInputDef<float>>& input_defs,
-                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                                        const std::string& op_domain = kOnnxDomain) {
-  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder,
-                                                 std::vector<QuantParams<InputQType>>& output_qparams) {
-    std::vector<NodeArg*> op_inputs;
-    op_inputs.reserve(input_defs.size());
-
-    for (const auto& input_def : input_defs) {
-      NodeArg* input = MakeTestInput(builder, input_def);
-      QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
-      NodeArg* input_after_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale,
-                                                            input_qparams.zero_point);
-      op_inputs.push_back(input_after_qdq);
-    }
-
-    // Op -> op_output
-    auto* op_output = builder.MakeIntermediate();
-    Node& onnx_node = builder.AddNode(op_type, op_inputs, {op_output}, op_domain);
-
-    for (const auto& attr : attrs) {
-      onnx_node.AddAttributeProto(attr);
-    }
-
-    // op_output -> Q -> DQ -> output
-    AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, op_output, output_qparams[0].scale,
-                                                      output_qparams[0].zero_point);
-  };
-}
-
-/**
  * Inferences a given serialized model. Returns output values via an out-param.
  *
  * \param model_data The serialized ONNX model to inference.
@@ -506,6 +433,79 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
 //
 // i.e., initial bias => manual quantization (int32) => DQ => final float bias
 NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale);
+
+/**
+ * Returns a function that builds a model with a single operator with N inputs of the same element type.
+ *
+ * \param op_type The operator to instantiate.
+ * \param input_defs List of input definitions.
+ * \param attrs List of operator attributes.
+ * \param op_domain The operator's domain. Defaults to the ONNX domain (i.e., "").
+ * \returns A model building function.
+ */
+template <typename InputType>
+inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
+                                      const std::vector<TestInputDef<InputType>>& input_defs,
+                                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                      const std::string& op_domain = kOnnxDomain) {
+  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder) {
+    std::vector<NodeArg*> op_inputs;
+    op_inputs.reserve(input_defs.size());
+
+    for (const auto& input_def : input_defs) {
+      NodeArg* input = MakeTestInput<InputType>(builder, input_def);
+      op_inputs.push_back(input);
+    }
+
+    auto* output = builder.MakeOutput();
+    Node& onnx_node = builder.AddNode(op_type, op_inputs, {output}, op_domain);
+
+    for (const auto& attr : attrs) {
+      onnx_node.AddAttributeProto(attr);
+    }
+  };
+}
+
+/**
+ * Returns a function that builds a model with a single QDQ operator with N inputs of the same element type.
+ *
+ * \param op_type The operator to instantiate.
+ * \param input_defs List of input definitions.
+ * \param attrs List of operator attributes.
+ * \param op_domain The operator's domain. Defaults to the ONNX domain (i.e., "").
+ * \returns A model building function.
+ */
+template <typename InputQType>
+inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_type,
+                                                        const std::vector<TestInputDef<float>>& input_defs,
+                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                                        const std::string& op_domain = kOnnxDomain) {
+  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder,
+                                                 std::vector<QuantParams<InputQType>>& output_qparams) {
+    std::vector<NodeArg*> op_inputs;
+    op_inputs.reserve(input_defs.size());
+
+    for (const auto& input_def : input_defs) {
+      NodeArg* input = MakeTestInput<float>(builder, input_def);
+      QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
+      NodeArg* input_after_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale,
+                                                            input_qparams.zero_point);
+      op_inputs.push_back(input_after_qdq);
+    }
+
+    // Op -> op_output
+    auto* op_output = builder.MakeIntermediate();
+    Node& onnx_node = builder.AddNode(op_type, op_inputs, {op_output}, op_domain);
+
+    for (const auto& attr : attrs) {
+      onnx_node.AddAttributeProto(attr);
+    }
+
+    // op_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, op_output, output_qparams[0].scale,
+                                                      output_qparams[0].zero_point);
+  };
+}
 
 /**
  * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
