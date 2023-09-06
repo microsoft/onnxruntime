@@ -126,10 +126,10 @@ export class ProgramManager {
   }
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
     const device = this.backend.device;
-    const extensions = [];
-    // if (this.backend.device.features.has('shader-f16') || 1) {
-    extensions.push('enable f16;');
-    // }
+    const extensions: string[] = [];
+    if (this.backend.device.features.has('shader-f16')) {
+      extensions.push('enable f16;');
+    }
     const shaderHelper = createShaderHelper(normalizedDispatchGroupSize);
     const userCode = programInfo.getShaderSource(shaderHelper);
     const code = `${extensions.join('\n')}${shaderHelper.additionalImplementations}\n${userCode}`;
