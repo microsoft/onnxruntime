@@ -39,6 +39,17 @@ jobs:
         with:
           source: ./
           destination: ./_site
+        
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 19.x
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate build
+        run: npm run build
 
       - name: Download C apidocs artifact
         uses: dawidd6/action-download-artifact@v2
@@ -102,7 +113,10 @@ jobs:
           sudo mv apidocs/docs/api/objectivec _site/docs/api
           sudo rm -rf _site/docs/api/js
           sudo mv apidocs/docs/api/js _site/docs/api
-
+      
+      - name: Move site into place
+        run: |
+          sudo mv ./build/* ./_site     
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v1

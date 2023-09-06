@@ -1,0 +1,22 @@
+<script>
+	import Ortcrossplatform from "../../images/undraw/image_ortcrossplatform.svelte";
+</script>
+<div class="container mx-auto px-10 mb-10">
+	<div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+		<div class="m-auto hidden lg:grid">
+			<Ortcrossplatform/>
+		</div>
+		<div class="">
+			<h1 class="text-4xl">Cross-Platform</h1>
+			<br /><br />
+			<p class="text-xl">
+				Take advantage of the benefits of ONNX Runtime without changing your technology stack.
+				Access ONNX RunTime using your preferred API - C#, C++, C, Python, or Java. Support for
+				Linux, Windows, and Mac allows you to build and deploy applications without worry.
+			</p>
+		</div>
+		<div class="m-auto grid lg:hidden">
+			<Ortcrossplatform/>
+		</div>
+	</div>
+</div>
