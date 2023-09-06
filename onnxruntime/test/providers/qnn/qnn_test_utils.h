@@ -314,7 +314,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
     // limit the error message count in case test with large data failed
     size_t max_error_count = 10;
-    int error_count = 0;
+    size_t error_count = 0;
+
     // Compare accuracy of QDQ results with float model.
     // QNN EP must be at least as accurate as CPU EP when running the QDQ model.
     for (size_t i = 0; i < num_outputs; i++) {
