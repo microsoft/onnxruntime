@@ -31,9 +31,9 @@ RUN yum update -y && \
     yum clean packages &&  yum clean all && rm -rf /var/cache/yum && \
 # Install cmake
     cd $MY_ROOT && \
-    wget https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3.tar.gz && \
-    tar -zxvf cmake-3.26.3.tar.gz && rm -rf cmake-3.26.3.tar.gz && \
-    cd cmake-3.26.3 && \
+    wget https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3.tar.gz && \
+    tar -zxvf cmake-3.27.3.tar.gz && rm -rf cmake-3.27.3.tar.gz && \
+    cd cmake-3.27.3 && \
     ./bootstrap && \
     make && \
     make install && \
