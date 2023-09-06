@@ -29,7 +29,7 @@ namespace js {
       Pool<pool_type, is_channels_last>);
 
 #define POOLING_KERNEL_WITH_INDICES(op_name, domain, is_channels_last, pool_type, since_version) \
-  ONNX_OPERATOR_KERNEL_EX(                                                                 \
+  ONNX_OPERATOR_KERNEL_EX(                                                                       \
       op_name,                                                                                   \
       domain,                                                                                    \
       since_version,                                                                             \

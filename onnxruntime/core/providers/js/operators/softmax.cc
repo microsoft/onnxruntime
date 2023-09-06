@@ -7,23 +7,23 @@ namespace onnxruntime {
 namespace js {
 
 #define REGISTER_SOFTMAX_ELEMENTWISE_VERSIONED_KERNEL(SoftmaxOp, sinceVersion, endVersion) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                 \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                       \
       SoftmaxOp,                                                                           \
       kOnnxDomain,                                                                         \
       sinceVersion, endVersion,                                                            \
       kJsExecutionProvider,                                                                \
       (*KernelDefBuilder::Create())                                                        \
-          .TypeConstraint("T", JsepSupportedFloatTypes()),                      \
+          .TypeConstraint("T", JsepSupportedFloatTypes()),                                 \
       SoftmaxOp<float>);
 
 #define REGISTER_SOFTMAX_ELEMENTWISE_KERNEL(SoftmaxOp, sinceVersion) \
-  ONNX_OPERATOR_KERNEL_EX(                                     \
+  ONNX_OPERATOR_KERNEL_EX(                                           \
       SoftmaxOp,                                                     \
       kOnnxDomain,                                                   \
       sinceVersion,                                                  \
       kJsExecutionProvider,                                          \
       (*KernelDefBuilder::Create())                                  \
-          .TypeConstraint("T", JsepSupportedFloatTypes()) \
+          .TypeConstraint("T", JsepSupportedFloatTypes())            \
           .InputMemoryType(OrtMemTypeCPU, 1),                        \
       SoftmaxOp<float>);
 

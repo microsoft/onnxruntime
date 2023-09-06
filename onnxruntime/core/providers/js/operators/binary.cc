@@ -6,12 +6,12 @@
 namespace onnxruntime {
 namespace js {
 
-#define REG_ELEMENTWISE_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS)                          \
-  ONNX_OPERATOR_KERNEL_EX(                                                              \
-      OP_TYPE,                                                                          \
-      kOnnxDomain,                                                                      \
-      VERSION,                                                                          \
-      kJsExecutionProvider,                                                             \
+#define REG_ELEMENTWISE_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS)          \
+  ONNX_OPERATOR_KERNEL_EX(                                              \
+      OP_TYPE,                                                          \
+      kOnnxDomain,                                                      \
+      VERSION,                                                          \
+      kJsExecutionProvider,                                             \
       KernelDefBuilder().TypeConstraint("T", JsepSupportedDataTypes()), \
       KERNEL_CLASS);
 
@@ -21,7 +21,7 @@ namespace js {
       kOnnxDomain,                                                                        \
       VERSION_FROM, VERSION_TO,                                                           \
       kJsExecutionProvider,                                                               \
-      KernelDefBuilder().TypeConstraint("T", JsepSupportedDataTypes()),   \
+      KernelDefBuilder().TypeConstraint("T", JsepSupportedDataTypes()),                   \
       KERNEL_CLASS);
 
 JSEP_KERNEL_IMPL(Add, Add)
