@@ -33,12 +33,6 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v3
-
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./
-          destination: ./_site
         
       - name: Use Node.js
         uses: actions/setup-node@v3
@@ -50,6 +44,12 @@ jobs:
 
       - name: Generate build
         run: npm run build
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
 
       - name: Download C apidocs artifact
         uses: dawidd6/action-download-artifact@v2
