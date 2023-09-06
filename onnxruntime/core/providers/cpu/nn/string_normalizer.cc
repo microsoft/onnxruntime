@@ -202,11 +202,14 @@ class Utf8Converter {
 #endif
 
 #if defined(__APPLE__)
+#if TARGET_OS_IPHONE
 const std::string default_locale("en-US.UTF-8");
 #else
-const std::string default_locale("en_US.UTF-8"); // All non-MS and not Apple
+const std::string default_locale("en_US.UTF-8");  // Other kinds of Apple Platforms including MacOS, iphone simulator,etc
 #endif
-
+#else
+const std::string default_locale("en_US.UTF-8");  // All non-MS and not Apple
+#endif
 
 #endif  // _MSC_VER
 
