@@ -13,52 +13,6 @@
 namespace onnxruntime {
 namespace test {
 
-// Builds a float32 model with Min or Max, which take a variable number of inputs
-static GetTestModelFn BuildMinOrMaxTestCase(const std::string& op_type,
-                                            const std::vector<TestInputDef<float>>& input_defs) {
-  return [op_type, input_defs](ModelTestBuilder& builder) {
-    std::vector<NodeArg*> input_args;
-    input_args.reserve(input_defs.size());
-
-    for (const auto& input_def : input_defs) {
-      NodeArg* input = MakeTestInput(builder, input_def);
-      input_args.push_back(input);
-    }
-
-    auto* op_output = builder.MakeOutput();
-    builder.AddNode(op_type, input_args, {op_output});
-  };
-}
-
-// Builds a QDQ model with Min/Max. The quantization parameters are computed from the provided
-// input definition.
-template <typename QType = uint8_t>
-static GetTestQDQModelFn<QType> BuildQDQMinOrMaxTestCase(const std::string& op_type,
-                                                         const std::vector<TestInputDef<float>>& input_defs) {
-  return [op_type, input_defs](ModelTestBuilder& builder,
-                               std::vector<QuantParams<QType>>& output_qparams) {
-    std::vector<NodeArg*> input_args;
-    input_args.reserve(input_defs.size());
-
-    // Collect input QDQs
-    for (const auto& input_def : input_defs) {
-      QuantParams<QType> input_qparams = GetTestInputQuantParams<QType>(input_def);
-      NodeArg* input = MakeTestInput(builder, input_def);
-      NodeArg* input_qdq = AddQDQNodePair<QType>(builder, input, input_qparams.scale, input_qparams.zero_point);
-
-      input_args.push_back(input_qdq);
-    }
-
-    // Create Min or Max op.
-    auto* op_output = builder.MakeIntermediate();
-    builder.AddNode(op_type, input_args, {op_output});
-
-    // => Q => DQ -> final output
-    AddQDQNodePairWithOutputAsGraphOutput<QType>(builder, op_output, output_qparams[0].scale,
-                                                 output_qparams[0].zero_point);
-  };
-}
-
 // Runs an Max/Min model on the QNN CPU backend. Checks the graph node assignment, and that inference
 // outputs for QNN EP and CPU EP match.
 static void RunCPUMinOrMaxOpTest(const std::string& op_type,
@@ -73,7 +27,7 @@ static void RunCPUMinOrMaxOpTest(const std::string& op_type,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildMinOrMaxTestCase(op_type, input_defs),
+  RunQnnModelTest(BuildOpTestCase(op_type, input_defs, {}, kOnnxDomain),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -94,8 +48,8 @@ static void RunQDQMinOrMaxOpTest(const std::string& op_type,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildMinOrMaxTestCase(op_type, input_defs),            // baseline float32 model
-                       BuildQDQMinOrMaxTestCase<QType>(op_type, input_defs),  // QDQ model
+  TestQDQModelAccuracy(BuildOpTestCase(op_type, input_defs, {}, kOnnxDomain),            // baseline float32 model
+                       BuildQDQOpTestCase<QType>(op_type, input_defs, {}, kOnnxDomain),  // QDQ model
                        provider_options,
                        opset,
                        expected_ep_assignment,

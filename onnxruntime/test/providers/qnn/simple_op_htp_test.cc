@@ -18,63 +18,6 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Creates a graph with a single operator with N inputs of the same type.
-template <typename InputType>
-static GetTestModelFn BuildOpTestCase(const std::string& op_type,
-                                      const std::vector<TestInputDef<InputType>>& input_defs,
-                                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                      const std::string& op_domain = kOnnxDomain) {
-  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder) {
-    std::vector<NodeArg*> op_inputs;
-    op_inputs.reserve(input_defs.size());
-
-    for (const auto& input_def : input_defs) {
-      NodeArg* input = MakeTestInput(builder, input_def);
-      op_inputs.push_back(input);
-    }
-
-    auto* output = builder.MakeOutput();
-    Node& onnx_node = builder.AddNode(op_type, op_inputs, {output}, op_domain);
-
-    for (const auto& attr : attrs) {
-      onnx_node.AddAttributeProto(attr);
-    }
-  };
-}
-
-// Creates a graph with a single QDQ operator with N inputs of the same element type.
-template <typename InputQType>
-static GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_type,
-                                                        const std::vector<TestInputDef<float>>& input_defs,
-                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                                        const std::string& op_domain = kOnnxDomain) {
-  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder,
-                                                 std::vector<QuantParams<InputQType>>& output_qparams) {
-    std::vector<NodeArg*> op_inputs;
-    op_inputs.reserve(input_defs.size());
-
-    for (const auto& input_def : input_defs) {
-      NodeArg* input = MakeTestInput(builder, input_def);
-      QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
-      NodeArg* input_after_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale,
-                                                            input_qparams.zero_point);
-      op_inputs.push_back(input_after_qdq);
-    }
-
-    // Op -> op_output
-    auto* op_output = builder.MakeIntermediate();
-    Node& onnx_node = builder.AddNode(op_type, op_inputs, {op_output}, op_domain);
-
-    for (const auto& attr : attrs) {
-      onnx_node.AddAttributeProto(attr);
-    }
-
-    // op_output -> Q -> DQ -> output
-    AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, op_output, output_qparams[0].scale,
-                                                      output_qparams[0].zero_point);
-  };
-}
-
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model
 // and the QDQ model.
 template <typename InputQType = uint8_t>
