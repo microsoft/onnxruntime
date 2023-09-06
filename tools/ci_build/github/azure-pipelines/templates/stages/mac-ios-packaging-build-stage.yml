@@ -119,7 +119,7 @@ stages:
         provisioningProfileName: 'iOS Team Provisioning Profile'
         args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/ios_package_test/DerivedData'
         workingDirectory: '$(Build.BinariesDirectory)/app_center_test/ios_package_test/'
-        useXcpretty: false
+        useXcpretty: false  # xcpretty can hide useful error output so we will disable it
       displayName: 'Build App Center iPhone arm64 tests'
 
     - script: |
