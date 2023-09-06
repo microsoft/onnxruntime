@@ -25,35 +25,21 @@ const termPattern = '(' + symbolPattern + ')+';   // The pattern each term in th
 const termPatternOnly = '^' + termPattern + '$';  // The patterns only matchs a term begin to end.
 const lhsPattern = '(' + termPattern + ',)*' + termPattern;  // The pattern the LHS should match
 const lhsPatternOnly = '^' + lhsPattern + '$';               // The patterns only matchs a LHS begin to end.
-
-class EinsumTerm {
-  constructor(
-      inputIndex = -1, symbols: string[] = [], symbolToIndices: Map<string, number[]> = new Map<string, number[]>()) {
-    this.symbols = symbols;
-    this.symbolToIndices = symbolToIndices;
-    this.inputIndex = inputIndex;
-  }
+interface EinsumTerm {
   symbols: string[];                       // All symbols in the term
   symbolToIndices: Map<string, number[]>;  // Map from symbol to dimensions of the input corresponding to the term
-  inputIndex = -1;                         // -1 for output and 0, 1, 2, ... for inputs
+  inputIndex: number;                      // -1 for output and 0, 1, 2, ... for inputs
 }
 
-class EinsumEquation {
-  constructor(lhs: EinsumTerm[] = [], rhs: EinsumTerm = new EinsumTerm()) {
-    this.lhs = lhs;
-    this.rhs = rhs;
-    this.symbolToDimValue = new Map<string, number>();
-    this.symbolToCount = new Map<string, number>();
-    this.symbolToInputIndices = new Map<string, number[]>();
-  }
+interface EinsumEquation {
   symbolToDimValue: Map<string, number>;        // All symbols in the equation
   symbolToCount: Map<string, number>;           // Count how many times a symbol occoured in the equation on LHS.
   symbolToInputIndices: Map<string, number[]>;  // map to array of LSH terms the symbol is used.
-  hasEllipsis = false;                          // The equation has ellipsis or not
-  ellipsisDims: number[] = [];                  // The dimensions of the equation ellipsis corresponds to.
+  hasEllipsis: boolean;                         // The equation has ellipsis or not
+  ellipsisDims: number[];                       // The dimensions of the equation ellipsis corresponds to.
   lhs: EinsumTerm[];
   rhs: EinsumTerm;
-  outputDims: number[] = [];
+  outputDims: number[];
 }
 
 const createEinsumProgramMetadata = (inputCount: number, cacheHint: string): ProgramMetadata =>
@@ -94,7 +80,7 @@ const processTerm =
         throw new Error('Invalid LHS term');
       }
       const indexSymbols = term.match(RegExp(symbolPattern, 'g'));
-      const einsumTerm = new EinsumTerm(index);
+      const einsumTerm: EinsumTerm = {symbols: [], symbolToIndices: new Map(), inputIndex: index};
       // symbol can be either a lettre, 'a' to 'z' or 'A' to 'Z', or '...'
       indexSymbols?.forEach((symbol, i) => {
         if (symbol === '...') {
@@ -131,7 +117,17 @@ const processTerm =
     };
 
 const preprocessInputs = (inputs: readonly TensorView[], equation: string): EinsumEquation => {
-  const einsumEquation = new EinsumEquation();
+  const einsumEquation: EinsumEquation = {
+    symbolToDimValue: new Map(),
+    symbolToCount: new Map(),
+    symbolToInputIndices: new Map(),
+    hasEllipsis: false,
+    ellipsisDims: [],
+    lhs: [],
+    rhs: {symbols: [], symbolToIndices: new Map(), inputIndex: -1},
+    outputDims: []
+  };
+
   // As rhs needs to be updated allow using let instead of const for both lhs and rhs.
   // eslint-disable-next-line prefer-const
   let [lhs, rhs] = equation.includes('->') ? equation.split('->', 2) : [equation, ''];
