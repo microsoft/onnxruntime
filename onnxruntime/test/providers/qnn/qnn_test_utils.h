@@ -199,7 +199,7 @@ struct TestInputDef {
   std::pair<T, T> range_override_;
 };
 
-template <typename QType = uint8_t>
+template <typename QType>
 inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& input_def) {
   const std::pair<float, float> frange = input_def.GetRange();
   return QuantParams<QType>::Compute(frange.first, frange.second);
@@ -239,7 +239,7 @@ void InferenceModel(const std::string& model_data, const char* log_id,
  * \param fp32_abs_err Small tolerance used for floating-point comparisons.
  * \param log_severity The logger's severity setting.
  */
-template <typename QuantType = uint8_t>
+template <typename QuantType>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
                                  const ProviderOptions& qnn_options, int opset_version,
                                  ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-4f,
@@ -487,7 +487,7 @@ inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_ty
 
     for (const auto& input_def : input_defs) {
       NodeArg* input = MakeTestInput<float>(builder, input_def);
-      QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
+      QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
       NodeArg* input_after_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale,
                                                             input_qparams.zero_point);
       op_inputs.push_back(input_after_qdq);

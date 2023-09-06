@@ -34,12 +34,12 @@ static GetTestQDQModelFn<QuantType> BuildMatMulOpQDQTestCase(const TestInputDef<
                                   std::vector<QuantParams<QuantType>>& output_qparams) {
     // input1 -> Q -> DQ ->
     NodeArg* input1 = MakeTestInput(builder, input1_def);
-    QuantParams<QuantType> input1_qparams = GetTestInputQuantParams(input1_def);
+    QuantParams<QuantType> input1_qparams = GetTestInputQuantParams<QuantType>(input1_def);
     auto* input1_qdq = AddQDQNodePair<QuantType>(builder, input1, input1_qparams.scale, input1_qparams.zero_point);
 
     // input2 -> Q -> DQ ->
     NodeArg* input2 = MakeTestInput(builder, input2_def);
-    QuantParams<QuantType> input2_qparams = GetTestInputQuantParams(input2_def);
+    QuantParams<QuantType> input2_qparams = GetTestInputQuantParams<QuantType>(input2_def);
     auto* input2_qdq = AddQDQNodePair<QuantType>(builder, input2, input2_qparams.scale, input2_qparams.zero_point);
 
     // MatMul

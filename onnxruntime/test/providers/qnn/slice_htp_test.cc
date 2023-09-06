@@ -45,7 +45,7 @@ static GetTestQDQModelFn<QuantType> BuildQDQSliceTestCase(const TestInputDef<flo
   return [data_def, starts_def, ends_def, axes_def, steps_def](ModelTestBuilder& builder,
                                                                std::vector<QuantParams<QuantType>>& output_qparams) {
     NodeArg* data = MakeTestInput(builder, data_def);
-    QuantParams<QuantType> data_qparams = GetTestInputQuantParams(data_def);
+    QuantParams<QuantType> data_qparams = GetTestInputQuantParams<QuantType>(data_def);
     NodeArg* data_qdq = AddQDQNodePair(builder, data, data_qparams.scale, data_qparams.zero_point);
 
     NodeArg* starts = MakeTestInput(builder, starts_def);

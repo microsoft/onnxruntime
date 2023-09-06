@@ -464,7 +464,7 @@ TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {
 
     // input -> Q -> Transpose -> DQ -> output
     NodeArg* input0 = MakeTestInput(builder, input0_def);
-    QuantParams<uint8_t> qparams = GetTestInputQuantParams(input0_def);
+    QuantParams<uint8_t> qparams = GetTestInputQuantParams<uint8_t>(input0_def);
 
     auto* quant_input = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<uint8_t>(input0, qparams.scale, qparams.zero_point, quant_input);

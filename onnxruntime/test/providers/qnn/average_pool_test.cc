@@ -62,7 +62,7 @@ GetTestQDQModelFn<QuantType> BuildAveragePoolQDQTestCase(const TestInputDef<floa
     auto* input_arg = MakeTestInput(builder, input_def);
 
     // add QDQ + AveragePool
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
     auto* dq_output = AddQDQNodePair<QuantType>(builder, input_arg, input_qparams.scale, input_qparams.zero_point);
     auto* averagepool_output = builder.MakeIntermediate();
     Node& pool_node = builder.AddNode("AveragePool", {dq_output}, {averagepool_output});
