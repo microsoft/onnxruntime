@@ -756,6 +756,26 @@ TEST_F(QnnHTPBackendTests, DISABLED_GridSample_ReflectionPaddingMode) {
                         ExpectedEPNodeAssignment::All);
 }
 
+// Test QDQ Concat: 3 inputs concatenated at the last axis.
+TEST_F(QnnHTPBackendTests, VariadicOp_Concat_3Inputs_LastAxis) {
+  RunQDQOpTest<uint8_t>("Concat",
+                        {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                         TestInputDef<float>({1, 2, 2, 3}, false, -1.0f, 1.0f),
+                         TestInputDef<float>({1, 2, 2, 1}, false, -2.0f, 2.0f)},
+                        {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Concat: 2 inputs concatenated at the second axis.
+TEST_F(QnnHTPBackendTests, VariadicOp_Concat_2Inputs_2ndAxis) {
+  RunQDQOpTest<uint8_t>("Concat",
+                        {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                         TestInputDef<float>({1, 3, 2, 2}, false, -2.0f, 2.0f)},
+                        {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
