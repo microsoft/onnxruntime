@@ -170,26 +170,23 @@ class FusionAttentionVae(Fusion):
         qkv_bias = np.stack((q_bias, k_bias, v_bias), axis=0)
         qkv_bias_dim = 3 * q_bias_shape
 
-        weight = helper.make_tensor(
+        self.add_initializer(
             name=attention_node_name + "_qkv_weight",
             data_type=TensorProto.FLOAT,
             dims=[qw_in_size, qkv_weight_dim],
-            vals=qkv_weight.flatten().tolist(),
+            vals=qkv_weight,
         )
-
-        self.model.add_initializer(weight, self.this_graph_name)
 
         # No bias, use zeros
         qkv_bias = np.zeros([3, hidden_size], dtype=np.float32)
         qkv_bias_dim = 3 * hidden_size
 
-        bias = helper.make_tensor(
+        self.add_initializer(
             name=attention_node_name + "_qkv_bias",
             data_type=TensorProto.FLOAT,
             dims=[qkv_bias_dim],
-            vals=qkv_bias.flatten().tolist(),
+            vals=qkv_bias,
         )
-        self.model.add_initializer(bias, self.this_graph_name)
 
         attention_inputs = [
             input_name,

@@ -111,7 +111,8 @@ class FusionT5Attention(FusionAttention):
             name=attention_node_name + "_qkv_weight",
             data_type=TensorProto.FLOAT,
             dims=[qw_in_size, qkv_weight_dim],
-            vals=qkv_weight.flatten().tolist(),
+            vals=qkv_weight.tobytes(),
+            raw=True,
         )
 
         self.model.add_initializer(weight, self.this_graph_name)
@@ -665,7 +666,8 @@ class FusionRelativePositionBiasBlock(Fusion):
             name=self.model.create_node_name("bias_table_weight", name_prefix=node_name_prefix),
             data_type=TensorProto.FLOAT,
             dims=[np.shape(table_weight)[0], np.shape(table_weight)[1]],
-            vals=table_weight_t.flatten().tolist(),
+            vals=table_weight_t.tobytes(),
+            raw=True,
         )
 
         self.model.add_initializer(bias_table, self.this_graph_name)
