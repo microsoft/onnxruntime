@@ -105,6 +105,11 @@ export declare namespace Env {
      * see comments on {@link GpuBufferType} for more details about why not use types defined in "@webgpu/types".
      */
     readonly device: unknown;
+    /**
+     * Set or get whether validate input content.
+     *
+     * @defaultValue `false`
+     */
     validateInputContent?: boolean;
   }
 }

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {env} from 'onnxruntime-common';
+
 import {DataType} from '../../../wasm-common';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
@@ -52,7 +54,7 @@ export const range = (context: ComputeContext): void => {
     limit = context.inputs[1].getFloat32Array()[0];
     delta = context.inputs[2].getFloat32Array()[0];
   }
-  if (context.validateInputContent()) {
+  if (env.webgpu.validateInputContent) {
     validateInputsContent(start, limit, delta);
   }
 

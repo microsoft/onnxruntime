@@ -124,10 +124,6 @@ class ComputeContextImpl implements ComputeContext {
       this.module.stackRestore(stack);
     }
   }
-
-  validateInputContent(): boolean|undefined {
-    return this.backend.env.webgpu.validateInputContent;
-  }
 }
 
 export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
