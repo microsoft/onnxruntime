@@ -27,7 +27,7 @@ static void RunQDQOpTest(const std::string& op_type,
                          int opset_version,
                          ExpectedEPNodeAssignment expected_ep_assignment,
                          const std::string& op_domain = kOnnxDomain,
-                         bool fp32_abs_err = 1e-4f) {
+                         float fp32_abs_err = 1e-4f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
