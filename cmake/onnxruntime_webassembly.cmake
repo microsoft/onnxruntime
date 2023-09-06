@@ -236,6 +236,7 @@ else()
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
+    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js)
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
