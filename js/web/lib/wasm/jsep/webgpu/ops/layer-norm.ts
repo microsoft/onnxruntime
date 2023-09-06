@@ -6,14 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {
-  fillVector,
-  getMaxComponents,
-  inputVariable,
-  outputVariable,
-  ShaderHelper, sumVector,
-  tensorTypeToWsglStorageType
-} from './common'
+import {fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common'
 
 export interface LayerNormAttributes extends AttributeWithCacheKey {
   axis: number;

@@ -6,13 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {
-  fillVector,
-  getMaxComponents,
-  inputVariable,
-  outputVariable,
-  ShaderHelper, sumVector, tensorTypeToWsglStorageType,
-} from './common';
+import {fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType,} from './common';
 
 export interface SkipLayerNormAttributes extends AttributeWithCacheKey {
   epsilon: number;

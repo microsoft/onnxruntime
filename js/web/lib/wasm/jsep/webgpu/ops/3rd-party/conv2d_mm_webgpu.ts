@@ -23,12 +23,12 @@ import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
+import {tensorTypeToWsglStorageType} from '../common'
 import {ConvAttributes} from '../conv';
 
 import {Activation, activationFnSnippet, biasActivationSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
-import { tensorTypeToWsglStorageType } from '../common'
 
 const conv2dCommonSnippet =
     (isChannelsLast: boolean, fitAOuter: boolean, fitBOuter: boolean, fitInner: boolean, addBias = false,
@@ -125,8 +125,10 @@ const conv2dCommonSnippet =
       const sampleW = `${getWSnippet(innerElementSizeW)}`;
 
       const resType = typeSnippet(innerElementSize, dataType);
-      const aType = isChannelsLast ? typeSnippet(innerElementSizeX, dataType) : typeSnippet(innerElementSizeW, dataType);
-      const bType = isChannelsLast ? typeSnippet(innerElementSizeW, dataType) : typeSnippet(innerElementSizeX, dataType);
+      const aType =
+          isChannelsLast ? typeSnippet(innerElementSizeX, dataType) : typeSnippet(innerElementSizeW, dataType);
+      const bType =
+          isChannelsLast ? typeSnippet(innerElementSizeW, dataType) : typeSnippet(innerElementSizeX, dataType);
       const userCode = `
     ${activationFnSnippet(activation, hasPreluActivationWeights, innerElementSize === 4, 4)}
     fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${aType} {

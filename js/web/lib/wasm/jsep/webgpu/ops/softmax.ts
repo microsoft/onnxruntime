@@ -10,7 +10,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
 
-import { ShaderHelper, tensorTypeToWsglStorageType } from './common'
+import {ShaderHelper, tensorTypeToWsglStorageType} from './common'
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 1) {
@@ -45,9 +45,7 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
   const rows = outputSize / cols;
 
   // 6.2.4 in wgsl spec
-  const threadMaxDecl = dataType === 'f32'
-    ? 'var threadMax: f32 = -3.402823e+38f;'
-    : 'var threadMax: f16 = -65504.0h;';
+  const threadMaxDecl = dataType === 'f32' ? 'var threadMax: f32 = -3.402823e+38f;' : 'var threadMax: f16 = -65504.0h;';
   const getShaderSource = (_shaderHelper: ShaderHelper) => `
       var<workgroup> rowMaxShared : ${dataType};
       var<workgroup> rowSumShared : ${dataType};

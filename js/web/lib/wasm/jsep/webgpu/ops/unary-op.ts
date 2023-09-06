@@ -7,7 +7,7 @@ import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import { inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType } from './common'
+import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common'
 
 type BuiltinFunctionName = string;
 type ElementwiseCustomExpression = (expression: string) => string;
@@ -200,8 +200,8 @@ fn erf_vf32(v: ${dataType}) -> ${dataType} {
 
 export const erf = (context: ComputeContext): void => {
   const dataType = tensorTypeToWsglStorageType(context.inputs[0].dataType);
-  context.compute(
-      createElementwiseProgramInfoLoader(context.inputs[0], 'Erf', a => `erf_vf32(${a})`, erfImpl(`vec4<${dataType}>`, dataType)));
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'Erf', a => `erf_vf32(${a})`, erfImpl(`vec4<${dataType}>`, dataType)));
 };
 
 export const exp = (context: ComputeContext): void => {

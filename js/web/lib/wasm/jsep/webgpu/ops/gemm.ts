@@ -6,7 +6,7 @@ import {GemmUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import { ShaderHelper, tensorTypeToWsglStorageType } from './common'
+import {ShaderHelper, tensorTypeToWsglStorageType} from './common'
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs) {

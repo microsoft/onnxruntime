@@ -128,7 +128,7 @@ export class ProgramManager {
     const device = this.backend.device;
     const extensions = [];
     // if (this.backend.device.features.has('shader-f16') || 1) {
-      extensions.push('enable f16;');
+    extensions.push('enable f16;');
     // }
     const shaderHelper = createShaderHelper(normalizedDispatchGroupSize);
     const userCode = programInfo.getShaderSource(shaderHelper);

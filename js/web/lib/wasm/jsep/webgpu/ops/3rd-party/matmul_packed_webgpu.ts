@@ -22,14 +22,7 @@
 import {TensorView} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
-import {
-  getBroadcastDims,
-  IndicesHelper,
-  inputVariable,
-  outputVariable,
-  ShaderHelper,
-  tensorTypeToWsglStorageType
-} from '../common'
+import {getBroadcastDims, IndicesHelper, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common'
 import {getActicationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
 import {typeSnippet} from './activation_util';
@@ -78,7 +71,7 @@ const calculateResultSnippet = (transposeA: boolean, innerElementSize: number) =
 
 export const makeMatMulPackedVec4Source =
     (workPerThread: number[], workgroupSize: [number, number, number], type = 'f32', batchDims?: IndicesHelper,
-      transposeA = false, tileInner = 32, splitK = false, splitedDimInner = 32): string => {
+     transposeA = false, tileInner = 32, splitK = false, splitedDimInner = 32): string => {
       const tileAOuter = workgroupSize[1] * workPerThread[1];
       const tileBOuter = workgroupSize[0] * workPerThread[0];
       const tileAWidth = transposeA ? tileAOuter : tileInner;
@@ -97,7 +90,8 @@ export const makeMatMulPackedVec4Source =
             workPerThread[0]} must be 4.`);
       }
       return `
-var<workgroup> mm_Asub : array<array<vec${innerElementSize}<${type}>, ${tileAWidth / innerElementSize}>, ${tileAHight}>;
+var<workgroup> mm_Asub : array<array<vec${innerElementSize}<${type}>, ${tileAWidth / innerElementSize}>, ${
+          tileAHight}>;
 var<workgroup> mm_Bsub : array<array<vec4<${type}>, ${tileBOuter / workPerThread[0]}>, ${tileInner}>;
 
 const rowPerThread = ${workPerThread[1]};
@@ -187,8 +181,8 @@ const readDataFromSubASnippet = (transposeA: boolean) =>
 // threads, instead of a single thread (default behavior).
 export const makeMatMulPackedSource =
     (workPerThread: number[], workgroupSize: [number, number, number], type = 'f32', batchDims?: IndicesHelper,
-      transposeA = false, tileInner = 32, splitK = false, splitedDimInner = 32,
-      sequentialAccessByThreads = false): string => {
+     transposeA = false, tileInner = 32, splitK = false, splitedDimInner = 32,
+     sequentialAccessByThreads = false): string => {
       const tileAOuter = workPerThread[1] * workgroupSize[1];
       const tileBOuter = workPerThread[0] * workgroupSize[0];
       const tileAWidth = transposeA ? tileAOuter : tileInner;
