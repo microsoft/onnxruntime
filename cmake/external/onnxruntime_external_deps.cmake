@@ -22,17 +22,11 @@ message("Loading Dependencies ...")
 include(external/abseil-cpp.cmake)
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-if(Patch_FOUND)
-  set(ONNXRUNTIME_RE2_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/re2/re2.patch)
-else()
- set(ONNXRUNTIME_RE2_PATCH_COMMAND "")
-endif()
 
 FetchContent_Declare(
     re2
     URL ${DEP_URL_re2}
     URL_HASH SHA1=${DEP_SHA1_re2}
-    PATCH_COMMAND ${ONNXRUNTIME_RE2_PATCH_COMMAND}
     FIND_PACKAGE_ARGS NAMES re2
 )
 
