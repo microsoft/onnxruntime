@@ -22,7 +22,7 @@ class GroupQueryAttention final : public CudaKernel {
  protected:
   int num_heads_;    // number of attention heads
   int num_heads_k_;  // different for k and v for group query attention
-  float mask_filter_value_; //TODO: support mask?
+  bool is_unidirectional_; // causal
   float scale_;
   bool disable_flash_attention_;
   int min_seq_len_for_flash_attention_packed_qkv_;

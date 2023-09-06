@@ -422,7 +422,7 @@ Status PrepareQkv_MHA_WithPast(contrib::AttentionParameters& parameters,
     ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, kv_sequence_length, batch_size, qk_head_size, num_heads,
                                        max_threads_per_block, false, data.past_key, data.temp_k_workspace));
     // past_value (BxNxSxH_v) => temp_v_workspace (BxSxNxH_v)
-    ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, kv_sequence_length, batch_size, qk_head_size, num_heads,
+    ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, kv_sequence_length, batch_size, v_head_size, num_heads,
                                        max_threads_per_block, false, data.past_value, data.temp_v_workspace));
 
     // query => q, temp_k_workspace => k, temp_v_workspace => v
@@ -439,7 +439,7 @@ Status PrepareQkv_MHA_WithPast(contrib::AttentionParameters& parameters,
     data.past_key = nullptr;
     data.past_value = nullptr;
   }
-  // When there is no past_key/past_value and there is present_key/present_value 
+  // When there is no past_key/past_value and there is present_key/present_value
   // (e.g. get initial kv to use as past_kv in the next iteration)
   else if ((data.use_memory_efficient_attention || data.use_flash_attention) &&
            data.present_key != nullptr &&

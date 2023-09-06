@@ -27,7 +27,7 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       GroupQueryAttention<T>);
 
-REGISTER_KERNEL_TYPED(float) // TODO(aciddelgado): support regular float?
+// REGISTER_KERNEL_TYPED(float) // TODO(aciddelgado): support regular float?
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
@@ -39,9 +39,10 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   int64_t num_heads = 0;
   int64_t num_heads_k = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads_k).IsOK() && num_heads_k > 0 && num_heads >= num_heads_k);
+  ORT_ENFORCE(info.GetAttr("num_heads_k", &num_heads_k).IsOK() && num_heads_k > 0 && num_heads % num_heads_k == 0);
   num_heads_ = static_cast<int>(num_heads);
   num_heads_k_ = static_cast<int>(num_heads_k);
+  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 1) == 1;
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -75,7 +76,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   GroupQueryAttentionParameters parameters;
-  // TODO(aciddelgado): THIS funtion
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs<Tensor>(query,
                                                                         key,
                                                                         value,
@@ -87,12 +87,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                         num_heads_k_,
                                                                         scale_,
                                                                         device_prop.maxThreadsPerBlock));
+  parameters.is_unidirectional = is_unidirectional_;
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[2] = static_cast<int64_t>(parameters.kv_hidden_size); // TODO(accidelgado): kv_hidden_size has kv_num_heads, is this correct output shape!?
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
@@ -108,78 +109,47 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
 
-  bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-
-  const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
-
-#if USE_FLASH_ATTENTION
-  // Exclude this case since PrepareQkv will convert the format to BNSH.
-  bool past_no_bias = (pass_key_value_as_past || past_key != nullptr || present_key != nullptr) && bias == nullptr;
-#endif
-
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
-                             !past_no_bias &&
-                             nullptr == relative_position_bias &&
-                             nullptr == key_padding_mask &&
-                             parameters.head_size == parameters.v_head_size &&
                              onnxruntime::flash::is_supported(device_prop,
                                                               parameters.head_size,
                                                               parameters.num_heads,
-                                                              parameters.num_heads);
-  // When input is packed QKV format, TensorRT kernel might be faster than flash attention when sequence length <= 512.
-  if (use_flash_attention && key == nullptr && value == nullptr &&
-      parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
-    use_flash_attention = false;
-  }
+                                                              parameters.kv_num_heads);
 #else
   constexpr bool use_flash_attention = false;
 #endif
 
-  size_t workspace_bytes;
   constexpr size_t element_size = sizeof(T);
-  // TODO(aciddelgado): change this for different kv num head
-  workspace_bytes = GetAttentionWorkspaceSize(element_size,
+  size_t workspace_bytes = GetAttentionWorkspaceSize(element_size,
                                               parameters.batch_size,
                                               parameters.num_heads,
+                                              parameters.kv_num_heads,
                                               parameters.head_size,
-                                              parameters.v_head_size,
                                               parameters.sequence_length,
                                               parameters.kv_sequence_length,
                                               parameters.total_sequence_length,
-                                              fused_runner,
-                                              use_flash_attention,
-                                              use_fused_cross_attention,
-                                              use_memory_efficient_attention);
-  // }
+                                              use_flash_attention);
 
   auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
-  // TODO(aciddelgado): past k and v?
-  const size_t past_k_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.num_heads_k * parameters.head_size;
-  const size_t past_v_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.num_heads_k * parameters.v_head_size;
-  const bool use_temp_k_v_workspace = parameters.pass_past_in_kv || use_memory_efficient_attention || use_flash_attention;
-  auto temp_k_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_k_bytes, context->GetComputeStream()) : nullptr;
-  auto temp_v_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_v_bytes, context->GetComputeStream()) : nullptr;
+  const size_t past_kv_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.kv_num_heads * parameters.head_size;
+  const bool use_temp_k_v_workspace = use_flash_attention;
+  auto temp_k_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_kv_bytes, context->GetComputeStream()) : nullptr;
+  auto temp_v_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_kv_bytes, context->GetComputeStream()) : nullptr;
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = nullptr;
   data.bias = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
-  data.key = (nullptr == key || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = (nullptr == value || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
-  data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
-  data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
+  data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
+  data.value = reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.mask_index = nullptr;
+  data.mask_index_dims = gsl::span<const int64_t>();
   data.past = nullptr;
-  data.past_key = pass_key_value_as_past  ? reinterpret_cast<const CudaT*>(key->Data<T>())
-                  : (nullptr == past_key) ? nullptr
-                                          : reinterpret_cast<const CudaT*>(past_key->Data<T>());
-  data.past_value = pass_key_value_as_past    ? reinterpret_cast<const CudaT*>(value->Data<T>())
-                    : (nullptr == past_value) ? nullptr
-                                              : reinterpret_cast<const CudaT*>(past_value->Data<T>());
-  data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
-  data.has_qkv_workspace = !no_qkv_workspace;
+  data.past_key = (nullptr == past_key) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
+  data.past_value = (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
+  data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.temp_k_workspace = use_temp_k_v_workspace ? reinterpret_cast<CudaT*>(temp_k_work_space.get()) : nullptr;
   data.temp_v_workspace = use_temp_k_v_workspace ? reinterpret_cast<CudaT*>(temp_v_work_space.get()) : nullptr;
@@ -187,13 +157,15 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present = nullptr;
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+  data.fused_runner = nullptr;
+  data.fused_cross_attention_kernel = fused_cross_attention_kernel;
   data.use_flash_attention = use_flash_attention;
-  data.cumulated_sequence_length_q_cache = &(this->cumulated_sequence_length_q_cache_);
+  data.use_memory_efficient_attention = false;
+  data.cumulated_sequence_length_q_cache = &(this->cumulated_sequence_length_q_cache_); // TODO(aciddelgado): no need right?
   data.cumulated_sequence_length_kv_cache = &(this->cumulated_sequence_length_kv_cache_);
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
-  // (aciddelgado): QkvToContext in new group impl file or adapt existing?
   return QkvToContext<CudaT>(
       device_prop, cublas, context->GetComputeStream(), parameters, data);
 }

@@ -21,7 +21,7 @@ Status CheckInputs(const T* query,
                    const T* past_value,
                    void* parameters,
                    int num_heads,
-                   int num_heads_k,
+                   int kv_num_heads,
                    float scale) {
   //     past_key                   : (B, N_k, S*, H)
   //     past_value                 : (B, N_k, S*, H)
@@ -51,16 +51,13 @@ Status CheckInputs(const T* query,
 
   int batch_size = static_cast<int>(query_dims[0]);
   int sequence_length = static_cast<int>(query_dims[1]);
-  // TODO(aciddelgado): remove 5 dim input
-  int hidden_size_q = (query_dims.size() == 3)
-                        ? static_cast<int>(query_dims[2])
-                        : (num_heads * static_cast<int>(query_dims[4]));
+  int hidden_size_q = static_cast<int>(query_dims[2]);
   int head_size = static_cast<int>(hidden_size_q) / num_heads;
 
   int kv_sequence_length = sequence_length;
-  int hidden_size_kv = (key_dims.size() == 3)
+  int kv_hidden_size = (key_dims.size() == 3)
                         ? static_cast<int>(key_dims[2])
-                        : (num_heads_k * static_cast<int>(key_dims[3]));
+                        : (kv_num_heads * static_cast<int>(key_dims[3]));
 
   int past_sequence_length = 0;
   int max_sequence_length = 0;
@@ -90,12 +87,12 @@ Status CheckInputs(const T* query,
                              past_value_dims[0]);
     }
 
-    if (past_key_dims[1] != num_heads_k) {
+    if (past_key_dims[1] != kv_num_heads) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'past_key' dimension 1 should be same as number of heads, got ",
                              past_key_dims[1]);
     }
-    if (past_value_dims[1] != num_heads_k) {
+    if (past_value_dims[1] != kv_num_heads) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'past_value' dimension 1 should be same as number of heads, got ",
                              past_value_dims[1]);
@@ -138,8 +135,11 @@ Status CheckInputs(const T* query,
     }
 
     if (key_dims.size() == 3) {
-      // TODO(aciddelgado): should num heads k be a factor of num heads??
-      // TODO(aciddelgado): is the following true? different head dim for v?
+      if (num_heads % kv_num_heads != 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
+                               num_heads % kv_num_heads);
+      }
       if (key_dims[2] != value_dims[2]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'key' and 'value' shall have same dim 2 (hidden_size)");
@@ -147,11 +147,11 @@ Status CheckInputs(const T* query,
 
       qkv_format = Q_K_V_BSNH;
       kv_sequence_length = static_cast<int>(key_dims[1]);
-    } else {  // TODO(aciddelgado): x att w past key??? key_dims.size() == 4 (cross-attention with past_key)... also head_size same for q and k?
-      if (static_cast<int>(key_dims[1]) != num_heads_k || static_cast<int>(key_dims[3]) != head_size) {
+    } else {  // key_dims.size() == 4 (cross-attention with past_key)
+      if (static_cast<int>(key_dims[1]) != kv_num_heads || static_cast<int>(key_dims[3]) != head_size) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT,
-            "Expect 'key' shape (batch_size, num_heads_k, kv_sequence_length, head_size) for past_key");
+            "Expect 'key' shape (batch_size, kv_num_heads, kv_sequence_length, head_size) for past_key");
       }
 
       qkv_format = UNKNOWN;
@@ -170,9 +170,9 @@ Status CheckInputs(const T* query,
     }
   }
 
+  // TODO(aciddelgado): what is this note referring to/do I support?
   // NOTE: In Cross-Attention, we pass the past key and value to 'key' and 'value' instead of 'past_key' and 'past_value'.
   bool pass_past_in_kv = false;
-  // TODO(aciddelgado) implement correct v hidden size
   if (value != nullptr) {
     const auto& value_dims = value->Shape().GetDims();
     if (value_dims.size() != 3 && value_dims.size() != 4) {
@@ -197,6 +197,12 @@ Status CheckInputs(const T* query,
       }
       pass_past_in_kv = true;
     }
+
+    int v_hidden_size = (value_dims.size() == 3) ? value_dims[2] : value_dims[1] * value_dims[3];
+    if (v_hidden_size != kv_hidden_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
+    }
+
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Missing value tensor.");
@@ -216,9 +222,9 @@ Status CheckInputs(const T* query,
     output_parameters->hidden_size = hidden_size;
     output_parameters->num_heads = num_heads;
     output_parameters->head_size = hidden_size / num_heads;
-    output_parameters->kv_hidden_size = hidden_size_kv;
-    output_parameters->kv_num_heads = num_heads_k;
-    output_parameters->is_unidirectional = true; // TODO(aciddelgado): causal true by default, but how can user override?
+    output_parameters->kv_hidden_size = kv_hidden_size;
+    output_parameters->kv_num_heads = kv_num_heads;
+    output_parameters->is_unidirectional = true;
     output_parameters->do_rotary = false; // TODO(aciddelgado): huh?
     output_parameters->scale = scale;
     output_parameters->qkv_format = qkv_format;
@@ -236,14 +242,14 @@ Status CheckInputs(const T* query,
                    const T* past_value,
                    void* parameters,
                    int num_heads,
-                   int num_heads_k,
+                   int kv_num_heads,
                    float scale,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, bias, past_key, past_value, parameters, num_heads, num_heads_k, scale);
+  return CheckInputs(query, key, value, bias, past_key, past_value, parameters, num_heads, kv_num_heads, scale);
 }
 
 }  // namespace multihead_attention_helper

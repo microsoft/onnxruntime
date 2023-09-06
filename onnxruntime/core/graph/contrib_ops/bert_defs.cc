@@ -233,6 +233,81 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
+void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
+                                             int past_key_index) {
+  // Output 0 has shape (batch_size, sequence_length, hidden_size)
+
+  // Q, K and V without packing:
+  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+  //   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
+  //   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+
+  // Q, K and V without packing and past (cross attention):
+  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+  //   Input 1 (key) has shape (batch_size, num_head, kv_sequence_length, head_size)
+  //   Input 2 (value) has shape (batch_size, num_head, kv_sequence_length, head_size)
+
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // Shape inference
+  int64_t sequence_length = 0;
+  if (hasInputShape(ctx, 0)) {
+    auto& query_shape = getInputShape(ctx, 0);
+    auto& query_dims = query_shape.dim();
+
+    if (query_dims.size() != 3) {
+      fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
+    }
+
+    if (hasInputShape(ctx, 2)) {
+      auto& value_shape = getInputShape(ctx, 2);
+      auto& value_dims = value_shape.dim();
+      if (value_dims.size() != 3 && value_dims.size() != 4) {
+        fail_shape_inference("Inputs 2 (value) shall be 3 or 4 dimensions");
+      }
+
+      if (value_dims.size() == 3) {
+        sequence_length = value_dims[1].dim_value();
+      }
+
+      ONNX_NAMESPACE::TensorShapeProto output_shape;
+      *output_shape.add_dim() = query_dims[0];
+      *output_shape.add_dim() = query_dims[1];
+      *output_shape.add_dim() = value_dims.size() == 3
+                                ? value_dims[2]
+                                : value_dims[1] * value_dims[3];
+      updateOutputShape(ctx, 0, output_shape);
+      return;
+    } else {
+      fail_shape_inference("Missing input 2 (value)");
+    }
+  }
+
+  if (ctx.getNumOutputs() > 1) {  // has present output
+    if (hasInputShape(ctx, past_key_index)) {
+      auto& past_shape = getInputShape(ctx, past_key_index);
+      auto& past_dims = past_shape.dim();
+      if (past_dims.size() != 4) {
+        fail_shape_inference("The past_key input shall be 4 dimensions");
+      }
+
+      if (sequence_length > 0 && past_dims[2].has_dim_value()) {
+        int64_t total_sequence_length = sequence_length + past_shape.dim(3).dim_value();
+
+        ONNX_NAMESPACE::TensorShapeProto present_shape;
+        for (auto& dim : past_dims) {
+          *present_shape.add_dim() = dim;
+        }
+        present_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
+
+        updateOutputShape(ctx, 1, present_shape);
+        updateOutputShape(ctx, 2, present_shape);
+      }
+    }
+  }
+}
+
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 
@@ -928,6 +1003,72 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           MultiHeadAttentionTypeAndShapeInference(ctx, 6);
+        }));
+
+constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
+Group Query Self/Cross Attention. Bias from input projection is included.
+
+Supports different number of heads for q and kv.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GroupQueryAttention, 1,
+    OpSchema()
+        .SetDoc(GroupQueryAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "query",
+               "Query with shape (batch_size, sequence_length, hidden_size)",
+               "T")
+        .Input(1,
+               "key",
+               "Key with shape (batch_size, kv_sequence_length, kv_hidden_size) ",
+               "T",
+               OpSchema::Optional)
+        .Input(2,
+               "value",
+               "Value with shape (batch_size, kv_sequence_length, kv_hidden_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(3,
+               "bias",
+               "Bias tensor with shape (hidden_size + kv_hidden_size + kv_hidden_size) from input projection",
+               "T",
+               OpSchema::Optional)
+        .Input(6,
+               "past_key",
+               "past state for self attention key with shape (batch_size, kv_num_heads, past_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(7,
+               "past_value",
+               "past state for self attention value with shape (batch_size, kv_num_heads, past_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
+                "T")
+        .Output(1,
+                "present_key",
+                "present state for cross attention key with shape (batch_size, kv_num_heads, kv_sequence_length, head_size)"
+                "or present state for self attention key with shape (batch_size, kv_num_heads, total_sequence_length, head_size)",
+                "T",
+                OpSchema::Optional)
+        .Output(2,
+                "present_value",
+                "present state for cross attention value with shape (batch_size, kv_num_heads, kv_sequence_length, head_size)"
+                "or present state for self attention value with shape (batch_size, kv_num_heads, total_sequence_length, head_size)",
+                "T",
+                OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          GroupQueryAttentionTypeAndShapeInference(ctx, 6);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
