@@ -29,7 +29,7 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
+  Status ExplicitOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
 
   static constexpr std::array<std::string_view, 2> gridsample_supported_modes = {"bilinear", "nearest"};
   static constexpr std::array<std::string_view, 3> gridsample_supported_padding_modes = {"zeros", "border", "reflection"};
@@ -44,12 +44,12 @@ static int32_t GetDefaultAxisAttribute(const std::string& op_type, int opset_ver
   return 0;
 }
 
-Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
+Status SimpleOpBuilder::ExplicitOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   const std::string& op_type = node_unit.OpType();
 
   // QNN Softmax and LogSoftmax only support an axis value equal to input_rank - 1 (i.e., same as -1).
   if (op_type == "Softmax" || op_type == "LogSoftmax") {
-    int32_t axis = GetDefaultAxisAttribute(node_unit.OpType(), node_unit.SinceVersion());
+    int32_t axis = GetDefaultAxisAttribute(op_type, node_unit.SinceVersion());
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
     ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
     std::vector<uint32_t> input_shape;
@@ -225,7 +225,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const std::string& op_type = node_unit.OpType();
 
   if (do_op_validation) {
-    ORT_RETURN_IF_ERROR(ExplictOpCheck(qnn_model_wrapper, node_unit));
+    ORT_RETURN_IF_ERROR(ExplicitOpCheck(qnn_model_wrapper, node_unit));
     // Skip the op validation for DepthToSpace & SpaceToDepth if it's not NHWC data layout
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth" || op_type == "GridSample")) {
       return Status::OK();
