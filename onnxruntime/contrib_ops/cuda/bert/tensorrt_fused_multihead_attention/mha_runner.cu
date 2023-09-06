@@ -178,7 +178,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
   }
 
   int getSFromMaxSeqLen(const int max_seq_len) const {
-    if (is_flash_attention(max_seq_len)) {
+    if (interface->mHasCausalMask || is_flash_attention(max_seq_len)) {
       return max_seq_len;
     }
 
