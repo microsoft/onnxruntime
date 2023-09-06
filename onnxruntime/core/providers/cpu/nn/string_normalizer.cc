@@ -202,6 +202,7 @@ class Utf8Converter {
 #endif
 
 #if defined(__APPLE__)
+#include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
 const std::string default_locale("en-US.UTF-8");
 #else
