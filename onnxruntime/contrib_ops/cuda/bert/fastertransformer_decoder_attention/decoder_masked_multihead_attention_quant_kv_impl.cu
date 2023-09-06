@@ -278,7 +278,8 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
   //    * params.quant_kv_block_size % K_VEC_SIZE == 0
   //    * params.quant_kv_block_size % V_VEC_SIZE == 0
   //    * head_size % params.quant_kv_block_size == 0
-  const int scales_per_head = head_size / params.quant_kv_block_size;
+  const int log2_quant_kv_block_size = 31 - __clz(params.quant_kv_block_size);
+  const int scales_per_head = (head_size >> log2_quant_kv_block_size);
 
   // Make sure the hidden size per head is a multiple of the vector size.
   static_assert(head_size % QK_VEC_SIZE == 0, "");
@@ -568,32 +569,40 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     const int mapped_beam_index = (has_beams && ti < tlength) ? beam_indices[ti] : input_beam_index;
     const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
 
-    // The keys loaded from the key cache.
-    K_vec_k k_vec[K_VECS_PER_THREAD];
+    // K_vec_k k_vec[K_VECS_PER_THREAD];
+
+    typedef typename QuantVec<K_vec_k>::Type K_Quant_Vec;
+    register K_Quant_Vec k_quant_vec[K_VECS_PER_THREAD];
+    register float k_scales[K_VECS_PER_THREAD];
+    register float qk = 0.0f;
 
     if (ti < tlength) {
       const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
       const TScale* scales_in_head = ((const TScale*)params.k_scale) + ((mapped_bhi * params.max_sequence_length + ti) * scales_per_head);
-      float unit_scale_k = 0.0f;
       int in_head_elem_idx = ki;
 #pragma unroll
       for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        const int in_head_scale_idx = in_head_elem_idx / params.quant_kv_block_size;
-        unit_scale_k = (float)scales_in_head[in_head_scale_idx];
-        in_head_elem_idx += QK_ELTS_IN_16B;
+        const int in_head_scale_idx = (in_head_elem_idx >> log2_quant_kv_block_size);
+        k_scales[ii] = (float)scales_in_head[in_head_scale_idx];
         int jj = ii * params.max_sequence_length + ti;
-        k_vec[ii] = LoadQuantVec((const K_vec_k*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]), unit_scale_k);
+        in_head_elem_idx += QK_ELTS_IN_16B;
+        k_quant_vec[ii] = *(const K_Quant_Vec*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]);
       }
-    } else {
+
+      using K_vec_acum = K_vec_k;
+      K_vec_acum qk_vec = mul<K_vec_acum, K_vec_k, K_vec_k>(q_vec[0], DequantizeVec<K_vec_k>(k_quant_vec[0], k_scales[0]));
 #pragma unroll
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        zero(k_vec[ii]);
+      for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
+        qk_vec = onnxruntime::cuda::fma(q_vec[ii], DequantizeVec<K_vec_k>(k_quant_vec[ii], k_scales[ii]), qk_vec);
       }
+      qk = sum(qk_vec);
     }
 
-    // Perform the dot product and normalize qk.
-    // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
-    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
+#pragma unroll
+    for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
+      qk += __shfl_xor_sync(uint32_t(-1), qk, mask);
+    }
+    qk *= inv_sqrt_dh;
 
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to
@@ -722,7 +731,7 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
 
     const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
-    const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + vi / params.quant_kv_block_size;
+    const int scale_offset = (mapped_bhi * params.max_sequence_length + ti) * scales_per_head + (vi >> log2_quant_kv_block_size);
     const float unit_scale_v = (float)*(((TScale*)params.v_scale) + scale_offset);
 
     // Load the values from the cache.
@@ -758,8 +767,8 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     const float inv_unit_scale_v = (max_abs_v ? (127.0f / max_abs_v) : max_abs_v);
     QuantizeTo(&v_cache[tlength * head_size], v, inv_unit_scale_v);
     if (vi % params.quant_kv_block_size == 0) {
-      const int scales_per_head = head_size / params.quant_kv_block_size;
-      const int scale_offset = (bhi * params.max_sequence_length + tlength) * scales_per_head + vi / params.quant_kv_block_size;
+      const int scales_per_head = (head_size >> log2_quant_kv_block_size);
+      const int scale_offset = (bhi * params.max_sequence_length + tlength) * scales_per_head + (vi >> log2_quant_kv_block_size);
       *(((TScale*)params.v_scale) + scale_offset) = (TScale)(max_abs_v / 127.0f);
     }
 
