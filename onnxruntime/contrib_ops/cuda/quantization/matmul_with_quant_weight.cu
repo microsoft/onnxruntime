@@ -83,159 +83,15 @@ struct Scalar2<half> {
   }
 };
 
-template <class T, int block_size>
-__global__ void MatMul4BitsWeightKernel(
-    T* output,
-    const T* a_data,
-    const uint8_t* b_data_quant,
-    const T* scales_data,
-    const uint8_t* zero_points,
-    int m,
-    int n,
-    int k) {
-  int k_block_id = blockIdx.x;
-  int n_block_id = blockIdx.y;
-  int m_id = blockIdx.z;
-  int n_id = n_block_id * blockDim.x + threadIdx.x;
-  int k_id = k_block_id * block_size;
-
-  if (n_id >= n) {
-    return;
-  }
-
-  // load A to share
-  __shared__ T a_data_vec[block_size];
-  a_data += m_id * k + k_id;
-
-  for (int i = threadIdx.x; i < block_size; i += blockDim.x) {
-    // if (i + k_id < k) {
-    a_data_vec[i] = a_data[i];
-    //} else {
-    //  a_data_vec[i] = static_cast<T>(0.f);
-    //}
-  }
-  __syncthreads();
-  // dequantize a blob
-  T weight[block_size];
-  const uint8_t* quant_data_cur = b_data_quant + (n_id * gridDim.x + k_block_id) * block_size / 2;
-  uint4 values = *(reinterpret_cast<const uint4*>(quant_data_cur));
-  T scale = *(scales_data + n_id * gridDim.x + k_block_id);
-  T zero_point = static_cast<T>(zero_points ? float(zero_points[n_id * gridDim.x + k_block_id]) : 8.f);
-  T scale_zero_point = -scale * zero_point;
-  typename Scalar2<T>::type scale_zero_point_pair = Scalar2<T>::MakeScalar2(scale_zero_point);
-  typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(scale);
-
-  typename Scalar2<T>::type res_pair;
-  const typename Scalar2<T>::type* a_data_vec_2 = reinterpret_cast<const typename Scalar2<T>::type*>(a_data_vec);
-  uint32_t* values_ptr = (uint32_t*)(&values);
-  for (int kk = 0; kk < block_size; kk += 8) {
-    uint32_t value = values_ptr[kk / 8];
-    EightElementsDequant<T> eight_elements;
-    eight_elements.Dequant(value, scale_pair, scale_zero_point_pair);
-
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[kk / 2], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[kk / 2 + 1], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[2], a_data_vec_2[kk / 2 + 1], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[3], a_data_vec_2[kk / 2 + 1], res_pair);
-  }
-
-  // atomicAdd(output + m_id * n + n_id, res_pair.x + res_pair.y);
-}
-
 constexpr int BLOCKSIZEN = 8;
 
-/*
 template <class T, int group_size>
-__global__ void MatMul4BitsWeightKernelBlock(
+__global__ void MatMulFloatInt4Kernel(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
     const T* scales_data,
     const uint8_t* zero_points,
-    int m,
-    int n,
-    int k){
-
-    }
-*/
-
-template <class T>
-__global__ void MatMul4BitsWeightKernelBlock(
-    T* output,
-    const T* a_data,
-    const uint8_t* b_data_quant,
-    const T* scales_data,
-    const uint8_t* zero_points,
-    int m,
-    int n,
-    int k) {
-  int n_block_id = blockIdx.x;
-  int m_id = blockIdx.y;
-  int lane_id = threadIdx.x;
-  int warp_id = threadIdx.y;
-  int n_id = n_block_id * BLOCKSIZEN + warp_id;
-  int group_count = (k + 32 - 1) / 32;
-  int thread_id = warp_id * 32 + lane_id;
-
-  extern __shared__ char shared_buffer[];
-
-  if (n_id >= n) {
-    return;
-  }
-
-  // load A to share
-  // T* a_data_vec = shared_data;
-  // T* b_scale_vec = a_data_vec + k;
-  T* b_scale_vec = (T*)shared_buffer;
-  T* b_scale_zero_point_vec = b_scale_vec + (k + 32 - 1) / 32 * BLOCKSIZEN;
-
-  a_data += m_id * k;
-  // for (int i = warp_id * 32 + lane_id; i < k; i += blockDim.x * blockDim.y) {
-  //     a_data_vec[i] = a_data[m_id * k + i];
-  // }
-
-  scales_data += n_id * group_count;
-  zero_points += n_id * group_count;
-  for (int i = thread_id; i < BLOCKSIZEN * group_count; i += 256) {
-    b_scale_vec[i] = scales_data[i];
-    b_scale_zero_point_vec[i] = b_scale_vec[i] * (static_cast<T>((float)(zero_points[i])));
-  }
-
-  __syncthreads();
-  // dequantize a blob
-
-  b_data_quant += n_id * group_count * 16;
-  typename Scalar2<T>::type res_pair;
-  __shared__ T a_data_vec[256];
-  const typename Scalar2<T>::type* a_data_vec_2 = reinterpret_cast<const typename Scalar2<T>::type*>(a_data_vec);
-  for (int k_id = lane_id * 8; k_id < k; k_id += 256) {
-    a_data_vec[thread_id] = a_data[k_id - lane_id * 8 + thread_id];
-    __syncthreads();
-    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_id));
-    EightElementsDequant<T> eight_elements;
-    typename Scalar2<T>::type scale_zero_point_pair = Scalar2<T>::MakeScalar2(b_scale_zero_point_vec[warp_id * group_count + k_id >> 5]);
-    typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + k_id >> 5]);
-    eight_elements.Dequant(value, scale_pair, scale_zero_point_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[k_id / 2], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[k_id / 2 + 1], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[2], a_data_vec_2[k_id / 2 + 1], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[3], a_data_vec_2[k_id / 2 + 1], res_pair);
-  }
-
-  // warp reduction
-  T sum = res_pair.x + res_pair.y;
-  for (int i = 16; i > 0; i = i / 2) {
-    sum += __shfl_down_sync(0xffffffff, sum, i);
-  }
-  output[m_id * n + n_id] = sum;
-}
-
-template <class T, int group_size>
-__global__ void MatMulFloat4BitKernelNoZeroPoint(
-    T* output,
-    const T* a_data,
-    const uint8_t* b_data_quant,
-    const T* scales_data,
     int m,
     int n,
     int k) {
@@ -256,16 +112,17 @@ __global__ void MatMulFloat4BitKernelNoZeroPoint(
 
   // load scale to shared buffer
   T* b_scale_vec = (T*)shared_buffer;
-  scales_data += n_block_id * BLOCKSIZEN * group_count;
+  uint8_t* b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + BLOCKSIZEN * group_count);
+  int offset = n_block_id * BLOCKSIZEN * group_count;
   for (int i = thread_id; i < BLOCKSIZEN * group_count; i += 256) {
-    b_scale_vec[i] = scales_data[i];
+    b_scale_vec[i] = scales_data[offset + i];
+    b_zp_vec[i] = zero_points != nullptr ? zero_points[offset + i] : uint8_t(8);
   }
   __syncthreads();
 
   a_data += m_id * k;
   b_data_quant += n_id * group_count * (group_size / 2);
   typename Scalar2<T>::type res_pair = Scalar2<T>::MakeScalar2(static_cast<T>(0.f));
-  ;
   __shared__ T a_data_vec[256];
   const typename Scalar2<T>::type* a_data_vec_2 = reinterpret_cast<const typename Scalar2<T>::type*>(a_data_vec);
   for (int k_step = 0; k_step < k_iter; k_step++) {
@@ -273,8 +130,8 @@ __global__ void MatMulFloat4BitKernelNoZeroPoint(
     __syncthreads();
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_step * 128 + lane_id * 4));
     EightElementsDequant<T> eight_elements;
-    typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + k_step * 256 / 32]);
-    typename Scalar2<T>::type scale_zp_pair = Scalar2<T>::MakeScalar2(-(scale_pair.x * static_cast<T>(8.0f)));
+    typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + (k_step * 256 + lane_id * 8) / group_size]);
+    typename Scalar2<T>::type scale_zp_pair = Scalar2<T>::MakeScalar2(-scale_pair.x * static_cast<T>(b_zp_vec[warp_id * group_count + (k_step * 256 + lane_id * 8) / group_size]));
     eight_elements.Dequant(value, scale_pair, scale_zp_pair);
     res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[(lane_id << 2) + 0], res_pair);
     res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[(lane_id << 2) + 1], res_pair);
@@ -297,7 +154,7 @@ __global__ void MatMulFloat4BitKernelNoZeroPoint(
       uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_iter * 128 + lane_id * 4));
       EightElementsDequant<T> eight_elements;
       typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size]);
-      typename Scalar2<T>::type scale_zp_pair = Scalar2<T>::MakeScalar2(-(scale_pair.x * static_cast<T>(8.0f)));
+      typename Scalar2<T>::type scale_zp_pair = Scalar2<T>::MakeScalar2(-scale_pair.x * static_cast<T>(b_zp_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size]));
       eight_elements.Dequant(value, scale_pair, scale_zp_pair);
       res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[(lane_id << 2) + 0], res_pair);
       res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[(lane_id << 2) + 1], res_pair);
@@ -318,84 +175,12 @@ __global__ void MatMulFloat4BitKernelNoZeroPoint(
 }
 
 template <class T>
-__global__ void MatMul4BitsWeightKernelBlockNoZeroPoint(
-    T* output,
-    const T* a_data,
-    const uint8_t* b_data_quant,
-    const T* scales_data,
-    int m,
-    int n,
-    int k) {
-  int n_block_id = blockIdx.x;
-  int m_id = blockIdx.y;
-  int lane_id = threadIdx.x;
-  int warp_id = threadIdx.y;
-  int n_id = n_block_id * BLOCKSIZEN + warp_id;
-  int group_count = (k + 32 - 1) / 32;
-  int thread_id = warp_id * 32 + lane_id;
-  int k_iter = k / 256;
-
-  extern __shared__ char shared_buffer[];
-
-  if (n_id >= n) {
-    return;
-  }
-
-  // load A to share
-  // T* a_data_vec = shared_data;
-  // T* b_scale_vec = a_data_vec + k;
-  T* b_scale_vec = (T*)shared_buffer;
-
-  a_data += m_id * k;
-  // for (int i = warp_id * 32 + lane_id; i < k; i += blockDim.x * blockDim.y) {
-  //     a_data_vec[i] = a_data[m_id * k + i];
-  // }
-
-  scales_data += n_block_id * BLOCKSIZEN * group_count;
-  for (int i = thread_id; i < BLOCKSIZEN * group_count; i += 256) {
-    b_scale_vec[i] = scales_data[i];
-  }
-
-  __syncthreads();
-  // dequantize a blob
-
-  b_data_quant += n_id * group_count * 16;
-  typename Scalar2<T>::type res_pair = Scalar2<T>::MakeScalar2(static_cast<T>(0.f));
-  __shared__ T a_data_vec[256];
-  const typename Scalar2<T>::type* a_data_vec_2 = reinterpret_cast<const typename Scalar2<T>::type*>(a_data_vec);
-  for (int k_step = 0; k_step < k_iter; k_step++) {
-    a_data_vec[thread_id] = a_data[k_step * 256 + thread_id];
-    __syncthreads();
-    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_step * 128 + lane_id * 4));
-    EightElementsDequant<T> eight_elements;
-    typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + k_step * 256 / 32]);
-    eight_elements.Dequant(value, scale_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[(lane_id << 2) + 0], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[(lane_id << 2) + 1], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[2], a_data_vec_2[(lane_id << 2) + 2], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[3], a_data_vec_2[(lane_id << 2) + 3], res_pair);
-  }
-
-  // reminder
-
-  // warp reduction
-  T sum = res_pair.x + res_pair.y;
-  for (int i = 16; i > 0; i = i / 2) {
-    sum += __shfl_down_sync(0xffffffff, sum, i);
-  }
-
-  if (lane_id == 0) {
-    output[m_id * n + n_id] = sum;
-  }
-}
-
-template <class T>
 Status MatMul4BitsWeight(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
     const T* scales_data,
-    const uint8_t* /*zero_points*/,
+    const uint8_t* zero_points,
     int m,
     int n,
     int k,
@@ -403,22 +188,22 @@ Status MatMul4BitsWeight(
     cudaStream_t stream) {
   dim3 blocks((n + BLOCKSIZEN - 1) / BLOCKSIZEN, m);
   dim3 threads(32, 8);
-  int shared_mem_size = sizeof(T) * ((k + group_size - 1) / group_size * 8);
+  int shared_mem_size = (sizeof(T) + 1) * ((k + group_size - 1) / group_size * 8);
 
   // printf("group size %d\n", group_size);
   // printf("shared_mem_size %d\n", shared_mem_size);
   if (16 == group_size) {
-    MatMulFloat4BitKernelNoZeroPoint<T, 16><<<blocks, threads, shared_mem_size, stream>>>(
-        output, a_data, b_data_quant, scales_data, m, n, k);
+    MatMulFloatInt4Kernel<T, 16><<<blocks, threads, shared_mem_size, stream>>>(
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
   } else if (32 == group_size) {
-    MatMulFloat4BitKernelNoZeroPoint<T, 32><<<blocks, threads, shared_mem_size, stream>>>(
-        output, a_data, b_data_quant, scales_data, m, n, k);
+    MatMulFloatInt4Kernel<T, 32><<<blocks, threads, shared_mem_size, stream>>>(
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
   } else if (64 == group_size) {
-    MatMulFloat4BitKernelNoZeroPoint<T, 64><<<blocks, threads, shared_mem_size, stream>>>(
-        output, a_data, b_data_quant, scales_data, m, n, k);
+    MatMulFloatInt4Kernel<T, 64><<<blocks, threads, shared_mem_size, stream>>>(
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
   } else if (128 == group_size) {
-    MatMulFloat4BitKernelNoZeroPoint<T, 128><<<blocks, threads, shared_mem_size, stream>>>(
-        output, a_data, b_data_quant, scales_data, m, n, k);
+    MatMulFloatInt4Kernel<T, 128><<<blocks, threads, shared_mem_size, stream>>>(
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block size ", group_size, " is not supported");
