@@ -37,7 +37,18 @@ class TestFusion(unittest.TestCase):
         expected_model = OnnxModel(onnx.load(expected_model_path))
         expected_model.topological_sort(is_deterministic=True)
 
-        self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
+        nodes = optimized_model.model.graph.node
+        self.assertEqual(len(nodes), len(expected_model.model.graph.node))
+
+        for i in range(len(nodes)):
+            self.assertEqual(nodes[i], expected_model.model.graph.node[i])
+
+        for expected_initializer in expected_model.model.graph.initializer:
+            self.assertTrue(
+                OnnxModel.has_same_value(
+                    optimized_model.get_initializer(expected_initializer.name), expected_initializer
+                )
+            )
 
     # Attention type #1 in onnx_model_bart.py
     def test_encoder_attention_fusion_with_skiplayernorm(self):

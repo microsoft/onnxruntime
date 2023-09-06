@@ -72,9 +72,7 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
         self.prune_graph = True
 
     def match_mask(self, sub_qk, mul_qk, matmul_qk, layernorm_before_attention):
-        mask_nodes = self.model.match_parent_path(
-            sub_qk, ["Mul", "Sub", "Slice", "Slice"], [1, 0, 1, 0]
-        )  # yapf: disable
+        mask_nodes = self.model.match_parent_path(sub_qk, ["Mul", "Sub", "Slice", "Slice"], [1, 0, 1, 0])
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match unidirectional mask path")
             return None
@@ -176,14 +174,14 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
                 ["Add", "Add", "MatMul", "Reshape", "Transpose", "MatMul"],
                 [0, 1, None, 0, 0, 0],
                 output_name_to_node=output_name_to_node,
-            )  # yapf: disable
+            )
         else:
             qkv_nodes = self.model.match_parent_path(
                 normalize_node,
                 ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
                 [1, None, 0, 0, 0],
                 output_name_to_node=output_name_to_node,
-            )  # yapf: disable
+            )
 
         if qkv_nodes is None:
             return
@@ -223,7 +221,7 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
                 "LayerNormalization",
             ],
             [1, 1, 0, 0, 0, None, 0],
-        )  # yapf: disable
+        )
 
         if v_nodes is None:
             v_nodes = self.model.match_parent_path(
@@ -238,7 +236,7 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
                     "SkipLayerNormalization",
                 ],
                 [1, 1, 0, 0, 0, None, 0],
-            )  # yapf: disable
+            )
 
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")

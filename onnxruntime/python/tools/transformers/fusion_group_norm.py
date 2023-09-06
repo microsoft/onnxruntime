@@ -107,21 +107,19 @@ class FusionGroupNorm(Fusion):
         if weight_elements not in [320, 640, 960, 1280, 1920, 2560, 128, 256, 512]:
             logger.info("GroupNorm channels=%d", weight_elements)
 
-        gamma = helper.make_tensor(
+        self.add_initializer(
             name=group_norm_name + "_gamma",
             data_type=TensorProto.FLOAT,
             dims=[weight_elements],
-            vals=weight.flatten().tolist(),
+            vals=weight,
         )
-        self.model.add_initializer(gamma, self.this_graph_name)
 
-        beta = helper.make_tensor(
+        self.add_initializer(
             name=group_norm_name + "_beta",
             data_type=TensorProto.FLOAT,
             dims=[bias_elements],
-            vals=bias.flatten().tolist(),
+            vals=bias,
         )
-        self.model.add_initializer(beta, self.this_graph_name)
 
         last_node = add_node
         subgraph_nodes = [add_node, weight_mul, reshape_4d, instance_norm, reshape_3d, shape_node]
