@@ -122,6 +122,15 @@ static void RunOpTest(const std::string& op_type,
                   expected_ep_assignment);
 }
 
+// Test the accuracy of QDQ Sigmoid.
+TEST_F(QnnHTPBackendTests, UnaryOp_Sigmoid) {
+  RunQDQOpTest<uint8_t>("Sigmoid",
+                        {TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6))},
+                        {},
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
 // Check that QNN compiles DQ -> Gelu -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, UnaryOp_Gelu) {
