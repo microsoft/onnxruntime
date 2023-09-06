@@ -26,11 +26,19 @@ const termPatternOnly = '^' + termPattern + '$';  // The patterns only matchs a 
 const lhsPattern = '(' + termPattern + ',)*' + termPattern;  // The pattern the LHS should match
 const lhsPatternOnly = '^' + lhsPattern + '$';               // The patterns only matchs a LHS begin to end.
 
+interface SymbolInfo {
+  count: number;           // Symbol corresponding to a dimmension of an input
+  inputIndices: number[];  // Number of input variables the symbol corresponds to
+  dimValue: number;        // Number of dimensions the symbol corresponds to
+}
+
 class EinsumTerm {
   constructor(inputIndex = -1) {
     this.symbolToIndices = new Map<string, number[]>();
     this.inputIndex = inputIndex;
   }
+
+  // Add a symbol to the term
   addSymbol(symbol: string, index: number) {
     let value = this.symbolToIndices.get(symbol);
     if (value === undefined) {
@@ -40,6 +48,7 @@ class EinsumTerm {
     }
     this.symbolToIndices.set(symbol, value);
   }
+
   symbolToIndices: Map<string, number[]>;  // Map from symbol to dimensions of the input corresponding to the term
   inputIndex: number;                      // -1 for output and 0, 1, 2, ... for inputs
 }
@@ -47,9 +56,7 @@ class EinsumTerm {
 class EinsumEquation {
   constructor(inputs: readonly TensorView[], equation: string) {
     this.hasEllipsis = false;
-    this.symbolToCount = new Map<string, number>();
-    this.symbolToDimValue = new Map<string, number>();
-    this.symbolToInputIndices = new Map<string, number[]>();
+    this.symbolToInfo = new Map<string, SymbolInfo>();
     this.lhs = new Array<EinsumTerm>();
     this.outputDims = [];
     // As rhs needs to be updated allow using let instead of const for both lhs and rhs.
@@ -65,22 +72,14 @@ class EinsumEquation {
         throw new Error('Invalid LHS term');
       }
       const einsumTerm = this.processTerm(inputTerm, true, dims, index);
-      einsumTerm.symbolToIndices.forEach((indices: number[], symbol: string) => {
-        const value = this.symbolToCount.get(symbol);
-        if (value === undefined) {
-          this.symbolToCount.set(symbol, indices.length);
-        } else {
-          this.symbolToCount.set(symbol, value + indices.length);
-        }
-      });
       this.lhs.push(einsumTerm);
     });
 
     // Initialize the RHS if not specified
     if (rhs === '') {
       // Construct RHS from LHS terms/symbols
-      rhs += [...this.symbolToCount.entries()]
-                 .filter(([sym, count]) => (count === 1 || sym === '...'))
+      rhs += [...this.symbolToInfo.entries()]
+                 .filter(([sym, info]) => (info.count === 1 || sym === '...'))
                  .map(([sym]) => sym)
                  .join('');
     } else {
@@ -95,36 +94,30 @@ class EinsumEquation {
       if (symbol === '...') {
         this.outputDims = this.outputDims.concat(this.ellipsisDims);
       } else {
-        if (!this.symbolToDimValue.has(symbol)) {
+        const info = this.symbolToInfo.get(symbol);
+        if (info === undefined) {
           throw new Error('Invalid RHS symbol');
         }
-        this.outputDims.push(this.symbolToDimValue.get(symbol)!);
+        this.outputDims.push(info.dimValue);
       }
     });
     this.rhs = this.processTerm(rhs, true, this.outputDims);
-  }
-  symbolToDimValue: Map<string, number>;        // All symbols in the equation
-  symbolToCount: Map<string, number>;           // Count how many times a symbol occoured in the equation on LHS.
-  symbolToInputIndices: Map<string, number[]>;  // map to array of LSH terms the symbol is used.
-  hasEllipsis: boolean;                         // The equation has ellipsis or not
-  ellipsisDims: number[];                       // The dimensions of the equation ellipsis corresponds to.
-  lhs: EinsumTerm[];
-  rhs: EinsumTerm;
-  outputDims: number[];
+  }  // End of EinsumEqation constructor
 
+  // Add a symbol to the equation
   addSymbol(symbol: string, dimValue: number, inputIndex: number) {
-    if (this.symbolToDimValue.has(symbol) && this.symbolToDimValue.get(symbol) !== 1) {
-      if (this.symbolToDimValue.get(symbol) !== dimValue) {
+    let info = this.symbolToInfo.get(symbol);
+    if (info !== undefined) {
+      if (info.dimValue !== dimValue && info.count !== 1) {
         throw new Error('Dimension mismatch');
+      } else {
+        info.count++;
+        info.inputIndices.push(inputIndex);
       }
     } else {
-      this.symbolToDimValue.set(symbol, dimValue);
+      info = {count: 1, dimValue, inputIndices: [inputIndex]};
     }
-    if (this.symbolToInputIndices.has(symbol)) {
-      this.symbolToInputIndices.get(symbol)!.push(inputIndex);
-    } else {
-      this.symbolToInputIndices.set(symbol, [inputIndex]);
-    }
+    this.symbolToInfo.set(symbol, info);
   }
 
   // Process one input/output term
@@ -175,7 +168,14 @@ class EinsumEquation {
     });
     return einsumTerm;
   }
-}
+
+  symbolToInfo: Map<string, SymbolInfo>;  // All symbols in the equation
+  hasEllipsis: boolean;                   // The equation has ellipsis or not
+  ellipsisDims: number[];                 // The dimensions of the equation ellipsis corresponds to.
+  lhs: EinsumTerm[];                      // Terms on the left-hand side of the equation
+  rhs: EinsumTerm;                        // Term on the right-hand side of the equation
+  outputDims: number[];                   // Output dimensions of the equation
+}  // End of class EinsumEquation
 
 
 const createEinsumProgramMetadata = (inputCount: number, cacheHint: string): ProgramMetadata =>
@@ -200,14 +200,17 @@ const createEinsumProgramInfo =
       const reduceOpsLoopHeaders: string[] = [];
       const reduceOpsLoopFooters: string[] = [];
       const reduceOpCompute: string[] = [];
-      const isReduceOpsWithoutLoop = einsumEquation.symbolToCount.size === rhsSymbols.length;
-      einsumEquation.symbolToCount.forEach((count, symbol) => {
+      const isReduceOpsWithoutLoop = einsumEquation.symbolToInfo.size === rhsSymbols.length;
+      einsumEquation.symbolToInfo.forEach((info, symbol) => {
         if (rhsSymbols.includes(symbol)) {
           const outputIndex = rhsSymbols.indexOf(symbol);
           einsumEquation.lhs.forEach((term, i) => {
-            if (einsumEquation.symbolToInputIndices.has(symbol) &&
-                einsumEquation.symbolToInputIndices.get(symbol)!.includes(i)) {
-              term.symbolToIndices.get(symbol)!.forEach((index) => {
+            if (info.inputIndices.includes(i)) {
+              const indices = term.symbolToIndices.get(symbol);
+              if (indices === undefined) {
+                throw new Error('Invalid symbol error');
+              }
+              indices.forEach((index) => {
                 idxCopy.push(`${
                     inputVars[i].indicesSet(
                         `input${i}Indices`, index, output.indicesGet('outputIndices', outputIndex))}`);
@@ -216,16 +219,23 @@ const createEinsumProgramInfo =
           });
         } else {
           einsumEquation.lhs.forEach((term, i) => {
-            if (einsumEquation.symbolToInputIndices.has(symbol) &&
-                einsumEquation.symbolToInputIndices.get(symbol)!.includes(i)) {
-              term.symbolToIndices.get(symbol)!.forEach((index) => {
+            const info = einsumEquation.symbolToInfo.get(symbol);
+            if (info === undefined) {
+              throw new Error('Invalid symbol error');
+            }
+            if (info.inputIndices.includes(i)) {
+              const indices = term.symbolToIndices.get(symbol);
+              if (indices === undefined) {
+                throw new Error('Invalid symbol error');
+              }
+              indices.forEach((index) => {
                 reduceOpsSetIndices.push(`${inputVars[i].indicesSet(`input${i}Indices`, index, `${symbol}`)}`);
               });
               reduceOpCompute.push(`prod *= ${inputVars[i].getByIndices(`input${i}Indices`)};`);
             }
           });
-          reduceOpsLoopHeaders.push(
-              `for(var ${symbol}: u32 = 0; ${symbol} < ${einsumEquation.symbolToDimValue.get(symbol)}; ${symbol}++) {`);
+          reduceOpsLoopHeaders.push(`for(var ${symbol}: u32 = 0; ${symbol} < ${
+              einsumEquation.symbolToInfo.get(symbol)?.dimValue}; ${symbol}++) {`);
           reduceOpsLoopFooters.push('}');
         }
       });
