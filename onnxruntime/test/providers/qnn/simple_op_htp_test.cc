@@ -288,7 +288,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Neg) {
 }
 
 // Test Not operator on HTP backend.
-TEST_F(QnnCPUBackendTests, UnaryOp_Not) {
+TEST_F(QnnHTPBackendTests, UnaryOp_Not) {
   RunOpTest<bool>("Not",
                   {TestInputDef<bool>({1, 4}, false, {false, false, true, true})},
                   {},
@@ -628,7 +628,7 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Mul4D) {
 }
 
 // Test And
-TEST_F(QnnCPUBackendTests, BinaryOp_And4D) {
+TEST_F(QnnHTPBackendTests, BinaryOp_And4D) {
   RunOpTest<bool>("And",
                   {TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
                    TestInputDef<bool>({1, 4}, false, {false, true, false, true})},
@@ -638,7 +638,7 @@ TEST_F(QnnCPUBackendTests, BinaryOp_And4D) {
 }
 
 // Test that Or is not yet supported on CPU backend.
-TEST_F(QnnCPUBackendTests, BinaryOp_HTP_Or_Unsupported) {
+TEST_F(QnnHTPBackendTests, BinaryOp_HTP_Or_Unsupported) {
   RunOpTest<bool>("Or",
                   {TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
                    TestInputDef<bool>({1, 4}, false, {false, true, false, true})},
