@@ -316,14 +316,16 @@ __global__ void TransposeQKV_TN3H_3TNH(
     for (int i = threadIdx.x; i < D_QK; i += blockDim.x) {
       int n = i / H_QK;
       int h = i % H_QK;
-      q[i] = ADD_BIAS(input[n * (H_QK + H_QK + H_V) + h], biases[i]);
-      k[i] = ADD_BIAS(input[n * (H_QK + H_QK + H_V) + H_QK + h], biases[D_QK + i]);
+      int offset = n * (H_QK + H_QK + H_V);
+      q[i] = ADD_BIAS(input[offset + h], biases[offset + h]);
+      k[i] = ADD_BIAS(input[offset + H_QK + h], biases[offset + H_QK + h]);
     }
 
     for (int i = threadIdx.x; i < N * H_V; i += blockDim.x) {
       int n = i / H_V;
       int h = i % H_V;
-      v[i] = ADD_BIAS(input[n * (H_QK + H_QK + H_V) + H_QK + H_QK + h], biases[D_QK + D_QK + i]);
+      int offset = n * (H_QK + H_QK + H_V);
+      v[i] = ADD_BIAS(input[offset + H_QK + H_QK + h], biases[offset + H_QK + H_QK + h]);
     }
   }
 }
@@ -857,6 +859,14 @@ template Status QkvToContext<half>(
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
     PackedMultiHeadAttentionData<half>& data);
+
+template void LaunchTranspose<half>(
+    const half* query, const half* key, const half* value, const half* bias, half* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat source_format, AttentionQkvFormat target_format,
+    const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

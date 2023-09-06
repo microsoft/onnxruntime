@@ -72,10 +72,14 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
                                                       enable_trt_flash_attention_, parameters.scale);
   }
 
-  // In case some kernel not loaded due to shared memory limit, we need to double check here.
-  const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
-  if (fused_fp16_runner_->isValid(S)) {
+  if (parameters.causal) {
     fused_runner = fused_fp16_runner_.get();
+  } else {
+    // In case some kernel not loaded due to shared memory limit, we need to double check here.
+    const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
+    if (fused_fp16_runner_->isValid(S)) {
+      fused_runner = fused_fp16_runner_.get();
+    }
   }
 
   return fused_runner;

@@ -41,6 +41,14 @@ Status QkvToContext(
     contrib::PackedAttentionParameters& parameters,
     PackedMultiHeadAttentionData<T>& data);
 
+template <typename T>
+void LaunchTranspose(
+    const T* query, const T* key, const T* value, const T* bias, T* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat source_format, AttentionQkvFormat target_format,
+    const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
