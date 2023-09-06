@@ -20,7 +20,7 @@ type TensorGpuBufferType = TensorInterface.GpuBufferType;
 /**
  * the implementation of Tensor interface.
  *
- * @internal
+ * @ignore
  */
 export class Tensor implements TensorInterface {
   // #region constructors
@@ -316,7 +316,7 @@ export class Tensor implements TensorInterface {
     if (!this.cpuData) {
       throw new Error(
           'The data is not on CPU. Use `getData()` to download GPU data to CPU, ' +
-          'or use `texture` property to access the GPU data directly.');
+          'or use `texture` or `gpuBuffer` property to access the GPU data directly.');
     }
     return this.cpuData;
   }
