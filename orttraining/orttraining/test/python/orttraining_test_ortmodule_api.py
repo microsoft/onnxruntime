@@ -4002,6 +4002,7 @@ def test_model_with_registered_buffer_and_dropped_parameters():
     ],
 )
 def test_unused_parameters(model, none_pt_params):
+    torch.manual_seed(2333)
     device = "cuda"
 
     N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10  # noqa: F841, N806
