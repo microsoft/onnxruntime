@@ -221,7 +221,8 @@ template <
     int THREADS_PER_BLOCK,
     // The type of the scale in memory
     typename TScale>
-__global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHeadAttentionQuantKVParams params) {
+__global__ void __launch_bounds__(THREADS_PER_BLOCK)
+masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHeadAttentionQuantKVParams params) {
   // This kernel contains some code that cannot be compiled on CUDA ARCH 5.3 or lower
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
   (void)(params);
@@ -570,12 +571,8 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
     const int beam_offset = mapped_beam_index * params.num_heads * params.max_sequence_length * head_size;
 
     // K_vec_k k_vec[K_VECS_PER_THREAD];
-
-    register float k_scales[K_VECS_PER_THREAD];
-    typedef typename QuantVec<K_vec_k>::Type K_Quant_Vec;
-    register K_Quant_Vec k_quant_vec[K_VECS_PER_THREAD];
-
     qk = 0.0f;
+    float k_scales[K_VECS_PER_THREAD];
     if (ti < tlength) {
       const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
       const TScale* scales_in_head = ((const TScale*)params.k_scale) + ((mapped_bhi * params.max_sequence_length + ti) * scales_per_head);
@@ -584,17 +581,25 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
         const int in_head_scale_idx = (in_head_elem_idx >> log2_quant_kv_block_size);
         k_scales[ii] = (float)scales_in_head[in_head_scale_idx];
-        int jj = ii * params.max_sequence_length + ti;
         in_head_elem_idx += QK_ELTS_IN_16B;
-        k_quant_vec[ii] = *(const K_Quant_Vec*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]);
       }
 
       using K_vec_acum = K_vec_k;
-      K_vec_acum qk_acc = mul<K_vec_acum, K_vec_k, K_vec_k>(q_vec[0], DequantizeVec<K_vec_k>(k_quant_vec[0], k_scales[0]));
+      K_vec_acum qk_acc;
+      zero(qk_acc);
+
+      int jj = ti;
+      using K_Quant_Vec = typename QuantVec<K_vec_k>::Type;
+      K_Quant_Vec k_quant_vec[2];
+      k_quant_vec[0] = *(const K_Quant_Vec*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]);
 #pragma unroll
       for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
-        qk_acc = onnxruntime::cuda::fma(q_vec[ii], DequantizeVec<K_vec_k>(k_quant_vec[ii], k_scales[ii]), qk_acc);
+        jj += params.max_sequence_length;
+        k_quant_vec[ii & 1] = *(const K_Quant_Vec*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]);
+        qk_acc = onnxruntime::cuda::fma(q_vec[ii - 1], DequantizeVec<K_vec_k>(k_quant_vec[(ii - 1) & 1], k_scales[ii - 1]), qk_acc);
       }
+      qk_acc = onnxruntime::cuda::fma(q_vec[K_VECS_PER_THREAD - 1], DequantizeVec<K_vec_k>(k_quant_vec[(K_VECS_PER_THREAD - 1) & 1], k_scales[K_VECS_PER_THREAD - 1]), qk_acc);
+
       qk = sum(qk_acc);
     }
 
