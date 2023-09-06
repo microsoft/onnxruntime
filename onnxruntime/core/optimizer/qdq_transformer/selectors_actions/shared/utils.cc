@@ -60,6 +60,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"HardSwish", {}},
           {"Sigmoid", {}},
           {"Slice", {}},
+          {"LogSoftmax", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
           {"Atan", {}},
