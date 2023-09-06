@@ -333,9 +333,6 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
     }
   }
 
-  // Create once to avoid dummy end node re-creation
-  static std::unordered_map<std::string, TensorShapeProto> empty_map;
-
   // model_local_functions is a member of Model instance and will be alive at the time this is invoked.
   op_schema->TypeAndShapeInferenceFunction(
       [onnx_func_proto, func_domain_to_version = std::move(func_domain_to_version), &model_local_functions](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -345,6 +342,8 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
         constexpr int error_mode_throw = 1;
         constexpr bool enable_data_propagation_false = false;
         ONNX_NAMESPACE::ShapeInferenceOptions options{check_type_true, error_mode_throw, enable_data_propagation_false};
+
+        std::unordered_map<std::string, TensorShapeProto> empty_map;
 
         // https://github.com/microsoft/onnxruntime/issues/17061
         // We are passing a nullptr for the symbol table, because symbol table must be global
