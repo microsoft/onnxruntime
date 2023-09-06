@@ -396,7 +396,7 @@ if (onnxruntime_USE_CUDA)
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-    if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+    if("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo")
       set_source_files_properties(${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/fastertransformer_decoder_attention/decoder_masked_multihead_attention_quant_kv_impl.cu
                                 PROPERTIES COMPILE_FLAGS -G)
     endif()
