@@ -258,6 +258,16 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Exp) {
                         ExpectedEPNodeAssignment::All);
 }
 
+// Test accuracy of 8-bit QDQ Sqrt
+TEST_F(QnnHTPBackendTests, UnaryOp_Sqrt) {
+  std::vector<float> input_data = GetFloatDataInRange(0.0f, 20.0f, 9);
+  RunQDQOpTest<uint8_t>("Sqrt",
+                        {TestInputDef<float>({1, 3, 3}, false, input_data)},
+                        {},
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
 // Test accuracy of 8-bit QDQ Neg
 TEST_F(QnnHTPBackendTests, UnaryOp_Neg) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
