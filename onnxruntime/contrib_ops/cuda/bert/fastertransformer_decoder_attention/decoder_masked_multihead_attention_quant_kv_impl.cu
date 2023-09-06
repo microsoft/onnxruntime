@@ -57,12 +57,12 @@ inline __device__ __half2 DequantizeChar2(const char2 ch2, const float unit_scal
 template <typename TVec>
 class QuantVec {};
 
-struct __align__(4) Char2x2 {
+struct Char2x2 {
   char2 x;
   char2 y;
 };
 
-struct __align__(8) Char2x4 {
+struct Char2x4 {
   char2 x;
   char2 y;
   char2 z;
@@ -92,7 +92,7 @@ inline __device__ TVec DequantizeVec(const typename QuantVec<TVec>::Type quant_v
 
 template <>
 inline __device__ uint32_t DequantizeVec<uint32_t>(const char2 ch2, const float unit_scale) {
-  union __align__(4) {
+  union {
     __half2 h2;
     uint32_t whole;
   }
@@ -103,8 +103,8 @@ inline __device__ uint32_t DequantizeVec<uint32_t>(const char2 ch2, const float 
 
 template <>
 inline __device__ uint2 DequantizeVec<uint2>(const Char2x2 ch2x2, const float unit_scale) {
-  union __align__(8) {
-    struct __align__(8) {
+  union {
+    struct {
       __half2 h2x;
       __half2 h2y;
     };
@@ -118,8 +118,8 @@ inline __device__ uint2 DequantizeVec<uint2>(const Char2x2 ch2x2, const float un
 
 template <>
 inline __device__ uint4 DequantizeVec<uint4>(const Char2x4 ch2x4, const float unit_scale) {
-  union __align__(16) {
-    struct __align__(16) {
+  union {
+    struct {
       __half2 h2x;
       __half2 h2y;
       __half2 h2z;
@@ -147,7 +147,7 @@ inline __device__ TFp MaxAbsFloat(const TVec v);
 
 template <>
 inline __device__ __half MaxAbsFloat(const uint32_t v) {
-  union __align__(4) {
+  union {
     __half2 h2;
     uint32_t whole;
   }
@@ -173,7 +173,7 @@ inline __device__ typename QuantVec<TVec>::Type Quantize(const TVec v, const flo
 
 template <>
 inline __device__ char2 Quantize(const uint32_t v, const float inv_unit_scale) {
-  union __align__(4) {
+  union {
     uint32_t u;
     __half2 h2;
   }
@@ -571,11 +571,11 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
 
     // K_vec_k k_vec[K_VECS_PER_THREAD];
 
+    register float k_scales[K_VECS_PER_THREAD];
     typedef typename QuantVec<K_vec_k>::Type K_Quant_Vec;
     register K_Quant_Vec k_quant_vec[K_VECS_PER_THREAD];
-    register float k_scales[K_VECS_PER_THREAD];
-    register float qk = 0.0f;
 
+    qk = 0.0f;
     if (ti < tlength) {
       const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
       const TScale* scales_in_head = ((const TScale*)params.k_scale) + ((mapped_bhi * params.max_sequence_length + ti) * scales_per_head);
@@ -590,12 +590,12 @@ __global__ void masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHea
       }
 
       using K_vec_acum = K_vec_k;
-      K_vec_acum qk_vec = mul<K_vec_acum, K_vec_k, K_vec_k>(q_vec[0], DequantizeVec<K_vec_k>(k_quant_vec[0], k_scales[0]));
+      K_vec_acum qk_acc = mul<K_vec_acum, K_vec_k, K_vec_k>(q_vec[0], DequantizeVec<K_vec_k>(k_quant_vec[0], k_scales[0]));
 #pragma unroll
       for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
-        qk_vec = onnxruntime::cuda::fma(q_vec[ii], DequantizeVec<K_vec_k>(k_quant_vec[ii], k_scales[ii]), qk_vec);
+        qk_acc = onnxruntime::cuda::fma(q_vec[ii], DequantizeVec<K_vec_k>(k_quant_vec[ii], k_scales[ii]), qk_acc);
       }
-      qk = sum(qk_vec);
+      qk = sum(qk_acc);
     }
 
 #pragma unroll
