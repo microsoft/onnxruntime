@@ -45,12 +45,12 @@ static GetTestQDQModelFn<QuantType> BuildQDQInstanceNormTestCase(const TestInput
                                                  std::vector<QuantParams<QuantType>>& output_qparams) {
     // input => Q => DQ =>
     NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
     NodeArg* input_qdq = AddQDQNodePair(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     // scale => Q => DQ =>
     NodeArg* scale = MakeTestInput(builder, scale_def);
-    QuantParams<QuantType> scale_qparams = GetTestInputQuantParams(scale_def);
+    QuantParams<QuantType> scale_qparams = GetTestInputQuantParams<QuantType>(scale_def);
     NodeArg* scale_qdq = AddQDQNodePair(builder, scale, scale_qparams.scale, scale_qparams.zero_point);
 
     // bias (as int32) => DQ =>

@@ -38,7 +38,7 @@ static GetTestQDQModelFn<QuantType> BuildQDQTransposeTestCase(const TestInputDef
                                                               const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
   return [input_def, attrs](ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams) {
     NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
     NodeArg* input_qdq = AddQDQNodePair(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     auto* output = builder.MakeIntermediate();

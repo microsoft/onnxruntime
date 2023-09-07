@@ -33,7 +33,7 @@ static GetTestQDQModelFn<QuantType> BuildQDQLeakyReluOpTestCase(const TestInputD
                             std::vector<QuantParams<QuantType>>& output_qparams) {
     // input => Q => DQ =>
     NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
     NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     // LeakryRelu

@@ -42,12 +42,12 @@ static GetTestQDQModelFn<QuantType> BuildQDQWhereTestCase(const TestInputDef<boo
 
     // x => Q => DQ =>
     NodeArg* x = MakeTestInput(builder, x_def);
-    QuantParams<QuantType> x_qparams = GetTestInputQuantParams(x_def);
+    QuantParams<QuantType> x_qparams = GetTestInputQuantParams<QuantType>(x_def);
     NodeArg* x_qdq = AddQDQNodePair(builder, x, x_qparams.scale, x_qparams.zero_point);
 
     // y => Q => DQ =>
     NodeArg* y = MakeTestInput(builder, y_def);
-    QuantParams<QuantType> y_qparams = GetTestInputQuantParams(y_def);
+    QuantParams<QuantType> y_qparams = GetTestInputQuantParams<QuantType>(y_def);
     NodeArg* y_qdq = AddQDQNodePair(builder, y, y_qparams.scale, y_qparams.zero_point);
 
     // Where operator.
