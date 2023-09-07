@@ -206,7 +206,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         // We need to remove the duplicated QDQ Pairs before all other GraphTransformation.
         transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
       }
-#endif
 
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
