@@ -4,7 +4,7 @@
 	"private": true,
 	"scripts": {
 		"dev": "vite dev",
-		"build": "vite build",
+		"build": "vite build && chmod +x ./fix_build.sh && sh fix_build.sh",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -41,6 +41,7 @@
 	"dependencies": {
 		"animejs": "^3.2.1",
 		"svelte-icons": "^2.1.0",
+		"sveltejs-adapter-ipfs": "^0.4.12",
 		"theme-change": "^2.5.0"
 	}
 }
