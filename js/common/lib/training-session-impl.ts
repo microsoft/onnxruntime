@@ -62,8 +62,11 @@ export class TrainingSession implements TrainingSessionInterface {
     }
   }
 
-  inputNames: readonly string[];
-  outputNames: readonly string[];
-
+  get inputNames(): readonly string[] {
+    return this.handler.inputNames;
+  }
+  get outputNames(): readonly string[] {
+    return this.handler.outputNames;
+  }
   private handler: TrainingSessionHandler;
 }
