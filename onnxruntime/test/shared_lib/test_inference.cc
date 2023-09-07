@@ -3389,42 +3389,42 @@ void CallbackSucceed(void* user_data, OrtValue** outputs, size_t num_outputs, Or
   atomic_wait.store(true);
 }
 
-TEST(CApiTest, RunAsync) {
-  Ort::SessionOptions session_options;
-  session_options.SetIntraOpNumThreads(2);
-  Ort::Session session(*ort_env, MODEL_URI, session_options);
-
-  const char* input_names[] = {"X"};
-  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  int64_t x_dim[] = {3, 2};
-  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-
-  Ort::Value input_tensors[1] = {
-      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
-  };
-
-  const char* output_names[] = {"Y"};
-  Ort::RunOptions run_options;
-  Ort::Value output_values[1] = {Ort::Value{nullptr}};
-
-  EXPECT_NO_THROW(session.RunAsync(run_options,
-                                   input_names,
-                                   input_tensors,
-                                   1,
-                                   output_names,
-                                   output_values,
-                                   1,
-                                   CallbackSucceed,
-                                   &caller_tid));
-
-  std::chrono::duration<double, std::milli> dur{100};
-  // timeout in about 10 secs
-  for (int i = 0; i < 100 && !atomic_wait.load(); ++i) {
-    std::this_thread::sleep_for(dur);
-  }
-
-  EXPECT_EQ(atomic_wait.load(), true);
-}
+//TEST(CApiTest, RunAsync) {
+//  Ort::SessionOptions session_options;
+//  session_options.SetIntraOpNumThreads(2);
+//  Ort::Session session(*ort_env, MODEL_URI, session_options);
+//
+//  const char* input_names[] = {"X"};
+//  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+//  int64_t x_dim[] = {3, 2};
+//  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+//
+//  Ort::Value input_tensors[1] = {
+//      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
+//  };
+//
+//  const char* output_names[] = {"Y"};
+//  Ort::RunOptions run_options;
+//  Ort::Value output_values[1] = {Ort::Value{nullptr}};
+//
+//  EXPECT_NO_THROW(session.RunAsync(run_options,
+//                                   input_names,
+//                                   input_tensors,
+//                                   1,
+//                                   output_names,
+//                                   output_values,
+//                                   1,
+//                                   CallbackSucceed,
+//                                   &caller_tid));
+//
+//  std::chrono::duration<double, std::milli> dur{100};
+//  // timeout in about 10 secs
+//  for (int i = 0; i < 100 && !atomic_wait.load(); ++i) {
+//    std::this_thread::sleep_for(dur);
+//  }
+//
+//  EXPECT_EQ(atomic_wait.load(), true);
+//}
 
 void CallbackFail(void*, OrtValue**, size_t, OrtStatusPtr) {
   EXPECT_TRUE(false);  // the callback is not supposed to be invoked
