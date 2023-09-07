@@ -71,9 +71,9 @@ class QuantizedValueType(Enum):
 class QuantType(Enum):
     QInt8 = 0
     QUInt8 = 1
-    QInt16 = 2
-    QUInt16 = 3
-    QFLOAT8E4M3FN = 4
+    QFLOAT8E4M3FN = 2
+    QInt16 = 3
+    QUInt16 = 4
 
     def __str__(self):
         return self.name
