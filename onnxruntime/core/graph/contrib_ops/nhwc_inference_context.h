@@ -97,9 +97,6 @@ class NhwcInferenceContext : public ONNX_NAMESPACE::InferenceContext {
       *nhwc_shape.add_dim() = nchw_shape.dim(1);
     }
   }
-  const ONNX_NAMESPACE::ShapeInferenceOptions& getShapeInferenceOptions() const {
-    return ctx_.getShapeInferenceOptions();
-  }
  private:
   void TransposeToNchw(const ONNX_NAMESPACE::TypeProto& nhwc_tp, ONNX_NAMESPACE::TypeProto& nchw_tp) {
     if (nhwc_tp.tensor_type().has_shape()) {
