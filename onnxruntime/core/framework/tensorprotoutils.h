@@ -46,8 +46,8 @@ TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& ten
  * \return Status::OK on success with 'value' containing the Tensor in CPU based memory.
  */
 common::Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
-                                        const ONNX_NAMESPACE::TensorProto& input,
-                                        const MemBuffer& m, OrtValue& value);
+                                     const ONNX_NAMESPACE::TensorProto& input,
+                                     const MemBuffer& m, OrtValue& value);
 
 /**
  * deserialize a TensorProto into a buffer on CPU allocated using 'alloc'.
@@ -58,8 +58,8 @@ common::Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* tensor_pro
  * \return Status::OK on success with 'value' containing the Tensor in CPU based memory.
  */
 common::Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
-                                        const ONNX_NAMESPACE::TensorProto& input,
-                                        AllocatorPtr alloc, OrtValue& value);
+                                     const ONNX_NAMESPACE::TensorProto& input,
+                                     AllocatorPtr alloc, OrtValue& value);
 
 /**
  * @brief Deserialize a TensorProto into a preallocated empty Tensor
