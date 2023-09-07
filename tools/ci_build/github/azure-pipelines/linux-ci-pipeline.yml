@@ -136,7 +136,7 @@ stages:
               export src_dir=/onnxruntime_src; \
               export build_dir=/build; \
 
-              echo "Install Python Deps"
+              echo "Install Python Deps"; \
               python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq; \
               cp $src_dir/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $src_dir/requirements.txt; \
               echo "Test ORT with the latest ONNX release."" ; \
