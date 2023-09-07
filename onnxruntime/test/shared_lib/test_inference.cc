@@ -159,8 +159,8 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                                   expected_values_y,
                                   nullptr);
     // with preallocated output tensor
-    Ort::Value value_y = Ort::Value::CreateTensor<InT>(default_allocator.get(),
-                                                       expected_dims_y.data(), expected_dims_y.size());
+    Ort::Value value_y = Ort::Value::CreateTensor<OutT>(default_allocator.get(),
+                                                        expected_dims_y.data(), expected_dims_y.size());
 
     // test it twice
     for (int i = 0; i != 2; ++i)

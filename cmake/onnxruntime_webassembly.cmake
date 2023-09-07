@@ -236,6 +236,7 @@ else()
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
+    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js)
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -277,19 +278,29 @@ else()
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
       "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
     )
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
-    else()
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-threaded")
-    endif()
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasm"
     )
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd")
-    else()
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm")
-    endif()
   endif()
+
+  set(target_name ort)
+
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND target_name "training")
+  endif()
+
+  list(APPEND target_name "wasm")
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    list(APPEND target_name "simd")
+  endif()
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    list(APPEND target_name "threaded")
+  endif()
+
+  list(JOIN target_name "-" target_name)
+
+  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name})
 endif()

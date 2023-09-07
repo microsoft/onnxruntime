@@ -18,15 +18,28 @@ namespace js {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),               \
       KERNEL_CLASS);
 
+#define JSEP_ELEMENTWISE_MULTI_TYPED_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS)             \
+  ONNX_OPERATOR_KERNEL_EX(                                                              \
+      OP_TYPE, kOnnxDomain, VERSION, kJsExecutionProvider,                              \
+      KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),     \
+                                              DataTypeImpl::GetTensorType<int32_t>()}), \
+      KERNEL_CLASS);
+
+#define JSEP_ELEMENTWISE_MULTI_TYPED_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS) \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                   \
+      OP_TYPE, kOnnxDomain, VERSION_FROM, VERSION_TO, kJsExecutionProvider,                            \
+      KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),                    \
+                                              DataTypeImpl::GetTensorType<int32_t>()}),                \
+      KERNEL_CLASS);
 // math
 
 JSEP_KERNEL_IMPL(Abs, Abs)
-JSEP_ELEMENTWISE_VERSIONED_KERNEL(Abs, 6, 12, float, Abs)
-JSEP_ELEMENTWISE_KERNEL(Abs, 13, float, Abs)
+JSEP_ELEMENTWISE_MULTI_TYPED_VERSIONED_KERNEL(Abs, 6, 12, Abs)
+JSEP_ELEMENTWISE_MULTI_TYPED_KERNEL(Abs, 13, Abs)
 
 JSEP_KERNEL_IMPL(Neg, Neg)
-JSEP_ELEMENTWISE_VERSIONED_KERNEL(Neg, 6, 12, float, Neg)
-JSEP_ELEMENTWISE_KERNEL(Neg, 13, float, Neg)
+JSEP_ELEMENTWISE_MULTI_TYPED_VERSIONED_KERNEL(Neg, 6, 12, Neg)
+JSEP_ELEMENTWISE_MULTI_TYPED_KERNEL(Neg, 13, Neg)
 
 JSEP_KERNEL_IMPL(Floor, Floor)
 JSEP_ELEMENTWISE_VERSIONED_KERNEL(Floor, 6, 12, float, Floor)
@@ -96,6 +109,9 @@ JSEP_ELEMENTWISE_KERNEL(Atanh, 9, float, Atanh)
 JSEP_KERNEL_IMPL(Tanh, Tanh)
 JSEP_ELEMENTWISE_VERSIONED_KERNEL(Tanh, 6, 12, float, Tanh)
 JSEP_ELEMENTWISE_KERNEL(Tanh, 13, float, Tanh)
+
+JSEP_KERNEL_IMPL(Not, Not)
+JSEP_ELEMENTWISE_KERNEL(Not, 1, bool, Not)
 
 // activation
 

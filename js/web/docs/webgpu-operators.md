@@ -31,12 +31,14 @@ Do not modify directly.*
 | Cosh | ai.onnx(9+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
 | Elu | ai.onnx(6+) |  |
+| Equal | ai.onnx(7-10,11-12,13-18,19+) |  |
 | Erf | ai.onnx(9-12,13+) |  |
 | Exp | ai.onnx(6-12,13+) |  |
 | Expand | ai.onnx(8-12,13+) |  |
 | Flatten | ai.onnx(1-8,9-10,11-12,13+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
 | Gather | ai.onnx(1-10,11-12,13+) |  |
+| GatherElements | ai.onnx(11-12,13+) |  |
 | Gelu | com.microsoft(1+) |  |
 | Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
@@ -53,6 +55,7 @@ Do not modify directly.*
 | MemcpyToHost | ai.onnx(1+) |  |
 | Mul | ai.onnx(7-12,13,14+) |  |
 | Neg | ai.onnx(6-12,13+) |  |
+| Not | ai.onnx(1+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
 | ReduceL1 | ai.onnx(1-10,11-12,13-17,18+) |  |

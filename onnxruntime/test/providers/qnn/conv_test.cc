@@ -156,13 +156,13 @@ static GetTestQDQModelFn<InputQType> BuildQDQConvTestCase(const std::string& con
 
     // input -> Q/DQ ->
     auto* input = MakeTestInput(builder, input_def);
-    QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
     auto* input_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale, input_qparams.zero_point);
     conv_inputs.push_back(input_qdq);
 
     // weights -> Q/DQ ->
     auto* weights = MakeTestInput(builder, weights_def);
-    QuantParams<InputQType> weights_qparams = GetTestInputQuantParams(weights_def);
+    QuantParams<InputQType> weights_qparams = GetTestInputQuantParams<InputQType>(weights_def);
     auto* weights_qdq = AddQDQNodePair<InputQType>(builder, weights, weights_qparams.scale, weights_qparams.zero_point);
     conv_inputs.push_back(weights_qdq);
 

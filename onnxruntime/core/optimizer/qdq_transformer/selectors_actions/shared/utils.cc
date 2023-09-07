@@ -47,6 +47,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
           {"GlobalAveragePool", {}},
+          {"GlobalMaxPool", {}},
           {"LeakyRelu", {}},
           {"ReduceMean", {}},
           {"ReduceMin", {}},
@@ -59,6 +60,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"HardSwish", {}},
           {"Sigmoid", {}},
           {"Slice", {}},
+          {"LogSoftmax", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
           {"Atan", {}},
@@ -68,9 +70,13 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Sign", {}},
           {"Tanh", {}},
           {"Exp", {}},
+          {"Log", {}},
           {"LRN", {}},
           {"Ceil", {}},
+          {"Floor", {}},
+          {"Round", {}},
           {"Abs", {}},
+          {"Neg", {}},
           {"DepthToSpace", {}},
           {"SpaceToDepth", {}}};
 }
@@ -79,10 +85,14 @@ static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
           {"Div", {}},
           {"Mul", {}},
           {"Pow", {}},
-          {"Sub", {}}};
+          {"Sub", {}},
+          {"PRelu", {}},
+          {"GridSample", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
-  return {{"Concat", {}}};
+  return {{"Concat", {}},
+          {"Max", {}},
+          {"Min", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};

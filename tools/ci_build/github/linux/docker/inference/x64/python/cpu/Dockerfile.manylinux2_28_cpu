@@ -1,44 +1,18 @@
-ARG BASEIMAGE=centos:7
-ARG POLICY=manylinux2014
+ARG BASEIMAGE=amd64/almalinux:8
+ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
-ARG DEVTOOLSET_ROOTPATH=
-ARG LD_LIBRARY_PATH_ARG=
-ARG PREPEND_PATH=
-
-FROM $BASEIMAGE AS base_image
-ARG ROCM_VERSION=5.5
-
-# Enable epel-release repositories
-RUN yum --enablerepo=extras install -y epel-release
-
-# Install the ROCm rpms
-RUN yum clean all
-RUN echo -e "[ROCm]\nname=ROCm\nbaseurl=https://repo.radeon.com/rocm/yum/$ROCM_VERSION/main\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/rocm.repo
-
-RUN echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/$ROCM_VERSION/rhel/7.9/main/x86_64\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/amdgpu.repo
-
-RUN yum install -y rocm-dev
-
-# Set ENV
-ENV PATH=/opt/rocm/hcc/bin:/opt/rocm/hip/bin:/opt/rocm/bin${PATH:+:${PATH}}
+ARG DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
+ARG LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+ARG PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
 
 #Build manylinux2014 docker image begin
-FROM base_image AS runtime_base
+FROM $BASEIMAGE AS runtime_base
 ARG POLICY
 ARG PLATFORM
 ARG DEVTOOLSET_ROOTPATH
 ARG LD_LIBRARY_PATH_ARG
 ARG PREPEND_PATH
 LABEL maintainer="The ManyLinux project"
-
-# TODO: This should not be required if the hipify-perl binary is already a part
-# of the base docker image. Remove this line moving forward.
-RUN yum install -y hipify-clang
-
-RUN yum -y install wget
-
-# rocm lib
-RUN yum install -y miopen-hip-devel rocblas-devel rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel
 
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
@@ -95,7 +69,6 @@ RUN export LIBXCRYPT_VERSION=4.4.28 && \
     export PERL_DOWNLOAD_URL=https://www.cpan.org/src/5.0 && \
     manylinux-entrypoint /build_scripts/install-libxcrypt.sh
 
-
 FROM runtime_base AS build_base
 COPY build_scripts/install-build-packages.sh /build_scripts/
 RUN manylinux-entrypoint /build_scripts/install-build-packages.sh
@@ -139,19 +112,14 @@ FROM build_cpython AS build_cpython310
 COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.5
 
-
 FROM build_cpython AS build_cpython311
 COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.2
 
-
 FROM build_cpython AS all_python
-COPY build_scripts/install-pypy.sh \
-     build_scripts/pypy.sha256 \
-     build_scripts/finalize-python.sh \
+COPY build_scripts/finalize-python.sh \
      /build_scripts/
-RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.8 7.3.9
-RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.9 7.3.9
+
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
 COPY --from=build_cpython310 /opt/_internal /opt/_internal/
@@ -181,25 +149,12 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 
-ARG PYTHON_VERSION=3.8
-ARG OPSET_VERSION=15
-ARG INSTALL_DEPS_EXTRA_ARGS
-
-#Add our own dependencies
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && \
-    /tmp/scripts/manylinux/install_centos.sh && \
-    /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.10 $INSTALL_DEPS_EXTRA_ARGS && \
-     rm -rf /tmp/scripts
-
+RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
-ENV PATH /usr/local/dotnet:$PATH
-ENV ORTMODULE_ONNX_OPSET_VERSION=$OPSET_VERSION
+

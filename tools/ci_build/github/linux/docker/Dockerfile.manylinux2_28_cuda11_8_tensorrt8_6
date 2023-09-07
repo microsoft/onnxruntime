@@ -1,5 +1,5 @@
-ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-centos7
-ARG POLICY=manylinux2014
+ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=
 ARG LD_LIBRARY_PATH_ARG=
@@ -168,9 +168,9 @@ CMD ["/bin/bash"]
 #Install TensorRT 8.6.1.6
 #RUN yum install -y wget
 RUN v="8.6.1.6-1.cuda11.8" &&\
-    yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo &&\
+    yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&\
     yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} libnvinfer-vc-plugin8-${v}\
-        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v} libnvinfer-vc-plugin-devel-${v} libnvinfer-headers-devel-${v}  libnvinfer-headers-plugin-devel-${v} 
+        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v} libnvinfer-vc-plugin-devel-${v} libnvinfer-headers-devel-${v}  libnvinfer-headers-plugin-devel-${v}
 
 #Add our own dependencies
 ADD scripts /tmp/scripts

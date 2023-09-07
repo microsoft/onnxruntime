@@ -14,6 +14,7 @@
 #include "core/common/safeint.h"
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -157,19 +158,6 @@ Status ResizeOpBuilder::GetQnnModeFromString(const std::array<std::string_view, 
                          " ", std::string(onnx_mode));
 }
 
-// Utility function that checks if an array of strings contains a specific string.
-// Used to validate ONNX operator attributes.
-template <size_t N>
-static bool ArrayHasString(const std::array<std::string_view, N>& strings, std::string_view str) {
-  for (auto s : strings) {
-    if (s == str) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 // Resize ops are sensitive with data layout, no special validation so far
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
@@ -252,6 +240,7 @@ Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const Nod
 Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   NodeAttrHelper node_helper(node_unit);
 
+  using namespace onnxruntime::qnn::utils;
   // Check mode
   const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
   ORT_RETURN_IF_NOT(ArrayHasString(supported_modes, interp_mode), "QNN EP: Resize does not support mode ",
