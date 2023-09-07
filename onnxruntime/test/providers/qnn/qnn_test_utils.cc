@@ -4,15 +4,40 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "test/providers/qnn/qnn_test_utils.h"
+#include <cassert>
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
 
-#include "core/graph/graph.h"
+#include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 namespace test {
+
+std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems) {
+  if (num_elems == 0) {
+    return {};
+  }
+
+  std::vector<float> data;
+  data.reserve(num_elems);
+
+  const float step_size = (max_val - min_val) / static_cast<float>(num_elems);
+  float val = min_val;
+  for (size_t i = 0; i < num_elems; i++) {
+    data.push_back(val);
+    val += step_size;
+  }
+
+  // Try to ensure that 0.0 and max_val are also included in the array.
+  // If num_elems is less than 3, then not all of min_val, 0, and max_val will be present.
+  data[num_elems / 2] = 0.0f;
+  data[num_elems - 1] = max_val;
+
+  return data;
+}
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
@@ -38,7 +63,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
-  RunAndVerifyOutputsWithEP(model_data, "QNN_EP_TestLogID",
+  RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, verification_params);
 }

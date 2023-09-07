@@ -7,6 +7,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "core/common/gsl.h"
 #include "core/common/make_string.h"
@@ -1172,29 +1173,37 @@ static bool HandleUnsqueeze(HandlerArgs& args) {
 
 constexpr HandlerInfo unsqueeze_handler = {&FirstInput, &HandleUnsqueeze};
 
-static bool HandleQuantizeDequantizeScale(const api::GraphRef& graph, const std::vector<int64_t>& perm,
-                                          api::NodeRef& node, int64_t opset) {
-  if (opset >= 13) {
-    size_t rank = perm.size();
-    // Update axis in Opset >= 13 if scale/zero_point are non-scalar
-    auto inputs = node.Inputs();
+bool TransposeQuantizeDequantizeAxis(const api::GraphRef& graph, const std::vector<int64_t>& perm, api::NodeRef& node) {
+  size_t rank = perm.size();
 
-    auto inp_shape = graph.GetValueInfo(inputs[1])->Shape();
-    bool scalar_params = inp_shape.has_value() && inp_shape->size() == 0;
+  // Update axis if scale/zero_point are non-scalar
+  auto inputs = node.Inputs();
 
-    if (!scalar_params) {
-      int64_t axis = node.GetAttributeIntDefault("axis", 1);
-      if (!NormalizeAndValidateAxis(axis, rank)) {
-        return false;
-      }
-      node.SetAttributeInt("axis", perm[gsl::narrow_cast<size_t>(axis)]);
+  auto inp_shape = graph.GetValueInfo(inputs[1])->Shape();
+  bool scalar_params = inp_shape.has_value() && inp_shape->size() == 0;
+
+  if (!scalar_params) {
+    int64_t axis = node.GetAttributeIntDefault("axis", 1);
+    if (!NormalizeAndValidateAxis(axis, rank)) {
+      return false;
     }
+    node.SetAttributeInt("axis", perm[gsl::narrow_cast<size_t>(axis)]);
   }
   return true;
 }
 
+static bool HandleQuantizeDequantizeAxis(const api::GraphRef& graph, const std::vector<int64_t>& perm,
+                                         api::NodeRef& node, int64_t opset) {
+  if (opset < 13) {
+    // no `axis` value until opset 13
+    return true;
+  }
+
+  return TransposeQuantizeDequantizeAxis(graph, perm, node);
+}
+
 static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
-  if (!HandleQuantizeDequantizeScale(args.ctx.graph, args.perm, args.node, args.ctx.opset)) {
+  if (!HandleQuantizeDequantizeAxis(args.ctx.graph, args.perm, args.node, args.ctx.opset)) {
     return false;
   }
 
@@ -1740,17 +1749,23 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Reshape", reshape_handler},
 };
 
+constexpr bool IsOnnxDomain(std::string_view domain) {
+  return (domain == onnxruntime::kOnnxDomain) || (domain == onnxruntime::kOnnxDomainAlias);
+}
+
+constexpr bool IsMSDomain(std::string_view domain) {
+  return domain == onnxruntime::kMSDomain;
+}
+
 static const HandlerInfo* GetHandler(api::NodeRef& node, const HandlerMap& extended_handlers) {
   std::string key;
   auto domain = node.Domain();
   auto op_type = node.OpType();
 
-  if (domain == onnxruntime::kOnnxDomain || domain == onnxruntime::kOnnxDomainAlias) {
+  if (IsOnnxDomain(domain)) {
     key = std::string(op_type);
-  } else if (domain == onnxruntime::kMSDomain) {
-    key = onnxruntime::MakeString(domain, ".", op_type);
   } else {
-    return nullptr;
+    key = onnxruntime::MakeString(domain, ".", op_type);
   }
 
   // extended map is higher priority
@@ -2045,7 +2060,14 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
 
       // we're moving the Transpose to before the DQ, so we need to use the inverse permutations to update the axis
       // attribute correctly when doing per-axis dequantization
-      if (!HandleQuantizeDequantizeScale(ctx.graph, InvertPerm(*perm), *dq_node, ctx.opset)) {
+      std::string_view dq_domain = dq_node->Domain();
+      std::vector<int64_t> perm_inv = InvertPerm(*perm);
+
+      if (IsOnnxDomain(dq_domain) && !HandleQuantizeDequantizeAxis(ctx.graph, perm_inv, *dq_node, ctx.opset)) {
+        continue;
+      }
+
+      if (IsMSDomain(dq_domain) && !TransposeQuantizeDequantizeAxis(ctx.graph, perm_inv, *dq_node)) {
         continue;
       }
 

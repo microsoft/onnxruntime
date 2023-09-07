@@ -121,7 +121,13 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     dnnl_options.use_arena = 1;
     dnnl_options.threadpool_args = nullptr;
     session_options.AppendExecutionProvider_Dnnl(dnnl_options);
-    std::cout << "Running simple inference with dnnl provider" << std::endl;
+#else
+    return;
+#endif
+  } else if (provider_type == 3) {
+#ifdef USE_ROCM
+    OrtROCMProviderOptions rocm_options;
+    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     return;
 #endif
@@ -153,8 +159,8 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                                   expected_values_y,
                                   nullptr);
     // with preallocated output tensor
-    Ort::Value value_y = Ort::Value::CreateTensor<InT>(default_allocator.get(),
-                                                       expected_dims_y.data(), expected_dims_y.size());
+    Ort::Value value_y = Ort::Value::CreateTensor<OutT>(default_allocator.get(),
+                                                        expected_dims_y.data(), expected_dims_y.size());
 
     // test it twice
     for (int i = 0; i != 2; ++i)
@@ -1391,6 +1397,9 @@ TEST(CApiTest, test_custom_op_library) {
 #ifdef USE_CUDA
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 1, nullptr, lib_name.c_str());
+#elif USE_ROCM
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 3, nullptr, lib_name.c_str());
 #else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 0, nullptr, lib_name.c_str());

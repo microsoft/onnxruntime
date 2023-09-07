@@ -1,4 +1,4 @@
-##### trigger Don't modified it manully ####
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -10,6 +10,8 @@ trigger:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 pr:
   branches:
     include:
@@ -21,6 +23,8 @@ pr:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
 parameters:
