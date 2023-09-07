@@ -1,4 +1,5 @@
 <script>
+	import { base } from '$app/paths';
 	import FaGithub from 'svelte-icons/fa/FaGithub.svelte';
 	import FaYoutube from 'svelte-icons/fa/FaYoutube.svelte';
 	import FaLinkedinIn from 'svelte-icons/fa/FaLinkedinIn.svelte';
@@ -23,13 +24,13 @@
 	<div />
 	<div>
 		<span class="footer-title">Get Started</span>
-		<a href="/getting-started" class="link link-hover">Install</a>
-		<a href="/pytorch" class="link link-hover">PyTorch</a>
+		<a href="{base}/getting-started" class="link link-hover">Install</a>
+		<a href="{base}/pytorch" class="link link-hover">PyTorch</a>
 	</div>
 	<div>
 		<!-- TODO: Approach to not hide resources behind popup -->
 		<span class="footer-title">Resources</span>
-		<a href="/blogs" class="link link-hover">Blogs</a>
+		<a href="{base}/blogs" class="link link-hover">Blogs</a>
 		<a class="link link-hover">Tutorials</a>
 		<a class="link link-hover">APIs</a>
 	</div>

@@ -1,3 +1,6 @@
+<script>
+	import { base } from '$app/paths';
+</script>
 <div class="container mx-auto px-10"> 
 	<div class="lg:grid pb-10 gap-10 grid-cols-2">
 		<article class="card bg-base-300 lg:mb-48 mb-10 grid md:grid-cols-3">
@@ -7,7 +10,7 @@
 					ONNX Runtime can be used to accelerate both large model training and on-device training.
 				</p>
 				<div class="card-actions">
-					<a href="/training" class="btn btn-primary">ORT Training Docs →</a>
+					<a href="{base}/training" class="btn btn-primary">ORT Training Docs →</a>
 				</div>
 			</div>
 			<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
@@ -26,7 +29,7 @@
 					services across Office, Azure, Bing, as well as dozens of community projects.
 				</p>
 				<div class="card-actions">
-					<a href="/inference" class="btn btn-primary">Ort Inference Docs →</a>
+					<a href="{base}/inference" class="btn btn-primary">Ort Inference Docs →</a>
 				</div>
 			</div>
 			<figure class="md:col-span-1 col-span-2 order-first sm:order-last">

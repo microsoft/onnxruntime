@@ -1,4 +1,5 @@
 <script>
+	import { base } from '$app/paths';
 	import Ortgenerativeai from "../../images/undraw/image_ortgenerativeai.svelte";
 </script>
 <div class="container mx-auto px-10 mb-10">
@@ -12,7 +13,7 @@
 				for image synthesis, text generation, and more
 			</p>
 			<br>
-			<a href="/generative-ai" class="btn btn-primary">Learn more about ORT & Generative AI →</a>
+			<a href="{base}/generative-ai" class="btn btn-primary">Learn more about ORT & Generative AI →</a>
 		</div>
 		<div class="m-auto">
 			<Ortgenerativeai/>

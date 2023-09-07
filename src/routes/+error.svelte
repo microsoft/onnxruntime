@@ -1,4 +1,5 @@
 <script>
+    import { base } from '$app/paths';
 	import OnnxIcon from '../images/onnx-icon.svelte';
 </script>
 

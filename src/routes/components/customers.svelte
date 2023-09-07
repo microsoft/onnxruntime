@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { base } from '$app/paths';
 	import anime from 'animejs';
 	import pytorchlogo from '../../images/logos/PyTorch_logo_black.svg'
 	import windowslogo from '../../images/logos/Windows_logo_and_wordmark.svg'
@@ -62,14 +63,14 @@
 		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner cursor-default">
 			<img src="https://onnxruntime.ai/images/logos/oracle-logo.png" alt="Oracle" />
 		</button>
-		<a on:mouseenter={handleEnter} on:mouseleave={handleLeave} href="/testimonials" class="partner">
+		<a on:mouseenter={handleEnter} on:mouseleave={handleLeave} href="{base}/testimonials" class="partner">
 			<p class="underline text-center pt-20">...and many more</p>
 		</a>
 	</div>
 	<h1 class="text-2xl pt-10 pb-4">Learn more about how to use ONNX Runtime with:</h1>
 	<div class="grid md:grid-cols-3 grid-cols-1 gap-4 mx-auto pb-10">
-		<a href="/pytorch" class="btn btn-secondary rounded-sm h-full"><img class="px-10 py-5" src={pytorchlogo} alt="PyTorch Logo"></a>
-		<a href="/windows" class="btn btn-secondary rounded-sm h-full"><img class="px-10 py-5" src={windowslogo} alt="Windows Logo"></a>
-		<a href="/huggingface" class="btn btn-secondary rounded-sm h-full"><img class="px-10 py-5" src={huggingfacelogo} alt="HuggingFace Logo"></a>
+		<a href="{base}/pytorch" class="btn btn-secondary rounded-sm h-full"><img class="px-10 py-5" src={pytorchlogo} alt="PyTorch Logo"></a>
+		<a href="{base}/windows" class="btn btn-secondary rounded-sm h-full"><img class="px-10 py-5" src={windowslogo} alt="Windows Logo"></a>
+		<a href="{base}/huggingface" class="btn btn-secondary rounded-sm h-full"><img class="px-10 py-5" src={huggingfacelogo} alt="HuggingFace Logo"></a>
 	</div>
 </div>
