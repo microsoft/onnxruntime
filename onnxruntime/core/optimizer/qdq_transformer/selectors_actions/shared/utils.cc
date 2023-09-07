@@ -60,6 +60,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"HardSwish", {}},
           {"Sigmoid", {}},
           {"Slice", {}},
+          {"LogSoftmax", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
           {"Atan", {}},
@@ -72,7 +73,10 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Log", {}},
           {"LRN", {}},
           {"Ceil", {}},
+          {"Floor", {}},
+          {"Round", {}},
           {"Abs", {}},
+          {"Neg", {}},
           {"DepthToSpace", {}},
           {"SpaceToDepth", {}}};
 }
@@ -82,10 +86,13 @@ static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
           {"Mul", {}},
           {"Pow", {}},
           {"Sub", {}},
+          {"PRelu", {}},
           {"GridSample", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
-  return {{"Concat", {}}};
+  return {{"Concat", {}},
+          {"Max", {}},
+          {"Min", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};

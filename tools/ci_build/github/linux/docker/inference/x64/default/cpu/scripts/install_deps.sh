@@ -39,8 +39,8 @@ mkdir -p /tmp/src
 cd /tmp/src
 
 echo "Installing cmake"
-GetFile https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-linux-`uname -m`.tar.gz /tmp/src/cmake-3.26.3-linux-`uname -m`.tar.gz
-tar -zxf /tmp/src/cmake-3.26.3-linux-`uname -m`.tar.gz --strip=1 -C /usr
+GetFile https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3-linux-`uname -m`.tar.gz /tmp/src/cmake-3.27.3-linux-`uname -m`.tar.gz
+tar -zxf /tmp/src/cmake-3.27.3-linux-`uname -m`.tar.gz --strip=1 -C /usr
 
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
@@ -63,17 +63,6 @@ fi
 # The EOL for nodejs v18.17.1 LTS is April 2025
 GetFile https://nodejs.org/dist/v18.17.1/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz
 tar --strip 1 -xf /tmp/src/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz -C /usr
-
-# The Python version in CentOS 7's python3 package is no longer supported (3.6) so we will build Python from source.
-echo "Installing Python"
-PYTHON_VERSION="3.8.17"
-GetFile https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz /tmp/src/Python-${PYTHON_VERSION}.tgz
-tar -zxf Python-${PYTHON_VERSION}.tgz
-pushd Python-${PYTHON_VERSION}
-./configure
-make
-make install
-popd
 
 cd /
 rm -rf /tmp/src
