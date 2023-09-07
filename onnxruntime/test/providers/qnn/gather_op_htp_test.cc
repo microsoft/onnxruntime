@@ -37,7 +37,7 @@ static GetTestQDQModelFn<QuantType> BuildQDQGatherOpTestCase(const TestInputDef<
   return [input_def, indices_def, axis](ModelTestBuilder& builder,
                                         std::vector<QuantParams<QuantType>>& output_qparams) {
     NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
     NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     NodeArg* indices = MakeTestInput(builder, indices_def);
