@@ -532,10 +532,9 @@ stages:
 - stage: Nodejs_Packaging_CPU
   dependsOn:
   - Linux_C_API_Packaging_CPU
-  - Linux_C_API_Packaging_GPU_TensorRT_x64
   - MacOS_C_API_Package_Publish
-  - Windows_CI_GPU_DML_Dev
-  - Windows_CI_GPU_DML_Dev_arm64
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
   - job:
@@ -565,13 +564,13 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
       inputs:
-        artifactName: 'drop-nuget-dml'
+        artifactName: 'onnxruntime-win-x64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Win ARM64)'
       inputs:
-        artifactName: 'drop-win-dml-arm64-zip'
+        artifactName: 'onnxruntime-win-arm64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
@@ -595,14 +594,14 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-x64-dml'
-        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/'
+        artifactName: 'drop-onnxruntime-nodejs-win-x64'
+        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win ARM64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-arm64-dml'
-        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/'
+        artifactName: 'drop-onnxruntime-nodejs-win-arm64'
+        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (macOS x86_64)'
@@ -619,7 +618,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
+        artifactName: 'drop-onnxruntime-nodejs-linux-x64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
 
     - task: DownloadPipelineArtifact@0
