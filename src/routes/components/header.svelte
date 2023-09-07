@@ -33,7 +33,7 @@
 				class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
 			>
 				<li><a href="./blogs">Blogs</a></li>
-				<li><a href="./">Docs</a></li>
+				<li><a href="./docs">Docs</a></li>
 				<li>
 					<p>Community</p>
 					<ul class="p-2">
@@ -73,7 +73,7 @@
 	<div class="navbar-center hidden lg:flex">
 		<ul class="menu menu-horizontal px-1">
 			<li><a href="./blogs">Blogs</a></li>
-			<li><a href="./">Docs</a></li>
+			<li><a href="./docs">Docs</a></li>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<li tabindex="0">
 				<details class="z-[1]">
