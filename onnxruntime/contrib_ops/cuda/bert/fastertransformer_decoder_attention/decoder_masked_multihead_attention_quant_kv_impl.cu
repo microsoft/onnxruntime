@@ -95,8 +95,7 @@ inline __device__ uint32_t DequantizeVec<uint32_t>(const char2 ch2, const float 
   union {
     __half2 h2;
     uint32_t whole;
-  }
-  uh;
+  } uh;
   uh.h2 = DequantizeChar2(ch2, unit_scale);
   return uh.whole;
 }
@@ -109,8 +108,7 @@ inline __device__ uint2 DequantizeVec<uint2>(const Char2x2 ch2x2, const float un
       __half2 h2y;
     };
     uint2 whole;
-  }
-  vec;
+  } vec;
   vec.h2x = DequantizeChar2(ch2x2.x, unit_scale);
   vec.h2y = DequantizeChar2(ch2x2.y, unit_scale);
   return vec.whole;
@@ -126,8 +124,7 @@ inline __device__ uint4 DequantizeVec<uint4>(const Char2x4 ch2x4, const float un
       __half2 h2w;
     };
     uint4 whole;
-  }
-  vec;
+  } vec;
   vec.h2x = DequantizeChar2(ch2x4.x, unit_scale);
   vec.h2y = DequantizeChar2(ch2x4.y, unit_scale);
   vec.h2z = DequantizeChar2(ch2x4.z, unit_scale);
@@ -150,8 +147,7 @@ inline __device__ __half MaxAbsFloat(const uint32_t v) {
   union {
     __half2 h2;
     uint32_t whole;
-  }
-  uvec = {.whole = v};
+  } uvec = {.whole = v};
   const __half2 h2 = __habs2(uvec.h2);
   return __hmax(h2.x, h2.y);
 }
@@ -176,8 +172,7 @@ inline __device__ char2 Quantize(const uint32_t v, const float inv_unit_scale) {
   union {
     uint32_t u;
     __half2 h2;
-  }
-  uh2 = {v};
+  } uh2 = {v};
   float2 f2 = __half22float2(uh2.h2);
   return char2{(char)min(max(-127, __float2int_rn(inv_unit_scale * f2.x)), 127),
                (char)min(max(-127, __float2int_rn(inv_unit_scale * f2.y)), 127)};
@@ -222,7 +217,7 @@ template <
     // The type of the scale in memory
     typename TScale>
 __global__ void __launch_bounds__(THREADS_PER_BLOCK)
-masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHeadAttentionQuantKVParams params) {
+    masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHeadAttentionQuantKVParams params) {
   // This kernel contains some code that cannot be compiled on CUDA ARCH 5.3 or lower
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
   (void)(params);
@@ -573,6 +568,8 @@ masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHeadAttentionQuantK
     // K_vec_k k_vec[K_VECS_PER_THREAD];
     qk = 0.0f;
     float k_scales[K_VECS_PER_THREAD];
+    using K_Quant_Vec = typename QuantVec<K_vec_k>::Type;
+    K_Quant_Vec k_quant_vec[K_VECS_PER_THREAD];
     if (ti < tlength) {
       const int mapped_bhi = bbhi + mapped_beam_index * params.num_heads;
       const TScale* scales_in_head = ((const TScale*)params.k_scale) + ((mapped_bhi * params.max_sequence_length + ti) * scales_per_head);
@@ -582,26 +579,23 @@ masked_multihead_attention_quant_kv_kernel(DecoderMaskedMultiHeadAttentionQuantK
         const int in_head_scale_idx = (in_head_elem_idx >> log2_quant_kv_block_size);
         k_scales[ii] = (float)scales_in_head[in_head_scale_idx];
         in_head_elem_idx += QK_ELTS_IN_16B;
+        int jj = ii * params.max_sequence_length + ti;
+        k_quant_vec[ii] = *(const K_Quant_Vec*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]);
       }
-
-      using K_vec_acum = K_vec_k;
-      K_vec_acum qk_acc;
-      zero(qk_acc);
-
-      int jj = ti;
-      using K_Quant_Vec = typename QuantVec<K_vec_k>::Type;
-      K_Quant_Vec k_quant_vec[2];
-      k_quant_vec[0] = *(const K_Quant_Vec*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]);
+    } else {
 #pragma unroll
-      for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
-        jj += params.max_sequence_length;
-        k_quant_vec[ii & 1] = *(const K_Quant_Vec*)(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B]);
-        qk_acc = onnxruntime::cuda::fma(q_vec[ii - 1], DequantizeVec<K_vec_k>(k_quant_vec[(ii - 1) & 1], k_scales[ii - 1]), qk_acc);
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        k_scales[ii] = 0.0f;
       }
-      qk_acc = onnxruntime::cuda::fma(q_vec[K_VECS_PER_THREAD - 1], DequantizeVec<K_vec_k>(k_quant_vec[(K_VECS_PER_THREAD - 1) & 1], k_scales[K_VECS_PER_THREAD - 1]), qk_acc);
-
-      qk = sum(qk_acc);
     }
+
+    using K_vec_acum = K_vec_k;
+    K_vec_acum qk_acc = mul<K_vec_acum, K_vec_k, K_vec_k>(q_vec[0], DequantizeVec<K_vec_k>(k_quant_vec[0], k_scales[0]));
+#pragma unroll
+    for (int ii = 1; ii < K_VECS_PER_THREAD; ++ii) {
+      qk_acc = onnxruntime::cuda::fma(q_vec[ii], DequantizeVec<K_vec_k>(k_quant_vec[ii], k_scales[ii]), qk_acc);
+    }
+    qk = sum(qk_acc);
 
 #pragma unroll
     for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
