@@ -30,20 +30,15 @@ class CaptureStackTrace {
 
 // Get the stack trace. Currently only enabled for a DEBUG build as we require the DbgHelp library.
 std::vector<std::string> GetStackTrace() {
-#ifndef NDEBUG
 // TVM need to run with shared CRT, so won't work with debug helper now
 #if (defined __cpp_lib_stacktrace) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
   return detail::CaptureStackTrace().Trace();
 #else
   return {};
 #endif
-#else
-  return {};
-#endif
 }
 
 namespace detail {
-#ifndef NDEBUG
 #if (defined __cpp_lib_stacktrace) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
 
 std::vector<std::string> CaptureStackTrace::Trace() const {
@@ -58,7 +53,6 @@ std::vector<std::string> CaptureStackTrace::Trace() const {
   return stacktrace;
 }
 
-#endif
 #endif
 }  // namespace detail
 }  // namespace onnxruntime
