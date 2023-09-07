@@ -37,7 +37,6 @@ def get_pipeline_names():
         "orttraining-linux-gpu-ci-pipeline",
         "orttraining-ortmodule-distributed",
         # checks
-        "onnxruntime-python-checks-ci-pipeline",
         "onnxruntime-binary-size-checks-ci-pipeline",
     ]
 

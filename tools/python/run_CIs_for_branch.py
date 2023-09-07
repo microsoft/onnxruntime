@@ -101,7 +101,11 @@ def main():
     for pipeline in pipelines_to_run:
         az_out = _run_az_pipelines_command(["run", "--branch", branch, "--name", pipeline])
         run_output = json.loads(az_out.stdout)
-        print(f"{pipeline} build url:{run_output.url}")
+        if "id" in run_output:
+            build_url = f"https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId={run_output['id']}"
+            print(f"{pipeline} build results: {build_url}&view=results")
+        else:
+            raise ValueError("Build id was not found in az output:\n" + run_output)
 
 
 if __name__ == "__main__":
