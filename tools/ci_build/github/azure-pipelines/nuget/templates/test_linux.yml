@@ -72,7 +72,7 @@ stages:
           /bin/bash -c "
             set -ex; \
             pushd /build; \
-            bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh /build/nuget-artiface $(NuGetPackageVersionNumber); \
+            bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh /build/nuget-artifact $(NuGetPackageVersionNumber); \
             popd
             "
       displayName: 'Run Package Test'
