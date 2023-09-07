@@ -44,7 +44,7 @@ RUN apt-get install -y valgrind
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
 
-# Build final image from base. Builds ORT.
+# Build final image from base.
 FROM base as final
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
