@@ -112,7 +112,7 @@
 					<a class="underline" href="http://">More interested in training? More info here.</a>
 				</p> -->
 				<p class="text-lg mt-2">
-					<a class="text-blue-500" href="{base}/getting-started">Don't see your favourite platform? See the many others we support →</a>
+					<a class="text-blue-500" href="./getting-started">Don't see your favourite platform? See the many others we support →</a>
 				</p>
 			</div>
 			<div class="hidden lg:inline">

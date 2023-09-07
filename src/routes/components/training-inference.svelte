@@ -10,7 +10,7 @@
 					ONNX Runtime can be used to accelerate both large model training and on-device training.
 				</p>
 				<div class="card-actions">
-					<a href="{base}/training" class="btn btn-primary">ORT Training Docs →</a>
+					<a href="./training" class="btn btn-primary">ORT Training Docs →</a>
 				</div>
 			</div>
 			<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
@@ -29,7 +29,7 @@
 					services across Office, Azure, Bing, as well as dozens of community projects.
 				</p>
 				<div class="card-actions">
-					<a href="{base}/inference" class="btn btn-primary">Ort Inference Docs →</a>
+					<a href="./inference" class="btn btn-primary">Ort Inference Docs →</a>
 				</div>
 			</div>
 			<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
