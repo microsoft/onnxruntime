@@ -133,6 +133,44 @@ stages:
             onnxruntimecpubuild \
             /bin/bash -c "
               set -ex; \
+              export src_dir=/onnxruntime_src; \
+              export build_dir=/build; \
+
+              echo "Install Python Deps"
+              python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq; \
+              cp $src_dir/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $src_dir/requirements.txt; \
+              echo "Test ORT with the latest ONNX release."" ; \
+              sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $build_dir/requirements.txt ; \
+              python3 -m pip install -r $build_dir/requirements.txt ; \
+              mkdir $build_dir/requirements_torch_cpu/ ; \
+              cp $src_dir/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $build_dir/requirements_torch_cpu/requirements.txt; \
+              python3 -m pip install -r $build_dir/requirements_torch_cpu/requirements.txt; \
+
+              echo "Install Release python package"; \
+              rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11; \
+              python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl; \
+
+              echo "Run Release unit tests"; \
+              pushd $build_dir/Release/; \
+              python3 $src_dir/tools/ci_build/build.py --build_dir $build_dir --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path ""; \
+              pod
+              "
+        displayName: 'Run Release unit tests'
+
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+            /bin/bash -c "
+              set -ex; \
               pushd /onnxruntime_src/csharp; \
               dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
               dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
@@ -140,45 +178,6 @@ stages:
               popd
               "
         displayName: 'Dotnet build C# sln and Test'
-
-      - task: CmdLine@2
-        displayName: 'Install python deps'
-        inputs:
-          script: |
-             set -e -x
-             python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
-             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-             # Test ORT with the latest ONNX release.
-             sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-             python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-             mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
-             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-             python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-
-      - task: CmdLine@2
-        displayName: 'Install Release python package'
-        inputs:
-          script: |
-             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-             python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-
-      - task: PythonScript@0
-        displayName: 'Run Release unit tests'
-        inputs:
-           scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-           workingDirectory: $(Build.BinariesDirectory)/Release
-           arguments: >-
-              --build_dir $(Build.BinariesDirectory)
-              --cmake_generator Ninja
-              --config Release
-              --test
-              --skip_submodule_sync
-              --build_shared_lib
-              --parallel
-              --build_wheel
-              --enable_onnx_tests
-              --enable_transformers_tool_test
-              --ctest_path ""
 
       - task: CmdLine@2
         displayName: 'Install Debug python package'
