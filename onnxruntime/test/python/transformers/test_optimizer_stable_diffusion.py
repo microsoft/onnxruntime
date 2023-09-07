@@ -35,7 +35,7 @@ class TestStableDiffusionOptimization(unittest.TestCase):
 
                 self.assertEqual(len(onnx_model.get_nodes_by_op_type(op_type)), count)
 
-    def verify_clip_optimizer(self, clip_onnx_path, optimized_clip_onnx_path, expected_counters):
+    def verify_clip_optimizer(self, clip_onnx_path, optimized_clip_onnx_path, expected_counters, float16=False):
         fusion_options = FusionOptions("clip")
         m = optimize_model(
             clip_onnx_path,
@@ -48,12 +48,14 @@ class TestStableDiffusionOptimization(unittest.TestCase):
         )
         self.verify_node_count(m, expected_counters, "test_clip")
 
-        m.convert_float_to_float16(
-            keep_io_types=True,
-        )
+        if float16:
+            m.convert_float_to_float16(
+                keep_io_types=True,
+            )
         print(m.get_operator_statistics())
         m.save_model_to_file(optimized_clip_onnx_path)
 
+        threshold = 1e-2 if float16 else 3e-3
         max_abs_diff, passed = run_test(
             clip_onnx_path,
             optimized_clip_onnx_path,
@@ -65,14 +67,14 @@ class TestStableDiffusionOptimization(unittest.TestCase):
             seed=1,
             verbose=False,
             rtol=1e-1,
-            atol=1e-2,
+            atol=threshold,
             input_ids_name="input_ids",
             segment_ids_name=None,
             input_mask_name=None,
             mask_type=0,
         )
 
-        self.assertLess(max_abs_diff, 1e-2)
+        self.assertLess(max_abs_diff, threshold)
         self.assertTrue(passed)
 
     @pytest.mark.slow
@@ -102,6 +104,7 @@ class TestStableDiffusionOptimization(unittest.TestCase):
                 "Gelu": 0,
                 "BiasGelu": 0,
             },
+            float16=True,
         )
 
     @pytest.mark.slow
