@@ -33,7 +33,7 @@ pip install --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_pa
 
 The onnxruntime-extensions package depends on onnx and onnxruntime.
 
-#### <strong>on Linux/macOS</strong>
+##### on Linux/MacOS
 
 Please make sure the compiler toolkit like gcc(later than g++ 8.0) or clang are installed before the following command
 
