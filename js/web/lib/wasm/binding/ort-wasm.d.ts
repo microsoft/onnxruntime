@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-declare namespace JSEP {
+export declare namespace JSEP {
   type BackendType = unknown;
   type AllocFunction = (size: number) => number;
   type FreeFunction = (size: number) => number;
@@ -9,7 +9,11 @@ declare namespace JSEP {
   type DownloadFunction = (gpuDataId: number, dataOffset: number, size: number) => Promise<void>;
   type CreateKernelFunction = (name: string, kernel: number, attribute: unknown) => void;
   type ReleaseKernelFunction = (kernel: number) => void;
-  type RunFunction = (kernel: number, contextDataOffset: number) => number;
+  type RunFunction = (kernel: number, contextDataOffset: number, sessionState: SessionState) => number;
+  export interface SessionState {
+    sessionId: number;
+    errors: Array<Promise<string|null>>;
+  }
 }
 
 export interface OrtWasmModule extends EmscriptenModule {
@@ -60,6 +64,38 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtEndProfiling(sessionHandle: number): number;
   // #endregion
 
+  // #region ORT Training APIs
+  _OrtTrainingLoadCheckpoint?(dataOffset: number, dataLength: number): number;
+
+  _OrtTrainingReleaseCheckpoint?(checkpointHandle: number): void;
+
+  _OrtTrainingCreateSession?
+      (sessionOptionsHandle: number, checkpointHandle: number, trainOffset: number, trainLength: number,
+       evalOffset: number, evalLength: number, optimizerOffset: number, optimizerLength: number): number;
+
+  _OrtTrainingLazyResetGrad?(trainingHandle: number): number;
+
+  _OrtTrainingRunTrainStep?
+      (trainingHandle: number, inputsOffset: number, inputCount: number, outputsOffset: number, outputCount: number,
+       runOptionsHandle: number): number;
+
+  _OrtTrainingOptimizerStep?(trainingHandle: number, runOptionsHandle: number): number;
+
+  _OrtTrainingEvalStep?
+      (trainingHandle: number, inputsOffset: number, inputCount: number, outputsOffset: number, outputCount: number,
+       runOptionsHandle: number): number;
+
+  _OrtTrainingGetParametersSize?(trainingHandle: number, paramSizeT: number, trainableOnly: boolean): number;
+
+  _OrtTrainingCopyParametersToBuffer?
+      (trainingHandle: number, parametersBuffer: number, parameterCount: number, trainableOnly: boolean): number;
+
+  _OrtTrainingCopyParametersFromBuffer?
+      (trainingHandle: number, parametersBuffer: number, parameterCount: number, trainableOnly: boolean): number;
+
+  _OrtTrainingReleaseSession?(trainingHandle: number): void;
+  // #endregion
+
   // #region config
   mainScriptUrlOrBlob?: string|Blob;
   // #endregion
@@ -71,7 +107,10 @@ export interface OrtWasmModule extends EmscriptenModule {
        releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction): void;
 
   _JsepOutput(context: number, index: number, data: number): number;
+  _JsepGetNodeName(kernel: number): number;
 
+  jsepOnRunStart?(sessionId: number): void;
+  jsepOnRunEnd?(sessionId: number): Promise<void>;
   jsepRunPromise?: Promise<number>;
   // #endregion
 }

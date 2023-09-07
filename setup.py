@@ -108,8 +108,8 @@ manylinux_tags = [
     "manylinux2014_ppc64",
     "manylinux2014_ppc64le",
     "manylinux2014_s390x",
-    "manylinux_2_27_x86_64",
-    "manylinux_2_27_aarch64",
+    "manylinux_2_28_x86_64",
+    "manylinux_2_28_aarch64",
 ]
 is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 

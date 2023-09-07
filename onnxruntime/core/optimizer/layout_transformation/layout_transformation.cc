@@ -150,7 +150,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
 
   const auto max_node_idx = graph.MaxNodeIndex();
   OptimizeResult result = onnx_transpose_optimization::Optimize(*api_graph, execution_provider.Type(),
-                                                                PostLayoutTransformCostCheck);
+                                                                PostLayoutTransformCostCheck, OrtExtendedHandlers());
 
   if (result.error_msg) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Layout/Transpose optimization for ", execution_provider.Type(),
