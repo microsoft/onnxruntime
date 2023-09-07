@@ -51,19 +51,34 @@ stages:
         script: |
           ln -sf /data/models $(Build.BinariesDirectory)
 
-    - task: Bash@3
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.packages_ubuntu_cuda11_8_tensorrt8_6
+        Context: tools/ci_build/github/linux/docker/
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimepackagestest
+
+    - bash: |
+        mkdir -p $HOME/.onnx
+        docker run --rm \
+          --volume /data/onnx:/data/onnx:ro \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          -e OnnxRuntimeBuildDirectory=/build \
+          -e DisableContribOps=$(DisableContribOps) \
+          -e DisableMlOps=$(DisableMlOps) \
+          -e IsReleaseBuild=$(IsReleaseBuild) \
+          -e PACKAGENAME=${{ parameters.NugetPackageName }} \
+          onnxruntimecpubuild \
+          /bin/bash -c "
+            set -ex; \
+            pushd /build; \
+            . /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh /build/nuget-artiface $(NuGetPackageVersionNumber); \
+            popd
+            "
       displayName: 'Run Package Test'
-      inputs:
-        targetType: filePath
-        filePath: '$(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh'
-        arguments: '$(Build.BinariesDirectory)/nuget-artifact $(NuGetPackageVersionNumber)'
-        workingDirectory: $(Build.BinariesDirectory)
-      env:
-        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
-        DisableContribOps: $(DisableContribOps)
-        DisableMlOps: $(DisableMlOps)
-        IsReleaseBuild: $(IsReleaseBuild)
-        PACKAGENAME: ${{ parameters.NugetPackageName }}
 
     - template: ../../templates/component-governance-component-detection-steps.yml
       parameters:
