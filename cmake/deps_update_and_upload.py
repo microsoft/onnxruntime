@@ -14,10 +14,10 @@ parser.add_argument(
     "--root-path", type=str, default=tempfile.gettempdir(), help="Target root path for downloaded files"
 )
 parser.add_argument("--version", type=str, default="1.0.82", help="Package version to publish")
-parser.add_argument("--do-upload", action="store_false", help="Upload the package to Azure Artifacts")
+parser.add_argument("--do-upload", action="store_true", help="Upload the package to Azure Artifacts")
 args = parser.parse_args()
 
-with open("cmake/deps.txt", "r") as file:
+with open("cmake/deps.txt") as file:
     text = file.read()
 
 lines = [line for line in text.split("\n") if not line.startswith("#") and ";" in line]

@@ -1,24 +1,24 @@
 //// Copyright (c) Microsoft Corporation. All rights reserved.
 //// Licensed under the MIT License.
 //
-//#include "core/providers/cpu/tensor/affine_grid.h"
+// #include "core/providers/cpu/tensor/affine_grid.h"
 //
-//#include "core/common/common.h"
-//#include "core/providers/op_kernel_type_control.h"
-//#include "core/util/math_cpuonly.h"
+// #include "core/common/common.h"
+// #include "core/providers/op_kernel_type_control.h"
+// #include "core/util/math_cpuonly.h"
 //
-//namespace onnxruntime {
+// namespace onnxruntime {
 //
-//namespace op_kernel_type_control {
-//ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+// namespace op_kernel_type_control {
+// ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
 //    kCpuExecutionProvider, kOnnxDomain, AffineGrid, Output, 0,
 //    float, double);
 //}
 //
-//using EnabledEyeLikeDataTypes = ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+// using EnabledEyeLikeDataTypes = ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
 //    kCpuExecutionProvider, kOnnxDomain, AffineGrid, Output, 0);
 //
-//ONNX_CPU_OPERATOR_KERNEL(
+// ONNX_CPU_OPERATOR_KERNEL(
 //    AffineGrid,
 //    9,
 //    KernelDefBuilder()
@@ -31,7 +31,7 @@
 //    AffineGrid);
 //
 //
-//Status AffineGrid::Compute(OpKernelContext* context) const {
+// Status AffineGrid::Compute(OpKernelContext* context) const {
 //  const auto& theta = context->RequiredInput<Tensor>(0);
 //
 //  const auto& theta_shape = theta.Shape();
@@ -42,9 +42,9 @@
 //
 //  const auto& size = context->RequiredInput<Tensor>(1);
 //  const auto& size_shape = size.Shape();
-//  int64_t N, C, D, H, W; 
+//  int64_t N, C, D, H, W;
 //  if (size_shape.NumDimensions() == 4 && get_check_2d_grid_sample_consistency(theta_shape, size_shape, N, C, H, W)) {
-//    
+//
 //  } else if (size_shape.NumDimensions() == 5 && get_check_3d_grid_sample_consistency(theta_shape, size_shape, N, C, D, H, W)) {
 //
 //  } else {
