@@ -269,7 +269,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
                                                        const std::string& function_name,
-                                                       const InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+                                                       const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                                                        const std::unordered_map<std::string, int>& domain_version_map,
                                                        const SchemaRegistryManager& schema_registry,
                                                        const logging::Logger& logger,
@@ -315,6 +315,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
       schema_registry.GetLastReleasedOpsetVersions(false);
 
   std::unordered_map<std::string, int> func_domain_to_version;
+  func_domain_to_version.reserve(onnx_func_proto->opset_import().size());
   for (auto& opSet : onnx_func_proto->opset_import()) {
     const auto& domain = opSet.domain();
     const auto version = gsl::narrow_cast<int>(opSet.version());
@@ -332,18 +333,16 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
     }
   }
 
+  // Instantiate once and reuse for all shape inference calls.
+  constexpr bool check_type_true = true;
+  constexpr int error_mode_throw = 1;
+  constexpr bool enable_data_propagation_false = false;
+  static const ONNX_NAMESPACE::ShapeInferenceOptions inference_options{check_type_true, error_mode_throw, enable_data_propagation_false};
+
+  // model_local_functions is a member of Model instance and will be alive at the time this is invoked.
   op_schema->TypeAndShapeInferenceFunction(
-      [onnx_func_proto, func_domain_to_version, &model_local_functions](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-
-        constexpr bool check_type_true = true;
-        constexpr int error_mode_throw = 1;
-        constexpr bool enable_data_propagation_false = false;
-        ONNX_NAMESPACE::ShapeInferenceOptions options{check_type_true, error_mode_throw, enable_data_propagation_false};
-
-        std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> map_copy(model_local_functions.begin(),
-                                                                                       model_local_functions.end());
-        std::unordered_map<std::string, TensorShapeProto> empty_map;
+      [onnx_func_proto, func_domain_to_version = std::move(func_domain_to_version), &model_local_functions](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto* schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
 
         // https://github.com/microsoft/onnxruntime/issues/17061
         // We are passing a nullptr for the symbol table, because symbol table must be global
@@ -351,8 +350,8 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
         // the same symbolic shapes and are marked for memory re-use. This is a Temp fix.
         constexpr ONNX_NAMESPACE::shape_inference::SymbolTableImpl* symbolTable = nullptr;
         ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version,
-                                                                   schema_registry, ctx, options, map_copy,
-                                                                   symbolTable, &empty_map);
+                                                                   schema_registry, ctx, inference_options, model_local_functions,
+                                                                   symbolTable, nullptr);
       });
 
   op_schema->Finalize();

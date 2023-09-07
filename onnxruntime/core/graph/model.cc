@@ -91,10 +91,11 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(version);
   }
 
+  model_local_functions_.reserve(model_local_functions.size());
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_functions_[function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name())] = func_ptr;
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()), func_ptr);
   }
 
   model_local_function_templates_.reserve(model_proto_.functions().size());
@@ -214,9 +215,9 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
   }
 
-  std::vector<const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
+  model_local_functions_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
-    model_local_functions_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = &func;
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), &func);
   }
 
   model_local_function_templates_.reserve(model_proto_.functions().size());
