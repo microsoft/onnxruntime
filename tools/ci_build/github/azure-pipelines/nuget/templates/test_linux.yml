@@ -60,6 +60,8 @@ stages:
 
     - bash: |
         docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
           -e OnnxRuntimeBuildDirectory='/build' \
           -e DisableContribOps='$(DisableContribOps)' \
           -e DisableMlOps='$(DisableMlOps)' \
