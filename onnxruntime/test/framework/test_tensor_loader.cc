@@ -35,8 +35,8 @@ TEST(CApiTensorTest, load_simple_float_tensor_not_enough_space) {
 
   ASSERT_STATUS_NOT_OK(
       utils::TensorProtoToOrtValue(Env::Default(), nullptr, p,
-                                      MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
-                                      value));
+                                   MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
+                                   value));
 }
 
 TEST(CApiTensorTest, load_simple_float_tensor_membuffer) {
@@ -55,8 +55,8 @@ TEST(CApiTensorTest, load_simple_float_tensor_membuffer) {
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), nullptr, p,
-                                                   MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
-                                                   value));
+                                                MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
+                                                value));
   float* real_output;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
   ASSERT_EQ(ort_st, nullptr) << g_ort->GetErrorMessage(ort_st);
@@ -187,8 +187,8 @@ TEST(CApiTensorTest, load_huge_tensor_with_external_data) {
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   ASSERT_STATUS_OK(
-      utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                  MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value));
+      utils::TensorProtoToOrtValue(Env::Default(), nullptr, p,
+                                   MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value));
 
   int* buffer;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&buffer);

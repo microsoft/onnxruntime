@@ -161,8 +161,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       } else {
         const Tensor& tensor = outputs[i].Get<Tensor>();
         Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                             execution_providers.Get(cpu_ep_type)->CreatePreferredAllocators()[0], cpu_value,
-                             tensor.Strides());
+                             execution_providers.Get(cpu_ep_type)->CreatePreferredAllocators()[0], cpu_value);
         ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }
 
