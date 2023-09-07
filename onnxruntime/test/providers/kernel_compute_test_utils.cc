@@ -58,8 +58,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       OrtValue gpu_value;
       const Tensor& tensor = data.value_.Get<Tensor>();
       Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           execution_providers.Get(ep_type)->CreatePreferredAllocators()[0], gpu_value,
-                           tensor.Strides());
+                           execution_providers.Get(ep_type)->CreatePreferredAllocators()[0], gpu_value);
       ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *gpu_value.GetMutable<Tensor>()));
       initializer_map[name] = gpu_value;
     }
