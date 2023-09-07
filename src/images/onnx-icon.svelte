@@ -6,11 +6,12 @@
 <svg
 				version="1.0"
 				xmlns="http://www.w3.org/2000/svg"
-				width="{width}.000000pt"
-				height="{height}.000000pt"
+				width="{width}pt"
+				height="{height}pt"
 				viewBox="0 0 175.000000 165.000000"
 				preserveAspectRatio="xMidYMid meet"
 				class="fill-current text-base-300 invert img"
+				stroke="currentColor" 
 			>
 				<g transform="translate(0.000000,165.000000) scale(0.100000,-0.100000)">
 					<path

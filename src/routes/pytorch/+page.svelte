@@ -1,6 +1,9 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import imgsrc from '../../images/ONNX-Icon.svg';
+	import ImagePt1 from '../../images/undraw/image_PT1.svelte';
+	import ImagePt2 from '../../images/undraw/image_PT2.svelte';
+	import ImagePt3 from '../../images/undraw/image_PT3.svelte';
 	const title = 'PyTorch + ONNX Runtime';
 	const description =
 		'PyTorch leads the deep learning landscape with its readily digestible and flexible API; the large number of ready-made models available, particularly in the natural language (NLP) domain; as well as its domain specific libraries.';
@@ -12,11 +15,7 @@
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 		<div class="card bg-base-300">
 			<figure class="px-10 pt-10">
-				<img
-					src=""
-					alt=""
-					class="rounded-xl"
-				/>
+				<ImagePt1/>
 			</figure>
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Deploy anywhere</h2>
@@ -25,11 +24,7 @@
 		</div>
 		<div class="card bg-base-300">
 			<figure class="px-10 pt-10">
-				<img
-					src=""
-					alt=""
-					class="rounded-xl"
-				/>
+				<ImagePt2/>
 			</figure>
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Boost performance</h2>
@@ -38,11 +33,7 @@
 		</div>
 		<div class="card bg-base-300">
 			<figure class="px-10 pt-10">
-				<img
-					src=""
-					alt=""
-					class="rounded-xl"
-				/>
+				<ImagePt3/>
 			</figure>
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Improve time to market</h2>
