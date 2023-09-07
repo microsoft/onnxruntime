@@ -48,3 +48,6 @@ RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
 FROM base as final
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
+RUN adduser --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER
