@@ -147,8 +147,8 @@ stages:
               python3 -m pip install -r $build_dir/requirements_torch_cpu/requirements.txt; \
 
               echo "Install Release python package"; \
-              rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11; \
-              python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl; \
+              rm -rf $build_dir/Release/onnxruntime $build_dir/Release/pybind11; \
+              python3 -m pip install $build_dir/Release/dist/*.whl; \
 
               echo "Run Release unit tests"; \
               pushd $build_dir/Release/; \
