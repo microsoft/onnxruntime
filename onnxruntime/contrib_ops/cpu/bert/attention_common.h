@@ -76,6 +76,7 @@ struct PackedAttentionParameters {
   int v_hidden_size;      // hidden size of V
   int v_head_size;        // hidden size per head of V
   int num_heads;
+  int num_kv_heads;
   float scale;
   int token_count;
   int valid_token_count;
