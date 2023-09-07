@@ -44,35 +44,36 @@ struct Float8E4M3FN {
     std::memcpy(&b, &v, sizeof(b));
 
     val = static_cast<uint8_t>((b & 0x80000000) >> 24);  // sign
-    if ((b & 0x7fc00000) == 0x7fc00000) {
-      val |= 0x7f;
-    } else if ((b & 0x7fffffff) == 0x7f800000) {
+    if ((b & 0x7fffffff) == 0x7f800000) {                // infinity
       if (saturate) {
         val |= 126;
       } else {
         val |= 0x7f;
       }
+    } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
+      val |= 0x7f;
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
       if (e != 0) {
-        if (e < 117) {         // 0b1110101
-        } else if (e < 118) {  // 0b1110110
-          val |= 1;
-          if ((m >> 23) & 1) {
+        if (e < 117) {
+        } else if (e < 121) {
+          // denormalized number
+          auto d = 120 - e;
+          if (d < 3) {
+            val |= 1 << (2 - d);
+            val |= m >> (21 + d);
+          } else if (m > 0) {
+            val |= 1;
+          }
+          auto mask = 1 << (20 + d);
+          if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
             // rounding
             val += 1;
           }
-        } else if (e < 121) {  // 127 - 7 + 1 // 0b1111001
-          auto d = 120 - e;    // 0b1111000
-          val |= 1 << (2 - d);
-          val |= m >> (21 + d);
-          if ((m >> (20 + d)) & 1) {
-            // rounding
-            val += 1;
-          }
-        } else if (e < 136) {  // 127 + 8 + 1 // 0b10001000
-          auto ex = e - 120;   // 127 - 7
+        } else if (e < 136) {
+          // normalized number
+          auto ex = e - 120;
           if (ex == 0) {
             val |= 0x4;
             val |= m >> 21;
@@ -83,7 +84,7 @@ struct Float8E4M3FN {
               val &= 0xFE;
             }
           }
-          if ((m & 0x80000) && ((m & 0x100000) || (m & 0x7C000))) {
+          if ((m & 0x80000) && ((m & 0x100000) || (m & 0x7FFFF))) {
             if ((val & 0x7F) < 0x7E) {
               // rounding
               val += 1;
@@ -205,36 +206,37 @@ struct Float8E4M3FNUZ {
     std::memcpy(&b, &v, sizeof(b));
 
     val = static_cast<uint8_t>((b & 0x80000000) >> 24);  // sign
-    if ((b & 0x7fc00000) == 0x7fc00000) {
-      val = 0x80;
-    } else if ((b & 0x7fffffff) == 0x7f800000) {
+    if ((b & 0x7fffffff) == 0x7f800000) {                // infinity
       if (saturate) {
         val |= 0x7F;
       } else {
         // infinity
         val = 0x80;
       }
+    } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
+      val = 0x80;
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
       if (e != 0) {
         if (e < 116) {
-        } else if (e < 117) {
-          val |= 1;
-          if ((m >> 23) & 1) {
-            // rounding
-            val += 1;
-          }
-        } else if (e < 120) {  // 127 - 8 + 1
+        } else if (e < 120) {
+          // denormalized number
           auto d = 119 - e;
-          val |= 1 << (2 - d);
-          val |= m >> (21 + d);
-          if ((m >> (20 + d)) & 1) {
+          if (d < 3) {
+            val |= 1 << (2 - d);
+            val |= m >> (21 + d);
+          } else if (m > 0) {
+            val |= 1;
+          }
+          auto mask = 1 << (20 + d);
+          if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
             // rounding
             val += 1;
           }
-        } else if (e < 135) {  // 127 + 8
-          auto ex = e - 119;   // 127 - 7
+        } else if (e < 135) {
+          // normalized number
+          auto ex = e - 119;
           if (ex == 0) {
             val |= 0x4;
             val |= m >> 21;
@@ -242,7 +244,7 @@ struct Float8E4M3FNUZ {
             val |= ex << 3;
             val |= m >> 20;
           }
-          if (m & 0x80000) {
+          if ((m & 0x80000) && ((m & 0x100000) || (m & 0x7FFFF))) {
             if ((val & 0x7F) < 0x7F) {
               // rounding
               val += 1;
@@ -357,32 +359,32 @@ struct Float8E5M2 {
     uint32_t b;
     std::memcpy(&b, &v, sizeof(b));
 
-    val = (b & 0x80000000) >> 24;  // sign
-    if ((b & 0x7fc00000) == 0x7fc00000) {
-      val |= 0x7f;
-    } else if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
+    val = (b & 0x80000000) >> 24;          // sign
+    if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
       if (saturate) {
         val |= 0x7B;
       } else {
         val |= 0x7C;
       }
+    } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
+      val |= 0x7f;
     } else {
       uint32_t e = (b & 0x7F800000) >> 23;  // exponent
       uint32_t m = b & 0x007FFFFF;          // mantissa
 
       if (e != 0) {
         if (e < 110) {
-        } else if (e < 111) {
-          val |= 1;
-          if ((m >> 23) & 1) {
-            // rounding
-            val += 1;
-          }
-        } else if (e < 113) {  // 127 - 15 + 1
+        } else if (e < 113) {
+          // denormalized number
           auto d = 112 - e;
-          val |= 1 << (1 - d);
-          val |= m >> (22 + d);
-          if ((m >> (21 + d)) & 1) {
+          if (d < 2) {
+            val |= 1 << (1 - d);
+            val |= m >> (22 + d);
+          } else if (m > 0) {
+            val |= 1;
+          }
+          auto mask = 1 << (21 + d);
+          if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
             // rounding
             val += 1;
           }
@@ -513,40 +515,41 @@ struct Float8E5M2FNUZ {
     uint32_t b;
     std::memcpy(&b, &v, sizeof(b));
 
-    val = (b & 0x80000000) >> 24;  // sign
-    if ((b & 0x7fc00000) == 0x7fc00000) {
-      val = 0x80;
-    } else if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
+    val = (b & 0x80000000) >> 24;          // sign
+    if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
       if (saturate) {
         val |= 0x7F;
       } else {
         val = 0x80;
       }
+    } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
+      val = 0x80;
     } else {
       uint32_t e = (b & 0x7F800000) >> 23;  // exponent
       uint32_t m = b & 0x007FFFFF;          // mantissa
 
       if (e != 0) {
         if (e < 109) {
-        } else if (e < 110) {
-          val |= 1;
-          if ((m >> 23) & 1) {
-            // rounding
-            val += 1;
-          }
-        } else if (e < 112) {  // 127 - 16 + 1
+        } else if (e < 112) {
+          // denormalized number
           auto d = 111 - e;
-          val |= 1 << (1 - d);
-          val |= m >> (22 + d);
-          if ((m >> (21 + d)) & 1) {
+          if (d < 2) {
+            val |= 1 << (1 - d);
+            val |= m >> (22 + d);
+          } else if (m > 0) {
+            val |= 1;
+          }
+          auto mask = 1 << (21 + d);
+          if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
             // rounding
             val += 1;
           }
-        } else if (e < 143) {  // 127 + 15 + 1
+        } else if (e < 143) {
+          // normalized number
           auto ex = e - 111;
           val |= ex << 2;
           val |= m >> 21;
-          if (m & 0x100000) {
+          if ((m & 0x100000) && ((m & 0xFFFFF) || (m & 0x200000))) {
             if ((val & 0x7F) < 0x7F) {
               // rounding
               val += 1;
@@ -554,7 +557,7 @@ struct Float8E5M2FNUZ {
               val = 0x80;
             }
           }
-        } else if ((e == 255) && (m == 0)) {  // inf
+        } else if ((e == 255) && (m == 0)) {
           val = 0x80;
         } else if (saturate) {
           val |= 0x7F;
