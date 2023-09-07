@@ -67,10 +67,10 @@ stages:
 
       - template: templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2_28_cpu
-          Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root"
-          Repository: onnxruntimecpubuildpythonx86_64
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
+          Context: tools/ci_build/github/linux/docker/
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
+          Repository: onnxruntimecpubuild
 
       - template: templates/linux-build-step-with-cache.yml
         parameters:
@@ -85,7 +85,6 @@ stages:
               inputs:
                 script: |
                   mkdir -p $HOME/.onnx
-                  mkdir -p $(Pipeline.Workspace)/ccache
                   docker run --rm \
                     --volume /data/onnx:/data/onnx:ro \
                     --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -96,12 +95,12 @@ stages:
                     -e NIGHTLY_BUILD \
                     -e BUILD_BUILDNUMBER \
                     -e CCACHE_DIR=/cache \
-                    onnxruntimecpubuildpythonx86_64 \
+                    onnxruntimecpubuild \
                     /bin/bash -c "
                       set -ex; \
                       ccache -s; \
                       /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                        --build_dir /build --cmake_generator 'Unix Makefiles' \
+                        --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug Release \
                         --skip_submodule_sync \
                         --build_shared_lib \
@@ -116,43 +115,31 @@ stages:
                       ccache -z"
                 workingDirectory: $(Build.SourcesDirectory)
 
-      - task: UseDotNet@2
-        displayName: "Setup dotnet"
-        inputs:
-          version: '6.0.408'
+      - script: |
+          ln -s /data/models $(Build.BinariesDirectory)/models
+        displayName: link model dir
 
-      - task: DotNetCoreCLI@2
-        displayName: "Restore C# packages"
-        inputs:
-          command: 'restore'
-          projects: '$(Build.SourcesDirectory)/csharp/OnnxRuntime.DesktopOnly.CSharp.sln'
-
-      # the props file was generated with docker container paths. convert to the 'real' path by replacing the
-      # the container path of '/build'. The '>' prefix is to match the closing angle bracket of the tag.
-      # e.g. <OnnxRuntimeBuildDirectory>/build/... so we only match the start of a path.
-      # We use powershell so we don't need extra escaping of the '/' chars in the path.
-      - task: CmdLine@2
-        displayName: 'Update props from docker path to local and create models link'
-        inputs:
-          script: |
-             pwsh -Command '(Get-Content $(Build.SourcesDirectory)/csharp/Directory.Build.props) -replace ">/build", ">$(Build.BinariesDirectory)" | Set-Content $(Build.SourcesDirectory)/csharp/Directory.Build.props'
-             cat $(Build.SourcesDirectory)/csharp/Directory.Build.props
-             ln -s /data/models $(Build.BinariesDirectory)/models
-
-      - task: DotNetCoreCLI@2
-        displayName: 'dotnet build C# sln'
-        inputs:
-          command: 'build'
-          projects: '$(Build.SourcesDirectory)/csharp/OnnxRuntime.DesktopOnly.CSharp.sln'
-
-      - task: DotNetCoreCLI@2
-        displayName: 'dotnet test C#'
-        inputs:
-          command: 'test'
-          projects: '$(Build.SourcesDirectory)/csharp/OnnxRuntime.DesktopOnly.CSharp.sln'
-          # extra logging so all tests are listed in output to validate what's actually run
-          arguments: '-f net6.0 --no-build -l "console;verbosity=normal"'
-          workingDirectory: $(Build.SourcesDirectory)/csharp
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+            /bin/bash -c "
+              set -ex; \
+              pushd /onnxruntime_src/csharp; \
+              dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
+              dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
+              dotnet test /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln -f net6.0 --no-build -l \"console;verbosity=normal\"; \
+              popd
+              "
+        displayName: 'Dotnet build C# sln and Test'
 
       - task: CmdLine@2
         displayName: 'Install python deps'
