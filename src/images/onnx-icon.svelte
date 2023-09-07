@@ -1,7 +1,7 @@
 <!-- TODO: Make logo centered & accurate -->
 <script lang="ts">
-	export let width: number;
-	export let height: number;
+	export let width: number = 175;
+	export let height: number = 175;
 </script>
 <svg
 				version="1.0"

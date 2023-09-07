@@ -1,9 +1,9 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
-	import imgsrc from '../../images/ONNX-Icon.svg';
 	const title = 'Generative AI + ONNX Runtime';
 	const description =
 		'Integrate the power of generative AI in your apps and services with ONNX Runtime. Broad platform support and deep optimizations enable you to benefit from state of the art models for image synthesis, text generation, and more.';
+	const imgsrc = 'onnxruntimelogo'
 	const imgalt = 'ONNX Runtime Logo';
 </script>
 

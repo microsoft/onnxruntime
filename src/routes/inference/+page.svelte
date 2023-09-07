@@ -1,10 +1,13 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
-	import imgsrc from '../../images/ONNX-Icon.svg';
-	let title = 'ONNX Runtime for Inferencing';
-	let description =
+	import ImageInference2 from '../../images/undraw/image_inference2.svelte';
+	import ImageInference1 from '../../images/undraw/image_inference1.svg'
+	import OnnxIcon from '../../images/onnx-icon.svelte';
+	const title = 'ONNX Runtime for Inferencing';
+	const description =
 		'ONNX Runtime Inference powers machine learning models in key Microsoft products and services across Office, Azure, Bing, as well as thousands of community projects.';
-	let imgalt = 'ONNX Runtime Logo';
+	const imgsrc = 'onnxruntimelogo'
+	const imgalt = 'ONNX Runtime Logo';
 </script>
 
 <div class="container mx-auto px-10 my-10">
@@ -20,7 +23,9 @@
 				>Learn how to build ONNX Runtime for inferencing →</a
 			>
 		</div>
-		<img class="m-auto" src={imgsrc} alt={imgalt} />
+		<div class="m-auto">
+			<OnnxIcon/>
+		</div>
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
@@ -90,7 +95,7 @@
 <LandingHero
 	title="ONNX Runtime Mobile"
 	description="ONNX Runtime Mobile allows you to run model inferencing on mobile devices (iOS and Android)."
-	imgsrc="https://placehold.co/600x300"
+	imgsrc={ImageInference1}
 	imgalt=""
 />
 <div class="container mx-auto px-10 my-10">
@@ -107,7 +112,9 @@
 				>Inference in JavaScript with ONNX Runtime Web YouTube Tutorial →</a
 			>
 		</div>
-		<img class="m-auto" src={imgsrc} alt={imgalt} />
+		<div class="m-auto">
+			<ImageInference2/>
+		</div>
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
@@ -121,6 +128,5 @@
 				>Learn more about on-device training →</a
 			>
 		</div>
-		<img class="m-auto" src={imgsrc} alt={imgalt} />
 	</div>
 </div>

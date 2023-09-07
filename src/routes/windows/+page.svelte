@@ -1,8 +1,8 @@
 <script lang="ts">
 	import LandingHero from "../components/landing-hero.svelte";
-	import imgsrc from "../../images/ONNX-Icon.svg"
 	const title = "Windows + ONNX Runtime"
 	const description = ""
+	const imgsrc = 'onnxruntimelogo'
 	const imgalt = "ONNX Runtime Logo"
 </script>
 <LandingHero {title} {description} {imgsrc} {imgalt}/>

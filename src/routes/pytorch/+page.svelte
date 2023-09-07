@@ -1,13 +1,19 @@
 <script lang="ts">
+	import Highlight from 'svelte-highlight';
+	import python from 'svelte-highlight/languages/python';
 	import LandingHero from '../components/landing-hero.svelte';
-	import imgsrc from '../../images/ONNX-Icon.svg';
 	import ImagePt1 from '../../images/undraw/image_PT1.svelte';
 	import ImagePt2 from '../../images/undraw/image_PT2.svelte';
 	import ImagePt3 from '../../images/undraw/image_PT3.svelte';
+	import ImagePt4 from '../../images/undraw/image_PT4.svelte';
+	import ImagePt5 from '../../images/undraw/image_PT5.svelte';
+	import pythonfree from '../../images/python-free.png';
 	const title = 'PyTorch + ONNX Runtime';
 	const description =
 		'PyTorch leads the deep learning landscape with its readily digestible and flexible API; the large number of ready-made models available, particularly in the natural language (NLP) domain; as well as its domain specific libraries.';
+	const imgsrc = 'onnxruntimelogo'
 	const imgalt = 'ONNX Runtime Logo';
+	const pythonCode = 'import torch\n\ntorch.onnx.export(\nmodel,\ninputs,\n"model.onnx")';
 </script>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />
@@ -56,11 +62,11 @@
 						exporter APIs to ensure a high level of compatibility with PyTorch models.
 					</p>
 					<div class="card-actions">
-						<a class="btn btn-primary">ORT Web Docs →</a>
+						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary"><span class="hidden md:inline">Get your PyTorch Models ready for</span> optimized deployment →</a>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
-					<img src="https://placehold.co/250x225" alt="" />
+					<Highlight language={python} code={pythonCode} />
 				</figure>
 			</article>
 			<article class="card bg-base-300 lg:mt-48 grid md:grid-cols-3">
@@ -74,11 +80,11 @@
 						a successful PyTorch production deployment.
 					</p>
 					<div class="card-actions">
-						<a class="btn btn-primary">ORT Mobile Docs →</a>
+						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary"><span class="hidden md:inline">ONNX Runtime's</span> Python-free APIs →</a>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
-					<img src="https://placehold.co/250x225" alt="" />
+					<img src={pythonfree} alt="" />
 				</figure>
 			</article>
 		</div>
@@ -104,7 +110,7 @@
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
-					<img src="https://placehold.co/250x225" alt="" />
+					<ImagePt4/>
 				</figure>
 			</article>
 			<article class="card bg-base-300 lg:mt-48 grid md:grid-cols-3">
@@ -122,7 +128,7 @@
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
-					<img src="https://placehold.co/250x225" alt="" />
+					<ImagePt5/>
 				</figure>
 			</article>
 		</div>

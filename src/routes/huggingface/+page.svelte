@@ -1,13 +1,12 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
-	import imgsrc from '../../images/ONNX-Icon.svg';
 	import ImagesHf1 from '../../images/undraw/image_HF1.svelte';
 	import ImageHf2 from '../../images/undraw/image_HF2.svelte';
 	import ImageHf3 from '../../images/undraw/image_HF3.svelte';
 	const title = 'Hugging Face + ONNX Runtime';
 	const description =
 		'ONNX Runtime can be used to accelerate well over 100,000 of the models available on Hugging Face.';
-	// const imgsrc = 'https://placehold.co/600x300';
+	const imgsrc = 'onnxruntimelogo'
 	const imgalt = 'ONNX Runtime Logo';
 </script>
 

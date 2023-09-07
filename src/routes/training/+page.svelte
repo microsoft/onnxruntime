@@ -1,10 +1,14 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
-	const imgsrc = 'https://placehold.co/600x300';
-	let title = 'ONNX Runtime for Training';
-	let description =
+	import ImageLargemodeltraining from '../../images/undraw/image_largemodeltraining.svelte';
+	import ImageOndevtraining from '../../images/undraw/image_ondevtraining.svelte';
+	import ImageTraining1 from '../../images/undraw/image_training1.svelte';
+	import ImageTraining2 from '../../images/undraw/image_training2.svelte';
+	const title = 'ONNX Runtime for Training';
+	const description =
 		'ONNX Runtime can be used to accelerate both large model training and on-device training.';
-	let imgalt = 'ONNX Runtime Logo';
+	const imgsrc = 'onnxruntimelogo';
+	const imgalt = 'ONNX Runtime Logo';
 </script>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />
@@ -19,14 +23,22 @@
 				proven technologies of ONNX Runtime and ONNX format.
 			</p>
 			<br />
-			<img class="" src="https://placehold.co/500x100" alt="" />
+			<div class="bg-white w-1/2 p-5">
+				<code class="">
+					<span class="text-red-500">- model = build_model() # User's PyTorch model</span><br />
+
+					<span class="text-green-500">+ model = ORTModule(build_model())</span>
+				</code>
+			</div>
 			<br /><br />
 			<a
 				href="https://onnxruntime.ai/docs/get-started/training-pytorch.html"
 				class="btn btn-primary">Get started with large model training →</a
 			>
 		</div>
-		<img class="m-auto" src="https://placehold.co/600x300" alt="" />
+		<div class="mx-auto">
+			<ImageLargemodeltraining widthscale={2} heightscale={2} />
+		</div>
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
@@ -128,7 +140,9 @@
 				class="btn btn-primary">Get started with on-device training →</a
 			>
 		</div>
-		<img class="m-auto" src="https://placehold.co/600x300" alt="" />
+		<div class="m-auto">
+			<ImageOndevtraining />
+		</div>
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
@@ -184,7 +198,9 @@
 					<li>Text Prediction</li>
 				</p>
 			</div>
-			<figure><img src="https://placehold.co/600x200" alt="" /></figure>
+			<figure>
+				<ImageTraining1 />
+			</figure>
 		</div>
 		<div class="card bg-base-300">
 			<div class="card-body">
@@ -199,7 +215,9 @@
 					<li>Robotics</li>
 				</p>
 			</div>
-			<figure><img src="https://placehold.co/600x200" alt="" /></figure>
+			<figure>
+				<ImageTraining2 />
+			</figure>
 		</div>
 	</div>
 </div>

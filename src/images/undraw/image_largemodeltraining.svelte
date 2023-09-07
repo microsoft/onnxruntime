@@ -1,4 +1,9 @@
-<svg width="176" height="126" viewBox="0 0 176 126" fill="none" xmlns="http://www.w3.org/2000/svg">
+<script>
+	export let widthscale = 1;
+	export let heightscale = 1;
+</script>
+
+<svg width={176*widthscale} height={126*heightscale} viewBox="0 0 176 126" fill="none" xmlns="http://www.w3.org/2000/svg">
 	<g clip-path="url(#clip0_341_1086)">
 		<path
 			d="M8.13429 25.6542C9.68314 25.6542 10.9387 24.3953 10.9387 22.8423C10.9387 21.2893 9.68314 20.0304 8.13429 20.0304C6.58543 20.0304 5.32983 21.2893 5.32983 22.8423C5.32983 24.3953 6.58543 25.6542 8.13429 25.6542Z"
