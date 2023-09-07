@@ -371,6 +371,8 @@ Status SimpleOpBuilder::ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wr
   const std::string& output_name = output.node_arg.Name();
 
   OnnxInputInfo output_info = {};
+
+  // TODO(adrianlizarraga): Rename GetOnnxInputInfo() since it can be used for outputs as well.
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(output, output_info));
 
   if (output_info.quant_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
