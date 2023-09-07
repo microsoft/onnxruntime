@@ -14,24 +14,7 @@ else
 fi
 
 # Install dotnet
-if [ -f /etc/redhat-release ]; then
-    dnf update --refresh \
-    && dnf install -y dotnet-sdk-6.0
-elif [ -f /etc/os-release ]; then
-  # Get Ubuntu version
-  declare repo_version=$(if command -v lsb_release &> /dev/null; then lsb_release -r -s; else grep -oP '(?<=^VERSION_ID=).+' /etc/os-release | tr -d '"'; fi)
-  # Download Microsoft signing key and repository
-  wget https://packages.microsoft.com/config/ubuntu/$repo_version/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
-  # Install Microsoft signing key and repository
-  dpkg -i packages-microsoft-prod.deb
-  # Clean up
-  rm packages-microsoft-prod.deb
-  # Update packages
-  apt update
-else
-  echo "Unsupported OS"
-  exit 1
-fi
+source $(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)/install_dotnet.sh
 
 if [ ! -d "/opt/conda/bin" ]; then
     PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11")
