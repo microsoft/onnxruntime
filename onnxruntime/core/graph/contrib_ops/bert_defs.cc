@@ -676,6 +676,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDomain(kMSDomain)
         .SetDoc(PagedAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("num_kv_heads", "Number of attention  kv heads, GQA/MQA, shared heads", AttributeProto::INT, OPTIONAL_VALUE)
         .Attr("head_size", "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size", AttributeProto::INT)
         .Attr("scale", "Custom scale will be used if specified. Default value is 1/sqrt(head_size)", AttributeProto::FLOAT)
         .Attr("mask_type", "position_mask_type, support [normal, alibi, RoPE]", AttributeProto::STRING)
@@ -696,6 +697,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateShapeAndTypeFromFirstInput(ctx);
         }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RmsNormalization, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .SetDoc("RMS Normalization Fusion")
+        .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+        .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Input(1, "weight", "2D input tensor with shape (hidden_size)", "T")
+        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 constexpr const char* DecoderMaskedSelfAttention_ver1_doc = R"DOC(
 Self attention that supports input sequence length of 1.

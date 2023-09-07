@@ -13,10 +13,11 @@ namespace cuda {
 
 void single_query_cached_kv_attention(
     const cudaStream_t stream,
-    const void* out,          // [num_seqs, num_heads, head_size]
-    const void* query,        // [num_seqs, num_heads, head_size]
-    const void* key_cache,    // [num_blocks, num_heads, head_size/x, block_size, x]
-    const void* value_cache,  // [num_blocks, num_heads, head_size, block_size]
+    const void* out,           // [num_seqs, num_heads, head_size]
+    const void* query,         // [num_seqs, num_heads, head_size]
+    const void* key_cache,     // [num_blocks, num_heads, head_size/x, block_size, x]
+    const void* value_cache,   // [num_blocks, num_heads, head_size, block_size]
+    const void* head_mapping,  // [num_heads]
     float scale,
     const int* block_tables,  // [num_seqs, max_num_blocks_per_seq]
     int max_num_blocks_per_seq,
@@ -25,6 +26,7 @@ void single_query_cached_kv_attention(
     int max_context_len,
     const float* __restrict__ alibi_slopes,
     const int64_t* query_shapes,
+    int group_size,
     int dtype);
 
 void reshape_and_cache(

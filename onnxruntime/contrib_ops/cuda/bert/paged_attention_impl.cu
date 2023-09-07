@@ -16,11 +16,10 @@
 #include "paged_generic.cuh"
 #include "paged_dtype_float16.cuh"
 #include "paged_dtype_float32.cuh"
-//#include "paged_dtype_bfloat16.cuh"
+// #include "paged_dtype_bfloat16.cuh"
 #include "paged_utils.cuh"
 
 using namespace onnxruntime::cuda;
-#define IMPROVE___
 #define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 
 namespace onnxruntime {
@@ -80,15 +79,20 @@ template <
 __global__ void single_query_cached_kv_attention_kernel(
     scalar_t* __restrict__ out,            // [num_seqs, num_heads, head_size]
     const scalar_t* __restrict__ q,        // [num_seqs, num_heads, head_size]
-    const scalar_t* __restrict__ k_cache,  // [num_blocks, num_heads, head_size/x, block_size, x]
-    const scalar_t* __restrict__ v_cache,  // [num_blocks, num_heads, head_size, block_size]
+    const scalar_t* __restrict__ k_cache,  // [num_blocks, num_kv_heads, head_size/x, block_size, x]
+    const scalar_t* __restrict__ v_cache,  // [num_blocks, num_kv_heads, head_size, block_size]
+    const int* __restrict__ head_mapping,  // [num_heads]
     const float scale,
     const int* __restrict__ block_tables,  // [num_seqs, max_num_blocks_per_seq]
     const int* __restrict__ context_lens,  // [num_seqs]
     const int max_num_blocks_per_seq,
-    const float* alibi_slopes,
-    const int q_stride) {
+    const float* __restrict__ alibi_slopes,  // [num_heads]
+    const int q_stride,
+    const int kv_block_stride,
+    const int kv_head_stride) {
   constexpr int THREAD_GROUP_SIZE = MAX(WARP_SIZE / BLOCK_SIZE, 1);
+  constexpr int NUM_THREAD_GROUPS = NUM_THREADS / THREAD_GROUP_SIZE;  // Note: This assumes THREAD_GROUP_SIZE divides NUM_THREADS
+  assert(NUM_THREADS % THREAD_GROUP_SIZE == 0);
   constexpr int NUM_TOKENS_PER_THREAD_GROUP = (BLOCK_SIZE + WARP_SIZE - 1) / WARP_SIZE;
   constexpr int NUM_WARPS = NUM_THREADS / WARP_SIZE;
   const int thread_idx = threadIdx.x;
@@ -97,6 +101,7 @@ __global__ void single_query_cached_kv_attention_kernel(
 
   const int head_idx = blockIdx.x;
   const int num_heads = gridDim.x;
+  const int kv_head_idx = head_mapping[head_idx];
   const int seq_idx = blockIdx.y;
   const float alibi_slope = alibi_slopes == nullptr ? 0.f : alibi_slopes[head_idx];
 
@@ -122,25 +127,13 @@ __global__ void single_query_cached_kv_attention_kernel(
   // th vectors of the query, and so on.
   // NOTE(woosuk): Because q is split from a qkv tensor, it may not be contiguous.
   const scalar_t* q_ptr = q + seq_idx * q_stride + head_idx * HEAD_SIZE;
-#ifdef IMPROVE___
-  constexpr int NUM_THREAD_GROUPS_LOWER_BOUND = NUM_THREADS / THREAD_GROUP_SIZE;
   __shared__ Q_vec q_vecs[THREAD_GROUP_SIZE][NUM_VECS_PER_THREAD];
-  if (thread_group_idx <= NUM_THREAD_GROUPS_LOWER_BOUND) {
 #pragma unroll
-    for (int i = thread_group_idx; i < NUM_VECS_PER_THREAD; i += NUM_THREAD_GROUPS_LOWER_BOUND) {
-      const int vec_idx = thread_group_offset + i * THREAD_GROUP_SIZE;
-      q_vecs[thread_group_offset][i] = *reinterpret_cast<const Q_vec*>(q_ptr + vec_idx * VEC_SIZE);
-    }
+  for (int i = thread_group_idx; i < NUM_VECS_PER_THREAD; i += NUM_THREAD_GROUPS) {
+    const int vec_idx = thread_group_offset + i * THREAD_GROUP_SIZE;
+    q_vecs[thread_group_offset][i] = *reinterpret_cast<const Q_vec*>(q_ptr + vec_idx * VEC_SIZE);
   }
   __syncthreads();  // TODO(naed90): possible speedup if this is replaced with a memory wall right before we use q_vecs
-#else
-  Q_vec q_vecs[NUM_VECS_PER_THREAD];
-#pragma unroll
-  for (int i = 0; i < NUM_VECS_PER_THREAD; i++) {
-    const int vec_idx = thread_group_offset + i * THREAD_GROUP_SIZE;
-    q_vecs[i] = *reinterpret_cast<const Q_vec*>(q_ptr + vec_idx * VEC_SIZE);
-  }
-#endif
 
   // Memory planning.
   extern __shared__ char shared_mem[];
@@ -177,9 +170,7 @@ __global__ void single_query_cached_kv_attention_kernel(
 
 #pragma unroll
       for (int j = 0; j < NUM_VECS_PER_THREAD; j++) {
-        const scalar_t* k_ptr = k_cache + physical_block_number * num_heads * HEAD_SIZE * BLOCK_SIZE
-                                        + head_idx * HEAD_SIZE * BLOCK_SIZE
-                                        + physical_block_offset * x;
+        const scalar_t* k_ptr = k_cache + physical_block_number * kv_block_stride + kv_head_idx * kv_head_stride + physical_block_offset * x;
         const int vec_idx = thread_group_offset + j * THREAD_GROUP_SIZE;
         const int offset1 = (vec_idx * VEC_SIZE) / x;
         const int offset2 = (vec_idx * VEC_SIZE) % x;
@@ -188,12 +179,7 @@ __global__ void single_query_cached_kv_attention_kernel(
 
       // Compute dot product.
       // This includes a reduction across the threads in the same thread group.
-      #ifdef IMPROVE___
       float qk = scale * Qk_dot<scalar_t, THREAD_GROUP_SIZE>::dot(q_vecs[thread_group_offset], k_vecs);
-#else
-      float qk = scale * Qk_dot<scalar_t, THREAD_GROUP_SIZE>::dot(q_vecs, k_vecs);
-#endif
-
       // Add the ALiBi bias if slopes are given.
       qk += (alibi_slope != 0) ? alibi_slope * (token_idx - context_len) : 0;
 
@@ -222,15 +208,6 @@ __global__ void single_query_cached_kv_attention_kernel(
 
   // TODO(woosuk): Refactor this part.
   // Get the max qk value for the sequence.
-  qk_max = lane < NUM_WARPS ? red_smem[lane] : -FLT_MAX;
-#pragma unroll
-  for (int mask = NUM_WARPS / 2; mask >= 1; mask /= 2) {
-    qk_max = fmaxf(qk_max, __shfl_xor_sync(uint32_t(-1), qk_max, mask));
-  }
-  // Broadcast the max qk value to all threads.
-  qk_max = __shfl_sync(uint32_t(-1), qk_max, 0);
-
-  // Get the sum of the exp values.
   float exp_sum = 0.f;
   for (int i = thread_idx; i < context_len; i += NUM_THREADS) {
     float val = __expf(logits[i] - qk_max);
@@ -263,6 +240,8 @@ __global__ void single_query_cached_kv_attention_kernel(
     accs[i] = 0.f;
   }
 
+  scalar_t zero_value;
+  zero(zero_value);
   for (int block_idx = warp_idx; block_idx < num_blocks; block_idx += NUM_WARPS) {
     const int physical_block_number = block_table[block_idx];
     const int physical_block_offset = (lane % NUM_V_VECS_PER_ROW) * V_VEC_SIZE;
@@ -270,14 +249,23 @@ __global__ void single_query_cached_kv_attention_kernel(
     L_vec logits_vec;
     from_float(logits_vec, *reinterpret_cast<Float_L_vec*>(logits + token_idx));
 
-    const scalar_t* v_ptr = v_cache + physical_block_number * num_heads * HEAD_SIZE * BLOCK_SIZE
-                                    + head_idx * HEAD_SIZE * BLOCK_SIZE;
+    const scalar_t* v_ptr = v_cache + physical_block_number * kv_block_stride + kv_head_idx * kv_head_stride;
 #pragma unroll
     for (int i = 0; i < NUM_ROWS_PER_THREAD; i++) {
       const int row_idx = lane / NUM_V_VECS_PER_ROW + i * NUM_ROWS_PER_ITER;
       if (row_idx < HEAD_SIZE) {
         const int offset = row_idx * BLOCK_SIZE + physical_block_offset;
         V_vec v_vec = *reinterpret_cast<const V_vec*>(v_ptr + offset);
+        if (block_idx == num_blocks - 1) {
+          // NOTE(woosuk): When v_vec contains the tokens that are out of the context,
+          // we should explicitly zero out the values since they may contain NaNs.
+          // See https://github.com/vllm-project/vllm/issues/641#issuecomment-1682544472
+          scalar_t* v_vec_ptr = reinterpret_cast<scalar_t*>(&v_vec);
+#pragma unroll
+          for (int j = 0; j <= V_VEC_SIZE; j++) {
+            v_vec_ptr[j] = token_idx + j < context_len ? v_vec_ptr[j] : zero_value;
+          }
+        }
         accs[i] += dot(logits_vec, v_vec);
       }
     }
@@ -393,7 +381,8 @@ __global__ void rotary_embedding_neox_kernel(
     scalar_t* __restrict__ key,                  // [num_tokens, num_kv_heads, head_size]
     const scalar_t* __restrict__ cos_sin_cache,  // [max_position, 2, rot_dim // 2]
     const int rot_dim,
-    const int stride,
+    const int query_stride,
+    const int key_stride,
     const int num_heads,
     const int num_kv_heads,
     const int head_size) {
@@ -406,14 +395,14 @@ __global__ void rotary_embedding_neox_kernel(
   const int nq = num_heads * embed_dim;
   for (int i = threadIdx.x; i < nq; i += blockDim.x) {
     const int head_idx = i / embed_dim;
-    const int token_head = token_idx * stride + head_idx * head_size;
+    const int token_head = token_idx * query_stride + head_idx * head_size;
 
     const int rot_offset = i % embed_dim;
     const int x_index = rot_offset;
     const int y_index = embed_dim + rot_offset;
 
-    const int out_x = token_idx * stride + head_idx * head_size + x_index;
-    const int out_y = token_idx * stride + head_idx * head_size + y_index;
+    const int out_x = token_idx * query_stride + head_idx * head_size + x_index;
+    const int out_y = token_idx * query_stride + head_idx * head_size + y_index;
 
     const scalar_t cos = __ldg(cache_ptr + x_index);
     const scalar_t sin = __ldg(cache_ptr + y_index);
@@ -422,13 +411,27 @@ __global__ void rotary_embedding_neox_kernel(
     const scalar_t q_y = query[token_head + y_index];
     query[out_x] = q_x * cos - q_y * sin;
     query[out_y] = q_y * cos + q_x * sin;
+  }
 
-    if (head_idx < num_kv_heads) {
-      const scalar_t k_x = key[token_head + x_index];
-      const scalar_t k_y = key[token_head + y_index];
-      key[out_x] = k_x * cos - k_y * sin;
-      key[out_y] = k_y * cos + k_x * sin;
-    }
+  const int nk = num_kv_heads * embed_dim;
+  for (int i = threadIdx.x; i < nk; i += blockDim.x) {
+    const int head_idx = i / embed_dim;
+    const int token_head = token_idx * key_stride + head_idx * head_size;
+
+    const int rot_offset = i % embed_dim;
+    const int x_index = rot_offset;
+    const int y_index = embed_dim + rot_offset;
+
+    const int out_x = token_idx * key_stride + head_idx * head_size + x_index;
+    const int out_y = token_idx * key_stride + head_idx * head_size + y_index;
+
+    const scalar_t cos = __ldg(cache_ptr + x_index);
+    const scalar_t sin = __ldg(cache_ptr + y_index);
+
+    const scalar_t k_x = key[token_head + x_index];
+    const scalar_t k_y = key[token_head + y_index];
+    key[out_x] = k_x * cos - k_y * sin;
+    key[out_y] = k_y * cos + k_x * sin;
   }
 }
 
@@ -441,12 +444,15 @@ __global__ void rotary_embedding_neox_kernel(
           query_ptr,                                                                   \
           key_cache_ptr,                                                               \
           value_cache_ptr,                                                             \
+          head_mapping_ptr,                                                            \
           scale,                                                                       \
           block_tables_ptr,                                                            \
           context_lens_ptr,                                                            \
           max_num_blocks_per_seq,                                                      \
           alibi_slopes_ptr,                                                            \
-          query_stride);
+          query_stride,                                                                \
+          kv_block_stride,                                                             \
+          kv_head_stride);
 
 // TODO(woosuk): Tune NUM_THREADS.
 template <
@@ -459,26 +465,32 @@ void single_query_cached_kv_attention_launcher(
     const T* query,
     const T* key_cache,
     const T* value_cache,
+    const int* head_mapping,
     float scale,
     const int* block_tables,
     const int max_num_blocks_per_seq,
     const int* context_lens,
     int max_context_len,
     const float* alibi_slopes_ptr,
-    const int64_t* query_shapes) {
+    const int64_t* query_shapes,
+    int num_queries_per_kv) {
   int num_seqs = query_shapes[0];
   int num_heads = query_shapes[1];
   int head_size = query_shapes[2];
-  //int max_num_blocks_per_seq = 1;            // block_tables.size(1);xxxxxxxxxxxxxxxxxxxxxxxx
-  int query_stride = head_size * num_heads;  // query.stride(0);
+  // int max_num_blocks_per_seq = 1;            // block_tables.size(1);xxxxxxxxxxxxxxxxxxxxxxxx
+  int query_stride = head_size * num_heads;                                       // query.stride(0);
+  int kv_block_stride = num_heads * head_size / num_queries_per_kv * BLOCK_SIZE;  // xxxxxxxxxxxxxxxxxxxxxxxx
+  int kv_head_stride = head_size * BLOCK_SIZE;                                    // key_cache.stride(1);
 
-  //int thread_group_size = MAX(WARP_SIZE / BLOCK_SIZE, 1);
+  // int thread_group_size = MAX(WARP_SIZE / BLOCK_SIZE, 1);
   assert(head_size % (MAX(WARP_SIZE / BLOCK_SIZE, 1)) == 0);
 
   T* out_ptr = reinterpret_cast<T*>(out);
   const T* query_ptr = reinterpret_cast<const T*>(query);
   const T* key_cache_ptr = reinterpret_cast<const T*>(key_cache);
   const T* value_cache_ptr = reinterpret_cast<const T*>(value_cache);
+  const int* head_mapping_ptr = reinterpret_cast<const int*>(head_mapping);
+
   const int* block_tables_ptr = block_tables;
   const int* context_lens_ptr = context_lens;
 
@@ -531,13 +543,15 @@ void single_query_cached_kv_attention_launcher(
       (const T*)query,                                      \
       (const T*)key_cache,                                  \
       (const T*)value_cache,                                \
+      (const int*)head_mapping,                             \
       scale,                                                \
       block_tables,                                         \
       max_num_blocks_per_seq,                               \
       context_lens,                                         \
       max_context_len,                                      \
       alibi_slopes_ptr,                                     \
-      query_shapes);
+      query_shapes,                                         \
+      num_queries_per_kv);
 
 // NOTE(woosuk): To reduce the compilation time, we omitted block sizes
 // 1, 2, 4, 64, 128, 256.
@@ -577,10 +591,11 @@ void single_query_cached_kv_attention_launcher(
 
 void single_query_cached_kv_attention(
     const cudaStream_t stream,
-    const void* out,          // [num_seqs, num_heads, head_size]
-    const void* query,        // [num_seqs, num_heads, head_size]
-    const void* key_cache,    // [num_blocks, num_heads, head_size/x, block_size, x]
-    const void* value_cache,  // [num_blocks, num_heads, head_size, block_size]
+    const void* out,           // [num_seqs, num_heads, head_size]
+    const void* query,         // [num_seqs, num_heads, head_size]
+    const void* key_cache,     // [num_blocks, num_kv_heads, head_size/x, block_size, x]
+    const void* value_cache,   // [num_blocks, num_kv_heads, head_size, block_size]
+    const void* head_mapping,  // [num_heads]
     float scale,
     const int* block_tables,  // [num_seqs, max_num_blocks_per_seq]
     const int max_num_blocks_per_seq,
@@ -589,6 +604,7 @@ void single_query_cached_kv_attention(
     int max_context_len,
     const float* __restrict__ alibi_slopes_ptr,
     const int64_t* query_shapes,
+    int num_queries_per_kv,
     int dtype) {
   // static_assert(std::is_same_v<T, float> || std::is_same_v<T, BFloat16> || std::is_same_v<T, MLFloat16>, "Unsupported data type: ");
   // if constexpr (std::is_same_v<T, float>) {
@@ -596,20 +612,20 @@ void single_query_cached_kv_attention(
     CALL_KERNEL_LAUNCHER_BLOCK_SIZE(float);
     //} else if constexpr (std::is_same_v<T, MLFloat16>) {
   } else if (dtype == 1) {
-    //half
+    // half
     CALL_KERNEL_LAUNCHER_BLOCK_SIZE(uint16_t);
     //} else if constexpr (std::is_same_v<T, BFloat16>) {
   } else if (dtype == 2) {
-    //CALL_KERNEL_LAUNCHER_BLOCK_SIZE(__nv_bfloat16);
+    // CALL_KERNEL_LAUNCHER_BLOCK_SIZE(__nv_bfloat16);
   }
 }
 
 void reshape_and_cache(
     const cudaStream_t stream,
-    const void* key,             // [num_tokens, num_heads, head_size]
-    const void* value,           // [num_tokens, num_heads, head_size]
-    const void* key_cache,       // [num_blocks, num_heads, head_size/x, block_size, x]
-    const void* value_cache,     // [num_blocks, num_heads, head_size, block_size]
+    const void* key,          // [num_tokens, num_heads, head_size]
+    const void* value,        // [num_tokens, num_heads, head_size]
+    const void* key_cache,    // [num_blocks, num_heads, head_size/x, block_size, x]
+    const void* value_cache,  // [num_blocks, num_heads, head_size, block_size]
     const int* slot_mapping,  // [num_tokens]
     const int64_t* key_shapes,
     const int64_t* value_shapes,
@@ -625,7 +641,7 @@ void reshape_and_cache(
   int key_stride = key_shapes[1] * key_shapes[2];
   int value_stride = value_shapes[1] * value_shapes[2];
 
-  //static_assert(std::is_same_v<T, MLFloat16>, "Unsupported data type: ");
+  // static_assert(std::is_same_v<T, MLFloat16>, "Unsupported data type: ");
 
   dim3 grid(num_tokens);
   dim3 block(std::min(num_heads * head_size, 512));
@@ -658,21 +674,22 @@ void rotary_embedding_neox(
     int num_heads,
     int num_kv_heads,
     int dtype) {
-  //int num_tokens = query.size(0);
-  //int rot_dim = cos_sin_cache.size(1);
-  //int num_heads = query.size(1) / head_size;
-  //int num_kv_heads = key.size(1) / head_size;
-  int stride = num_heads * head_size;
-  //TORCH_CHECK(stride == key.stride(0));
+  // int num_tokens = query.size(0);
+  // int rot_dim = cos_sin_cache.size(1);
+  // int num_heads = query.size(1) / head_size;
+  // int num_kv_heads = key.size(1) / head_size;
+  int query_stride = num_heads * head_size;
+  int key_stride = num_kv_heads * head_size;
+  // TORCH_CHECK(stride == key.stride(0));
 
   dim3 grid(num_tokens);
   dim3 block(std::min(num_heads * rot_dim / 2, 512));
-  //const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  // const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
   if (dtype == 0) {
-    //float
-    //CALL_KERNEL_LAUNCHER_BLOCK_SIZE(float);
-    //} else if constexpr (std::is_same_v<T, MLFloat16>) {
+    // float
+    // CALL_KERNEL_LAUNCHER_BLOCK_SIZE(float);
+    // } else if constexpr (std::is_same_v<T, MLFloat16>) {
   } else if (dtype == 1) {
     // half
     using scalar_t = half;
@@ -682,7 +699,8 @@ void rotary_embedding_neox(
         static_cast<scalar_t*>(key),
         static_cast<const scalar_t*>(cos_sin_cache),
         rot_dim,
-        stride,
+        query_stride,
+        key_stride,
         num_heads,
         num_kv_heads,
         head_size);

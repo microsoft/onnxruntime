@@ -594,12 +594,13 @@ Status FlashAttention(
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int num_heads = parameters.num_heads;
+  const int num_kv_heads = parameters.num_kv_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
   // Q, K and V pointers
   const int model_dimension_qk = num_heads * qk_head_size;
-  const int model_dimension_v = num_heads * v_head_size;
+  const int model_dimension_v = num_kv_heads * v_head_size;
   const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_qk);
   const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_v);
 
@@ -621,7 +622,7 @@ Status FlashAttention(
   const void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
   void* softmax_lse_buffer = data.no_qkv_workspace
                                  ? data.workspace
-                                 : (data.workspace + elements_qk + elements_qk + elements_v);
+                                 : (data.workspace + elements_qk + elements_v + elements_v);
 
   ORT_RETURN_IF_ERROR(
       onnxruntime::flash::mha_varlen_fwd(
@@ -636,7 +637,7 @@ Status FlashAttention(
           softmax_lse_buffer,
           batch_size,
           num_heads,
-          num_heads,  // num_heads_k
+          num_kv_heads,  // num_heads_k
           qk_head_size,
           sequence_length,
           sequence_length,

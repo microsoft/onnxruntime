@@ -65,10 +65,13 @@ class PagedAttention final : public TrtFusedAttention<T>, public CudaKernel {
                                IAllocatorUniquePtr<T>& gemm_buffer) const;
 
   int32_t num_heads_;                  // number of attention heads
+  int32_t num_kv_heads_;                  // number of attention kv_heads
   int32_t head_size_;                      // number of attention heads
   float scale_;                            // sqrt(head_size_)
   std::string mask_type_;                  // position embedding type
   void* flash_attention_v2_kernel_ = nullptr;  // cuda kernel
+  IAllocatorUniquePtr<int32_t> head_mapping_;
+  int32_t num_queries_per_kv_;
 
   AttentionSelector<T> selector_;
   friend struct AttentionSelector<T>;
