@@ -606,6 +606,25 @@ var ot_validCombos = {
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_nightly":
     "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training",
 
+
+    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable":
+    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+    
+    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA,ot_stable":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA,ot_stable":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    
+    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA,ot_stable":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable":
+    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
     "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
     "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
 
@@ -623,24 +642,6 @@ var ot_validCombos = {
 
     "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable":
     "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
-
-    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable":
-    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable":
-    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-    
-    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable":
-    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
-
-    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA,ot_stable":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-
-    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA,ot_stable":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-    
-    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA,ot_stable":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
     "ot_windows,ot_on_device,ot_c,ot_X64,ot_CUDA,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
@@ -670,7 +671,7 @@ var ot_validCombos = {
         "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
 
     "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
-    "pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
 
     "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
     "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
