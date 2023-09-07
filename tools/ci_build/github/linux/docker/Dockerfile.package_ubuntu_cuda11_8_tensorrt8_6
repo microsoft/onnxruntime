@@ -14,7 +14,7 @@ ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${ONNXR
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update &&\
-    apt-get install -y sudo git bash unattended-upgrades wget dotnet-sdk-6.0
+    apt-get install -y sudo git bash unattended-upgrades wget
 RUN unattended-upgrade
 
 # Install python3
@@ -40,6 +40,9 @@ RUN v="8.6.1.6-1+cuda11.8" &&\
 
 # Install Valgrind
 RUN apt-get install -y valgrind
+
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
 # Build final image from base. Builds ORT.
 FROM base as final
