@@ -62,6 +62,7 @@ stages:
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro \
           -e BUILD_SOURCESDIRECTORY='/onnxruntime_src' \
           -e OnnxRuntimeBuildDirectory='/build' \
           -e DisableContribOps='$(DisableContribOps)' \
