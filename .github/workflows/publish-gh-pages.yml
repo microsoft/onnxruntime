@@ -36,10 +36,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 19.x
-
-      - name: read files
-        run: ls website -a 
-
+          
       - name: Install dependencies
         run: npm install
 
