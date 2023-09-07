@@ -15,7 +15,7 @@ logger = getLogger(__name__)
 class ClipOnnxModel(BertOnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, hidden_size: int = 0):
         super().__init__(model, num_heads=num_heads, hidden_size=hidden_size)
-        self.attention_fusion = FusionAttentionClip(self, self.hidden_size, self.num_heads)
+        self.clip_attention_fusion = FusionAttentionClip(self, self.hidden_size, self.num_heads)
 
     def get_fused_operator_statistics(self):
         """
@@ -35,4 +35,4 @@ class ClipOnnxModel(BertOnnxModel):
         return op_count
 
     def fuse_attention(self):
-        self.attention_fusion.apply()
+        self.clip_attention_fusion.apply()
