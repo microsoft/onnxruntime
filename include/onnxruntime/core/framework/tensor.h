@@ -141,10 +141,8 @@ class Tensor final {
   /// </summary>
   /// <param name="elt_type">Data type of the tensor elements.</param>
   /// <param name="shape">Tensor shape.</param>
-  /// <param name="strides">Optional strides to select a subset of the original data.</param>
   /// <returns>Bytes required.</returns>
-  static size_t CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape,
-                                           gsl::span<const int64_t> strides = {});
+  static size_t CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape);
 
   /**
      Returns the data type.

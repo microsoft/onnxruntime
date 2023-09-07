@@ -27,22 +27,10 @@ int64_t GetSizeFromStrides(const TensorShape& shape, gsl::span<const int64_t> st
 }  // namespace
 #endif
 
-size_t Tensor::CalculateTensorStorageSize(MLDataType elt_type,
-                                          const TensorShape& shape,
-                                          gsl::span<const int64_t> strides) {
-#ifdef ENABLE_STRIDED_TENSORS
-  int64_t shape_size = 1;
-  if (shape.NumDimensions() > 0 && !strides.empty()) {
-    ORT_ENFORCE(shape.NumDimensions() == strides.size(), "Length of strides doesn't match with tensor dimension size.");
-    shape_size = GetSizeFromStrides(shape, strides);
-  } else {
-    shape_size = shape.Size();
-  }
-#else
-  ORT_ENFORCE(strides.empty(), "Strided tensor is supported for training only for now.");
+size_t Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape) {
   int64_t shape_size = shape.Size();
-#endif
-  if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
+  if (shape_size < 0)
+    ORT_THROW("shape.Size() must >=0");
 
   if (shape_size > 0) {
     SafeInt<size_t> len = 0;
@@ -51,6 +39,7 @@ size_t Tensor::CalculateTensorStorageSize(MLDataType elt_type,
 
     return len;
   }
+
   return 0;
 }
 
@@ -159,13 +148,21 @@ Tensor::Tensor(Tensor&& other) noexcept
     : p_data_(other.p_data_),
       buffer_deleter_(other.buffer_deleter_),
       shape_(other.shape_),
+#ifdef ENABLE_STRIDED_TENSORS
+      strides_(other.strides_),
+      is_contiguous_(other.is_contiguous_),
+#endif
       dtype_(other.dtype_),
       alloc_info_(other.alloc_info_),
       byte_offset_(other.byte_offset_) {
-  other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
-  other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
   other.p_data_ = nullptr;
   other.buffer_deleter_ = nullptr;
+  other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
+  other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
+#ifdef ENABLE_STRIDED_TENSORS
+  other.strides_ = {};
+  other.is_contiguous_ = true;
+#endif
   other.byte_offset_ = 0;
 }
 
@@ -173,19 +170,28 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
   if (this != &other) {
     ReleaseBuffer();
 
-    dtype_ = other.dtype_;
-    shape_ = other.shape_;
-    alloc_info_ = other.alloc_info_;
-    byte_offset_ = other.byte_offset_;
     p_data_ = other.p_data_;
     buffer_deleter_ = other.buffer_deleter_;
+    shape_ = other.shape_;
+#ifdef ENABLE_STRIDED_TENSORS
+    strides_ = other.strides_;
+    is_contiguous_ = other.is_contiguous_;
+#endif
+    dtype_ = other.dtype_;
+    alloc_info_ = other.alloc_info_;
+    byte_offset_ = other.byte_offset_;
 
-    other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
-    other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
     other.p_data_ = nullptr;
-    other.byte_offset_ = 0;
     other.buffer_deleter_ = nullptr;
+    other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
+#ifdef ENABLE_STRIDED_TENSORS
+    other.strides_ = {};
+    other.is_contiguous_ = true;
+#endif
+    other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
+    other.byte_offset_ = 0;
   }
+
   return *this;
 }
 

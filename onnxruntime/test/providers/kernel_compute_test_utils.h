@@ -78,8 +78,7 @@ class KernelComputeTester {
     Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value);
 
     if (!strides.empty()) {
-      auto tensor = value.GetMutable<Tensor>();
-      tensor->SetShapeAndStrides(shape, strides);
+      value.GetMutable<Tensor>()->SetShapeAndStrides(shape, strides);
     }
 
     if (values) {
