@@ -137,6 +137,7 @@ stages:
               export build_dir=/build; \
               echo Install Python Deps ; \
 
+              alias python3='/opt/python/cp39-cp39/bin/python3'
               python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq; \
               cp $src_dir/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $src_dir/requirements.txt; \
               echo Test ORT with the latest ONNX release. ; \
@@ -151,7 +152,7 @@ stages:
 
               echo Run Release unit tests; \
               pushd $build_dir/Release/; \
-              python3 $src_dir/tools/ci_build/build.py --build_dir $build_dir --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path \"\"; \
+              python3 $src_dir/tools/ci_build/build.py --build_dir $build_dir --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path \""; \
               pod
               "
         displayName: 'Run Release unit tests'
