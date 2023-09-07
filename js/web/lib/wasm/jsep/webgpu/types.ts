@@ -139,6 +139,11 @@ export interface ComputeContext {
    */
   readonly customDataBuffer: Uint8Array;
 
+  /**
+   * a number of outputs for the node
+   */
+  readonly outputCount: number;
+
   compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
       TensorView[];
   output(index: number, dims: readonly number[]): number;

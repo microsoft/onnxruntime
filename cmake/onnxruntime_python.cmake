@@ -393,6 +393,9 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ort_triton_kernel_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ort_triton/kernel/*.py"
   )
+  file(GLOB onnxruntime_python_utils_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/utils/*.py"
+  )
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
   )
@@ -462,6 +465,9 @@ file(GLOB onnxruntime_python_transformers_models_bert_src CONFIGURE_DEPENDS
 )
 file(GLOB onnxruntime_python_transformers_models_gpt2_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/gpt2/*.py"
+)
+file(GLOB onnxruntime_python_transformers_models_llama_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/llama/*.py"
 )
 file(GLOB onnxruntime_python_transformers_models_longformer_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/longformer/*.py"
@@ -534,6 +540,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/bart
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/bert
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/gpt2
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/llama
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5
@@ -625,6 +632,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_gpt2_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/gpt2/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_llama_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/llama/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_longformer_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer/
@@ -733,6 +743,7 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/kernel
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -789,6 +800,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ort_triton_kernel_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/kernel/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_utils_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/

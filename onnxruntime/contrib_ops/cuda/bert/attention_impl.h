@@ -43,6 +43,7 @@ size_t GetAttentionWorkspaceSize(
     size_t kv_sequence_length,
     size_t total_sequence_length,
     void* fused_runner,
+    bool use_flash_attention,
     bool use_fused_cross_attention,
     bool use_memory_efficient_attention);
 
@@ -74,6 +75,7 @@ struct AttentionData {
   void* fused_runner;
   const void* fused_cross_attention_kernel;
 
+  bool use_flash_attention;
   bool use_memory_efficient_attention;
 
   mutable CumulatedSequenceLengthCache* cumulated_sequence_length_q_cache;
@@ -84,13 +86,13 @@ template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
-    cudaStream_t stream,
+    Stream* stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
-    cudaStream_t stream,              // Cuda stream
+    Stream* stream,                   // ORT Stream
     cublasHandle_t& cublas,           // Cublas handle
     const size_t element_size,        // Element size of input tensor
     const int batch_size,             // Batch size (B)

@@ -160,6 +160,7 @@ static void RunPackedMultiHeadAttentionTest(
   if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
@@ -168,10 +169,11 @@ static void RunPackedMultiHeadAttentionTest(
     InvokePackedMultiHeadAttentionTest(true, false);
   }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (kernel_type == AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
@@ -182,9 +184,20 @@ static void RunPackedMultiHeadAttentionTest(
   }
 #endif
 
+#if USE_FLASH_ATTENTION
+  if (kernel_type == AttentionKernelType::AttentionKernel_FlashAttention) {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+            {onnxruntime::contrib::attention::kMinSeqLenForFlashAttentionPackedQKV, "0"}}};
+    InvokePackedMultiHeadAttentionTest(true, true);
+  }
+#endif
+
   if (kernel_type == AttentionKernelType::AttentionKernel_Unfused) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
@@ -199,7 +212,6 @@ static void RunPackedMultiHeadAttentionTest(
   }
 }
 
-#if !defined(_MSC_VER)
 TEST(PackedMultiHeadAttentionTest, PackedQKV_NoPadding_NoBias_trt) {
   AttentionTestData data;
   GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(data);
@@ -390,6 +402,32 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_cutlass) {
       AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention);
 }
 
+#if USE_FLASH_ATTENTION
+TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_FlashAttention) {
+  if (HasCudaEnvironment(800)) {
+    PackedAttentionTestData data;
+    GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias(data);
+    std::vector<float> empty_data = {};
+
+    RunPackedMultiHeadAttentionTest(
+        data.qkv_data,
+        empty_data,
+        empty_data,
+        empty_data,
+        data.token_offset,
+        data.cumulative_sequence_length,
+        data.fp16_output_data,
+        data.batch_size,
+        data.sequence_length,
+        data.hidden_size,
+        data.v_hidden_size,
+        data.num_heads,
+        data.token_count,
+        AttentionKernelType::AttentionKernel_FlashAttention);
+  }
+}
+#endif
+
 TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_unfused) {
   PackedAttentionTestData data;
   GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias(data);
@@ -411,7 +449,6 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_unfused) {
       data.token_count,
       AttentionKernelType::AttentionKernel_Unfused);
 }
-#endif
 
 TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_RelPosBias) {
   PackedAttentionTestData data;

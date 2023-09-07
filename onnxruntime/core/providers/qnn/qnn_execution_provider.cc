@@ -15,6 +15,7 @@
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
 
@@ -139,64 +140,22 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                            std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
                                            const logging::Logger& logger) const {
-  bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
   // If we have visited one of the nodes in the node_unit, use the result directly
   const auto it = node_unit_supported_result.find(&node_unit);
   if (it != node_unit_supported_result.cend()) {
     return it->second;
   } else {
-    // quantized required, filter out the non-quantized nodes, filter in the QDQ nodes
-    auto IsQdqNode = [](const NodeUnit& node_unit) {
-      if ("QuantizeLinear" == node_unit.OpType() || "DequantizeLinear" == node_unit.OpType()) {
-        return true;
-      } else {
-        return false;
-      }
-    };
-
-    // Is NPU backend, is single node, case by case
-    // Q/DQ nodes -- supported
-    // Transpose nodes -- supported
-    // Cast nodes -- need to call CastOpBuilder::IsOpSupported
-    if (is_npu_backend && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
-      if (IsQdqNode(node_unit)) {  // Qnn has Quantize & Dequantize Op
-        LOGS(logger, VERBOSE) << "Single Q/DQ node is supported for NPU backend. Node name: " << node_unit.Name();
-        return true;
-      }
-
-      // Tranpose only changes the data layout. NPU still supports it.
-      if ("Transpose" == node_unit.OpType()) {
-        LOGS(logger, VERBOSE) << "Single Transpose node is supported for NPU backend. Node name: " << node_unit.Name();
-        return true;
-      }
-
-      // For Cast, need to call IsOpSupported (below) to validate input and output types.
-      // For other single non-qdq nodes, immediately return not supported.
-      if (node_unit.OpType() != "Cast") {
-        LOGS(logger, WARNING) << "Non-QDQ " << node_unit.OpType()
-                              << " operators are not supported on HTP or DSP backends. " << node_unit.OpType()
-                              << " node `" << node_unit.Name() << " will not be assigned to QNN EP.";
-        return false;
-      }
-    }
-
-    // Non-NPU backend, quantized model not supported, but a QDQ node encountered
-    if (!is_npu_backend && IsQdqNode(node_unit)) {
-      LOGS(logger, ERROR) << "QDQ models are only supported on HTP or DSP backends. "
-                          << node_unit.OpType() << " node `" << node_unit.Name() << "` will not be assigned to QNN EP.";
-      return false;
-    }
+    const std::string& op_type = node_unit.OpType();
 
     bool supported = false;
-    const auto* op_builder = qnn::GetOpBuilder(node_unit.OpType());
+    const auto* op_builder = qnn::GetOpBuilder(op_type);
     if (op_builder == nullptr) {
       LOGS(logger, WARNING) << "Operators of type `" << node_unit.OpType() << "` are not supported by QNN EP."
                             << node_unit.OpType() << " node `" << node_unit.Name()
                             << "` will not be assigned to QNN EP.";
     } else {
       auto status = op_builder->IsOpSupported(qnn_model_wrapper,
-                                              node_unit, logger,
-                                              is_npu_backend);
+                                              node_unit, logger);
       if (Status::OK() != status) {
         LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
                               << "` is not supported: " << status.ErrorMessage();
@@ -255,7 +214,8 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 qnn_backend_manager_->GetQnnBackendHandle(),
                                                 model_input_index_map,
                                                 model_output_index_map,
-                                                initializer_input_lookup);
+                                                initializer_input_lookup,
+                                                qnn_backend_manager_->GetQnnBackendType());
 
   for (const auto& node : graph_viewer.Nodes()) {
     const NodeUnit* node_unit = node_unit_map.at(&node);
@@ -303,8 +263,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return result;
   }
 
-  if (context_cache_enabled_ && !qnn_backend_manager_->IsNpuBackend()) {
-    LOGS(logger, ERROR) << "Qnn context cache only works for NPU backend.";
+  if (context_cache_enabled_ && !IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
+    LOGS(logger, ERROR) << "Qnn context cache only works for HTP or DSP backend.";
     return result;
   }
 
@@ -458,8 +418,7 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
-                                                                               qnn_backend_manager_.get(),
-                                                                               qnn_backend_manager_->IsNpuBackend());
+                                                                               qnn_backend_manager_.get());
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
@@ -476,10 +435,9 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
-  bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
 
   if (context_cache_enabled_) {
-    ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support singel partition for context cache feature.");
+    ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support single partition for context cache feature.");
     Node& fused_node = fused_nodes_and_graphs[0].fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
     // The dumy_model_description won't be used since IsContextCacheFileExists call cached the result
@@ -491,8 +449,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     // Load and execute from cached context if exist
     if (load_from_cached_context) {
       std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
-                                                                                 qnn_backend_manager_.get(),
-                                                                                 is_npu_backend);
+                                                                                 qnn_backend_manager_.get());
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(*(qnn_model.get())));
       ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
       ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());

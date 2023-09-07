@@ -4308,8 +4308,6 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseROCMProviderOptions)(_Frees_ptr_opt_ OrtROCMProviderOptions* input);
 
-  /// @}
-
   /** \brief Create an allocator with specific type and register it with the ::OrtEnv
    *  This API enhance CreateAndRegisterAllocator that it can create an allocator with specific type, not just CPU allocator
    *  Enables sharing the allocator between multiple sessions that use the same env instance.
@@ -4335,8 +4333,12 @@ struct OrtApi {
    * \param[in] input_len Number of elements in the input_names and inputs arrays
    * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
    * \param[in] output_names_len Number of elements in the output_names and outputs array
-   * \param[out] output Array of OrtValue* owned by customers, size to output_names_len. It could simply be an array of nullptr
-   *             The array will be passed back to run_async_callback
+   * \param[out] output OrtValue* array of size output_names_len.
+   *             On calling RunAsync, output[i] could either be a null or a pointer to a preallocated OrtValue.
+   *             Later, the output array will be passed to run_async_callback with all null(s) filled with valid
+   *             OrtValue pointer(s) allocated by onnxruntime.
+   *             NOTE: it is customer's duty to finally release the output array and each of its member,
+   *             regardless of whether the member (OrtValue*) is allocated by onnxruntime or preallocated by the customer.
    * \param[in] run_async_callback Callback function on model run completion
    * \param[in] user_data User data that pass back to run_async_callback
    */
@@ -4346,6 +4348,71 @@ struct OrtApi {
                   _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                   _Inout_updates_all_(output_names_len) OrtValue** output,
                   _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
+
+  /**
+   * Update TensorRT EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * If the data type of the provider option can be represented by string please use UpdateTensorRTProviderOptions.
+   *
+   * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
+   *
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param value - A pointer to the instance that will be assigned to this provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(UpdateTensorRTProviderOptionsWithValue, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _In_ void* value);
+
+  /**
+   * Get TensorRT EP provider option where its data type is pointer.
+   * If the data type of the provider option can be represented by string please use GetTensorRTProviderOptionsAsString.
+   *
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param ptr - A pointer to the instance that is kept by the provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(GetTensorRTProviderOptionsByName, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _Outptr_ void** ptr);
+
+  /**
+   * Update CUDA EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * If the data type of the provider option can be represented by string please use UpdateCUDAProviderOptions.
+   *
+   * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
+   *
+   * \param cuda_options - OrtCUDAProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param value - A pointer to the instance that will be assigned to this provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(UpdateCUDAProviderOptionsWithValue, _Inout_ OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _In_ void* value);
+
+  /**
+   * Get CUDA EP provider option where its data type is pointer.
+   * If the data type of the provider option can be represented by string please use GetCUDAProviderOptionsAsString.
+   *
+   * \param cuda_options - OrtCUDAProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param ptr - A pointer to the instance that is kept by the provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
+
+  /**
+   * Get a EP resoure.
+   * E.g. a cuda stream or a cublas handle
+   *
+   * \param context - Kernel context
+   * \param resouce_version - Version of the resource
+   * \param resource_id - Type of resource
+   * \param resource - A pointer to returned resource
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
 };
 
 /*

@@ -8,15 +8,12 @@
 import argparse
 import os
 import random
-import sys
 from pathlib import Path
 
 import numpy as np
-from onnx import ModelProto, TensorProto, numpy_helper  # noqa: F401
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
+from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data
+from onnx import ModelProto, TensorProto
+from onnx_model import OnnxModel
 
 
 def parse_arguments():

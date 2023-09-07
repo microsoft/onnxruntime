@@ -44,6 +44,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
@@ -1329,15 +1330,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The axis along which same quantization parameters are applied. It's optional.If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars.If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>x</tt> : T1</dt>
 <dd>N-D quantized Input tensor to be de-quantized.</dd>
 <dt><tt>x_scale</tt> : T2</dt>
-<dd>Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization.If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
-<dt><tt>x_zero_point</tt> : T1</dt>
-<dd>Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization.If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
+<dd>Scale for input 'x'. It can be a scalar, which means a per-tensor/layer dequantization, or a 1-D tensor for per-axis dequantization.</dd>
+<dt><tt>x_zero_point</tt> (optional) : T1</dt>
+<dd>Zero point for input 'x'. Shape must match x_scale. It's optional. Zero point is 0 when it's not specified.</dd>
 </dl>
 
 #### Outputs
@@ -1350,8 +1351,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(int8), tensor(uint8)</dt>
-<dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.</dd>
+<dt><tt>T1</tt> : tensor(int8), tensor(uint8), tensor(int32)</dt>
+<dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors or 32-bit signed integer tensors.</dd>
 <dt><tt>T2</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'y', 'x_scale' to float tensors.</dd>
 </dl>
@@ -2343,6 +2344,57 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>G</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulFpQ4"></a><a name="com.microsoft.matmulfpq4">**com.microsoft.MatMulFpQ4**</a>
+
+  Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
+  During quantization, the matrix is divided into blocks, where each block is a
+  continguous subset inside each column. Each block is quantized into a
+  sequence of 4b integers with a scaling factor and an optional offset.
+  Currently 3 quantization types are supported:
+  (0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
+  no offset
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>blk_quant_type</tt> : int</dt>
+<dd>Quantization type</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>1-dimensional data blob</dd>
+<dt><tt>B_shape</tt> : T3</dt>
+<dd>Shape information of B</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>Matrix multiply results from A * B</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float)</dt>
+<dd>Constrain input matrix data types as single precision float tensor</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain input B data types as data blob</dd>
+<dt><tt>T3</tt> : tensor(int64)</dt>
+<dd>Constrain shape of B must be int64 tensor.</dd>
 </dl>
 
 
@@ -4157,15 +4209,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The axis along which same quantization parameters are applied. It's optional.If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars.If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>x</tt> : T1</dt>
 <dd>N-D full precision Input tensor to be quantized.</dd>
 <dt><tt>y_scale</tt> : T1</dt>
-<dd>Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor,which means a per-tensor or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
-<dt><tt>y_zero_point</tt> : T2</dt>
-<dd>Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensoror per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
+<dd>Scale for doing quantization to get 'y'. It can be a scalar, which means per-tensor/layer quantization, or a 1-D tensor for per-axis quantization.</dd>
+<dt><tt>y_zero_point</tt> (optional) : T2</dt>
+<dd>Zero point for doing quantization to get 'y'. Shape must match y_scale. Default is uint8 with zero point of 0 if it's not specified.</dd>
 </dl>
 
 #### Outputs
@@ -4651,7 +4703,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input</tt> : T</dt>
 <dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>skip</tt> : T</dt>
-<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size) or (1, sequence_length, hidden_size) or (sequence_length, hidden_size)</dd>
 <dt><tt>gamma</tt> : T</dt>
 <dd>1D input tensor with shape (hidden_size)</dd>
 <dt><tt>beta</tt> (optional) : T</dt>
