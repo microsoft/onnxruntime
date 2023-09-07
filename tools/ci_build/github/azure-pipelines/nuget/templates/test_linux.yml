@@ -51,7 +51,7 @@ stages:
         script: |
           ln -sf /data/models $(Build.BinariesDirectory)
 
-    - template: templates/get-docker-image-steps.yml
+    - template: ../../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.packages_ubuntu_cuda11_8_tensorrt8_6
         Context: tools/ci_build/github/linux/docker/
