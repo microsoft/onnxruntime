@@ -59,19 +59,13 @@ stages:
         Repository: onnxruntimepackagestest
 
     - bash: |
-        mkdir -p $HOME/.onnx
         docker run --rm \
-          --volume /data/onnx:/data/onnx:ro \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          -e OnnxRuntimeBuildDirectory=/build \
-          -e DisableContribOps=$(DisableContribOps) \
-          -e DisableMlOps=$(DisableMlOps) \
-          -e IsReleaseBuild=$(IsReleaseBuild) \
-          -e PACKAGENAME=${{ parameters.NugetPackageName }} \
-          onnxruntimecpubuild \
+          -e OnnxRuntimeBuildDirectory='/build' \
+          -e DisableContribOps='$(DisableContribOps)' \
+          -e DisableMlOps='$(DisableMlOps)' \
+          -e IsReleaseBuild='$(IsReleaseBuild)' \
+          -e PACKAGENAME='${{ parameters.NugetPackageName }}' \
+          onnxruntimepackagestest \
           /bin/bash -c "
             set -ex; \
             pushd /build; \
