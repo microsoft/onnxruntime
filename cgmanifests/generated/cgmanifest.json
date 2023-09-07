@@ -322,7 +322,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6481e8bef08f606ddd627e4d3be89f64d62e1b8a",
+          "commitHash": "959002f82d7962a473d8bf301845f2af720e0aa4",
           "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
         },
         "comments": "pytorch_cpuinfo"
@@ -332,7 +332,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "960c861764ff54c9a12ff683ba55ccaad1a8f73b",
+          "commitHash": "5723bb8950318135ed9cf4fc76bed988a087f536",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "re2"
