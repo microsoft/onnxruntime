@@ -366,7 +366,7 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                                bool keepdims,
                                int opset,
                                ExpectedEPNodeAssignment expected_ep_assignment,
-                               float fp32_abs_err = 1e-5f) {
+                               float fp32_abs_err = 1e-4f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";

@@ -39,7 +39,7 @@ static GetTestQDQModelFn<InputQType> BuildQDQLRNTestCase(const TestInputDef<floa
                                               std::vector<QuantParams<InputQType>>& output_qparams) {
     // input -> Q -> DQ ->
     NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
     NodeArg* input_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     // LRN
