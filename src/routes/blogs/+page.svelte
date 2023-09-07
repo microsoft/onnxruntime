@@ -3,7 +3,6 @@
 
 	import Blog from './blog-post.svelte';
 	import FeaturedBlog from './blog-post-featured.svelte';
-	import blogsimage from '../../images/undraw/image_blogs.svelte'
 	import anime from 'animejs';
 	import { onMount } from 'svelte';
 	import ImageBlogs from '../../images/undraw/image_blogs.svelte';
@@ -203,8 +202,8 @@
 
 <div class="container mx-auto">
 	<div class="flex">
-		<h1 class="text-5xl my-auto mr-5">Blogs & Announcements</h1>
-		<div class="hidden md:flex">
+		<h1 class="text-5xl my-auto">Blogs & Announcements</h1>
+		<div class="ml-5 hidden md:flex">
 			<ImageBlogs/>
 		</div>
 	</div>

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
+	import imgsrc from '../../images/ONNX-Icon.svg';
 	const title = 'PyTorch + ONNX Runtime';
 	const description =
 		'PyTorch leads the deep learning landscape with its readily digestible and flexible API; the large number of ready-made models available, particularly in the natural language (NLP) domain; as well as its domain specific libraries.';
-	const imgsrc = 'https://placehold.co/600x300';
-	const imgalt = '';
+	const imgalt = 'ONNX Runtime Logo';
 </script>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />

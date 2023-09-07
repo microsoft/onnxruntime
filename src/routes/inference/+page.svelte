@@ -1,11 +1,10 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
-
+	import imgsrc from '../../images/ONNX-Icon.svg';
 	let title = 'ONNX Runtime for Inferencing';
 	let description =
 		'ONNX Runtime Inference powers machine learning models in key Microsoft products and services across Office, Azure, Bing, as well as thousands of community projects.';
-	let imgsrc = 'https://placehold.co/600x300';
-	let imgalt = '';
+	let imgalt = 'ONNX Runtime Logo';
 </script>
 
 <div class="container mx-auto px-10 my-10">

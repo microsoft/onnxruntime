@@ -1,11 +1,10 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
-
+	const imgsrc = 'https://placehold.co/600x300';
 	let title = 'ONNX Runtime for Training';
 	let description =
 		'ONNX Runtime can be used to accelerate both large model training and on-device training.';
-	let imgsrc = 'https://placehold.co/600x300';
-	let imgalt = '';
+	let imgalt = 'ONNX Runtime Logo';
 </script>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />

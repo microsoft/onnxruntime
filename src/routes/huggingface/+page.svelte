@@ -1,10 +1,14 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
+	import imgsrc from '../../images/ONNX-Icon.svg';
+	import ImagesHf1 from '../../images/undraw/image_HF1.svelte';
+	import ImageHf2 from '../../images/undraw/image_HF2.svelte';
+	import ImageHf3 from '../../images/undraw/image_HF3.svelte';
 	const title = 'Hugging Face + ONNX Runtime';
 	const description =
 		'ONNX Runtime can be used to accelerate well over 100,000 of the models available on Hugging Face.';
-	const imgsrc = 'https://placehold.co/600x300';
-	const imgalt = '';
+	// const imgsrc = 'https://placehold.co/600x300';
+	const imgalt = 'ONNX Runtime Logo';
 </script>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />
@@ -14,9 +18,11 @@
 			<h1 class="text-4xl pb-4">Supported Models</h1>
 			<p>
 				The top 30 most popular model families on Hugging Face are all supported by ONNX Runtime,
-				and over 80 Hugging Face model families in total boast ORT support. <span class="hidden md:inline">The table outlines the models:</span>
+				and over 80 Hugging Face model families in total boast ORT support. <span
+					class="hidden md:inline">The table outlines the models:</span
+				>
 			</p>
-			<br/>
+			<br />
 			<p class="pb-4">
 				ONNX models can be found directly from the Hugging Face Model Hub in its ONNX model library.
 			</p>
@@ -30,8 +36,9 @@
 				model library. With Hugging Face Optimum, you can easily convert pretrained models to ONNX,
 				and Transformers.js lets you run Hugging Face Transformers directly from your browser!
 			</p>
-			<a href="https://huggingface.co/docs/optimum/exporters/onnx/overview" class="btn btn-primary md:mb-4 mr-0 mb-0 md:mr-4"
-				>Learn more about Hugging Face Optimum →</a
+			<a
+				href="https://huggingface.co/docs/optimum/exporters/onnx/overview"
+				class="btn btn-primary md:mb-4 mr-0 mb-0 md:mr-4">Learn more about Hugging Face Optimum →</a
 			>
 			<a href="https://huggingface.co/docs/transformers.js/index" class="btn btn-primary"
 				>Learn more about Transformers.js →</a
@@ -108,7 +115,12 @@
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
-	<h1 class="text-4xl pb-4">Export Hugging Face Models to ONNX</h1>
+	<div class="flex">
+		<h1 class="text-4xl pb-4">Export Hugging Face Models to ONNX</h1>
+		<div class="ml-5 hidden md:flex">
+			<ImagesHf1 />
+		</div>
+	</div>
 	<h2 class="text-2xl">PyTorch Models</h2>
 	<p class="pb-4">
 		Hugging Face's ONNX Export Space allows users to easily export PyTorch models from the Hugging
@@ -128,7 +140,12 @@
 <div class="container mx-auto px-10 my-10">
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 		<div class="col-span-1">
-			<h1 class="text-4xl pb-4">Large Language Models</h1>
+			<div class="flex">
+				<h1 class="text-4xl pb-4">Large Language Models</h1>
+				<div class="ml-5 hidden md:flex">
+					<ImageHf2 />
+				</div>
+			</div>
 			<p>
 				ONNX Runtime also supports many increasingly popular large language model (LLM) families,
 				including most of those available in the HF Model Hub. <span class="hidden md:inline"
@@ -193,7 +210,12 @@
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
-	<h1 class="text-4xl pb-4">Cloud Models</h1>
+	<div class="flex">
+		<h1 class="text-4xl pb-4">Cloud Models</h1>
+		<div class="ml-5 hidden md:flex">
+			<ImageHf3 />
+		</div>
+	</div>
 	<p>
 		Models accelerated by ONNX Runtime can be easily deployed to the cloud through Azure ML, which
 		improves time to value, streamlines MLOps, and provides built-in security.
