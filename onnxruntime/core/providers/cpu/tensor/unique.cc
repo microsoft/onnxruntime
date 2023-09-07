@@ -146,7 +146,7 @@ class Subtensor {
 
 template <typename T>
 static void CreateFlattenedOutput(OpKernelContext& context,
-                                  const std::vector<std::pair<const T, int64_t> >& mapping, // map sorted key to unsorted idx
+                                  const std::vector<std::pair<const T, int64_t>>& mapping,  // map sorted key to unsorted idx
                                   const std::vector<std::vector<int64_t>>& indices,         // unsorted
                                   const std::vector<int64_t>& inverse_index,                // unsorted
                                   bool sorted) {
@@ -187,7 +187,7 @@ static void CreateFlattenedOutput(OpKernelContext& context,
       unsorted_to_sorted.resize(onnxruntime::narrow<size_t>(num_unique));
       int64_t sorted_idx = 0;
 
-      for (const auto &mp : mapping) {
+      for (const auto& mp : mapping) {
         unsorted_to_sorted[onnxruntime::narrow<size_t>(mp.second)] = sorted_idx++;
       }
 
@@ -206,9 +206,9 @@ template <typename T>
 static void CreateOutput(OpKernelContext& context,
                          const TensorShape& subtensor_shape,
                          int64_t axis,
-                         const std::vector<std::pair<const Subtensor<T>, int64_t> >& mapping,  // map sorted key to unsorted idx
-                         const std::vector<std::vector<int64_t>>& indices,                     // unsorted
-                         const std::vector<int64_t>& inverse_index,                            // unsorted
+                         const std::vector<std::pair<const Subtensor<T>, int64_t>>& mapping,  // map sorted key to unsorted idx
+                         const std::vector<std::vector<int64_t>>& indices,                    // unsorted
+                         const std::vector<int64_t>& inverse_index,                           // unsorted
                          bool sorted) {
   int64_t num_unique = static_cast<int64_t>(indices.size());
 
@@ -280,7 +280,7 @@ static void CreateOutput(OpKernelContext& context,
       unsorted_to_sorted.resize(onnxruntime::narrow<size_t>(num_unique));
       int64_t sorted_idx = 0;
 
-      for(const auto &mp : mapping) {
+      for (const auto& mp : mapping) {
         unsorted_to_sorted[onnxruntime::narrow<size_t>(mp.second)] = sorted_idx++;
       }
 
@@ -309,7 +309,7 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
     std::vector<std::vector<int64_t>> indices;
     std::vector<int64_t> inverse_index;
 
-    std::vector<std::pair<const T, int64_t> > mapping; // provides final mapping between values and indices
+    std::vector<std::pair<const T, int64_t>> mapping;  // provides final mapping between values and indices
 
     indices.reserve(data.size() / 2);  // arbitrary value. at worst 1 realloc but could be too large
     inverse_index.reserve(data.size());
@@ -318,7 +318,7 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
     int64_t num_unique = 0;
 
     for (int64_t i = 0, end = input.Shape().Size(); i < end; ++i) {
-      const auto &elem = data[onnxruntime::narrow<size_t>(i)];
+      const auto& elem = data[onnxruntime::narrow<size_t>(i)];
 
       if (elem != elem) {
         mapping.push_back({elem, num_unique});
@@ -363,7 +363,7 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
     std::vector<std::vector<int64_t>> indices;
     std::vector<int64_t> inverse_index;
 
-    std::vector<std::pair<const Subtensor<T>, int64_t> > mapping; // provides final mapping between values and indices
+    std::vector<std::pair<const Subtensor<T>, int64_t>> mapping;  // provides final mapping between values and indices
 
     indices.reserve(data.size() / 2);  // arbitrary value. at worst 1 realloc but could be too large
     inverse_index.reserve(data.size());
@@ -376,14 +376,14 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
       Subtensor<T> s(data, subtensor_shape, axis, n_axis, i);
 
       bool has_nan = false;
-      for(const auto& item : s.GetItems()) {
+      for (const auto& item : s.GetItems()) {
         if (item != item) {
           has_nan = true;
           break;
         }
       }
 
-      if(has_nan) {
+      if (has_nan) {
         mapping.push_back({std::move(s), num_unique});
         inverse_index.push_back({num_unique});
         indices.push_back({i});
