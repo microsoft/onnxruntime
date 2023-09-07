@@ -1507,25 +1507,52 @@ Block quantization operator. It consumes a half precision x, for given block_siz
     orig_shape = x.size()
     x = x.reshape(-1, block_size)
     s = x.abs().amax(dim=-1, keepdim=True) / INT8_MAX
-    y = (x / s).to(torch.int8).view(orig_shape)
-    return y, s)DOC";
+    mask = s != 0.0
+    s[mask] = 1.0 / s[mask]
+    y = (x * s).to(torch.int8).view(orig_shape)
+    return y, s.reshape(-1))DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     BlockQuantize, 1,
     OpSchema()
+        .Attr("force_fp32_scale", "when input is fp16, output scale as fp32", AttributeProto::INTS, OPTIONAL_VALUE)
         .Input(0, "x", "N-D half precision Input tensor to be block quantized.", "F")
         .Input(1, "block_size", "Int32 tensor for block size, its shape is [1] or [].", "B")
         .Output(0, "y", "N-D quantized output tensor. It has same shape as input 'x'.", "Q")
-        .Output(1, "s", "Block Scale tensor with shape of [block_count], same type as x.", "F")
-        .TypeConstraint("F", {"tensor(float16)", "tensor(float)"}, "Constrain 'x' to half tensors.")
+        .Output(1, "s", "Block Scale tensor with shape of [block_count]. Value is inversed unit scale.", "S")
+        .TypeConstraint("F", {"tensor(float16)", "tensor(float)"}, "Constrain 'x' to float tensors.")
         .TypeConstraint("B", {"tensor(int32)"}, "Constrain block size to 32-bit integer tensors.")
         .TypeConstraint("Q", {"tensor(int8)"}, "Constrain 'y' to 8-bit integer tensors.")
+        .TypeConstraint("S", {"tensor(float16)", "tensor(float)"}, "Constrain 'x' to float tensors.")
         .SetDoc(BlockQuantize_ver1_doc)
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto::INT8, 0);
+          auto attr_proto = ctx.getAttribute("force_fp32_scale");
+          bool scale_type_forced = false;
+          if (attr_proto) {
+            auto force_fp32_scale = attr_proto->i();
+            if (force_fp32_scale) {
+              auto input_type = ctx.getInputType(0);
+              if (nullptr == input_type) {
+                fail_type_inference("Input 0 type was null");
+              }
+              const auto input_value_case = input_type->value_case();
+              if (input_value_case != ONNX_NAMESPACE::TypeProto::kTensorType) {
+                fail_type_inference("Input 0 expected to have tensor type. Got: ", input_value_case);
+              }
+              const auto input_elem_type = getTensorElementType(*input_type);
+              if (input_elem_type == ONNX_NAMESPACE::TensorProto::FLOAT16) {
+                propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto::FLOAT, 1);
+                scale_type_forced = true;
+              }
+            }
+          }
+
+          if (!scale_type_forced) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
-          propagateElemTypeFromInputToOutput(ctx, 0, 1);
           ONNX_NAMESPACE::TensorShapeProto scale_shape;
           scale_shape.add_dim();
           updateOutputShape(ctx, 1, scale_shape);

@@ -25,16 +25,19 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("F", BuildKernelDefConstraints<float, MLFloat16>())
         .TypeConstraint("B", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("S", BuildKernelDefConstraints<float, MLFloat16>())
         .InputMemoryType(OrtMemTypeCPUInput, 1),  // block_size
     BlockQuantize);
 
 Status BlockQuantize::ComputeInternal(OpKernelContext* context) const {
+  static constexpr int MaxBlockSize = 1024;
+  static constexpr int MinBlockSize = 8;
+
   const Tensor* block_size_tensor = context->Input<Tensor>(1);
-  ORT_ENFORCE(IsScalarOr1ElementVector(block_size_tensor),
-              "block_sizee must be a scalar or 1D tensor of size 1");
-  auto block_size = static_cast<unsigned>(*block_size_tensor->Data<int8_t>());
-  ORT_ENFORCE(block_size >= 16 && block_size <= 1024 && (block_size & -block_size) == 0,
-              "block_size value must >= 16, <= 1024, and be power of 2.");
+  ORT_ENFORCE(IsScalarOr1ElementVector(block_size_tensor), "block_sizee must be a scalar or 1D tensor of size 1");
+  auto block_size = static_cast<unsigned>(*block_size_tensor->Data<int32_t>());
+  ORT_ENFORCE(block_size >= 8 && block_size <= MaxBlockSize && (block_size & -block_size) == 0,
+              "block_size value must >= ", MinBlockSize, ", and  <= ", MaxBlockSize, ", and be power of 2.");
 
   const Tensor* x_tensor = context->Input<Tensor>(0);
   auto element_count = x_tensor->Shape().Size();
@@ -48,14 +51,25 @@ Status BlockQuantize::ComputeInternal(OpKernelContext* context) const {
 
   if (x_tensor->IsDataType<MLFloat16>()) {  // half precision float
     typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
-    return CudaBlockQuantize(
-        Stream(context),
-        GetDeviceProp(),
-        (const CudaT*)(x_tensor->template Data<MLFloat16>()),
-        block_size,
-        static_cast<unsigned>(block_count),
-        (CudaT*)(scale_tensor->template MutableData<MLFloat16>()),
-        y_tensor->MutableData<int8_t>());
+    if (force_fp32_scale_) {
+      return CudaBlockQuantize(
+          Stream(context),
+          GetDeviceProp(),
+          (const CudaT*)(x_tensor->template Data<MLFloat16>()),
+          block_size,
+          static_cast<unsigned>(block_count),
+          scale_tensor->template MutableData<float>(),
+          y_tensor->MutableData<int8_t>());
+    } else {
+      return CudaBlockQuantize(
+          Stream(context),
+          GetDeviceProp(),
+          (const CudaT*)(x_tensor->template Data<MLFloat16>()),
+          block_size,
+          static_cast<unsigned>(block_count),
+          (CudaT*)(scale_tensor->template MutableData<MLFloat16>()),
+          y_tensor->MutableData<int8_t>());
+    }
   }
 
   ORT_ENFORCE(false, "Current BlockQuantize() do not support other float input except float16.");

@@ -8,14 +8,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <class T>
+template <class T, class S>
 Status CudaBlockQuantize(
     cudaStream_t stream,
     const cudaDeviceProp& device_prop,
     const T* x,
     unsigned const block_size,
     unsigned const block_count,
-    T* scale,
+    S* scale,
     int8_t* y);
 
 }  // namespace cuda
