@@ -14,7 +14,7 @@
 namespace onnxruntime {
 namespace test {
 
-// Returns a function that creates a graph with a single MaxPool operator.
+// Returns a function that creates a graph with a single Reshape operator.
 template <typename DataType>
 static GetTestModelFn BuildReshapeTestCase(const TestInputDef<DataType>& input_def,
                                            const TestInputDef<int64_t>& shape_def,
@@ -62,7 +62,7 @@ GetTestQDQModelFn<QuantType> BuildQDQReshapeTestCase(const TestInputDef<float>& 
   };
 }
 
-// Runs a model with a Reshape operator on the QNN CPU backend. Checks the graph node assignment,
+// Runs a model with a Reshape operator on the QNN CPU backend. Checks the graph node assignment
 // and that inference outputs for QNN EP and CPU EP match.
 template <typename DataType>
 static void RunReshapeTestOnCPU(const TestInputDef<DataType>& input_def,
@@ -84,7 +84,7 @@ static void RunReshapeTestOnCPU(const TestInputDef<DataType>& input_def,
                   expected_ep_assignment);
 }
 
-// Runs a model with a non-QDQ Reshape operator on the QNN HTP backend. Checks the graph node assignment,
+// Runs a model with a non-QDQ Reshape operator on the QNN HTP backend. Checks the graph node assignment
 // and that inference outputs for QNN EP and CPU EP match.
 template <typename DataType>
 static void RunReshapeTestOnHTP(const TestInputDef<DataType>& input_def,
@@ -106,7 +106,7 @@ static void RunReshapeTestOnHTP(const TestInputDef<DataType>& input_def,
                   expected_ep_assignment);
 }
 
-// Runs a QDQ Reshape model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment, and that inference
+// Runs a QDQ Reshape model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and that inference
 // running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP (when compared to the baseline float32 model).
 template <typename QType>
 static void RunQDQReshapeTestOnHTP(const TestInputDef<float>& input_def,
@@ -211,7 +211,7 @@ TEST_F(QnnHTPBackendTests, Reshape_4D_0MeansCopy) {
                                   19);  // Opset
 }
 
-// Test QDQ Reshape with a shape value of -1 (dimension is inferred from the expect number of elements)
+// Test QDQ Reshape with a shape value of -1 (dimension is inferred from the expected number of elements)
 TEST_F(QnnHTPBackendTests, Reshape_4D_Neg1MeansInfer) {
   RunQDQReshapeTestOnHTP<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
                                   TestInputDef<int64_t>({3}, true, {1, 3, -1}),  // -1 means infer => '(1, 3, 16)'
