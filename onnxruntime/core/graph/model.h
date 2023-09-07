@@ -7,6 +7,9 @@
 #include <memory>
 #include <climits>
 #include <string>
+
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"
@@ -14,12 +17,6 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function_template.h"
 #endif
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 
@@ -191,6 +188,7 @@ class Model {
   // Save initializer larger than the given threshold (in bytes) into an external binary file
   // with the given name. This function is useful to avoid hitting the size limit of protobuf files.
   ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                  const PathString& file_path,
                                                                   size_t initializer_size_threshold);
 
 #ifdef _WIN32
@@ -217,6 +215,7 @@ class Model {
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
+                                                     const PathString& file_path,
                                                      const std::string& external_file_name,
                                                      size_t initializer_size_threshold);
 

@@ -8,7 +8,14 @@ ORT_API(const OrtTrainingApi*, GetTrainingApi, uint32_t version);
 ORT_API_STATUS_IMPL(CreateTrainingSession, _In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
                     _Inout_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* train_model_path,
                     _In_ const ORTCHAR_T* eval_model_path, _In_ const ORTCHAR_T* optimizer_model_path,
-                    _Outptr_ OrtTrainingSession** out);
+                    _Outptr_result_maybenull_ OrtTrainingSession** out);
+
+ORT_API_STATUS_IMPL(CreateTrainingSessionFromBuffer, _In_ const OrtEnv* env,
+                    _In_ const OrtSessionOptions* options, _Inout_ OrtCheckpointState* checkpoint_state,
+                    _In_ const void* train_model_data, size_t train_data_length,
+                    _In_ const void* eval_model_data, size_t eval_data_length,
+                    _In_ const void* optim_model_data, size_t optim_data_length,
+                    _Outptr_result_maybenull_ OrtTrainingSession** out);
 
 ORT_API_STATUS_IMPL(TrainingSessionGetTrainingModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 
@@ -83,5 +90,8 @@ ORT_API_STATUS_IMPL(AddProperty, _Inout_ OrtCheckpointState* checkpoint_state,
 ORT_API_STATUS_IMPL(GetProperty, _In_ const OrtCheckpointState* checkpoint_state,
                     _In_ const char* property_name, _Inout_ OrtAllocator* allocator,
                     _Out_ enum OrtPropertyType* property_type, _Outptr_ void** property_value);
+
+ORT_API_STATUS_IMPL(LoadCheckpointFromBuffer, _In_ const void* checkpoint_buffer,
+                    _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state);
 
 }  // namespace OrtTrainingApis

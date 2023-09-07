@@ -51,7 +51,7 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
   }
 
   // Type is either "tensor(uint8)" or  "tensor(int8)"
-  const auto self_zp_type = *self->InputDefs()[InputIndex::ZERO_POINT_ID]->Type();
+  const auto& self_zp_type = *self->InputDefs()[InputIndex::ZERO_POINT_ID]->Type();
   // child should be a Q, and have only one child, have the same type as self, and cannot be a graph output
   child_index = self->OutputEdgesBegin()->GetNode().Index();
   const Node* child = graph.GetNode(child_index);
@@ -88,11 +88,15 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
       !QDQ::IsQDQPairSupported(*child, *grandchild, get_constant_initializer, graph.ModelPath())) {
     return false;
   }
+  bool skip_reset = false;
   float new_scale = 0.0f;
   if (self_zp_type == "tensor(uint8)") {
     uint8_t new_zero_point = 0;
-    if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point)) {
+    if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point, skip_reset)) {
       return false;
+    }
+    if (skip_reset) {
+      return true;
     }
     ApplyNewInputValue(graph, *grandchild, InputIndex::SCALE_ID, new_scale);
     ApplyNewInputValue(graph, *parent, InputIndex::SCALE_ID, new_scale);
@@ -100,8 +104,11 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
     ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, new_zero_point);
   } else {
     int8_t new_zero_point = 0;
-    if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point)) {
+    if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point, skip_reset)) {
       return false;
+    }
+    if (skip_reset) {
+      return true;
     }
     ApplyNewInputValue(graph, *grandchild, InputIndex::SCALE_ID, new_scale);
     ApplyNewInputValue(graph, *parent, InputIndex::SCALE_ID, new_scale);
@@ -112,16 +119,27 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
 }
 
 template <typename T>
-bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2, float& new_scale, T& new_zero_point) {
+bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2,
+                                                     float& new_scale, T& new_zero_point, bool& skip_reset) {
+  // scale & zero point share same initializer, no need to reset the value
+  const std::string& node1_scale_name = node1.InputDefs()[InputIndex::SCALE_ID]->Name();
+  const std::string& node2_scale_name = node2.InputDefs()[InputIndex::SCALE_ID]->Name();
+  const std::string& node1_zp_name = node1.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+  const std::string& node2_zp_name = node2.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+  skip_reset = false;
+  if (node1_scale_name == node2_scale_name && node1_zp_name == node2_zp_name) {
+    skip_reset = true;
+    return true;
+  }
   // if Q/DQ scale and zero point are not constant, return false
   const ONNX_NAMESPACE::TensorProto* node1_scale_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, node1.InputDefs()[InputIndex::SCALE_ID]->Name());
+      graph_utils::GetConstantInitializer(graph, node1_scale_name);
   const ONNX_NAMESPACE::TensorProto* node2_scale_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, node2.InputDefs()[InputIndex::SCALE_ID]->Name());
+      graph_utils::GetConstantInitializer(graph, node2_scale_name);
   const ONNX_NAMESPACE::TensorProto* node1_zp_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, node1.InputDefs()[InputIndex::ZERO_POINT_ID]->Name());
+      graph_utils::GetConstantInitializer(graph, node1_zp_name);
   const ONNX_NAMESPACE::TensorProto* node2_zp_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, node2.InputDefs()[InputIndex::ZERO_POINT_ID]->Name());
+      graph_utils::GetConstantInitializer(graph, node2_zp_name);
   Initializer zero_point_init_1{*node1_zp_tensor_proto, graph.ModelPath()};
   Initializer zero_point_init_2{*node2_zp_tensor_proto, graph.ModelPath()};
   Initializer scale_init_1{*node1_scale_tensor_proto, graph.ModelPath()};
@@ -136,6 +154,11 @@ bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const N
   T zero_point_2 = zero_point_init_2.data<T>()[0];
   const float scale_1 = scale_init_1.data<float>()[0];
   const float scale_2 = scale_init_2.data<float>()[0];
+  // No need to rest the value if values are equal
+  if (zero_point_1 == zero_point_2 && abs(scale_1 - scale_2) < 1E-20) {
+    skip_reset = true;
+    return true;
+  }
   T q_min = std::numeric_limits<T>::min();
   T q_max = std::numeric_limits<T>::max();
 

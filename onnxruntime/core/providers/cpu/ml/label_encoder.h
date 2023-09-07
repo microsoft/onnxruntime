@@ -63,9 +63,9 @@ class LabelEncoder_2 final : public OpKernel {
                 "(name: ", info.node().Name(), ") must have the same length. ",
                 "However, the number of key is ", num_keys, " and the number of ",
                 "values is ", num_values, ".");
-
+    _map.reserve(num_keys);
     for (size_t i = 0; i < num_keys; ++i)
-      _map[keys[i]] = values[i];
+      _map.emplace(keys[i], values[i]);
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -98,7 +98,7 @@ class LabelEncoder_2 final : public OpKernel {
   // A collection of key-value pairs. Each (a_key, a_value) pair
   // means that the "a_key" in the input would be mapped to "a_value".
   // If _map doesn't contain "a_key", we use _default_value as its output.
-  std::unordered_map<TKey, TValue> _map;
+  InlinedHashMap<TKey, TValue> _map;
   TValue _default_value;
   // ONNX attribute name to load keys.
   std::string _key_field_name;

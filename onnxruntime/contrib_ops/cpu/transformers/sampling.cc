@@ -134,14 +134,14 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
           parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::GreedySearchProcessLogits<float>,
           init_greedy_state_func_ ? init_greedy_state_func_ : GenerationCpuDeviceHelper::InitGreedyState<float>,
           device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
-          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>,
-          gpu_device_prop_,
-          gpu_device_arch_};
+          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, gpu_device_prop_, gpu_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -158,15 +158,14 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
           parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_greedy_state_fp16_func_,
           device_copy_func_,
-          update_gpt_feeds_fp16_func_,
-          gpu_device_prop_,
-          gpu_device_arch_};
-
+          update_gpt_feeds_fp16_func_};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, gpu_device_prop_, gpu_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);

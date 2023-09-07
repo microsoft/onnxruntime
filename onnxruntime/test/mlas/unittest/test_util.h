@@ -121,19 +121,17 @@ class MatrixGuardBuffer {
     return GetFilledBuffer(
         Elements,
         [](T* start, size_t size) {
-          constexpr int MinimumFillValue = -23;
-          constexpr int MaximumFillValue = 23;
+          constexpr int offset = -21;
+          constexpr int range = 43;
 
-          int FillValue = MinimumFillValue;
+          int FillValue = 11;
           T* FillAddress = start;
           for (size_t i = 0; i < size; i++) {
-            *FillAddress++ = (T)FillValue;
+            auto itemv = FillValue - offset;
+            *FillAddress++ = (T)(itemv);
 
-            FillValue++;
-
-            if (FillValue > MaximumFillValue) {
-              FillValue = MinimumFillValue;
-            }
+            FillValue += 7;
+            FillValue %= range;
           }
         });
   }

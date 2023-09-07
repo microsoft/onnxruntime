@@ -98,6 +98,9 @@ android {
 	sourceSets {
 		main {
 			jniLibs.srcDirs = [jniLibsDir]
+			java {
+				srcDirs = ['src/main/java', 'src/main/android']
+			}
 		}
 	}
 

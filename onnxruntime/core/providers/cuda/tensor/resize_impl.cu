@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/tensor/resize_impl.h"
 
@@ -156,7 +159,7 @@ __global__ void _ResizeNearestMappingKernel2D(
           extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_height - 1)));
       dim = calc_nearest_pixel(orig_coord, scales_height < 1);
       if (dim >= input_height) dim = input_height - 1;
-      if (dim < 0) dim = 0;    
+      if (dim < 0) dim = 0;
     }
 
     dims_mapping[id].origin_ = dim;
@@ -173,7 +176,7 @@ __global__ void _ResizeNearestMappingKernel2D(
           extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_width - 1)));
       dim = calc_nearest_pixel(orig_coord, scales_width < 1);
       if (dim >= input_width) dim = input_width - 1;
-      if (dim < 0) dim = 0; 
+      if (dim < 0) dim = 0;
     }
 
     dims_mapping[id].origin_ = dim;
@@ -212,7 +215,7 @@ __global__ void _ResizeNearestMappingKernel(
         dims_mapping[id].extrapolate_ = static_cast<int>(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_shape[axis] - 1)));
         dim = calc_nearest_pixel(orig_coord, scales[axis] < 1);
         if (dim >= input_shape[axis]) dim = input_shape[axis] - 1;
-        if (dim < 0) dim = 0;      
+        if (dim < 0) dim = 0;
       }
 
       dims_mapping[id].origin_ = dim;
@@ -378,9 +381,9 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     dims_mapping[id].origin_ = z_int;
     dims_mapping[id].weight_ = (z_int >= input_depth - 1) ? 0.5f : input_z - z_int;
   } else if (id >= output_depth && id < (output_depth + output_height)) {  //  y = id - output_depth
-    float input_y = scale_height == 1 ? static_cast<float>(id - output_depth) : 
-                                        transform_coordinate(static_cast<float>(id - output_depth), scale_height, 
-                                        static_cast<float>(output_height), static_cast<float>(input_height), 
+    float input_y = scale_height == 1 ? static_cast<float>(id - output_depth) :
+                                        transform_coordinate(static_cast<float>(id - output_depth), scale_height,
+                                        static_cast<float>(output_height), static_cast<float>(input_height),
                                         roi_height_start, roi_height_end);
 
     dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_y < 0 || input_y > static_cast<float>(input_height - 1)));
@@ -416,12 +419,12 @@ __global__ void _ResizeTrilinearKernel(
   div_output_image.divmod(id, bxc, output_image_index);
   CUDA_LONG input_index = bxc * input_depth * input_height * input_width;
   int output_z, output_y, output_x, temp;
-  
+
   div_output_height.divmod(output_image_index, output_z, temp);
   div_output_width.divmod(temp, output_y, output_x);
 
-  if (dims_mapping[output_z].extrapolate_ || 
-      dims_mapping[output_y + output_depth].extrapolate_ || 
+  if (dims_mapping[output_z].extrapolate_ ||
+      dims_mapping[output_y + output_depth].extrapolate_ ||
       dims_mapping[output_x + output_depth + output_height].extrapolate_) {
     output_data[id] = extrapolation_value;
     return;
@@ -435,7 +438,7 @@ __global__ void _ResizeTrilinearKernel(
 
   float x_offset_0 = dims_mapping[output_x + output_depth + output_height].weight_;
   int x_int = dims_mapping[output_x + output_depth + output_height].origin_;
-  
+
   input_index += z_int * input_height * input_width + y_int * input_width + x_int;
 
   T x000 = input_data[input_index];

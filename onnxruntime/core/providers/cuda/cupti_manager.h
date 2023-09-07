@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)

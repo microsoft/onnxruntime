@@ -18,6 +18,7 @@
 #include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -165,8 +166,8 @@ TEST(ComputeOptimizerTests, GatherND_E2E) {
 
   // check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("computation_reduction_transformer_after.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("computation_reduction_transformer_after.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   InputContainer input_container;
@@ -282,8 +283,8 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnBatchDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_matmul_scalar_batch_dim_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_matmul_scalar_batch_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -388,8 +389,8 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnBatchDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_matmul_batch_dim_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_matmul_batch_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -486,8 +487,8 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnLastDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_matmul_scalar_last_dim_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_matmul_scalar_last_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -584,8 +585,8 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnLastDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_matmul_last_dim_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_matmul_last_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -637,7 +638,8 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -682,7 +684,7 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(
+  PathString new_model_uri{ConcatPathComponent(
       tmp_dir.Path(),
       ORT_TSTR("gather_matmul_scalar_second_last_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
@@ -736,7 +738,8 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnSecondLastDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -781,8 +784,8 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnSecondLastDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_matmul_second_last_dim_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_matmul_second_last_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -825,6 +828,345 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnSecondLastDim) {
   }
 }
 
+/*
+Test graph includes multiple equivalent subgraphs as below.
+             graph input [2, 32, 256] (float)
+                            |
+                  LayerNormalization[axis=-1 (as example)]
+                            |
+                      [2, 32, 256]
+                            |
+                            |     0 (scalar)
+                            |    /
+                       Gather[axis=1]
+                            |
+                        Identity
+                            |
+              graph output [2, 256] (float)
+
+Add an Identity node because currently, we don't allow Gather generates graph output.
+*/
+TEST(ComputeOptimizerTests, GatherLayerNormalization) {
+  std::vector<std::tuple<int, int64_t, int64_t, bool>> test_config_pairs{
+      // {
+      //  is_scalar_slice,
+      //  ln_axis_before_propagation,
+      //  expected_ln_axis_after_propagation,
+      //  expected to propagate
+      // }
+      {true, 0, 0, false},
+      {true, 1, 1, false},
+      {true, 2, 1, true},
+      {true, -3, -3, false},
+      {true, -2, -2, false},
+      {true, -1, 1, true},
+      {false, 0, 0, false},
+      {false, 1, 1, false},
+      {false, 2, 2, true},
+      {false, -3, -3, false},
+      {false, -2, -2, false},
+      {false, -1, -1, true},
+  };
+
+  constexpr static int64_t gather_axis = 1;
+  constexpr static int64_t slice_data_value = 0;
+
+  for (auto p : test_config_pairs) {
+    bool is_scalar_slice = std::get<0>(p);
+    int64_t ln_axis_before = std::get<1>(p);
+    int64_t ln_axis_after = std::get<2>(p);
+    bool expected_to_propagate = std::get<3>(p);
+
+    const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+
+    InlinedVector<int64_t> indices;
+    auto pre_graph_checker = [&indices](Graph& graph) -> Status {
+      auto op_count_pre = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+      TEST_RETURN_IF_NOT(op_count_pre["LayerNormalization"] == 1);
+      TEST_RETURN_IF_NOT(op_count_pre["Gather"] == 1);
+      TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "Gather") {
+          TEST_RETURN_IF_NOT(indices.empty());
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(node.InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg,
+                                                                          indices, require_constant));
+        }
+      }
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [is_scalar_slice, ln_axis_after,
+                               &indices, expected_to_propagate](Graph& graph) {
+      auto op_count_post = CountOpsInGraph(graph);
+
+      TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+      TEST_RETURN_IF_NOT(op_count_post["LayerNormalization"] == 1);
+      TEST_RETURN_IF_NOT(op_count_post["Gather"] == 1);
+      TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "LayerNormalization") {
+          const auto& input_defs = node.InputDefs();
+
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          if (expected_to_propagate) {
+            TEST_RETURN_IF_NOT(producer_node != nullptr);
+            TEST_RETURN_IF_NOT(producer_node->OpType() == "Gather");
+
+            InlinedVector<int64_t> values;
+            constexpr bool require_constant = true;
+            NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+            TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg,
+                                                                            values, require_constant));
+            for (size_t i = 0; i < values.size(); i++) {
+              TEST_RETURN_IF_NOT(values[i] == indices[i]);
+            }
+
+            const ONNX_NAMESPACE::TensorShapeProto* slice_out_shape = producer_node->OutputDefs()[0]->Shape();
+            TEST_RETURN_IF_NOT(slice_out_shape != nullptr);
+
+            auto& attrs = node.GetAttributes();
+            TEST_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+
+            auto& axis_attr = attrs.at("axis");
+            auto axis_value = (int)axis_attr.i();
+            TEST_RETURN_IF_NOT(axis_value == ln_axis_after);
+
+            if (is_scalar_slice) {
+              TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 2);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) &&
+                                 slice_out_shape->dim(0).dim_value() == 2);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) &&
+                                 slice_out_shape->dim(1).dim_value() == 256);
+            } else {
+              TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 3);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) &&
+                                 slice_out_shape->dim(0).dim_value() == 2);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) &&
+                                 slice_out_shape->dim(1).dim_value() == 1);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) &&
+                                 slice_out_shape->dim(2).dim_value() == 256);
+            }
+
+          } else {
+            TEST_RETURN_IF_NOT(producer_node == nullptr);
+          }
+        }
+      }
+
+      return Status::OK();
+    };
+
+    auto build_test_case = [is_scalar_slice, ln_axis_before](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{2, 32, 256}});
+      auto* input2_arg = builder.MakeInput<float>({{256}});
+      auto* input3_arg = builder.MakeInput<float>({{256}});
+      auto* ln_out = builder.MakeIntermediate();
+      builder.AddNode("LayerNormalization", {input1_arg, input2_arg, input3_arg}, {ln_out})
+          .AddAttribute("axis", ln_axis_before);
+
+      std::vector<NodeArg*> slice_inputs;
+      NodeArg* indices_initializer = nullptr;
+
+      if (is_scalar_slice) {
+        indices_initializer = builder.MakeScalarInitializer<int64_t>(slice_data_value);
+      } else {
+        indices_initializer = builder.MakeInitializer<int64_t>({1}, {slice_data_value});
+      }
+
+      slice_inputs = {ln_out, indices_initializer};
+
+      auto* gather_out = builder.MakeIntermediate();
+      builder.AddNode("Gather", slice_inputs,
+                      {gather_out})
+          .AddAttribute("axis", gather_axis);
+
+      auto* identity_out = builder.MakeOutput();
+      builder.AddNode("Identity", {gather_out}, {identity_out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
+                                          TransformerLevel::Level1,
+                                          1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph includes multiple equivalent subgraphs as below.
+             graph input [2, 4, 32, 256] (float)
+                            |
+                   Softmax[axis=3 (as example)]
+                            |
+                      [2, 4, 32, 256]
+                            |
+                            |     0 (scalar)
+                            |    /
+                       Gather[axis=1]
+                            |
+                        Identity
+                            |
+              graph output [2, 32, 256] (float)
+
+Add an Identity node because currently, we don't allow Gather generates graph output.
+*/
+TEST(ComputeOptimizerTests, GatherSoftmax) {
+  std::vector<std::tuple<int, int64_t, int64_t, bool>> test_config_pairs{
+      // {is_scalar_slice, softmax_axis_before_propagation,
+      //  expected_softmax_axis_after_propagation, expected to propagate}
+      {true, 0, 0, false},
+      {true, 1, 1, false},
+      {true, 2, 1, true},
+      {true, 3, 2, true},
+      {true, -4, -4, false},
+      {true, -3, -3, false},
+      {true, -2, 1, true},
+      {true, -1, 2, true},
+      {false, 0, 0, false},
+      {false, 1, 1, false},
+      {false, 2, 2, true},
+      {false, 3, 3, true},
+      {false, -4, -4, false},
+      {false, -3, -3, false},
+      {false, -2, -2, true},
+      {false, -1, -1, true},
+  };
+
+  constexpr static int64_t gather_axis = 1;
+  constexpr static int64_t slice_data_value = 0;
+
+  for (auto p : test_config_pairs) {
+    bool is_scalar_slice = std::get<0>(p);
+    int64_t softmax_axis_before = std::get<1>(p);
+    int64_t softmax_axis_after = std::get<2>(p);
+    bool expected_to_propagate = std::get<3>(p);
+
+    const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+
+    InlinedVector<int64_t> indices;
+    auto pre_graph_checker = [&indices](Graph& graph) -> Status {
+      auto op_count_pre = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+      TEST_RETURN_IF_NOT(op_count_pre["Softmax"] == 1);
+      TEST_RETURN_IF_NOT(op_count_pre["Gather"] == 1);
+      TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "Gather") {
+          TEST_RETURN_IF_NOT(indices.empty());
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(node.InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg,
+                                                                          indices, require_constant));
+        }
+      }
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [is_scalar_slice, softmax_axis_after,
+                               &indices, expected_to_propagate](Graph& graph) {
+      auto op_count_post = CountOpsInGraph(graph);
+
+      TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+      TEST_RETURN_IF_NOT(op_count_post["Softmax"] == 1);
+      TEST_RETURN_IF_NOT(op_count_post["Gather"] == 1);
+      TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "Softmax") {
+          const auto& input_defs = node.InputDefs();
+
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          if (expected_to_propagate) {
+            TEST_RETURN_IF_NOT(producer_node != nullptr);
+            TEST_RETURN_IF_NOT(producer_node->OpType() == "Gather");
+
+            InlinedVector<int64_t> values;
+            constexpr bool require_constant = true;
+            NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+            TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values,
+                                                                            require_constant));
+            for (size_t i = 0; i < values.size(); i++) {
+              TEST_RETURN_IF_NOT(values[i] == indices[i]);
+            }
+
+            const ONNX_NAMESPACE::TensorShapeProto* slice_out_shape = producer_node->OutputDefs()[0]->Shape();
+            TEST_RETURN_IF_NOT(slice_out_shape != nullptr);
+
+            auto& attrs = node.GetAttributes();
+            TEST_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+
+            auto& axis_attr = attrs.at("axis");
+            auto axis_value = (int)axis_attr.i();
+            TEST_RETURN_IF_NOT(axis_value == softmax_axis_after);
+
+            if (is_scalar_slice) {
+              TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 3);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) &&
+                                 slice_out_shape->dim(0).dim_value() == 2);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) &&
+                                 slice_out_shape->dim(1).dim_value() == 32);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) &&
+                                 slice_out_shape->dim(2).dim_value() == 256);
+            } else {
+              TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 4);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) &&
+                                 slice_out_shape->dim(0).dim_value() == 2);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) &&
+                                 slice_out_shape->dim(1).dim_value() == 1);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) &&
+                                 slice_out_shape->dim(2).dim_value() == 32);
+              TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(3)) &&
+                                 slice_out_shape->dim(3).dim_value() == 256);
+            }
+
+          } else {
+            TEST_RETURN_IF_NOT(producer_node == nullptr);
+          }
+        }
+      }
+
+      return Status::OK();
+    };
+
+    auto build_test_case = [is_scalar_slice, softmax_axis_before](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{2, 4, 32, 256}});
+      auto* softmax_out = builder.MakeIntermediate();
+      builder.AddNode("Softmax", {input1_arg}, {softmax_out})
+          .AddAttribute("axis", softmax_axis_before);
+
+      std::vector<NodeArg*> slice_inputs;
+
+      NodeArg* indices_initializer = nullptr;
+
+      if (is_scalar_slice) {
+        indices_initializer = builder.MakeScalarInitializer<int64_t>(slice_data_value);
+      } else {
+        indices_initializer = builder.MakeInitializer<int64_t>({1}, {slice_data_value});
+      }
+
+      slice_inputs = {softmax_out, indices_initializer};
+
+      auto* gather_out = builder.MakeIntermediate();
+      builder.AddNode("Gather", slice_inputs,
+                      {gather_out})
+          .AddAttribute("axis", gather_axis);
+
+      auto* identity_out = builder.MakeOutput();
+      builder.AddNode("Identity", {gather_out}, {identity_out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
+                                          TransformerLevel::Level1,
+                                          1, pre_graph_checker, post_graph_checker));
+  }
+}
+
 TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnBatchDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_scalar_batch_dim.onnx";
@@ -834,7 +1176,8 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnBatchDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -875,8 +1218,8 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnBatchDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_reshape_scalar_batch_dim_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_reshape_scalar_batch_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -927,7 +1270,8 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnBatchDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -969,8 +1313,8 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnBatchDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_reshape_batch_dim_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_reshape_batch_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1062,8 +1406,8 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnSeqlenDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_reshape_scalar_seqlen_dim_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_reshape_scalar_seqlen_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1156,8 +1500,8 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_reshape_seqlen_dim_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_reshape_seqlen_dim_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1250,8 +1594,8 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim2) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_reshape_seqlen_dim2_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_reshape_seqlen_dim2_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1394,8 +1738,8 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
 
   // Check the result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("gather_roberta_e2e_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("gather_roberta_e2e_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1568,6 +1912,418 @@ TEST(ComputeOptimizerTests, ShrunkenGatherElementwiseOps_PropagationOnTwoBranche
 
     auto* identity_out = builder.MakeOutput();
     builder.AddNode("Identity", {gather_out}, {identity_out});
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
+                                        TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+/*
+Test graph includes multiple equivalent subgraphs as below.
+           graph input [4, 32, 256] (float)            graph input [4, 32, 256] (float)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                           Add  starts:(0)  ends: (-1)  axes: (1) steps: (1)
+                                            \       \       |          /         /
+                                               \       \     |        /       /
+                                                  \      \   |     /      /
+                                                    \     \  |   /     /
+                                                       \   \ |  /   /
+                                                            Slice
+                                                             |
+                                                          Identity
+                                                             |
+                                                graph output [4, 31, 256] (float)
+
+Add an Identity node because currently we don't allow Slice generates graph output.
+*/
+TEST(ComputeOptimizerTests, SliceElementwiseOps_PropagationOnTwoBranches) {
+  // 0: no input, 1: has input, 2: empty input
+  std::vector<std::tuple<std::optional<int>, std::vector<int64_t>, int, int, bool>> has_axes_and_has_steps_pairs{
+      {std::nullopt, {4, 32, 256}, 0, 0, false},  // {axis, data_shape, has_axes, has_steps, expected to propagate}
+      {1, {4, 32, 256}, 1, 0, true},
+      {1, {4, 32, 256}, 1, 1, true},
+      {1, {4, 32, 256}, 1, 2, true},
+      {std::nullopt, {4, 32, 256}, 2, 0, false},
+      {std::nullopt, {4, 32, 256}, 2, 1, false},
+      {std::nullopt, {4, 32, 256}, 2, 2, false},
+
+      {std::nullopt, {256}, 0, 0, true},
+      {0, {256}, 1, 0, true},
+      {0, {256}, 1, 1, true},
+      {0, {256}, 1, 2, true},
+      {std::nullopt, {256}, 2, 0, true},
+      {std::nullopt, {256}, 2, 1, true},
+      {std::nullopt, {256}, 2, 2, true},
+  };
+
+  for (auto p : has_axes_and_has_steps_pairs) {
+    std::optional<int> axis = std::get<0>(p);
+    std::vector<int64_t> data_shape = std::get<1>(p);
+    int has_axes = std::get<2>(p);
+    int has_steps = std::get<3>(p);
+    bool expected_to_propagate = std::get<4>(p);
+
+    const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+    InlinedVector<int64_t> starts_indices;
+    auto pre_graph_checker = [&starts_indices](Graph& graph) -> Status {
+      auto op_count_pre = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+      TEST_RETURN_IF_NOT(op_count_pre["Add"] == 1);
+      TEST_RETURN_IF_NOT(op_count_pre["Slice"] == 1);
+      TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "Slice") {
+          TEST_RETURN_IF_NOT(starts_indices.empty());
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(node.InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, starts_indices,
+                                                                          require_constant));
+        }
+      }
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [&starts_indices, expected_to_propagate](Graph& graph) {
+      auto op_count_post = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+      TEST_RETURN_IF_NOT(op_count_post["Add"] == 1);
+      if (expected_to_propagate) {
+        TEST_RETURN_IF_NOT(op_count_post["Slice"] == 2);
+      } else {
+        TEST_RETURN_IF_NOT(op_count_post["Slice"] == 1);
+      }
+      TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "Add") {
+          const auto& input_defs = node.InputDefs();
+
+          {
+            auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+
+            if (expected_to_propagate) {
+              TEST_RETURN_IF_NOT(producer_node != nullptr);
+              TEST_RETURN_IF_NOT(producer_node->OpType() == "Slice");
+
+              InlinedVector<int64_t> values;
+              constexpr bool require_constant = true;
+              NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+              TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values,
+                                                                              require_constant));
+              for (size_t i = 0; i < values.size(); i++) {
+                TEST_RETURN_IF_NOT(values[i] == starts_indices[i]);
+              }
+            } else {
+              TEST_RETURN_IF_NOT(producer_node == nullptr);
+            }
+          }
+
+          {
+            auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+
+            if (expected_to_propagate) {
+              TEST_RETURN_IF_NOT(producer_node != nullptr);
+              TEST_RETURN_IF_NOT(producer_node->OpType() == "Slice");
+
+              InlinedVector<int64_t> values;
+              constexpr bool require_constant = true;
+              NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+              TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+              for (size_t i = 0; i < values.size(); i++) {
+                TEST_RETURN_IF_NOT(values[i] == starts_indices[i]);
+              }
+            } else {
+              TEST_RETURN_IF_NOT(producer_node == nullptr);
+            }
+          }
+        }
+      }
+      return Status::OK();
+    };
+
+    auto build_test_case = [has_axes, has_steps, &data_shape, axis](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int64_t>(data_shape);
+      auto* input2_arg = builder.MakeInput<int64_t>(data_shape);
+      auto* add_out = builder.MakeIntermediate();
+      builder.AddNode("Add", {input1_arg, input2_arg}, {add_out});
+
+      auto* starts_initializer = builder.MakeInitializer<int64_t>({1}, {0});
+      auto* ends_initializer = builder.MakeInitializer<int64_t>({1}, {-1});
+
+      std::vector<NodeArg*> slice_inputs;
+      slice_inputs = {add_out, starts_initializer, ends_initializer};
+
+      NodeArg* axes_initializer = nullptr;
+      NodeArg* steps_initializer = nullptr;
+      if (has_axes == 0 && has_steps == 0) {
+        // nothing
+      } else if (has_axes == 1 && has_steps == 0) {
+        axes_initializer = builder.MakeInitializer<int64_t>({1}, {axis.value()});
+        slice_inputs.push_back(axes_initializer);
+      } else if (has_axes == 1 && has_steps == 1) {
+        axes_initializer = builder.MakeInitializer<int64_t>({1}, {axis.value()});
+        slice_inputs.push_back(axes_initializer);
+        steps_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+        slice_inputs.push_back(steps_initializer);
+      } else if (has_axes == 1 && has_steps == 2) {
+        axes_initializer = builder.MakeInitializer<int64_t>({1}, {axis.value()});
+        slice_inputs.push_back(axes_initializer);
+        steps_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(steps_initializer);
+      } else if (has_axes == 2 && has_steps == 0) {
+        axes_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(axes_initializer);
+      } else if (has_axes == 2 && has_steps == 1) {
+        axes_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(axes_initializer);
+        steps_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+        slice_inputs.push_back(steps_initializer);
+      } else if (has_axes == 2 && has_steps == 2) {
+        axes_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(axes_initializer);
+        steps_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(steps_initializer);
+      }
+
+      auto* slice_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", slice_inputs,
+                      {slice_out});
+
+      auto* identity_out = builder.MakeOutput();
+      builder.AddNode("Identity", {slice_out}, {identity_out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
+                                          TransformerLevel::Level1,
+                                          1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph includes multiple equivalent subgraphs as below.
+             graph input [2, 4, 32, 256] (float)
+                            |
+                        Transpose[perms=[0, 2, 1, 3]]
+                            |
+                      [2, 32, 4, 256]
+                            |   starts:(0)  ends: (-1)  axes: (1) steps: (1)
+                            \       \       |          /         /
+                                \       \     |        /       /
+                                  \      \   |     /      /
+                                    \     \  |   /     /
+                                        \   \ |  /   /
+                                            Slice
+                                              |
+                                          Identity
+                                              |
+                                graph output [2, 31, 4, 256] (float)
+
+Add an Identity node because currently, we don't allow Slice generates graph output.
+*/
+TEST(ComputeOptimizerTests, SliceTranspose_Propagation) {
+  // 0: no input, 1: has input, 2: empty input
+  std::vector<std::tuple<int, int, bool>> has_axes_and_has_steps_pairs{
+      {0, 0, false},  // {has_axes, has_steps, expected to propagate}
+      {1, 0, true},
+      {1, 1, true},
+      {1, 2, true},
+      {2, 0, false},
+      {2, 1, false},
+      {2, 2, false},
+  };
+
+  for (auto p : has_axes_and_has_steps_pairs) {
+    int has_axes = std::get<0>(p);
+    int has_steps = std::get<1>(p);
+    bool expected_to_propagate = std::get<2>(p);
+
+    const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+    InlinedVector<int64_t> starts_indices;
+    auto pre_graph_checker = [&starts_indices](Graph& graph) -> Status {
+      auto op_count_pre = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+      TEST_RETURN_IF_NOT(op_count_pre["Transpose"] == 1);
+      TEST_RETURN_IF_NOT(op_count_pre["Slice"] == 1);
+      TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "Slice") {
+          TEST_RETURN_IF_NOT(starts_indices.empty());
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(node.InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, starts_indices,
+                                                                          require_constant));
+        }
+      }
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [&starts_indices, expected_to_propagate](Graph& graph) {
+      auto op_count_post = CountOpsInGraph(graph);
+
+      TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+      TEST_RETURN_IF_NOT(op_count_post["Transpose"] == 1);
+      TEST_RETURN_IF_NOT(op_count_post["Slice"] == 1);
+      TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "Transpose") {
+          const auto& input_defs = node.InputDefs();
+
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          if (expected_to_propagate) {
+            TEST_RETURN_IF_NOT(producer_node != nullptr);
+            TEST_RETURN_IF_NOT(producer_node->OpType() == "Slice");
+
+            InlinedVector<int64_t> values;
+            constexpr bool require_constant = true;
+            NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+            TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values,
+                                                                            require_constant));
+            for (size_t i = 0; i < values.size(); i++) {
+              TEST_RETURN_IF_NOT(values[i] == starts_indices[i]);
+            }
+
+            const ONNX_NAMESPACE::TensorShapeProto* slice_out_shape = producer_node->OutputDefs()[0]->Shape();
+            TEST_RETURN_IF_NOT(slice_out_shape != nullptr);
+            TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 4);
+            TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) && slice_out_shape->dim(0).dim_value() == 2);
+            TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) && slice_out_shape->dim(1).dim_value() == 4);
+            TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) && slice_out_shape->dim(2).dim_value() == 31);
+            TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(3)) && slice_out_shape->dim(3).dim_value() == 256);
+          } else {
+            TEST_RETURN_IF_NOT(producer_node == nullptr);
+          }
+        }
+      }
+
+      return Status::OK();
+    };
+
+    auto build_test_case = [has_axes, has_steps](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int64_t>({{2, 4, 32, 256}});
+      auto* trans_out = builder.MakeIntermediate();
+      builder.AddNode("Transpose", {input1_arg}, {trans_out})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+
+      std::vector<NodeArg*> slice_inputs;
+
+      auto* starts_initializer = builder.MakeInitializer<int64_t>({1}, {0});
+      auto* ends_initializer = builder.MakeInitializer<int64_t>({1}, {-1});
+
+      slice_inputs = {trans_out, starts_initializer, ends_initializer};
+
+      NodeArg* axes_initializer = nullptr;
+      NodeArg* steps_initializer = nullptr;
+      if (has_axes == 0 && has_steps == 0) {
+        // nothing
+      } else if (has_axes == 1 && has_steps == 0) {
+        axes_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+        slice_inputs.push_back(axes_initializer);
+      } else if (has_axes == 1 && has_steps == 1) {
+        axes_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+        slice_inputs.push_back(axes_initializer);
+        steps_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+        slice_inputs.push_back(steps_initializer);
+      } else if (has_axes == 1 && has_steps == 2) {
+        axes_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+        slice_inputs.push_back(axes_initializer);
+        steps_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(steps_initializer);
+      } else if (has_axes == 2 && has_steps == 0) {
+        axes_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(axes_initializer);
+      } else if (has_axes == 2 && has_steps == 1) {
+        axes_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(axes_initializer);
+        steps_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+        slice_inputs.push_back(steps_initializer);
+      } else if (has_axes == 2 && has_steps == 2) {
+        axes_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(axes_initializer);
+        steps_initializer = builder.MakeEmptyInput();
+        slice_inputs.push_back(steps_initializer);
+      }
+
+      auto* slice_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", slice_inputs,
+                      {slice_out});
+
+      auto* identity_out = builder.MakeOutput();
+      builder.AddNode("Identity", {slice_out}, {identity_out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
+                                          TransformerLevel::Level1,
+                                          1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph includes multiple equivalent subgraphs as below.
+           graph input [4, 32, 256] (float)            graph input [4, 32, 256] (float)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                           Add  starts:(0,0)  ends: (-1,-1)  axes: (0,1) steps: (1,1)
+                                            \       \        |              /           /
+                                               \       \     |           /          /
+                                                  \      \   |        /         /
+                                                    \     \  |     /        /
+                                                       \   \ |   /     /
+                                                            Slice
+                                                             |
+                                                          Identity
+                                                             |
+                                                graph output [3, 31, 256] (float)
+
+Add an Identity node because currently we don't allow Slice generates graph output.
+*/
+TEST(ComputeOptimizerTests, SliceElementwiseOps_NoPropagationForMutipleAxesSlice) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Slice"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Slice"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* input2_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* add_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {input1_arg, input2_arg}, {add_out});
+
+    auto* starts_initializer = builder.MakeInitializer<int64_t>({2}, {0, 0});
+    auto* ends_initializer = builder.MakeInitializer<int64_t>({2}, {-1, -1});
+    auto* axes_initializer = builder.MakeInitializer<int64_t>({2}, {0, 1});
+    auto* steps_initializer = builder.MakeInitializer<int64_t>({2}, {1, 1});
+    auto* slice_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {add_out, starts_initializer, ends_initializer, axes_initializer, steps_initializer},
+                    {slice_out});
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {slice_out}, {identity_out});
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
@@ -2304,8 +3060,8 @@ TEST(ComputeOptimizerTests, ReshapeMlmBertE2E) {
 
   // Check result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
-                                                         ORT_TSTR("reshape_bert_e2e_optimized.onnx"))};
+  PathString new_model_uri{ConcatPathComponent(tmp_dir.Path(),
+                                               ORT_TSTR("reshape_bert_e2e_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;

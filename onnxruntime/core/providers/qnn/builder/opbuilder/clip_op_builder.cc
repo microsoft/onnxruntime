@@ -5,6 +5,7 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 #include "base_op_builder.h"
 
@@ -21,7 +22,6 @@ class ClipOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
@@ -29,7 +29,6 @@ class ClipOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -57,18 +56,19 @@ Status ClipOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const N
 Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_quantized_model,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   if (do_op_validation) {
     ORT_RETURN_IF_ERROR(ExplictOpCheck(qnn_model_wrapper, node_unit));
   }
-  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(quantize_param, is_quantized_model);
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
 
   auto inputs = node_unit.Inputs();
   for (size_t input_i = 0; input_i < inputs.size(); ++input_i) {
+    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+    bool is_quantized_tensor = inputs[input_i].quant_param.has_value();
+    utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
+
     auto& input_name = inputs[input_i].node_arg.Name();
     if (input_name.empty()) {
       // Ignore unspecified/unused optional input
@@ -81,7 +81,7 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     }
 
     const auto* type_proto = inputs[input_i].node_arg.TypeAsProto();
-    ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
@@ -122,27 +122,26 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
-                                                  bool is_quantized_model,
                                                   bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
   Qnn_Scalar_t min_qnn_scalar = QNN_SCALAR_INIT;
   min_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
   min_qnn_scalar.floatValue = min_value_;
-  QnnParamWrapper min_value_param(node_unit.Index(), node_unit.Name(), qnn_def::min_value, min_qnn_scalar);
+  QnnParamWrapper min_value_param(node_unit.Index(), node_unit.Name(), QNN_OP_RELU_MIN_MAX_PARAM_MIN_VALUE, min_qnn_scalar);
   param_tensor_names.push_back(min_value_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(min_value_param));
 
   Qnn_Scalar_t max_qnn_scalar = QNN_SCALAR_INIT;
   max_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
   max_qnn_scalar.floatValue = max_value_;
-  QnnParamWrapper max_value_param(node_unit.Index(), node_unit.Name(), qnn_def::max_value, max_qnn_scalar);
+  QnnParamWrapper max_value_param(node_unit.Index(), node_unit.Name(), QNN_OP_RELU_MIN_MAX_PARAM_MAX_VALUE, max_qnn_scalar);
   param_tensor_names.push_back(max_value_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(max_value_param));
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
+                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

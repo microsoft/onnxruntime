@@ -16,15 +16,15 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime::fbs::utils {
 
-#if !defined(ORT_MINIMAL_BUILD)
-
 template <typename DimsFieldType>
 inline flatbuffers::Offset<flatbuffers::Vector<int64_t>>
 SaveDims(flatbuffers::FlatBufferBuilder& builder, const DimsFieldType& dims) {
   std::vector<int64_t> dims_data(dims.size());
-  std::copy(dims.cbegin(), dims.cend(), dims_data.begin());
+  std::copy(dims.begin(), dims.end(), dims_data.begin());
   return builder.CreateVector(dims_data);
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                 const TensorProto& initializer,
@@ -338,5 +338,71 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
 
   return Status::OK();
 }
+
+#ifdef ENABLE_TRAINING_APIS
+
+Status SaveOrtTensorOrtFormat(
+    const std::string& tensor_name, const onnxruntime::Tensor& ort_tensor,
+    flatbuffers::FlatBufferBuilder& builder,
+    flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
+  ORT_RETURN_IF(ort_tensor.IsDataTypeString(),
+                "TensorProto_DataType_STRING is not supported while saving a tensor to ORT format.");
+
+  const auto fbs_tensor_name = builder.CreateString(tensor_name);
+  const auto fbs_tensor_dims = SaveDims(builder, ort_tensor.Shape().GetDims());
+  flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(
+      static_cast<const uint8_t*>(ort_tensor.DataRaw()),
+      ort_tensor.SizeInBytes());
+
+  fbs::TensorBuilder tb(builder);
+  tb.add_name(fbs_tensor_name);
+  tb.add_doc_string(0);
+  tb.add_dims(fbs_tensor_dims);
+  tb.add_data_type(static_cast<fbs::TensorDataType>(ort_tensor.GetElementType()));
+  tb.add_raw_data(raw_data);
+  fbs_tensor = tb.Finish();
+  return Status::OK();
+}
+
+template <typename T>
+struct UnpackTensorWithType {
+  Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const fbs::Tensor& fbs_tensor,
+                    onnxruntime::Tensor& ort_tensor) const {
+    return onnxruntime::utils::UnpackTensor(
+        tensor_proto, fbs_tensor.raw_data()->Data(),
+        fbs_tensor.raw_data()->size(),
+        ort_tensor.MutableData<T>(),
+        static_cast<size_t>(ort_tensor.Shape().Size()));
+  }
+};
+
+Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr allocator,
+                              std::string& tensor_name, onnxruntime::Tensor& ort_tensor) {
+  auto* fbs_tensor_name = fbs_tensor.name();
+  ORT_RETURN_IF_NOT(fbs_tensor_name, "Flatbuffer tensor is invalid. Expected: A valid tensor name. Actual: nullptr.");
+  tensor_name = fbs_tensor_name->str();
+
+  auto* tensor_dims = fbs_tensor.dims();
+  ORT_RETURN_IF_NOT(tensor_dims, "Flatbuffer tensor is invalid. Expected: Valid tensor dims. Actual: nullptr.");
+
+  const auto tensor_data_type = static_cast<int32_t>(fbs_tensor.data_type());
+  const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(
+                                         tensor_data_type)
+                                         ->GetElementType();
+  ort_tensor = onnxruntime::Tensor(
+      tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
+
+  // The tensor proto is used as a dummy here. The actual data is stored in the raw_data field of the flatbuffer.
+  // The data is copied from the raw_data field to the ort_tensor.
+  ONNX_NAMESPACE::TensorProto unused_tensor_proto;
+  unused_tensor_proto.set_data_type(tensor_data_type);
+
+  onnxruntime::utils::MLTypeCallDispatcher<float, bool, double, int8_t, uint8_t, int16_t, uint16_t,
+                                           int32_t, uint32_t, int64_t, uint64_t>
+      dispatcher(tensor_data_type);
+  return dispatcher.InvokeRet<Status, UnpackTensorWithType>(unused_tensor_proto, fbs_tensor, ort_tensor);
+}
+
+#endif  // ENABLE_TRAINING_APIS
 
 }  // namespace onnxruntime::fbs::utils

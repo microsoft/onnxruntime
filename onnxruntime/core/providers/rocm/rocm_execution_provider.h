@@ -6,7 +6,6 @@
 #include <set>
 #include <vector>
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
@@ -25,8 +24,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
  public:
   explicit ROCMExecutionProvider(const ROCMExecutionProviderInfo& info);
   virtual ~ROCMExecutionProvider();
-
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
 
   Status Sync() const override;
 
@@ -52,32 +49,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().template GetConstOnes<T>(count, stream);
   }
 
-  template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, true);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    // Note that OrtMemTypeCPU and OrtMemTypeCPUOutput are the same. See onnxruntime_c_api.h.
-    // In some ROCm async
-    if (count_or_bytes == 0)
-      return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeCPUOutput),
-                                        count_or_bytes);
-  }
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
@@ -96,7 +67,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
@@ -104,8 +74,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
-
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
  private:

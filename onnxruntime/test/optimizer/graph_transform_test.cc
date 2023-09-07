@@ -81,7 +81,9 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
-#ifdef ENABLE_TRAINING_CORE
+#include "core/optimizer/pre_shape_node_elimination.h"
+#include "core/optimizer/double_qdq_pairs_remover.h"
+#ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
 
@@ -170,6 +172,27 @@ TEST_F(GraphTransformationTests, DequantizeLinearNodeNotEliminated) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["DequantizeLinear"], 25);
 }
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// Test that com.microsoft.DequantizeLinear is not eliminated in CommonSubexpressionElimination
+TEST_F(GraphTransformationTests, MsDomainDequantizeLinearNodeNotEliminated) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 25);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
+                                                     TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // CommonSubexpressionElimination should skip the DequantizeLinear nodes
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 25);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "scan9_sum.onnx";
@@ -811,6 +834,37 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
+// Test constant folding with a com.microsoft.DequantizeLinear node
+TEST_F(GraphTransformationTests, ConstantFoldingWithMsDomainDequantizeLinear) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq_contrib.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["com.microsoft.QuantizeLinear"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 3);
+  ASSERT_EQ(op_to_count["Conv"], 1);
+
+  std::unordered_map<std::string, int> expected_op_counts = {{"com.microsoft.QuantizeLinear", 1},
+                                                             {"com.microsoft.DequantizeLinear", 3},
+                                                             {"Conv", 1}};
+
+  SessionOptions session_options;
+  // Check DequantizeLinear aren't constant folded for default setting.
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+
+  // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0"));
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+
+  // set SessionOptionsEnableQuantQDQ to disable it
+  expected_op_counts["com.microsoft.DequantizeLinear"] = 1;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
 // model with 2 QDQ node units that can be constant folded as they are simple DQ -> Node -> Q where DQ and Node have
 // single consumer and do not produce graph outputs. Node is deterministic.
 // there are also other DQ nodes that should be ignored.
@@ -836,6 +890,33 @@ TEST_F(GraphTransformationTests, ConstantFoldingQDQNodeUnit) {
   VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
+// model with 2 (com.microsoft) QDQ node units that can be constant folded as they are simple DQ -> Node -> Q where
+// DQ and Node have single consumer and do not produce graph outputs. Node is deterministic.
+// there are also other DQ nodes that should be ignored.
+TEST_F(GraphTransformationTests, ConstantFoldingMsDomainQDQNodeUnit) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.qdq_contrib.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["com.microsoft.QuantizeLinear"], 3);
+  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 4);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 1);
+  ASSERT_EQ(op_to_count["Transpose"], 1);
+
+  SessionOptions session_options;
+
+  // 2 QDQ node units should be constant folded and go away
+  std::unordered_map<std::string, int> expected_op_counts = {{"com.microsoft.QuantizeLinear", 1},
+                                                             {"com.microsoft.DequantizeLinear", 2},
+                                                             {"Transpose", 0},
+                                                             {"Unsqueeze", 0}};
+
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
 // Simple QDQ Node Unit but shouldn't be constant folded as the node in the middle produces a graph output
 TEST_F(GraphTransformationTests, ConstantFoldingQDQNodeUnitGraphOutput) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.graph_output.onnx";
@@ -854,6 +935,29 @@ TEST_F(GraphTransformationTests, ConstantFoldingQDQNodeUnitGraphOutput) {
   SessionOptions session_options;
   VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
 }
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// Simple (com.microsoft) QDQ Node Unit but shouldn't be constant folded as the node in the middle produces a
+// graph output
+TEST_F(GraphTransformationTests, ConstantFoldingMsDomainQDQNodeUnitGraphOutput) {
+  constexpr const ORTCHAR_T* model_uri =
+      MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["com.microsoft.QuantizeLinear"], 2);
+  ASSERT_EQ(op_to_count["com.microsoft.DequantizeLinear"], 3);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 1);
+
+  std::unordered_map<std::string, int> expected_op_counts = {{"com.microsoft.QuantizeLinear", 2},
+                                                             {"com.microsoft.DequantizeLinear", 3},
+                                                             {"Unsqueeze", 1}};
+
+  SessionOptions session_options;
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, ConstantFolding_RemoveDanglingInputNodesToConstantFoldedNode) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_remove_dangling_inputs.onnx";
@@ -901,7 +1005,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   // removes all its ancestors and the Identity node consuming this Shape's
   // output is subsequently constant folded to leave the graph with no
   // nodes.
-  ASSERT_TRUE(op_to_count.size() == 0);
+  ASSERT_TRUE(op_to_count.size() == 0U);
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
@@ -2347,13 +2451,13 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   run_options.run_tag = "one session/one tag";
   OrtValue ml_value_x;
 
-  auto x_f = MLFloat16(math::floatToHalf(1.0));
+  auto x_f = MLFloat16(1.0f);
   std::vector<int64_t> dims_x = {1, 1, 3, 3};
   std::vector<MLFloat16> values_x;
   for (int i = 0; i < 9; ++i) {
     values_x.push_back(x_f);
   }
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                            dims_x, values_x, &ml_value_x);
   feeds.insert(std::make_pair("X", ml_value_x));
 
@@ -2363,7 +2467,7 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
 
-  auto prod_f = MLFloat16(math::floatToHalf(6.0));
+  auto prod_f = MLFloat16(6.0f);
   std::vector<int64_t> expected_dims_prod = {1, 1, 2, 2};
   std::vector<MLFloat16> expected_values_prod;
   for (int i = 0; i < 4; ++i) {
@@ -2620,7 +2724,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionTest) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 4);
+      EXPECT_EQ(initializer->size(), 4U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2656,7 +2760,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOneConstTest) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2691,7 +2795,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2727,7 +2831,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 5);
+      EXPECT_EQ(initializer->size(), 5U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2786,7 +2890,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerSubgrap
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 1);
@@ -2819,7 +2923,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerApplies
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 1);
@@ -2889,7 +2993,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphMultipleOutputs) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2923,7 +3027,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraph) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2957,7 +3061,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionWithSlice1) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -3027,7 +3131,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphWithDiv) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -3063,7 +3167,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphWithMul) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -3097,7 +3201,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 4);
+      EXPECT_EQ(initializer->size(), 4U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -3160,6 +3264,69 @@ TEST_F(GraphTransformationTests, CastElimination) {
   ASSERT_TRUE(op_to_count["Cast"] == 4);
 }
 
+TEST_F(GraphTransformationTests, PreShapeNodeElimination) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "pre_shape_node_elimination.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, *logger_).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Cast"] == 3);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PreShapeNodeElimination>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_TRUE(op_to_count["Cast"] == 2);
+
+  // Assert that the remaining "Cast" nodes have different names than "cast2"
+  bool names_are_different = true;
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Cast") {
+      const std::string& node_name = node.Name();
+      if (node_name == "cast") {
+        names_are_different = false;
+        break;
+      }
+    }
+  }
+
+  ASSERT_TRUE(names_are_different);
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 0);
+    return Status::OK();
+  };
+
+  // cast is the first node.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* cast_out = builder.MakeIntermediate();
+      auto* shape_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Shape", {cast_out}, {shape_out});
+      builder.AddNode("Identity", {shape_out}, {output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PreShapeNodeElimination>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 
 static void ValidateAttention(Graph& graph) {
@@ -3174,7 +3341,7 @@ static void ValidateAttention(Graph& graph) {
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(initializer->size(), 192);
+      EXPECT_EQ(initializer->size(), 192U);
 
       // Validate two rows (2x24 items) for sanity check.
       std::vector<double> expected_value = {
@@ -3238,7 +3405,7 @@ static void ValidateAttention(Graph& graph) {
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
       auto initializer2 = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(initializer2->size(), 24);
+      EXPECT_EQ(initializer2->size(), 24U);
 
       std::vector<double> expected_value2 = {
           -0.23681640625,
@@ -3588,13 +3755,13 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
 
   OrtValue mlvalue_b_i;
   std::vector<int64_t> dims_b_i = {3072};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_b_i,
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_b_i,
                        random.Uniform<float>(dims_b_i, 0.0f, 1.0f), &mlvalue_b_i);
   feeds.insert(std::make_pair("B_I", mlvalue_b_i));
 
   OrtValue mlvalue_a_i;
   std::vector<int64_t> dims_a_i = {3, 512, 3072};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_a_i,
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_a_i,
                        random.Uniform<float>(dims_a_i, 0.0f, 1.0f), &mlvalue_a_i);
   feeds.insert(std::make_pair("A_I", mlvalue_a_i));
 
@@ -3678,6 +3845,41 @@ TEST_F(GraphTransformationTests, GeluApproximation_SessionOptionConfig) {
 
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "0"));
   VerifyGeluApproximation(false, session_options);
+}
+
+// Test DoubleQDQPairsRemover to remove unnecessary DQ->Q nodes in the middle
+TEST_F(GraphTransformationTests, DoublQDQRemover_RemoveDupQDQ) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "qdq_optimization/dup_qdq.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<DoubleQDQPairsRemover>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["QuantizeLinear"], 3);
+  EXPECT_EQ(op_to_count["DequantizeLinear"], 4);
+
+  std::string dq_scale_name_before_reshape_node;
+  std::string zp_name_before_reshape_node;
+  std::string dq_scale_name_after_reshape_node;
+  std::string zp_name_after_reshape_node;
+  for (auto& node : graph.Nodes()) {
+    if (node.Name() == "dq_2") {
+      dq_scale_name_before_reshape_node = node.InputDefs()[InputIndex::SCALE_ID]->Name();
+      zp_name_before_reshape_node = node.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+    }
+    if (node.Name() == "q_3") {
+      dq_scale_name_after_reshape_node = node.InputDefs()[InputIndex::SCALE_ID]->Name();
+      zp_name_after_reshape_node = node.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+    }
+  }
+  EXPECT_EQ(dq_scale_name_before_reshape_node.empty(), false);
+  EXPECT_EQ(zp_name_before_reshape_node.empty(), false);
+  EXPECT_EQ(dq_scale_name_before_reshape_node, dq_scale_name_after_reshape_node);
+  EXPECT_EQ(zp_name_before_reshape_node, zp_name_after_reshape_node);
 }
 
 // Test Gelu -> FastGelu
@@ -4447,7 +4649,7 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_same_shape_fusion_dim_is_param.onnx", *logger_);
 }
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
                                      const int add_count, const int dropout_count, const int bitmask_dropout_count,
                                      const int bias_dropout_count, const int bitmask_bias_dropout_count,
@@ -5155,6 +5357,71 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
   }
 }
 
+TEST_F(GraphTransformationTests, PropagateCastOpsTests_Softmax) {
+  using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
+  {
+    auto build_test_case = [](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* softmax_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Softmax", {cast_out_0}, {softmax_out});
+      builder.AddNode("Cast", {softmax_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 0);
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+
+  {
+    auto build_test_case = [](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<BFloat16>({{2, -1, 3, -1}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* softmax_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Softmax", {cast_out_0}, {softmax_out});
+      builder.AddNode("Cast", {softmax_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+}
+
 #endif
 
 /*
@@ -5348,7 +5615,7 @@ void BuildConstantSharingDivMulGraph(ModelTestBuilder& builder) {
   for (size_t i = 0; i < 12; ++i) {
     NodeArg* mul_initializer = nullptr;
     if (std::is_same<T, MLFloat16>::value) {
-      mul_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+      mul_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1.0f));
     } else if (std::is_same<T, float>::value) {
       mul_initializer = builder.MakeScalarInitializer<float>(1.0f);
     } else {
@@ -5405,7 +5672,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         int32_t data_type = tensor_proto->data_type();
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        TEST_RETURN_IF_NOT(float_const.size() == 1);
+        TEST_RETURN_IF_NOT(float_const.size() == 1U);
         float float_const_value;
         if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
           float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
@@ -5464,7 +5731,7 @@ void BuildConstantSharingDivMulGraphFor2DInitializer(ModelTestBuilder& builder) 
   values_float16.reserve(values.size());
   if (std::is_same<T, MLFloat16>::value) {
     for (auto v : values) {
-      values_float16.push_back(MLFloat16(math::floatToHalf(v)));
+      values_float16.push_back(MLFloat16(v));
     }
   }
 
@@ -5528,7 +5795,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatOrHalfTypedInitiali
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         int32_t data_type = tensor_proto->data_type();
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        TEST_RETURN_IF_NOT(float_const.size() == 8);
+        TEST_RETURN_IF_NOT(float_const.size() == 8U);
         for (int i = 0; i < 8; ++i) {
           float float_const_value;
           if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
@@ -5635,12 +5902,12 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
       int32_t data_type = tensor_proto->data_type();
       onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
       if (entry.first.compare(mul_initializer->Name()) == 0) {
-        TEST_RETURN_IF_NOT(float_const.size() == 1);
+        TEST_RETURN_IF_NOT(float_const.size() == 1U);
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         float float_const_value = *(float_const.data<float>());
         TEST_RETURN_IF_NOT(float_const_value == 1.0f);
       } else if (entry.first.compare(add_initializer->Name()) == 0) {
-        TEST_RETURN_IF_NOT(float_const.size() == 1);
+        TEST_RETURN_IF_NOT(float_const.size() == 1U);
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
         float float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
         TEST_RETURN_IF_NOT(float_const_value == 1.0f);
@@ -5675,7 +5942,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
     builder.AddNode("Cast", {div_out}, {cast_out})
         .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
     for (size_t i = 0; i < 3; ++i) {
-      NodeArg* add_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+      NodeArg* add_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1.0f));
       auto* add_out = builder.MakeOutput();
       builder.AddNode("Add", {cast_out, add_initializer}, {add_out});
     }
@@ -5763,7 +6030,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
       const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
       int32_t data_type = tensor_proto->data_type();
       onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-      TEST_RETURN_IF_NOT(float_const.size() == 8);
+      TEST_RETURN_IF_NOT(float_const.size() == 8U);
       if (entry.first.compare(mul_initializer->Name()) == 0) {
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         for (int i = 0; i < 8; ++i) {
@@ -5801,7 +6068,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
   std::vector<MLFloat16> values_float16;
   values_float16.reserve(values.size());
   for (auto v : values) {
-    values_float16.push_back(MLFloat16(math::floatToHalf(v)));
+    values_float16.push_back(MLFloat16(v));
   }
 
   auto build_test_case_float = [&values, &values_float16](ModelTestBuilder& builder) {
@@ -5901,13 +6168,13 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityIniti
       if (entry.first.compare(mul_initializer->Name()) == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
-        TEST_RETURN_IF_NOT(int64_const.size() == 1);
+        TEST_RETURN_IF_NOT(int64_const.size() == 1U);
         int64_t int64_const_value = *(int64_const.data<int64_t>());
         TEST_RETURN_IF_NOT(int64_const_value == std::numeric_limits<int64_t>::max());
       } else if (entry.first.compare(sub_initializer->Name()) == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        TEST_RETURN_IF_NOT(float_const.size() == 1);
+        TEST_RETURN_IF_NOT(float_const.size() == 1U);
         float float_const_value = *(float_const.data<float>());
         TEST_RETURN_IF_NOT(float_const_value == std::numeric_limits<float>::infinity());
       }
@@ -6000,13 +6267,13 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
       if (entry.first.compare("y_scale") == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_TRUE(int64_const.size() == 1);
+        ASSERT_TRUE(int64_const.size() == 1U);
         float float_const_value = *(int64_const.data<float>());
         ASSERT_TRUE(float_const_value == 1);
       } else {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer uint8_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_TRUE(uint8_const.size() == 1);
+        ASSERT_TRUE(uint8_const.size() == 1U);
         uint8_t uint8_const_value = *(uint8_const.data<uint8_t>());
         ASSERT_TRUE(uint8_const_value == static_cast<uint8_t>(1));
       }

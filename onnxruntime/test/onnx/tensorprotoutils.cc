@@ -79,7 +79,7 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
 #define DEFINE_UNPACK_TENSOR(T, Type, field_name, field_size)                                             \
   template <>                                                                                             \
   void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,           \
-                    /*out*/ T* p_data, int64_t expected_size) {                                           \
+                    /*out*/ T* p_data, size_t expected_size) {                                            \
     if (nullptr == p_data) {                                                                              \
       const size_t size = raw_data != nullptr ? raw_data_len : tensor.field_size();                       \
       if (size == 0) return;                                                                              \
@@ -92,7 +92,7 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
       UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);                             \
       return;                                                                                             \
     }                                                                                                     \
-    if (tensor.field_size() != expected_size)                                                             \
+    if (static_cast<size_t>(tensor.field_size()) != expected_size)                                        \
       ORT_CXX_API_THROW(MakeString("corrupted protobuf data: tensor shape size(", expected_size,          \
                                    ") does not match the data size(", tensor.field_size(), ") in proto"), \
                         OrtErrorCode::ORT_FAIL);                                                          \
@@ -117,7 +117,7 @@ DEFINE_UNPACK_TENSOR(uint32_t, onnx::TensorProto_DataType_UINT32, uint64_data, u
 // doesn't support raw data
 template <>
 void UnpackTensor(const onnx::TensorProto& tensor, const void* /*raw_data*/, size_t /*raw_data_len*/,
-                  /*out*/ std::string* p_data, int64_t expected_size) {
+                  /*out*/ std::string* p_data, size_t expected_size) {
   if (nullptr == p_data) {
     if (tensor.string_data_size() == 0) return;
     ORT_CXX_API_THROW("", OrtErrorCode::ORT_INVALID_ARGUMENT);
@@ -126,7 +126,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* /*raw_data*/, siz
     ORT_CXX_API_THROW("", OrtErrorCode::ORT_INVALID_ARGUMENT);
   }
 
-  if (tensor.string_data_size() != expected_size)
+  if (static_cast<size_t>(tensor.string_data_size()) != expected_size)
     ORT_CXX_API_THROW(
         "UnpackTensor: the pre-allocate size does not match the size in proto", OrtErrorCode::ORT_FAIL);
 
@@ -139,7 +139,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* /*raw_data*/, siz
 }
 template <>
 void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                  /*out*/ bool* p_data, int64_t expected_size) {
+                  /*out*/ bool* p_data, size_t expected_size) {
   if (nullptr == p_data) {
     const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
     if (size == 0) return;
@@ -153,7 +153,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
     return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
   }
 
-  if (tensor.int32_data_size() != expected_size)
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
     ORT_CXX_API_THROW(
         "UnpackTensor: the pre-allocate size does not match the size in proto", OrtErrorCode::ORT_FAIL);
   for (int iter : tensor.int32_data()) {
@@ -164,7 +164,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
 }
 template <>
 void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                  /*out*/ MLFloat16* p_data, int64_t expected_size) {
+                  /*out*/ MLFloat16* p_data, size_t expected_size) {
   if (nullptr == p_data) {
     const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
     if (size == 0) return;
@@ -178,7 +178,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
     return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
   }
 
-  if (tensor.int32_data_size() != expected_size)
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
     ORT_CXX_API_THROW(
         "UnpackTensor: the pre-allocate size does not match the size in proto", OrtErrorCode::ORT_FAIL);
 
@@ -189,7 +189,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
       ORT_CXX_API_THROW(
           "data overflow", OrtErrorCode::ORT_FAIL);
     }
-    p_data[i] = MLFloat16(static_cast<uint16_t>(v));
+    p_data[i] = MLFloat16::FromBits(static_cast<uint16_t>(v));
   }
 
   return;
@@ -197,7 +197,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
 
 template <>
 void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                  /*out*/ BFloat16* p_data, int64_t expected_size) {
+                  /*out*/ BFloat16* p_data, size_t expected_size) {
   if (nullptr == p_data) {
     const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
     if (size == 0)
@@ -213,7 +213,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
     return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
   }
 
-  if (tensor.int32_data_size() != expected_size)
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
     ORT_CXX_API_THROW(
         "UnpackTensor: the pre-allocate size does not match the size in proto", OrtErrorCode::ORT_FAIL);
 
@@ -233,7 +233,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
 #define DEFINE_UNPACK_TENSOR_FLOAT8(TYPE, ONNX_TYPE)                                                       \
   template <>                                                                                              \
   void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,            \
-                    /*out*/ TYPE* p_data, int64_t expected_size) {                                         \
+                    /*out*/ TYPE* p_data, size_t expected_size) {                                          \
     if (nullptr == p_data) {                                                                               \
       const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();                   \
       if (size == 0)                                                                                       \
@@ -246,7 +246,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
     if (raw_data != nullptr) {                                                                             \
       return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);                       \
     }                                                                                                      \
-    if (tensor.int32_data_size() != expected_size)                                                         \
+    if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)                                    \
       ORT_CXX_API_THROW(                                                                                   \
           "UnpackTensor: the pre-allocate size does not match the size in proto", OrtErrorCode::ORT_FAIL); \
     constexpr int max_value = std::numeric_limits<uint8_t>::max();                                         \
@@ -360,9 +360,10 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   }
 }
 
-#define CASE_PROTO(X, Y)                                                                                       \
-  case onnx::TensorProto_DataType::TensorProto_DataType_##X:                                                   \
-    ::onnxruntime::test::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, tensor_size); \
+#define CASE_PROTO(X, Y)                                                                      \
+  case onnx::TensorProto_DataType::TensorProto_DataType_##X:                                  \
+    ::onnxruntime::test::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len,                \
+                                         (Y*)preallocated, static_cast<size_t>(tensor_size)); \
     break;
 
 #define CASE_TYPE(X)                   \
@@ -466,7 +467,7 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
             deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
           }
           ::onnxruntime::test::UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
-                                                         (std::string*)preallocated, tensor_size);
+                                                         (std::string*)preallocated, static_cast<size_t>(tensor_size));
           break;
         default: {
           std::ostringstream ostr;

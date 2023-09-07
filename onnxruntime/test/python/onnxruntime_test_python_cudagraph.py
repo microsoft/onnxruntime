@@ -61,7 +61,7 @@ class CudaGraphHelper:
 
 
 class TestInferenceSessionWithCudaGraph(unittest.TestCase):
-    def testOrtValueUpdateInPlace(self):  # noqa: N802
+    def test_ort_value_update_in_place(self):
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue_cpu = onnxrt.OrtValue.ortvalue_from_numpy(x0)
         np.testing.assert_allclose(x0, ortvalue_cpu.numpy())
@@ -77,47 +77,54 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             ortvalue_gpu.update_inplace(x1)
             np.testing.assert_allclose(x1, ortvalue_gpu.numpy())
 
-    def testRunModelWithCudaGraph(self):  # noqa: N802
-        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+    def test_select_ep_to_run_cuda_graph(self):
+        if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
+            providers = [("TensorrtExecutionProvider", {"trt_cuda_graph_enable": True})]
+            self.run_model_with_cuda_graph(providers)
+        elif "CUDAExecutionProvider" in onnxrt.get_available_providers():
             providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
-            INPUT_SIZE = 1280  # noqa: N806
-            x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]] * INPUT_SIZE, dtype=np.float32)
-            y = np.array([[0.0], [0.0], [0.0]] * INPUT_SIZE, dtype=np.float32)
-            x_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(x, "cuda", 0)
-            y_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(y, "cuda", 0)
+            self.run_model_with_cuda_graph(providers)
 
-            session = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=providers)
-            io_binding = session.io_binding()
+    def run_model_with_cuda_graph(self, providers):
+        INPUT_SIZE = 1280  # noqa: N806
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]] * INPUT_SIZE, dtype=np.float32)
+        y = np.array([[0.0], [0.0], [0.0]] * INPUT_SIZE, dtype=np.float32)
+        x_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(x, "cuda", 0)
+        y_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(y, "cuda", 0)
 
-            # Bind the input and output
-            io_binding.bind_ortvalue_input("X", x_ortvalue)
-            io_binding.bind_ortvalue_output("Y", y_ortvalue)
+        onnxrt.set_default_logger_severity(0)
+        session = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=providers)
+        io_binding = session.io_binding()
 
-            # One regular run for the necessary memory allocation and cuda graph capturing
-            session.run_with_iobinding(io_binding)
-            expected_y = np.array([[5.0], [11.0], [17.0]] * INPUT_SIZE, dtype=np.float32)
-            np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+        # Bind the input and output
+        io_binding.bind_ortvalue_input("X", x_ortvalue)
+        io_binding.bind_ortvalue_output("Y", y_ortvalue)
 
-            # After capturing, CUDA graph replay happens from this Run onwards
-            session.run_with_iobinding(io_binding)
-            np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+        # One regular run for the necessary memory allocation and cuda graph capturing
+        session.run_with_iobinding(io_binding)
+        expected_y = np.array([[5.0], [11.0], [17.0]] * INPUT_SIZE, dtype=np.float32)
+        np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
-            # Update input and then replay CUDA graph
-            x_ortvalue.update_inplace(
-                np.array(
-                    [[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]] * INPUT_SIZE,
-                    dtype=np.float32,
-                )
+        # After capturing, CUDA graph replay happens from this Run onwards
+        session.run_with_iobinding(io_binding)
+        np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+
+        # Update input and then replay CUDA graph
+        x_ortvalue.update_inplace(
+            np.array(
+                [[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]] * INPUT_SIZE,
+                dtype=np.float32,
             )
-            session.run_with_iobinding(io_binding)
-            np.testing.assert_allclose(
-                np.array([[50.0], [110.0], [170.0]] * INPUT_SIZE, dtype=np.float32),
-                y_ortvalue.numpy(),
-                rtol=1e-05,
-                atol=1e-05,
-            )
+        )
+        session.run_with_iobinding(io_binding)
+        np.testing.assert_allclose(
+            np.array([[50.0], [110.0], [170.0]] * INPUT_SIZE, dtype=np.float32),
+            y_ortvalue.numpy(),
+            rtol=1e-05,
+            atol=1e-05,
+        )
 
-    def testArenaWithCudaGraph(self):  # noqa: N802
+    def test_arena_with_cuda_graph(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             # To test cuda graph catpure, we set Arena extend strategy to be SameAsRequested so as to detect any
             # potential memory allocation after the first run.

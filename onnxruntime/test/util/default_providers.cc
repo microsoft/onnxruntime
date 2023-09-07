@@ -14,12 +14,7 @@ namespace onnxruntime {
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
-  auto ret = CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
-  // The factory created CPU provider doesn't create/reg allocators; something that is expected by
-  // clients of DefaultCpuExecutionProvider; hence the need to call RegisterAllocator explicitly.
-  AllocatorManager mgr;  // needed only to call RegisterAllocator
-  ret->RegisterAllocator(mgr);
-  return ret;
+  return CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
 }
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
@@ -91,10 +86,19 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params) {
+#ifdef USE_OPENVINO
+  return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(params);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
-  OrtOpenVINOProviderOptions params;
-  return OpenVINOProviderFactoryCreator::Create(&params)->CreateProvider();
+  ProviderOptions provider_options_map;
+  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
 #else
   return nullptr;
 #endif

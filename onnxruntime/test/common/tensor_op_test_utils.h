@@ -15,157 +15,12 @@
 #include "core/common/type_utils.h"
 #include "core/framework/tensor.h"
 #include "core/util/math.h"
+#include "core/platform/threadpool.h"
+#include "core/util/thread_utils.h"
+#include "test/common/random_generator.h"
 
 namespace onnxruntime {
 namespace test {
-
-namespace detail {
-inline int64_t SizeFromDims(gsl::span<const int64_t> dims, gsl::span<const int64_t> strides = {}) {
-  int64_t size = 1;
-  if (strides.empty()) {
-    size = std::accumulate(dims.begin(), dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-  } else {
-    ORT_ENFORCE(dims.size() == strides.size());
-    for (size_t dim = 0; dim < dims.size(); ++dim) {
-      if (dims[dim] == 0) {
-        size = 0;
-        break;
-      }
-      size += strides[dim] * (dims[dim] - 1);
-    }
-  }
-
-  ORT_ENFORCE(size >= 0);
-  return size;
-}
-}  // namespace detail
-
-class RandomValueGenerator {
- public:
-  using RandomEngine = std::default_random_engine;
-  using RandomSeedType = RandomEngine::result_type;
-
-  explicit RandomValueGenerator(optional<RandomSeedType> seed = {});
-
-  RandomSeedType GetRandomSeed() const {
-    return random_seed_;
-  }
-
-  // Random values generated are in the range [min, max).
-  template <typename TFloat>
-  typename std::enable_if<
-      std::is_floating_point<TFloat>::value,
-      std::vector<TFloat>>::type
-  Uniform(gsl::span<const int64_t> dims, TFloat min, TFloat max) {
-    std::vector<TFloat> val(detail::SizeFromDims(dims));
-    std::uniform_real_distribution<TFloat> distribution(min, max);
-    for (size_t i = 0; i < val.size(); ++i) {
-      val[i] = distribution(generator_);
-    }
-    return val;
-  }
-
-  // Random values generated are in the range [min, max).
-  template <typename TFloat16>
-  typename std::enable_if<
-      std::is_same_v<TFloat16, MLFloat16>,
-      std::vector<TFloat16>>::type
-  Uniform(gsl::span<const int64_t> dims, float min, float max) {
-    std::vector<TFloat16> val(detail::SizeFromDims(dims));
-    std::uniform_real_distribution<float> distribution(min, max);
-    for (size_t i = 0; i < val.size(); ++i) {
-      val[i] = TFloat16(math::floatToHalf(distribution(generator_)));
-    }
-    return val;
-  }
-
-  // Random values generated are in the range [min, max).
-  template <typename TInt>
-  typename std::enable_if<
-      std::is_integral<TInt>::value && !utils::IsByteType<TInt>::value,
-      std::vector<TInt>>::type
-  Uniform(gsl::span<const int64_t> dims, TInt min, TInt max) {
-    std::vector<TInt> val(detail::SizeFromDims(dims));
-    std::uniform_int_distribution<TInt> distribution(min, max - 1);
-    for (size_t i = 0; i < val.size(); ++i) {
-      val[i] = distribution(generator_);
-    }
-    return val;
-  }
-
-  template <typename TByte>
-  typename std::enable_if<
-      utils::IsByteType<TByte>::value,
-      std::vector<TByte>>::type
-  Uniform(gsl::span<const int64_t> dims, TByte min, TByte max) {
-    std::vector<TByte> val(detail::SizeFromDims(dims));
-    std::uniform_int_distribution<int32_t> distribution(min, max - 1);
-    for (size_t i = 0; i < val.size(); ++i) {
-      val[i] = static_cast<TByte>(distribution(generator_));
-    }
-    return val;
-  }
-
-  // Gaussian distribution for float
-  template <typename TFloat>
-  typename std::enable_if<
-      std::is_floating_point<TFloat>::value,
-      std::vector<TFloat>>::type
-  Gaussian(gsl::span<const int64_t> dims, TFloat mean, TFloat stddev) {
-    std::vector<TFloat> val(detail::SizeFromDims(dims));
-    std::normal_distribution<TFloat> distribution(mean, stddev);
-    for (size_t i = 0; i < val.size(); ++i) {
-      val[i] = distribution(generator_);
-    }
-    return val;
-  }
-
-  // Gaussian distribution for Integer
-  template <typename TInt>
-  typename std::enable_if<
-      std::is_integral<TInt>::value,
-      std::vector<TInt>>::type
-  Gaussian(const std::vector<int64_t>& dims, TInt mean, TInt stddev) {
-    std::vector<TInt> val(detail::SizeFromDims(dims));
-    std::normal_distribution<float> distribution(static_cast<float>(mean), static_cast<float>(stddev));
-    for (size_t i = 0; i < val.size(); ++i) {
-      val[i] = static_cast<TInt>(std::round(distribution(generator_)));
-    }
-    return val;
-  }
-
-  // Gaussian distribution for Integer and Clamp to [min, max]
-  template <typename TInt>
-  typename std::enable_if<
-      std::is_integral<TInt>::value,
-      std::vector<TInt>>::type
-  Gaussian(const std::vector<int64_t>& dims, TInt mean, TInt stddev, TInt min, TInt max) {
-    std::vector<TInt> val(detail::SizeFromDims(dims));
-    std::normal_distribution<float> distribution(static_cast<float>(mean), static_cast<float>(stddev));
-    for (size_t i = 0; i < val.size(); ++i) {
-      int64_t round_val = static_cast<int64_t>(std::round(distribution(generator_)));
-      val[i] = static_cast<TInt>(std::min<int64_t>(std::max<int64_t>(round_val, min), max));
-    }
-    return val;
-  }
-
-  template <class T>
-  inline std::vector<T> OneHot(const std::vector<int64_t>& dims, int64_t stride) {
-    std::vector<T> val(detail::SizeFromDims(dims), T(0));
-    std::uniform_int_distribution<int64_t> distribution(0, stride - 1);
-    for (size_t offset = 0; offset < val.size(); offset += stride) {
-      size_t rand_index = static_cast<size_t>(distribution(generator_));
-      val[offset + rand_index] = T(1);
-    }
-    return val;
-  }
-
- private:
-  const RandomSeedType random_seed_;
-  RandomEngine generator_;
-  // while this instance is in scope, output some context information on test failure like the random seed value
-  const ::testing::ScopedTrace output_trace_;
-};
 
 // This class provides similar functionality as `RandomValueGenerator` but generates `fixed` patterns
 // for given tensor element type and shape. It should be used in unstable tests because
@@ -176,7 +31,7 @@ class FixedPatternValueGenerator {
 
   template <typename TValue>
   std::vector<TValue>
-  Discrete(gsl::span<const int64_t> dims, const std::vector<TValue>& value_candidates) {
+  Discrete(gsl::span<const int64_t> dims, gsl::span<const TValue> value_candidates) {
     std::vector<TValue> values(detail::SizeFromDims(dims));
     std::uniform_int_distribution<size_t> distribution(0, value_candidates.size() - 1);
     // Tier 2 RNG. Use it if `RandomValueGenerator::Uniform` method causes large numerical errors
@@ -208,7 +63,7 @@ class FixedPatternValueGenerator {
 
   template <typename TValue>
   std::vector<TValue>
-  Circular(gsl::span<const int64_t> dims, const std::vector<TValue>& value_candidates) {
+  Circular(gsl::span<const int64_t> dims, gsl::span<const TValue> value_candidates) {
     // Tier 3 RNG. Use it if `Discrete` method causes large numerical errors
     // (e.g., when elementwise relative error > 1e-3).
     // Suggested value_candidates to alleviate numerical error (listed
@@ -265,7 +120,7 @@ inline std::vector<MLFloat16> ValueRange<MLFloat16>(size_t count, MLFloat16 star
   return result;
 }
 
-inline std::pair<float, float> MeanStdev(std::vector<float>& v) {
+inline std::pair<float, float> MeanStdev(gsl::span<const float> v) {
   float sum = std::accumulate(v.begin(), v.end(), 0.0f);
   float mean = sum / v.size();
 
@@ -279,7 +134,7 @@ inline std::pair<float, float> MeanStdev(std::vector<float>& v) {
 }
 
 inline void Normalize(std::vector<float>& v,
-                      std::pair<float, float>& mean_stdev, bool normalize_variance) {
+                      const std::pair<float, float>& mean_stdev, bool normalize_variance) {
   float mean = mean_stdev.first;
   float stdev = mean_stdev.second;
 
@@ -296,7 +151,7 @@ inline std::vector<MLFloat16> ToFloat16(const std::vector<float>& data) {
   std::vector<MLFloat16> result;
   result.reserve(data.size());
   for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(MLFloat16(math::floatToHalf(data[i])));
+    result.push_back(MLFloat16(data[i]));
   }
   return result;
 }
@@ -307,21 +162,100 @@ inline void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tens
                   "] did not match run output shape [" +
                   output_tensor.Shape().ToString() + "]");
 
-  ASSERT_TRUE(expected_tensor.DataType() == DataTypeImpl::GetType<float>()) << "Compare with non float number is not supported yet. ";
+  ASSERT_TRUE(expected_tensor.DataType() == DataTypeImpl::GetType<float>())
+      << "Compare with non float number is not supported yet. ";
   auto expected = expected_tensor.Data<float>();
   auto output = output_tensor.Data<float>();
   for (auto i = 0; i < expected_tensor.Shape().Size(); ++i) {
     const auto expected_value = expected[i], actual_value = output[i];
     if (std::isnan(expected_value)) {
-      ASSERT_TRUE(std::isnan(actual_value)) << "value mismatch at index " << i << "; expected is NaN, actual is not NaN";
+      ASSERT_TRUE(std::isnan(actual_value)) << "value mismatch at index " << i
+                                            << "; expected is NaN, actual is not NaN";
     } else if (std::isinf(expected_value)) {
       ASSERT_EQ(expected_value, actual_value) << "value mismatch at index " << i;
     } else {
       double diff = fabs(expected_value - actual_value);
-      ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index " << i << "; expected: " << expected_value << ", actual: " << actual_value;
+      ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index " << i << "; expected: "
+                                                                << expected_value << ", actual: " << actual_value;
     }
   }
 }
+
+class ParallelRandomValueGenerator {
+ public:
+  using RandomEngine = std::default_random_engine;
+  using RandomSeedType = RandomEngine::result_type;
+
+  ParallelRandomValueGenerator(RandomSeedType base_seed)
+      : base_seed_{base_seed} {
+  }
+
+  // Random values generated are in the range [min, max).
+  template <typename TFloat>
+  typename std::enable_if<
+      std::is_floating_point<TFloat>::value,
+      std::vector<TFloat>>::type
+  Uniform(gsl::span<const int64_t> dims, TFloat min, TFloat max) {
+    OrtThreadPoolParams to;
+    to.thread_pool_size = 16;
+    auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
+                                            concurrency::ThreadPoolType::INTRA_OP);
+    static double cost = 1;
+    RandomSeedType base_seed = base_seed_;
+    std::vector<TFloat> val(detail::SizeFromDims(dims));
+    concurrency::ThreadPool::TryParallelFor(
+        tp.get(), val.size(), cost,
+        [&min, &max, &base_seed, &val](
+            std::ptrdiff_t begin, std::ptrdiff_t end) {
+          RandomSeedType seed = base_seed;
+          auto new_seed = static_cast<std::ptrdiff_t>(base_seed) + begin;
+          if (new_seed < static_cast<std::ptrdiff_t>(std::numeric_limits<RandomSeedType>::max()))
+            seed = static_cast<RandomSeedType>(new_seed);
+          RandomEngine generator{seed};
+          std::uniform_real_distribution<TFloat> distribution(min, max);
+          for (std::ptrdiff_t di = begin; di != end; ++di) {
+            val[di] = distribution(generator);
+          }
+        });
+
+    return val;
+  }
+
+  // Random values generated are in the range [min, max).
+  template <typename TFloat16>
+  typename std::enable_if<
+      std::is_same_v<TFloat16, MLFloat16>,
+      std::vector<TFloat16>>::type
+  Uniform(gsl::span<const int64_t> dims, float min, float max) {
+    OrtThreadPoolParams to;
+    to.thread_pool_size = 16;
+    auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
+                                            concurrency::ThreadPoolType::INTRA_OP);
+    static double cost = 1;
+    RandomSeedType base_seed = base_seed_;
+    std::vector<TFloat16> val(detail::SizeFromDims(dims));
+    concurrency::ThreadPool::TryParallelFor(
+        tp.get(), val.size(), cost,
+        [&min, &max, &base_seed, &val](
+            std::ptrdiff_t begin, std::ptrdiff_t end) {
+          RandomSeedType seed = base_seed;
+          auto new_seed = static_cast<std::ptrdiff_t>(base_seed) + begin;
+          if (new_seed < static_cast<std::ptrdiff_t>(std::numeric_limits<RandomSeedType>::max()))
+            seed = static_cast<RandomSeedType>(new_seed);
+          RandomEngine generator{seed};
+          std::uniform_real_distribution<float> distribution(min, max);
+          for (std::ptrdiff_t di = begin; di != end; ++di) {
+            val[di] = TFloat16(static_cast<float>(distribution(generator)));
+            ;
+          }
+        });
+
+    return val;
+  }
+
+ private:
+  const RandomSeedType base_seed_;
+};
 
 }  // namespace test
 }  // namespace onnxruntime

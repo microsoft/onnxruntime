@@ -766,7 +766,7 @@ static void EmbedLayerNormFusionFormat5(const std::basic_string<ORTCHAR_T>& file
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(initializer->size(), 12);
+      EXPECT_EQ(initializer->size(), 12U);
 
       std::vector<double> expected_value = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 8.0, 7.0, 6.0};
 

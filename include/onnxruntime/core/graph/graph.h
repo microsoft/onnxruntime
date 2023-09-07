@@ -16,28 +16,25 @@
 #pragma warning(disable : 4244)
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#include "core/common/inlined_containers.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
-
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
+
+#include "flatbuffers/flatbuffers.h"
 
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/common/inlined_containers.h"
+#endif
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/path.h"
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/function.h"
@@ -47,12 +44,6 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 class Graph;
@@ -895,12 +886,11 @@ class Graph {
   @returns NodeArg reference.
   */
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
-    auto iter = node_args_.find(name);
-    if (iter != node_args_.end()) {
-      return *(iter->second);
+    auto insert_result = node_args_.emplace(name, nullptr);
+    if (insert_result.second) {
+      insert_result.first->second = std::make_unique<NodeArg>(name, p_arg_type);
     }
-    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
-    return *(result.first->second);
+    return *(insert_result.first->second);
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1121,6 +1111,7 @@ class Graph {
   @returns GraphProto serialization of the graph.
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                  const PathString& file_path,
                                                                   size_t initializer_size_threshold) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */

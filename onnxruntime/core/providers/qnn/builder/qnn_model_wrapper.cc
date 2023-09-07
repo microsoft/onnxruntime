@@ -63,7 +63,7 @@ bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
   }
 
   if (IsQnnTensorWrapperExist(tensor_name) == true) {
-    LOGS(logger_, VERBOSE) << "Tensor eist already: " << tensor_name;
+    LOGS(logger_, VERBOSE) << "Tensor exist already: " << tensor_name;
     return true;
   }
 
@@ -290,7 +290,7 @@ bool QnnModelWrapper::ProcessOffset(const std::string& offset_name,
   std::vector<uint8_t> unpacked_tensor;
   ORT_THROW_IF_ERROR(UnpackInitializerData(*offset_tensor, unpacked_tensor));
   switch (onnx_data_type) {
-    // QNN use -offest for some reason
+    // QNN use -offset for some reason
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpacked_tensor));
       offset_value = -(int8_span.data()[0]);
@@ -355,6 +355,76 @@ bool QnnModelWrapper::ProcessQuantizationParameter(const std::optional<NodeUnitI
   return true;
 }
 
+Status QnnModelWrapper::GetOnnxInputInfo(const NodeUnitIODef& input,
+                                         OnnxInputInfo& input_info) const {
+  const std::string& name = input.node_arg.Name();
+
+  // Fill in quantization param info.
+  input_info.quant_param = QNN_QUANTIZE_PARAMS_INIT;
+  bool is_quantized_tensor = input.quant_param.has_value();
+  utils::InitializeQuantizeParam(input_info.quant_param, is_quantized_tensor);
+
+  if (is_quantized_tensor) {
+    ORT_RETURN_IF_NOT(ProcessQuantizationParameter(input.quant_param,
+                                                   input_info.quant_param.scaleOffsetEncoding.scale,
+                                                   input_info.quant_param.scaleOffsetEncoding.offset),
+                      "QNN EP: Cannot get quantization parameters for input ", name.c_str());
+  }
+
+  // Fill in QNN data type.
+  input_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, input.node_arg.TypeAsProto(), input_info.qnn_data_type));
+
+  // Fill in shape.
+  ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, input_info.shape), "Cannot get shape");
+
+  // Fill in initializer info.
+  input_info.is_initializer = IsInitializerInput(name);
+  if (input_info.is_initializer) {
+    input_info.initializer_tensor = GetInitializerTensors().at(name);
+  }
+
+  return Status::OK();
+}
+
+Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
+                                       const std::string& output_name,
+                                       const std::vector<uint32_t>& input_shape,
+                                       const std::vector<uint32_t>& output_shape,
+                                       const Qnn_DataType_t& tensor_data_type,
+                                       const Qnn_QuantizeParams_t& quantize_param,
+                                       bool do_op_validation,
+                                       bool is_for_input,
+                                       bool is_for_output) {
+  QnnTensorWrapper input_tensorwrapper(input_name,
+                                       is_for_input ? QNN_TENSOR_TYPE_APP_WRITE : QNN_TENSOR_TYPE_NATIVE,
+                                       tensor_data_type,
+                                       quantize_param,
+                                       std::vector<uint32_t>(input_shape));
+  ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)),
+                    "QNN EP: Failed to add input tensor for inserted Reshape.");
+
+  Qnn_TensorType_t tensor_type = is_for_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  QnnTensorWrapper output_tensorwrapper(output_name,
+                                        tensor_type,
+                                        tensor_data_type,
+                                        quantize_param,
+                                        std::vector<uint32_t>(output_shape));
+  ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)),
+                    "QNN EP: Failed to add output tensor for inserted Reshape.");
+
+  ORT_RETURN_IF_NOT(CreateQnnNode(output_name,
+                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                  QNN_OP_RESHAPE,
+                                  {input_name},
+                                  {output_name},
+                                  {},
+                                  do_op_validation),
+                    "QNN EP: Failed to create manually inserted Qnn Reshape node.");
+
+  return Status::OK();
+}
+
 Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          const std::string& input_name,
                                          const std::string& output_name,
@@ -364,8 +434,8 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          const Qnn_DataType_t& tensor_data_type,
                                          const Qnn_QuantizeParams_t& quantize_param,
                                          bool do_op_validation,
-                                         const bool is_for_input,
-                                         const bool is_for_output) {
+                                         bool is_for_input,
+                                         bool is_for_output) {
   // No need to add this for output nodes as it is added as output tensor for previous node
   if (is_for_input) {
     Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_APP_WRITE;
@@ -381,7 +451,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   std::vector<uint32_t> perm_dim{perm_size};
   std::vector<uint32_t> transpose_perm_copy = transpose_perm;
   const std::string& node_name = output_name;
-  QnnParamWrapper transpose_param(node_index, node_name, qnn_def::perm, std::move(perm_dim), std::move(transpose_perm_copy));
+  QnnParamWrapper transpose_param(node_index, node_name, QNN_OP_TRANSPOSE_PARAM_PERM, std::move(perm_dim), std::move(transpose_perm_copy));
   std::string param_tensor_name(transpose_param.GetParamTensorName());
   ORT_RETURN_IF_NOT(AddParamWrapper(std::move(transpose_param)), "Failed to add tensor.");
   Qnn_TensorType_t tensor_type = (false == is_for_output) ? QNN_TENSOR_TYPE_NATIVE : QNN_TENSOR_TYPE_APP_READ;
@@ -395,7 +465,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   const static std::string qnn_node_type = "Transpose";
 
   CreateQnnNode(output_name,
-                qnn_def::package_name,
+                QNN_OP_PACKAGE_NAME_QTI_AISW,
                 qnn_node_type,
                 {input_name},
                 {output_name},

@@ -1,0 +1,54 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+include "ort.fbs";
+
+namespace onnxruntime.fbs;
+
+table ModuleState {
+  requires_grad_params:[Tensor];
+  frozen_params:[Tensor];
+}
+
+table ParameterOptimizerState {
+  param_name:string;
+  momentums:[Tensor];
+}
+
+table OptimizerGroup {
+  group_name:string;
+  step:int64;
+  initial_learning_rate:float;
+  optimizer_states:[ParameterOptimizerState];
+}
+
+table IntProperty {
+  name:string;
+  value:int64;
+}
+
+table FloatProperty {
+  name:string;
+  value:float;
+}
+
+table StringProperty {
+  name:string;
+  value:string;
+}
+
+table PropertyBag {
+  ints:[IntProperty];
+  floats:[FloatProperty];
+  strings:[StringProperty];
+}
+
+table Checkpoint {
+  version:int32;
+  module_state:ModuleState;
+  optimizer_groups:[OptimizerGroup];
+  property_bag:PropertyBag;
+}
+
+root_type Checkpoint;
+file_identifier "ODTC"; // ORT On-Device-Training Checkpoint

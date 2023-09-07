@@ -22,9 +22,6 @@
 #include "core/framework/TensorSeq.h"
 #include "core/framework/run_options.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
-#ifdef USE_AZURE
-#include "core/framework/cloud_executor.h"
-#endif
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #endif
@@ -481,9 +478,9 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   // TODO: this sync is because the graph inputs can be consumed by multiple stream,
   // but we can only place the MemCpyAsync on one of the stream. Ideally we should make
   // other stream wait on the event of the memory copy stream, instead of host sync stream.
+  std::unordered_set<Stream*> visited;
   for (auto* stream : feed_streams) {
-    if (stream)
-      stream->Flush();
+    if (stream && visited.insert(stream).second) stream->Flush();
   }
   return Status::OK();
 }
@@ -768,17 +765,6 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
 #endif
                             const logging::Logger& logger) {
-#ifdef USE_AZURE
-  const auto iter = run_options.config_options.configurations.find("use_azure");
-  if (iter != run_options.config_options.configurations.end() && iter->second != "0") {
-    CloudExecutor cloud_executor(run_options.config_options.configurations);
-    const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
-    return cloud_executor.Execute(session_state,
-                                  feeds_fetches_info.feeds_mlvalue_idxs, feeds,
-                                  feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
-                                  logger);
-  }
-#endif
   return ExecuteGraph(session_state,
                       feeds_fetches_manager,
                       feeds, fetches,

@@ -95,7 +95,7 @@ namespace Dml
         uint64_t bucketSize = 0;
 
         // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
-        if (m_defaultRoundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
+        if (roundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
         {
             Bucket* bucket = nullptr;
 

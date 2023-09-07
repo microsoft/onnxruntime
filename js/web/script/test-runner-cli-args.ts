@@ -66,7 +66,7 @@ Options:
 
 *** Backend Options ***
 
- --wasm-number-threads         Set the WebAssembly number of threads
+ -x, --wasm-number-threads     Set the WebAssembly number of threads
  --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
  --wasm-enable-simd            Set whether to enable SIMD
  --wasm-enable-proxy           Set whether to enable proxy worker
@@ -264,9 +264,9 @@ function parseWasmOptions(_args: minimist.ParsedArgs): InferenceSession.WebAssem
 }
 
 function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
-  const numThreads = args['wasm-number-threads'];
+  const numThreads = args.x || args['wasm-number-threads'];
   if (typeof numThreads !== 'undefined' && typeof numThreads !== 'number') {
-    throw new Error('Flag "wasm-number-threads" must be a number value');
+    throw new Error('Flag "x"/"wasm-number-threads" must be a number value');
   }
   const initTimeout = args['wasm-init-timeout'];
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
@@ -295,7 +295,7 @@ function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLEx
   return {name: 'webgl'};
 }
 
-function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
+function parseWebglFlags(args: minimist.ParsedArgs): Partial<Env.WebGLFlags> {
   const contextId = args['webgl-context-id'];
   if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
     throw new Error('Flag "webgl-context-id" is invalid');
@@ -319,7 +319,7 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
-function parseWebgpuFlags(args: minimist.ParsedArgs): Env.WebGpuFlags {
+function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   const profilingMode = args['webgpu-profiling-mode'];
   if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
     throw new Error('Flag "webgpu-profiling-mode" is invalid');
@@ -366,10 +366,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   //       we need this for now because Chrome does not support webnn yet,
   //       and ChromeCanary is not in CI.
 
-  // TODO: web CI is still using chrome v112, where WebGPU is not available yet.
-  // re-enable webgpu after CI upgraded chrome to v113.
-  // const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
-  const defaultBrowserBackends = ['webgl' /*, 'webgpu' */, 'wasm', 'xnnpack' /*, 'webnn'*/];
+  const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
   const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :

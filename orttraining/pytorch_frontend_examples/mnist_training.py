@@ -193,8 +193,6 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         train_with_trainer(args, trainer, device, train_loader, epoch)
-        import pdb  # noqa: F401
-
         test_with_trainer(args, trainer, device, test_loader)
 
 

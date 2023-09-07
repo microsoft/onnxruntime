@@ -8,16 +8,13 @@ import argparse
 import copy
 import logging
 import os
-import sys
 
 import torch
+from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from whisper_chain import chain_model
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 
 from onnxruntime import quantization
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -183,22 +180,25 @@ def parse_arguments(argv=None):
         "--quantize_embedding_layer",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize MatMul, GEMM, and Gather.",
     )
+    parser.set_defaults(quantize_embedding_layer=False)
 
     parser.add_argument(
         "--quantize_per_channel",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize weights per each channel.",
     )
+    parser.set_defaults(quantize_per_channel=False)
 
     parser.add_argument(
         "--quantize_reduce_range",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize weights with 7 bits.",
     )
+    parser.set_defaults(quantize_reduce_range=False)
 
     parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
 
@@ -319,7 +319,6 @@ def export_onnx_models(
                         use_external_data_format=use_external_data_format,
                         per_channel=quantize_per_channel,
                         reduce_range=quantize_reduce_range,
-                        optimize_model=False,
                         extra_options={"MatMulConstBOnly": True},
                     )
             else:
@@ -332,12 +331,7 @@ def export_onnx_models(
             use_gpu=use_gpu,
             provider=provider,
         )
-
-        with torch.no_grad():
-            max_diff = WhisperHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-        logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
-        if max_diff > 1e-4:
-            logger.warning("PyTorch and OnnxRuntime results are NOT close")
+        assert ort_session is not None
 
         output_paths.append(output_path)
 
@@ -382,6 +376,7 @@ def main(argv=None):
         args.provider,
     )
 
+    max_diff = 0
     if args.chain_model:
         logger.info("Chaining model ... :")
         args.beam_model_output_dir = WhisperHelper.get_onnx_path(
@@ -398,7 +393,35 @@ def main(argv=None):
         chain_model(args)
         output_paths.append(args.beam_model_output_dir)
 
+        # Check chained model
+        ort_session = create_onnxruntime_session(
+            args.beam_model_output_dir,
+            use_gpu=args.use_gpu,
+            provider=args.provider,
+        )
+        device = torch.device("cuda:0" if args.use_gpu else "cpu")
+
+        # Wrap parity check in try-except to allow export to continue in case this produces an error
+        try:
+            with torch.no_grad():
+                max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, ort_session, device)
+            if max_diff > 1e-4:
+                logger.warning("PyTorch and ONNX Runtime results are NOT close")
+            else:
+                logger.info("PyTorch and ONNX Runtime results are close")
+        except Exception as e:
+            logger.warning(
+                f"An error occurred while trying to verify parity between PyTorch and ONNX Runtime: {e}", exc_info=True
+            )
+
+        # Remove extra ONNX models saved in output directory
+        for fle in os.listdir(output_dir):
+            if "_beamsearch" not in fle:
+                os.remove(os.path.join(output_dir, fle))
+        output_paths = [args.beam_model_output_dir]
+
     logger.info(f"Done! Outputs: {output_paths}")
+    return max_diff
 
 
 if __name__ == "__main__":

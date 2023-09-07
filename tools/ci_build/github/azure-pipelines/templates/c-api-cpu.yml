@@ -106,6 +106,8 @@ stages:
     steps:
     - template: set-version-number-variables-step.yml
 
+    - template: use-xcode-version.yml
+
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
           $(Build.SourcesDirectory) \
@@ -173,7 +175,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: onnxruntime-Win-CPU-2019
+    ort_build_pool_name: onnxruntime-Win-CPU-2022
 
 - template: win-ci.yml
   parameters:
@@ -493,7 +495,7 @@ stages:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
         PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
-        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx.10.14-x64'
+        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
         VerifyNugetSigning: false
 
     - task: PublishPipelineArtifact@0

@@ -53,6 +53,10 @@ class NodeAttrHelper {
   int32_t Get(const std::string& key, int32_t def_val) const;
   std::vector<int32_t> Get(const std::string& key, const std::vector<int32_t>& def_val) const;
 
+  // Convert the i() or ints() of the attribute from int64_t to uint32_t
+  uint32_t Get(const std::string& key, uint32_t def_val) const;
+  std::vector<uint32_t> Get(const std::string& key, const std::vector<uint32_t>& def_val) const;
+
   bool HasAttr(const std::string& key) const;
 
  private:

@@ -57,6 +57,10 @@
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #endif
 
+#ifdef ENABLE_TRITON
+#include "orttraining/training_ops/cpu/triton/triton_op.h"
+#endif
+
 #include "cpu_provider_shared.h"
 
 namespace onnxruntime {
@@ -300,6 +304,19 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
     return contrib::ExecuteReduceSumATen(p_ctx, axes, keepdims);
   }
 #endif
+
+#ifdef ENABLE_TRITON
+  Status contrib__TritonOp__Compute(const contrib::TritonOp* p, OpKernelContext* context) override {
+    return p->TritonOp::Compute(context);
+  }
+  bool contrib__IsTritonOpExecutorInitialized() override { return contrib::IsTritonOpExecutorInitialized(); }
+  Status contrib__ExecuteTritonOpByFuncName(
+      OpKernelContext* p_ctx, const std::string& func_name, size_t input_count, size_t output_count,
+      const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) override {
+    return contrib::ExecuteTritonOpByFuncName(p_ctx, func_name, input_count, output_count, kwargs);
+  }
+#endif
+
 #endif
 };
 #if defined(_MSC_VER) && !defined(__clang__)

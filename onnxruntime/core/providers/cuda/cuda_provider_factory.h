@@ -3,6 +3,7 @@
 
 #include "onnxruntime_c_api.h"
 #include "core/framework/provider_options.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 class IAllocator;
@@ -24,7 +25,7 @@ struct ProviderInfo_CUDA {
   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
 
   virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAPinnedAllocator(const char* name) = 0;
   virtual std::unique_ptr<onnxruntime::IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
@@ -51,13 +52,13 @@ struct ProviderInfo_CUDA {
 #endif
 
   virtual std::shared_ptr<onnxruntime::IExecutionProviderFactory> CreateExecutionProviderFactory(const onnxruntime::CUDAExecutionProviderInfo& info) = 0;
-  virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) = 0;
+  virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) = 0;
 
-#ifndef NDEBUG
-  // This function is the entry point to CUDA EP's internal (aka not accessible from bridge code for shared library)
-  // tests and is only called from onnxruntime_test_all. Release builds don't need this function.
-  virtual bool TestAll() = 0;
-#endif
+  // This function is the entry point to CUDA EP's UT cases.
+  // All tests ared only called from onnxruntime_test_all.
+  virtual void TestAll() {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is only implements in test code path.");
+  }
 
  protected:
   ~ProviderInfo_CUDA() = default;  // Can only be destroyed through a subclass instance

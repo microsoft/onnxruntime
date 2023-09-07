@@ -58,7 +58,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImplEx(OpKernelContext* ctx, miope
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
-  return ReduceComputeCore<T, ReduceTensorIndices>(*rocm_ep_, *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
+  return ReduceComputeCore<T, ReduceTensorIndices>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction, ctx->GetComputeStream());
 }
 

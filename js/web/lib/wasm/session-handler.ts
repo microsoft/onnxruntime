@@ -20,6 +20,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     // fetch model from url and move to wasm heap. The arraybufffer that held the http
     // response is freed once we return
     const response = await fetch(path);
+    if (response.status !== 200) {
+      throw new Error(`failed to load model: ${path}`);
+    }
     const arrayBuffer = await response.arrayBuffer();
     return createSessionAllocate(new Uint8Array(arrayBuffer));
   }
@@ -31,7 +34,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     }
 
     if (typeof pathOrBuffer === 'string') {
-      if (typeof fetch === 'undefined') {
+      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
         // node
         const model = await promisify(readFile)(pathOrBuffer);
         [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);

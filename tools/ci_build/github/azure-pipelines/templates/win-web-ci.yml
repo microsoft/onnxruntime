@@ -20,6 +20,10 @@ parameters:
   type: string
   default: 'NPM_packages'
 
+- name: RunWebGpuTests
+  type: boolean
+  default: false
+
 jobs:
 - job: build_onnxruntime_web
   pool: ${{ parameters.PoolName }}
@@ -30,6 +34,9 @@ jobs:
   workspace:
     clean: all
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
   - checkout: self
     submodules: false
   - task: DownloadPipelineArtifact@2
@@ -100,6 +107,10 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
     displayName: 'npm ci /js/common/'
   - script: |
+     npm test
+    workingDirectory: '$(Build.SourcesDirectory)\js\common'
+    displayName: 'run onnxruntime-common tests'
+  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
@@ -123,6 +134,20 @@ jobs:
      node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Check out of dated documents'
+  - task: Cache@2
+    inputs:
+      key: onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+      restoreKeys: |
+        onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+      path: $(Build.SourcesDirectory)/js/test/
+      cacheHitVar: CACHE_RESTORED
+    displayName: 'Cache ONNX node test data'
+  - task: Bash@3
+    inputs:
+      targetType: 'inline'
+      script: find "$(Build.SourcesDirectory)/js/test/" -type f
+    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
+    displayName: 'List ONNX node test data'
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
@@ -131,20 +156,26 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test
+     npm test -- -e=edge -b=webgl,wasm,xnnpack
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests'
+    displayName: 'Run ort-web tests (wasm,webgl,xnnpack backend)'
+    condition: ne('${{ parameters.RunWebGpuTests }}', 'true')
   - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl
+     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (ALL backends)'
+    condition: ne('${{ parameters.RunWebGpuTests }}', 'false')
+  - script: |
+     npm test -- --webgl-texture-pack-mode -b=webgl -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm
+     npm test -- --wasm-enable-proxy -b=wasm -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
-      npm run test:e2e
+      npm run test:e2e -- --browser=Edge_default
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'E2E package consuming test'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
@@ -171,6 +202,3 @@ jobs:
   - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/random_generator.h"
 #include <chrono>
@@ -56,10 +57,10 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
   auto Y_span = Y->MutableDataAsSpan<T1>();
   Tensor* mask = context->Output(1, X_shape);  // optional
   std::unique_ptr<bool[]> temp_mask_buffer{};  // temporary buffer to use if mask input is not provided
-  auto mask_span = [&X_shape, mask, &temp_mask_buffer]() {
+  auto mask_span = [X_size = narrow<size_t>(X_shape.Size()), mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableDataAsSpan<bool>();
-    temp_mask_buffer = std::make_unique<bool[]>(X_shape.Size());
-    return gsl::make_span(temp_mask_buffer.get(), X_shape.Size());
+    temp_mask_buffer = std::make_unique<bool[]>(X_size);
+    return gsl::make_span(temp_mask_buffer.get(), X_size);
   }();
 
   ORT_ENFORCE(!mask || mask->Shape() == X_shape, "X and mask should have the same shape");

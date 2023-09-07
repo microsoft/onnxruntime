@@ -8,6 +8,9 @@
 #include <filesystem>
 #include "QnnOpDef.h"
 #include "HTP/QnnHtpPerfInfrastructure.h"
+#include "CPU/QnnCpuCommon.h"
+// TODO: not exist for Windows yet
+// #include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "core/common/gsl.h"
@@ -51,6 +54,27 @@ Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
   return Status::OK();
 }
 
+void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
+  switch (backend_id) {
+    case QNN_BACKEND_ID_CPU:
+      qnn_backend_type_ = QnnBackendType::CPU;
+      break;
+      // TODO: update once it's ready for Widows
+      // case QNN_BACKEND_ID_GPU:
+      //  qnn_backend_type_ = QnnBackendType::GPU;
+      //  break;
+    case QNN_BACKEND_ID_DSP:
+      qnn_backend_type_ = QnnBackendType::DSP;
+      break;
+    case QNN_BACKEND_ID_HTP:
+      qnn_backend_type_ = QnnBackendType::HTP;
+      break;
+    default:
+      qnn_backend_type_ = QnnBackendType::CPU;
+      break;
+  }
+}
+
 Status QnnBackendManager::LoadBackend() {
   QnnInterface_t** interface_providers{nullptr};
   uint32_t num_providers{0};
@@ -73,9 +97,8 @@ Status QnnBackendManager::LoadBackend() {
       found_valid_interface = true;
       qnn_interface_ = interface_providers[pIdx]->QNN_INTERFACE_VER_NAME;
       auto backend_id = interface_providers[pIdx]->backendId;
-      if (QNN_BACKEND_ID_DSP == backend_id || QNN_BACKEND_ID_HTP == backend_id) {
-        is_npu_backend_ = true;
-      }
+      SetQnnBackendType(backend_id);
+
       LOGS_DEFAULT(INFO) << "Found valid interface, version: " << QNN_API_VERSION_MAJOR
                          << "." << QNN_API_VERSION_MINOR
                          << " backend provider name: " << interface_providers[pIdx]->providerName

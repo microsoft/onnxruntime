@@ -7,7 +7,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/optimizer/graph_transformer.h"
-#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
+#include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
 
 //
 // Data structures internal to nhwc transformer implementation.
@@ -24,13 +24,13 @@ namespace nhwc_map_internal {
 struct OpIdInfo {
   const std::string optype_;
   const std::string domain_;
-  const onnx_layout_transformation::api::DataType data_type_;
+  const onnx_transpose_optimization::api::DataType data_type_;
 
-  OpIdInfo(
-      const std::basic_string_view<char>& op,
-      const std::basic_string_view<char>& domain,
-      onnx_layout_transformation::api::DataType data_type)
-      : optype_(op), domain_(domain), data_type_(data_type) {}
+  OpIdInfo(const std::basic_string_view<char>& op,
+           const std::basic_string_view<char>& domain,
+           onnx_transpose_optimization::api::DataType data_type)
+      : optype_(op), domain_(domain), data_type_(data_type) {
+  }
 
   bool operator==(const OpIdInfo& other) const {
     return optype_ == other.optype_ && domain_ == other.domain_ && data_type_ == other.data_type_;

@@ -4,6 +4,7 @@
 #ifdef ENABLE_TRAINING
 
 #include <onnx/defs/attr_proto_util.h>
+#include "core/framework/random_seed.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
@@ -183,10 +184,74 @@ NodeArg* CreateInitializerFromVector(Graph& graph,
     total_count *= dim;
   }
 
-  ORT_ENFORCE(total_count == static_cast<int64_t>(values.size()));
+  ORT_ENFORCE(total_count == static_cast<int64_t>(values.size()),
+              "The total count of dims does not match the size of values. ",
+              "total_count: ", total_count, " values.size(): ", values.size());
 
   const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
   return &graph_utils::AddInitializer(graph, const_tensor);
+}
+
+NodeArg* InsertNodesForValidIndices(Graph& graph,
+                                    NodeArg* input_to_filter,
+                                    NodeArg* invalid_value,
+                                    const std::string& execution_provider_type) {
+  InlinedVector<NodeArg*> sub_input_args{input_to_filter, invalid_value};
+
+  InlinedVector<NodeArg*> sub_output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("sub_result"),
+                                                                    input_to_filter->TypeAsProto())};
+
+  Node& sub_node = graph.AddNode(graph.GenerateNodeName("sub_invalid_value"), "Sub", "sub invalid value", sub_input_args,
+                                 sub_output_args, nullptr, kOnnxDomain);
+  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(sub_node), "Failed to set op schema for " + sub_node.Name());
+  sub_node.SetExecutionProviderType(execution_provider_type);
+
+  auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("filter_valid_result"),
+                                                    input_to_filter->TypeAsProto());
+
+  Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("filter_valid_value"), "NonZero",
+                                      "filtering valid value",
+                                      {sub_node.MutableOutputDefs()[0]},
+                                      {non_zero_out_arg}, nullptr, kOnnxDomain);
+
+  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(non_zero_node),
+              "Failed to set op schema for " + non_zero_node.Name());
+
+  const std::string dim_name = MakeString("valid_indices_count_", utils::GetRandomSeed());
+
+  // 1D input NonZero generates output of shape (1,dim_name).
+  ONNX_NAMESPACE::TensorShapeProto non_zero_output_shape;
+  non_zero_output_shape.add_dim()->set_dim_value(1);
+  non_zero_output_shape.add_dim()->set_dim_param(dim_name);
+  non_zero_out_arg->SetShape(non_zero_output_shape);
+  non_zero_node.SetExecutionProviderType(execution_provider_type);
+
+  InlinedVector<NodeArg*> squeeze_input_args;
+  squeeze_input_args.push_back(non_zero_out_arg);
+
+  bool opset_lower_than_13 = onnxruntime::optimizer::compute_optimizer::GetONNXOpSetVersion(graph) < 13;
+  onnxruntime::NodeAttributes attributes;
+  if (opset_lower_than_13) {
+    attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{0});
+  } else {
+    squeeze_input_args.push_back(onnxruntime::optimizer::compute_optimizer::CreateInitializerFromVector(
+        graph, {1}, {0}, graph.GenerateNodeArgName("axes")));
+  }
+
+  auto squeeze_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("squeeze_adaptor"),
+                                                   non_zero_out_arg->TypeAsProto());
+  Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("squeeze_adaptor"), "Squeeze", "nonzero_squeezer",
+                                     squeeze_input_args, {squeeze_out_arg}, &attributes, kOnnxDomain);
+  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(squeeze_node),
+              "Failed to set op schema for " + squeeze_node.Name());
+
+  // After Squeeze, the shape becomes (dim_name).
+  ONNX_NAMESPACE::TensorShapeProto squeeze_output_shape;
+  squeeze_output_shape.add_dim()->set_dim_param(dim_name);
+  squeeze_out_arg->SetShape(squeeze_output_shape);
+  squeeze_node.SetExecutionProviderType(execution_provider_type);
+
+  return squeeze_out_arg;
 }
 
 }  // namespace onnxruntime::optimizer::compute_optimizer

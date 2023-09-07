@@ -7,12 +7,13 @@
 import copy
 import functools
 import inspect
+import json
 import logging
 import os
 import random
 import traceback
 import types
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -344,13 +345,6 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
     ortmodule.forward = pytorch_module.forward
 
 
-def warn_of_constant_inputs(data, logger: logging.Logger):
-    logger.info(
-        f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
-        " Please consider moving constant arguments to the model constructor."
-    )
-
-
 def patch_torch_module_ort_forward_method(torch_module_ort):
     def _forward(self, *inputs, **kwargs):
         """Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -419,3 +413,51 @@ def get_runtime_pytorch_version():
     from packaging import version
 
     return version.parse(torch.__version__.split("+")[0])
+
+
+def check_function_has_param(function: Callable, param_name: str) -> bool:
+    return param_name in inspect.signature(function).parameters
+
+
+def get_fully_qualified_class_name(cls: type) -> str:
+    """Returns the fully qualified class name of the given class."""
+    module = cls.__module__
+    if module == "builtins":
+        return cls.__qualname__  # avoid outputs like 'builtins.str'
+    return module + "." + cls.__qualname__
+
+
+def save_tuning_results(session, is_training, tuning_results_path):
+    """Save the online Op tuning results to a json file in the specified path."""
+
+    os.makedirs(tuning_results_path, exist_ok=True)
+    suffix = "training" if is_training else "inference"
+    tuning_result_file = os.path.join(tuning_results_path, f"tuning_results_{suffix}.json")
+    with open(tuning_result_file, "w", encoding="utf-8") as f:
+        json.dump(session.get_tuning_results(), f, indent=4)
+
+
+def set_tuning_results(session, is_training, tuning_results_path):
+    """Set the offline Op tuning results from a json file in the specified path."""
+
+    suffix = "training" if is_training else "inference"
+    tuning_result_file = os.path.join(tuning_results_path, f"tuning_results_{suffix}.json")
+    if os.path.isfile(tuning_result_file):
+        with open(tuning_result_file, encoding="utf-8") as f:
+            session.set_tuning_results(json.load(f))
+
+
+def get_rank() -> int:
+    """Returns the rank of the current process. If distributed training is not initialized, returns 0."""
+    if torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+
+    return 0
+
+
+def get_world_size() -> int:
+    """Returns the world size of the current process. If distributed training is not initialized, returns 1."""
+    if torch.distributed.is_initialized():
+        return torch.distributed.get_world_size()
+
+    return 1

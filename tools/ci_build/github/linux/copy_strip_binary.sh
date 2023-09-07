@@ -29,6 +29,10 @@ if [[ -f "$BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_tensorrt.so" ]]; th
     cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_tensorrt.so $BINARY_DIR/$ARTIFACT_NAME/lib
     cp $SOURCE_DIR/include/onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
 fi
+if [[ -f "$BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_rocm.so" ]]; then
+    cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_shared.so $BINARY_DIR/$ARTIFACT_NAME/lib
+    cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_rocm.so $BINARY_DIR/$ARTIFACT_NAME/lib
+fi
 echo "Copy debug symbols in a separate file and strip the original binary."
 if [[ $LIB_NAME == *.dylib ]]
 then

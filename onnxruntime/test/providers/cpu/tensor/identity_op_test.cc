@@ -38,9 +38,6 @@ TEST(Identity, SequenceType) {
 
 TEST(Identity, OptionalTensorType_NonNone) {
   OpTester test("Identity", 16, kOnnxDomain);
-  // Since this test is being written at a time when only opset 15  has been released, we set
-  // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-  test.test_allow_released_onnx_opset_only_ = false;
 
   std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
   test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
@@ -50,9 +47,6 @@ TEST(Identity, OptionalTensorType_NonNone) {
 
 TEST(Identity, OptionalTensorType_None) {
   OpTester test("Identity", 16, kOnnxDomain);
-  // Since this test is being written at a time when only opset 15  has been released, we set
-  // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-  test.test_allow_released_onnx_opset_only_ = false;
 
   test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);                            // None
   test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);                           // None
@@ -61,9 +55,6 @@ TEST(Identity, OptionalTensorType_None) {
 
 TEST(Identity, OptionalTensorSequenceType_NonNone) {
   OpTester test("Identity", 16, kOnnxDomain);
-  // Since this test is being written at a time when only opset 15  has been released, we set
-  // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-  test.test_allow_released_onnx_opset_only_ = false;
 
   SeqTensors<int64_t> input;
   input.AddTensor({3, 2}, {1, 2, 3, 4, 5, 6});
@@ -76,9 +67,6 @@ TEST(Identity, OptionalTensorSequenceType_NonNone) {
 
 TEST(Identity, OptionalTensorSequenceType_None) {
   OpTester test("Identity", 16, kOnnxDomain);
-  // Since this test is being written at a time when only opset 15  has been released, we set
-  // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-  test.test_allow_released_onnx_opset_only_ = false;
 
   test.AddOptionalTypeSeqInput<float>("A", nullptr);                                   // None
   test.AddOptionalTypeSeqOutput<float>("Y", nullptr);                                  // None

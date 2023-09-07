@@ -58,7 +58,7 @@ parameters:
 - name: OnnxruntimeTestGpuDeviceId
   type: number
   default: 0
-  
+
 
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
@@ -78,7 +78,6 @@ jobs:
     ${{ if eq(parameters.WITH_CACHE, true) }}:
       PS_CACHE_ARG: '-use_cache'
       PY_CACHE_ARG: '--use_cache'
-      MSBUILD_CACHE_ARG: '/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
   workspace:
     clean: all
   pool: ${{ parameters.MachinePool }}
@@ -88,20 +87,18 @@ jobs:
     clean: true
     submodules: none
 
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.8'
-      addToPath: true
-      architecture: ${{ parameters.buildArch }}
-
-  - template: ../download-deps.yml
-
-  - task: PythonScript@0
-    displayName: 'Update deps.txt'
-    inputs:
-      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-      arguments: --new_dir $(Build.BinariesDirectory)/deps
-      workingDirectory: $(Build.BinariesDirectory)
+  - template: win-ci-prebuild-steps.yml
+    parameters:
+      EnvSetupScript: ${{parameters.EnvSetupScript}}
+      ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
+        DownloadCUDA: true
+      ${{ else }}:
+        DownloadCUDA: false
+      BuildArch: ${{parameters.buildArch}}
+      BuildConfig: ${{parameters.BuildConfig}}
+      MachinePool: ${{parameters.MachinePool}}
+      WithCache: ${{parameters.WITH_CACHE}}
+      Today: $(Today)
 
   - task: NodeTool@0
     inputs:
@@ -116,13 +113,6 @@ jobs:
           jdkArchitectureOption: ${{ parameters.buildArch }}
           jdkSourceOption: 'PreInstalled'
 
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
-
   - script: |
      set ORT_DOXY_SRC=$(Build.SourcesDirectory)
      set ORT_DOXY_OUT=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
@@ -131,58 +121,6 @@ jobs:
      "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'API Documentation Check and generate'
-
-  - script: |
-     python -m pip install -q setuptools wheel numpy
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Install python modules'
-
-  - ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
-    - powershell: |
-       azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
-
-  - ${{ if eq(parameters.WITH_CACHE, true) }}:
-    - powershell: |
-        if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))
-        {
-          choco install ccache -y --version 4.7.4
-          $ccache_path = (Get-Command ccache).Source
-          $ccache_parent_dir = (Split-Path -parent $ccache_path)
-          Copy-Item "C:\ProgramData\chocolatey\lib\ccache\tools\ccache-4.7.4-windows-x86_64\ccache.exe" -Destination "C:\ProgramData\chocolatey\bin\cl.exe"
-          Get-ChildItem $ccache_parent_dir
-          ccache --version
-        }
-      displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
-
-  - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
-      - ${{ if eq(parameters.WITH_CACHE, true) }}:
-        - task: Cache@2
-          # machinepool is used to ensure the compiler is same
-          inputs:
-            key: '"$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }} | ${{ parameters.MachinePool }} | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1, $(Build.SourcesDirectory)/tools/ci_build/github/windows/helpers.ps1'
-            path: $(DEPS_CACHE_DIR)
-            restoreKeys: |
-              "$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }} | ${{ parameters.MachinePool }}
-          displayName: Cache Task
-
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} ${{ variables['PS_CACHE_ARG'] }}
-        ${{ if eq(parameters.WITH_CACHE, true) }}:
-          env:
-            CCACHE_DIR: $(DEPS_CACHE_DIR)
-            CCACHE_COMPILERCHECK: content
-
-      - ${{ if eq(parameters.WITH_CACHE, true) }}:
-        - powershell: |
-            ccache -sv
-            ccache -z
-          displayName: cache stat
-          env:
-            CCACHE_DIR: $(DEPS_CACHE_DIR)
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
@@ -198,48 +136,17 @@ jobs:
       nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
       restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
 
-  - ${{ if eq(parameters.WITH_CACHE, true) }}:
-    - task: Cache@2
-      inputs:
-        ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
-          key: ' "$(TODAY)" |  $(System.StageName) | ${{ parameters.BuildConfig }} | merge '
-        ${{else}}:
-          key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} | $(Build.SourceVersion) '
-        path: $(ORT_CACHE_DIR)
-        restoreKeys: |
-          "$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }}
-      displayName: Cache Task
-
-  - task: PythonScript@0
-    displayName: 'Generate cmake config'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ variables.PY_CACHE_ARG }} ${{ parameters.additionalBuildFlags }}'
-      workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: VSBuild@1
-    displayName: 'Build'
-    inputs:
-      solution: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\onnxruntime.sln'
-      platform: ${{ parameters.msbuildPlatform }}
-      configuration: ${{ parameters.BuildConfig }}
-      msbuildArgs: '-maxcpucount ${{ variables.MSBUILD_CACHE_ARG }}'
-      msbuildArchitecture: ${{ parameters.buildArch }}
-      maximumCpuCount: true
-      logProjectEvents: false
-      workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
-      createLogFile: true
-    ${{ if eq(parameters.WITH_CACHE, true) }}:
-      env:
-        CCACHE_DIR: $(ORT_CACHE_DIR)
-
-  - ${{ if eq(parameters.WITH_CACHE, true) }}:
-    - powershell: |
-        ccache -sv
-        ccache -z
-      displayName: cache stat
-      env:
-        CCACHE_DIR: $(ORT_CACHE_DIR)
+  - template: win-ci-build-steps.yml
+    parameters:
+      WithCache: ${{ parameters.WITH_CACHE }}
+      Today: $(TODAY)
+      CacheDir: $(ORT_CACHE_DIR)
+      AdditionalKey: " $(System.StageName) | ${{ parameters.BuildConfig }} "
+      BuildPyArguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      MsbuildArguments: '-maxcpucount'
+      BuildArch: ${{ parameters.buildArch }}
+      Platform: ${{ parameters.msbuildPlatform }}
+      BuildConfig: ${{ parameters.BuildConfig }}
 
   - powershell: |
       Get-Volume $("$(Build.BinariesDirectory)")[0]
@@ -332,7 +239,7 @@ jobs:
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         inputs:
           msBuildArchitecture: amd64
-          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON onnxruntime_ENABLE_LTO=OFF'
           msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\RelWithDebInfo\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=${{ parameters.msbuildPlatform }} /p:configuration=RelWithDebInfo /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
           excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files#C:\program files (x86)#C:\program files'
           rulesetName: Custom

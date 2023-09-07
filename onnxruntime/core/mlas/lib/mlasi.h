@@ -51,7 +51,14 @@ Abstract:
 #endif
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
+#if defined(__GNUC__) && __GNUC__ >= 12
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  // GCC 12 warns about uninitialized variables in immintrin.h.
 #include <immintrin.h>
+#pragma GCC diagnostic pop
+#else
+#include <immintrin.h>
+#endif
 #endif
 #if defined(__VSX__)
 #include <altivec.h>
@@ -855,6 +862,14 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot;
 
+struct MLAS_Q8Q4GEMM_DISPATCH;
+
+extern const MLAS_Q8Q4GEMM_DISPATCH MlasQ8Q4GemmDispatchAvx512vnni;
+
+struct MLAS_FPQ4GEMM_DISPATCH;
+
+extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
+
 //
 // Quantized depthwise convolution kernels.
 //
@@ -980,6 +995,8 @@ struct MLAS_PLATFORM {
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 
+    const MLAS_FPQ4GEMM_DISPATCH* FpQ4GemmDispatch{nullptr};
+    const MLAS_Q8Q4GEMM_DISPATCH* Q8Q4GemmDispatch{nullptr};
 };
 
 inline

@@ -68,7 +68,7 @@ auto GetCKGemmAddFastGeluTypeStringAndOps() {
                                            nop, nop, addfastgelu);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemmfastgelu_op)));
@@ -109,7 +109,7 @@ auto GetCKGemmFastGeluTypeStringAndOps() {
                                            nop, nop, fastgelu);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemmfastgelu_op)));

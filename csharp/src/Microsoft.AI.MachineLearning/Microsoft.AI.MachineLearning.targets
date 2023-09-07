@@ -32,7 +32,7 @@
     </Reference>
   </ItemGroup>
 
-  <ItemGroup Condition="'$(NuGetProjectStyle)' != 'PackageReference'">
+  <ItemGroup Condition="'$(NuGetProjectStyle)' != 'PackageReference' AND WinAppSDKPackageName == ''">
     <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);" />
   </ItemGroup>
   <ItemGroup Condition="'$(NuGetProjectStyle)' != 'PackageReference' OR '$(TargetPlatformIdentifier)' == 'UAP'">

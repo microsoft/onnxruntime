@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
@@ -23,8 +23,9 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('Transpose requires 1 input.');
   }
 
-  if (inputs[0].dataType !== DataType.float) {
-    throw new Error('input should be float tensor');
+  if (inputs[0].dataType !== DataType.float && inputs[0].dataType !== DataType.int32 &&
+      inputs[0].dataType !== DataType.uint32) {
+    throw new Error('Transpose only support float, int32, and uint32 data types');
   }
 };
 
@@ -34,19 +35,20 @@ const getAdjustedPerm = (inputShape: readonly number[], perm: number[]): number[
 const getOutputShape = (inputShape: readonly number[], perm: number[]): readonly number[] =>
     ShapeUtil.sortBasedOnPerm(inputShape, getAdjustedPerm(inputShape, perm));
 
-const permFunctionBody = (perm: number[], rank: number): string => {
+const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, output: IndicesHelper): string => {
   const reverseFunc = [];
-  reverseFunc.push(`fn perm(a: ptr<function, array<u32, ${rank}>>, i: ptr<function, array<u32, ${rank}>>) {`);
+  reverseFunc.push(`fn perm(i: ${output.type.indices}) -> ${input.type.indices} {
+    var a: ${input.type.indices};`);
   for (let i = 0; i < rank; ++i) {
-    reverseFunc.push(`\t(*a)[${perm[i]}]=(*i)[${i}];`);
+    reverseFunc.push(input.indicesSet('a', perm[i], `i[${i}]`));
   }
-  reverseFunc.push('\t}');
+  reverseFunc.push('return a;}');
   return reverseFunc.join('\n');
 };
 
-export const createTransposeProgramInfo = (input: TensorView, permAttr: number[]): ProgramInfo => {
-  const dataType = 'f32';  // TODO: support other data type
-  const inputShape = input.dims;
+export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: number[]): ProgramInfo => {
+  const dataType = inputTensor.dataType;
+  const inputShape = inputTensor.dims;
   const perm = getAdjustedPerm(inputShape, permAttr);
   const outputShape = getOutputShape(inputShape, perm);
   const rank = inputShape.length;
@@ -55,30 +57,25 @@ export const createTransposeProgramInfo = (input: TensorView, permAttr: number[]
   // out Dims=[${unpackedOutputShape.toString()}]
   // based on perm=[${perm.toString()}]
 
-  const outputIndicesHelper = createIndicesHelper('output', outputShape);
-  const inputIndicesHelper = createIndicesHelper('a', inputShape);
+  const output = outputVariable('output', dataType, outputShape);
+  const input = inputVariable('a', dataType, inputShape);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
-  @group(0) @binding(0) var<storage, read> a : array<${dataType}>;
-  @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+  ${shaderHelper.declareVariables(input, output)}
 
-  ${permFunctionBody(perm, rank)}
-  ${outputIndicesHelper.o2iImpl}
-  ${inputIndicesHelper.i2oImpl}
+  ${permFunctionBody(perm, rank, input, output)}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-    ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-    ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
-    ${inputIndicesHelper.indicesVariableDeclaration('aIndices')}
-    perm(&aIndices, &indices);
+    let indices = ${output.offsetToIndices('global_idx')};
+    let aIndices = perm(indices);
 
-    output[global_idx] = a[${inputIndicesHelper.i2oExpression('aIndices')}];
+    ${output.setByOffset('global_idx', input.getByIndices('aIndices'))}
   }`;
   return {
     ...transposeProgramMetadata,
-    outputs: [{dims: outputShape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
+    outputs: [{dims: outputShape, dataType: inputTensor.dataType, gpuDataType: GpuDataType.default}],
     getShaderSource,
     dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
   };

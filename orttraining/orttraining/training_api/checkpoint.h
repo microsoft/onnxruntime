@@ -4,43 +4,26 @@
 #pragma once
 
 #include "core/platform/path_lib.h"
-#include "core/platform/env.h"
-#include "onnx/defs/tensor_proto_util.h"
-
+#include "orttraining/training_api/checkpoint_property.h"
 #include "orttraining/training_api/module.h"
 #include "orttraining/training_api/optimizer.h"
-#include "orttraining/training_api/checkpoint_property.h"
 
 /**
- * There are two representation for checkpoint respectively in memory and files:
+ * The CheckpointState is a data class representing traning states in memory, which include:
+ *  - Module state: Contains the model's trainable and non-trainable parameters.
+ *  - Optimizer state: Contains the optimizer's state (for example learning rate, step, first
+ *                     and second order momentums ...).
+ *  - User defined properties: For example 'epoch', 'best_score' ...
  *
- * 1. CheckpointState. A data class representing traing states in memory, which include:
- *    i. module state:
- *        a instance of data class `ModuleCheckpointState` managed along with Module/Parameter classes,
- *    ii. optimizer state:
- *        a instance of data class `OptimizerCheckpointState` managed along with Optimizer class,
- *    iii. user defined training properties, for example 'epoch', 'best_score':
- *        a instance of data class `PropertyBag`.
+ * These states can be used to begin or resume training from a checkpoint. In order to pause training,
+ * the user can save the CheckpointState to a checkpoint file.
  *
- *    In terms of class dependencies, Checkpoint implementations are dependent on (and on top of)
- *        Parameter/Module/Optimizer, NOT vice versa.
+ * The checkpoint file is a single flatbuffer file containing all the states highlighted above.
+ * The flatbuffer schema is defined in onnxruntime/core/flatbuffers/schema/ort_training_checkpoint.fbs
  *
- * 2. A directory of files:
- *    checkpoint/
- *       paramtrain_tensors.pbseq - trainable parameter tensor protobuf messages
- *       paramfrozen_tensors.pbseq - non_trainable parameter tensor protobuf messages
- *       optim_group0_momentum0_tensors.pbseq - optimizer momentum state tensor protobuf messages
- *       optim_group0_momentum1_tensors.pbseq - optimizer momentum state tensor protobuf messages
- *       optim_group0_properties.pbseq - group-wise optimizer property tensor protobuf messages
- *       custom_properties.pbseq - custom property protobuf messages
- *
- *    LoadCheckpoint takes CheckpointState as outputs, loading from a directory of checkpoint.
- *    SaveCheckpoint takes CheckpointState as inputs, saving checkpoint files into a directory.
  */
 
-namespace onnxruntime {
-namespace training {
-namespace api {
+namespace onnxruntime::training::api {
 
 struct CheckpointState {
  public:
@@ -53,29 +36,30 @@ struct CheckpointState {
  * @brief Save training states as ORT checkpoint.
  *
  * @param state parameter/optimizer and other user defined training states.
- * @param checkpoint_path folder where checkpoint is saved.
+ * @param checkpoint_path file where checkpoint is saved.
  * @return Status
- * TODO: change state to const ref
  */
-Status SaveCheckpoint(CheckpointState& state, const PathString& checkpoint_path,
+Status SaveCheckpoint(const CheckpointState& state, const PathString& checkpoint_path,
                       const bool include_optimizer_state);
 
+#if !defined(ORT_MINIMAL_BUILD)
 /**
  * @brief Save ONNX initializers as ORT checkpoint.
  *
  * @param trainable_tensor_protos trainable parameters in TensorProto format.
  * @param non_trainable_tensor_protos non-trainable parameters in TensorProto format.
- * @param checkpoint_path folder where checkpoint is saved.
+ * @param checkpoint_path file where checkpoint is saved.
  * @return Status
  */
-Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
-                      const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
+Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
+                      gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
                       const PathString& checkpoint_path);
+#endif
 
 /**
  * @brief Load training states from ORT checkpoint.
  *
- * @param checkpoint_path folder where checkpoint is stored.
+ * @param checkpoint_path file where checkpoint is stored.
  * @param checkpoint_states parameter/optimizer and other user defined training states.
  * @return Status
  */
@@ -83,14 +67,23 @@ Status LoadCheckpoint(const PathString& checkpoint_path,
                       CheckpointState& checkpoint_state);
 
 /**
+ * @brief Load training states from ORT checkpoint bytes buffer.
+ * @param checkpoint_bytes bytes buffer of the checkpoint.
+ * @param checkpoint_state parameter/optimizer and other user defined training states.
+ * @return Status
+ */
+Status LoadCheckpointFromBuffer(gsl::span<const uint8_t> checkpoint_bytes,
+                                CheckpointState& checkpoint_state);
+
+#if !defined(ORT_MINIMAL_BUILD)
+/**
  * @brief Load training states from ORT checkpoint into a ModelProto.
- * @param checkpoint_path folder where checkpoint is stored.
- * @param model_proto Model Proto.
+ * @param checkpoint_path file where checkpoint is stored.
+ * @param model_proto ONNX model to load the checkpoint to.
  * @return Status
  */
 Status LoadCheckpointToModel(const PathString& checkpoint_path,
                              ONNX_NAMESPACE::ModelProto& model_proto);
+#endif
 
-}  // namespace api
-}  // namespace training
-}  // namespace onnxruntime
+}  // namespace onnxruntime::training::api

@@ -6,42 +6,37 @@
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy
 import onnx
 import torch
+from io_binding_helper import TypeHelper
+from models.t5.past_helper import PastKeyValuesHelper
+from onnx_model import OnnxModel
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import WhisperConfig, file_utils
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from io_binding_helper import TypeHelper  # noqa: E402
-from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
 class WhisperDecoderInit(torch.nn.Module):
-    """A Whisper decoder with LM head to create initial past key values.
+    """A Whisper decoder to create initial past key values.
     This model is only called once during starting decoding.
     """
 
     def __init__(
         self,
         decoder: torch.nn.Module,
-        lm_head: torch.nn.Module,
         config: WhisperConfig,
-        decoder_start_token_id: int = None,
+        decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.decoder = decoder
-        self.lm_head = lm_head
         self.config = config
         self.decoder_start_token_id = (
             decoder_start_token_id if decoder_start_token_id is not None else self.config.decoder_start_token_id
@@ -70,12 +65,11 @@ class WhisperDecoderInit(torch.nn.Module):
 
 
 class WhisperDecoder(torch.nn.Module):
-    """A Whisper decoder with LM head and past key values"""
+    """A Whisper decoder with past key values"""
 
-    def __init__(self, decoder, lm_head, config):
+    def __init__(self, decoder, config):
         super().__init__()
         self.decoder = decoder
-        self.lm_head = lm_head
         self.config = config
 
     def forward(self, decoder_input_ids, *past):

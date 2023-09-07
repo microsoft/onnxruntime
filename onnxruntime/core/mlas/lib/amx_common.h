@@ -40,35 +40,41 @@ Abstract:
 
 #else
 
-asm(".include \"x86_64/QgemmU8S8KernelAmxCommon.S\"");
-
-#define tile_int8_dp_internal1(name,dst,src1,src2)			\
-  __asm__ volatile							\
-  (""#name" tmm"#dst", tmm"#src1", tmm"#src2"")
+#define tile_dpbusd_internal(dst,src1,src2)  \
+__asm__ volatile (".set Payload1, 0x01\n\t"    \
+	".set Payload1, Payload1 + (("#src2" & 15) ^ 15) << 3\n\t"  \
+	".set ModRMByte, 0xC0\n\t" 		\
+	".set ModRMByte, ModRMByte + ("#dst" << 3)\n\t"     \
+	".set ModRMByte, ModRMByte + ("#src1")\n\t"     \
+	".byte 0xC4, 0xE2, Payload1, 0x5E, ModRMByte\n\t")
 
 #define tile_dpbusd(dst,src1,src2)					\
-tile_int8_dp_internal1(TdpbusdTmmTmmTmm, dst, src1, src2)
+tile_dpbusd_internal(dst,src1,src2)
 
 #define tile_loadd_internal1(dst,base,stride)				\
-  __asm__ volatile ("TileloaddTmmMem tmm"#dst", %0, %1" 		\
-   :: "r" ((const void*) (base)), "r" ((long) (stride)))
+  __asm__ volatile (".set ModRMByte, 0x04\n\t" 		\
+	".set ModRMByte, ModRMByte + ("#dst" << 3)\n\t"     \
+	".byte 0xC4, 0xE2, 0x7B, 0x4B, ModRMByte, 0x18\n\t" \
+   :: "a" ((const void*) (base)), "b" ((long) (stride)))
 
 #define tile_loadd(dst,base,stride)					\
   tile_loadd_internal1(dst, base, stride)
 
 
 #define tile_stored_internal1(dst,base,stride)				\
-  __asm__ volatile ("TileStoredMemTmm tmm"#dst", %0, %1" 		\
-   :: "r" ((const void*) (base)), "r" ((long) (stride)))
+  __asm__ volatile (".set ModRMByte, 0x04\n\t" 		\
+	".set ModRMByte, ModRMByte + ("#dst" << 3)\n\t"     \
+	".byte 0xC4, 0xE2, 0x7A, 0x4B, ModRMByte, 0x18\n\t" \
+   :: "a" ((const void*) (base)), "b" ((long) (stride)))
 
 #define tile_stored(dst,base,stride)					\
 tile_stored_internal1(dst, base, stride)
 
 
 #define tile_loadconfig(config)						\
-__asm__ volatile ("ldtilecfgMacro %0" :: "r" (((const void *)config)))  \
+__asm__ volatile (".byte 0xC4, 0xE2, 0x78, 0x49, 0x00" :: "a" (((const void *)config)))  \
 
 #define tile_storeconfig(config)					\
-__asm__ volatile ("sttilecfgMacro %0" :: "r" (((const void *)config)))  \
+__asm__ volatile (".byte 0xC4, 0xE2, 0x79, 0x49, 0x00" :: "a" (((const void *)config)))  \
 
 #endif

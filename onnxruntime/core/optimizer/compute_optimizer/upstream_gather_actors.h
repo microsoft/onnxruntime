@@ -25,11 +25,21 @@ struct SliceInfo : public UpstreamOperatorInfoBase {
  public:
   SliceInfo(const Graph& graph, Node* slice_node,
             bool is_slice_scalar,
-            const std::string& slice_axis_attr_name,
+            std::variant<std::string, int> axis_name_or_index,
             int slice_axis,
+            int rank_of_axis,
             bool is_entry_node_ptr = false)
       : UpstreamOperatorInfoBase(slice_node, is_entry_node_ptr), is_scalar_slice(is_slice_scalar) {
-    axis_attr_name = slice_axis_attr_name;
+    axis_attr_name_or_input_index = axis_name_or_index;
+    rank_of_axis_value = rank_of_axis;
+
+    if (std::holds_alternative<int>(axis_name_or_index)) {
+      int axis_input_index = std::get<int>(axis_name_or_index);
+      ORT_ENFORCE(axis_input_index >= 0, "Axis input index is invalid");
+    }
+
+    ORT_ENFORCE(rank_of_axis_value == 0 || rank_of_axis_value == 1, "Rank of axis value is invalid: " +
+                                                                        std::to_string(rank_of_axis_value));
 
     const NodeArg* input = node_ptr->InputDefs()[kSliceDataInputIndex_];
     const NodeArg* output = node_ptr->OutputDefs()[kSliceOutputIndex_];
@@ -65,8 +75,16 @@ struct SliceInfo : public UpstreamOperatorInfoBase {
   }
 
   bool is_scalar_slice;  // whether the slice is a scalar, if it is after Gather, the rank will be reduced by 1.
-  std::string axis_attr_name;
+
+  // The index of the input that contains the axis value. If it is a string, then axis will be treated as an attribute.
+  std::variant<std::string, int> axis_attr_name_or_input_index;
+
   int non_negative_axis;  // The axis to slice on
+
+  // The rank of value for axis attribute. For example, for Gather, its axis attribute is a scalar, so the rank is 0.
+  // For Slice, its axes attribute is a 1D tensor, so the rank is 1.
+  int rank_of_axis_value;
+
   std::string entry_slice_arg_name;
 
   int input_rank;  // rank of the Gather data input tensor
@@ -171,7 +189,7 @@ class LayerNormalizationGatherActor : public UpStreamGatherOperatorActorBase {
                    const logging::Logger& /* logger */,
                    const std::unordered_map<int, int>& /* propagate_input_indices */,
                    const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
-                   const std::unordered_map<int, SliceInfo>& /* new_gather_infos */) override { return true; }
+                   const std::unordered_map<int, SliceInfo>& /* new_gather_infos */) override;
 };
 
 class SoftmaxGatherActor : public SimplePointwiseGatherActor<true> {
@@ -184,6 +202,12 @@ class SoftmaxGatherActor : public SimplePointwiseGatherActor<true> {
                 std::unordered_map<int, int>& propagate_input_indices,
                 std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
+
+  bool PostProcess(Graph& /* graph */, Node& /* current_node */, const SliceInfo& /* info_without_node */,
+                   const logging::Logger& /* logger */,
+                   const std::unordered_map<int, int>& /* propagate_input_indices */,
+                   const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
+                   const std::unordered_map<int, SliceInfo>& /* new_gather_infos */) override;
 };
 
 class ReshapeGatherActor : public UpStreamGatherOperatorActorBase {

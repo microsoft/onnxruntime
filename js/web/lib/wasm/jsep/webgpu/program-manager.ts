@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {tensorDataTypeEnumToString} from '../../wasm-common';
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
+import {TensorView} from '../tensor';
 
 import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo} from './types';
@@ -30,11 +32,12 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number]): void {
+  run(buildArtifact: Artifact, inputsTensorView: readonly TensorView[], inputs: GpuData[], outputs: GpuData[],
+      dispatchGroup: [number, number, number]): void {
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
-
-    if (this.backend.profilingEnabled) {
+    const profilingEnabled = this.backend.supportTimestampQuery && this.backend.env.webgpu.profilingMode === 'default';
+    if (profilingEnabled) {
       // profiling write start timestamp
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,30 +52,37 @@ export class ProgramManager {
     for (const output of outputs) {
       entries.push({binding: entries.length, resource: {buffer: output.buffer}});
     }
-    const bindGroup = device.createBindGroup({layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries});
+    const bindGroup = device.createBindGroup(
+        {layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries, label: buildArtifact.programInfo.name});
     computePassEncoder.setBindGroup(0, bindGroup);
 
     computePassEncoder.dispatchWorkgroups(...dispatchGroup);
 
     this.backend.pendingDispatchNumber++;
 
-    if (this.backend.profilingEnabled) {
+    if (profilingEnabled) {
       // profiling write end timestamp
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (computePassEncoder as any).writeTimestamp(this.backend.profilingQuerySet, 1);
-      // eslint-disable-next-line no-bitwise
-      const queryData = this.backend.gpuDataManager.create(16, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
+      if (this.backend.profilingQueryData == null) {
+        this.backend.profilingQueryData =
+            // eslint-disable-next-line no-bitwise
+            this.backend.gpuDataManager.create(16, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
+      }
       // eslint-disable-next-line no-bitwise
       const syncData = this.backend.gpuDataManager.create(16, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
 
       this.backend.endComputePass();
-      this.backend.getCommandEncoder().resolveQuerySet(this.backend.profilingQuerySet, 0, 2, queryData.buffer, 0);
-      this.backend.getCommandEncoder().copyBufferToBuffer(queryData.buffer, 0, syncData.buffer, 0, 16);
+      this.backend.getCommandEncoder().resolveQuerySet(
+          this.backend.profilingQuerySet, 0, 2, this.backend.profilingQueryData.buffer, 0);
+      this.backend.getCommandEncoder().copyBufferToBuffer(
+          this.backend.profilingQueryData.buffer, 0, syncData.buffer, 0, 16);
       this.backend.flush();
 
       const kernelId = this.backend.currentKernelId!;
-      const kernelName = this.backend.kernels.get(kernelId)![0];
+      const kernelInfo = this.backend.kernels.get(kernelId)!;
+      const kernelName = `[${kernelInfo[0]}] ${kernelInfo[1]}`;
 
       syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
         const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
@@ -92,11 +102,18 @@ export class ProgramManager {
           throw new RangeError('incorrect timestamp range');
         }
 
-        this.backend.gpuDataManager.release(queryData.id);
         this.backend.gpuDataManager.release(syncData.id);
-
+        let inputShapes = '';
+        inputsTensorView.forEach((value, i) => {
+          inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+        });
+        let outputShapes = '';
+        buildArtifact.programInfo.outputs.forEach((value, i) => {
+          outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+        });
         // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelId}|${kernelName}" execution time: ${endTime - startTime} ns`);
+        console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
+            endTime - startTime} ns`);
       });
     }
 
@@ -110,12 +127,14 @@ export class ProgramManager {
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
     const device = this.backend.device;
 
-    const code = programInfo.getShaderSource(createShaderHelper(normalizedDispatchGroupSize));
-    const shaderModule = device.createShaderModule({code});
+    const shaderHelper = createShaderHelper(normalizedDispatchGroupSize);
+    const userCode = programInfo.getShaderSource(shaderHelper);
+    const code = `${shaderHelper.additionalImplementations}\n${userCode}`;
+    const shaderModule = device.createShaderModule({code, label: programInfo.name});
     LOG_DEBUG('verbose', () => `[WebGPU] shader code: ${code}`);
 
-    const computePipeline =
-        device.createComputePipeline({compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto'});
+    const computePipeline = device.createComputePipeline(
+        {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});
 
     return {programInfo, computePipeline};
   }

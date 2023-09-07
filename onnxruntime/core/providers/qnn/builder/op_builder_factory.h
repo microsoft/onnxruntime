@@ -56,8 +56,6 @@ void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
-void CreateQdqOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -84,7 +82,11 @@ void CreateReduceOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 
 void CreateBatchNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateLayerNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace qnn
 }  // namespace onnxruntime

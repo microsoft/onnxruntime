@@ -7,6 +7,8 @@
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
 
+#include <cstring>
+
 namespace Ort {
 
 namespace detail {
@@ -113,6 +115,47 @@ template <>
 struct TypeToTensorType<bool> {
   static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
 };
+
+template <>
+struct TypeToTensorType<Float8E4M3FN_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+};
+template <>
+struct TypeToTensorType<Float8E4M3FNUZ_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+};
+template <>
+struct TypeToTensorType<Float8E5M2_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+};
+template <>
+struct TypeToTensorType<Float8E5M2FNUZ_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
+};
+
+inline bool BFloat16_t::operator==(const BFloat16_t& rhs) const noexcept {
+  if (IsNaN() || rhs.IsNaN()) {
+    // IEEE defines that NaN is not equal to anything, including itself.
+    return false;
+  }
+  return val == rhs.val;
+}
+
+inline bool BFloat16_t::operator<(const BFloat16_t& rhs) const noexcept {
+  if (IsNaN() || rhs.IsNaN()) {
+    // IEEE defines that NaN is unordered with respect to everything, including itself.
+    return false;
+  }
+
+  const bool left_is_negative = IsNegative();
+  if (left_is_negative != rhs.IsNegative()) {
+    // When the signs of left and right differ, we know that left is less than right if it is
+    // the negative value. The exception to this is if both values are zero, in which case IEEE
+    // says they should be equal, even if the signs differ.
+    return left_is_negative && !AreZero(*this, rhs);
+  }
+  return (val != rhs.val) && ((val < rhs.val) ^ left_is_negative);
+}
 
 inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
     : allocator_(allocator), p_(p), size_(size) {
@@ -469,6 +512,21 @@ inline Env& Env::UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level)
 
 inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg) {
   ThrowOnError(GetApi().CreateAndRegisterAllocator(p_, mem_info, arena_cfg));
+  return *this;
+}
+
+inline Env& Env::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo* mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+  std::vector<const char*> keys, values;
+  auto num_entries = options.size();
+  if (num_entries > 0) {
+    keys.reserve(num_entries);
+    values.reserve(num_entries);
+    for (const auto& entry : options) {
+      keys.push_back(entry.first.c_str());
+      values.push_back(entry.second.c_str());
+    }
+  }
+  ThrowOnError(GetApi().CreateAndRegisterAllocatorV2(p_, provider_type.c_str(), mem_info, arena_cfg, keys.data(), values.data(), num_entries));
   return *this;
 }
 
@@ -912,6 +970,16 @@ inline void SessionImpl<T>::Run(const RunOptions& run_options, const char* const
 template <typename T>
 inline void SessionImpl<T>::Run(const RunOptions& run_options, const IoBinding& io_binding) {
   ThrowOnError(GetApi().RunWithBinding(this->p_, run_options, io_binding));
+}
+
+template <typename T>
+inline void SessionImpl<T>::RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
+                                     const char* const* output_names, Value* output_values, size_t output_count, RunAsyncCallbackFn callback, void* user_data) {
+  auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values);
+  auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
+  ThrowOnError(GetApi().RunAsync(this->p_, run_options, input_names,
+                                 ort_input_values, input_count, output_names, output_count,
+                                 ort_output_values, callback, user_data));
 }
 
 template <typename T>
@@ -1797,9 +1865,9 @@ inline std::vector<std::string> GetAvailableProviders() {
   return available_providers;
 }
 
-template <typename TOp, typename TKernel>
-void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out,
-                                                   ConstSessionOptions options) const {
+template <typename TOp, typename TKernel, bool WithStatus>
+void CustomOpBase<TOp, TKernel, WithStatus>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out,
+                                                               ConstSessionOptions options) const {
   const TOp* derived = static_cast<const TOp*>(this);
   std::vector<std::string> keys = derived->GetSessionConfigKeys();
 

@@ -15,7 +15,6 @@ Abstract:
 
 --*/
 
-	.intel_syntax noprefix
 //
 // Map friendly register names to the encoded register index.
 //
@@ -28,22 +27,6 @@ Abstract:
         .equ    .LTmmIndex_tmm5, 5
         .equ    .LTmmIndex_tmm6, 6
         .equ    .LTmmIndex_tmm7, 7
-        
-	.equ    .LGprIndex_rax, 0
-        .equ    .LGprIndex_rcx, 1
-        .equ    .LGprIndex_rdx, 2
-        .equ    .LGprIndex_rbx, 3
-        .equ    .LGprIndex_rbp, 5
-        .equ    .LGprIndex_rsi, 6
-        .equ    .LGprIndex_rdi, 7
-        .equ    .LGprIndex_r8,  8
-        .equ    .LGprIndex_r9,  9
-        .equ    .LGprIndex_r10, 10
-        .equ    .LGprIndex_r11, 11
-        .equ    .LGprIndex_r12, 12
-        .equ    .LGprIndex_r13, 13
-        .equ    .LGprIndex_r14, 14
-        .equ    .LGprIndex_r15, 15
 
 /*++
 
@@ -176,16 +159,16 @@ Arguments:
 
         .set    Payload0, 0x02              # "0F 38" prefix
         .set    Payload0, Payload0 + ((((.LTmmIndex_\SrcReg\() >> 3) & 1) ^ 1) << 7)
-        .set    Payload0, Payload0 + ((((.LGprIndex_\Stride\() >> 3) & 1) ^ 1) << 6)
-        .set    Payload0, Payload0 + ((((.LGprIndex_\BaseReg\() >> 3) & 1) ^ 1) << 5)
+        .set    Payload0, Payload0 + ((((3 >> 3) & 1) ^ 1) << 6)
+        .set    Payload0, Payload0 + ((((0 >> 3) & 1) ^ 1) << 5)
 
         .set 	ModRMByte, 0x00     # memory form
         .set 	ModRMByte, ModRMByte + (1 << 2)   # SibBye required
         .set 	ModRMByte, ModRMByte + ((.LTmmIndex_\SrcReg\() & 7) << 3)
 
         .set 	SibByte, 0x00  # scale factor 1(SS)
-        .set 	SibByte, SibByte + ((.LGprIndex_\Stride\() & 7) << 3)
-        .set 	SibByte, SibByte + (.LGprIndex_\BaseReg\() & 7)
+        .set 	SibByte, SibByte + ((3 & 7) << 3)
+        .set 	SibByte, SibByte + (0 & 7)
 
         .byte   0xC4, Payload0, \instr\(), 0x4B, ModRMByte, SibByte
 
@@ -226,10 +209,10 @@ Arguments:
 	.set    Payload0, 0x02              # "0F 38" prefix
 	.set    Payload0, Payload0 + (1 << 7)
 	.set    Payload0, Payload0 + (1 << 6)
-	.set    Payload0, Payload0 + ((((.LGprIndex_\BaseReg\() >> 3) & 1) ^ 1) << 5)
+	.set    Payload0, Payload0 + ((((0 >> 3) & 1) ^ 1) << 5)
 
 	.set 	ModRMByte, 0x00     # memory form & no reg
-	.set 	ModRMByte, ModRMByte + (.LGprIndex_\BaseReg\() & 7)
+	.set 	ModRMByte, ModRMByte + (0 & 7)
 
 	.byte 0xC4, Payload0, \instr\(), 0x49, ModRMByte
 

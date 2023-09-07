@@ -24,42 +24,23 @@ struct KernelRegistryAndStatus {
 }  // namespace
 
 namespace onnxruntime {
-CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info, bool delay_allocator_registration)
+CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCpuExecutionProvider}, info_{info} {
-  if (!delay_allocator_registration) {
-    AllocatorManager mgr;  // needed only to call RegisterAllocator
-    RegisterAllocator(mgr);
-  }
 }
 
-void CPUExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(OrtMemTypeDefault);
-  if (!cpu_alloc) {
-    // use shared allocator if available
-    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-
-    if (!cpu_alloc) {
-      // create our allocator
-      bool create_arena = info_.create_arena;
+std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
+  bool create_arena = info_.create_arena;
 #if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
-      // JEMalloc/mimalloc already have memory pool, so just use device allocator.
-      create_arena = false;
+  // JEMalloc/mimalloc already have memory pool, so just use device allocator.
+  create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
-      // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-      create_arena = false;
+  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  create_arena = false;
 #endif
-      AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
-                                        DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+  AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
+                                    DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
 
-      cpu_alloc = CreateAllocator(device_info);
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(cpu_alloc);
-    }
-
-    InsertAllocator(cpu_alloc);
-  }
+  return std::vector<AllocatorPtr>{CreateAllocator(device_info)};
 }
 
 // Forward declarations of op kernels
@@ -600,7 +581,7 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOn
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 18, int8_t, QuantizeLinear);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, Sigmoid);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, Sign);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, Size);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 18, Size);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, float, Sum);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, double, Sum);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, Flatten);
@@ -936,6 +917,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 18, Op
 #endif
 
 // Opset 19
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, Size);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, AveragePool);
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, MLFloat16, AveragePool);
@@ -1834,7 +1816,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, float, Gemm)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, double, Gemm)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, Sign)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, Size)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 18, Size)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, float, Sum)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, double, Sum)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, float, Sigmoid)>,
@@ -2351,6 +2333,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
 #endif
 
     // Opset 19
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, Size)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, AveragePool)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, Cast)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, uint8_t,

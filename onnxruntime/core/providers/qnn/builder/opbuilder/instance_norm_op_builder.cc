@@ -21,15 +21,13 @@ class InstanceNormOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
@@ -39,25 +37,13 @@ class InstanceNormOpBuilder : public BaseOpBuilder {
 // Therefore, we need to check the node domain to determine if the layout has been transformed.
 Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                             const NodeUnit& node_unit,
-                                            const logging::Logger& logger,
-                                            bool is_quantized_model) const {
+                                            const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
-
-  const auto float_elem_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float");
 
   // Check input type is float for CPU.
   const auto& inputs = node_unit.Inputs();
-  ONNX_NAMESPACE::DataType input_data_type = inputs[0].node_arg.Type();
-  if (!is_quantized_model && input_data_type != float_elem_type) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm data type " + *input_data_type + " is not supported in CPU backend.");
-  }
-
-  // Also check output type is float for CPU.
-  const auto& outputs = node_unit.Outputs();
-  ONNX_NAMESPACE::DataType output_data_type = outputs[0].node_arg.Type();
-  if (!is_quantized_model && output_data_type != float_elem_type) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm data type " + *output_data_type + " is not supported in CPU backend.");
-  }
+  // Check input type is float for CPU. Can't use Qnn Op validation API since it's before layout transformation
+  ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0");
@@ -87,6 +73,11 @@ Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm epsilon must be greater than 0.0");
   }
 
+  // Continue Op validation if it's NHWC transformed
+  if (node_unit.Domain() == kMSInternalNHWCDomain) {
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
+  }
+
   return Status::OK();
 }
 
@@ -94,7 +85,6 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
                                                           const NodeUnit& node_unit,
                                                           std::vector<std::string>&& input_names,
                                                           const logging::Logger& logger,
-                                                          bool is_quantized_model,
                                                           bool do_op_validation) const {
   NodeAttrHelper node_helper(node_unit);
   std::vector<std::string> param_tensor_names;
@@ -105,7 +95,7 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
   epsilon_param.floatValue = epsilon;
   QnnParamWrapper epsilon_param_wrapper(node_unit.Index(),
                                         node_unit.Name(),
-                                        qnn_def::epsilon,
+                                        QNN_OP_INSTANCE_NORM_PARAM_EPSILON,
                                         epsilon_param);
   param_tensor_names.push_back(epsilon_param_wrapper.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(epsilon_param_wrapper));
@@ -113,7 +103,7 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
+                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

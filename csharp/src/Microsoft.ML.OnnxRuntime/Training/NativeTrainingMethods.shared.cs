@@ -15,6 +15,7 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr LoadCheckpoint;
             public IntPtr SaveCheckpoint;
             public IntPtr CreateTrainingSession;
+            public IntPtr CreateTrainingSessionFromBuffer;
             public IntPtr TrainingSessionGetTrainingModelOutputCount;
             public IntPtr TrainingSessionGetEvalModelOutputCount;
             public IntPtr TrainingSessionGetTrainingModelOutputName;
@@ -40,6 +41,7 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr TrainingSessionGetEvalModelInputName;
             public IntPtr AddProperty;
             public IntPtr GetProperty;
+            public IntPtr LoadCheckpointFromBuffer;
         }
 
         internal static class NativeTrainingMethods
