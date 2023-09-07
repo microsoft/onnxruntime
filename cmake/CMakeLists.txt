@@ -1420,7 +1420,7 @@ if (onnxruntime_USE_TENSORRT)
     endif()
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${FS_STDLIB})
-  add_compile_options(ENABLE_TENSORRT)
+  add_compile_definitions(ENABLE_TENSORRT)
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)
