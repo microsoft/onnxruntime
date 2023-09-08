@@ -109,7 +109,12 @@ export class InferenceSession implements InferenceSessionInterface {
     const returnValue: {[name: string]: OnnxValue} = {};
     for (const key in results) {
       if (Object.hasOwnProperty.call(results, key)) {
-        returnValue[key] = new Tensor(results[key].type, results[key].data, results[key].dims);
+        const tensorInResults = results[key];
+        if (tensorInResults instanceof Tensor) {
+          returnValue[key] = tensorInResults;
+        } else {
+          returnValue[key] = new Tensor(results[key].type, results[key].data, results[key].dims);
+        }
       }
     }
     return returnValue;
