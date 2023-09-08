@@ -4,7 +4,7 @@
 	import Footer from './components/footer.svelte';
 	import oneLight from 'svelte-highlight/styles/one-light';
 	import { fade } from 'svelte/transition';
-
+	import Analytics from './components/analytics.svelte';
 	export let data;
 </script>
 
@@ -31,6 +31,7 @@
 	<meta property="og:url" content="https://onnxruntime.ai" />
 	<meta property="og:type" content="website" />
 </svelte:head>
+<Analytics />
 <div class="selection:bg-success">
 	<Header />
 	{#key data.pathname}

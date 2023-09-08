@@ -110,6 +110,7 @@
 			type="checkbox"
 			class="toggle"
 			checked
+			id="colortoggle"
 		/>
 	</div>
 </div>
