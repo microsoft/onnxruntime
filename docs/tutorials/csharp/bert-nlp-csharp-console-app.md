@@ -205,7 +205,7 @@ namespace MyApp // Note: actual namespace depends on the project name.
   };
  
 ```
-### Create the `input` of `List<NamedOnnxValue>` that is needed for inference
+### Create the `inputs` of `name -> OrtValue` pairs as required for inference
 
 - Get the model, create 3 OrtValues on top of the input buffers and wrap them into a Dictionary to feed into a Run().
   Beware that almost all of the Onnxruntime classes wrap native data structures, and, therefore, must be disposed
