@@ -22,11 +22,11 @@ struct BeamSearchState : IBeamSearchState<T> {
     size_t batch_beam_size = SafeInt<size_t>(parameters.batch_size) * parameters.num_beams;
 
     size_t next_token_size = SafeInt<size_t>(batch_beam_size) * parameters.vocab_size;
-    this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size);
-    this->next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size);
-    this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size);
-    this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
-    this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size);
+    this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size, stream);
+    this->next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size, stream);
+    this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size, stream);
+    this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size, stream);
+    this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size, stream);
 
     constexpr size_t max_parts_of_vocab = 128;
     size_t topk_buffer_size = SafeInt<size_t>(batch_beam_size) * (max_parts_of_vocab + 1) * parameters.num_beams * 2 * 2;
@@ -34,7 +34,7 @@ struct BeamSearchState : IBeamSearchState<T> {
 
     if (allocator->Info().device.Type() == OrtDevice::GPU) {
       size_t sequences_elements = SafeInt<size_t>(2) * batch_beam_size * parameters.max_length;
-      this->sequences_device = AllocateBuffer<int32_t>(allocator, sequences_device_buffer_, sequences_elements);
+      this->sequences_device = AllocateBuffer<int32_t>(allocator, sequences_device_buffer_, sequences_elements, stream);
     }
 
     if (use_position) {
@@ -69,16 +69,26 @@ struct BeamSearchState : IBeamSearchState<T> {
   }
 
  private:
-  BufferUniquePtr next_token_logits_buffer_;
-  BufferUniquePtr next_token_scores_buffer_;
-  BufferUniquePtr next_tokens_buffer_;
-  BufferUniquePtr next_indices_buffer_;
-  BufferUniquePtr next_scores_buffer_;
-  BufferUniquePtr next_positions_buffer_;
-  BufferUniquePtr beam_scores_buffer_;
-  BufferUniquePtr scores_buffer_;
-  BufferUniquePtr topk_temp_buffer_;
-  BufferUniquePtr sequences_device_buffer_;
+  IAllocatorUniquePtr<void> next_token_logits_buffer_;
+  IAllocatorUniquePtr<void> next_token_scores_buffer_;
+  IAllocatorUniquePtr<void> next_tokens_buffer_;
+  IAllocatorUniquePtr<void> next_indices_buffer_;
+  IAllocatorUniquePtr<void> next_scores_buffer_;
+  IAllocatorUniquePtr<void> next_positions_buffer_;
+  IAllocatorUniquePtr<void> beam_scores_buffer_;
+  IAllocatorUniquePtr<void> scores_buffer_;
+  IAllocatorUniquePtr<void> topk_temp_buffer_;
+  IAllocatorUniquePtr<void> sequences_device_buffer_;
+  // IAllocatorUniquePtr<T> next_token_logits_buffer_;
+  // IAllocatorUniquePtr<float> next_token_scores_buffer_;
+  // IAllocatorUniquePtr<int32_t> next_tokens_buffer_;
+  // IAllocatorUniquePtr<int32_t> next_indices_buffer_;
+  // IAllocatorUniquePtr<float> next_scores_buffer_;
+  // IAllocatorUniquePtr<int32_t> next_positions_buffer_;
+  // IAllocatorUniquePtr<float> beam_scores_buffer_;
+  // IAllocatorUniquePtr<float> scores_buffer_;
+  // IAllocatorUniquePtr<float> topk_temp_buffer_;
+  // IAllocatorUniquePtr<int32_t> sequences_device_buffer_;
 };
 
 struct BeamSearchCpuState : IBeamSearchCpuState {

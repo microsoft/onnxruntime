@@ -51,15 +51,6 @@ def chain_model(args):
         "decoder_input_ids" if args.use_forced_decoder_ids else "",
         "logits_processor" if args.use_logits_processor else "",
     ]
-    if args.use_forced_decoder_ids:
-        beam_inputs.append("decoder_input_ids")
-    else:
-        beam_inputs.append("")
-
-    if args.use_logits_processor:
-        beam_inputs.append("logits_processor")
-    else:
-        beam_inputs.append("")
 
     if args.collect_cross_qk:
         beam_inputs.append("cross_qk_layer_head")
@@ -139,8 +130,8 @@ def chain_model(args):
     min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
     num_beams = helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
     num_return_sequences = helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
-    length_penalty = helper.make_tensor_value_info("length_penalty", float_data_type, [1])
-    repetition_penalty = helper.make_tensor_value_info("repetition_penalty", float_data_type, [1])
+    length_penalty = helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
+    repetition_penalty = helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
 
     graph_inputs = [
         input_features,
@@ -211,15 +202,11 @@ def chain_model(args):
         graph_outputs.extend([no_speech_probs])
 
     if args.output_sequence_scores:
-        sequence_scores = helper.make_tensor_value_info(
-            "sequence_scores", TensorProto.FLOAT, ["batch_size"]
-        )
+        sequence_scores = helper.make_tensor_value_info("sequence_scores", TensorProto.FLOAT, ["batch_size"])
         graph_outputs.extend([sequence_scores])
 
     if args.output_scores:
-        scores = helper.make_tensor_value_info(
-            "scores", TensorProto.FLOAT, ["batch_size"]
-        )
+        scores = helper.make_tensor_value_info("scores", TensorProto.FLOAT, ["batch_size"])
         graph_outputs.extend([scores])
 
     if hasattr(args, "use_gpu") and args.use_gpu:
@@ -227,7 +214,7 @@ def chain_model(args):
             logger.info("Updated whisper decoder subgraph to use DecoderMaskedMultiHeadAttention successfully!")
         else:
             logger.warning("DecoderMaskedMultiHeadAttention could not be applied to whisper decoder subgraph")
-        if hasattr(args, "output_cross_qk") and args.output_cross_qk:
+        if hasattr(args, "collect_cross_qk") and args.collect_cross_qk:
             update_decoder_subgraph_output_cross_attention(decoder_model.graph)
 
     # Initializers/opsets
@@ -257,7 +244,7 @@ def chain_model(args):
         )
         graph_nodes.extend([prob_cast_node])
 
-    beam_graph = helper.make_graph(all_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
+    beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
     beam_graph_input_names = [gi.name for gi in graph_inputs]
     beam_graph_output_names = [go.name for go in graph_outputs]
 

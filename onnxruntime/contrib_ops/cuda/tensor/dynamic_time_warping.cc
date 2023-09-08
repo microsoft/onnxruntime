@@ -28,10 +28,10 @@ Status DynamicTimeWarping::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& input_tensor = *ctx->Input<Tensor>(0);
   const auto& input_dims = input_tensor.Shape().GetDims();
   int rank = SafeInt<int>(input_dims.size());
-  ORT_ENFORCE(rank == 2, "Currently input rank must be 2, but got:", rank);
+  ORT_ENFORCE(rank == 2 || (rank == 3 && input_dims[0] == 1), "Currently input rank must be 2, or (3 with first dim equal to 1), but got:", rank);
 
-  const size_t rows = SafeInt<size_t>(input_dims[0]);
-  const size_t cols = SafeInt<size_t>(input_dims[1]);
+  const size_t rows = SafeInt<size_t>(input_dims[rank == 3 ? 1 : 0]);
+  const size_t cols = SafeInt<size_t>(input_dims[rank == 3 ? 2 : 1]);
   size_t max_index_len = 0;
 
   size_t buffer_size_in_bytes = GetDynamicTimeWarpingBufferSize(1, rows, cols, max_index_len);

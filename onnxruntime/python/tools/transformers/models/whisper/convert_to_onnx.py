@@ -189,7 +189,7 @@ def parse_arguments(argv=None):
         "--output_cross_qk",
         required=False,
         action="store_true",
-        help="Beam search model output collected qk as output.",
+        help="Beam search model output collected qk as output. Also hint collect_cross_qk",
     )
     parser.set_defaults(output_cross_qk=False)
 
@@ -283,6 +283,7 @@ def parse_arguments(argv=None):
     )
 
     args = parser.parse_args(argv)
+    args.collect_cross_qk = args.collect_cross_qk or args.output_cross_qk
 
     return args
 
