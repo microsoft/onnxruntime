@@ -292,26 +292,37 @@ var latents = GenerateLatentSample(batchSize, height, width,seed, scheduler.Init
 For each inference step the latent image is duplicated to create the tensor shape of (2,4,64,64), it is then scaled and inferenced with the unet model. The output tensors (2,4,64,64) are split and guidance is applied. The resulting tensor is then sent into the `LMSDiscreteScheduler` step as part of the denoising process and the resulting tensor from the scheduler step is returned and the loop completes again until the `num_inference_steps` is reached. 
 
 ```csharp
+var modelPath = Directory.GetCurrentDirectory().ToString() + ("\\unet\\model.onnx");
+var scheduler = new LMSDiscreteScheduler();
+var timesteps = scheduler.SetTimesteps(numInferenceSteps);
+
+var seed = new Random().Next();
+var latents = GenerateLatentSample(batchSize, height, width, seed, scheduler.InitNoiseSigma);
+
 // Create Inference Session
-var unetSession = new InferenceSession(modelPath, options);
+using var options = new SessionOptions();
+using var unetSession = new InferenceSession(modelPath, options);
+
+var latentInputShape = new int[] { 2, 4, height / 8, width / 8 };
+var splitTensorsShape = new int[] { 1, 4, height / 8, width / 8 };
 
 for (int t = 0; t < timesteps.Length; t++)
 {
     // torch.cat([latents] * 2)
-    var latentModelInput = TensorHelper.Duplicate(latents.ToArray(), new[] { 2, 4, height / 8, width / 8 });
-    
+    var latentModelInput = TensorHelper.Duplicate(latents.ToArray(), latentInputShape);
+
     // Scale the input
     latentModelInput = scheduler.ScaleInput(latentModelInput, timesteps[t]);
-    
+
     // Create model input of text embeddings, scaled latent image and timestep
     var input = CreateUnetModelInput(textEmbeddings, latentModelInput, timesteps[t]);
-    
+
     // Run Inference
-    var output = unetSession.Run(input);
-    var outputTensor = (output.ToList().First().Value as DenseTensor<float>);
+    using var output = unetSession.Run(input);
+    var outputTensor = output[0].Value as DenseTensor<float>;
 
     // Split tensors from 2,4,64,64 to 1,4,64,64
-    var splitTensors = TensorHelper.SplitTensor(outputTensor, new[] { 1, 4, height / 8, width / 8 });
+    var splitTensors = TensorHelper.SplitTensor(outputTensor, splitTensorsShape);
     var noisePred = splitTensors.Item1;
     var noisePredText = splitTensors.Item2;
 
@@ -321,6 +332,7 @@ for (int t = 0; t < timesteps.Length; t++)
     // LMS Scheduler Step
     latents = scheduler.Step(noisePred, timesteps[t], latents);
 }
+
 ```
 ## Postprocess the `output` with the VAEDecoder
 After the inference loop is complete, the resulting tensor is scaled and then sent to the `vae_decoder` model to decode the image. Lastly the decoded image tensor is converted to an image and saved to disc.
