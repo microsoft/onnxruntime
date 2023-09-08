@@ -1322,7 +1322,7 @@
     ],
     "ops": [
       "abs.jsonc",
-      "abs_int32.jsonc",
+      "abs-int32.jsonc",
       "acos.jsonc",
       "add.jsonc",
       "add_int32.jsonc",
@@ -1351,6 +1351,7 @@
       "mul.jsonc",
       "mul_int32.jsonc",
       //"neg.jsonc",
+      "neg-int32.jsonc",
       "not.jsonc",
       //"or.jsonc",
       "layer-norm.jsonc",

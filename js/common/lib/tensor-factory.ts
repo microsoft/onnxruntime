@@ -40,14 +40,9 @@ interface GpuResourceConstructorParameters<T extends Tensor.Type> {
 }
 
 /**
- * supported data types for constructing a tensor from a pinned CPU buffer
- */
-export type CpuPinnedDataTypes = Exclude<Tensor.Type, 'string'>;
-
-/**
  * represent the parameter for constructing a tensor from a pinned CPU buffer
  */
-export interface CpuPinnedConstructorParameters<T extends CpuPinnedDataTypes = CpuPinnedDataTypes> extends
+export interface CpuPinnedConstructorParameters<T extends Tensor.CpuPinnedDataTypes = Tensor.CpuPinnedDataTypes> extends
     CommonConstructorParameters<T> {
   /**
    * Specify the location of the data to be 'cpu-pinned'.
@@ -60,14 +55,9 @@ export interface CpuPinnedConstructorParameters<T extends CpuPinnedDataTypes = C
 }
 
 /**
- * supported data types for constructing a tensor from a WebGL texture
- */
-export type TextureDataTypes = 'float32';
-
-/**
  * represent the parameter for constructing a tensor from a WebGL texture
  */
-export interface TextureConstructorParameters<T extends TextureDataTypes = TextureDataTypes> extends
+export interface TextureConstructorParameters<T extends Tensor.TextureDataTypes = Tensor.TextureDataTypes> extends
     CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
   /**
    * Specify the location of the data to be 'texture'.
@@ -80,14 +70,9 @@ export interface TextureConstructorParameters<T extends TextureDataTypes = Textu
 }
 
 /**
- * supported data types for constructing a tensor from a WebGPU buffer
- */
-export type GpuBufferDataTypes = 'float32'|'int32';
-
-/**
  * represent the parameter for constructing a tensor from a WebGPU buffer
  */
-export interface GpuBufferConstructorParameters<T extends GpuBufferDataTypes = GpuBufferDataTypes> extends
+export interface GpuBufferConstructorParameters<T extends Tensor.GpuBufferDataTypes = Tensor.GpuBufferDataTypes> extends
     CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
   /**
    * Specify the location of the data to be 'gpu-buffer'.
@@ -203,11 +188,11 @@ export interface TensorFromUrlOptions extends OptionsDimensions, OptionResizedDi
 export interface TensorFromImageBitmapOptions extends OptionResizedDimensions, OptionsTensorFormat, OptionsTensorLayout,
                                                       OptionsTensorDataType, OptionsNormalizationParameters {}
 
-export interface TensorFromTextureOptions<T extends TextureDataTypes> extends
+export interface TensorFromTextureOptions<T extends Tensor.TextureDataTypes> extends
     Required<OptionsDimensions>, OptionsFormat, GpuResourceConstructorParameters<T>/* TODO: add more */ {}
 
-export interface TensorFromGpuBufferOptions<T extends GpuBufferDataTypes> extends Pick<Tensor, 'dims'>,
-                                                                                  GpuResourceConstructorParameters<T> {
+export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes> extends
+    Pick<Tensor, 'dims'>, GpuResourceConstructorParameters<T> {
   /**
    * Describes the data type of the tensor.
    */
@@ -298,7 +283,7 @@ export interface TensorFactory {
    *
    * @returns a tensor object
    */
-  fromTexture<T extends TextureDataTypes = 'float32'>(
+  fromTexture<T extends Tensor.TextureDataTypes = 'float32'>(
       texture: Tensor.TextureType, options: TensorFromTextureOptions<T>): TypedTensor<'float32'>;
 
   /**
@@ -318,7 +303,7 @@ export interface TensorFactory {
    *
    * @returns a tensor object
    */
-  fromGpuBuffer<T extends GpuBufferDataTypes = 'float32'>(
+  fromGpuBuffer<T extends Tensor.GpuBufferDataTypes>(
       buffer: Tensor.GpuBufferType, options: TensorFromGpuBufferOptions<T>): TypedTensor<T>;
 
   /**
