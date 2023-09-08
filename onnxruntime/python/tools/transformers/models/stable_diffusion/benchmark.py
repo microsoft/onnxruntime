@@ -463,6 +463,166 @@ def run_torch_pipeline(
     }
 
 
+def get_optimum_ort_pipeline(
+    model_name: str,
+    directory: str,
+    provider="CUDAExecutionProvider",
+    disable_safety_checker: bool = True,
+):
+    from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
+
+    if directory is not None and os.path.exists(directory):
+        if "xl" in model_name:
+            pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
+                directory,
+                provider=provider,
+                session_options=None,
+                use_io_binding=None,
+            )
+        else:
+            pipeline = ORTStableDiffusionPipeline.from_pretrained(
+                directory,
+                provider=provider,
+                use_io_binding=True,
+            )
+    elif "xl" in model_name:
+        pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
+            model_name,
+            export=True,
+            provider=provider,
+            session_options=None,
+            use_io_binding=None,
+        )
+        pipeline.save_pretrained(directory)
+    else:
+        pipeline = ORTStableDiffusionPipeline.from_pretrained(
+            model_name,
+            export=True,
+            provider=provider,
+            use_io_binding=True,
+        )
+        pipeline.save_pretrained(directory)
+
+    if disable_safety_checker:
+        pipeline.safety_checker = None
+        pipeline.feature_extractor = None
+
+    return pipeline
+
+
+def run_optimum_ort_pipeline(
+    pipe,
+    batch_size: int,
+    image_filename_prefix: str,
+    height,
+    width,
+    steps,
+    num_prompts,
+    batch_count,
+    start_memory,
+    memory_monitor_type,
+):
+    from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
+
+    assert isinstance(pipe, ORTStableDiffusionPipeline) or isinstance(pipe, ORTStableDiffusionXLPipeline)
+
+    prompts = example_prompts()
+
+    def warmup():
+        pipe("warm up", height, width, num_inference_steps=steps, num_images_per_prompt=batch_size)
+
+    # Run warm up, and measure GPU memory of two runs.
+    # The first run has algo search for cuDNN/MIOpen, so it might need more memory.
+    first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
+    second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
+
+    warmup()
+
+    latency_list = []
+    for i, prompt in enumerate(prompts):
+        if i >= num_prompts:
+            break
+        for j in range(batch_count):
+            inference_start = time.time()
+            images = pipe(
+                prompt,
+                height,
+                width,
+                num_inference_steps=steps,
+                negative_prompt=None,
+                guidance_scale=7.5,
+                num_images_per_prompt=batch_size,
+            ).images
+            inference_end = time.time()
+            latency = inference_end - inference_start
+            latency_list.append(latency)
+            print(f"Inference took {latency:.3f} seconds")
+            for k, image in enumerate(images):
+                image.save(f"{image_filename_prefix}_{i}_{j}_{k}.jpg")
+
+    from onnxruntime import __version__ as ort_version
+
+    return {
+        "engine": "optimum_ort",
+        "version": ort_version,
+        "height": height,
+        "width": width,
+        "steps": steps,
+        "batch_size": batch_size,
+        "batch_count": batch_count,
+        "num_prompts": num_prompts,
+        "average_latency": sum(latency_list) / len(latency_list),
+        "median_latency": statistics.median(latency_list),
+        "first_run_memory_MB": first_run_memory,
+        "second_run_memory_MB": second_run_memory,
+    }
+
+
+def run_optimum_ort(
+    model_name: str,
+    directory: str,
+    provider: str,
+    batch_size: int,
+    disable_safety_checker: bool,
+    height: int,
+    width: int,
+    steps: int,
+    num_prompts: int,
+    batch_count: int,
+    start_memory,
+    memory_monitor_type,
+):
+    load_start = time.time()
+    pipe = get_optimum_ort_pipeline(model_name, directory, provider, disable_safety_checker)
+    load_end = time.time()
+    print(f"Model loading took {load_end - load_start} seconds")
+
+    image_filename_prefix = get_image_filename_prefix("optimum", model_name, batch_size, disable_safety_checker)
+    result = run_optimum_ort_pipeline(
+        pipe,
+        batch_size,
+        image_filename_prefix,
+        height,
+        width,
+        steps,
+        num_prompts,
+        batch_count,
+        start_memory,
+        memory_monitor_type,
+    )
+
+    result.update(
+        {
+            "model_name": model_name,
+            "directory": directory,
+            "provider": provider.replace("ExecutionProvider", ""),
+            "disable_safety_checker": disable_safety_checker,
+            "enable_cuda_graph": False,
+        }
+    )
+    return result
+
+
 def run_ort(
     model_name: str,
     directory: str,
@@ -566,10 +726,7 @@ def export_and_run_ort(
             break
         for j in range(batch_count):
             inference_start = time.time()
-            images = pipe(
-                [prompt] * batch_size,
-                num_inference_steps=steps,
-            ).images
+            images = pipe([prompt] * batch_size, num_inference_steps=steps).images
             inference_end = time.time()
             latency = inference_end - inference_start
             latency_list.append(latency)
@@ -857,7 +1014,7 @@ def parse_arguments():
         required=False,
         type=str,
         default="onnxruntime",
-        choices=["onnxruntime", "torch", "tensorrt"],
+        choices=["onnxruntime", "optimum", "torch", "tensorrt"],
         help="Engines to benchmark. Default is onnxruntime.",
     )
 
@@ -1070,6 +1227,21 @@ def main():
             start_memory,
             memory_monitor_type,
             args.enable_cuda_graph,
+        )
+    elif args.engine == "optimum" and provider == "CUDAExecutionProvider":
+        result = run_optimum_ort(
+            sd_model,
+            args.pipeline,
+            provider,
+            args.batch_size,
+            not args.enable_safety_checker,
+            args.height,
+            args.width,
+            args.steps,
+            args.num_prompts,
+            args.batch_count,
+            start_memory,
+            memory_monitor_type,
         )
     elif args.engine == "onnxruntime":
         assert args.pipeline and os.path.isdir(
