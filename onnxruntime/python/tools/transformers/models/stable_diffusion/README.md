@@ -384,8 +384,7 @@ Some kernels are enabled by MIOpen. We hereby thank for the AMD developers' coll
 
 There are other optimizations might improve the performance or reduce memory footprint:
 * Export the whole pipeline into a single ONNX model. Currently, there are multiple ONNX models (CLIP, VAE and U-Net etc). Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator. The end result is more efficient and less memory footprint.
-* For Stable Diffusion 2.1, we disable TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention using Triton compiler to improve performance.
+* For Stable Diffusion 2.1, we disable TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention in Windows to improve performance.
 * Reduce GPU memory footprint by actively deleting buffers for intermediate results.
-* Attention fusion in CLIP
 * Safety Checker Optimization
 * Leverage FP8 in latest GPU
