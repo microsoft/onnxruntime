@@ -117,7 +117,7 @@ GetTestQDQModelFn<InputQType> BuildQDQLayerNormTestCase(const TestInputDef<float
 }
 
 // Runs a QDQ LayerNorm model on the QNN HTP backend. Checks the graph node assignment and that inference
-// outputs for QNN are as accurate as CPU EP (compares agains f32 model and QDQ model).
+// outputs for QNN are as accurate as CPU EP (compares against f32 model and QDQ model).
 template <typename InputQType, typename ScaleQType>
 static void RunLayerNormQDQTest(const TestInputDef<float>& input_def,
                                 const TestInputDef<float>& scale_def,
