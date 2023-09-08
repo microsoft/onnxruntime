@@ -8,7 +8,6 @@
 
 import argparse
 import logging
-import os
 import sys
 
 from _test_commons import run_subprocess
@@ -43,31 +42,6 @@ def run_onnxblock_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
-def run_onnxruntime_test_all_ctest(cwd, log, filter):
-    """Calls onnxruntime_test_all gtest executable with the given filter."""
-
-    command = [os.path.join(cwd, "onnxruntime_test_all"), f"--gtest_filter={filter}"]
-
-    run_subprocess(command, cwd=cwd, log=log).check_returncode()
-
-
-def run_training_api_tests(cwd, log):
-    """Runs the onnxruntime_test_all executable with the TrainingApiTest* gtest filter."""
-
-    log.debug("Running: TrainingApi and TrainingCApi tests")
-
-    run_onnxruntime_test_all_ctest(cwd, log, "TrainingApiTest*")
-    run_onnxruntime_test_all_ctest(cwd, log, "TrainingCApiTest*")
-
-
-def run_checkpoint_api_tests(cwd, log):
-    """Runs the onnxruntime_test_all executable with the CheckpointApiTest* gtest filter."""
-
-    log.debug("Running: TrainingApi tests")
-
-    run_onnxruntime_test_all_ctest(cwd, log, "CheckpointApiTest*")
-
-
 def main():
     args = parse_arguments()
     cwd = args.cwd
@@ -77,10 +51,6 @@ def main():
     run_onnxblock_tests(cwd, log)
 
     run_training_apis_python_api_tests(cwd, log)
-
-    run_training_api_tests(cwd, log)
-
-    run_checkpoint_api_tests(cwd, log)
 
     return 0
 
