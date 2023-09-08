@@ -8,7 +8,7 @@
 					ORT Web can be used in your web applications for model inferencing.
 				</p>
 				<div class="card-actions">
-					<a href="./docs/tutorials/web/" class="btn btn-primary">ORT Web Docs →</a>
+					<a rel="external" href="./docs/tutorials/web/" class="btn btn-primary">ORT Web Docs →</a>
 				</div>
 			</div>
 			<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
@@ -22,7 +22,7 @@
 					ORT Mobile allows you to run model inferencing on mobile devices (iOS and Android).
 				</p>
 				<div class="card-actions">
-					<a href="./docs/tutorials/mobile/" class="btn btn-primary">ORT Mobile Docs →</a>
+					<a rel="external" href="./docs/tutorials/mobile/" class="btn btn-primary">ORT Mobile Docs →</a>
 				</div>
 			</div>
 			<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
