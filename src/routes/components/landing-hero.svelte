@@ -20,7 +20,9 @@ if (imgsrc == 'onnxruntimelogo'){
 			<br>
 		</div>
 		{#if imgsrc == 'onnxruntimelogo'}
+		<div class="m-auto">
 			<OnnxIcon/>
+		</div>
 		{:else}
 			<img class="m-auto" src={imgsrc} alt={imgalt} />
 		{/if}

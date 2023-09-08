@@ -273,8 +273,8 @@
 
 <div class="container mx-auto">
 	<div class="flex mb-5">
-		<div class="mr-5">
-			<h1 class="text-5xl my-auto">Our Partners</h1>
+		<div class="mr-5 my-auto">
+			<h1 class="text-5xl">Our Partners</h1>
 			<h2 class="text-2xl mb-4">Hear from some of the products and companies using ONNX Runtime:</h2>
 		</div>
 		<div class="hidden md:flex">

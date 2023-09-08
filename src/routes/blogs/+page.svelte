@@ -207,9 +207,9 @@
 			<ImageBlogs/>
 		</div>
 	</div>
-	<div class="pt-5">
-		<h3 class="text-3xl pb-4 md:pb-0">Featured posts</h3>
-		<div class="grid md:grid-cols-3">
+	<div class="pt-5 mx-4 md:mx-10">
+		<h3 class="text-3xl pb-8">Featured posts</h3>
+		<div class="grid gap-4 grid-cols-1 lg:grid-cols-3">
 			{#each featuredblog as blog}
 				<FeaturedBlog
 					title={blog.title}
@@ -220,10 +220,12 @@
 			{/each}
 		</div>
 	</div>
-	<h3 class="text-3xl pb-4">Recent posts</h3>
-	<div class="grid grid-cols-2">
-		{#each blogs as blog, i}
-			<Blog title={blog.title} description={blog.blurb} date={blog.date} link={blog.link} />
-		{/each}
+	<div class="mx-4 md:mx-10">
+		<h3 class="text-3xl pb-8">Recent posts</h3>
+		<div class="grid gap-4 grid-cols-1 md:grid-cols-2">
+			{#each blogs as blog, i}
+				<Blog title={blog.title} description={blog.blurb} date={blog.date} link={blog.link} />
+			{/each}
+		</div>
 	</div>
 </div>
