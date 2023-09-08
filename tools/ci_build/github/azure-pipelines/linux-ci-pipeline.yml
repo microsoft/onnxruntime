@@ -121,7 +121,7 @@ stages:
 
       - bash: |
           mkdir -p $HOME/.onnx
-          docker run --rm \
+          docker run -u 0 --rm \
             --volume /data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
@@ -138,7 +138,7 @@ stages:
               echo Install Python Deps ; \
 
               alias python3=/opt/python/cp38-cp38/bin/python3 ; \
-              /opt/python/cp38-cp38/bin/python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq; \
+              python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq; \
               cp $src_dir/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $src_dir/requirements.txt; \
               echo Test ORT with the latest ONNX release. ; \
               sed -i \"s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/\" $build_dir/requirements.txt ; \
