@@ -79,14 +79,6 @@ stages:
 
     - template: "templates/use-android-ndk.yml"
 
-    # We build the host protoc to <ORT_ROOT>/protobuf_install
-    - script: |
-        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-          $(Build.SourcesDirectory) \
-          $(Build.BinariesDirectory)/protobuf \
-          $(Build.SourcesDirectory)/protobuf_install
-      displayName: Build Host Protoc
-
     - script: |
         env | grep ANDROID
       displayName: View Android ENVs
@@ -102,7 +94,6 @@ stages:
           --skip_submodule_sync \
           --parallel \
           --cmake_generator=Ninja \
-          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
           --build_java \
           --skip_tests
       displayName: CPU EP, Build
@@ -172,14 +163,6 @@ stages:
 
     - template: "templates/use-android-ndk.yml"
 
-    # We build the host protoc to <ORT_ROOT>/protobuf_install
-    - script: |
-        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-          $(Build.SourcesDirectory) \
-          $(Build.BinariesDirectory)/protobuf \
-          $(Build.SourcesDirectory)/protobuf_install
-      displayName: Build Host Protoc
-
     - script: |
         env | grep ANDROID
       displayName: View Android ENVs
@@ -196,7 +179,6 @@ stages:
           --parallel \
           --use_nnapi \
           --cmake_generator=Ninja \
-          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
           --build_java \
           --skip_tests
       displayName: NNAPI EP, Build
@@ -372,14 +354,6 @@ stages:
       - script: brew install coreutils ninja
         displayName: Install coreutils and ninja
 
-      # We build the host protoc to <ORT_ROOT>/protobuf_install
-      - script: |
-          /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-            $(Build.SourcesDirectory) \
-            $(Build.BinariesDirectory)/protobuf \
-            $(Build.SourcesDirectory)/protobuf_install
-        displayName: Build Host Protoc
-
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
@@ -462,7 +436,6 @@ stages:
           --use_nnapi \
           --build_shared_lib \
           --cmake_generator=Ninja \
-          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
           --build_java \
           --code_coverage
         displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator

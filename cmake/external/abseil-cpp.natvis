@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
-  <Type Name="absl::lts_20220623::InlinedVector&lt;*&gt;">
+  <Type Name="absl::lts_20230802::InlinedVector&lt;*&gt;">
     <Intrinsic Name="_size" Expression="storage_.metadata_.value >> 1"/>
     <Intrinsic Name="_is_allocated" Expression="(storage_.metadata_.value &amp; 1) == 1"/>
     <Intrinsic Name="_inlined_data" Expression="($T1*)storage_.data_.inlined.inlined_data"/>
@@ -24,7 +24,7 @@
     </Expand>
   </Type>
   <!-- Should handle both flat hash_set and hash_map -->
-  <Type Name="absl::lts_20220623::container_internal::raw_hash_set&lt;*&gt;">
+  <Type Name="absl::lts_20230802::container_internal::raw_hash_set&lt;*&gt;">
     <DisplayString Condition="size_ == 0">empty</DisplayString>
     <DisplayString>{{ size={size_} }}</DisplayString>
     <Expand>
@@ -44,7 +44,7 @@
       </CustomListItems>
     </Expand>
   </Type>
-  <Type Name="absl::lts_20220623::container_internal::map_slot_type&lt;*&gt;">
+  <Type Name="absl::lts_20230802::container_internal::map_slot_type&lt;*&gt;">
     <DisplayString>{{ {value.first}:{value.second} }}</DisplayString>
     <Expand>
       <Item Name="[key]" ExcludeView="simple">value.first</Item>

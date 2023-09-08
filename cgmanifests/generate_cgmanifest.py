@@ -91,7 +91,7 @@ def add_github_dep(name, parsed_url):
 
 
 with open(
-    os.path.join(REPO_DIR, "tools", "ci_build", "github", "linux", "docker", "Dockerfile.manylinux2014_cuda11"),
+    os.path.join(REPO_DIR, "tools", "ci_build", "github", "linux", "docker", "Dockerfile.manylinux2_28_cuda11"),
 ) as f:
     for line in f:
         if not line.strip():

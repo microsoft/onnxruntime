@@ -1,4 +1,5 @@
 #include "testPch.h"
+#include <absl/strings/ascii.h>
 #include "test/onnx/TestCase.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/util/include/test/compare_ortvalue.h"
@@ -387,7 +388,7 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   }
 
   std::replace_if(
-    name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_'
+    name.begin(), name.end(), [](char c) { return !absl::ascii_isalnum(c); }, '_'
   );
 
   // Determine if test should be skipped, using the generic name (no CPU or GPU suffix yet).

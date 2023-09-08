@@ -49,7 +49,10 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
+  #Abseil has a lot of C4127/C4324 warnings.
+  target_compile_options(${_UT_TARGET} PRIVATE "/wd4127")
+  target_compile_options(${_UT_TARGET} PRIVATE "/wd4324")
   target_compile_options(${_UT_TARGET} PRIVATE /wd5205)  # workaround cppwinrt SDK bug https://github.com/microsoft/cppwinrt/issues/584
 
   # if building inbox
@@ -174,15 +177,18 @@ target_compile_options(winml_test_common PRIVATE /wd5205)  # workaround cppwinrt
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
   target_compile_definitions(winml_test_common PRIVATE "BUILD_INBOX=1")
 endif()
+#Abseil has a lot of C4127/C4324 warnings.
+target_compile_options(winml_test_common PRIVATE "/wd4127")
+target_compile_options(winml_test_common PRIVATE "/wd4324")
 add_dependencies(winml_test_common
   onnx
   winml_api
   winml_dll
 )
 
-onnxruntime_add_include_to_target(winml_test_common onnx_proto gtest ${PROTOBUF_LIB} ${WIL_TARGET} safeint_interface ${GSL_TARGET})
+onnxruntime_add_include_to_target(winml_test_common onnx_proto GTest::gtest ${PROTOBUF_LIB} ${WIL_TARGET} safeint_interface ${GSL_TARGET})
 onnxruntime_add_static_library(winml_google_test_lib ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
-onnxruntime_add_include_to_target(winml_google_test_lib gtest)
+onnxruntime_add_include_to_target(winml_google_test_lib GTest::gtest)
 set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
