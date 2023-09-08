@@ -13,13 +13,13 @@ def GenerateModel(model_name, has_casts=False):  # noqa: N802
         helper.make_node("Sqrt", ["add1_out"], ["sqrt_out"], "sqrt"),
         helper.make_node("Div", ["cast_sub_out" if has_casts else "sub_out", "sqrt_out"], ["div_out"], "div"),
         helper.make_node("Mul", ["gamma", "cast_div_out" if has_casts else "div_out"], ["mul_out"], "mul"),
-        helper.make_node("Add", ["mul_out", "gamma"], ["C"], "add2"),
+        helper.make_node("Add", ["mul_out", "const_e12"], ["C"], "add2"),
     ]
 
     if has_casts:
         nodes.extend(
             [
-                helper.make_node("Cast", ["sub_out"], ["cast_sub_out"], "cast sub", to=1),
+                helper.make_node("Cast", ["sub_out"], ["cast_sub_out"], "cast_sub", to=1),
                 helper.make_node("Cast", ["div_out"], ["cast_div_out"], "cast_2", to=10),
             ]
         )
