@@ -165,5 +165,3 @@ ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
-
-RUN alias python3=/opt/python/cp310-cp310/bin/python3
