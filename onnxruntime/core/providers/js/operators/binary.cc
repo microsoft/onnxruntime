@@ -63,10 +63,18 @@ REG_ELEMENTWISE_VERSIONED_KERNEL(Greater, 7, 8, Greater);
 REG_ELEMENTWISE_VERSIONED_KERNEL(Greater, 9, 12, Greater);
 REG_ELEMENTWISE_KERNEL(Greater, 13, Greater);
 
+JSEP_KERNEL_IMPL(GreaterOrEqual, GreaterOrEqual)
+REG_ELEMENTWISE_VERSIONED_KERNEL(GreaterOrEqual, 12, 15, GreaterOrEqual);
+REG_ELEMENTWISE_KERNEL(GreaterOrEqual, 16, GreaterOrEqual);
+
 JSEP_KERNEL_IMPL(Less, Less)
 REG_ELEMENTWISE_VERSIONED_KERNEL(Less, 7, 8, Less);
 REG_ELEMENTWISE_VERSIONED_KERNEL(Less, 9, 12, Less);
 REG_ELEMENTWISE_KERNEL(Less, 13, Less);
+
+JSEP_KERNEL_IMPL(LessOrEqual, LessOrEqual)
+REG_ELEMENTWISE_VERSIONED_KERNEL(LessOrEqual, 12, 15, LessOrEqual);
+REG_ELEMENTWISE_KERNEL(LessOrEqual, 16, LessOrEqual);
 
 }  // namespace js
 }  // namespace onnxruntime
