@@ -133,27 +133,25 @@ stages:
             onnxruntimecpubuild \
             /bin/bash -c "
               set -ex; \
-              export src_dir=/onnxruntime_src; \
-              export build_dir=/build; \
 
               echo Install Python Deps ; \
               ln -s /opt/python/cp38-cp38/bin/python3 /usr/bin/python3; \
               python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq; \
-              cp $src_dir/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $src_dir/requirements.txt; \
+              cp /onnxruntime/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /build/requirements.txt; \
               echo Test ORT with the latest ONNX release. ; \
-              sed -i \"s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/\" $build_dir/requirements.txt ; \
-              python3 -m pip install -r $build_dir/requirements.txt ; \
-              mkdir $build_dir/requirements_torch_cpu/ ; \
-              cp $src_dir/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $build_dir/requirements_torch_cpu/requirements.txt; \
-              python3 -m pip install -r $build_dir/requirements_torch_cpu/requirements.txt; \
+              sed -i \"s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/\" /build/requirements.txt ; \
+              python3 -m pip install -r /build/requirements.txt ; \
+              mkdir /build/requirements_torch_cpu/ ; \
+              cp /onnxruntime/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt /build/requirements_torch_cpu/requirements.txt; \
+              python3 -m pip install -r /build/requirements_torch_cpu/requirements.txt; \
 
               echo Install Release python package; \
-              rm -rf $build_dir/Release/onnxruntime $build_dir/Release/pybind11; \
-              python3 -m pip install $build_dir/Release/dist/*.whl; \
+              rm -rf /build/Release/onnxruntime /build/Release/pybind11; \
+              python3 -m pip install /build/Release/dist/*.whl; \
 
               echo Run Release unit tests; \
-              pushd $build_dir/Release/; \
-              python3 $src_dir/tools/ci_build/build.py --build_dir $build_dir --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path \"\"; \
+              pushd /build/Release/; \
+              python3 /onnxruntime/tools/ci_build/build.py --build_dir /build --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path \"\"; \
               pod
               "
         displayName: 'Run Release unit tests'
