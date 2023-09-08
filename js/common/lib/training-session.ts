@@ -7,7 +7,9 @@ import {TrainingSession as TrainingSessionImpl} from './training-session-impl.js
 /* eslint-disable @typescript-eslint/no-redeclare */
 
 /**
- * Represent a runtime instance of an ONNX model.
+ * Represent a runtime instance of an ONNX training session,
+ * which contains a model that can be trained, and, optionally,
+ * an eval and optimizer model.
  */
 export interface TrainingSession {
   // #region release()
