@@ -1,83 +1,98 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
 
 export interface InstanceNormAttributes extends AttributeWithCacheKey {
   epsilon: number;
   format: 'NHWC'|'NCHW';
 }
 
-const validateInputs = (inputs: readonly TensorView[]): void => {
-  if (!inputs || inputs.length !== 3) {
-    throw new Error('instanceNorm requires 3 inputs.');
-  }
-
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('inputs should be float type');
-  }
-};
-
 const createInstanceNormProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
       const xShape = inputs[0].dims;
-      const scale = inputs[1];
-      const bias = inputs[2];
 
       const outputShape = xShape;
-      const outputSize = ShapeUtil.size(outputShape);
       const axis = 2;
       const normCount = ShapeUtil.sizeToDimension(xShape, axis);
       const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
       const C = xShape[1];
-
-      const scaleSize = ShapeUtil.size(scale.dims);
-      const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
-      if (scaleSize !== normSize || (bias && biasSize !== normSize)) {
-        throw new Error(`Size of X.shape()[axis:] == ${normSize}.
-             Size of scale and bias (if provided) must match this. 
-             Got scale size of ${scaleSize} and bias size of ${biasSize}`);
-      }
-
-      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-
+      const x = inputVariable('x', inputs[0].dataType, [xShape[0], xShape[1], normSize]);
+      const scale = inputVariable('scale', inputs[1].dataType, inputs[1].dims);
+      const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims);
+      const output = outputVariable('output', inputs[0].dataType, [xShape[0], xShape[1], normSize]);
+      const variables = [x, scale, bias, output];
+      const dataType = x.type.value;
+      const workgroupSize = 64;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
+
   const C: u32 = ${C};
   const normSize: u32 = ${normSize};
-  const normSizeTyped: ${dataType} = ${normSize};
   const epsilon: f32 = ${attributes.epsilon};
+  var<workgroup> meanShared : ${dataType};
+  var<workgroup> squaredNormShared : ${dataType};
+  var<workgroup> workgroupShared : array<${dataType}, ${workgroupSize}>;
+  const workgroupSize = ${workgroupSize}u;
+  ${shaderHelper.declareVariables(...variables)}
+  ${shaderHelper.mainStart(workgroupSize)}
+    let norm = global_idx / workgroupSize;
+    let batch = norm / C;
+    let channel = norm % C;
+    let localIndex = local_id.x;
 
-  @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
-  @group(0) @binding(1) var<storage, read> scale : array<${dataType}>;
-  @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
-  @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
-
-  ${shaderHelper.mainStart()}
-    let offset = global_idx * normSize;
-    if (offset + normSize >= ${outputSize}) { return; }
-    var mean: ${dataType} = 0;
-
-    for (var h: u32 = 0u; h < normSize; h++) {
-        mean = mean + x[h + offset];
+    // initialize workgroup memory
+    var initial: ${dataType} = 0;
+    for (var h = localIndex; h < normSize; h += workgroupSize) {
+      initial = initial + ${x.get('batch', 'channel', 'h')};
     }
-    mean = mean / normSizeTyped;
+    workgroupShared[localIndex] = initial;
+    workgroupBarrier();
 
-    var squaredNorm: ${dataType} = 0;
-    for (var h: u32 = 0u; h < normSize; h++) {
-        let deviation: f32 = x[h + offset] - mean;
-        squaredNorm = squaredNorm + deviation * deviation;
+    // Calculate the mean of current channel data.
+    for (var currSize = workgroupSize >> 1;  currSize > 0; currSize = currSize >> 1) {
+      if (localIndex < currSize) {
+        workgroupShared[localIndex] = workgroupShared[localIndex] + workgroupShared[localIndex + currSize];
+      }
+      workgroupBarrier();
     }
-    let invStdDev = 1 / sqrt(squaredNorm / normSizeTyped + epsilon);
-    let channelScale = invStdDev * scale[global_idx % C];
-    let channelShift = bias[global_idx % C] - mean * channelScale;
-    for (var j: u32 = 0; j < normSize; j++) {
-        output[j + offset] = x[j + offset] * channelScale + channelShift;
+    if (localIndex == 0) {
+      meanShared = workgroupShared[0] / ${dataType}(normSize);
+    }
+    workgroupBarrier();
+
+    // reinitialize workgroup memory.
+    initial = 0;
+    for (var h = localIndex; h < normSize; h += workgroupSize) {
+      let deviation =  ${x.get('batch', 'channel', 'h')} - meanShared;
+      initial = initial + deviation * deviation;
+    }
+    workgroupShared[localIndex] = initial;
+    workgroupBarrier();
+
+    // Calculate the sum of square of deviation of current channel data.
+    for (var currSize = workgroupSize >> 1;  currSize > 0; currSize = currSize >> 1) {
+      if (localIndex < currSize) {
+        workgroupShared[localIndex] = workgroupShared[localIndex] + workgroupShared[localIndex + currSize];
+      }
+      workgroupBarrier();
+    }
+    if (localIndex == 0) {
+      squaredNormShared = workgroupShared[0];
+    }
+    workgroupBarrier();
+
+    let invStdDev = 1 / sqrt(squaredNormShared / ${dataType}(normSize) + epsilon);
+    let channelScale = invStdDev * ${scale.getByOffset('channel')};
+    let channelShift = ${bias.getByOffset('channel')} - meanShared * channelScale;
+    for (var h = localIndex; h < normSize; h += workgroupSize) {
+      let value = ${x.get('batch', 'channel', 'h')} * channelScale + channelShift;
+      ${output.set('batch', 'channel', 'h', 'value')};
     }
   }`;
       return {
@@ -86,69 +101,7 @@ const createInstanceNormProgramInfo =
           {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
         ],
         getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
-      };
-    };
-
-const createInstanceNormNHWCProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
-      const xShape = inputs[0].dims;
-      const outputShape = xShape;
-      const outputSize = ShapeUtil.size(outputShape);
-      const N = xShape[0];
-      const C = xShape[xShape.length - 1];
-      const H = ShapeUtil.sizeFromDimension(xShape, 1) / C;
-
-      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-
-      const normCount = C * N;
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const N: u32 = ${N};
-  const H: u32 = ${H};
-  const C: u32 = ${C};
-  const normSizeTyped: ${dataType} = ${H};
-  const imageSize: u32 = ${H * C};
-  const epsilon: f32 = ${attributes.epsilon};
-
-  @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
-  @group(0) @binding(1) var<storage, read> scale : array<${dataType}>;
-  @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
-  @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
-
-  ${shaderHelper.mainStart()}
-    let currentImageNumber = global_idx / C;
-    let currentChannelNumber = global_idx % C;
-    
-    // offset is channel num * N
-    let offset = currentImageNumber * imageSize;
-    if (offset >= ${outputSize}) { return; }
-    var mean: ${dataType} = 0;
-
-    for (var i: u32 = 0u; i < H; i++) {
-        mean = mean + x[offset + i * C + currentChannelNumber];
-    }
-    mean = mean / normSizeTyped;
-
-    var squaredNorm: ${dataType} = 0;
-    for (var i: u32 = 0u; i < H; i++) {
-        let deviation: f32 = x[offset + i * C + currentChannelNumber] - mean;
-        squaredNorm = squaredNorm + deviation * deviation;
-    }
-    let invStdDev = 1 / sqrt(squaredNorm / normSizeTyped + epsilon);
-    let channelScale = invStdDev * scale[currentChannelNumber];
-    let channelShift = bias[currentChannelNumber] - mean * channelScale;
-    for (var i: u32 = 0u; i < H; i++) {
-        let currentOffset = offset + i * C + currentChannelNumber;
-        output[currentOffset] = x[currentOffset] * channelScale + channelShift;
-    }
-  }`;
-      return {
-        ...metadata,
-        outputs: [
-          {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-        ],
-        getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
+        dispatchGroup: () => ({x: normCount})
       };
     };
 
@@ -156,8 +109,6 @@ export const parseInstanceNormAttributes = (attributes: InstanceNormAttributes):
     createAttributeWithCacheKey({epsilon: attributes.epsilon, format: attributes.format});
 
 export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAttributes): void => {
-  validateInputs(context.inputs);
-
   const metadata = {
     name: 'InstanceNormalization',
     inputTypes: [GpuDataType.default, GpuDataType.default, GpuDataType.default],
@@ -165,7 +116,36 @@ export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAt
   };
 
   if (attributes.format === 'NHWC') {
-    context.compute(createInstanceNormNHWCProgramInfo(metadata, context.inputs, attributes));
+    // transpose x from NHWC to NCHW
+    const xShape = context.inputs[0].dims;
+    const transposedXPerm = [0, xShape.length - 1];
+    for (let i = 0; i < xShape.length - 2; i++) {
+      transposedXPerm.push(i + 1);
+    }
+    const xTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: transposedXPerm});
+    const transposedX = context.compute(
+        {
+          ...transposeProgramMetadata,
+          cacheHint: xTransposeAttribute.cacheKey,
+          get: () => createTransposeProgramInfo(context.inputs[0], xTransposeAttribute.perm)
+        },
+        {inputs: [context.inputs[0]], outputs: [-1]})[0];
+    const inputs = [transposedX, context.inputs[1], context.inputs[2]];
+    const y = context.compute(createInstanceNormProgramInfo(metadata, inputs, attributes), {inputs, outputs: [-1]})[0];
+    // transpose y from NCHW to NHWC again.
+    const transposedYPerm = [0];
+    for (let i = 0; i < xShape.length - 2; i++) {
+      transposedYPerm.push(i + 2);
+    }
+    transposedYPerm.push(1);
+    const yTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: transposedYPerm});
+    context.compute(
+        {
+          ...transposeProgramMetadata,
+          cacheHint: yTransposeAttribute.cacheKey,
+          get: () => createTransposeProgramInfo(y, yTransposeAttribute.perm)
+        },
+        {inputs: [y]});
   } else {
     context.compute(createInstanceNormProgramInfo(metadata, context.inputs, attributes));
   }
