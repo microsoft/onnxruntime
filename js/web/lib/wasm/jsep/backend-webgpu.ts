@@ -4,7 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import {configureLogger, LOG_DEBUG} from './log';
-import {TensorView} from './tensor';
+import {TensorView} from './tensor-view';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
