@@ -135,9 +135,8 @@ stages:
               set -ex; \
               export src_dir=/onnxruntime_src; \
               export build_dir=/build; \
-              echo Install Python Deps ; \
 
-              alias python3=/opt/python/cp38-cp38/bin/python3 ; \
+              echo Install Python Deps ; \
               python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq; \
               cp $src_dir/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $src_dir/requirements.txt; \
               echo Test ORT with the latest ONNX release. ; \
@@ -146,6 +145,7 @@ stages:
               mkdir $build_dir/requirements_torch_cpu/ ; \
               cp $src_dir/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $build_dir/requirements_torch_cpu/requirements.txt; \
               python3 -m pip install -r $build_dir/requirements_torch_cpu/requirements.txt; \
+
               echo Install Release python package; \
               rm -rf $build_dir/Release/onnxruntime $build_dir/Release/pybind11; \
               python3 -m pip install $build_dir/Release/dist/*.whl; \
