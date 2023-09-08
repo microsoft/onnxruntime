@@ -31,7 +31,7 @@
 		<!-- TODO: Approach to not hide resources behind popup -->
 		<span class="footer-title">Resources</span>
 		<a href="./blogs" class="link link-hover">Blogs</a>
-		<a class="link link-hover">Tutorials</a>
-		<a class="link link-hover">APIs</a>
+		<a href="./docs/tutorials" class="link link-hover">Tutorials</a>
+		<a href="./docs/api/" class="link link-hover">APIs</a>
 	</div>
 </footer>
