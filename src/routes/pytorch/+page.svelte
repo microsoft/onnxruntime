@@ -11,7 +11,7 @@
 	const title = 'PyTorch + ONNX Runtime';
 	const description =
 		'PyTorch leads the deep learning landscape with its readily digestible and flexible API; the large number of ready-made models available, particularly in the natural language (NLP) domain; as well as its domain specific libraries.';
-	const imgsrc = 'onnxruntimelogo'
+	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 	const pythonCode = 'import torch\n\ntorch.onnx.export(\nmodel,\ninputs,\n"model.onnx")';
 </script>
@@ -21,7 +21,7 @@
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 		<div class="card bg-base-300">
 			<figure class="px-10 pt-10">
-				<ImagePt1/>
+				<ImagePt1 />
 			</figure>
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Deploy anywhere</h2>
@@ -30,7 +30,7 @@
 		</div>
 		<div class="card bg-base-300">
 			<figure class="px-10 pt-10">
-				<ImagePt2/>
+				<ImagePt2 />
 			</figure>
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Boost performance</h2>
@@ -39,7 +39,7 @@
 		</div>
 		<div class="card bg-base-300">
 			<figure class="px-10 pt-10">
-				<ImagePt3/>
+				<ImagePt3 />
 			</figure>
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Improve time to market</h2>
@@ -62,7 +62,10 @@
 						exporter APIs to ensure a high level of compatibility with PyTorch models.
 					</p>
 					<div class="card-actions">
-						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary"><span class="hidden md:inline">Get your PyTorch Models ready for</span> optimized deployment →</a>
+						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary"
+							><span class="hidden md:inline">Get your PyTorch Models ready for</span> optimized deployment
+							→</a
+						>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
@@ -80,7 +83,9 @@
 						a successful PyTorch production deployment.
 					</p>
 					<div class="card-actions">
-						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary"><span class="hidden md:inline">ONNX Runtime's</span> Python-free APIs →</a>
+						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary"
+							><span class="hidden md:inline">ONNX Runtime's</span> Python-free APIs →</a
+						>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
@@ -110,13 +115,13 @@
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
-					<ImagePt4/>
+					<ImagePt4 />
 				</figure>
 			</article>
 			<article class="card bg-base-300 lg:mt-48 grid md:grid-cols-3">
 				<div class="card-body col-span-2 order-last md:order-first">
 					<h2 class="card-title">Get innovations into production faster</h2>
-					<p> 
+					<p>
 						Development agility is a key factor in overall costs. ONNX Runtime was built on the
 						experience of taking PyTorch models to production in high scale services like Microsoft
 						Office, Bing, and Azure. It used to take weeks and months to take a model from R&D to
@@ -128,7 +133,7 @@
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
-					<ImagePt5/>
+					<ImagePt5 />
 				</figure>
 			</article>
 		</div>

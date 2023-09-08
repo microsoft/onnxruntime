@@ -6,7 +6,7 @@
 	import { Highlight } from 'svelte-highlight';
 	import { bash } from 'svelte-highlight/languages';
 	import FaRegClipboard from 'svelte-icons/fa/FaRegClipboard.svelte';
-	import OnnxIcon from '../../images/onnx-icon.svelte'
+	import OnnxIcon from '../../images/onnx-icon.svelte';
 	import { fade, fly, blur } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 
@@ -84,7 +84,7 @@
 				<p class="text-xl my-4">In a rush? Get started easily:</p>
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 					<div class="grid grid-cols-6 bg-white">
-						<div class="col-span-5 ">
+						<div class="col-span-5">
 							<Highlight language={bash} code={pythonCode} />
 						</div>
 						<button
@@ -110,7 +110,9 @@
 					<a class="underline" href="http://">More interested in training? More info here.</a>
 				</p> -->
 				<p class="text-lg mt-2">
-					<a class="text-blue-500" href="./getting-started">Don't see your favourite platform? See the many others we support →</a>
+					<a class="text-blue-500" href="./getting-started"
+						>Don't see your favourite platform? See the many others we support →</a
+					>
 				</p>
 			</div>
 			<div class="hidden lg:inline">

@@ -3,19 +3,20 @@
 	export let width: number = 175;
 	export let height: number = 175;
 </script>
+
 <svg
-				version="1.0"
-				xmlns="http://www.w3.org/2000/svg"
-				width="{width}pt"
-				height="{height}pt"
-				viewBox="0 0 175.000000 165.000000"
-				preserveAspectRatio="xMidYMid meet"
-				class="fill-current text-base-300 invert img"
-				stroke="currentColor" 
-			>
-				<g transform="translate(0.000000,165.000000) scale(0.100000,-0.100000)">
-					<path
-						d="M858 1206 l-3 -423 -145 249 c-80 137 -148 252 -152 254 -10 7 -531
+	version="1.0"
+	xmlns="http://www.w3.org/2000/svg"
+	width="{width}pt"
+	height="{height}pt"
+	viewBox="0 0 175.000000 165.000000"
+	preserveAspectRatio="xMidYMid meet"
+	class="fill-current text-base-300 invert img"
+	stroke="currentColor"
+>
+	<g transform="translate(0.000000,165.000000) scale(0.100000,-0.100000)">
+		<path
+			d="M858 1206 l-3 -423 -145 249 c-80 137 -148 252 -152 254 -10 7 -531
 -258 -535 -271 -2 -6 177 -69 397 -140 219 -71 397 -131 394 -134 -3 -3 -132
 -33 -287 -67 -255 -55 -282 -62 -280 -80 5 -42 83 -540 88 -562 3 -13 10 -20
 15 -17 5 3 118 156 252 340 133 184 244 332 247 330 2 -3 -9 -133 -25 -289
@@ -46,6 +47,6 @@ l-113 57 7 80 c6 74 10 95 18 95 2 0 50 -63 106 -141z m-363 94 c-3 -16 -13
 5 39 c4 21 11 91 17 154 18 183 0 172 150 94 l129 -68 -97 -71z m223 -91 c59
 -80 105 -147 103 -150 -5 -4 -488 72 -494 79 -4 3 264 208 283 216 1 1 50 -65
 108 -145z"
-					/>
-				</g>
-			</svg>
+		/>
+	</g>
+</svg>

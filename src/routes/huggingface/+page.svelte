@@ -6,7 +6,7 @@
 	const title = 'Hugging Face + ONNX Runtime';
 	const description =
 		'ONNX Runtime can be used to accelerate well over 100,000 of the models available on Hugging Face.';
-	const imgsrc = 'onnxruntimelogo'
+	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 </script>
 

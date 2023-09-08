@@ -7,7 +7,7 @@ on:
     branches:
       - gh-pages
   workflow_dispatch:
-    
+
 jobs:
   checklinks:
     name: Check website links

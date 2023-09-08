@@ -1,7 +1,8 @@
 <script>
 	import { base } from '$app/paths';
 </script>
-<div class="container mx-auto px-10"> 
+
+<div class="container mx-auto px-10">
 	<div class="lg:grid pb-10 gap-10 grid-cols-2">
 		<article class="card bg-base-300 lg:mb-48 mb-10 grid md:grid-cols-3">
 			<div class="card-body col-span-2 order-last md:order-first">

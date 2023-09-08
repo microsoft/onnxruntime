@@ -1,12 +1,12 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import ImageInference2 from '../../images/undraw/image_inference2.svelte';
-	import ImageInference1 from '../../images/undraw/image_inference1.svg'
+	import ImageInference1 from '../../images/undraw/image_inference1.svg';
 	import OnnxIcon from '../../images/onnx-icon.svelte';
 	const title = 'ONNX Runtime for Inferencing';
 	const description =
 		'ONNX Runtime Inference powers machine learning models in key Microsoft products and services across Office, Azure, Bing, as well as thousands of community projects.';
-	const imgsrc = 'onnxruntimelogo'
+	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 </script>
 
@@ -24,7 +24,7 @@
 			>
 		</div>
 		<div class="m-auto">
-			<OnnxIcon/>
+			<OnnxIcon />
 		</div>
 	</div>
 </div>
@@ -113,7 +113,7 @@
 			>
 		</div>
 		<div class="m-auto">
-			<ImageInference2/>
+			<ImageInference2 />
 		</div>
 	</div>
 </div>

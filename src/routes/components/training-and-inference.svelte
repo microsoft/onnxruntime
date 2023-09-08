@@ -7,7 +7,7 @@
 </script>
 
 <div class="container mx-auto px-10">
-	<div class="divider"></div>
+	<div class="divider" />
 	<h1 class="text-4xl pb-2">ONNX Runtime Training</h1>
 	<p class="text-xl pb-4">
 		ONNX Runtime can be used to accelerate both large model training and on-device training.

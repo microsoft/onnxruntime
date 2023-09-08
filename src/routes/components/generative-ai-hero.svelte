@@ -1,7 +1,8 @@
 <script>
 	import { base } from '$app/paths';
-	import Ortgenerativeai from "../../images/undraw/image_ortgenerativeai.svelte";
+	import Ortgenerativeai from '../../images/undraw/image_ortgenerativeai.svelte';
 </script>
+
 <div class="container mx-auto px-10 mb-10">
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-10">
 		<div class="">
@@ -12,11 +13,11 @@
 				platform support and deep optimizations enable you to benefit from state of the art models
 				for image synthesis, text generation, and more
 			</p>
-			<br>
+			<br />
 			<a href="./generative-ai" class="btn btn-primary">Learn more about ORT & Generative AI →</a>
 		</div>
 		<div class="m-auto">
-			<Ortgenerativeai/>
+			<Ortgenerativeai />
 		</div>
 	</div>
 </div>

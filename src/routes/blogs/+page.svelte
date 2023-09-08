@@ -204,7 +204,7 @@
 	<div class="flex">
 		<h1 class="text-5xl my-auto">Blogs & Announcements</h1>
 		<div class="ml-5 hidden md:flex">
-			<ImageBlogs/>
+			<ImageBlogs />
 		</div>
 	</div>
 	<div class="pt-5 mx-4 md:mx-10">

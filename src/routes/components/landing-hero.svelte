@@ -1,12 +1,11 @@
 <script lang="ts">
-export let title: string; 
-export let description: string;
-export let imgsrc: string;
-export let imgalt: string;
-import OnnxIcon from "../../images/onnx-icon.svelte";
-if (imgsrc == 'onnxruntimelogo'){
-
-}
+	export let title: string;
+	export let description: string;
+	export let imgsrc: string;
+	export let imgalt: string;
+	import OnnxIcon from '../../images/onnx-icon.svelte';
+	if (imgsrc == 'onnxruntimelogo') {
+	}
 </script>
 
 <div class="container mx-auto px-10 my-10">
@@ -17,12 +16,12 @@ if (imgsrc == 'onnxruntimelogo'){
 			<p class="text-xl">
 				{description}
 			</p>
-			<br>
+			<br />
 		</div>
 		{#if imgsrc == 'onnxruntimelogo'}
-		<div class="m-auto">
-			<OnnxIcon/>
-		</div>
+			<div class="m-auto">
+				<OnnxIcon />
+			</div>
 		{:else}
 			<img class="m-auto" src={imgsrc} alt={imgalt} />
 		{/if}

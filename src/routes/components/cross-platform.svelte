@@ -1,10 +1,11 @@
 <script>
-	import Ortcrossplatform from "../../images/undraw/image_ortcrossplatform.svelte";
+	import Ortcrossplatform from '../../images/undraw/image_ortcrossplatform.svelte';
 </script>
+
 <div class="container mx-auto px-10 mb-10">
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-10">
 		<div class="m-auto hidden lg:grid">
-			<Ortcrossplatform/>
+			<Ortcrossplatform />
 		</div>
 		<div class="">
 			<h1 class="text-4xl">Cross-Platform</h1>
@@ -16,7 +17,7 @@
 			</p>
 		</div>
 		<div class="m-auto grid lg:hidden">
-			<Ortcrossplatform/>
+			<Ortcrossplatform />
 		</div>
 	</div>
 </div>

@@ -1,6 +1,6 @@
 <script>
 	import TestimonialCard from './testimonial-card.svelte';
-	import ImageTestimonials from '../../images/undraw/image_testimonials.svelte'
+	import ImageTestimonials from '../../images/undraw/image_testimonials.svelte';
 	import amdlogo from '../../images/logos/amd-logo.png';
 	import antgrouplogo from '../../images/logos/antgroup-logo.png';
 	import atlaslogo from '../../images/logos/ATLAS-logo.png';
@@ -275,13 +275,15 @@
 	<div class="flex mb-5">
 		<div class="mr-5 my-auto">
 			<h1 class="text-5xl">Our Partners</h1>
-			<h2 class="text-2xl mb-4">Hear from some of the products and companies using ONNX Runtime:</h2>
+			<h2 class="text-2xl mb-4">
+				Hear from some of the products and companies using ONNX Runtime:
+			</h2>
 		</div>
 		<div class="hidden md:flex">
-			<ImageTestimonials/>
+			<ImageTestimonials />
 		</div>
 	</div>
-	
+
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 		{#each quotes as quote}
 			<TestimonialCard

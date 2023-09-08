@@ -19,7 +19,12 @@
 		});
 	};
 </script>
-<article on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="mb-4 bg-base-300 border rounded-md border-primary">
+
+<article
+	on:mouseenter={handleEnter}
+	on:mouseleave={handleLeave}
+	class="mb-4 bg-base-300 border rounded-md border-primary"
+>
 	<a href={link}>
 		<div class="card card-side">
 			<div class="card-body">

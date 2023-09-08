@@ -36,7 +36,14 @@
 	<div class="col-span-4 grid gap-2">
 		<div class="join gap-2">
 			{#each platforms as platform}
-				<input class="join-item btn flex-auto" type="radio" name="platform" value={platform} aria-label={platform} on:change={onChange}/>
+				<input
+					class="join-item btn flex-auto"
+					type="radio"
+					name="platform"
+					value={platform}
+					aria-label={platform}
+					on:change={onChange}
+				/>
 			{/each}
 		</div>
 	</div>

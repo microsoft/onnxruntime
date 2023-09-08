@@ -1,4 +1,4 @@
-<script lang='ts'>
+<script lang="ts">
 	import Highlight from 'svelte-highlight';
 	import python from 'svelte-highlight/languages/python';
 	import csharp from 'svelte-highlight/languages/csharp';
@@ -50,11 +50,27 @@
 <div class="container mx-auto px-4">
 	<div class="grid-cols-1 lg:grid-cols-3 gap-4 grid">
 		<div class="col-span-1 mx-auto mx-4 lg:mx-0 lg:ml-10">
-			<h1 class="text-xl mb-4">Use ONNX Runtime with your favorite language, or dive right into the tutorials.</h1>
-				<a href="./getting-started" class="btn btn-secondary rounded-sm btn-block mb-4 text-slate-100">Quickstart</a>
-				<a rel="external" href="./docs/tutorials" class="btn btn-secondary rounded-sm btn-block mb-4 text-slate-100">Tutorials</a>
-				<a rel="external" href="./docs/install" class="btn btn-secondary rounded-sm btn-block mb-4 text-slate-100">Install ONNX Runtime</a>
-				<a rel="external" href="./docs/execution-providers" class="btn btn-secondary rounded-sm btn-block mb-4 text-slate-100">Hardware acceleration</a>
+			<h1 class="text-xl mb-4">
+				Use ONNX Runtime with your favorite language, or dive right into the tutorials.
+			</h1>
+			<a href="./getting-started" class="btn btn-secondary rounded-sm btn-block mb-4 text-slate-100"
+				>Quickstart</a
+			>
+			<a
+				rel="external"
+				href="./docs/tutorials"
+				class="btn btn-secondary rounded-sm btn-block mb-4 text-slate-100">Tutorials</a
+			>
+			<a
+				rel="external"
+				href="./docs/install"
+				class="btn btn-secondary rounded-sm btn-block mb-4 text-slate-100">Install ONNX Runtime</a
+			>
+			<a
+				rel="external"
+				href="./docs/execution-providers"
+				class="btn btn-secondary rounded-sm btn-block mb-4 text-slate-100">Hardware acceleration</a
+			>
 		</div>
 		<div class="hidden lg:block col-span-2 mx-auto tab-container">
 			<div class="tabs">
@@ -97,35 +113,45 @@
 			{#if activeTab === 'Python'}
 				<Highlight language={python} code={pythonCode} />
 				<div class="div" in:fade={{ duration: 500 }}>
-					<a href="https://onnxruntime.ai/docs/get-started/with-python" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+					<a
+						href="https://onnxruntime.ai/docs/get-started/with-python"
+						class="btn btn-sm float-right -mt-8 z-10 rounded-none"
 						>Python Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
 			{:else if activeTab === 'C#'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={csharp} code={csharpCode} />
-					<a href="https://onnxruntime.ai/docs/get-started/with-csharp" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+					<a
+						href="https://onnxruntime.ai/docs/get-started/with-csharp"
+						class="btn btn-sm float-right -mt-8 z-10 rounded-none"
 						>C# Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
 			{:else if activeTab === 'JavaScript'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={javascript} code={javascriptCode} />
-					<a href="https://onnxruntime.ai/docs/get-started/with-javascript" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+					<a
+						href="https://onnxruntime.ai/docs/get-started/with-javascript"
+						class="btn btn-sm float-right -mt-8 z-10 rounded-none"
 						>JavaScript Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
 			{:else if activeTab === 'Java'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={java} code={javaCode} />
-					<a href="https://onnxruntime.ai/docs/get-started/with-java" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+					<a
+						href="https://onnxruntime.ai/docs/get-started/with-java"
+						class="btn btn-sm float-right -mt-8 z-10 rounded-none"
 						>Java Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
 			{:else if activeTab === 'C++'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={cpp} code={cppCode} />
-					<a href="https://onnxruntime.ai/docs/get-started/with-cpp" class="btn btn-sm float-right -mt-8 z-10 rounded-none"
+					<a
+						href="https://onnxruntime.ai/docs/get-started/with-cpp"
+						class="btn btn-sm float-right -mt-8 z-10 rounded-none"
 						>C++ Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>

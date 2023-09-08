@@ -10,6 +10,7 @@
 		themeChange(false);
 	});
 </script>
+
 <div class="navbar bg-base-100">
 	<div class="navbar-start">
 		<div class="dropdown">
@@ -62,11 +63,11 @@
 		</div>
 		<a href="./" class="btn btn-ghost normal-case text-xl">
 			<div class="hidden lg:inline">
-				<OnnxIcon width={32} height={32}/>
+				<OnnxIcon width={32} height={32} />
 			</div>
 			ONNXRuntime
 			<div class="lg:hidden">
-				<OnnxIcon width={32} height={32}/>
+				<OnnxIcon width={32} height={32} />
 			</div>
 		</a>
 	</div>
