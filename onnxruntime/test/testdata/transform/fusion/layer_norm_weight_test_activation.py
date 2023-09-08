@@ -5,10 +5,10 @@ from onnx import OperatorSetIdProto, TensorProto, helper
 
 def GenerateModel(model_name, has_casts=False):  # noqa: N802
     nodes = [  # LayerNorm subgraph
-        helper.make_node("ReduceMean", ["A"], ["rd_out"], "reduce", axes=[-1], keepdims=1),
+        helper.make_node("ReduceMean", ["A"], ["rd_out"], "reduce1", axes=[-1], keepdims=1),
         helper.make_node("Sub", ["A", "rd_out"], ["sub_out"], "sub"),
         helper.make_node("Pow", ["cast_sub_out" if has_casts else "sub_out", "pow_in_2"], ["pow_out"], "pow"),
-        helper.make_node("ReduceMean", ["pow_out"], ["rd2_out"], "reduce", axes=[-1], keepdims=1),
+        helper.make_node("ReduceMean", ["pow_out"], ["rd2_out"], "reduce2", axes=[-1], keepdims=1),
         helper.make_node("Add", ["rd2_out", "const_e12"], ["add1_out"], "add"),
         helper.make_node("Sqrt", ["add1_out"], ["sqrt_out"], "sqrt"),
         helper.make_node("Div", ["cast_sub_out" if has_casts else "sub_out", "sqrt_out"], ["div_out"], "div"),
