@@ -6,7 +6,7 @@
 // a optimized codepath for this.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
