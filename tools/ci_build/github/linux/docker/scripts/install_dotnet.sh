@@ -2,7 +2,7 @@
 set -e -x
 
 if [ -f /etc/redhat-release ]; then
-    dnf update --refresh \
+    dnf update --refresh -y \
     && dnf install -y dotnet-sdk-6.0
 elif [ -f /etc/os-release ]; then
   # Get Ubuntu version
