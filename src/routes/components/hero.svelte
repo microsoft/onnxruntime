@@ -64,8 +64,6 @@
 		</div>
 	</div>
 {/if}
-<!-- TODO: Interesting background -->
-
 <div class="hero bg-gradient-to-b from-primary">
 	<div class="hero-content md:my-20">
 		<div class="grid grid-cols-2 md:grid-cols-3 gap-4">

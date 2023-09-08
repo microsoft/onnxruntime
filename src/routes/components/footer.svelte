@@ -28,7 +28,6 @@
 		<a href="./pytorch" class="link link-hover">PyTorch</a>
 	</div>
 	<div>
-		<!-- TODO: Approach to not hide resources behind popup -->
 		<span class="footer-title">Resources</span>
 		<a href="./blogs" class="link link-hover">Blogs</a>
 		<a rel="external" href="./docs/tutorials" class="link link-hover">Tutorials</a>

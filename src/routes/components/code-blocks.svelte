@@ -45,7 +45,6 @@
 		activeTab = tabText;
 		activeTab = activeTab;
 	};
-	// TODO: get data theme from html tag
 </script>
 
 <div class="container mx-auto px-4">
