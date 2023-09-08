@@ -40,9 +40,6 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Generate build
-        run: npm run build
-
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
@@ -112,6 +109,9 @@ jobs:
           sudo rm -rf _site/docs/api/js
           sudo mv apidocs/docs/api/js _site/docs/api
       
+
+      - name: Generate build
+        run: npm run build
       - name: Move site into place
         run: |
           sudo mv ./build/* ./_site     
