@@ -54,9 +54,10 @@ TEST(CApiTensorTest, load_simple_float_tensor_membuffer) {
   std::vector<float> output(3);
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), nullptr, p,
-                                                MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
-                                                value));
+  ASSERT_STATUS_OK(
+      utils::TensorProtoToOrtValue(Env::Default(), nullptr, p,
+                                   MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
+                                   value));
   float* real_output;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
   ASSERT_EQ(ort_st, nullptr) << g_ort->GetErrorMessage(ort_st);

@@ -3,14 +3,14 @@
 
 #include "core/optimizer/initializer.h"
 
-#include "core/common/gsl.h"
+#include <functional>
+#include <memory>
 
+#include "core/common/gsl.h"
 #include "core/common/path.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/platform/env.h"
-
-#include <functional>
 
 namespace onnxruntime {
 

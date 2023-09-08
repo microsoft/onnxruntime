@@ -186,8 +186,8 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
   return Status::OK();
 }
 
-//  TODO: Change the current interface to take Path object for model path
-//  so that validating and manipulating path for reading external data becomes easy
+// TODO(unknown): Change the current interface to take Path object for model path
+// so that validating and manipulating path for reading external data becomes easy
 Status TensorProtoToOrtValueImpl(const Env& env, const ORTCHAR_T* model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  const MemBuffer* m, AllocatorPtr alloc,

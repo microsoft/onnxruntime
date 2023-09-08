@@ -5,6 +5,8 @@
 
 #include "test/providers/kernel_compute_test_utils.h"
 
+#include <utility>
+
 #include "core/framework/execution_providers.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "test/util/include/default_providers.h"

@@ -1015,7 +1015,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  ASSERT_EQ(op_to_count["Identity"], 1);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
@@ -1025,7 +1025,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
 
   op_to_count = CountOpsInGraph(graph);
 
-  ASSERT_TRUE(op_to_count.size() == 0U) << "Identity node should have been removed";
+  ASSERT_EQ(op_to_count.size(), 0U) << "Identity node should have been removed";
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
