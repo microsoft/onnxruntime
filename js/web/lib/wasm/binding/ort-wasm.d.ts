@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import type {Tensor} from 'onnxruntime-common';
+
 export declare namespace JSEP {
   type BackendType = unknown;
   type AllocFunction = (size: number) => number;
@@ -11,7 +13,7 @@ export declare namespace JSEP {
   type ReleaseKernelFunction = (kernel: number) => void;
   type RunFunction = (kernel: number, contextDataOffset: number, sessionState: SessionState) => number;
   export interface SessionState {
-    sessionId: number;
+    sessionHandle: number;
     errors: Array<Promise<string|null>>;
   }
 }
@@ -40,14 +42,23 @@ export interface OrtWasmModule extends EmscriptenModule {
 
   _OrtFree(stringHandle: number): void;
 
-  _OrtCreateTensor(dataType: number, dataOffset: number, dataLength: number, dimsOffset: number, dimsLength: number):
-      number;
+  _OrtCreateTensor(
+      dataType: number, dataOffset: number, dataLength: number, dimsOffset: number, dimsLength: number,
+      dataLocation: number): number;
   _OrtGetTensorData(tensorHandle: number, dataType: number, dataOffset: number, dimsOffset: number, dimsLength: number):
       number;
   _OrtReleaseTensor(tensorHandle: number): void;
+  _OrtCreateBinding(sessionHandle: number): number;
+  _OrtBindInput(bindingHandle: number, nameOffset: number, tensorHandle: number): Promise<number>;
+  _OrtBindOutput(bindingHandle: number, nameOffset: number, tensorHandle: number, location: number): number;
+  _OrtClearBoundOutputs(ioBindingHandle: number): void;
+  _OrtReleaseBinding(ioBindingHandle: number): void;
+  _OrtRunWithBinding(
+      sessionHandle: number, ioBindingHandle: number, outputCount: number, outputsOffset: number,
+      runOptionsHandle: number): Promise<number>;
   _OrtRun(
       sessionHandle: number, inputNamesOffset: number, inputsOffset: number, inputCount: number,
-      outputNamesOffset: number, outputCount: number, outputsOffset: number, runOptionsHandle: number): number;
+      outputNamesOffset: number, outputCount: number, outputsOffset: number, runOptionsHandle: number): Promise<number>;
 
   _OrtCreateSessionOptions(
       graphOptimizationLevel: number, enableCpuMemArena: boolean, enableMemPattern: boolean, executionMode: number,
@@ -109,9 +120,12 @@ export interface OrtWasmModule extends EmscriptenModule {
   _JsepOutput(context: number, index: number, data: number): number;
   _JsepGetNodeName(kernel: number): number;
 
-  jsepOnRunStart?(sessionId: number): void;
-  jsepOnRunEnd?(sessionId: number): Promise<void>;
-  jsepRunPromise?: Promise<number>;
+  jsepRegisterBuffer: (sessionId: number, index: number, buffer: GPUBuffer, size: number) => number;
+  jsepUnregisterBuffers?: (sessionId: number) => void;
+  jsepGetBuffer: (dataId: number) => GPUBuffer;
+  jsepCreateDownloader:
+      (gpuBuffer: GPUBuffer, size: number,
+       type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
   // #endregion
 }
 

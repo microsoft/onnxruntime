@@ -120,6 +120,11 @@ class ComputeContextImpl implements ComputeContext {
         this.module.HEAPU32[offset++] = dims[i];
       }
       return this.module._JsepOutput(this.opKernelContext, index, data);
+    } catch (e) {
+      throw new Error(
+          `Failed to generate kernel's output[${index}] with dims [${dims}]. ` +
+          'If you are running with pre-allocated output, please make sure the output type/dims are correct. ' +
+          `Error: ${e}`);
     } finally {
       this.module.stackRestore(stack);
     }
@@ -138,7 +143,7 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
 
     init(
         // backend
-        {backend},
+        backend,
 
         // jsepAlloc()
         (size: number) => backend.alloc(size),
@@ -181,8 +186,8 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
         (kernel: number, contextDataOffset: number, sessionState: JSEP.SessionState) => {
           LOG_DEBUG(
               'verbose',
-              () => `[WebGPU] jsepRun: sessionId=${sessionState.sessionId}, kernel=${kernel}, contextDataOffset=${
-                  contextDataOffset}`);
+              () => `[WebGPU] jsepRun: sessionHandle=${sessionState.sessionHandle}, kernel=${
+                  kernel}, contextDataOffset=${contextDataOffset}`);
           const context = new ComputeContextImpl(module, backend, contextDataOffset);
           return backend.computeKernel(kernel, context, sessionState.errors);
         });
