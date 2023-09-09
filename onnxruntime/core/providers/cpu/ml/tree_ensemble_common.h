@@ -374,7 +374,7 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(const 
   if (nodes_[node_pos].is_not_leaf()) {
     size_t false_branch = AddNodes(falsenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor, node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
     if (false_branch != node_pos + 1) {
-      ORT_THROW("False node must always be the next node, but it isn't at index ", node_pos, " with flags ", int(nodes_[node_pos].flags));
+      ORT_THROW("False node must always be the next node, but it isn't at index ", node_pos, " with flags ", static_cast<int>(nodes_[node_pos].flags));
     }
     size_t true_branch = AddNodes(truenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor, node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
     // We don't need to store the false branch pointer since we know it is always in the immediate next entry in nodes_.
