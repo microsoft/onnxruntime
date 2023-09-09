@@ -185,7 +185,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
 #ifdef ENABLE_TENSORRT
   const bool disable_quant_qdq = true;
-#else 
+#else
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
 #endif
