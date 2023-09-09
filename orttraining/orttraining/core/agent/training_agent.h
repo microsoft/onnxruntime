@@ -10,6 +10,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/framework_common.h"
 #include "core/session/inference_session.h"
+#include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
 
 namespace onnxruntime {
 struct PartialGraphExecutionState;
@@ -44,6 +45,9 @@ class TrainingAgent {
                                               const std::vector<std::string>& fetches_names,
                                               const std::vector<OrtDevice>& outputs_device_info,
                                               std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
+
+  std::string GetSerializedORTModuleMemoryStat(const std::string& memory_optimization_config,
+                                               const std::string& recompute_probe_level) const;
 
  private:
   // TrainingAgent runs on a InferenceSession under the hood

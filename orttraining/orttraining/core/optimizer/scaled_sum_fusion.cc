@@ -254,7 +254,9 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     handled_scaled_sum_count += 1;
   }
 
-  LOGS(logger, INFO) << "Total fused ScaledSum node count:  " << handled_scaled_sum_count;
+  if (handled_scaled_sum_count > 0) {
+    LOGS(logger, INFO) << "Total fused ScaledSum node count:  " << handled_scaled_sum_count;
+  }
 
   return Status::OK();
 }

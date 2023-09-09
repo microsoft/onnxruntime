@@ -1,0 +1,128 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+#include <charconv>
+#include "core/common/inlined_containers.h"
+#include "core/common/string_utils.h"
+
+#include "orttraining/core/optimizer/memory_optimizer/common.h"
+
+namespace onnxruntime::optimizer::memory_optimizer {
+
+/**
+ * @brief Level to control allowed operations during subgraph detecting.
+ * Level 0: only allow cheap-to-compute operations.
+ * Level 1: allow more expensive operations.
+ */
+enum class ProbeLevel {
+  Basic = 0,
+  Advanced = 1,
+  LevelMax = 2,
+};
+
+/**
+ * @brief A child class used for Recompute/RecomputeWithCompromise optimization plan.
+ *
+ * For each node generating stashed activations, a recompute plan can be created for it.
+ */
+class NodeRecomputePlan : public NodeOptimizationPlanBase {
+ public:
+  NodeRecomputePlan(const Node* node,
+                    const InlinedVector<size_t>& activation_output_indices,
+                    const InlinedVector<const Node*>& nodes_in_topological_order,
+                    bool compromise_recompute = false,
+                    float save_ratio = 0.0f) : NodeOptimizationPlanBase(node) {
+    activation_output_indices_ = activation_output_indices;
+    compromise_recompute_ = compromise_recompute;
+    save_ratio_ = save_ratio;
+    // Be noted, recompute is node level, each node arg should have the same optimization type.
+    nodes_in_topological_order_ = nodes_in_topological_order;
+  }
+
+  const InlinedVector<size_t>& GetActivationOutputIndices() const { return activation_output_indices_; }
+  const InlinedVector<const Node*>& GetNodesInTopoOrder() const { return nodes_in_topological_order_; }
+  bool IsCompromiseRecompute() const { return compromise_recompute_; }
+  float GetSaveRatio() const { return save_ratio_; }
+
+  OptimizationType GetOptimizationType() const override {
+    return compromise_recompute_ ? OptimizationType::RecomputeWithCompromise
+                                 : OptimizationType::Recompute;
+  }
+
+  /**
+   * @brief Get the cluster id for this recompute plan.
+   * The cluster id is used to identify a unique subgraph.
+   * User can pass such cluster id to enable specific memory optimization for some subgraph.
+   */
+  std::string GetClusterId() const {
+    std::ostringstream oss;
+    oss << GetNodesInTopoOrderStr();
+    return oss.str();
+  }
+
+  /**
+   * @brief Get the serialized string for this recompute plan to create Node-level cluster id.
+   * Imagine, a Node can have multiple optimization plans, each plan generates its normalization string.
+   * Once combined we get Node cluster id.
+   *
+   * Node cluster id is used to categorize nodes into different groups, showing them as one row in memory
+   * optimization opportunity table.
+   */
+  std::string NormalizeForNodeClusterId() const {
+    std::ostringstream oss;
+    oss << "recompute:" << node->OpType() << "-"
+        << compromise_recompute_ << "-";
+    for (auto output_index : activation_output_indices_) {
+      oss << output_index << ":" << TensorShapeProtoToString(node->OutputDefs()[output_index]->Shape());
+      oss << ":" << node->OutputDefs()[output_index]->TypeAsProto()->tensor_type().elem_type() << "-";
+    }
+
+    oss << GetNodesInTopoOrderStr();
+    return oss.str();
+  }
+
+  std::string GetNodesInTopoOrderStr() const {
+    std::string subgraph_str_representation, log_info;
+    NodesInTopoOrderToString(nodes_in_topological_order_, subgraph_str_representation, log_info);
+    return subgraph_str_representation;
+  }
+
+ private:
+  bool compromise_recompute_;
+  InlinedVector<const Node*> nodes_in_topological_order_;
+  InlinedVector<size_t> activation_output_indices_;
+  float save_ratio_ = 1.0f;
+};
+
+/**
+ * @brief For the node producing stashed activation, check whether a recomputable subgraph can be found or not.
+ *
+ * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
+ * @param probe_level The level to control allowed operations during subgraph detecting.
+ * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
+ * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
+ *   Used to re-order the collected subgraph nodes.
+ * @param candidate_output_args_map A map from node to its candidate activations, which are consumed by both fw and
+ *  bw ops.
+ * @param subgraph_stores A store to maintain all found subgraphs.
+ * @param logger Logger.
+ * @param compromise_stashed_activation Whether to compromise stashed activation, e.g. if we cannot find a
+ * recomputable subgraph to save a stashed activation, we can compromise to find a recomputable subgraph to reduce the
+ * size of stashed activation.
+ * @param can_compromise_stashed_activation A bool return value, to indicate there is opportunaties for finding a
+ * compromised subgraph.
+ */
+std::shared_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
+                                                         const ProbeLevel probe_level,
+                                                         const ActivationUsedMap& fw_op_output_arg_used_map,
+                                                         const InlinedHashMap<NodeIndex, ptrdiff_t>&
+                                                             node_index_to_its_order_in_topological_sort_map,
+                                                         const InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                                             candidate_output_args_map,
+                                                         //  optimizer::memory_optimizer::SubGraphStores& subgraph_stores,
+                                                         const logging::Logger& logger,
+                                                         bool compromise_stashed_activation,
+                                                         bool& can_compromise_stashed_activation);
+
+}  // namespace onnxruntime::optimizer::memory_optimizer

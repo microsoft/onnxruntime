@@ -431,6 +431,33 @@ class TrainingManager(GraphExecutionManager):
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
 
+        if self._need_output_memory_optimization_stat:
+            # Create a training agent without enabling memory optimization.
+            execution_agent = TrainingAgent(
+                self._onnx_models.optimized_model.SerializeToString(),
+                fw_feed_names,
+                fw_outputs_device_info,
+                bw_fetches_names,
+                bw_outputs_device_info,
+                session_options,
+                providers,
+                provider_options,
+                local_device_rank,
+            )
+
+            self._serialized_memory_optimization_stat = execution_agent.get_serialized_ortmodule_memory_stat(
+                self._runtime_options.memory_optimizer_config, self._runtime_options.probe_level
+            )
+            del execution_agent
+
+        # Enable memory optimization if it is enabled in the session options.
+        session_options.add_session_config_entry(
+            "optimization.enable_memory_optimizer", self._runtime_options.memory_optimizer_config
+        )
+        session_options.add_session_config_entry(
+            "optimization.enable_memory_probe_recompute_level", self._runtime_options.probe_level
+        )
+
         self._execution_agent = TrainingAgent(
             self._onnx_models.optimized_model.SerializeToString(),
             fw_feed_names,

@@ -145,6 +145,12 @@ class GraphExecutionManager(GraphExecutionInterface):
             # Cannot toggle feature enabling/disabling after the first time enabled.
             configure_ort_compatible_zero_stage3()
 
+        # Output the memory optimization stat if log level is INFO or user has specified memory optimizer config.
+        self._need_output_memory_optimization_stat = (
+            self._debug_options.logging.log_level <= LogLevel.INFO or self._runtime_options.memory_optimizer_config
+        )
+        self._serialized_memory_optimization_stat = None
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -240,12 +246,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
 
-        session_options.add_session_config_entry(
-            "optimization.enable_memory_optimizer", self._runtime_options.memory_optimizer_config
-        )
-        session_options.add_session_config_entry(
-            "optimization.enable_memory_probe_recompute_level", self._runtime_options.probe_level
-        )
         # Disable weight prepacking
         session_options.add_session_config_entry("session.disable_prepacking", "1")
 
@@ -607,7 +607,9 @@ class GraphExecutionManager(GraphExecutionInterface):
             (
                 "Memory Optimizer",
                 len(self._runtime_options.memory_optimizer_config) > 0,
-                "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>",
+                f"RecomputeConfig: {self._runtime_options.memory_optimizer_config}, ProbeLevel: {self._runtime_options.probe_level}"
+                if len(self._runtime_options.memory_optimizer_config) > 0
+                else "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>",
             ),
         ]
 
@@ -691,6 +693,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         stat += f"\n{self.time_tracker.to_string(self._debug_options.logging.log_level < LogLevel.WARNING)}\n"
 
         stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
+
+        if self._need_output_memory_optimization_stat and self._serialized_memory_optimization_stat:
+            stat += f"{self._serialized_memory_optimization_stat}\n"
+
         stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
 
         self._logger.warning(stat)

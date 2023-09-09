@@ -728,6 +728,9 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         if (!status.IsOK()) {
           throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
         }
+      })
+      .def("get_serialized_ortmodule_memory_stat", [](TrainingAgent* agent, const std::string& memory_optimization_config, const std::string& recompute_probe_level) -> std::string {
+        return agent->GetSerializedORTModuleMemoryStat(memory_optimization_config, recompute_probe_level);
       });
 
   py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local(), py::arithmetic{})
