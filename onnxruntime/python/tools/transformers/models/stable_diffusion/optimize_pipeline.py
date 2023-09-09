@@ -150,10 +150,8 @@ def optimize_sd_pipeline(
                 op_block_list=op_block_list + force_fp32_operators[name],
             )
 
-        if enable_runtime_optimization and (float16 or (name not in ["unet"])):
+        if enable_runtime_optimization:
             # Use this step to see the final graph that executed by Onnx Runtime.
-            # Note that ORT cannot save model larger than 2GB so we exclude unet float32 model.
-            # This step is optional since it has no impact on performance except model loading time.
             with tempfile.TemporaryDirectory() as tmp_dir:
                 # Save to a temporary file so that we can load it with Onnx Runtime.
                 logger.info("Saving a temporary model to run OnnxRuntime graph optimizations...")
