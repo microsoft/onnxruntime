@@ -44,6 +44,7 @@ Do not modify directly.*
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | Greater | ai.onnx(7-8,9-12,13+) |  |
+| If | ai.onnx(1-10,11-12,13-18,19+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
