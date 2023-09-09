@@ -166,6 +166,16 @@ jobs:
     displayName: 'Run ort-web tests (ALL backends)'
     condition: ne('${{ parameters.RunWebGpuTests }}', 'false')
   - script: |
+     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-tensor
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
+    condition: ne('${{ parameters.RunWebGpuTests }}', 'false')
+  - script: |
+     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-location
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
+    condition: ne('${{ parameters.RunWebGpuTests }}', 'false')
+  - script: |
      npm test -- --webgl-texture-pack-mode -b=webgl -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
