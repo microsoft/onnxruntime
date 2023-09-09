@@ -31,9 +31,6 @@ FetchContent_Declare(
 )
 
 onnxruntime_fetchcontent_makeavailable(abseil_cpp)
-FetchContent_GetProperties(abseil_cpp)
-set(ABSEIL_SOURCE_DIR ${abseil_cpp_SOURCE_DIR})
-message(STATUS "Abseil source dir:" ${ABSEIL_SOURCE_DIR})
 
 if (GDK_PLATFORM)
   # Abseil considers any partition that is NOT in the WINAPI_PARTITION_APP a viable platform

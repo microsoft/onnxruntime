@@ -213,6 +213,7 @@ FetchContent_Declare(
   mp11
   URL ${DEP_URL_mp11}
   URL_HASH SHA1=${DEP_SHA1_mp11}
+  FIND_PACKAGE_ARGS NAMES Boost
 )
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
@@ -447,6 +448,7 @@ FetchContent_Declare(
   URL ${DEP_URL_onnx}
   URL_HASH SHA1=${DEP_SHA1_onnx}
   PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
+  FIND_PACKAGE_ARGS 1.14.1 NAMES ONNX
 )
 
 
@@ -496,9 +498,12 @@ set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${W
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
 
-target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
-if (NOT onnxruntime_USE_FULL_PROTOBUF)
-  target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
+if(NOT onnx_FOUND)
+  # We use our own build of ONNX & can thus update target definitions
+  target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
+  if (NOT onnxruntime_USE_FULL_PROTOBUF)
+    target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
+  endif()
 endif()
 
 if (onnxruntime_RUN_ONNX_TESTS)
