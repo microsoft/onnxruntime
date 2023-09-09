@@ -1,13 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <iomanip>
-
-#include "core/framework/random_seed.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
-#include "orttraining/core/graph/recompute_graph_utils.h"
+#include "core/framework/ort_value_name_idx_map.h"
+#include "core/framework/sequential_execution_plan.h"
 
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"

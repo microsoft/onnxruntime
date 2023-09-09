@@ -8,8 +8,6 @@
 #include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
 
-// #include "core/optimizer/utils.h"
-
 namespace onnxruntime::optimizer::memory_optimizer {
 
 /**
@@ -84,7 +82,7 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
  * @param user_config Optional. If provided, we will append the user configuration to the serialized string.
  * @return std::string
  */
-std::string SerializeMemoryRecords(std::vector<std::pair<std::string, optimizer::memory_optimizer::MemoryRecord>>
+std::string SerializeMemoryRecords(const std::vector<std::pair<std::string, MemoryRecord>>&
                                        records_grouped_by_node_cluster_id,
                                    const std::string user_config = "");
 

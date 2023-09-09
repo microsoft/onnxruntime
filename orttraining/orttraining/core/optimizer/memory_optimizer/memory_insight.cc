@@ -3,16 +3,12 @@
 
 #include <iomanip>
 
-#include "core/framework/random_seed.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/utils.h"
-#include "orttraining/core/graph/recompute_graph_utils.h"
-
+#include "core/graph/graph_viewer.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
+#include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
-#include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
@@ -199,7 +195,7 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
 
   // If apply context is provided, also update the actual applied count.
   if (node_to_apply_contexts_map.size() > 0) {
-    InlinedHashMap<std::string, optimizer::memory_optimizer::MemoryRecord*> node_cluster_id_to_record_map;
+    InlinedHashMap<std::string, MemoryRecord*> node_cluster_id_to_record_map;
     for (auto& p : generated_records) {
       node_cluster_id_to_record_map[p.first] = &p.second;
     }
@@ -208,13 +204,13 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
       const auto& node = p.first;
       const auto& apply_context = p.second;
       std::string node_cluster_id = memory_opt_planner.GenerateNodeClusterId(node);
-      if (apply_context->type == optimizer::memory_optimizer::OptimizationType::Recompute) {
+      if (apply_context->type == OptimizationType::Recompute) {
         node_cluster_id_to_record_map[node_cluster_id]->actual_recompute_count += 1;
         node_cluster_id_to_record_map[node_cluster_id]->request_recompute_count = apply_context->requested_count;
-      } else if (apply_context->type ==
-                 optimizer::memory_optimizer::OptimizationType::RecomputeWithCompromise) {
+      } else if (apply_context->type == OptimizationType::RecomputeWithCompromise) {
         node_cluster_id_to_record_map[node_cluster_id]->actual_recompute_with_compromise_count += 1;
-        node_cluster_id_to_record_map[node_cluster_id]->request_recompute_with_compromise_count = apply_context->requested_count;
+        node_cluster_id_to_record_map[node_cluster_id]->request_recompute_with_compromise_count =
+            apply_context->requested_count;
       } else {
         ORT_THROW("Unsupported optimization type found.");
       }
@@ -233,13 +229,13 @@ std::string ToFixedLengthString(T value, size_t length) {
 }
 
 void FormatRecomputeMemoryRecords(int option_index,
-                                  const optimizer::memory_optimizer::MemoryRecord& record,
+                                  const MemoryRecord& record,
                                   bool compromise_recompute,
                                   InlinedVector<std::string>& rows) {
   const auto subgraph_str = compromise_recompute ? record.recompute_with_compromise_subgraph_str
                                                  : record.recompute_subgraph_str;
-  const auto opt_type = compromise_recompute ? optimizer::memory_optimizer::OptimizationType::RecomputeWithCompromise
-                                             : optimizer::memory_optimizer::OptimizationType::Recompute;
+  const auto opt_type = compromise_recompute ? OptimizationType::RecomputeWithCompromise
+                                             : OptimizationType::Recompute;
   const auto request_count = compromise_recompute ? record.request_recompute_with_compromise_count
                                                   : record.request_recompute_count;
   const auto actual_count = compromise_recompute ? record.actual_recompute_with_compromise_count
@@ -250,7 +246,7 @@ void FormatRecomputeMemoryRecords(int option_index,
   rows.push_back(empty_first_col);
   rows.push_back(empty_first_col +
                  ToFixedLengthString(">>Option " + std::to_string(option_index), kTitleWidth) + ": " +
-                 optimizer::memory_optimizer::OptimizationTypeToString(opt_type) + " subgraph " + subgraph_str);
+                 OptimizationTypeToString(opt_type) + " subgraph " + subgraph_str);
 
   if (request_count) {
     // Only show this if user requested it.
@@ -266,7 +262,6 @@ void FormatRecomputeMemoryRecords(int option_index,
   }
 
   std::string activation_str = empty_first_col + "  Stashed Activations: ";
-
   rows.push_back(activation_str);
 
   const auto& reused_buffers = compromise_recompute ? record.output_port_reuse_recompute_with_compromise_count
@@ -302,8 +297,7 @@ void FormatRecomputeMemoryRecords(int option_index,
 }  // namespace
 
 std::string SerializeMemoryRecords(
-    std::vector<std::pair<std::string, optimizer::memory_optimizer::MemoryRecord>>
-        records_grouped_by_node_cluster_id,
+    const std::vector<std::pair<std::string, MemoryRecord>>& records_grouped_by_node_cluster_id,
     const std::string user_config) {
   InlinedVector<std::string> rows;
   rows.push_back(kTableBorder);
@@ -340,15 +334,15 @@ std::string SerializeMemoryRecords(
 
   // Example is:
   // static const std::string row_separator =
-  //     "|_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n";
+  //     "|_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|\n";
   static const std::string kTableRowSeparatorStart = "|_ _ _ _|";
   size_t second_row_length = max_length - kTableRowSeparatorStart.length();
-  if (second_row_length % 2 == 0) {  // make it odd
-    second_row_length += 3;
-    max_length += 3;
-  } else {
+  if (second_row_length % 2 == 0) {
     second_row_length += 2;
     max_length += 2;
+  } else {
+    second_row_length += 3;  // add 3 to make it even
+    max_length += 3;
   }
   std::string row_separator_full(second_row_length, ' ');
   for (size_t i = 0; i < row_separator_full.size() - 1; ++i) {
@@ -362,7 +356,8 @@ std::string SerializeMemoryRecords(
   std::string table_border_full(max_length, '=');
   std::ostringstream summary;
   summary << std::endl;
-  summary << "MemoryInsight Summary - User config: " + (user_config.empty() ? "not provided" : user_config) << std::endl;
+  summary << "MemoryInsight Summary - User config: " + (user_config.empty() ? "not provided" : user_config)
+          << std::endl;
   for (auto& row : rows) {
     if (row == kTableRowSeparator) {
       summary << row_separator_full << std::endl;
@@ -386,11 +381,11 @@ std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
                                              const SequentialExecutionPlan& p_seq_exec_plan) {
   ProbeLevel probe_level = ProbeLevel::Advanced;
   if (!recompute_probe_level.empty()) {
-    int probe_level_int = optimizer::memory_optimizer::ParseIntValueFromString(recompute_probe_level);
-    ORT_ENFORCE(probe_level_int < static_cast<int>(optimizer::memory_optimizer::ProbeLevel::LevelMax) &&
+    int probe_level_int = ParseIntValueFromString(recompute_probe_level);
+    ORT_ENFORCE(probe_level_int < static_cast<int>(ProbeLevel::LevelMax) &&
                     probe_level_int >= 0,
                 "Invalid probe level specified: ", recompute_probe_level);
-    probe_level = static_cast<optimizer::memory_optimizer::ProbeLevel>(probe_level);
+    probe_level = static_cast<ProbeLevel>(probe_level);
   }
 
   ptrdiff_t yield_op_order_in_topological_sort;
@@ -413,23 +408,25 @@ std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
   // Finalize the plan according to user config,
   // then create a ClusterApplyContext for each unique cluster (having the same node pattern)
 
-  InlinedHashMap<const Node*, std::shared_ptr<optimizer::memory_optimizer::ClusterApplyContext>> node_to_apply_context_map;
+  InlinedHashMap<const Node*, std::shared_ptr<ClusterApplyContext>> node_to_apply_context_map;
   if (!memory_optimization_config.empty()) {
-    ORT_ENFORCE(optimizer::memory_optimizer::ParseConfigFromString(memory_optimization_config,
-                                                                   cluster_id_to_config_map)
+    ORT_ENFORCE(ParseConfigFromString(memory_optimization_config,
+                                      cluster_id_to_config_map)
                     .IsOK());
-    InlinedHashMap<const Node*, std::shared_ptr<optimizer::memory_optimizer::NodeOptimizationPlanBase>> node_to_opt_plan_map;
+    InlinedHashMap<const Node*, std::shared_ptr<NodeOptimizationPlanBase>> node_to_opt_plan_map;
     ORT_ENFORCE(memory_opt_planner.FinalizeNodePlansFromUserConfig(cluster_id_to_config_map,
                                                                    node_to_opt_plan_map,
                                                                    node_to_apply_context_map)
                     .IsOK());
   }
 
-  ORT_ENFORCE(memory_opt_planner.UpdateNodePlansFromExecutionPlan(graph, ortvalue_name_to_idx_map, p_seq_exec_plan).IsOK());
+  ORT_ENFORCE(memory_opt_planner.UpdateNodePlansFromExecutionPlan(graph, ortvalue_name_to_idx_map,
+                                                                  p_seq_exec_plan)
+                  .IsOK());
 
   std::vector<std::pair<std::string, MemoryRecord>> records;
-  optimizer::memory_optimizer::GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, records,
-                                                                      node_to_apply_context_map);
+  GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, records,
+                                         node_to_apply_context_map);
 
   return SerializeMemoryRecords(records, memory_optimization_config);
 }

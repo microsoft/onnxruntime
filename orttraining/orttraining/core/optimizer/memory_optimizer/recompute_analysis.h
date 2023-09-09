@@ -2,9 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <charconv>
+
 #include "core/common/inlined_containers.h"
-#include "core/common/string_utils.h"
 
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 
@@ -120,7 +119,6 @@ std::shared_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
                                                              node_index_to_its_order_in_topological_sort_map,
                                                          const InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                                              candidate_output_args_map,
-                                                         //  optimizer::memory_optimizer::SubGraphStores& subgraph_stores,
                                                          const logging::Logger& logger,
                                                          bool compromise_stashed_activation,
                                                          bool& can_compromise_stashed_activation);

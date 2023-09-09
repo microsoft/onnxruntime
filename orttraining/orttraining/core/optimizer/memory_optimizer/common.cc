@@ -1,22 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include <charconv>
-#include "core/common/logging/logging.h"
-#include "core/graph/graph_utils.h"
+
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
-#include "core/framework/random_seed.h"
+#include "core/graph/graph_viewer.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/sequential_execution_plan.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/utils.h"
-#include "core/framework/ort_value_name_idx_map.h"
-#include <iomanip>
-#include <functional>
-#include <algorithm>
-#include <cctype>
-#include <locale>
+
 #include "core/common/string_utils.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
@@ -217,7 +208,7 @@ Status ParseConfigFromString(const std::string memory_optimization_config,
       int optimization_type_int = ParseIntValueFromString(user_config[1]);
       int requested_apply_count = ParseIntValueFromString(user_config[2]);
       ORT_RETURN_IF_NOT(optimization_type_int <
-                                static_cast<int>(optimizer::memory_optimizer::OptimizationType::TypeMax) &&
+                                static_cast<int>(OptimizationType::TypeMax) &&
                             optimization_type_int >= 0,
                         "Invalid optimization type specified for subgraph: ",
                         subgraph_string_representation);
@@ -228,7 +219,7 @@ Status ParseConfigFromString(const std::string memory_optimization_config,
       // At this point, subgraph_string_representation is a pattern graph string representation.
       // If duplicated subgraph_string_representation is found in user config, the last one will be used.
       cluster_id_to_config_map[subgraph_string_representation] = UserConfig{
-          static_cast<optimizer::memory_optimizer::OptimizationType>(optimization_type_int),
+          static_cast<OptimizationType>(optimization_type_int),
           requested_apply_count};
     }
   }

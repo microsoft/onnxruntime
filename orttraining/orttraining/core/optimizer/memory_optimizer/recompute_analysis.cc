@@ -1,15 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
-
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
-
-#include "core/framework/random_seed.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/utils.h"
-#include "orttraining/core/graph/recompute_graph_utils.h"
+#include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
+#include "core/framework/data_types.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
@@ -311,26 +305,25 @@ std::shared_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
                                                              node_index_to_its_order_in_topological_sort_map,
                                                          const InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                                              candidate_output_args_map,
-                                                         //  optimizer::memory_optimizer::SubGraphStores& subgraph_stores,
                                                          const logging::Logger& logger,
                                                          bool compromise_stashed_activation,
                                                          bool& can_compromise_stashed_activation) {
-  if (!optimizer::memory_optimizer::IsRecomputable(node, probe_level)) {
+  if (!IsRecomputable(node, probe_level)) {
     return nullptr;
   }
 
   InlinedVector<const Node*> nodes_in_topological_order;
   float save_ratio = 0.f;
-  ORT_ENFORCE(optimizer::memory_optimizer::SelectRecomputeSubgraph(node,
-                                                                   probe_level,
-                                                                   candidate_output_args_map.at(&node),
-                                                                   fw_op_output_arg_used_map,
-                                                                   node_index_to_its_order_in_topological_sort_map,
-                                                                   logger,
-                                                                   nodes_in_topological_order,
-                                                                   compromise_stashed_activation,
-                                                                   can_compromise_stashed_activation,
-                                                                   save_ratio)
+  ORT_ENFORCE(SelectRecomputeSubgraph(node,
+                                      probe_level,
+                                      candidate_output_args_map.at(&node),
+                                      fw_op_output_arg_used_map,
+                                      node_index_to_its_order_in_topological_sort_map,
+                                      logger,
+                                      nodes_in_topological_order,
+                                      compromise_stashed_activation,
+                                      can_compromise_stashed_activation,
+                                      save_ratio)
                   .IsOK());
   if (nodes_in_topological_order.size() == 0) {
     return nullptr;

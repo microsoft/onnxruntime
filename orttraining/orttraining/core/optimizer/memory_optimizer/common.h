@@ -6,21 +6,16 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
-#include <set>
 
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
-#include "core/graph/node_arg.h"
-#include "orttraining/core/graph/training_op_defs.h"
-#include "orttraining/core/graph/gradient_builder_base.h"
-#include "core/optimizer/graph_transformer_mgr.h"
-#include "core/framework/ort_value_name_idx_map.h"
-#include "core/framework/sequential_execution_plan.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 

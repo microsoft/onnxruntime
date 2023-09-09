@@ -5,7 +5,8 @@
 
 #include "core/common/inlined_containers.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
-#include "core/optimizer/utils.h"
+#include "core/framework/ort_value_name_idx_map.h"
+#include "core/framework/sequential_execution_plan.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
