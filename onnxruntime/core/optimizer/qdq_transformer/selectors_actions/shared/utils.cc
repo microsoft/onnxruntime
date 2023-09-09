@@ -47,6 +47,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
           {"GlobalAveragePool", {}},
+          {"GlobalMaxPool", {}},
           {"LeakyRelu", {}},
           {"ReduceMean", {}},
           {"ReduceMin", {}},
@@ -59,6 +60,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"HardSwish", {}},
           {"Sigmoid", {}},
           {"Slice", {}},
+          {"LogSoftmax", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
           {"Atan", {}},
@@ -68,9 +70,13 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Sign", {}},
           {"Tanh", {}},
           {"Exp", {}},
+          {"Log", {}},
           {"LRN", {}},
           {"Ceil", {}},
+          {"Floor", {}},
+          {"Round", {}},
           {"Abs", {}},
+          {"Neg", {}},
           {"DepthToSpace", {}},
           {"SpaceToDepth", {}}};
 }
@@ -79,10 +85,14 @@ static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
           {"Div", {}},
           {"Mul", {}},
           {"Pow", {}},
-          {"Sub", {}}};
+          {"Sub", {}},
+          {"PRelu", {}},
+          {"GridSample", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
-  return {{"Concat", {}}};
+  return {{"Concat", {}},
+          {"Max", {}},
+          {"Min", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};
@@ -109,6 +119,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetLogicalComparisonOpVersions
           {"GreaterOrEqual", {}},
           {"Less", {}},
           {"LessOrEqual", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetWhereOpVersionsMap() {
+  return {{"Where", {}}};
 }
 
 /* Selector rules registration related */
@@ -197,6 +210,13 @@ void RegisterLogicalComparisonSelectors(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterWhereSelectors(Selectors& qdq_selectors) {
+  /* register selectors for Where ops */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<WhereNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetWhereOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -210,6 +230,7 @@ void SelectorManager::CreateSelectors() {
   RegisterInstanceAndLayerNormalizationSelector(qdq_selectors_);
   RegisterBatchNormalizationSelector(qdq_selectors_);
   RegisterLogicalComparisonSelectors(qdq_selectors_);
+  RegisterWhereSelectors(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

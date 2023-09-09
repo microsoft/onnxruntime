@@ -554,6 +554,32 @@ def test_adamw_optimizer_execution():
         _ = ort_session.run(ort_output_names, ort_inputs)
 
 
+@pytest.mark.parametrize(
+    "block",
+    [SimpleTrainingBlockWithMSELoss, SimpleTrainingBlockWithCrossEntropyLoss, SimpleTrainingBlockWithBCEWithLogitsLoss],
+)
+@pytest.mark.parametrize("grad_clipping", [None, onnxblock.optim.ClipGradNorm(2.5)])
+def test_sgd_optimizer_composition(block, grad_clipping):
+    # Given
+    device = "cpu"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+
+    # When / Then no error occurs
+    simple_block = block()
+    for name, _ in pt_model.named_parameters():
+        simple_block.requires_grad(name)
+
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    optimizer = onnxblock.optim.SGD(clip_grad=grad_clipping)
+    with onnxblock.empty_base() as accessor:
+        _ = optimizer(simple_block.parameters())
+        optimizer_model = accessor.model
+        assert optimizer_model
+
+
 def test_retrieve_parameters():
     # Given
     device = "cuda"
@@ -819,6 +845,39 @@ def test_grad_clipping_execution():
         # assert all the gradients are close
         for ort_grad, pt_param in zip(ort_outs[0], pt_model.parameters()):
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
+
+
+def test_additional_output_names():
+    class DropoutModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.dropout = torch.nn.Dropout(p=0.5)
+
+        def forward(self, x):
+            return self.dropout(x)
+
+    model = DropoutModel()
+    onnx_model = _get_onnx_model(model, (torch.randn(1, 3, 224, 224),))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(onnx_model, loss=artifacts.LossType.CrossEntropyLoss, artifact_directory=temp_dir)
+
+        eval_model = onnx.load(os.path.join(temp_dir, "eval_model.onnx"))
+
+        # Make sure only loss is the output
+        assert len(eval_model.graph.output) == 1
+
+        # Re-generate artifacts with additional output names
+        artifacts.generate_artifacts(
+            onnx_model,
+            loss=artifacts.LossType.CrossEntropyLoss,
+            artifact_directory=temp_dir,
+            additional_output_names=["output-0"],
+        )
+
+        # Make sure the eval model has two outputs
+        eval_model = onnx.load(os.path.join(temp_dir, "eval_model.onnx"))
+        assert len(eval_model.graph.output) == 2
 
 
 def test_eval_model_has_no_training_mode_dropout():

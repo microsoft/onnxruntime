@@ -51,7 +51,7 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
   }
 
   // Type is either "tensor(uint8)" or  "tensor(int8)"
-  const auto self_zp_type = *self->InputDefs()[InputIndex::ZERO_POINT_ID]->Type();
+  const auto& self_zp_type = *self->InputDefs()[InputIndex::ZERO_POINT_ID]->Type();
   // child should be a Q, and have only one child, have the same type as self, and cannot be a graph output
   child_index = self->OutputEdgesBegin()->GetNode().Index();
   const Node* child = graph.GetNode(child_index);

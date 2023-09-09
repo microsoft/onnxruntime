@@ -54,8 +54,8 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
-  message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 8)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 8")
 endif()
 
 # Options
@@ -84,7 +84,8 @@ option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to prov
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
-option(onnxruntime_USE_FLASH_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
+cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "NOT WIN32; onnxruntime_USE_CUDA" OFF)
+option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -553,6 +554,8 @@ if (WIN32)
     list(APPEND ORT_WARNING_FLAGS "/wd4251")
     # issued by thrust nonstandard extension used: nameless struct/union
     list(APPEND ORT_WARNING_FLAGS "/wd4201")
+    # structure was padded due to __declspec(align())
+    list(APPEND ORT_WARNING_FLAGS "/wd4324")
     # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
     if (onnxruntime_USE_OPENVINO)
        list(APPEND ORT_WARNING_FLAGS "/wd4800")
@@ -666,13 +669,16 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_DISABLE_CONTRIB_OPS)
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
+    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
   endif()
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
     message( STATUS "Turn off flash attention since CUDA compiler version < 11.6")
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
+    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
   endif()
 else()
   set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -684,6 +690,11 @@ if (onnxruntime_USE_CUDA)
       message( STATUS "Enable flash attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
+    endif()
+    if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
+      message( STATUS "Enable memory efficient attention for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
+      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=1)
     endif()
 
 endif()
@@ -854,6 +865,7 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
+      target_compile_definitions(${target_name} PRIVATE -DDISABLE_CUSPARSE_DEPRECATED)
     endif()
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
@@ -1326,9 +1338,11 @@ set(ORT_BUILD_INFO "ORT Build Info: ")
 find_package(Git)
 if (Git_FOUND)
   execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%h
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       OUTPUT_VARIABLE ORT_GIT_COMMIT)
   string(STRIP "${ORT_GIT_COMMIT}" ORT_GIT_COMMIT)
   execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       OUTPUT_VARIABLE ORT_GIT_BRANCH)
   string(STRIP "${ORT_GIT_BRANCH}" ORT_GIT_BRANCH)
   string(APPEND ORT_BUILD_INFO "git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}, ")
