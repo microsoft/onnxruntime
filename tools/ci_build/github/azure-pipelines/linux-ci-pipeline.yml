@@ -175,7 +175,7 @@ stages:
               python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path \"\"; \
 
               echo Run symbolic shape infer test; \
-              python3 /build/Releaseonnxruntime_test_python_symbolic_shape_infer.py; \
+              python3 /build/Release/onnxruntime_test_python_symbolic_shape_infer.py; \
               popd
               "
         displayName: 'Run Release unit tests'
