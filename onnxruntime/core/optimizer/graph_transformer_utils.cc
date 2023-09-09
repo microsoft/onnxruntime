@@ -248,7 +248,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // We will also benefit by using a local allocator as we don't need to pass allocator as parameter for EP API refactor
       AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
-#endif
     } break;
 
     case TransformerLevel::Level2: {
