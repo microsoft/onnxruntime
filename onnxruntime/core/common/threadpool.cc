@@ -392,6 +392,7 @@ ThreadPool::ThreadPool(Env* /*env*/,
       },
       &thread_options_);
   */
+  // std::cout << "dop: " << dop_ << std::endl;
   impl_ = new octopus::ThreadPool(dop_);
 #else
   impl_ = new oneapi::tbb::global_control(oneapi::tbb::global_control::max_allowed_parallelism,
@@ -479,7 +480,9 @@ void ThreadPool::TryBatchParallelFor(ThreadPool* tp,
 
 void ThreadPool::ParallelFor(std::ptrdiff_t total, const FN& fn) {
   //octopus::AffinityPartitioner partitioner(2, std::max(total / (10 * dop_), unit_block_size));
-  octopus::BinaryPartitioner partitioner(1); // cache_line_size(usually 64 bytes)/sizeof(float)
+  //octopus::BinaryPartitioner partitioner(50000); // cache_line_size(usually 64 bytes)/sizeof(float)
+  //octopus::BinaryPartitioner partitioner(std::max(total/16, (std::ptrdiff_t)1)); // cache_line_size(usually 64 bytes)/sizeof(float)
+  octopus::BinaryPartitioner partitioner(std::max(total/(dop_*dop_), (std::ptrdiff_t)1)); // cache_line_size(usually 64 bytes)/sizeof(float)
   ((octopus::ThreadPool*)impl_)->ParallFor(const_cast<FN*>(&fn), total, &partitioner);
 }
 
