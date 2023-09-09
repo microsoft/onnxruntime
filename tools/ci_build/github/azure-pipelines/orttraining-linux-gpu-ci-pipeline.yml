@@ -48,7 +48,7 @@ jobs:
       "
     DoNugetPack: 'false'
     RunInjectedPipeline: 'true'
-    InjectedPipeline: 'orttraining-linux-gpu-ortmodule-test-ci-pipeline.yml'
+    InjectedPipeline: 'orttraining-linux-gpu-test-ci-pipeline.yml'
     DockerImageTag: 'onnxruntime_orttraining_ortmodule_tests_image'
     BuildConfig: $(buildConfig)
     ArtifactName: 'drop-linux'
