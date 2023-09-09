@@ -153,32 +153,13 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             onnxruntimecpubuild \
-            /bin/bash -c "
-              set -ex; \
-
-              echo Install Python Deps ; \
-              ln -s /opt/python/cp38-cp38/bin/python3 /usr/bin/python3; \
-              cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /build/requirements.txt; \
-              echo Test ORT with the latest ONNX release. ; \
-              sed -i \"s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/\" /build/requirements.txt ; \
-              python3 -m pip install -r /build/requirements.txt ; \
-              mkdir -p /build/requirements_torch_cpu/ ; \
-              cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt /build/requirements_torch_cpu/requirements.txt; \
-              python3 -m pip install -r /build/requirements_torch_cpu/requirements.txt; \
-
-              echo Install Release python package; \
-              rm -rf /build/Release/onnxruntime /build/Release/pybind11; \
-              python3 -m pip install /build/Release/dist/*.whl; \
-
-              echo Run Release unit tests; \
-              pushd /build/Release/; \
-              python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path \"\"; \
-
-              echo Run symbolic shape infer test; \
-              python3 /build/Release/onnxruntime_test_python_symbolic_shape_infer.py; \
-              popd
+              /bin/bash -c "
+                ln -s /opt/python/cp38-cp38/bin/python3 /usr/bin/python3 && \
+                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Release && \
+                echo Run symbolic shape infer test && \
+                python3 /build/Release/onnxruntime_test_python_symbolic_shape_infer.py
               "
-        displayName: 'Run Release unit tests'
+        displayName: 'Run Release tests and symbolic shape infer test'
 
       - bash: |
           mkdir -p $HOME/.onnx
@@ -192,29 +173,11 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             onnxruntimecpubuild \
-            /bin/bash -c "
-              set -ex; \
-
-              echo Install Python Deps ; \
-              ln -s /opt/python/cp38-cp38/bin/python3 /usr/bin/python3; \
-              cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /build/requirements.txt; \
-              echo Test ORT with the latest ONNX release. ; \
-              sed -i \"s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/\" /build/requirements.txt ; \
-              python3 -m pip install -r /build/requirements.txt ; \
-              mkdir -p /build/requirements_torch_cpu/ ; \
-              cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt /build/requirements_torch_cpu/requirements.txt; \
-              python3 -m pip install -r /build/requirements_torch_cpu/requirements.txt; \
-
-              echo Install Debug python package; \
-              rm -rf /build/Debug/onnxruntime /build/Debug/pybind11; \
-              python3 -m pip install /build/Debug/dist/*.whl; \
-
-              echo Run Debug unit tests; \
-              pushd /build/Debug/; \
-              python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --cmake_generator Ninja --config Debug --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path \"\"; \
-              popd
+              /bin/bash -c "
+                ln -s /opt/python/cp38-cp38/bin/python3 /usr/bin/python3 && \
+                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Debug
               "
-        displayName: 'Run Debug unit tests'
+        displayName: 'Run Debug tests'
 
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'
