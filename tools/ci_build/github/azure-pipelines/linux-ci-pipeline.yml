@@ -162,7 +162,7 @@ stages:
               echo Test ORT with the latest ONNX release. ; \
               sed -i \"s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/\" /build/requirements.txt ; \
               python3 -m pip install -r /build/requirements.txt ; \
-              mkdir /build/requirements_torch_cpu/ ; \
+              mkdir -p /build/requirements_torch_cpu/ ; \
               cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt /build/requirements_torch_cpu/requirements.txt; \
               python3 -m pip install -r /build/requirements_torch_cpu/requirements.txt; \
 
@@ -201,7 +201,7 @@ stages:
               echo Test ORT with the latest ONNX release. ; \
               sed -i \"s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/\" /build/requirements.txt ; \
               python3 -m pip install -r /build/requirements.txt ; \
-              mkdir /build/requirements_torch_cpu/ ; \
+              mkdir -p /build/requirements_torch_cpu/ ; \
               cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt /build/requirements_torch_cpu/requirements.txt; \
               python3 -m pip install -r /build/requirements_torch_cpu/requirements.txt; \
 
