@@ -477,13 +477,13 @@ def get_optimum_ort_pipeline(
                 directory,
                 provider=provider,
                 session_options=None,
-                use_io_binding=None,
+                use_io_binding=False,
             )
         else:
             pipeline = ORTStableDiffusionPipeline.from_pretrained(
                 directory,
                 provider=provider,
-                use_io_binding=True,
+                use_io_binding=False,
             )
     elif "xl" in model_name:
         pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
@@ -491,7 +491,7 @@ def get_optimum_ort_pipeline(
             export=True,
             provider=provider,
             session_options=None,
-            use_io_binding=None,
+            use_io_binding=False,
         )
         pipeline.save_pretrained(directory)
     else:
@@ -499,7 +499,7 @@ def get_optimum_ort_pipeline(
             model_name,
             export=True,
             provider=provider,
-            use_io_binding=True,
+            use_io_binding=False,
         )
         pipeline.save_pretrained(directory)
 

@@ -74,6 +74,7 @@ def optimize_sd_pipeline(
         "vae_encoder": "vae",
         "vae_decoder": "vae",
         "text_encoder": "clip",
+        "text_encoder_2": "clip",
         "safety_checker": "unet",
     }
 
@@ -88,6 +89,7 @@ def optimize_sd_pipeline(
         "vae_encoder": [],
         "vae_decoder": [],
         "text_encoder": [],
+        "text_encoder": [],
         "safety_checker": [],
     }
 
@@ -100,14 +102,12 @@ def optimize_sd_pipeline(
                 raise ValueError(
                     f"--force_fp32_ops shall be in the format of module:operator like unet:Attention, got {fp32_operator}"
                 )
-
+       
     for name, model_type in model_type_mapping.items():
         onnx_model_path = source_dir / name / "model.onnx"
-
         if not os.path.exists(onnx_model_path):
-            message = f"input onnx model does not exist: {onnx_model_path}."
-            if name not in ["safety_checker"]:
-                raise RuntimeError(message)
+            logger.info("input onnx model does not exist: %s", onnx_model_path)
+            # some model are optional so we do not raise error here.
             continue
 
         # Prepare output directory
@@ -222,6 +222,19 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
         shutil.copyfile(source_path, target_path)
         logger.info("%s => %s", source_path, target_path)
 
+    # Some directory are optional
+    onnx_model_dirs = ["text_encoder", "text_encoder_2", "unet", "vae_encoder", "vae_decoder", "safety_checker"]
+    for onnx_model_dir in onnx_model_dirs:
+        source_path = source_dir / onnx_model_dir / "config.json"
+        target_path = target_dir / onnx_model_dir / "config.json"
+        if source_path.exists():
+            if target_path.exists():
+                if not overwrite:
+                    raise RuntimeError(f"output path existed: {target_path}")
+                os.remove(target_path)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_path, target_path)
+            logger.info("%s => %s", source_path, target_path)
 
 def parse_arguments():
     """Parse arguments
@@ -299,6 +312,16 @@ def main():
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
     args = parse_arguments()
     logger.info("Arguments: %s", str(args))
+
+    if os.path.exists(args.output):
+        if args.overwrite:
+            shutil.rmtree(args.output, ignore_errors=True)
+        else:
+            raise RuntimeError("output directory existed:{args.output}. Add --overwrite to empty the directory.")
+
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     copy_extra_directory(Path(args.input), Path(args.output), args.overwrite)
     optimize_sd_pipeline(
         Path(args.input),
