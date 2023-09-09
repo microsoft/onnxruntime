@@ -43,12 +43,17 @@ from optimizer import optimize_by_onnxruntime, optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-
+def has_external_data(onnx_model_path):
+    original_model = onnx.load_model(str(onnx_model_path), load_external_data=False)
+    for initializer in original_model.graph.initializer:
+        if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
+            return True
+    return False
+        
 def optimize_sd_pipeline(
     source_dir: Path,
     target_dir: Path,
     overwrite: bool,
-    use_external_data_format: bool,
     float16: bool,
     force_fp32_ops: List[str],
     enable_runtime_optimization: bool,
@@ -60,7 +65,6 @@ def optimize_sd_pipeline(
         source_dir (Path): Root of input directory of stable diffusion onnx pipeline with float32 models.
         target_dir (Path): Root of output directory of stable diffusion onnx pipeline with optimized models.
         overwrite (bool): Overwrite files if exists.
-        use_external_data_format (bool): save onnx model to two files: one for onnx graph, another for weights
         float16 (bool): use half precision
         force_fp32_ops(List[str]): operators that are forced to run in float32.
         enable_runtime_optimization(bool): run graph optimization using Onnx Runtime.
@@ -121,6 +125,8 @@ def optimize_sd_pipeline(
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        use_external_data_format = has_external_data(onnx_model_path)
+        
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"Optimize {onnx_model_path}...")
@@ -292,16 +298,6 @@ def parse_arguments():
     )
     parser.set_defaults(overwrite=False)
 
-    parser.add_argument(
-        "-e",
-        "--use_external_data_format",
-        required=False,
-        action="store_true",
-        help="Onnx model larger than 2GB need to use external data format. "
-        "Save onnx model to two files: one for onnx graph, another for large weights.",
-    )
-    parser.set_defaults(use_external_data_format=False)
-
     FusionOptions.add_arguments(parser)
 
     args = parser.parse_args()
@@ -327,7 +323,6 @@ def main():
         Path(args.input),
         Path(args.output),
         args.overwrite,
-        args.use_external_data_format,
         args.float16,
         args.force_fp32_ops,
         args.inspect,
