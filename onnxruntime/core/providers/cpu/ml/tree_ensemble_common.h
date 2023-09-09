@@ -7,7 +7,6 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
-#include <stack>
 
 namespace onnxruntime {
 namespace ml {
@@ -87,7 +86,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   template <typename AGG>
   void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
 
-private:
+ private:
   size_t AddNodes(const size_t i, const InlinedVector<NODE_MODE>& cmodes, const InlinedVector<int64_t>& truenode_ids, const InlinedVector<int64_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids, const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values, const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping, int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids);
 };
 
@@ -667,14 +666,14 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       val = x_data[root->feature_id];                          \
       root = (val CMP root->value_or_unique_weight ||          \
               (root->is_missing_track_true() && _isnan_(val))) \
-                 ? root->truenode_or_weight.ptr          \
+                 ? root->truenode_or_weight.ptr                \
                  : root + 1;                                   \
     }                                                          \
   } else {                                                     \
     while (root->is_not_leaf()) {                              \
       val = x_data[root->feature_id];                          \
       root = val CMP root->value_or_unique_weight              \
-                 ? root->truenode_or_weight.ptr          \
+                 ? root->truenode_or_weight.ptr                \
                  : root + 1;                                   \
     }                                                          \
   }
