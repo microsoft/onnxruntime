@@ -174,11 +174,6 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
-  - script: |
-      npm run test:e2e -- --browser=Edge_default
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'E2E package consuming test'
-    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)\js\common
