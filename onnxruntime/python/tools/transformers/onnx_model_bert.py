@@ -123,6 +123,16 @@ class BertOnnxModel(OnnxModel):
     def fuse_rotary_embeddings(self):
         fusion = FusionRotaryEmbeddings(self)
         fusion.apply()
+        # Remove non-MS domain functions
+        rot_emb_nodes = list(filter(lambda node: node.op_type == "RotaryEmbedding" and node.domain != "com.microsoft", self.model.graph.node))
+        non_ms_domains_to_keep = set(map(lambda node: node.domain, rot_emb_nodes))
+        i = 0
+        while i < len(self.model.functions):
+            fn = self.model.functions[i]
+            if "RotaryEmbedding" in fn.name and fn.domain not in non_ms_domains_to_keep:
+                self.model.functions.remove(fn)
+            else:
+                i += 1
 
     # Only relevant in models with Q-DQ nodes
     def fuse_qordered_mamtul(self):

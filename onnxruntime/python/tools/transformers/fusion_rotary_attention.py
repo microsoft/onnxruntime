@@ -65,11 +65,9 @@ class FusionRotaryAttention(FusionAttention):
             past_v,
         ]
 
-        mha_outputs = [
-            output,
-            present_k,
-            present_v,
-        ]
+        mha_outputs = [output]
+        if present_k and present_v:
+            mha_outputs.extend([present_k, present_v])
 
         mha_node = helper.make_node(
             "MultiHeadAttention",
@@ -242,7 +240,21 @@ class FusionRotaryAttention(FusionAttention):
         past_v, present_v = "", ""
         if v_nodes is not None:
             reshape_v_2, _, concat_v, reshape_v_1, matmul_v = v_nodes
-            past_v = concat_v.input[0]
+            concat_v_path_1 = self.model.match_parent_path(
+                concat_v,
+                ["Transpose", "Gather"],
+                [0, 0],
+            )
+            concat_v_path_2 = self.model.match_parent_path(
+                concat_v,
+                ["Gather"],
+                [0],
+            )
+            if concat_v_path_1 is not None:
+                past_v = concat_v_path_1[-1].output[0]
+            elif concat_v_path_2 is not None:
+                past_v = concat_v_path_2[-1].output[0]
+            # past_v = concat_v.input[0]
             # present_v = reshape_v_1.output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match v path")
@@ -281,7 +293,21 @@ class FusionRotaryAttention(FusionAttention):
         past_k, present_k = "", ""
         if k_nodes is not None:
             reshape_k_2, _, concat_k, rotary_k, matmul_k = k_nodes
-            past_k = concat_k.input[0]
+            concat_k_path_1 = self.model.match_parent_path(
+                concat_k,
+                ["Transpose", "Gather"],
+                [0, 0],
+            )
+            concat_k_path_2 = self.model.match_parent_path(
+                concat_k,
+                ["Gather"],
+                [0],
+            )
+            if concat_k_path_1 is not None:
+                past_k = concat_k_path_1[-1].output[0]
+            elif concat_k_path_2 is not None:
+                past_k = concat_k_path_2[-1].output[0]
+            # past_k = concat_k.input[0]
             # present_k = rotary_k.output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match k nodes")
@@ -359,8 +385,6 @@ class FusionRotaryEmbeddings(Fusion):
                 extra_constants.append(fn_node)
                 output_index = list(function.output).index(fn_node.output[0])
                 extra_outputs.append(rot_emb_node.output[output_index])
-        # logger.info(f"Extra constants: {extra_constants}")
-        # logger.info(f"Extra outputs: {extra_outputs}")
 
         # Set extra Constant node outputs as initializers
         extra_initializers = []
@@ -369,14 +393,11 @@ class FusionRotaryEmbeddings(Fusion):
             constant_tensorproto.name = self.model.create_node_name("Constant")
             self.model.add_initializer(constant_tensorproto)
             extra_initializers.append(constant_tensorproto.name)
-        # logger.info(f"Extra initializers: {extra_initializers}")
 
         # Update references of Constant node outputs to initializer references
         for extra_output, extra_initializer in zip(extra_outputs, extra_initializers):
-            # nodes_to_update = self.model.input_name_to_nodes[extra_output]
             nodes_to_update = list(filter(lambda entry: extra_output in entry.input, self.model.model.graph.node))
             for node_to_update in nodes_to_update:
-                # logger.info(f"Replacing {extra_output} with {extra_initializer}")
                 OnnxModel.replace_node_input(node_to_update, extra_output, extra_initializer)
 
         return extra_outputs
@@ -400,7 +421,6 @@ class FusionRotaryEmbeddings(Fusion):
             node.input[1],           # position_ids
             node.input[2],           # cos_cache
             node.input[3],           # sin_cache
-            "",                      # past_key
         ]
         rotary_emb_outputs = node.output
         if len(rotary_emb_outputs) > 1:
@@ -409,8 +429,6 @@ class FusionRotaryEmbeddings(Fusion):
             assert len(func) == 1
             extra_outputs = self.reassign_extra_outputs(node, func[0])
             rotary_emb_outputs = list(filter(lambda output_name: output_name not in extra_outputs, rotary_emb_outputs))
-            # logger.info(f"Number of new rotary embedding outputs: {len(rotary_emb_outputs)}")
-            # logger.info(f"New output name: {rotary_emb_outputs[0]}")
             assert len(rotary_emb_outputs) == 1
 
         rotary_emb_node = helper.make_node(
@@ -425,16 +443,14 @@ class FusionRotaryEmbeddings(Fusion):
 
         return rotary_emb_node
 
+    # Node is "RotaryEmbedding nn.Module" exported as a function
+    # (e.g. export_modules_as_functions={RotaryEmbedding} in torch.onnx.export)
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        logger.info(f"Is {node.name} a RotaryEmbedding function? {self.base_name in node.op_type}")
         if self.base_name not in node.op_type:
             return
 
-        # Check if node is "RotaryEmbedding nn.Module" exported as a function
-        # (e.g. export_modules_as_functions={RotaryEmbedding} in torch.onnx.export)
-
         # Verify that function has the correct inputs
-        if len(node.input) not in {4, 5} or node.input[1] not in {"pos", "pos_ids", "position_ids"}:
+        if len(node.input) not in {4, 5} or node.input[1] not in {"pos", "pos_id", "position_id", "pos_ids", "position_ids"}:
             logger.debug("fuse_rotary_embeddings: failed to verify inputs for RotaryEmbedding function")
             return
 
@@ -447,7 +463,13 @@ class FusionRotaryEmbeddings(Fusion):
 
         self.node_name_to_graph_name[rotary_emb_node.name] = self.this_graph_name
         self.nodes_to_add.append(rotary_emb_node)
-        self.nodes_to_remove.append(node)
 
-        # Use prune graph to remove RotaryEmbedding functions
+        # Remove RotaryEmbedding function
+        self.nodes_to_remove.append(node)
         self.prune_graph = True
+
+        # Remove RotaryEmbedding function's shape inference stored in value_info
+        # The new shape will be calculated during symbolic shape inference
+        old_shape_infer = list(filter(lambda node: node.name == rotary_emb_node.output[0], self.model.model.graph.value_info))
+        assert len(old_shape_infer) == 1
+        self.model.model.graph.value_info.remove(old_shape_infer[0])

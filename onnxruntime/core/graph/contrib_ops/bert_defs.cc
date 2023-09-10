@@ -996,10 +996,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* RotaryEmbedding_ver1_doc = R"DOC(
 RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices 
-that are multiplied to query and key before the inner product of query and key is taken. Formula is y = x * cos + rotary_half(x) * sin
+that are multiplied to query and key before the inner product of query and key is taken.
 )DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    RotaryEmbedding, 1
+    RotaryEmbedding, 1,
     OpSchema()
         .SetDoc(RotaryEmbedding_ver1_doc)
         .Attr("scale",
@@ -1008,7 +1008,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Input(0,
                "input",
-               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+               "3D tensor with shape (batch_size, sequence_length, hidden_size), 4D tensor of shape (batch_size, sequence_length, num_heads, head_size), or 4D tensor of shape (batch_size, num_heads, sequence_length, head_size)",
                "T")
         .Input(1,
                "position_ids",
@@ -1016,15 +1016,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(2,
                "cos_cache",
-               "2D tensor with shape (max_sequence_length, head_size). ",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or shape (sequence_length, head_size). ",
                "T")
         .Input(3,
                "sin_cache",
-               "2D tensor with shape (max_sequence_length, head_size). ",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or shape (sequence_length, head_size). ",
                "T")
         .Output(0,
                 "output",
-                "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+                "3D tensor with shape (batch_size, sequence_length, hidden_size), 4D tensor of shape (batch_size, sequence_length, num_heads, head_size), or 4D tensor of shape (batch_size, num_heads, sequence_length, head_size)",
                 "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")

@@ -466,6 +466,7 @@ class SymbolicShapeInference:
             "BiasAdd",
             "NhwcConv",
             "QuickGelu",
+            "RotaryEmbedding",
         ]
 
         if not skip_infer:
@@ -2386,7 +2387,14 @@ class SymbolicShapeInference:
         self._propagate_shape_and_type(node)
 
     def _infer_RotaryEmbedding(self, node):  # noqa: N802
-        self._propagate_shape_and_type(node)
+        if len(node.output) == 1:
+            self._propagate_shape_and_type(node)
+        else:
+            # Extraneous constant nodes outputted by RotaryEmbedding
+            assert len(node.output) == 3
+            self._propagate_shape_and_type(node, input_index=1, output_index=0)
+            self._propagate_shape_and_type(node, input_index=1, output_index=1)
+            self._propagate_shape_and_type(node, input_index=0, output_index=2)
 
     def _infer_PythonOp(self, node):  # noqa: N802
         output_tensor_types = get_attribute(node, "output_tensor_types")
@@ -2593,11 +2601,17 @@ class SymbolicShapeInference:
                         self._check_merged_dims(in_dims, allow_broadcast=True)
 
             for i_o in range(len(node.output)):
-                # Special case: We do not care about the training related
-                # outputs of SkipLayerNormalization
+                # Special cases:
+                # 1) We do not care about the training related outputs of SkipLayerNormalization
+                # 2) We do not care about the extraneous constant outputs in RotaryEmbedding because
+                # the RotaryEmbedding op created during export can be replaced by the RotaryEmbedding
+                # contrib op
                 if (
                     node.op_type == "SkipLayerNormalization" or node.op_type == "SkipSimplifiedLayerNormalization"
                 ) and i_o in [1, 2]:
+                    continue
+                if node.op_type == "RotaryEmbedding" and len(node.output) > 1:
+                    # First two outputs are constants, third output is real output
                     continue
 
                 vi = self.known_vi_[node.output[i_o]]
