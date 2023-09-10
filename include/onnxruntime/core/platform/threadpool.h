@@ -222,6 +222,7 @@ class ThreadPool {
  private:
   void Schedule(std::function<void()> fn);
   void ParallelFor(std::ptrdiff_t total, const FN& fn);
+  void SimpleParallelFor(std::ptrdiff_t total, const FN& fn);
 //#ifdef USE_TBB
 //  std::unique_ptr<oneapi::tbb::global_control> tbb_global_;
 //#endif

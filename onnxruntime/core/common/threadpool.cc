@@ -445,7 +445,7 @@ void ThreadPool::TrySimpleParallelFor(ThreadPool* tp,
         simple_fn(i);
       }
     };
-    tp->ParallelFor(total, fn);
+    tp->SimpleParallelFor(total, fn);
   } else {
     for (std::ptrdiff_t i = 0; i < total; ++i) {
       simple_fn(i);
@@ -459,7 +459,10 @@ void ThreadPool::TryBatchParallelFor(ThreadPool* tp,
                                      std::ptrdiff_t total,
                                      const SimpleFN& simple_fn,
                                      std::ptrdiff_t num_batches) {
-  if (tp && total && num_batches) {
+  if (tp && total) {
+    if (num_batches <= 0) {
+   	num_batches = std::min<std::ptrdiff_t>(total, DegreeOfParallelism(tp)<<1);
+    }
     auto batch_size = std::max(static_cast<std::ptrdiff_t>(std::ceil(static_cast<double>(total) / num_batches)), unit_block_size);
     SimpleFN simple_fn_wrapper = [batch_size, total, simple_fn](std::ptrdiff_t ith_batch) {
       auto from = ith_batch * batch_size;
@@ -479,11 +482,12 @@ void ThreadPool::TryBatchParallelFor(ThreadPool* tp,
 #ifdef USE_OCT
 
 void ThreadPool::ParallelFor(std::ptrdiff_t total, const FN& fn) {
-  //octopus::AffinityPartitioner partitioner(2, std::max(total / (10 * dop_), unit_block_size));
-  //octopus::BinaryPartitioner partitioner(50000); // cache_line_size(usually 64 bytes)/sizeof(float)
-  //octopus::BinaryPartitioner partitioner(std::max(total/16, (std::ptrdiff_t)1)); // cache_line_size(usually 64 bytes)/sizeof(float)
-  octopus::BinaryPartitioner partitioner(std::max(total/(dop_*dop_), (std::ptrdiff_t)1)); // cache_line_size(usually 64 bytes)/sizeof(float)
-  //octopus::BinaryPartitioner partitioner(100000); // cache_line_size(usually 64 bytes)/sizeof(float)
+  octopus::BinaryPartitioner partitioner(std::max(total/(dop_<<2), (std::ptrdiff_t)1)); // cache_line_size(usually 64 bytes)/sizeof(float)
+  ((octopus::ThreadPool*)impl_)->ParallFor(const_cast<FN*>(&fn), total, &partitioner);
+}
+
+void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const FN& fn) {
+  octopus::BinaryPartitioner partitioner(1); // cache_line_size(usually 64 bytes)/sizeof(float)
   ((octopus::ThreadPool*)impl_)->ParallFor(const_cast<FN*>(&fn), total, &partitioner);
 }
 
