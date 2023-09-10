@@ -157,7 +157,7 @@ def optimize_sd_pipeline(
                 logger.info("Saving a temporary model to run OnnxRuntime graph optimizations...")
                 tmp_model_path = Path(tmp_dir) / "model.onnx"
                 m.save_model_to_file(str(tmp_model_path), use_external_data_format=use_external_data_format)
-                ort_optimized_model_path = tmp_model_path
+                ort_optimized_model_path = Path(tmp_dir) / "optimized.onnx"
                 optimize_by_onnxruntime(
                     str(tmp_model_path),
                     use_gpu=True,
