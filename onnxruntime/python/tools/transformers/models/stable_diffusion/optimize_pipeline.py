@@ -127,7 +127,6 @@ def optimize_sd_pipeline(
         use_external_data = has_external_data(onnx_model_path)
 
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
-        # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"Optimize {onnx_model_path}...")
 
         args.model_type = model_type
@@ -158,10 +157,11 @@ def optimize_sd_pipeline(
                 op_block_list=op_block_list + force_fp32_operators[name],
             )
 
-        if enable_runtime_optimization and (float16 or (name not in ["unet"])):
+        if enable_runtime_optimization:
+            if use_external_data and version.parse(onnxruntime.__version__) < version.parse("1.16.0"):
+                raise RuntimeError("Need onnxruntime version 1.16 or later to save model with external data")
+
             # Use this step to see the final graph that executed by Onnx Runtime.
-            # Note that ORT cannot save model larger than 2GB so we exclude unet float32 model.
-            # This step is optional since it has no impact on performance except model loading time.
             with tempfile.TemporaryDirectory() as tmp_dir:
                 # Save to a temporary file so that we can load it with Onnx Runtime.
                 logger.info("Saving a temporary model to run OnnxRuntime graph optimizations...")
