@@ -28,6 +28,14 @@ namespace Dml
 											  bool& modified,
 											  int graph_level,
 											  const onnxruntime::logging::Logger& logger) const final;
+
+        onnxruntime::common::Status DmlGraphFusionTransformer::ApplyImplHelper(
+            onnxruntime::Graph& graph,
+            bool& modified,
+            int graph_level,
+            const onnxruntime::logging::Logger& logger,
+            const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputDefs) const;
+
 	private:
 		const ExecutionProviderImpl* m_providerImpl = nullptr;
 		const std::unordered_map<std::string, const OrtValue*>& m_initializerOverrides;

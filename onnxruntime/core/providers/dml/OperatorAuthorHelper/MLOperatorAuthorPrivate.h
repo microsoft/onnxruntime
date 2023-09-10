@@ -3,12 +3,18 @@
 
 #pragma once
 
+#include "core/providers/dml/DmlExecutionProvider/src/DmlEdgeShapes.h"
+
 interface IDMLOperation;
 interface IDMLOperator;
 struct DML_OPERATOR_DESC;
 struct DML_INPUT_GRAPH_EDGE_DESC;
 struct DML_OUTPUT_GRAPH_EDGE_DESC;
 struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
+
+using MLOperatorGraphSupportQueryFunction = bool (CALLBACK*)(
+    const Windows::AI::MachineLearning::Adapter::EdgeShapes& inputShapes,
+    const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes);
 
 // Either nodesAsOpDesc or nodesAsIDMLOperator is present.
 //  1) Operator kernels which implement operators using only a single DML operator will pass a DML_OPERATOR_DESC.
@@ -170,6 +176,7 @@ IMLOperatorRegistryPrivate : public IUnknown
         IMLOperatorKernelFactory* operatorKernelFactory,
         _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
         _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
+        _In_opt_ MLOperatorGraphSupportQueryFunction graphSupportQuery,
         bool isInternalOperator,
         bool canAliasFirstInput,
         bool supportsGraph,

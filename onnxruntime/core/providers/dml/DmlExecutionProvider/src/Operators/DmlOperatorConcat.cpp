@@ -78,6 +78,25 @@ public:
     }
 };
 
+bool CALLBACK QueryGraphSupportConcat(
+    const Windows::AI::MachineLearning::Adapter::EdgeShapes& inputShapes,
+    const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes)
+{
+    // Concat is always supported in graphs as long as at least one input is not empty. Empty inputs are ignored and
+    // the rest are concatenated together.
+    for (uint32_t i = 0; i < inputShapes.EdgeCount(); ++i)
+    {
+        const std::vector<uint32_t>& shape = inputShapes.GetShape(i);
+
+        if (std::find(shape.begin(), shape.end(), 0u) == shape.end())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 DML_OP_DEFINE_CREATION_FUNCTION(Concat, DmlOperatorConcat);
 
 } // namespace Dml

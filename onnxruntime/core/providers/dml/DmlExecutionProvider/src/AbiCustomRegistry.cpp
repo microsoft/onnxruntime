@@ -330,7 +330,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     IMLOperatorKernelFactory* operatorKernelFactory,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept
 {
-    return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, nullptr, false, false, false);
+    return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, nullptr, nullptr, false, false, false);
 }
 
 HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
@@ -338,6 +338,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     IMLOperatorKernelFactory* operatorKernelFactory,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
     _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
+    _In_opt_ MLOperatorGraphSupportQueryFunction graphSupportQuery,
     bool isInternalOperator,
     bool canAliasFirstInput,
     bool supportsGraph,
@@ -542,6 +543,22 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                 BOOL bSupported = FALSE;
                 ORT_THROW_IF_FAILED(supportQueryCapture->QuerySupport(supportContext.Get(), &bSupported));
                 return !!bSupported;
+            };
+        }
+
+        if (graphSupportQuery)
+        {
+            regInfo->graphSupportQuery = graphSupportQuery;
+        }
+        else
+        {
+            // By default, we don't support an operator in the graph if any of its inputs or outputs are empty
+            regInfo->graphSupportQuery = [regInfo](
+                const Windows::AI::MachineLearning::Adapter::EdgeShapes& inputShapes,
+                const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes)
+            {
+                return !ContainsEmptyDimensions(inputShapes, regInfo->requiredConstantCpuInputs) &&
+                       !ContainsEmptyDimensions(outputShapes, {});
             };
         }
 

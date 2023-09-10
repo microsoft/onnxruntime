@@ -9,6 +9,7 @@
 #include <optional>
 
 #include "core/framework/op_kernel.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlEdgeShapes.h"
 
 struct AbstractOperatorDesc;
 interface IMLOperatorTensor;
@@ -103,11 +104,16 @@ namespace Windows::AI::MachineLearning::Adapter
 
     using KernelSupportQuery = std::function<bool(const onnxruntime::Node& node)>;
 
+    using GraphSupportQuery = std::function<bool(
+        const Windows::AI::MachineLearning::Adapter::EdgeShapes& inputShapes,
+        const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes)>;
+
     struct InternalRegistrationInfo
     {
         std::vector<uint32_t> requiredConstantCpuInputs;
         std::optional<GraphNodeFactoryRegistration> graphNodeFactoryRegistration;
         KernelSupportQuery supportQuery;
+        GraphSupportQuery graphSupportQuery;
     };
 
     using InternalRegistrationInfoMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<InternalRegistrationInfo>>;
