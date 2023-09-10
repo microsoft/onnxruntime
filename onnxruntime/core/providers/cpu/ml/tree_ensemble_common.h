@@ -87,7 +87,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
 
  private:
-  size_t AddNodes(const size_t i, const InlinedVector<NODE_MODE>& cmodes, const InlinedVector<int64_t>& truenode_ids, const InlinedVector<int64_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids, const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values, const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping, int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids);
+  size_t AddNodes(const size_t i, const InlinedVector<NODE_MODE>& cmodes, const InlinedVector<size_t>& truenode_ids, const InlinedVector<size_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids, const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values, const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping, int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids);
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -215,10 +215,10 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   nodes_.clear();
   nodes_.reserve(limit);
   roots_.clear();
-  std::unordered_map<TreeNodeElementId, uint32_t, TreeNodeElementId::hash_fn> node_tree_ids_map;
+  std::unordered_map<TreeNodeElementId, size_t, TreeNodeElementId::hash_fn> node_tree_ids_map;
   node_tree_ids_map.reserve(limit);
 
-  InlinedVector<int64_t> truenode_ids, falsenode_ids;
+  InlinedVector<size_t> truenode_ids, falsenode_ids;
   truenode_ids.reserve(limit);
   falsenode_ids.reserve(limit);
   max_feature_id_ = 0;
@@ -227,7 +227,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   for (i = 0; i < limit; ++i) {
     TreeNodeElementId node_tree_id{static_cast<int>(nodes_treeids[i]),
                                    static_cast<int>(nodes_nodeids[i])};
-    auto p = node_tree_ids_map.insert(std::pair<TreeNodeElementId, uint32_t>(node_tree_id, i));
+    auto p = node_tree_ids_map.insert(std::pair<TreeNodeElementId, size_t>(node_tree_id, i));
     if (!p.second) {
       ORT_THROW("Node ", node_tree_id.node_id, " in tree ", node_tree_id.tree_id, " is already there.");
     }
@@ -342,7 +342,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
-size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(const size_t i, const InlinedVector<NODE_MODE>& cmodes, const InlinedVector<int64_t>& truenode_ids, const InlinedVector<int64_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids, const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values, const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping, int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids) {
+size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(const size_t i, const InlinedVector<NODE_MODE>& cmodes, const InlinedVector<size_t>& truenode_ids, const InlinedVector<size_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids, const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values, const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping, int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids) {
   // Validate this index maps to the same tree_id as the one we should be building.
   if (node_tree_ids[i].tree_id != tree_id) {
     ORT_THROW("Tree id mismatch. Expected ", tree_id, " but got ", node_tree_ids[i].tree_id, " at position ", i);
