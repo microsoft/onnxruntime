@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
@@ -41,7 +41,7 @@ const createInstanceNormProgramInfo =
       const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
       if (scaleSize !== normSize || (bias && biasSize !== normSize)) {
         throw new Error(`Size of X.shape()[axis:] == ${normSize}.
-             Size of scale and bias (if provided) must match this. 
+             Size of scale and bias (if provided) must match this.
              Got scale size of ${scaleSize} and bias size of ${biasSize}`);
       }
 
@@ -118,7 +118,7 @@ const createInstanceNormNHWCProgramInfo =
   ${shaderHelper.mainStart()}
     let currentImageNumber = global_idx / C;
     let currentChannelNumber = global_idx % C;
-    
+
     // offset is channel num * N
     let offset = currentImageNumber * imageSize;
     if (offset >= ${outputSize}) { return; }
