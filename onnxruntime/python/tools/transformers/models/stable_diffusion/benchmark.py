@@ -10,6 +10,7 @@ import statistics
 import sys
 import time
 
+import __init__  # noqa: F401 as walk-around to run this script directly
 import coloredlogs
 
 # import torch before onnxruntime so that onnxruntime uses the cuDNN in the torch package.
@@ -524,7 +525,7 @@ def run_optimum_ort_pipeline(
 ):
     from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
 
-    assert isinstance(pipe, ORTStableDiffusionPipeline) or isinstance(pipe, ORTStableDiffusionXLPipeline)
+    assert isinstance(pipe, (ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline))
 
     prompts = example_prompts()
 
@@ -1229,6 +1230,10 @@ def main():
             args.enable_cuda_graph,
         )
     elif args.engine == "optimum" and provider == "CUDAExecutionProvider":
+        # TODO(tianleiwu): enable flash attention for causal, which is used in clip model
+        if "xl" in args.version:
+            os.environ["ORT_ENABLE_FUSED_CAUSAL_ATTENTION"] = "1"
+
         result = run_optimum_ort(
             sd_model,
             args.pipeline,

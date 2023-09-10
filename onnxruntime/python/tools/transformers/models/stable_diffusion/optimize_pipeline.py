@@ -40,13 +40,15 @@ import onnxruntime
 
 logger = logging.getLogger(__name__)
 
+
 def has_external_data(onnx_model_path):
     original_model = onnx.load_model(str(onnx_model_path), load_external_data=False)
     for initializer in original_model.graph.initializer:
         if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
             return True
     return False
-        
+
+
 def optimize_sd_pipeline(
     source_dir: Path,
     target_dir: Path,
@@ -90,7 +92,7 @@ def optimize_sd_pipeline(
         "vae_encoder": [],
         "vae_decoder": [],
         "text_encoder": [],
-        "text_encoder": [],
+        "text_encoder_2": [],
         "safety_checker": [],
     }
 
@@ -103,7 +105,7 @@ def optimize_sd_pipeline(
                 raise ValueError(
                     f"--force_fp32_ops shall be in the format of module:operator like unet:Attention, got {fp32_operator}"
                 )
-       
+
     for name, model_type in model_type_mapping.items():
         onnx_model_path = source_dir / name / "model.onnx"
         if not os.path.exists(onnx_model_path):
@@ -122,8 +124,8 @@ def optimize_sd_pipeline(
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        use_external_data_format = has_external_data(onnx_model_path)
-        
+        use_external_data = has_external_data(onnx_model_path)
+
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"Optimize {onnx_model_path}...")
@@ -164,17 +166,20 @@ def optimize_sd_pipeline(
                 # Save to a temporary file so that we can load it with Onnx Runtime.
                 logger.info("Saving a temporary model to run OnnxRuntime graph optimizations...")
                 tmp_model_path = Path(tmp_dir) / "model.onnx"
-                m.save_model_to_file(str(tmp_model_path))
-                ort_optimized_model_path = tmp_model_path
+                m.save_model_to_file(str(tmp_model_path), use_external_data_format=use_external_data)
+                ort_optimized_model_path = Path(tmp_dir) / "opt.onnx"
                 optimize_by_onnxruntime(
-                    str(tmp_model_path), use_gpu=True, optimized_model_path=str(ort_optimized_model_path)
+                    str(tmp_model_path),
+                    use_gpu=True,
+                    optimized_model_path=str(ort_optimized_model_path),
+                    save_as_external_data=use_external_data,
                 )
                 model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
                 m = model_type_class_mapping[model_type](model)
 
         m.get_operator_statistics()
         m.get_fused_operator_statistics()
-        m.save_model_to_file(str(optimized_model_path), use_external_data_format=use_external_data_format)
+        m.save_model_to_file(str(optimized_model_path), use_external_data_format=use_external_data)
         logger.info("%s is optimized", name)
         logger.info("*" * 20)
 
@@ -238,6 +243,7 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
             target_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_path, target_path)
             logger.info("%s => %s", source_path, target_path)
+
 
 def parse_arguments():
     """Parse arguments
