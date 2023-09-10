@@ -21,10 +21,27 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   // - OrtRun()
   // - OrtRunWithBinding()
   // - OrtBindInput()
-  const jsepWrapAsync = (func) => {
+  //
+  // Note: about parameters "getFunc" and "setFunc":
+  // - Emscripten generates a lazy loading wrapper for each exported function. For example, it generates a wrapper
+  //   for OrtRun() like this (minified):
+  //   ```
+  //   d._OrtRun = (a, b, c, e, f, h, l, q) => (d._OrtRun = J.ka)(a, b, c, e, f, h, l, q);
+  //   ```
+  //
+  //   The wrapper will assign d._OrtRun to the real function (J.ka) when the first time it is called. We need to
+  //   recreate this async wrapper again after the real function is assigned.
+  //
+  const jsepWrapAsync = (func, getFunc, setFunc) => {
     return (...args) => {
       const previousAsync = Asyncify.currData;
       const ret = func(...args);
+      if (getFunc) {
+        const newFunc = getFunc();
+        if (func !== newFunc) {
+          setFunc(newFunc);
+        }
+      }
       if (Asyncify.currData != previousAsync) {
         return Asyncify.whenDone();
       }
@@ -72,9 +89,15 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   };
 
   // replace the original functions with asyncified versions
-  Module['_OrtRun'] = runAsync(jsepWrapAsync(Module['_OrtRun']));
-  Module['_OrtRunWithBinding'] = runAsync(jsepWrapAsync(Module['_OrtRunWithBinding']));
-  Module['_OrtBindInput'] = jsepWrapAsync(Module['_OrtBindInput']);
+  Module['_OrtRun'] = runAsync(jsepWrapAsync(Module['_OrtRun'], () => Module['_OrtRun'], () => {
+    Module['_OrtRun'] = runAsync(jsepWrapAsync(Module['_OrtRun']));
+  }));
+  Module['_OrtRunWithBinding'] = runAsync(jsepWrapAsync(Module['_OrtRunWithBinding'], () => Module['_OrtRunWithBinding'], () => {
+    Module['_OrtRunWithBinding'] = runAsync(jsepWrapAsync(Module['_OrtRunWithBinding']));
+  }));
+  Module['_OrtBindInput'] = jsepWrapAsync(Module['_OrtBindInput'], () => Module['_OrtBindInput'], () => {
+    Module['_OrtBindInput'] = jsepWrapAsync(Module['_OrtBindInput']);
+  });
 
   // expose webgpu backend functions
   Module['jsepRegisterBuffer'] = (sessionId, index, buffer, size) => {

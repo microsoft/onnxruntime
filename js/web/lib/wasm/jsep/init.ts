@@ -3,7 +3,7 @@
 
 import {Env} from 'onnxruntime-common';
 
-import {JSEP, OrtWasmModule} from '../binding/ort-wasm';
+import {OrtWasmModule} from '../binding/ort-wasm';
 import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
@@ -183,13 +183,13 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
         (kernel: number) => backend.releaseKernel(kernel),
 
         // jsepRun
-        (kernel: number, contextDataOffset: number, sessionState: JSEP.SessionState) => {
+        (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => {
           LOG_DEBUG(
               'verbose',
-              () => `[WebGPU] jsepRun: sessionHandle=${sessionState.sessionHandle}, kernel=${
-                  kernel}, contextDataOffset=${contextDataOffset}`);
+              () => `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
+                  contextDataOffset}`);
           const context = new ComputeContextImpl(module, backend, contextDataOffset);
-          return backend.computeKernel(kernel, context, sessionState.errors);
+          return backend.computeKernel(kernel, context, errors);
         });
   }
 };

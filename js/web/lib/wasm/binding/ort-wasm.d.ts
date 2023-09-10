@@ -11,11 +11,8 @@ export declare namespace JSEP {
   type DownloadFunction = (gpuDataId: number, dataOffset: number, size: number) => Promise<void>;
   type CreateKernelFunction = (name: string, kernel: number, attribute: unknown) => void;
   type ReleaseKernelFunction = (kernel: number) => void;
-  type RunFunction = (kernel: number, contextDataOffset: number, sessionState: SessionState) => number;
-  export interface SessionState {
-    sessionHandle: number;
-    errors: Array<Promise<string|null>>;
-  }
+  type RunFunction =
+      (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => number;
 }
 
 export interface OrtWasmModule extends EmscriptenModule {
