@@ -162,7 +162,7 @@ def optimize_sd_pipeline(
                     str(tmp_model_path),
                     use_gpu=True,
                     optimized_model_path=str(ort_optimized_model_path),
-                    save_as_external_data=use_external_data_format
+                    save_as_external_data=use_external_data_format,
                 )
                 model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
                 m = model_type_class_mapping[model_type](model)
