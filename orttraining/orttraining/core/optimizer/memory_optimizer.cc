@@ -146,7 +146,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // Finalize the plan according to user config,
   // then create a ClusterApplyContext for each unique cluster (having the same node pattern)
   InlinedHashMap<const Node*, std::shared_ptr<optimizer::memory_optimizer::NodeOptimizationPlanBase>> node_to_opt_plan_map;
-  InlinedHashMap<const Node*, std::shared_ptr<optimizer::memory_optimizer::ClusterApplyContext>> node_to_apply_context_map;
+  optimizer::memory_optimizer::NodeToClusterApplyContextMap node_to_apply_context_map;
   ORT_ENFORCE(memory_opt_planner.FinalizeNodePlansFromUserConfig(pattern_subgraph_to_user_optimizer_config_map_,
                                                                  node_to_opt_plan_map,
                                                                  node_to_apply_context_map)

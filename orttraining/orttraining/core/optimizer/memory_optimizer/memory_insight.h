@@ -72,7 +72,7 @@ Status FindORTModuleMemoryOpportunity(const Graph& graph,
  */
 void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& memory_opt_planner,
                                             std::vector<std::pair<std::string, MemoryRecord>>& generated_records,
-                                            const InlinedHashMap<const Node*, std::shared_ptr<ClusterApplyContext>>&
+                                            const NodeToClusterApplyContextMap&
                                                 node_to_apply_contexts_map);
 
 /**

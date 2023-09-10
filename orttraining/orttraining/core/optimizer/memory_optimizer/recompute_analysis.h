@@ -73,7 +73,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
     oss << "recompute:" << node->OpType() << "-"
         << compromise_recompute_ << "-";
     for (auto output_index : activation_output_indices_) {
-      oss << output_index << ":" << TensorShapeProtoToString(node->OutputDefs()[output_index]->Shape());
+      oss << output_index << ":" << GetTensorElemCountInSymbolicString(node, output_index);
       oss << ":" << node->OutputDefs()[output_index]->TypeAsProto()->tensor_type().elem_type() << "-";
     }
 

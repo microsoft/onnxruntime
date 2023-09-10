@@ -76,24 +76,106 @@ void GetForwardOutputUsageMap(const Graph& graph,
   }
 }
 
-}  // namespace
+// trim from start (in place)
+static inline void ltrim(std::string& s) {
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+            return !std::isspace(ch);
+          }));
+}
 
-std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* shape) {
-  std::ostringstream shape_oss;
-  if (shape != nullptr) {
-    for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
-      auto dim = shape->dim(dim_index);
-      if (utils::HasDimValue(dim)) {
-        shape_oss << dim.dim_value() << " x ";
+// trim from end (in place)
+static inline void rtrim(std::string& s) {
+  s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
+            return !std::isspace(ch);
+          }).base(),
+          s.end());
+}
+
+// trim from both ends
+static inline std::string trim_copy(std::string s) {
+  rtrim(s);
+  ltrim(s);
+  return s;
+}
+
+std::string empty_dim_param_placeholder = "empty_dim_param";
+static int64_t index_empty_dim = 0;
+
+void TensorShapeProtoToDimParamVector(const ONNX_NAMESPACE::TensorShapeProto* shape,
+                                      std::vector<std::string>& dim_params,
+                                      bool& has_unknown_dim) {
+  has_unknown_dim = false;
+  for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
+    auto dim = shape->dim(dim_index);
+    if (utils::HasDimValue(dim)) {
+      dim_params.push_back(std::to_string(dim.dim_value()));
+
+    } else {
+      std::string trimmed_dim_param = trim_copy(dim.dim_param());
+      if (trimmed_dim_param.empty()) {
+        has_unknown_dim = true;
+        dim_params.push_back(empty_dim_param_placeholder + std::to_string(index_empty_dim++));
       } else {
-        shape_oss << dim.dim_param() << " x ";
+        dim_params.push_back(trimmed_dim_param);
       }
     }
-  } else {
-    shape_oss << "unknown";
   }
 
-  return shape_oss.str();
+  if (shape->dim_size() == 0) {
+    dim_params.push_back("(1)");  // Scalar
+  }
+}
+
+bool HasUnknowDimension(const ONNX_NAMESPACE::TensorShapeProto* shape) {
+  if (shape == nullptr) {
+    return true;
+  }
+
+  std::vector<std::string> dim_params;
+  bool has_unknown_dim = false;
+  TensorShapeProtoToDimParamVector(shape, dim_params, has_unknown_dim);
+
+  return has_unknown_dim;
+}
+
+std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* shape) {
+  if (shape == nullptr) {
+    return "unknown";
+  }
+
+  std::vector<std::string> dim_params;
+  bool has_unknown_dim = false;
+  TensorShapeProtoToDimParamVector(shape, dim_params, has_unknown_dim);
+
+  std::ostringstream oss;
+  oss << "(";
+  for (auto it = dim_params.begin(); it != dim_params.end(); ++it) {
+    oss << "(" << *it << ")";
+    if (it != (dim_params.end() - 1)) {
+      oss << "*";
+    }
+  }
+
+  return oss.str();
+}
+
+}  // namespace
+
+std::string GetTensorElemCountInSymbolicString(const Node* node, int output_index) {
+  const auto& output_def = node->OutputDefs()[output_index];
+  const auto shape = output_def->Shape();
+
+  std::string shape_str = TensorShapeProtoToString(shape);
+
+  // If the output shape contains unknown dimension, we try to get the shape from input.
+  // though the input shape might be different, but its elem size and count should be the same
+  // with the output.
+  if (node->OpType() == "Reshape" && HasUnknowDimension(shape) &&
+      !HasUnknowDimension(node->InputDefs()[0]->Shape())) {
+    shape_str = TensorShapeProtoToString(node->InputDefs()[0]->Shape());
+  }
+
+  return shape_str;
 }
 
 Status GetStashedActivationCandidates(const Graph& graph,

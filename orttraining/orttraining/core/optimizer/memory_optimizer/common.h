@@ -76,7 +76,7 @@ void NodesInTopoOrderToString(const InlinedVector<const Node*>& nodes_in_topolog
                               std::string& subgraph_string_representation,
                               std::string& log_info);
 
-std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* shape);
+std::string GetTensorElemCountInSymbolicString(const Node* node, int output_index);
 
 /**
  * @brief Struct to store properties of a specific subgraph.

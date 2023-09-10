@@ -10,6 +10,8 @@
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
+using NodeToClusterApplyContextMap = InlinedHashMap<const Node*, std::shared_ptr<ClusterApplyContext>>;
+
 class MemoryOptimizationPlanner {
  public:
   void AddNodeOptimizationPlan(const Node* node,
@@ -28,7 +30,7 @@ class MemoryOptimizationPlanner {
   Status FinalizeNodePlansFromUserConfig(
       const InlinedHashMap<std::string, UserConfig>& cluster_id_to_user_configs,
       InlinedHashMap<const Node*, std::shared_ptr<NodeOptimizationPlanBase>>& node_to_opt_plan_map,
-      InlinedHashMap<const Node*, std::shared_ptr<ClusterApplyContext>>& node_to_apply_context_map) const;
+      NodeToClusterApplyContextMap& node_to_apply_context_map) const;
 
   std::string GenerateNodeClusterId(const Node* node) const {
     ORT_ENFORCE(node_to_optimization_plans_map.find(node) != node_to_optimization_plans_map.end(),

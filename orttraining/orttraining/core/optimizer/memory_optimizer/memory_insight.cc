@@ -102,8 +102,7 @@ Status FindORTModuleMemoryOpportunity(const Graph& graph,
 
 void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& memory_opt_planner,
                                             std::vector<std::pair<std::string, MemoryRecord>>& generated_records,
-                                            const InlinedHashMap<const Node*, std::shared_ptr<ClusterApplyContext>>&
-                                                node_to_apply_contexts_map) {
+                                            const NodeToClusterApplyContextMap& node_to_apply_contexts_map) {
   // Group by node cluster id, generate memory record.
   InlinedHashMap<std::string, MemoryRecord> records;
   const auto& node_to_optimization_plan_map = memory_opt_planner.GetNodeToOptimizationPlanMap();
@@ -150,7 +149,6 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
       const InlinedVector<size_t> output_indices = plan->GetActivationOutputIndices();
       for (auto output_index : output_indices) {
         const auto& output_def = node->OutputDefs()[output_index];
-        const auto shape = output_def->Shape();
         MLDataType ml_data_type = DataTypeImpl::TypeFromProto(*output_def->TypeAsProto());
         ORT_ENFORCE(ml_data_type->IsTensorType(), "ml_type must be a tensor type, but it is ",
                     DataTypeImpl::ToString(ml_data_type));
@@ -162,13 +160,13 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
         if (plan->GetOptimizationType() == OptimizationType::RecomputeWithCompromise) {
           record.compromise_recomputed_outputs.emplace_back(
               output_index,
-              TensorShapeProtoToString(shape),
+              GetTensorElemCountInSymbolicString(node, output_index),
               byte_count_per_element,
               dynamic_cast<NodeRecomputePlan*>(plan.get())->GetSaveRatio());
 
         } else if (plan->GetOptimizationType() == OptimizationType::Recompute) {
           record.recomputed_outputs.emplace_back(output_index,
-                                                 TensorShapeProtoToString(shape),
+                                                 GetTensorElemCountInSymbolicString(node, output_index),
                                                  byte_count_per_element);
         }
       }
@@ -408,7 +406,7 @@ std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
   // Finalize the plan according to user config,
   // then create a ClusterApplyContext for each unique cluster (having the same node pattern)
 
-  InlinedHashMap<const Node*, std::shared_ptr<ClusterApplyContext>> node_to_apply_context_map;
+  NodeToClusterApplyContextMap node_to_apply_context_map;
   if (!memory_optimization_config.empty()) {
     ORT_ENFORCE(ParseConfigFromString(memory_optimization_config,
                                       cluster_id_to_config_map)

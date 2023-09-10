@@ -46,7 +46,7 @@ Status MemoryOptimizationPlanner::UpdateNodePlansFromExecutionPlan(const Graph& 
 Status MemoryOptimizationPlanner::FinalizeNodePlansFromUserConfig(
     const InlinedHashMap<std::string, UserConfig>& cluster_id_to_user_configs,
     InlinedHashMap<const Node*, std::shared_ptr<NodeOptimizationPlanBase>>& node_to_opt_plan_map,
-    InlinedHashMap<const Node*, std::shared_ptr<ClusterApplyContext>>& node_to_apply_context_map) const {
+    NodeToClusterApplyContextMap& node_to_apply_context_map) const {
   if (cluster_id_to_user_configs.size() == 0) {
     return Status::OK();
   }
@@ -56,7 +56,7 @@ Status MemoryOptimizationPlanner::FinalizeNodePlansFromUserConfig(
 
   // We loop all nodes' optimization plans and find the match in user configs.
   // If found in user configs, we finalize the plan and create/update the apply context for this node.
-  // If not found in user configs, we will not include the node in returned result.
+  // If not found in user configs, we will not include the node in the returned result.
   for (const auto& node_to_optimization_plan : node_to_optimization_plans_map) {
     const auto& node = node_to_optimization_plan.first;
     const auto& node_plans = node_to_optimization_plan.second;
