@@ -3,11 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-# This tool measures the inference performance of onnxruntime or onnxruntime-gpu python package on Bert model.
-
-# The input model shall have exactly three inputs. The model is either fully optimized (with EmbedLayerNormalization node),
-# or with reasonable input names (one input name has 'mask' substring, another has 'token' or 'segment' substring).
-# See get_bert_inputs function in bert_test_data.py for more information.
+# This tool measures the inference performance of onnxruntime on BERT-like model with inputs like input_ids,
+# token_type_ids (optional), and attention_mask (optional).
+#
+# If the model does not have exactly three inputs like above, you might need specify names of inputs with
+# --input_ids_name, --segment_ids_name and --input_mask_name
 
 # Example command to run test on batch_size 1 and 2 for a model on GPU:
 #   python bert_perf_test.py --model bert.onnx --batch_size 1 2 --sequence_length 128 --use_gpu --samples 1000 --test_times 1
@@ -235,7 +235,12 @@ def to_string(model_path, session, test_setting):
     option += "graph_optimization_level={},intra_op_num_threads={},".format(
         sess_options.graph_optimization_level, sess_options.intra_op_num_threads
     ).replace("GraphOptimizationLevel.ORT_", "")
-    option += f"batch_size={test_setting.batch_size},sequence_length={test_setting.sequence_length},test_cases={test_setting.test_cases},test_times={test_setting.test_times},use_gpu={test_setting.use_gpu}"
+
+    option += f"batch_size={test_setting.batch_size},sequence_length={test_setting.sequence_length},"
+    option += f"test_cases={test_setting.test_cases},test_times={test_setting.test_times},"
+    option += f"use_gpu={test_setting.use_gpu},use_io_binding={test_setting.use_io_binding},"
+    option += f"average_sequence_length={test_setting.average_sequence_length},"
+    option += f"random_sequence_length={test_setting.random_sequence_length}"
     return option
 
 
@@ -270,7 +275,7 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
             results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
             all_latency_list.extend(latency_list)
 
-    # latency in miliseconds
+    # latency in milliseconds
     latency_ms = np.array(all_latency_list) * 1000
 
     average_latency = statistics.mean(latency_ms)

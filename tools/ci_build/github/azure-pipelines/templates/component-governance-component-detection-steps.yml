@@ -6,6 +6,11 @@ parameters:
 
 steps:
 - ${{ if eq(variables['System.TeamProject'], 'Lotus') }}: 
+  - task: DeleteFiles@1
+    inputs:
+      contents: $(Build.BinariesDirectory)/*
+    displayName: 'Clean up build directory'
+
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'
     condition:

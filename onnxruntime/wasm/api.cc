@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "api.h"
+#ifdef ENABLE_TRAINING_APIS
+#include "onnxruntime_training_cxx_api.h"
+#endif
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "api.h"
 
 #include <iostream>
 #include <vector>
@@ -368,12 +371,9 @@ int OrtRun(OrtSession* session,
            const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
            const char** output_names, size_t output_count, ort_tensor_handle_t* outputs,
            OrtRunOptions* run_options) {
-#if defined(USE_JSEP)
-  EM_ASM({ Module["jsepRunPromise"] = new Promise(function(r) { Module.jsepRunPromiseResolve = r; }); });
-#endif
   auto status_code = CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
 #if defined(USE_JSEP)
-  EM_ASM({ Module.jsepRunPromiseResolve($0); }, status_code);
+  EM_ASM({ Module.jsepRunPromiseResolve ?.($0); }, status_code);
 #endif
   return status_code;
 }
@@ -387,3 +387,93 @@ char* OrtEndProfiling(ort_session_handle_t session) {
              ? file_name
              : nullptr;
 }
+
+// Training API Section
+
+#ifdef ENABLE_TRAINING_APIS
+#define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
+  CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
+
+ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint_data_buffer,
+                                                                                size_t checkpoint_size) {
+  OrtCheckpointState* checkpoint_state = nullptr;
+  return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint_data_buffer,
+                                checkpoint_size, &checkpoint_state) == ORT_OK)
+             ? checkpoint_state
+             : nullptr;
+}
+
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle) {
+  Ort::GetTrainingApi().ReleaseCheckpointState(training_checkpoint_state_handle);
+}
+
+ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(const ort_session_options_handle_t options,
+                                                                            ort_training_checkpoint_handle_t training_checkpoint_state_handle,
+                                                                            void* train_model,
+                                                                            size_t train_size,
+                                                                            void* eval_model,
+                                                                            size_t eval_size,
+                                                                            void* optimizer_model,
+                                                                            size_t optimizer_size) {
+  OrtTrainingSession* training_session = nullptr;
+  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromBuffer, g_env, options,
+                                training_checkpoint_state_handle, train_model, train_size,
+                                eval_model, eval_size, optimizer_model, optimizer_size,
+                                &training_session) == ORT_OK)
+             ? training_session
+             : nullptr;
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t training_handle) {
+  return CHECK_TRAINING_STATUS(LazyResetGrad, training_handle);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingRunTrainStep(ort_training_session_handle_t training_handle,
+                                                 ort_tensor_handle_t* inputs,
+                                                 size_t input_count,
+                                                 ort_tensor_handle_t* outputs,
+                                                 size_t output_count,
+                                                 ort_run_options_handle_t options) {
+  return CHECK_TRAINING_STATUS(TrainStep, training_handle, options, input_count, inputs, output_count, outputs);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t training_handle,
+                                                  const ort_run_options_handle_t run_options) {
+  return CHECK_TRAINING_STATUS(OptimizerStep, training_handle, run_options);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
+                                             ort_tensor_handle_t* inputs,
+                                             size_t input_count,
+                                             ort_tensor_handle_t* outputs,
+                                             size_t output_count,
+                                             ort_run_options_handle_t options) {
+  return CHECK_TRAINING_STATUS(EvalStep, training_handle,
+                               options, input_count, inputs, output_count, outputs);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(ort_training_session_handle_t training_handle,
+                                                      size_t* param_size,
+                                                      bool trainable_only) {
+  return CHECK_TRAINING_STATUS(GetParametersSize, training_handle, param_size, trainable_only);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_training_session_handle_t training_handle,
+                                                           ort_tensor_handle_t parameters_buffer,
+                                                           size_t parameter_count,
+                                                           bool trainable_only) {
+  return CHECK_TRAINING_STATUS(CopyParametersToBuffer, training_handle, parameters_buffer, trainable_only);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_session_handle_t training_handle,
+                                                             ort_tensor_handle_t parameters_buffer,
+                                                             size_t parameter_count,
+                                                             bool trainable_only) {
+  return CHECK_TRAINING_STATUS(CopyBufferToParameters, training_handle, parameters_buffer, trainable_only);
+}
+
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_handle) {
+  Ort::GetTrainingApi().ReleaseTrainingSession(training_handle);
+}
+
+#endif
