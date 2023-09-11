@@ -92,22 +92,10 @@ module.exports = function(config) {
     customLaunchers: {
       // the following flags are used to make sure Edge on CI agents to initialize WebGPU correctly.
       EdgeWebGpuTest: {base: 'Edge', flags: ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de']},
-      ChromeTest: {
-        base: 'Chrome',
-        flags: [
-          '--enable-features=SharedArrayBuffer', '--enable-dawn-features=use_dxc',
-          '--disable-dawn-features=disallow_unsafe_apis'
-        ]
-      },
+      ChromeTest: {base: 'Chrome', flags: ['--enable-features=SharedArrayBuffer']},
       ChromeTestHeadless: {base: 'ChromeHeadless', flags: ['--enable-features=SharedArrayBuffer']},
-      ChromeDebug: {
-        debug: true,
-        base: 'Chrome',
-        flags: [
-          '--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer', '--enable-dawn-features=use_dxc',
-          '--disable-dawn-features=disallow_unsafe_apis'
-        ]
-      },
+      ChromeDebug:
+          {debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer']},
       ChromeCanaryTest: {
         base: 'ChromeCanary',
         flags: ['--enable-features=SharedArrayBuffer', '--enable-experimental-web-platform-features']
