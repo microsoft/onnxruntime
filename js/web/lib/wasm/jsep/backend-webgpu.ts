@@ -110,6 +110,7 @@ export class WebGpuBackend {
     }
 
     this.env = env;
+    const requiredFeatures = [];
     const deviceDescriptor: GPUDeviceDescriptor = {
       requiredLimits: {
         maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
@@ -121,14 +122,20 @@ export class WebGpuBackend {
         maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
         maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
       },
+      requiredFeatures: [],
     };
     // WebGPU Spec: Timestamp Queries Inside Passes
     // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
     if (adapter.features.has('timestamp-query-inside-passes')) {
       this.supportTimestampQuery = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      deviceDescriptor.requiredFeatures = ['timestamp-query-inside-passes' as any];
+      requiredFeatures.push('timestamp-query-inside-passes');
     }
+    if (adapter.features.has('shader-f16')) {
+      requiredFeatures.push('shader-f16');
+    }
+    //
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    deviceDescriptor.requiredFeatures = requiredFeatures as any;
 
     this.device = await adapter.requestDevice(deviceDescriptor);
     this.gpuDataManager = createGpuDataManager(this);

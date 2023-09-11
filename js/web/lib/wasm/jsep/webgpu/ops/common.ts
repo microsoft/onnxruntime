@@ -194,9 +194,8 @@ export interface IndicesHelper {
 const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, string] => {
   // return type is [ storage type, runtime type ] or a single string for both
   switch (type) {
-    // TODO: enable after "shader-f16" WSGL extension release
-    // case DataType.float16:
-    //   return components > 1 ? `vec${components}<f16>` : 'f16';
+    case DataType.float16:
+      return components > 1 ? `vec${components}<f16>` : 'f16';
     case DataType.float:
       return components > 1 ? `vec${components}<f32>` : 'f32';
     case DataType.int32:
