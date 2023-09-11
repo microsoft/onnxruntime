@@ -816,36 +816,53 @@ class OnnxModel:
         """
 
         if len(self.graphs()) > 1:
+            # TODO(tianleiwu): handle subgraph
             logger.debug("Skip prune_graph since graph has subgraph")
             return
 
-        if outputs is None:
-            outputs = [output.name for output in self.model.graph.output]
+        keep_outputs = [output.name for output in self.model.graph.output] if outputs is None else outputs
 
         output_name_to_node = self.output_name_to_node()
-        all_nodes = []
-        for output in outputs:
+
+        # Keep track of nodes to keep. The key is first output of node, and the value is the node.
+        output_to_node = {}
+
+        # Start from graph outputs, and find parent nodes recurisvely, and add nodes to the output_to_node dictionary.
+        dq = deque()
+        for output in keep_outputs:
             if output in output_name_to_node:
-                last_node = output_name_to_node[output]
-                if last_node in all_nodes:
-                    continue
-                nodes = self.get_parent_subgraph_nodes(last_node, [])
-                all_nodes.append(last_node)
-                all_nodes.extend(nodes)
+                dq.append(output_name_to_node[output])
+        while len(dq) > 0:
+            node = dq.pop()
+            non_empty_outputs = [n for n in node.output if len(n) > 0]
+            if non_empty_outputs and (non_empty_outputs[0] not in output_to_node):
+                output_to_node[non_empty_outputs[0]] = node
+                for name in node.input:
+                    if len(name) > 0 and (name in output_name_to_node) and (name not in output_to_node):
+                        dq.appendleft(output_name_to_node[name])
 
-        nodes_to_remove = [node for node in self.model.graph.node if node not in all_nodes]
+        # Keep only those nodes in the output_to_node dictionary.
+        nodes_to_keep = []
+        nodes_to_remove = []
+        for node in self.model.graph.node:
+            non_empty_outputs = [n for n in node.output if len(n) > 0]
+            if non_empty_outputs[0] in output_to_node:
+                nodes_to_keep.append(node)
+            else:
+                nodes_to_remove.append(node)
+        self.model.graph.ClearField("node")
+        self.model.graph.node.extend(nodes_to_keep)
 
-        self.remove_nodes(nodes_to_remove)
+        # Remove graph outputs not in list
+        if outputs is not None:
+            output_to_remove = []
+            for output in self.model.graph.output:
+                if output.name not in outputs:
+                    output_to_remove.append(output)
+            for output in output_to_remove:
+                self.model.graph.output.remove(output)
 
-        # remove outputs not in list
-        output_to_remove = []
-        for output in self.model.graph.output:
-            if output.name not in outputs:
-                output_to_remove.append(output)
-        for output in output_to_remove:
-            self.model.graph.output.remove(output)
-
-        # remove inputs not used by any node.
+        # Remove graph inputs not used by any node.
         input_to_remove = []
         if allow_remove_graph_inputs:
             input_name_to_nodes = self.input_name_to_nodes()
