@@ -90,7 +90,7 @@ struct TreeNodeElement {
   // PtrOrWeight acts as a tagged union, with the "tag" being whether the node is a leaf or not (see `is_not_leaf`).
 
   // If it is not a leaf, it is a pointer to the true child node when traversing the decision tree. The false branch is
-  // always 1 position away from the TreeNodeElement in practice in `TreeEnsembleCommon::nodes_` and so it is not stored.
+  // always 1 position away from the TreeNodeElement in practice in `TreeEnsembleCommon::nodes_` so it is not stored.
 
   // If it is a leaf, it contains `weight` and `n_weights` attributes which are used to indicate the position of the
   // weight in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one, the weight is also
