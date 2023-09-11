@@ -27,13 +27,15 @@ class Config:
     sequence_length = 0
     kv_sequence_length = 0
     num_heads = 0
+    kv_num_heads = 0
     head_size = 0
 
-    def __init__(self, b, s, s2, n, h):
+    def __init__(self, b, s, s2, n, n2, h):
         self.batch_size = b
         self.sequence_length = s
         self.kv_sequence_length = s2
         self.num_heads = n
+        self.kv_num_heads = n2
         self.head_size = h
 
 
@@ -142,6 +144,70 @@ def create_multihead_attention_graph(config):
                 TensorProto.FLOAT16,
                 [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
             ),
+        ],
+    )
+
+    model = helper.make_model(graph)
+    return model.SerializeToString()
+
+
+def create_group_query_attention_graph(config, causal=False):
+    nodes = [
+        helper.make_node(
+            "GroupQueryAttention",
+            [
+                "query",
+                "key",
+                "value",
+            ],
+            ["output"],
+            "GroupQueryAttention_0",
+            num_heads=config.num_heads,
+            kv_num_heads=config.kv_num_heads,
+            unidirectional=1 if causal else 0,
+            domain="com.microsoft",
+        ),
+    ]
+
+    graph = helper.make_graph(
+        nodes,
+        "GroupQueryAttention_Graph",
+        [
+            helper.make_tensor_value_info(
+                "query",
+                TensorProto.FLOAT16,
+                [
+                    config.batch_size,
+                    config.sequence_length,
+                    config.num_heads * config.head_size,
+                ],
+            ),
+            helper.make_tensor_value_info(
+                "key",
+                TensorProto.FLOAT16,
+                [
+                    config.batch_size,
+                    config.kv_sequence_length,
+                    config.kv_num_heads * config.head_size,
+                ],
+            ),
+            helper.make_tensor_value_info(
+                "value",
+                TensorProto.FLOAT16,
+                [
+                    config.batch_size,
+                    config.kv_sequence_length,
+                    config.kv_num_heads * config.head_size,
+                ],
+            ),
+        ],
+        [
+            helper.make_tensor_value_info(
+                "output",
+                TensorProto.FLOAT16,
+                [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
+            ),
+            # TODO(aciddelgado): return present key and value
         ],
     )
 
@@ -329,8 +395,11 @@ def flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config
     return output
 
 
-def flash_attn_func(q, k, v, config, causal=False):
-    onnx_model_str = create_multihead_attention_graph(config)
+def flash_attn_func(q, k, v, config, gqa=False, causal=False):
+    if gqa:
+        onnx_model_str = create_group_query_attention_graph(config, causal)
+    else:
+        onnx_model_str = create_multihead_attention_graph(config)
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     k = torch.reshape(k, (config.batch_size, config.kv_sequence_length, -1))
     v = torch.reshape(v, (config.batch_size, config.kv_sequence_length, -1))
@@ -344,6 +413,23 @@ def flash_attn_func(q, k, v, config, causal=False):
     ort_output = ort_session.run(None, ort_inputs)
     output = torch.tensor(ort_output)
     return output
+
+
+def construct_causal_mask(seqlen_q, seqlen_k, query_padding_mask=None, key_padding_mask=None,
+                          device=None):
+    row_idx = rearrange(torch.arange(seqlen_q, device=device, dtype=torch.long), "s -> s 1")
+    col_idx = torch.arange(seqlen_k, device=device, dtype=torch.long)
+    sk = (
+        seqlen_k
+        if key_padding_mask is None
+        else rearrange(key_padding_mask.sum(-1), "b -> b 1 1 1")
+    )
+    sq = (
+        seqlen_q
+        if query_padding_mask is None
+        else rearrange(query_padding_mask.sum(-1), "b -> b 1 1 1")
+    )
+    return col_idx > row_idx + sk - sq
 
 
 def attention_ref(
@@ -390,10 +476,19 @@ def attention_ref(
     if key_padding_mask is not None:
         scores.masked_fill_(rearrange(~key_padding_mask, "b s -> b 1 1 s"), float("-inf"))
     if causal:
-        causal_mask = torch.triu(torch.ones(seqlen_q, seqlen_k, dtype=torch.bool, device=q.device), 1)
+        # causal_mask = torch.triu(
+        #     torch.ones(seqlen_q, seqlen_k, dtype=torch.bool, device=q.device), 1
+        # )
+        causal_mask = construct_causal_mask(
+            seqlen_q, seqlen_k, query_padding_mask, key_padding_mask, q.device
+        )
         scores.masked_fill_(causal_mask, float("-inf"))
     attention = torch.softmax(scores, dim=-1)
+    if causal:  # Some rows are completely masked out so we fill them with zero instead of NaN
+        attention = attention.masked_fill(torch.all(causal_mask, dim=-1, keepdim=True), 0.0)
     dropout_scaling = 1.0 / (1 - dropout_p)
+    # attention_drop = attention.masked_fill(~dropout_mask, 0.0) * dropout_scaling
+    # output = torch.einsum('bhts,bshd->bthd', attention_drop , v)
     if dropout_mask is not None:
         attention_drop = attention.masked_fill(~dropout_mask, 0.0)
     else:
@@ -425,6 +520,8 @@ def attention_qkvpacked_ref(
 def parity_check(
     config,
     packed,
+    gqa=False,
+    causal=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -434,14 +531,14 @@ def parity_check(
             (config.batch_size, config.sequence_length)
         )
         # ORT Flash
-        out_unpad = flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config, causal=False)
+        out_unpad = flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config, causal=causal)
         out_unpad = torch.squeeze(out_unpad, 0)
         out = torch.reshape(
             output_pad_fn(out_unpad), (config.batch_size, config.sequence_length, config.num_heads, config.head_size)
         )
         out = out.detach().cpu().numpy()
         # Pytorch to compare
-        out_ref, _ = attention_qkvpacked_ref(qkv, key_padding_mask, 0.0, None, causal=False)
+        out_ref, _ = attention_qkvpacked_ref(qkv, key_padding_mask, 0.0, None, causal=causal)
         out_ref = out_ref.detach().cpu().numpy()
     else:
         q = torch.randn(
@@ -456,7 +553,7 @@ def parity_check(
         k = torch.randn(
             config.batch_size,
             config.kv_sequence_length,
-            config.num_heads,
+            config.kv_num_heads,
             config.head_size,
             device="cuda",
             dtype=torch.float16,
@@ -465,27 +562,34 @@ def parity_check(
         v = torch.randn(
             config.batch_size,
             config.kv_sequence_length,
-            config.num_heads,
+            config.kv_num_heads,
             config.head_size,
             device="cuda",
             dtype=torch.float16,
             requires_grad=False,
         )
-        out = flash_attn_func(q, k, v, config)
+        out = flash_attn_func(q, k, v, config, gqa=gqa, causal=causal)
         out = torch.squeeze(out, 0)
         out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
         out = out.detach().cpu().numpy()
         # Pytorch to compare
-        out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None)
+        out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=causal)
         out_ref = out_ref.detach().cpu().numpy()
+
+        # print(out[0, 0, 0, :20])
+        # print(out_ref[0, 0, 0, :20])
     # Compare results
     print(
+        " causal:",
+        causal,
         " B:",
         config.batch_size,
         " S:",
         config.sequence_length,
         " N:",
         config.num_heads,
+        " kvN:",
+        config.kv_num_heads,
         " h:",
         config.head_size,
         " Mean Error:",
@@ -501,14 +605,32 @@ def parity_check(
 
 
 if __name__ == "__main__":
-    print("-------- TEST PACKED MHA ---------")
-    for b in [5]:
-        for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
-            for n in [6]:
-                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-                    config = Config(b, s, s, n, h)
-                    parity_check(config, True)
-    print("-------- TEST MHA ---------")
+    # print("-------- TEST PACKED MHA ---------")
+    # for b in [5]:
+    #     for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
+    #         for n in [6]:
+    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+    #                 config = Config(b, s, s, n, n, h)
+    #                 parity_check(config, True)
+    # print("-------- TEST MHA ---------")
+    # for b in [5]:
+    #     for s, s2 in [
+    #         (113, 203),
+    #         (128, 217),
+    #         (113, 211),
+    #         (108, 256),
+    #         (256, 512),
+    #         (512, 256),
+    #         (1024, 1024),
+    #         (1023, 1024),
+    #         (1024, 1023),
+    #         (2048, 2048),
+    #     ]:
+    #         for n in [6]:
+    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+    #                 config = Config(b, s, s2, n, n, h)
+    #                 parity_check(config, False)
+    print("-------- TEST GQA ---------")
     for b in [5]:
         for s, s2 in [
             (113, 203),
@@ -522,7 +644,8 @@ if __name__ == "__main__":
             (1024, 1023),
             (2048, 2048),
         ]:
-            for n in [6]:
-                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-                    config = Config(b, s, s2, n, h)
-                    parity_check(config, False)
+            for (n, n2) in [(6, 6), (6, 3), (9, 9), (9, 3)]:
+                for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+                    for causal in [True, False]:
+                        config = Config(b, s, s2, n, n2, h)
+                        parity_check(config, False, gqa=True, causal=causal)

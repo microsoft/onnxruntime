@@ -274,9 +274,7 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
-      *output_shape.add_dim() = value_dims.size() == 3
-                                ? value_dims[2]
-                                : value_dims[1] * value_dims[3];
+      *output_shape.add_dim() = query_dims[2];
       updateOutputShape(ctx, 0, output_shape);
       return;
     } else {
@@ -1017,6 +1015,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(GroupQueryAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
+        .Attr("unidirectional",
+              "Whether every token can only attend to previous tokens. Default value is 1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
@@ -1036,16 +1038,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T",
                OpSchema::Optional)
         .Input(3,
-               "bias",
-               "Bias tensor with shape (hidden_size + kv_hidden_size + kv_hidden_size) from input projection",
-               "T",
-               OpSchema::Optional)
-        .Input(6,
                "past_key",
                "past state for self attention key with shape (batch_size, kv_num_heads, past_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
-        .Input(7,
+        .Input(4,
                "past_value",
                "past state for self attention value with shape (batch_size, kv_num_heads, past_sequence_length, head_size)",
                "T",
@@ -1068,7 +1065,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          GroupQueryAttentionTypeAndShapeInference(ctx, 6);
+          GroupQueryAttentionTypeAndShapeInference(ctx, 3);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(

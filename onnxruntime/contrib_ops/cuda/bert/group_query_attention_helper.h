@@ -9,14 +9,13 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace multihead_attention_helper {
+namespace group_query_attention_helper {
 
 // TODO(aciddelgado): double-check this
 template <typename T>
 Status CheckInputs(const T* query,
                    const T* key,
                    const T* value,
-                   const T* bias,
                    const T* past_key,
                    const T* past_value,
                    void* parameters,
@@ -29,21 +28,21 @@ Status CheckInputs(const T* query,
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D_kv) or (B, N_k, S*, H)
   //     value            (V)       : (B, L, D_kv) or (B, N_k, S*, H)
-  //     bias             (Q/K/V)   : (D + D_k + D_k)
   // CURRENTLY UNSUPPORTED!! When packed kv is used:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, N, 2, H)
   //     value            (V)       : None
-  //     bias             (Q/K/V)   : None
   // CURRENTLY UNSUPPORTED!! When packed qkv is used:
   //     query            (Q)       : (B, L, N, 3, H) or (B, S, 3*D)
   //     key              (K)       : None
   //     value            (V)       : None
-  //     bias             (Q/K/V)   : None or (D + D + D_v)
 
   AttentionQkvFormat qkv_format;
 
   const auto& query_dims = query->Shape().GetDims();
+  const auto& key_dims = key->Shape().GetDims();
+  const auto& value_dims = value->Shape().GetDims();
+
   if (query_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
                            query_dims.size());
@@ -51,8 +50,8 @@ Status CheckInputs(const T* query,
 
   int batch_size = static_cast<int>(query_dims[0]);
   int sequence_length = static_cast<int>(query_dims[1]);
-  int hidden_size_q = static_cast<int>(query_dims[2]);
-  int head_size = static_cast<int>(hidden_size_q) / num_heads;
+  int q_hidden_size = static_cast<int>(query_dims[2]);
+  int head_size = static_cast<int>(q_hidden_size) / num_heads;
 
   int kv_sequence_length = sequence_length;
   int kv_hidden_size = (key_dims.size() == 3)
@@ -142,7 +141,7 @@ Status CheckInputs(const T* query,
       }
       if (key_dims[2] != value_dims[2]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'key' and 'value' shall have same dim 2 (hidden_size)");
+                               "Input 'key' and 'value' shall have same dim 2 (kv_hidden_size)");
       }
 
       qkv_format = Q_K_V_BSNH;
@@ -162,17 +161,9 @@ Status CheckInputs(const T* query,
                                "Missing key tensor.");
   }
 
-  if (bias != nullptr) {
-    const auto& bias_dims = bias->Shape().GetDims();
-    if (bias_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
-                             bias_dims.size());
-    }
-  }
-
   // TODO(aciddelgado): what is this note referring to/do I support?
   // NOTE: In Cross-Attention, we pass the past key and value to 'key' and 'value' instead of 'past_key' and 'past_value'.
-  bool pass_past_in_kv = false;
+  // bool pass_past_in_kv = false;
   if (value != nullptr) {
     const auto& value_dims = value->Shape().GetDims();
     if (value_dims.size() != 3 && value_dims.size() != 4) {
@@ -195,7 +186,7 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'past_key' and 'past_value' shall have the same dim 2 (kv_sequence_length)");
       }
-      pass_past_in_kv = true;
+      // pass_past_in_kv = true;
     }
 
     int v_hidden_size = (value_dims.size() == 3) ? value_dims[2] : value_dims[1] * value_dims[3];
@@ -209,7 +200,6 @@ Status CheckInputs(const T* query,
   }
 
   int total_sequence_length = past_sequence_length + kv_sequence_length;
-
   // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
@@ -219,9 +209,9 @@ Status CheckInputs(const T* query,
     output_parameters->kv_sequence_length = kv_sequence_length;
     output_parameters->total_sequence_length = total_sequence_length;
     output_parameters->max_sequence_length = max_sequence_length;
-    output_parameters->hidden_size = hidden_size;
+    output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;
-    output_parameters->head_size = hidden_size / num_heads;
+    output_parameters->head_size = q_hidden_size / num_heads;
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->is_unidirectional = true;
@@ -237,7 +227,6 @@ template <typename T>
 Status CheckInputs(const T* query,
                    const T* key,
                    const T* value,
-                   const T* bias,
                    const T* past_key,
                    const T* past_value,
                    void* parameters,
@@ -249,9 +238,9 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, bias, past_key, past_value, parameters, num_heads, kv_num_heads, scale);
+  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, scale);
 }
 
-}  // namespace multihead_attention_helper
+}  // namespace group_query_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime
