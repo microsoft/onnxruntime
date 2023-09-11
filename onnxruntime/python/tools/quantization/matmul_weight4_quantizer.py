@@ -20,6 +20,7 @@ import multiprocessing
 
 from joblib import Parallel, delayed, parallel_config
 
+
 def __q4_block_size() -> int:
     # happens to be 32 for now, but future quantization types
     # may have bigger block size
@@ -57,11 +58,12 @@ def int4_block_quant(fp32weight: npt.ArrayLike, symmetric: bool) -> np.ndarray:
     scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
     zero_point = np.zeros((cols * k_blocks), dtype="uint8")
     fp32weight = np.transpose(fp32weight)
+
     def _process_column(n):
         ncol = fp32weight[n, :]
         blks = np.split(ncol, k_blocks)
         blob_idx = n * k_blocks
-        #print(f"start to process {n}")
+        # print(f"start to process {n}")
         for blk in blks:
             packed_blob = packed[blob_idx]
 
@@ -88,14 +90,16 @@ def int4_block_quant(fp32weight: npt.ArrayLike, symmetric: bool) -> np.ndarray:
 
             blk_int = np.clip(np.rint(blk * reciprocal_scale + zp), 0, 15).astype("uint8")
             for i in range(0, blob_size, 2):
-                packed_blob[i//2] = blk_int[i] | blk_int[i+1] << 4
-        #print(f"end to process {n}")
+                packed_blob[i // 2] = blk_int[i] | blk_int[i + 1] << 4
+        # print(f"end to process {n}")
 
-    with parallel_config(backend='threading', n_jobs=-1):
+    with parallel_config(backend="threading", n_jobs=-1):
         Parallel()(delayed(_process_column)(n) for n in range(cols))
-    return (packed.reshape((cols, k_blocks, blob_size)),
-            scales.reshape((cols, k_blocks)),
-            zero_point.reshape((cols, k_blocks)))
+    return (
+        packed.reshape((cols, k_blocks, blob_size)),
+        scales.reshape((cols, k_blocks)),
+        zero_point.reshape((cols, k_blocks)),
+    )
 
 
 class MatMulWeight4Quantizer:
@@ -194,13 +198,8 @@ class MatMulWeight4Quantizer:
                     if attr.type == onnx.AttributeProto.GRAPH:
                         # recursive call to take care of sub-graph
                         graph_stack.append(attr.g)
-<<<<<<< HEAD
                         kv = {attr.name: self._process_subgraph(graph_stack)}
                     elif attr.type == onnx.AttributeProto.GRAPHS:
-=======
-                        kv = {attr.name: self._process_subgraph(graph_stack, symmetric)}
-                    elif attr.type == onnx.AttributeProto.GRAPH:
->>>>>>> int4 support on GPU
                         value = []
                         for subgraph in attr.graphs:
                             # recursive call to take care of sub-graph
