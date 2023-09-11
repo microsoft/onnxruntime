@@ -57,9 +57,9 @@ stages:
     BuildStaticLib: true
     ExtraBuildArgs: $(ExtraBuildArgs)
     WASMTemplate: linux-wasm-ci.yml
-    WebTemplate: win-web-ci.yml
     UseWebPoolName: true
-    RunWebGpuTests: true
+    RunWebGpuTestsForDebugBuild: false
+    RunWebGpuTestsForReleaseBuild: true
     WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
     WebCpuPoolName: 'onnxruntime-Win-CPU-2022-web'
     WithCache: true
