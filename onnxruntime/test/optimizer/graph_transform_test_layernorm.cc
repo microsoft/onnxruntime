@@ -452,7 +452,7 @@ TEST_F(GraphTransformationTests, LayerNormWeightTest) {
 
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "LayerNormalization") {
-      // LayerNormalization should have two inputs.
+      // LayerNormalization should have three inputs.
       EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
