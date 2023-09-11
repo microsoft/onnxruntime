@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 def verify_inputs(beam_inputs, graph_inputs):
     # Verify that ONNX graph's inputs match beam search op's inputs
     beam_required_inputs = list(filter(lambda beam_input: beam_input, beam_inputs))
+    print(f"graph_inputs: {len(graph_inputs)} ==> {graph_inputs}")
+    print(f"beam_required_inputs: {len(beam_required_inputs)} ==> {beam_required_inputs}")
     assert len(graph_inputs) == len(beam_required_inputs)
     for graph_input, beam_input in zip(graph_inputs, beam_required_inputs):
         # Check if graph_input is in beam_input to handle beam_input names with the "_fp16" suffix
@@ -50,17 +52,9 @@ def chain_model(args):
         "",  # attention mask
         "decoder_input_ids" if args.use_forced_decoder_ids else "",
         "logits_processor" if args.use_logits_processor else "",
+        "cross_qk_layer_head" if args.collect_cross_qk else "",
+        "extra_decoding_ids" if args.extra_decoding_ids else "",
     ]
-
-    if args.collect_cross_qk:
-        beam_inputs.append("cross_qk_layer_head")
-    else:
-        beam_inputs.append("")
-
-    if args.extra_decoding_ids:
-        beam_inputs.append("extra_decoding_ids")
-    else:
-        beam_inputs.append("")
 
     beam_outputs = ["sequences"]
     if args.output_sequence_scores:
@@ -161,16 +155,6 @@ def chain_model(args):
     if args.use_logits_processor:
         logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
         graph_inputs.append(logits_processor)
-
-    if args.use_vocab_mask:
-        vocab_mask = helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [config.vocab_size])
-        graph_inputs.append(vocab_mask)
-
-    if args.use_prefix_vocab_mask:
-        prefix_vocab_mask = helper.make_tensor_value_info(
-            "prefix_vocab_mask", TensorProto.INT32, ["batch_size", config.vocab_size]
-        )
-        graph_inputs.append(prefix_vocab_mask)
 
     if args.collect_cross_qk:
         cross_qk_layer_head = helper.make_tensor_value_info(
