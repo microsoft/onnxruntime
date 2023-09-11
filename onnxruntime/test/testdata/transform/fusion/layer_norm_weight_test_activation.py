@@ -27,7 +27,7 @@ def GenerateModel(model_name, has_casts=False):  # noqa: N802
     initializers = [  # initializers
         helper.make_tensor("pow_in_2", TensorProto.FLOAT, [], [2]),
         helper.make_tensor("const_e12_f32", TensorProto.FLOAT, [], [1e-12]),
-        helper.make_tensor("const_e12_f16", TensorProto.FLOAT16, [], [1e-12]),
+        helper.make_tensor("const_e12_f16", TensorProto.FLOAT16, [], [1e-6]),
         helper.make_tensor(
             "gamma",
             TensorProto.FLOAT16 if has_casts else TensorProto.FLOAT,
