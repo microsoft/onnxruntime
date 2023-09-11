@@ -75,7 +75,7 @@ const createGemmProgramInfo =
         line = 'value += a[m * K + k] * b[k * N + n];';
       }
 
-      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);  // TODO: support other data type
+      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
       const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= alpha;';
       const calculateC = inputs.length === 3 ? `value += beta * c[${offsetC(M, N, inputs[2].dims)}];` : '';
       const inputStorageBuffersDeclarations = [
