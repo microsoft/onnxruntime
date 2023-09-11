@@ -284,23 +284,23 @@ else()
     )
   endif()
 
-  set(target_name ort)
+  set(target_name_list ort)
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
-    list(APPEND target_name "training")
+    list(APPEND target_name_list  "training")
   endif()
 
-  list(APPEND target_name "wasm")
+  list(APPEND target_name_list  "wasm")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-    list(APPEND target_name "simd")
+    list(APPEND target_name_list  "simd")
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    list(APPEND target_name "threaded")
+    list(APPEND target_name_list  "threaded")
   endif()
 
-  list(JOIN target_name "-" target_name)
+  list(JOIN target_name_list  "-" target_name)
 
   set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name})
 endif()
