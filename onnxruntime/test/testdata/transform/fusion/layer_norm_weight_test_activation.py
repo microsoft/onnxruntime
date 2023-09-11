@@ -5,8 +5,9 @@ from onnx import OperatorSetIdProto, TensorProto, helper
 
 def GenerateModel(model_name, has_casts=False):  # noqa: N802
     nodes = [  # LayerNorm subgraph
-        helper.make_node("Identity", ["A"], ["A_id_out"], "id"),
-        helper.make_node("ReduceMean", ["cast_A_id_out"], ["rd_out"], "reduce1", axes=[-1], keepdims=1),
+        # helper.make_node("Identity", ["A"], ["A_id_out"], "id"),
+        # helper.make_node("ReduceMean", ["cast_A_id_out"], ["rd_out"], "reduce1", axes=[-1], keepdims=1),
+        helper.make_node("ReduceMean", ["A"], ["rd_out"], "reduce1", axes=[-1], keepdims=1),
         helper.make_node("Sub", ["A_id_out", "rd_out"], ["sub_out"], "sub"),
         helper.make_node("Pow", ["cast_sub_out" if has_casts else "sub_out", "pow_in_2"], ["pow_out"], "pow"),
         helper.make_node("ReduceMean", ["pow_out"], ["rd2_out"], "reduce2", axes=[-1], keepdims=1),
@@ -20,7 +21,7 @@ def GenerateModel(model_name, has_casts=False):  # noqa: N802
     if has_casts:
         nodes.extend(
             [
-                helper.make_node("Cast", ["A_id_out"], ["cast_A_id_out"], "cast_id", to=1),
+                # helper.make_node("Cast", ["A_id_out"], ["cast_A_id_out"], "cast_id", to=1),
                 helper.make_node("Cast", ["sub_out"], ["cast_sub_out"], "cast_sub", to=1),
                 helper.make_node("Cast", ["div_out"], ["cast_div_out"], "cast_2", to=10),
             ]
