@@ -14,8 +14,8 @@ namespace Cpu {
 // kernel inputs
 ////////////////
 
-void _ThrowOnError_(OrtStatus *ort_status, const char *filename,
-                           int /*line*/, const OrtApi & api) {
+void _ThrowOnError_(OrtStatus* ort_status, const char* filename,
+                    int /*line*/, const OrtApi& api) {
   if (ort_status) {
     OrtErrorCode code = api.GetErrorCode(ort_status);
     if (code == ORT_OK) {
@@ -33,11 +33,11 @@ void _ThrowOnError_(OrtStatus *ort_status, const char *filename,
 #define ThrowOnError(api, ort_status) \
   _ThrowOnError_(ort_status, __FILE__, __LINE__, api)
 
-std::string KernelInfoGetInputName(const OrtApi &api,
-                                          const OrtKernelInfo *info,
-                                          int index) {
+std::string KernelInfoGetInputName(const OrtApi& api,
+                                   const OrtKernelInfo* info,
+                                   int index) {
   size_t size;
-  OrtStatus *status = api.KernelInfo_GetInputName(info, index, nullptr, &size);
+  OrtStatus* status = api.KernelInfo_GetInputName(info, index, nullptr, &size);
   if (status != nullptr) {
     OrtErrorCode code = api.GetErrorCode(status);
     if (code == ORT_FAIL) {
@@ -51,7 +51,7 @@ std::string KernelInfoGetInputName(const OrtApi &api,
   std::string out;
   out.resize(size);
   ThrowOnError(api, api.KernelInfo_GetInputName(info, index, &out[0], &size));
-  out.resize(size - 1); // remove the terminating character '\0'
+  out.resize(size - 1);  // remove the terminating character '\0'
   return out;
 }
 
@@ -60,12 +60,12 @@ std::string KernelInfoGetInputName(const OrtApi &api,
 ////////////////////
 
 std::string KernelInfoGetOptionalAttributeString(
-    const OrtApi &api, const OrtKernelInfo *info, const char *name,
-    const std::string &default_value) {
+    const OrtApi& api, const OrtKernelInfo* info, const char* name,
+    const std::string& default_value) {
   size_t size = 0;
   std::string out;
 
-  OrtStatus *status =
+  OrtStatus* status =
       api.KernelInfoGetAttribute_string(info, name, nullptr, &size);
 
   if (status != nullptr) {
@@ -81,37 +81,37 @@ std::string KernelInfoGetOptionalAttributeString(
   out.resize(size);
   ThrowOnError(api,
                api.KernelInfoGetAttribute_string(info, name, &out[0], &size));
-  out.resize(size - 1); // remove the terminating character '\0'
+  out.resize(size - 1);  // remove the terminating character '\0'
   return out;
 }
 
 template <typename T>
-OrtStatus *KernelInfoGetAttributeApi(const OrtApi &api,
-                                            const OrtKernelInfo *info,
-                                            const char *name, T &out);
+OrtStatus* KernelInfoGetAttributeApi(const OrtApi& api,
+                                     const OrtKernelInfo* info,
+                                     const char* name, T& out);
 
 template <>
-OrtStatus *
-KernelInfoGetAttributeApi<int64_t>(const OrtApi &api, const OrtKernelInfo *info,
-                                   const char *name, int64_t &out) {
+OrtStatus*
+KernelInfoGetAttributeApi<int64_t>(const OrtApi& api, const OrtKernelInfo* info,
+                                   const char* name, int64_t& out) {
   return api.KernelInfoGetAttribute_int64(info, name, &out);
 }
 
 template <>
-OrtStatus *
-KernelInfoGetAttributeApi<float>(const OrtApi &api, const OrtKernelInfo *info,
-                                 const char *name, float &out) {
+OrtStatus*
+KernelInfoGetAttributeApi<float>(const OrtApi& api, const OrtKernelInfo* info,
+                                 const char* name, float& out) {
   return api.KernelInfoGetAttribute_float(info, name, &out);
 }
 
 template <>
-OrtStatus *KernelInfoGetAttributeApi<std::vector<float>>(
-    const OrtApi &api, const OrtKernelInfo *info, const char *name,
-    std::vector<float> &out) {
+OrtStatus* KernelInfoGetAttributeApi<std::vector<float>>(
+    const OrtApi& api, const OrtKernelInfo* info, const char* name,
+    std::vector<float>& out) {
   size_t size = 0;
 
   // Feed nullptr for the data buffer to query the true size of the attribute
-  OrtStatus *status =
+  OrtStatus* status =
       api.KernelInfoGetAttributeArray_float(info, name, nullptr, &size);
 
   if (status == nullptr) {
@@ -124,13 +124,13 @@ OrtStatus *KernelInfoGetAttributeApi<std::vector<float>>(
 }
 
 template <>
-OrtStatus *KernelInfoGetAttributeApi<std::vector<int64_t>>(
-    const OrtApi &api, const OrtKernelInfo *info, const char *name,
-    std::vector<int64_t> &out) {
+OrtStatus* KernelInfoGetAttributeApi<std::vector<int64_t>>(
+    const OrtApi& api, const OrtKernelInfo* info, const char* name,
+    std::vector<int64_t>& out) {
   size_t size = 0;
 
   // Feed nullptr for the data buffer to query the true size of the attribute
-  OrtStatus *status =
+  OrtStatus* status =
       api.KernelInfoGetAttributeArray_int64(info, name, nullptr, &size);
 
   if (status == nullptr) {
@@ -142,20 +142,21 @@ OrtStatus *KernelInfoGetAttributeApi<std::vector<int64_t>>(
 }
 
 template <>
-OrtStatus *KernelInfoGetAttributeApi<std::vector<std::string>>(
-    const OrtApi & /*api*/, const OrtKernelInfo * /*info*/, const char * /*name*/,
-    std::vector<std::string> & /*output*/) {
-  ORT_CXX_API_THROW("Unable to retrieve attribute as an array of strings. "
-            "You should use a single comma separated string.",
-            OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+OrtStatus* KernelInfoGetAttributeApi<std::vector<std::string>>(
+    const OrtApi& /*api*/, const OrtKernelInfo* /*info*/, const char* /*name*/,
+    std::vector<std::string>& /*output*/) {
+  ORT_CXX_API_THROW(
+      "Unable to retrieve attribute as an array of strings. "
+      "You should use a single comma separated string.",
+      OrtErrorCode::ORT_RUNTIME_EXCEPTION);
 }
 
 template <typename T>
-T KernelInfoGetOptionalAttribute(const OrtApi &api,
-                                        const OrtKernelInfo *info,
-                                        const char *name, T default_value) {
+T KernelInfoGetOptionalAttribute(const OrtApi& api,
+                                 const OrtKernelInfo* info,
+                                 const char* name, T default_value) {
   T out;
-  OrtStatus *status = KernelInfoGetAttributeApi<T>(api, info, name, out);
+  OrtStatus* status = KernelInfoGetAttributeApi<T>(api, info, name, out);
 
   if (status == nullptr)
     return out;
@@ -169,10 +170,10 @@ T KernelInfoGetOptionalAttribute(const OrtApi &api,
   return default_value;
 }
 
-bool KernelInfoGetOptionalAttributeInt64AsBool(const OrtApi &api,
-                                                      const OrtKernelInfo *info,
-                                                      const char *name,
-                                                      bool default_value) {
+bool KernelInfoGetOptionalAttributeInt64AsBool(const OrtApi& api,
+                                               const OrtKernelInfo* info,
+                                               const char* name,
+                                               bool default_value) {
   int64_t value = KernelInfoGetOptionalAttribute<int64_t>(
       api, info, name, default_value ? 1 : 0);
   return value == 1;
@@ -186,18 +187,18 @@ uint8_t float_to_e4m3fn(float v, bool saturate = true) {
   uint32_t b;
   std::memcpy(&b, &v, sizeof(b));
 
-  uint8_t val = static_cast<uint8_t>((b & 0x80000000) >> 24); // sign
-  if ((b & 0x7fffffff) == 0x7f800000) {                       // infinity
+  uint8_t val = static_cast<uint8_t>((b & 0x80000000) >> 24);  // sign
+  if ((b & 0x7fffffff) == 0x7f800000) {                        // infinity
     if (saturate) {
       val |= 126;
     } else {
       val |= 0x7f;
     }
-  } else if ((b & 0x7f800000) == 0x7f800000) { // NaN
+  } else if ((b & 0x7f800000) == 0x7f800000) {  // NaN
     val |= 0x7f;
   } else {
-    uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23); // exponent
-    uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);       // mantissa
+    uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
+    uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
     if (e != 0) {
       if (e < 117) {
       } else if (e < 121) {
@@ -238,7 +239,7 @@ uint8_t float_to_e4m3fn(float v, bool saturate = true) {
           }
         }
       } else if (saturate) {
-        val |= 126; // 0b01111110
+        val |= 126;  // 0b01111110
       } else {
         val |= 0x7F;
       }
@@ -247,21 +248,21 @@ uint8_t float_to_e4m3fn(float v, bool saturate = true) {
   return val;
 }
 
- void float_to_e4m3fn(int64_t n, const float *src, uint8_t *dst,
-                            bool saturate = true) {
+void float_to_e4m3fn(int64_t n, const float* src, uint8_t* dst,
+                     bool saturate = true) {
   for (int64_t i = 0; i < n; ++i) {
     dst[i] = float_to_e4m3fn(src[i], saturate);
   }
 }
 
- void float_to_e4m3fn(int64_t n, const float *src, uint8_t *dst,
-                            float scale, bool saturate = true) {
+void float_to_e4m3fn(int64_t n, const float* src, uint8_t* dst,
+                     float scale, bool saturate = true) {
   for (int64_t i = 0; i < n; ++i) {
     dst[i] = float_to_e4m3fn(src[i] / scale, saturate);
   }
 }
 
- float e4m3fn_to_float(uint8_t val) {
+float e4m3fn_to_float(uint8_t val) {
   uint32_t res;
   if (val == 255) {
     res = 0xffc00000;
@@ -300,31 +301,30 @@ uint8_t float_to_e4m3fn(float v, bool saturate = true) {
   return float_res;
 }
 
- void e4m3fn_to_float(int64_t n, const uint8_t *src, float *dst) {
+void e4m3fn_to_float(int64_t n, const uint8_t* src, float* dst) {
   for (int64_t i = 0; i < n; ++i) {
     dst[i] = e4m3fn_to_float(src[i]);
   }
 }
 
- void e4m3fn_to_float(int64_t n, const uint8_t *src, float *dst, float scale) {
+void e4m3fn_to_float(int64_t n, const uint8_t* src, float* dst, float scale) {
   for (int64_t i = 0; i < n; ++i) {
     dst[i] = e4m3fn_to_float(src[i]) * scale;
   }
 }
 
-
 //////////////////
 // CustomGemmOp...
 //////////////////
 
-void *CustomGemmOp::CreateKernel(const OrtApi &api,
-                                 const OrtKernelInfo *info) const {
+void* CustomGemmOp::CreateKernel(const OrtApi& api,
+                                 const OrtKernelInfo* info) const {
   return std::make_unique<CustomGemmKernel>(api, info).release();
 }
 
-const char *CustomGemmOp::GetName() const { return op_name_; }
+const char* CustomGemmOp::GetName() const { return op_name_; }
 
-const char *CustomGemmOp::GetExecutionProviderType() const {
+const char* CustomGemmOp::GetExecutionProviderType() const {
   return "CPUExecutionProvider";
 }
 
@@ -332,34 +332,34 @@ size_t CustomGemmOp::GetInputTypeCount() const { return 6; };
 
 ONNXTensorElementDataType CustomGemmOp::GetInputType(size_t index) const {
   switch (index) {
-  case 0: // A
-  case 1: // B
-    return ab_type_;
-  case 2: // C
-    return c_type_;
-  case 3: // scale A
-  case 4: // scale B
-  case 5: // scale Y
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  default:
-    ORT_CXX_API_THROW("Input index is out of boundary.", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    case 0:  // A
+    case 1:  // B
+      return ab_type_;
+    case 2:  // C
+      return c_type_;
+    case 3:  // scale A
+    case 4:  // scale B
+    case 5:  // scale Y
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    default:
+      ORT_CXX_API_THROW("Input index is out of boundary.", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
 }
 
 OrtCustomOpInputOutputCharacteristic
 CustomGemmOp::GetInputCharacteristic(size_t index) const {
   switch (index) {
-  case 0:
-  case 1:
-    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
-  case 2:
-    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL;
-  case 3:
-  case 4:
-  case 5:
-    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL;
-  default:
-    ORT_CXX_API_THROW("Input index is out of boundary.", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    case 0:
+    case 1:
+      return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+    case 2:
+      return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL;
+    case 3:
+    case 4:
+    case 5:
+      return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL;
+    default:
+      ORT_CXX_API_THROW("Input index is out of boundary.", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
 }
 
@@ -368,20 +368,20 @@ size_t CustomGemmOp::GetOutputTypeCount() const { return 1; }
 ONNXTensorElementDataType CustomGemmOp::GetOutputType(size_t index) const {
   // D, scale D
   switch (index) {
-  case 0:
-    return d_type_;
-  default:
-    ORT_CXX_API_THROW("Output index is out of boundary.", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    case 0:
+      return d_type_;
+    default:
+      ORT_CXX_API_THROW("Output index is out of boundary.", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
 }
 
 OrtCustomOpInputOutputCharacteristic
 CustomGemmOp::GetOutputCharacteristic(size_t index) const {
   switch (index) {
-  case 0:
-    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
-  default:
-    ORT_CXX_API_THROW("Output index is out of boundary.", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    case 0:
+      return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+    default:
+      ORT_CXX_API_THROW("Output index is out of boundary.", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
 }
 
@@ -389,8 +389,8 @@ CustomGemmOp::GetOutputCharacteristic(size_t index) const {
 // CustomGemmKernel
 ///////////////////
 
-CustomGemmKernel::CustomGemmKernel(const OrtApi &api,
-                                   const OrtKernelInfo *info) {
+CustomGemmKernel::CustomGemmKernel(const OrtApi& api,
+                                   const OrtKernelInfo* info) {
   rowMajor_ = KernelInfoGetOptionalAttribute<int64_t>(api, info, "rowMajor", 1);
   transA_ =
       KernelInfoGetOptionalAttributeInt64AsBool(api, info, "transA", false);
@@ -438,34 +438,34 @@ CustomGemmKernel::CustomGemmKernel(const OrtApi &api,
   }
 }
 
-void CustomGemmKernel::set(const std::vector<int64_t> &shape_A,
-                           const std::vector<int64_t> &shape_B, int &M, int &N,
-                           int &K, int &lda, int &ldb, int &ldd,
+void CustomGemmKernel::set(const std::vector<int64_t>& shape_A,
+                           const std::vector<int64_t>& shape_B, int& M, int& N,
+                           int& K, int& lda, int& ldb, int& ldd,
                            int row_major) const {
   constexpr int ir = 0;
   constexpr int ic = 1 - ir;
-  if (transA_ && !transB_) { // TN
+  if (transA_ && !transB_) {  // TN
     M = shape_A[ic];
     N = shape_B[ic];
     K = shape_A[ir];
     lda = shape_A[row_major ? ic : ir];
     ldb = shape_B[row_major ? ic : ir];
     ldd = shape_B[row_major ? ic : ir];
-  } else if (!transA_ && !transB_) { // NN
+  } else if (!transA_ && !transB_) {  // NN
     M = shape_A[ir];
     N = shape_B[ic];
     K = shape_A[ic];
     lda = shape_A[row_major ? ic : ir];
     ldb = shape_B[row_major ? ic : ir];
     ldd = shape_B[row_major ? ic : ir];
-  } else if (!transA_ && transB_) { // NT
+  } else if (!transA_ && transB_) {  // NT
     M = shape_A[ir];
     N = shape_B[ir];
     K = shape_A[ic];
     lda = shape_A[row_major ? ic : ir];
     ldb = shape_B[row_major ? ic : ir];
     ldd = shape_B[row_major ? ir : ic];
-  } else { // TT
+  } else {  // TT
     M = shape_A[ic];
     N = shape_B[ir];
     K = shape_A[ir];
@@ -475,7 +475,7 @@ void CustomGemmKernel::set(const std::vector<int64_t> &shape_A,
   }
 }
 
-void check_device(const Ort::ConstValue &input, const char * /*name*/) {
+void check_device(const Ort::ConstValue& input, const char* /*name*/) {
   ORT_ENFORCE(input.HasValue(), "Input '", name, "' is empty.");
   auto mem = input.GetTensorMemoryInfo();
   ORT_ENFORCE(mem.GetDeviceType() ==
@@ -483,7 +483,7 @@ void check_device(const Ort::ConstValue &input, const char * /*name*/) {
               "Input '", name, "' is not on CPU");
 }
 
-void check_device(const Ort::UnownedValue &output, const char * /*name*/) {
+void check_device(const Ort::UnownedValue& output, const char* /*name*/) {
   auto mem = output.GetTensorMemoryInfo();
   ORT_ENFORCE(mem.GetDeviceType() ==
                   OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_CPU,
@@ -491,8 +491,8 @@ void check_device(const Ort::UnownedValue &output, const char * /*name*/) {
 }
 
 template <typename TValue>
-ONNXTensorElementDataType GetTypeAndShape(const TValue &input,
-                                          std::vector<int64_t> &shape,
+ONNXTensorElementDataType GetTypeAndShape(const TValue& input,
+                                          std::vector<int64_t>& shape,
                                           bool swap = false) {
   auto t = input.GetTensorTypeAndShapeInfo();
   shape = t.GetShape();
@@ -503,7 +503,7 @@ ONNXTensorElementDataType GetTypeAndShape(const TValue &input,
   return t.GetElementType();
 }
 
-void CustomGemmKernel::Compute(OrtKernelContext *context) {
+void CustomGemmKernel::Compute(OrtKernelContext* context) {
   Ort::KernelContext ctx(context);
 
   int n_inputs = static_cast<int>(n_inputs_);
@@ -542,24 +542,24 @@ void CustomGemmKernel::Compute(OrtKernelContext *context) {
   }
 
   switch (rowMajor_) {
-  case 0:
-    ComputeColMajor(ctx, n_inputs, has_bias, has_scales, has_scales_Y, input_A,
-                    input_B, input_C, scale_A, scale_B, scale_Y);
-    break;
-  case 1:
-    ComputeRowMajor(ctx, n_inputs, has_bias, has_scales, has_scales_Y, input_A,
-                    input_B, input_C, scale_A, scale_B, scale_Y);
-    break;
-  default:
-    ORT_CXX_API_THROW("Unexpected value for rowMajor", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    case 0:
+      ComputeColMajor(ctx, n_inputs, has_bias, has_scales, has_scales_Y, input_A,
+                      input_B, input_C, scale_A, scale_B, scale_Y);
+      break;
+    case 1:
+      ComputeRowMajor(ctx, n_inputs, has_bias, has_scales, has_scales_Y, input_A,
+                      input_B, input_C, scale_A, scale_B, scale_Y);
+      break;
+    default:
+      ORT_CXX_API_THROW("Unexpected value for rowMajor", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
 }
 
 void CustomGemmKernel::ComputeRowMajor(
-    Ort::KernelContext &ctx, int n_inputs, bool has_bias, bool has_scales,
-    bool has_scales_Y, Ort::ConstValue &input_A, Ort::ConstValue &input_B,
-    Ort::ConstValue &input_C, Ort::ConstValue &scale_A,
-    Ort::ConstValue &scale_B, Ort::ConstValue &scale_Y) {
+    Ort::KernelContext& ctx, int n_inputs, bool has_bias, bool has_scales,
+    bool has_scales_Y, Ort::ConstValue& input_A, Ort::ConstValue& input_B,
+    Ort::ConstValue& input_C, Ort::ConstValue& scale_A,
+    Ort::ConstValue& scale_B, Ort::ConstValue& scale_Y) {
   std::vector<int64_t> shape_A, shape_B, shape_C, shape_Y;
   ONNXTensorElementDataType dtype_A, dtype_B, dtype_C, dtype_Y;
   dtype_A = GetTypeAndShape(input_A, shape_A);
@@ -586,10 +586,10 @@ void CustomGemmKernel::ComputeRowMajor(
 }
 
 void CustomGemmKernel::ComputeColMajor(
-    Ort::KernelContext &ctx, int n_inputs, bool has_bias, bool has_scales,
-    bool has_scales_Y, Ort::ConstValue &input_A, Ort::ConstValue &input_B,
-    Ort::ConstValue &input_C, Ort::ConstValue &scale_A,
-    Ort::ConstValue &scale_B, Ort::ConstValue &scale_Y) {
+    Ort::KernelContext& ctx, int n_inputs, bool has_bias, bool has_scales,
+    bool has_scales_Y, Ort::ConstValue& input_A, Ort::ConstValue& input_B,
+    Ort::ConstValue& input_C, Ort::ConstValue& scale_A,
+    Ort::ConstValue& scale_B, Ort::ConstValue& scale_Y) {
   std::vector<int64_t> shape_A, shape_B, shape_C, shape_Y;
   ONNXTensorElementDataType dtype_A, dtype_B, dtype_C, dtype_Y;
   dtype_A = GetTypeAndShape(input_A, shape_A);
@@ -620,16 +620,15 @@ void CustomGemmKernel::ComputeColMajor(
 }
 
 void CustomGemmKernel::ComputeGemm(
-    Ort::KernelContext &ctx, int n_inputs, bool has_bias, bool has_scales,
+    Ort::KernelContext& ctx, int n_inputs, bool has_bias, bool has_scales,
     bool has_scales_Y, ONNXTensorElementDataType dtype_A,
     ONNXTensorElementDataType dtype_B, ONNXTensorElementDataType dtype_C,
-    ONNXTensorElementDataType dtype_Y, const std::vector<int64_t> &shape_A,
-    const std::vector<int64_t> &shape_B, const std::vector<int64_t> &shape_C,
-    const std::vector<int64_t> &shape_Y, bool trans_A, bool trans_B,
-    const void *p_input_a, const void *p_input_b, const void *p_input_c,
-    const void *p_scale_a, const void *p_scale_b, const void *p_scale_y,
-    void *p_output_y, int M, int N, int K, int lda, int ldb, int ldd) {
-
+    ONNXTensorElementDataType dtype_Y, const std::vector<int64_t>& shape_A,
+    const std::vector<int64_t>& shape_B, const std::vector<int64_t>& shape_C,
+    const std::vector<int64_t>& shape_Y, bool trans_A, bool trans_B,
+    const void* p_input_a, const void* p_input_b, const void* p_input_c,
+    const void* p_scale_a, const void* p_scale_b, const void* p_scale_y,
+    void* p_output_y, int M, int N, int K, int lda, int ldb, int ldd) {
   if (dtype_A == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT &&
       dtype_B == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT &&
       dtype_C == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT &&
@@ -637,13 +636,13 @@ void CustomGemmKernel::ComputeGemm(
       computeType_ == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     ComputeGemm(ctx, n_inputs, has_bias, has_scales, has_scales_Y, shape_A,
                 shape_B, shape_C, shape_Y, trans_A, trans_B,
-                static_cast<const float *>(p_input_a),
-                static_cast<const float *>(p_input_b),
-                static_cast<const float *>(p_input_c),
-                static_cast<const float *>(p_scale_a),
-                static_cast<const float *>(p_scale_b),
-                static_cast<const float *>(p_scale_y),
-                static_cast<float *>(p_output_y), M, N, K, lda, ldb, ldd);
+                static_cast<const float*>(p_input_a),
+                static_cast<const float*>(p_input_b),
+                static_cast<const float*>(p_input_c),
+                static_cast<const float*>(p_scale_a),
+                static_cast<const float*>(p_scale_b),
+                static_cast<const float*>(p_scale_y),
+                static_cast<float*>(p_output_y), M, N, K, lda, ldb, ldd);
   } else if (dtype_A == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN &&
              dtype_B == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN &&
              dtype_C == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT &&
@@ -651,31 +650,30 @@ void CustomGemmKernel::ComputeGemm(
              computeType_ == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     std::vector<float> c_input_a(M * K);
     std::vector<float> c_input_b(N * K);
-    e4m3fn_to_float(c_input_a.size(), static_cast<const uint8_t *>(p_input_a),
-                    c_input_a.data(), *(static_cast<const float *>(p_scale_a)));
-    e4m3fn_to_float(c_input_b.size(), static_cast<const uint8_t *>(p_input_b),
-                    c_input_b.data(), *(static_cast<const float *>(p_scale_b)));
+    e4m3fn_to_float(c_input_a.size(), static_cast<const uint8_t*>(p_input_a),
+                    c_input_a.data(), *(static_cast<const float*>(p_scale_a)));
+    e4m3fn_to_float(c_input_b.size(), static_cast<const uint8_t*>(p_input_b),
+                    c_input_b.data(), *(static_cast<const float*>(p_scale_b)));
     ComputeGemm(ctx, n_inputs, has_bias, has_scales, has_scales_Y, shape_A,
                 shape_B, shape_C, shape_Y, trans_A, trans_B, c_input_a.data(),
-                c_input_b.data(), static_cast<const float *>(p_input_c),
-                static_cast<const float *>(p_scale_a),
-                static_cast<const float *>(p_scale_b),
-                static_cast<const float *>(p_scale_y),
-                static_cast<float *>(p_output_y), M, N, K, lda, ldb, ldd);
+                c_input_b.data(), static_cast<const float*>(p_input_c),
+                static_cast<const float*>(p_scale_a),
+                static_cast<const float*>(p_scale_b),
+                static_cast<const float*>(p_scale_y),
+                static_cast<float*>(p_output_y), M, N, K, lda, ldb, ldd);
   } else {
     ORT_CXX_API_THROW("Not implemented", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
 }
 
 void CustomGemmKernel::ComputeGemm(
-    Ort::KernelContext & /*ctx*/, int /*n_inputs*/, bool /*has_bias*/, bool has_scales,
-    bool has_scales_Y, const std::vector<int64_t> &/*shape_A*/,
-    const std::vector<int64_t> &/*shape_B*/, const std::vector<int64_t> &/*shape_C*/,
-    const std::vector<int64_t> &/*shape_Y*/, bool transa, bool transb,
-    const float *p_input_a, const float *p_input_b, const float *p_input_c,
-    const float *p_scale_a, const float *p_scale_b, const float *p_scale_y,
-    float *p_output_y, int M, int N, int K, int lda, int ldb, int ldd) {
-
+    Ort::KernelContext& /*ctx*/, int /*n_inputs*/, bool /*has_bias*/, bool has_scales,
+    bool has_scales_Y, const std::vector<int64_t>& /*shape_A*/,
+    const std::vector<int64_t>& /*shape_B*/, const std::vector<int64_t>& /*shape_C*/,
+    const std::vector<int64_t>& /*shape_Y*/, bool transa, bool transb,
+    const float* p_input_a, const float* p_input_b, const float* p_input_c,
+    const float* p_scale_a, const float* p_scale_b, const float* p_scale_y,
+    float* p_output_y, int M, int N, int K, int lda, int ldb, int ldd) {
   ORT_ENFORCE(has_scales || p_scale_a == nullptr || *p_scale_a == 1,
               "scale_A must be empty or one for float");
   ORT_ENFORCE(has_scales || p_scale_b == nullptr || *p_scale_b == 1,
@@ -788,4 +786,4 @@ void CustomGemmKernel::ComputeGemm(
   }
 }
 
-} // namespace
+}  // namespace Cpu

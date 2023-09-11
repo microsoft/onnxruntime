@@ -1,21 +1,15 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import itertools
 import unittest
 import os
 import sys
 import numpy as np
-from packaging.version import Version
-import onnxruntime
-from onnx import load, AttributeProto, FunctionProto, TensorProto, __version__ as onnx_version
+from onnx import load, AttributeProto, FunctionProto, TensorProto
 from onnx.helper import (
-    make_model,
     make_node,
-    make_graph,
     make_function,
     make_tensor,
-    make_tensor_value_info,
     make_opsetid,
 )
 from onnx.reference import ReferenceEvaluator
@@ -24,15 +18,9 @@ from onnx.reference.ops.op_dequantize_linear import DequantizeLinear
 from onnx.reference.op_run import to_array_extended
 
 from onnxruntime import InferenceSession, SessionOptions
-from onnxruntime.capi.onnxruntime_pybind11_state import (
-    InvalidArgument,
-    Fail as OrtFail,
-)
 
 
-def make_dynamic_quantize_linear_function_proto(
-    domain: str, opset: int, to: int | None = None
-) -> FunctionProto:
+def make_dynamic_quantize_linear_function_proto(domain: str, opset: int, to: int | None = None) -> FunctionProto:
     """
     Creates the FunctionProto for function `DynamicQuantizeLinear`
     doing a quantization to float 8.
@@ -126,9 +114,7 @@ def make_dynamic_quantize_linear_function_proto(
 
 
 class TestOnnxToolsGraph(unittest.TestCase):
-
     def test_basic_all(self):
-        
         if sys.platform.startswith("win"):
             shared_library = "custom_op_local_function.dll"
         elif sys.platform.startswith("darwin"):
@@ -137,18 +123,16 @@ class TestOnnxToolsGraph(unittest.TestCase):
             shared_library = "./libcustom_op_local_function.so"
         if not os.path.exists(shared_library):
             raise FileNotFoundError(f"Unable to find '{shared_library}'")
-        
+
         filename = "custom_ops_type_inference_fails_0.onnx"
-        
+
         with open(os.path.join(os.path.dirname(__file__), filename), "rb") as f:
             onxo = load(f)
 
         sess_opts = SessionOptions()
         sess_opts.register_custom_ops_library(shared_library)
 
-        dynql = ReferenceEvaluator(
-            make_dynamic_quantize_linear_function_proto(domain="qtest", opset=18)
-        )
+        dynql = ReferenceEvaluator(make_dynamic_quantize_linear_function_proto(domain="qtest", opset=18))
         atts = dict(to=TensorProto.FLOAT8E4M3FN)
 
         def dynamic_qdq_linear(x):
@@ -156,13 +140,12 @@ class TestOnnxToolsGraph(unittest.TestCase):
             qdq = DequantizeLinear.eval(qx, scale)
             return qdq
 
-        x = np.arange(2 ** 3).reshape((2,) * 3).astype(np.float32)
-        feeds = dict(X=x)
+        x = np.arange(2**3).reshape((2,) * 3).astype(np.float32)
 
         cst = Cast.eval(to_array_extended(onxo.graph.initializer[0]), to=TensorProto.FLOAT)
         qx, qc = dynamic_qdq_linear(x), dynamic_qdq_linear(cst)
         expected = qx @ qc
-        
+
         sess = InferenceSession(
             onxo.SerializeToString(),
             sess_opts,
