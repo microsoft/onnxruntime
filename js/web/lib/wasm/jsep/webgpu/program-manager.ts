@@ -127,7 +127,7 @@ export class ProgramManager {
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
     const device = this.backend.device;
     const extensions: string[] = [];
-    if (this.backend.device.features.has('shader-f16')) {
+    if (device.features.has('shader-f16')) {
       extensions.push('enable f16;');
     }
     const shaderHelper = createShaderHelper(normalizedDispatchGroupSize);
