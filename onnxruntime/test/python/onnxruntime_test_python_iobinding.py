@@ -151,7 +151,7 @@ class TestIOBinding(unittest.TestCase):
     )
     def test_bind_input_only(self, device, execution_provider):
         if execution_provider not in onnxrt.get_available_providers():
-            self.skipTest(f"Not running on {device.upper()}.")
+            self.skipTest(f"Skipping on {device.upper()}.")
 
         input = self._create_ortvalue_input_on_gpu(device)
 
