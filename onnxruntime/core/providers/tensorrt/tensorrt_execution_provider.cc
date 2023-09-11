@@ -1039,10 +1039,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
   }
 
-  if (cuda_graph_enable_) {
-    GetPerThreadContext().InitCUDAGraph();
-  }
-
   /*
    * Parse explicit min/max/opt profile shapes from provider options.
    *
@@ -1155,12 +1151,8 @@ Status TensorrtExecutionProvider::ReplayGraph() {
   return GetPerThreadContext().ReplayGraph();
 }
 
-void TensorrtExecutionProvider::PerThreadContext::InitCUDAGraph() {
-  cuda_graph_ = std::make_unique<CUDAGraph>();
-}
-
 void TensorrtExecutionProvider::PerThreadContext::SetGraphStream(cudaStream_t stream) {
-  cuda_graph_->SetStream(stream);
+  cuda_graph_.SetStream(stream);
 }
 
 bool TensorrtExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
@@ -1168,12 +1160,12 @@ bool TensorrtExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const 
 }
 
 void TensorrtExecutionProvider::PerThreadContext::CaptureBegin() {
-  cuda_graph_->Reset();
-  cuda_graph_->CaptureBegin();
+  cuda_graph_.Reset();
+  cuda_graph_.CaptureBegin();
 }
 
 void TensorrtExecutionProvider::PerThreadContext::CaptureEnd() {
-  cuda_graph_->CaptureEnd();
+  cuda_graph_.CaptureEnd();
   is_graph_captured_ = true;
 }
 
@@ -1186,7 +1178,7 @@ Status TensorrtExecutionProvider::PerThreadContext::ReplayGraph() {
   // Please note that CUDAGraph::Replay() is not thread safe.
   // The cuda graph object is maintained by a per thread basis,
   // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
-  return cuda_graph_->Replay();
+  return cuda_graph_.Replay();
 }
 
 void TensorrtExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {

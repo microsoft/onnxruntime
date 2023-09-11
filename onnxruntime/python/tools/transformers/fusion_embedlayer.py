@@ -378,7 +378,7 @@ class FusionEmbedLayerNoMask(Fusion):
                 logger.info("Cannot fuse EmbedLayerNormalization: segment embedding table is not expected")
                 return False
 
-        # In normal case, word embeding table is the largest, and segment embedding table is the smallest, while postion embedding table is in between.
+        # In normal case, word embedding table is the largest, and segment embedding table is the smallest, while position embedding table is in between.
         # TODO: use other information (like initializer names) to identify different embedding weights automatically.
         if word_embedding_table.shape[0] <= position_embedding_table.shape[0]:
             logger.warning(
@@ -430,6 +430,7 @@ class FusionEmbedLayerNoMask(Fusion):
         segment_embedding_gather: Union[None, NodeProto],
         position_ids: Optional[str] = None,
         embedding_sum_output=False,
+        embedding_sum_name=None,
     ):
         """Create an EmbedLayerNormalization node. Note that segment embedding is optional.
 
@@ -487,7 +488,8 @@ class FusionEmbedLayerNoMask(Fusion):
 
         embed_node_outputs = [node_name + "_output", node_name + "_dummy_mask_index"]
         if embedding_sum_output:
-            embed_node_outputs.append(node_name + "_embedding_sum")
+            name = embedding_sum_name if embedding_sum_name is not None else node_name + "_embedding_sum"
+            embed_node_outputs.append(name)
 
         embed_node = helper.make_node(
             "EmbedLayerNormalization",
@@ -522,19 +524,8 @@ class FusionEmbedLayerNoMask(Fusion):
         # use prune graph to remove nodes that is not needed
         self.prune_graph = True
 
-    def is_embedding_sum_needed(self, add_before_layer_norm):
-        """Check that Add before layer norm has an output to add before next layernorm
-
-        Args:
-            add_before_layer_norm (NodeProto): Add before any LayerNormalization node in topological order of graph
-
-        Returns:
-            bool: whether there is an extra output needed out of embed layer norm node
-        """
-
-        nodes = self.model.get_children(add_before_layer_norm)
-
-        return len(nodes) > 1
+    def is_skip_layer_norm_with_sum_output(self, node):
+        return (node.op_type == "SkipLayerNormalization") and len(node.output) > 3 and len(node.output[3]) > 0
 
     def fuse_gpt2(
         self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather=None
@@ -570,21 +561,31 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
             return False
 
-        # If the add_before_layernorm node is an Add node, then the add_output output is the first index
-        # output of this node.
-
-        # If the add_before_layernorm node is SkipLayerNormalization node, then the add_output output
+        # If layernorm node is SkipLayerNormalization, we need look at its optional fourth output.
+        # If the add_before_layernorm node is an Add node, then the add_output output is the first output of this node.
+        # If the add_before_layernorm node is a SkipLayerNormalization node, then the add_output output
         # is the (optional) fourth index output of this node.
-        add_output = None
-        optional_embedding_sum_output = False
-        if (add_before_layernorm.op_type == "Add" and self.is_embedding_sum_needed(add_before_layernorm)) or (
-            add_before_layernorm.op_type == "SkipLayerNormalization" and len(add_before_layernorm.output) >= 4
-        ):
-            optional_embedding_sum_output = True
-            add_output = (
-                add_before_layernorm.output[0]
-                if add_before_layernorm.op_type == "Add"
-                else add_before_layernorm.output[3]
+        # When add_before_layernorm is SkipLayerNormalization, add_before_layernorm and layernorm are same node.
+        if layernorm.op_type == "SkipLayerNormalization":
+            need_embedding_sum_output = self.is_skip_layer_norm_with_sum_output(layernorm)
+            sum_output_index = 3
+            node_with_sum_output = layernorm
+            sum_output = layernorm.output[3] if need_embedding_sum_output else None
+            is_sum_graph_output = (sum_output is not None) and (self.model.find_graph_output(sum_output) is not None)
+        else:  # layernorm.op_type == "LayerNormalization"
+            node_with_sum_output = add_before_layernorm
+            sum_output_index = 0 if add_before_layernorm.op_type == "Add" else 3
+            sum_output = (
+                add_before_layernorm.output[sum_output_index]
+                if len(add_before_layernorm.output) > sum_output_index
+                else None
+            )
+            is_sum_graph_output = (sum_output is not None) and (self.model.find_graph_output(sum_output) is not None)
+            is_sum_used_by_multiple_nodes = (
+                sum_output and (sum_output in input_name_to_nodes) and len(input_name_to_nodes[sum_output]) > 1
+            )
+            need_embedding_sum_output = (sum_output is not None) and (
+                add_before_layernorm.op_type != "Add" or is_sum_graph_output or is_sum_used_by_multiple_nodes
             )
 
         # make the fused node
@@ -595,14 +596,16 @@ class FusionEmbedLayerNoMask(Fusion):
             position_embedding_gather,
             optional_segment_gather,
             position_ids,
-            optional_embedding_sum_output,
+            embedding_sum_output=need_embedding_sum_output,
+            embedding_sum_name=sum_output if is_sum_graph_output else None,
         )
 
-        # direct the output to another add too
-        self.model.replace_input_of_all_nodes(layernorm.output[0], embed_node.output[0])
-        if optional_embedding_sum_output:
-            self.model.replace_input_of_all_nodes(add_output, embed_node.output[2])
+        if need_embedding_sum_output:
+            node_with_sum_output.output[sum_output_index] = "_no_use__to_be_removed_"
+            if not is_sum_graph_output:
+                self.model.replace_input_of_all_nodes(sum_output, embed_node.output[2])
 
+        self.finish_fusion(layernorm, embed_node)
         return True
 
     def fuse_distilbert(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
@@ -707,9 +710,14 @@ class FusionEmbedLayerNoMask(Fusion):
             gather_0_path = self.model.match_parent_path(node, ["Gather"], [0])
             gather_1_path = self.model.match_parent_path(node, ["Gather"], [1])
             if gather_0_path is None and gather_1_path is not None:
+                if first_add_path is None:
+                    return
                 add_before_layernorm = first_add_path[0]
                 optional_segment_gather = gather_1_path[0]
             elif gather_0_path is not None and gather_1_path is None:
+                first_add_path = self.model.match_parent_path(node, ["Add"], [1])
+                if first_add_path is None:
+                    return
                 add_before_layernorm = first_add_path[0]
                 optional_segment_gather = gather_0_path[0]
             else:

@@ -135,7 +135,7 @@ def chain_model(args):
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
-    initializers = get_shared_initializers(encoder_model, decoder_model, require_raw_data=True)
+    initializers = get_shared_initializers(encoder_model, decoder_model)
     node.attribute.extend(
         [
             helper.make_attribute("decoder", decoder_model.graph),
