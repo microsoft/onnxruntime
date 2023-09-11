@@ -33,7 +33,15 @@ namespace js {
       T,                                                                                   \
       kJsExecutionProvider,                                                                \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T, false>);
+      Conv<T, false>);                                                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      FusedConv,                                                                           \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      T,                                                                                   \
+      kJsExecutionProvider,                                                                \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      FusedConv<T, false>);
 
 REGISTER_KERNEL_TYPED(float)
 

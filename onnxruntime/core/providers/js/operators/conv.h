@@ -94,5 +94,12 @@ class Conv : public JsKernel {
   // Tensor w_transposed_;
 };
 
+template <typename T, bool is_channels_last>
+class FusedConv : public Conv<T, is_channels_last> {
+ public:
+  explicit FusedConv(const OpKernelInfo& info) : Conv<T, is_channels_last>(info) {
+    ORT_ENFORCE(info.GetAttr<std::string>("activation", &(this->conv_attrs_.activation)).IsOK());
+  }
+};
 }  // namespace js
 }  // namespace onnxruntime
