@@ -192,6 +192,10 @@ export interface IndicesHelper {
 }
 
 const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, string] => {
+  if (components === 3) {
+    throw new Error('vec3 has same alignment as vec4, use vec4 instead');
+  }
+
   // return type is [ storage type, runtime type ] or a single string for both
   switch (type) {
     case DataType.float16:
