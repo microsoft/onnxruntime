@@ -8,7 +8,7 @@ from typing import Optional, Union
 from fusion_attention import FusionAttention
 from fusion_base import Fusion
 from fusion_simplified_layernorm import FusionSimplifiedLayerNormalization, FusionSkipSimplifiedLayerNormalization
-from onnx import FunctionProto, NodeProto, helper
+from onnx import FunctionProto, NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = logging.getLogger(__name__)
@@ -59,8 +59,8 @@ class FusionRotaryAttention(FusionAttention):
             k_rotary.output[0],
             v_matmul.output[0],
             "",                 # bias
-            "",                 # key_padding_mask
-            attn_mask,
+            attn_mask,          # key_padding_mask
+            "",                 # relative_position_bias
             past_k,
             past_v,
         ]
@@ -189,10 +189,15 @@ class FusionRotaryAttention(FusionAttention):
 
 
         # Check #6: check paths for attention mask nodes
-        attn_mask_path = self.model.match_parent_path(add_qk, ["Concat", "Slice", "Slice"], [1, 0, 0])
-        if attn_mask_path is None:
+        attn_mask_path_1 = self.model.match_parent_path(add_qk, ["Concat", "Slice", "Slice"], [1, 0, 0])
+        attn_mask_path_2 = self.model.match_parent_path(add_qk, ["Cast", "Concat", "Slice", "Slice"], [1, 0, 0, 0])
+        concat_qk, slice_qk_2, slice_qk_1 = None, None, None
+        if attn_mask_path_1 is not None:
+            concat_qk, slice_qk_2, slice_qk_1 = attn_mask_path_1
+        elif attn_mask_path_2 is not None:
+            _, concat_qk, slice_qk_2, slice_qk_1 = attn_mask_path_2
+        else:
             return False
-        concat_qk, slice_qk_2, slice_qk_1 = attn_mask_path
         # Check first input to Slice #1 is 3D attention mask of shape (B,S,T)
         if slice_qk_1.input[0] not in {"attn_mask", "attention_mask"}:
             return False
@@ -272,15 +277,23 @@ class FusionRotaryAttention(FusionAttention):
             logger.debug("fuse_rotary_attention: failed to match qk nodes")
             return
 
-        attn_mask_nodes = self.model.match_parent_path(
+        attn_mask_nodes_1 = self.model.match_parent_path(
             add_qk,
             ["Concat", "Slice", "Slice"],
             [1, 0, 0],
         )
+        attn_mask_nodes_2 = self.model.match_parent_path(
+            add_qk,
+            ["Cast", "Concat", "Slice", "Slice"],
+            [1, 0, 0, 0],
+        )
         attn_mask = ""
-        if attn_mask_nodes is not None:
-            concat_mask, slice_mask_1, slice_mask_2 = attn_mask_nodes
-            attn_mask = slice_mask_2.input[0]
+        if attn_mask_nodes_1 is not None:
+            _, slice_mask_1, slice_mask_2 = attn_mask_nodes_1
+            attn_mask = slice_mask_1.output[0]
+        elif attn_mask_nodes_2 is not None:
+            _, _, slice_mask_1, slice_mask_2 = attn_mask_nodes_2
+            attn_mask = slice_mask_1.output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match attention mask nodes")
             return
@@ -419,9 +432,38 @@ class FusionRotaryEmbeddings(Fusion):
         rotary_emb_inputs = [
             matmul_node.output[0],   # x is of shape (B,S,D) instead of (B,S,N,H)
             node.input[1],           # position_ids
-            node.input[2],           # cos_cache
-            node.input[3],           # sin_cache
+            # node.input[2],           # cos_cache
+            # node.input[3],           # sin_cache
         ]
+
+        # Convert cos_cache and sin_cache from node attributes to model initializers
+        cos_cache_node = list(filter(lambda constant: constant.output[0] == node.input[2], self.model.model.graph.node))
+        sin_cache_node = list(filter(lambda constant: constant.output[0] == node.input[3], self.model.model.graph.node))
+        cos_cache_name, sin_cache_name = "cos_cache", "sin_cache"
+
+        if len(cos_cache_node) == 1 and len(sin_cache_node) == 1 and self.model.get_initializer(cos_cache_name) is None and self.model.get_initializer(sin_cache_name) is None:
+            cos_cache = numpy_helper.to_array(cos_cache_node[0].attribute[0].t).squeeze()
+            sin_cache = numpy_helper.to_array(sin_cache_node[0].attribute[0].t).squeeze()
+
+            cos_cache_tensor = helper.make_tensor(
+                name=cos_cache_name,
+                data_type=TensorProto.FLOAT,
+                dims=list(cos_cache.shape),
+                vals=cos_cache.flatten().tolist(),
+            )
+            self.model.add_initializer(cos_cache_tensor, self.this_graph_name)
+            sin_cache_tensor = helper.make_tensor(
+                name=sin_cache_name,
+                data_type=TensorProto.FLOAT,
+                dims=list(sin_cache.shape),
+                vals=sin_cache.flatten().tolist(),
+            )
+            self.model.add_initializer(sin_cache_tensor, self.this_graph_name)
+
+            self.nodes_to_remove.extend([cos_cache_node[0], sin_cache_node[0]])
+
+        rotary_emb_inputs.extend([cos_cache_name, sin_cache_name])
+
         rotary_emb_outputs = node.output
         if len(rotary_emb_outputs) > 1:
             # Re-assign extraneous constant outputs in RotaryEmbedding functions as initializers

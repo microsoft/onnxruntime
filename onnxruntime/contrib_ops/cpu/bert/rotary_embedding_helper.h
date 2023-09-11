@@ -46,8 +46,8 @@ Status CheckInputs(const T* input,
   }
   // Check position_ids
   const auto& position_ids_dims = position_ids->Shape().GetDims();
-  if (position_ids_dims.size() != 1 && position_ids_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' is expected to have 1 or 2 dimensions, got ",
+  if (position_ids_dims.size() != 0 && position_ids_dims.size() != 1 && position_ids_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' is expected to have 0, 1, or 2 dimensions, got ",
                            position_ids_dims.size());
   }
   // Check cos_cache and sin_cache
@@ -74,7 +74,7 @@ Status CheckInputs(const T* input,
   int num_heads = 0;
   int model_format = -1;
 
-  if (position_ids_dims.size() == 1) {
+  if (position_ids_dims.size() == 0 || position_ids_dims.size() == 1) {
     if (input_dims.size() != 3) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'x' is expected to have 3 dimensions, got ",
                              input_dims.size());
