@@ -8,8 +8,9 @@ interface IMLOperatorKernel;
 class MLOperatorKernelCreationContext;
 
 // Forward declares an external creation function.
-#define DML_OP_EXTERN_CREATION_FUNCTION(operatorName) extern void CALLBACK Create##operatorName(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
+#define DML_OP_EXTERN_CREATION_FUNCTION(operatorName) extern void CALLBACK Create##operatorName(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel);
 #define DML_OP_EXTERN_QUERY_FUNCTION(operatorName) extern void CALLBACK Query##operatorName(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported);
+#define DML_OP_EXTERN_GRAPH_QUERY_FUNCTION(operatorName) extern bool CALLBACK QueryGraphSupport##operatorName(const Windows::AI::MachineLearning::Adapter::EdgeShapes& inputShapes, const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes);
 
 // A specific opset version for registration.
 // e.g.

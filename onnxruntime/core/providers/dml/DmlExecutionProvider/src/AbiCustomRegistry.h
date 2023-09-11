@@ -15,7 +15,7 @@ namespace WRL
 }
 
 namespace Windows::AI::MachineLearning::Adapter
-{ 
+{
 
 using namespace Microsoft::WRL;
 
@@ -37,6 +37,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
         IMLOperatorKernelFactory* operatorKernelFactory,
         _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
         _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
+        MLOperatorGraphSupportQueryFunction graphSupportQuery,
         bool isInternalOperator,
         bool canAliasFirstInput,
         bool supportsGraph,
@@ -56,7 +57,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
         {
             registries.push_back(registry.second);
         }
-        
+
         registries.push_back(m_kernelRegistry);
 
         return registries;
@@ -86,7 +87,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
 
  private:
     static onnx::OpSchema ConvertOpSchema(
-        _In_z_ const char* domain, 
+        _In_z_ const char* domain,
         const MLOperatorSchemaDescription& abiSchema,
         IMLOperatorTypeInferrer* typeInferrer,
         IMLOperatorShapeInferrer* shapeInferrer);
@@ -94,7 +95,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
     static std::string ConvertFormalParameterType(const MLOperatorSchemaEdgeDescription& formalParameter);
     static onnx::OpSchema::FormalParameterOption ConvertFormalParameterOption(MLOperatorParameterOptions options);
     static void SetAttributesAndDefaults(onnx::OpSchema& schema, const MLOperatorSchemaDescription& abiSchema);
-    
+
     static AttributeMap GetDefaultAttributes(const MLOperatorKernelDescription* opKernel);
 
     std::shared_ptr<onnxruntime::CustomRegistry> m_kernelRegistry;

@@ -304,6 +304,7 @@ struct OperatorRegistrationInformation
     std::optional<uint32_t> requiredInputCountForDmlGraphSupport;
 
     MLOperatorSupportQueryFunction supportQueryFunction;
+    MLOperatorGraphSupportQueryFunction graphSupportQueryFunction;
     bool allowDynamicInputShapes = false;
 };
 
@@ -524,6 +525,8 @@ DML_OP_EXTERN_QUERY_FUNCTION(SkipLayerNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(QLinearSigmoid);
 DML_OP_EXTERN_QUERY_FUNCTION(Attention);
 
+DML_OP_EXTERN_GRAPH_QUERY_FUNCTION(Concat);
+
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 1> typeNameListDefaultV = {"V"};
 constexpr static std::array<const char*, 2> typeNameListAttention = {"T", "M"};
@@ -705,9 +708,9 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 18,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(      7,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
-    {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
-    {REG_INFO(     13,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
+    {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(), std::nullopt, nullptr, QueryGraphSupportConcat)},
+    {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(), std::nullopt, nullptr, QueryGraphSupportConcat)},  // Adds negative axis.
+    {REG_INFO(     13,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(), std::nullopt, nullptr, QueryGraphSupportConcat)},  // Adds negative axis.
     {REG_INFO_DYNAMIC_OUTPUTS(11, ConcatFromSequence,       typeNameListDefault,            supportedTypeListAllScalarsAndSequences,DmlGraphSupport::NotSupported)}, // Adds negative axis.
     {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},  // Adds negative axes.
@@ -1187,6 +1190,7 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             factory.Get(),
             shapeInferrer.Get(),
             supportQuery.Get(),
+            information.graphSupportQueryFunction,
             true, // isInternalOperator
             information.canAliasFirstInput, // alias
             kernelSupportsGraph, // supportsGraph
