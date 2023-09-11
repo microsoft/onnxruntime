@@ -16,22 +16,6 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Returns a function that creates a graph with a single LayerNormalization operator.
-static GetTestModelFn BuildLayerNormTestCase(const TestInputDef<float>& input_def,
-                                             const TestInputDef<float>& scale_def,
-                                             const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [input_def, scale_def, attrs](ModelTestBuilder& builder) {
-    NodeArg* input = MakeTestInput(builder, input_def);
-    NodeArg* scale = MakeTestInput(builder, scale_def);
-    NodeArg* output = builder.MakeOutput();
-    Node& layer_norm_node = builder.AddNode("LayerNormalization", {input, scale}, {output});
-
-    for (const auto& attr : attrs) {
-      layer_norm_node.AddAttributeProto(attr);
-    }
-  };
-}
-
 // Runs an LayerNorm model on the QNN CPU backend. Checks the graph node assignment and that inference
 // outputs for QNN and CPU match.
 static void RunLayerNormCpuTest(const TestInputDef<float>& input_def,
@@ -45,7 +29,7 @@ static void RunLayerNormCpuTest(const TestInputDef<float>& input_def,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildLayerNormTestCase(input_def, scale_def, attrs),
+  RunQnnModelTest(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, attrs),
                   provider_options,
                   17,
                   expected_ep_assignment);
@@ -130,7 +114,7 @@ static void RunLayerNormQDQTest(const TestInputDef<float>& input_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildLayerNormTestCase(input_def, scale_def, attrs),
+  TestQDQModelAccuracy(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, attrs),
                        BuildQDQLayerNormTestCase<InputQType, ScaleQType>(input_def, scale_def, attrs),
                        provider_options,
                        17,  // opset
