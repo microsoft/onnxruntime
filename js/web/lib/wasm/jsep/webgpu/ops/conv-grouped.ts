@@ -78,7 +78,7 @@ const createGroupedConvProgramInfo =
           isChannelLast ? x.get('batch', 'xHeight', 'xWidth', 'input_channel') :
                           x.get('batch', 'input_channel', 'xHeight', 'xWidth')};
           let wVal = ${w.get('output_channel', 'wInChannel', 'wHeight', 'wWidth')};
-          value += xVal*wVal;
+          value = fma(xVal, wVal, value);
         }
       }
     }

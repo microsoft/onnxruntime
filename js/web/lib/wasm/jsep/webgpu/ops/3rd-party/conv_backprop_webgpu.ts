@@ -204,7 +204,7 @@ const createConvTranspose2DOpProgramShaderSource =
           isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'inputChannel') :
                            dy.get('batch', 'inputChannel', 'idyR', 'idyC')};
                 let wValue = ${w.get('inputChannel', 'wOutChannel', 'u32(wRPerm)', 'u32(wCPerm)')};
-                dotProd = dotProd + xValue * wValue;
+                dotProd = fma(xValue, wValue, dotProd);
               }
             }
           }
