@@ -13,7 +13,7 @@
 #include "core/framework/ortmemoryinfo.h"
 #include "custom_gemm.h"
 
-static const char* c_OpDomain = "onnx_extented.Cpu.tutorial.cpu";
+static const char* c_OpDomain = "onnx_extented.ortops.tutorial.cpu";
 
 static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
   static std::vector<Ort::CustomOpDomain> ort_custom_op_domain_container;
@@ -32,21 +32,16 @@ OrtStatus *ORT_API_CALL RegisterCustomOps(OrtSessionOptions *options,
       "CustomGemmFloat", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
       ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
       false);
-  static Cpu::CustomGemmOp c_CustomGemmFloat16(
-      "CustomGemmFloat16", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
-      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
-      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, false);
-
   static Cpu::CustomGemmOp c_CustomGemmFloat8E4M3FN(
       "CustomGemmFloat8E4M3FN", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN,
       ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
       false);
+  OrtStatus* result = nullptr;
 
   ORT_TRY {
     Ort::CustomOpDomain domain{c_OpDomain};
 
     domain.Add(&c_CustomGemmFloat);
-    domain.Add(&c_CustomGemmFloat16);
     domain.Add(&c_CustomGemmFloat8E4M3FN);
 
     session_options.Add(domain);
@@ -59,5 +54,5 @@ OrtStatus *ORT_API_CALL RegisterCustomOps(OrtSessionOptions *options,
     });
   }
 
-  return nullptr;
+  return result;
 }
