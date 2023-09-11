@@ -23,6 +23,7 @@ class T5EncoderSubgraph : public Subgraph {
   Status CreateInitialFeeds(
       const Tensor& encoder_input_ids,
       const OrtValue* attn_mask_value,
+      const OrtValue* input_features_value,
       const std::vector<const OrtValue*>& implicit_inputs,
       int pad_token_id,
       int start_token_id,

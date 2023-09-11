@@ -686,14 +686,17 @@ Status UpdateGptFeeds(
 // ---------------------------------------------------------------
 // The following functions are for encoder-decoder model like T5
 // ---------------------------------------------------------------
+template <typename T>
 Status CreateEncoderInputs(
     const Tensor* original_encoder_input_ids,
     const OrtValue* attn_mask_value,
+    const OrtValue* input_features_value,
     int pad_token_id,
     int start_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
     OrtValue& encoder_attention_mask,
+    OrtValue& encoder_input_features,
     OrtValue& decoder_input_ids) {
   const TensorShape& input_ids_shape = original_encoder_input_ids->Shape();
   ORT_ENFORCE(input_ids_shape.NumDimensions() == 2);
@@ -739,6 +742,13 @@ Status CreateEncoderInputs(
         }
       }
     }
+  }
+
+  if (input_features_value != nullptr) {
+    const Tensor& input_features = input_features_value->Get<Tensor>();
+    const TensorShape& input_features_shape = input_features.Shape();
+    Tensor::InitOrtValue(element_type, input_features_shape, const_cast<Tensor*>(&input_features)->MutableData<T>(),
+                         allocator->Info(), encoder_input_features);
   }
 
   // decoder_input_ids is optional.
@@ -979,6 +989,30 @@ template Status DeviceCopy<int32_t>(
     gsl::span<const int32_t> source,
     Stream* stream,
     int copyDirection);
+
+template Status CreateEncoderInputs<float>(
+    const Tensor* original_encoder_input_ids,
+    const OrtValue* attn_mask_value,
+    const OrtValue* input_features_value,
+    int pad_token_id,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_ids,
+    OrtValue& encoder_attention_mask,
+    OrtValue& encoder_input_features,
+    OrtValue& decoder_input_ids);
+
+template Status CreateEncoderInputs<MLFloat16>(
+    const Tensor* original_encoder_input_ids,
+    const OrtValue* attn_mask_value,
+    const OrtValue* input_features_value,
+    int pad_token_id,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_ids,
+    OrtValue& encoder_attention_mask,
+    OrtValue& encoder_input_features,
+    OrtValue& decoder_input_ids);
 
 template Status UpdateGptFeeds<float>(
     AllocatorPtr allocator,

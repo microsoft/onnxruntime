@@ -1095,6 +1095,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Input(9, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Input(10, "decoder_input_ids", "The forced input id sequence for the decoder subgraph. Shape is (batch_size, initial_sequence_length)", "I", OpSchema::Optional)
                                 .Input(11, "logits_processor", "Specific logits processor for different types of beamsearch models. Default value 0 means no specific logit processor. Accepts value >= 0. Shape is (1)", "I", OpSchema::Optional)
+                                .Input(12, "input_features", "Input features that could use together with input ids as input to encoder. It can be anything with shape (batch, f_length): e.g. images", "T", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
                                 .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
                                 .Output(2, "scores",

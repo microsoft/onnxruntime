@@ -155,11 +155,13 @@ using UpdateGptFeedsFunc = std::function<Status(
 using CreateEncoderInputsFunc = std::function<Status(
     const Tensor* original_encoder_input_ids,
     const OrtValue* attn_mask_value,
+    const OrtValue* input_features_value,
     int pad_token_id,
     int start_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
     OrtValue& encoder_attention_mask,
+    OrtValue& encoder_input_features,
     OrtValue& decoder_input_ids)>;
 
 // Update decoder inputs given decoder outputs of last iteration (for encoder-decoder model like T5).
@@ -308,14 +310,17 @@ Status UpdateGptFeeds(
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5
 // ---------------------------------------------------------------
+template <typename T>
 Status CreateEncoderInputs(
     const Tensor* original_encoder_input_ids,
     const OrtValue* attn_mask_value,
+    const OrtValue* input_features_value,
     int pad_token_id,
     int start_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
     OrtValue& encoder_attention_mask,
+    OrtValue& encoder_input_features,
     OrtValue& decoder_input_ids);
 
 // Update decoder inputs given decoder outputs of last iteration.

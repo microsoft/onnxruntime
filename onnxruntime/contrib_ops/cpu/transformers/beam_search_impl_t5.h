@@ -149,9 +149,11 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   IAllocatorUniquePtr<char> buffer;
 
   OrtValue decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
+  const OrtValue* input_features_value = this->context_.GetInputOrtValue(12);
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
       encoder_attn_mask_value,
+      input_features_value,
       this->implicit_inputs_,
       parameters->pad_token_id,
       parameters->decoder_start_token_id,

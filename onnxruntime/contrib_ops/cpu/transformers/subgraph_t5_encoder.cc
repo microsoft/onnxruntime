@@ -19,10 +19,11 @@ namespace transformers {
       encoder_input_ids: int32 (B, encode_sequence_length)
       encoder_attention_mask: int32 (B, encode_sequence_length)
       decoder_input_ids: int32 (B, 1)
+      encoder_input_features: float or MLFloat16 (B, feature_length) [optional]
 
     Outputs:
       logits: (B, 1, vocab_size)
-      encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
+      encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size) [optional]
 
       present_key_self_0: (B, num_heads, 1, head_size)
       present_value_self_0: (B, num_heads, 1, head_size)
@@ -40,7 +41,7 @@ namespace transformers {
 
 Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
-  ORT_RETURN_IF(num_subgraph_inputs != 3, "expect 3 inputs, got:", num_subgraph_inputs);
+  ORT_RETURN_IF(num_subgraph_inputs != 3 && num_subgraph_inputs != 4, "expect 3 or inputs, got:", num_subgraph_inputs);
 
   ORT_RETURN_IF(num_subgraph_outputs < 6, "expect >=6 outputs, got:", num_subgraph_outputs);
   ORT_RETURN_IF((static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) % 4 != 0,
@@ -52,6 +53,10 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
                 "encoder subgraph input 1 shall be named as encoder_attention_mask, got: ", subgraph_inputs[1]->Name());
   ORT_RETURN_IF(subgraph_inputs[2]->Name() != "decoder_input_ids",
                 "encoder subgraph input 2 shall be named as decoder_input_ids, got: ", subgraph_inputs[2]->Name());
+  if (num_subgraph_inputs == 4) {
+    ORT_RETURN_IF(subgraph_inputs[3]->Name() != "encoder_input_features",
+                  "encoder subgraph input 3 shall be named as encoder_input_features, got: ", subgraph_inputs[3]->Name());
+  }
 
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
                 "encoder subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
@@ -79,6 +84,11 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
                 "encoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
   ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "encoder subgraph input 2 (decoder_input_ids) shall have int32 type");
+  if (num_subgraph_inputs == 4) {
+    ORT_RETURN_IF(subgraph_inputs[3]->TypeAsProto()->tensor_type().elem_type() != float32_type &&
+                      subgraph_inputs[3]->TypeAsProto()->tensor_type().elem_type() != float16_type,
+                  "encoder subgraph input 3 (encoder_input_features) shall be float or float16 data type");
+  }
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(output_type != float32_type && output_type != float16_type,
@@ -98,6 +108,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 Status T5EncoderSubgraph::CreateInitialFeeds(
     const Tensor& original_encoder_input_ids,
     const OrtValue* attn_mask_value,
+    const OrtValue* input_features_value,
     const std::vector<const OrtValue*>& implicit_inputs,
     int pad_token_id,
     int start_token_id,
@@ -123,27 +134,42 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   // TODO(tianleiwu): expand the outputs instead of inputs to save computation.
   OrtValue encoder_input_ids;
   OrtValue encoder_attention_mask;
+  OrtValue encoder_input_features;
   ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&original_encoder_input_ids,
                                                  attn_mask_value,
+                                                 input_features_value,
                                                  pad_token_id,
                                                  start_token_id,
                                                  cpu_allocator,
                                                  encoder_input_ids,
                                                  encoder_attention_mask,
+                                                 encoder_input_features,
                                                  decoder_input_ids));
 
   const IExecutionProvider* provider = GetProvider();
   AllocatorPtr default_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault));
   AllocatorPtr pinned_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
   const OrtMemoryInfo& location = default_allocator->Info();
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(
-      ort_stream,
-      {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
-      feeds,
-      buffer,
-      default_allocator,
-      pinned_allocator,
-      location));
+
+  if (input_features_value == nullptr) {
+    ORT_RETURN_IF_ERROR(add_to_feeds_func(
+        ort_stream,
+        {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
+        feeds,
+        buffer,
+        default_allocator,
+        pinned_allocator,
+        location));
+  } else {
+    ORT_RETURN_IF_ERROR(add_to_feeds_func(
+        ort_stream,
+        {encoder_input_ids, encoder_attention_mask, decoder_input_ids, encoder_input_features},
+        feeds,
+        buffer,
+        default_allocator,
+        pinned_allocator,
+        location));
+  }
 
   for (const auto* entry : implicit_inputs) {
     feeds.push_back(*entry);
