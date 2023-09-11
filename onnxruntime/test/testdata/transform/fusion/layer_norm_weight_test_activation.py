@@ -1,7 +1,6 @@
-from enum import Enum  # noqa: F401
-
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
+
 
 def GenerateModel(model_name, has_casts=False):  # noqa: N802
     nodes = [  # LayerNorm subgraph
