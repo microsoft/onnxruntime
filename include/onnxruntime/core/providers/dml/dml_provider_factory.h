@@ -30,6 +30,23 @@ typedef struct IDMLDevice IDMLDevice;
 extern "C" {
 #endif
 
+enum class OrtDmlPerformancePreference {
+  Default,
+  HighPerformance,  // Default
+  LowPower
+};
+
+enum class OrtDmlDeviceFilter {
+  None,
+  Gpu,  // Default
+  Npu
+};
+
+struct OrtDmlDeviceOptions {
+  OrtDmlPerformancePreference p;
+  OrtDmlDeviceFilter f;
+};
+
 /**
  * [[deprecated]]
  * This export is deprecated.
@@ -82,6 +99,7 @@ struct OrtDmlApi {
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML1, _In_ OrtSessionOptions* options,
                   _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
 
+
   /**
    * CreateGPUAllocationFromD3DResource
    * This API creates a DML EP resource based on a user-specified D3D12 resource.
@@ -99,6 +117,28 @@ struct OrtDmlApi {
    * This API gets the D3D12 resource when an OrtValue has been allocated by the DML EP.
    */
   ORT_API2_STATUS(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* dml_resource, _Out_ ID3D12Resource** d3d_resource);
+
+  ORT_API2_STATUS(GetNPUDevice, _Out_ int* device_id);
+
+  ORT_API2_STATUS(GetMLDevice, _In_ bool npu_first, _Out_ int* device_ids);
+
+  // enum class Ordering {
+  //     SAME,       // DXGI/DXCore as is today...
+  //     NONE,       // Take the first one
+  //     GPUS_FIRST,
+  //     NPUS_FIRST
+  // };
+
+  // Ordering foo[3][3] = {
+  //                // Default,                HighPerformance,      LowPower
+  //     /*None*/    { Ordering::GPUS_FIRST,   Ordering::GPUS_FIRST, Ordering::NPUS_FIRST       },
+  //     /*Gpu*/     { Ordering::SAME,         Ordering::SAME      , Ordering::SAME             },
+  //     /*Npu*/     { Ordering::NONE,         Ordering::NONE      , Ordering::NONE             },
+
+  // }
+
+  // null means default
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
 };
 
 #ifdef __cplusplus

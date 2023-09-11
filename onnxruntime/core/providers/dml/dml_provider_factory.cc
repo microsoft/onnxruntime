@@ -23,6 +23,8 @@ using Microsoft::WRL::ComPtr;
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
 
+#include <dxcore.h>
+
 namespace onnxruntime {
 
 struct DMLProviderFactory : IExecutionProviderFactory {
@@ -196,6 +198,133 @@ API_IMPL_END
   return nullptr;
 }
 
+bool isHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
+    bool isHardware{ false };
+    THROW_IF_FAILED(adapter->GetProperty(
+        DXCoreAdapterProperty::IsHardware,
+        &isHardware));
+    return isHardware;
+}
+
+bool supportsGraphics(ComPtr<IDXCoreAdapter> adapter) {
+    return adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
+}
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
+API_IMPL_BEGIN
+  //options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::Create(device_id));
+  
+    OrtDmlPerformancePreference p = device_opts->p;
+    OrtDmlDeviceFilter f = device_opts->f;
+
+    // Create DXCore Adapter Factory
+    ComPtr<IDXCoreAdapterFactory> adapterFactory;
+    ORT_THROW_IF_FAILED(::DXCoreCreateAdapterFactory(adapterFactory.GetAddressOf()));
+
+    // Get a list of all the adapters that support compute
+    ComPtr<IDXCoreAdapterList> d3D12CoreComputeAdapters;
+    GUID attributes[]{ DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE };
+    ORT_THROW_IF_FAILED(
+        adapterFactory->CreateAdapterList(_countof(attributes),
+            attributes,
+            d3D12CoreComputeAdapters.GetAddressOf()));
+
+    const uint32_t count{ d3D12CoreComputeAdapters->GetAdapterCount() };
+    int compute_only_device_id = -1;
+
+    // will hold all the adapters in the order specified by the device options
+    ComPtr<IDXCoreAdapter>* ordered_adapters =
+        (ComPtr<IDXCoreAdapter>*) malloc(count * sizeof(ComPtr<IDXCoreAdapter>));
+    int ordered_adapter_count = 0;
+
+    // Used in the case that both GPU and NPU adapters are considered
+    ComPtr<IDXCoreAdapter>* gpu_adapters =
+        (ComPtr<IDXCoreAdapter>*) malloc(count * sizeof(ComPtr<IDXCoreAdapter>));
+    int gpu_adapter_count = 0;
+    ComPtr<IDXCoreAdapter>* npu_adapters =
+        (ComPtr<IDXCoreAdapter>*) malloc(count * sizeof(ComPtr<IDXCoreAdapter>));
+    int npu_adapter_count = 0;
+
+    // Iterate through all compute capable adapters
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        ComPtr<IDXCoreAdapter> candidateAdapter;
+        ORT_THROW_IF_FAILED(
+            d3D12CoreComputeAdapters->GetAdapter(i, candidateAdapter.GetAddressOf()));
+
+        // Only considering hardware adapters
+        if (!isHardwareAdapter(candidateAdapter))
+            continue;
+
+        if (f == OrtDmlDeviceFilter::Gpu) // consider GPUs only
+        {
+            if (supportsGraphics(candidateAdapter)) {
+                ordered_adapters[ordered_adapter_count] = candidateAdapter;
+                ordered_adapter_count++;
+            }
+        }
+        else if(f == OrtDmlDeviceFilter::Npu) // consider NPUs only
+        {
+            if (!supportsGraphics(candidateAdapter)) {
+                ordered_adapters[ordered_adapter_count] = candidateAdapter;
+                ordered_adapter_count++;
+            }
+        }
+        else // consider both GPUs and NPUs
+        {
+            if (supportsGraphics(candidateAdapter)) {
+                gpu_adapters[gpu_adapter_count] = candidateAdapter;
+                gpu_adapter_count++;
+            } else {
+                npu_adapters[npu_adapter_count] = candidateAdapter;
+                npu_adapter_count++;
+            }
+        }
+    }
+
+    if (f == OrtDmlDeviceFilter::None) // considering both NPUs and GPUs
+    {
+        // order the adapters based on the performance preference
+        ComPtr<IDXCoreAdapter>* high_pri_adapters;
+        ComPtr<IDXCoreAdapter>* low_pri_adapters;
+        int num_high_pri_adapters;
+        int num_low_pri_adapters;
+        if (p == OrtDmlPerformancePreference::LowPower) // NPUs first
+        {
+            high_pri_adapters = npu_adapters;
+            num_high_pri_adapters = npu_adapter_count;
+            low_pri_adapters = gpu_adapters;
+            num_low_pri_adapters = gpu_adapter_count;
+        }
+        else // GPUs first
+        {
+            high_pri_adapters = gpu_adapters;
+            num_high_pri_adapters = gpu_adapter_count;
+            low_pri_adapters = npu_adapters;
+            num_low_pri_adapters = npu_adapter_count;
+        }
+
+        for (int i = 0; i < num_high_pri_adapters; i++) {
+            ordered_adapters[ordered_adapter_count] = high_pri_adapters[i];
+            ordered_adapter_count++;
+        }
+        for (int i = 0; i < num_low_pri_adapters; i++) {
+            ordered_adapters[ordered_adapter_count] = low_pri_adapters[i];
+            ordered_adapter_count++;
+        }
+    }
+
+    // check if ordered_adapter count is 0 (no adapters?)
+    ComPtr<IDXCoreAdapter> highest_pri_adapter = ordered_adapters[0];
+    // return the create function for a dxcore device
+
+API_IMPL_END
+  return nullptr;
+}
+
+
+
+
 ORT_API_STATUS_IMPL(CreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource) {
   API_IMPL_BEGIN
 #ifdef USE_DML
@@ -238,7 +367,8 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
   &CreateGPUAllocationFromD3DResource,
   &FreeGPUAllocation,
-  &GetD3D12ResourceFromAllocation
+  &GetD3D12ResourceFromAllocation,
+  &SessionOptionsAppendExecutionProvider_DML2
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {
