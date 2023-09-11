@@ -6,6 +6,7 @@ import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
+import {einsum, parseEinsumAttributes} from './ops/einsum';
 import {expand} from './ops/expand';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gatherElements, parseGatherElementsAttributes} from './ops/gather-elements';
@@ -52,6 +53,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Cos', [unaryOps.cos]],
   ['Cosh', [unaryOps.cosh]],
   ['Div', [binaryOps.div]],
+  ['Einsum', [einsum, parseEinsumAttributes]],
   ['Elu', [unaryOps.elu, unaryOps.parseAlphaAttributes]],
   ['Equal', [binaryOps.equal]],
   ['Erf', [unaryOps.erf]],
