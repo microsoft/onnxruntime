@@ -7,6 +7,9 @@
 #include <memory>
 #include <climits>
 #include <string>
+
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"
@@ -14,12 +17,6 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function_template.h"
 #endif
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 
@@ -313,7 +310,8 @@ class Model {
   // map from function id to pointer of model local function proto
   // FunctionProto is hosted in ModelProto.
   // this map will be used for the local functions' schema's type/shape inference.
-  InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
+  // This container is used by ONNX code and must be an std::unordered_map.
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
   // this is the container that host the generated schemas for model local functions.
   // the generated schemare will be used for graph resolving and type/shape inference.
   // those schemas' type/shape inference will reference to the model_local_functions_ as context,

@@ -529,7 +529,7 @@ if (onnxruntime_USE_CUDA)
       target_link_libraries(${target} PRIVATE cuda)
     endif()
 
-    if (onnxruntime_USE_FLASH_ATTENTION)
+    if (onnxruntime_USE_FLASH_ATTENTION OR onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       include(cutlass)
       target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
     endif()
@@ -729,6 +729,7 @@ if (onnxruntime_USE_TENSORRT)
     onnxruntime_fetchcontent_makeavailable(onnx_tensorrt)
     include_directories(${onnx_tensorrt_SOURCE_DIR})
     set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+    set(CUDA_INCLUDE_DIR ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}) # onnx-tensorrt repo needs this variable to build
     if ( CMAKE_COMPILER_IS_GNUCC )
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
     endif()
@@ -1072,7 +1073,7 @@ if (onnxruntime_USE_WEBNN)
 
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_webnn_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_webnn ${onnxruntime_providers_webnn_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_webnn onnxruntime_common onnx onnx_proto Boost::mp11)
+  onnxruntime_add_include_to_target(onnxruntime_providers_webnn onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
   add_dependencies(onnxruntime_providers_webnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_webnn PROPERTIES FOLDER "ONNXRuntime")
@@ -1696,6 +1697,8 @@ if (onnxruntime_USE_ROCM)
       device_gemm_instance
       device_gemm_add_fastgelu_instance
       device_gemm_fastgelu_instance
+      device_gemm_splitk_instance
+      device_gemm_streamk_instance
       device_batched_gemm_instance
       device_softmax_instance
     )
@@ -1799,7 +1802,7 @@ if (onnxruntime_USE_XNNPACK)
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool Boost::mp11 safeint_interface
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool flatbuffers::flatbuffers Boost::mp11 safeint_interface
   )
 
   add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})

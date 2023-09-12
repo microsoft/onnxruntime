@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "test/providers/qnn/qnn_test_utils.h"
+#include <cassert>
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
@@ -14,6 +15,31 @@
 
 namespace onnxruntime {
 namespace test {
+
+std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems) {
+  if (num_elems == 0) {
+    return {};
+  }
+
+  if (num_elems == 1) {
+    return {min_val};
+  }
+
+  std::vector<float> data;
+  data.reserve(num_elems);
+
+  const float step_size = (max_val - min_val) / static_cast<float>(num_elems - 1);
+  float val = min_val;
+  for (size_t i = 0; i < num_elems; i++) {
+    data.push_back(val);
+    val += step_size;
+  }
+
+  // Ensure that max_val is included exactly (due to rounding from adding step sizes).
+  data[num_elems - 1] = max_val;
+
+  return data;
+}
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,

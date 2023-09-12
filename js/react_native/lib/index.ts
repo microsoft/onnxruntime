@@ -15,4 +15,4 @@ if (Platform.OS === 'android') {
   registerBackend('coreml', onnxruntimeBackend, 1);
 }
 
-env.versions['react-native'] = version;
+Object.defineProperty(env.versions, 'react-native', {value: version, enumerable: true});
