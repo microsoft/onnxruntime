@@ -154,7 +154,6 @@ stages:
             -e BUILD_BUILDNUMBER \
             onnxruntimecpubuild \
               /bin/bash -c "
-                ln -s /opt/python/cp38-cp38/bin/python3 /usr/bin/python3 && \
                 /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Release && \
                 echo Run symbolic shape infer test && \
                 python3 /build/Release/onnxruntime_test_python_symbolic_shape_infer.py
@@ -173,10 +172,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             onnxruntimecpubuild \
-              /bin/bash -c "
-                ln -s /opt/python/cp38-cp38/bin/python3 /usr/bin/python3 && \
                 /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Debug
-              "
         displayName: 'Run Debug tests'
 
       - task: PublishTestResults@2

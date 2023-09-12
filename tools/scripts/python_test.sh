@@ -6,11 +6,11 @@ export src_dir=$1
 export build_dir=$2
 export config=$3
 
+export PATH=/opt/python/cp38-cp38/bin:$PATH
+
 echo Install Python Deps
 cp $src_dir/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $build_dir/requirements.txt
 
-echo Test ORT with the latest ONNX release.
-sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $build_dir/requirements.txt
 python3 -m pip install -r $build_dir/requirements.txt
 mkdir -p $build_dir/requirements_torch_cpu/
 cp $src_dir/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $build_dir/requirements_torch_cpu/requirements.txt
