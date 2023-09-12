@@ -141,7 +141,7 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                     const Node& node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
-  const int num_dq_inputs = 1;
+  constexpr int num_dq_inputs = 1;
   if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
     return false;
   }

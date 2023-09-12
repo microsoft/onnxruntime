@@ -5,7 +5,6 @@
 
 #include "test/providers/qnn/qnn_test_utils.h"
 #include <cassert>
-#include <cmath>
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
