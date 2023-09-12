@@ -266,6 +266,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   std::vector<std::string> output_names;
   InferenceModel(f32_model_data, "f32_model_logger", nullptr, ExpectedEPNodeAssignment::All,
                  f32_helper.feeds_, output_names, cpu_f32_outputs);
+  ASSERT_FALSE(cpu_f32_outputs.empty());
+
   const size_t num_outputs = cpu_f32_outputs.size();
 
   // Compute output range(s) and quantization params.

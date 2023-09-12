@@ -423,19 +423,59 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
 }
 
 // Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's Conv2d)
-// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=6585.83056640625, zero_point=65535.
-// Expected val: -67.35833740234375
-// QNN QDQ val: -431602400 (err 431602336)
-// CPU QDQ val: 0 (err 67.35833740234375)
+// TODO: Inaccuracy detected for output 'output', element 0.
+// Output quant params: scale=0.0040235077030956745, zero_point=0.
+// Expected val: 87.354057312011719
+// QNN QDQ val: 0 (err 87.354057312011719)
+// CPU QDQ val: 87.3583984375 (err 0.00434112548828125)
 TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_DynamicBias) {
+  TestInputDef<float> input_def({1, 2, 5, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 50));
+  TestInputDef<float> weight_def({1, 2, 3, 3}, false, GetFloatDataInRange(-1.0f, 5.0f, 18));
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
-                                      TestInputDef<float>({1, 1, 5, 5}, false, -10.0f, 10.0f),  // Input
-                                      TestInputDef<float>({2, 1, 3, 3}, false, -10.0f, 10.0f),  // Weights
-                                      TestInputDef<float>({1}, false, {2.0f}),                  // Bias
-                                      {1, 1},                                                   // Strides
-                                      {0, 0, 0, 0},                                             // Pads
-                                      {1, 1},                                                   // Dilations
+                                      input_def,                                   // Input
+                                      weight_def.OverrideValueRange(-5.0f, 5.0f),  // Weights (symmetric quant range)
+                                      TestInputDef<float>({1}, false, {2.0f}),     // Bias
+                                      {1, 1},                                      // Strides
+                                      {0, 0, 0, 0},                                // Pads
+                                      {1, 1},                                      // Dilations
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      true);  // Use com.microsoft QDQ ops for 16-bit
+}
+
+// Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's DepthwiseConv2d)
+// TODO(adrianlizarraga): FAIL: Failed to finalize QNN graph. Error code 1002
+TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_DynamicBias) {
+  TestInputDef<float> input_def({1, 1, 5, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 25));
+  TestInputDef<float> weight_def({1, 1, 3, 3}, false, GetFloatDataInRange(-1.0f, 5.0f, 9));
+  RunHTPConvOpTest<uint16_t, int16_t>("Conv",
+                                      input_def,                                   // Input
+                                      weight_def.OverrideValueRange(-5.0f, 5.0f),  // Weights (symmetric quant range)
+                                      TestInputDef<float>({1}, false, {2.0f}),     // Bias
+                                      {1, 1},                                      // Strides
+                                      {0, 0, 0, 0},                                // Pads
+                                      {1, 1},                                      // Dilations
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      true);  // Use com.microsoft QDQ ops for 16-bit
+}
+
+// Tests 16-bit QDQ Conv with dynamic weights and no bias.
+// TODO: Inaccuracy detected for output 'output', element 0.
+// Output quant params: scale=0.0039929896593093872, zero_point=0.
+// Expected val: 85.354057312011719
+// QNN QDQ val: 0 (err 85.354057312011719)
+// CPU QDQ val: 85.358139038085938 (err 0.00408172607421875)
+TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_NoBias) {
+  TestInputDef<float> input_def({1, 2, 5, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 50));
+  TestInputDef<float> weight_def({1, 2, 3, 3}, false, GetFloatDataInRange(-1.0f, 5.0f, 18));
+  RunHTPConvOpTest<uint16_t, int16_t>("Conv",
+                                      input_def,                                   // Input
+                                      weight_def.OverrideValueRange(-5.0f, 5.0f),  // Weights (symmetric quant range)
+                                      TestInputDef<float>(),                       // Bias
+                                      {1, 1},                                      // Strides
+                                      {0, 0, 0, 0},                                // Pads
+                                      {1, 1},                                      // Dilations
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true);  // Use com.microsoft QDQ ops for 16-bit
@@ -443,80 +483,160 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_DynamicBias) {
 
 // Tests 16-bit QDQ Conv with dynamic weights and no bias (uses QNN's DepthWiseConv2d)
 // TODO(adrianlizarraga): FAIL: Failed to finalize QNN graph. Error code 1002
-TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_NoBias) {
+TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_NoBias) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
+  std::vector<float> weight_data = GetFloatDataInRange(-10.0f, 10.0f, 9);
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
-                                      TestInputDef<float>({1, 1, 5, 5}, false, -10.0f, 10.0f),  // Input
-                                      TestInputDef<float>({1, 1, 3, 3}, false, -10.0f, 10.0f),  // Weights
-                                      TestInputDef<float>(),                                    // Bias
-                                      {1, 1},                                                   // Strides
-                                      {0, 0, 0, 0},                                             // Pads
-                                      {1, 1},                                                   // Dilations
+                                      TestInputDef<float>({1, 1, 5, 5}, false, input_data),   // Input
+                                      TestInputDef<float>({1, 1, 3, 3}, false, weight_data),  // Weights
+                                      TestInputDef<float>(),                                  // Bias
+                                      {1, 1},                                                 // Strides
+                                      {0, 0, 0, 0},                                           // Pads
+                                      {1, 1},                                                 // Dilations
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true);  // Use com.microsoft QDQ ops for 16-bit
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with static bias.
-// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 2.
-// Output quant params: scale=0.0041189868934452534, zero_point=16353.
-// Expected val: 202.57948303222656
-// QNN QDQ val: 201.96627807617188 (err 0.6132049560546875)
-// CPU QDQ val: 202.028076171875 (err 0.5514068603515625)
-TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
+// Uses QNN's DepthwiseConv2d operator.
+// TODO: Inaccuracy detected for output 'output', element 8.
+// Output quant params: scale=0.0027466239407658577, zero_point=10194.
+// Expected val: 152
+// QNN QDQ val: 151.8004150390625 (err 0.1995849609375)
+// CPU QDQ val: 151.9981689453125 (err 0.0018310546875)
+TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
+  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 9);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
-                                      TestInputDef<float>({1, 1, 5, 5}, false, -10.0f, 10.0f),  // Input
-                                      TestInputDef<float>({1, 1, 3, 3}, true, -10.0f, 10.0f),   // Weights
-                                      TestInputDef<float>({1}, true, {2.0f}),                   // Bias
-                                      {1, 1},                                                   // Strides
-                                      {0, 0, 0, 0},                                             // Pads
-                                      {1, 1},                                                   // Dilations
+                                      TestInputDef<float>({1, 1, 5, 5}, false, input_data),  // Input
+                                      TestInputDef<float>({1, 1, 3, 3}, true, weight_data),  // Weights
+                                      TestInputDef<float>({1}, true, {2.0f}),                // Bias
+                                      {1, 1},                                                // Strides
+                                      {0, 0, 0, 0},                                          // Pads
+                                      {1, 1},                                                // Dilations
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
                                       13,
-                                      0.06f);  // TODO(adrianlizarraga): Inaccurate!
+                                      0.2f);
+}
+
+// Tests 16-bit activations, 8-bit static weights QDQ Conv with static bias.
+// TODO: Inaccuracy detected for output 'output', element 0.
+// Output quant params: scale=0.0040235077030956745, zero_point=0.
+// Expected val: 87.354057312011719
+// QNN QDQ val: 87.559577941894531 (err 0.2055206298828125)
+// CPU QDQ val: 87.398635864257812 (err 0.04457855224609375)
+TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 50);
+  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 18);
+  RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
+                                      TestInputDef<float>({1, 2, 5, 5}, false, input_data),  // Input
+                                      TestInputDef<float>({1, 2, 3, 3}, true, weight_data),  // Weights
+                                      TestInputDef<float>({1}, true, {2.0f}),                // Bias
+                                      {1, 1},                                                // Strides
+                                      {0, 0, 0, 0},                                          // Pads
+                                      {1, 1},                                                // Dilations
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      true,  // Use com.microsoft QDQ ops for 16-bit
+                                      13,
+                                      0.6f);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
-// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 2.
-// Output quant params: scale=0.0041189868934452534, zero_point=16353.
-// Expected val: 202.57948303222656
-// QNN QDQ val: 201.96627807617188 (err 0.6132049560546875)
-// CPU QDQ val: 202.028076171875 (err 0.5514068603515625)
-TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
+// Uses QNN's DepthwiseConv2d operator.
+// TODO: Inaccuracy detected for output 'output', element 1.
+// Output quant params: scale=0.0027466239407658577, zero_point=10194.
+// Expected val: -13.000001907348633
+// QNN QDQ val: -13.095903396606445 (err 0.0959014892578125)
+// CPU QDQ val: -12.999771118164062 (err 0.0002307891845703125)
+TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
+  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 9);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
-                                      TestInputDef<float>({1, 1, 5, 5}, false, -10.0f, 10.0f),  // Input
-                                      TestInputDef<float>({1, 1, 3, 3}, true, -10.0f, 10.0f),   // Weights
-                                      TestInputDef<float>({1}, false, {2.0f}),                  // Bias
-                                      {1, 1},                                                   // Strides
-                                      {0, 0, 0, 0},                                             // Pads
-                                      {1, 1},                                                   // Dilations
+                                      TestInputDef<float>({1, 1, 5, 5}, false, input_data),  // Input
+                                      TestInputDef<float>({1, 1, 3, 3}, true, weight_data),  // Weights
+                                      TestInputDef<float>({1}, false, {2.0f}),               // Bias
+                                      {1, 1},                                                // Strides
+                                      {0, 0, 0, 0},                                          // Pads
+                                      {1, 1},                                                // Dilations
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
                                       13,
-                                      0.06f);  // TODO(adrianlizarraga): Inaccurate!
+                                      0.2f);
+}
+
+// Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
+// TODO: Inaccuracy detected for output 'output', element 0.
+// Output quant params: scale=0.0040235077030956745, zero_point=0.
+// Expected val: 87.354057312011719
+// QNN QDQ val: 87.559577941894531 (err 0.2055206298828125)
+// CPU QDQ val: 87.398635864257812 (err 0.04457855224609375)
+TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 50);
+  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 18);
+  RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
+                                      TestInputDef<float>({1, 2, 5, 5}, false, input_data),  // Input
+                                      TestInputDef<float>({1, 2, 3, 3}, true, weight_data),  // Weights
+                                      TestInputDef<float>({1}, false, {2.0f}),               // Bias
+                                      {1, 1},                                                // Strides
+                                      {0, 0, 0, 0},                                          // Pads
+                                      {1, 1},                                                // Dilations
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      true,  // Use com.microsoft QDQ ops for 16-bit
+                                      13,
+                                      0.57f);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
-// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0060733519494533539, zero_point=44914.
-// Expected val: -18.683261871337891
-// QNN QDQ val: -19.246452331542969 (err 0.56319046020507812)
-// CPU QDQ val: -19.210012435913086 (err 0.52675056457519531)
+// TODO: Inaccuracy detected for output 'output', element 7.
+// Output quant params: scale=0.0039929896593093872, zero_point=0.
+// Expected val: 246.98667907714844
+// QNN QDQ val: 247.82090759277344 (err 0.834228515625)
+// CPU QDQ val: 247.24192810058594 (err 0.2552490234375)
 TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 50);
+  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 18);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
-                                      TestInputDef<float>({1, 2, 5, 5}, false, -10.0f, 10.0f),  // Input
-                                      TestInputDef<float>({1, 2, 3, 3}, true, -10.0f, 10.0f),   // Weights
-                                      TestInputDef<float>(),                                    // Bias
-                                      {1, 1},                                                   // Strides
-                                      {0, 0, 0, 0},                                             // Pads
-                                      {1, 1},                                                   // Dilations
+                                      TestInputDef<float>({1, 2, 5, 5}, false, input_data),  // Input
+                                      TestInputDef<float>({1, 2, 3, 3}, true, weight_data),  // Weights
+                                      TestInputDef<float>(),                                 // Bias
+                                      {1, 1},                                                // Strides
+                                      {0, 0, 0, 0},                                          // Pads
+                                      {1, 1},                                                // Dilations
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
                                       13,
-                                      0.04f);  // TODO(adrianlizarraga): Inaccurate!
+                                      0.58f);
+}
+
+// Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
+// Uses QNN's DepthwiseConv2d operator.
+// TODO: Inaccuracy detected for output 'output', element 8.
+// Output quant params: scale=0.0027466239407658577, zero_point=10923.
+// Expected val: 150
+// QNN QDQ val: 149.80087280273438 (err 0.199127197265625)
+// CPU QDQ val: 149.99862670898438 (err 0.001373291015625)
+TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
+  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 9);
+  RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
+                                      TestInputDef<float>({1, 1, 5, 5}, false, input_data),  // Input
+                                      TestInputDef<float>({1, 1, 3, 3}, true, weight_data),  // Weights
+                                      TestInputDef<float>(),                                 // Bias
+                                      {1, 1},                                                // Strides
+                                      {0, 0, 0, 0},                                          // Pads
+                                      {1, 1},                                                // Dilations
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      true,  // Use com.microsoft QDQ ops for 16-bit
+                                      13,
+                                      0.2f);
 }
 
 // Test that dynamic weights with default bias works for Conv. This was previously not working
