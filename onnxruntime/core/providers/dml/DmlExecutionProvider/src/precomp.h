@@ -18,6 +18,7 @@
 #include <variant>
 #include <cassert>
 #include <fstream>
+#include <filesystem>
 
 #include <wrl/client.h>
 #include <wrl/implements.h>

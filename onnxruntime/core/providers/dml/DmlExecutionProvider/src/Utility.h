@@ -32,7 +32,6 @@ namespace Dml
             switch (c)
             {
             case '\\':
-            case '/':
             case '\"':
             case '|':
             case '<':
@@ -55,7 +54,6 @@ namespace Dml
             switch (c)
             {
             case '\\':
-            case '/':
             case '\"':
             case '|':
             case '<':

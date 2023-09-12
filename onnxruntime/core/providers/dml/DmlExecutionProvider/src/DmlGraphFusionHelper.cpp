@@ -138,6 +138,7 @@ namespace DmlGraphFusionHelper
             inputsUsed[edge->GraphInputIndex] = true;
         }
 
+        const std::wstring modelName = GetModelName(graph.ModelPath());
         for (uint32_t i = 0; i < initInputBindings.size(); i++)
         {
             bool isInitializerAlreadyRemoved = false;
@@ -476,9 +477,11 @@ namespace DmlGraphFusionHelper
         
         const std::wstring modelName = GetModelName(graph.ModelPath());
         auto buffer = SerializeDmlGraph(serializedDmlGraphDesc);
+
+        std::filesystem::create_directory(modelName);
         const std::wstring partitionName = 
             modelName +
-            (modelName.empty() ? L"" : L"_") +
+            (modelName.empty() ? L"" : L"/") +
             L"Partition_" +
             std::to_wstring(partitionIndex) +
             L".bin";
