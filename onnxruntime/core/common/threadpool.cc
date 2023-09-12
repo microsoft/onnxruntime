@@ -482,13 +482,13 @@ void ThreadPool::TryBatchParallelFor(ThreadPool* tp,
 #ifdef USE_OCT
 
 void ThreadPool::ParallelFor(std::ptrdiff_t total, const FN& fn) {
-  octopus::BinaryPartitioner partitioner(std::max(total/(dop_<<2), (std::ptrdiff_t)1)); // cache_line_size(usually 64 bytes)/sizeof(float)
-  ((octopus::ThreadPool*)impl_)->ParallFor(const_cast<FN*>(&fn), total, &partitioner);
+  octopus::BinaryPartitioner partitioner(std::max(total/(dop_<<2), (std::ptrdiff_t)1));
+  ((octopus::ThreadPool*)impl_)->ParallFor(fn, total, partitioner);
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const FN& fn) {
-  octopus::BinaryPartitioner partitioner(1); // cache_line_size(usually 64 bytes)/sizeof(float)
-  ((octopus::ThreadPool*)impl_)->ParallFor(const_cast<FN*>(&fn), total, &partitioner);
+  octopus::BinaryPartitioner partitioner(1);
+  ((octopus::ThreadPool*)impl_)->ParallFor(fn, total, partitioner);
 }
 
 #else
