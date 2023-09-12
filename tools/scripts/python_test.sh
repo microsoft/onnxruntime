@@ -1,3 +1,5 @@
+#!/bin/bash
+
 set -ex
 
 export src_dir=$1
