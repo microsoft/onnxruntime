@@ -67,7 +67,8 @@ struct Float8E4M3FN {
             val |= 1;
           }
           auto mask = 1 << (20 + d);
-          if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
+          if ((m & mask) &&
+              ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
             // rounding
             val += 1;
           }
@@ -148,14 +149,22 @@ struct Float8E4M3FN {
   inline ORT_HOST_DEVICE operator float() const { return ToFloat(); }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
-  explicit ORT_HOST_DEVICE Float8E4M3FN(const __nv_fp8_e4m3& value) { val = *reinterpret_cast<const unsigned char*>(&value); }
+  explicit ORT_HOST_DEVICE Float8E4M3FN(const __nv_fp8_e4m3& value) {
+    val = *reinterpret_cast<const unsigned char*>(&value);
+  }
   explicit ORT_HOST_DEVICE operator __nv_fp8_e4m3() const { return *reinterpret_cast<const __nv_fp8_e4m3*>(&val); }
 #endif
 };
 
-inline ORT_HOST_DEVICE bool operator==(const Float8E4M3FN& left, const Float8E4M3FN& right) { return left.val == right.val; }
-inline ORT_HOST_DEVICE bool operator!=(const Float8E4M3FN& left, const Float8E4M3FN& right) { return left.val != right.val; }
-inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FN& left, const Float8E4M3FN& right) { return left.val < right.val; }
+inline ORT_HOST_DEVICE bool operator==(const Float8E4M3FN& left, const Float8E4M3FN& right) {
+  return left.val == right.val;
+}
+inline ORT_HOST_DEVICE bool operator!=(const Float8E4M3FN& left, const Float8E4M3FN& right) {
+  return left.val != right.val;
+}
+inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FN& left, const Float8E4M3FN& right) {
+  return left.val < right.val;
+}
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
@@ -165,9 +174,7 @@ inline Float8E4M3FN operator"" _f8e4m3fn(unsigned long long int v) {
   return Float8E4M3FN(narrow<uint8_t>(v), Float8E4M3FN::FromBits());
 }
 
-inline Float8E4M3FN operator"" _f8e4m3fnp8(long double v) {
-  return Float8E4M3FN(static_cast<float>(v), true);
-}
+inline Float8E4M3FN operator"" _f8e4m3fnp8(long double v) { return Float8E4M3FN(static_cast<float>(v), true); }
 
 #endif
 
@@ -230,7 +237,8 @@ struct Float8E4M3FNUZ {
             val |= 1;
           }
           auto mask = 1 << (20 + d);
-          if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
+          if ((m & mask) &&
+              ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
             // rounding
             val += 1;
           }
@@ -305,9 +313,15 @@ struct Float8E4M3FNUZ {
   inline ORT_HOST_DEVICE operator float() const { return ToFloat(); }
 };
 
-inline ORT_HOST_DEVICE bool operator==(const Float8E4M3FNUZ& left, const Float8E4M3FNUZ& right) { return left.val == right.val; }
-inline ORT_HOST_DEVICE bool operator!=(const Float8E4M3FNUZ& left, const Float8E4M3FNUZ& right) { return left.val != right.val; }
-inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FNUZ& left, const Float8E4M3FNUZ& right) { return left.val < right.val; }
+inline ORT_HOST_DEVICE bool operator==(const Float8E4M3FNUZ& left, const Float8E4M3FNUZ& right) {
+  return left.val == right.val;
+}
+inline ORT_HOST_DEVICE bool operator!=(const Float8E4M3FNUZ& left, const Float8E4M3FNUZ& right) {
+  return left.val != right.val;
+}
+inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FNUZ& left, const Float8E4M3FNUZ& right) {
+  return left.val < right.val;
+}
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
@@ -317,9 +331,7 @@ inline Float8E4M3FNUZ operator"" _f8e4m3p8fnuz(unsigned long long int v) {
   return Float8E4M3FNUZ(narrow<uint8_t>(v), Float8E4M3FNUZ::FromBits());
 }
 
-inline Float8E4M3FNUZ operator"" _f8e4m3fnuzp8(long double v) {
-  return Float8E4M3FNUZ(static_cast<float>(v), true);
-}
+inline Float8E4M3FNUZ operator"" _f8e4m3fnuzp8(long double v) { return Float8E4M3FNUZ(static_cast<float>(v), true); }
 
 #endif
 
@@ -384,7 +396,8 @@ struct Float8E5M2 {
             val |= 1;
           }
           auto mask = 1 << (21 + d);
-          if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
+          if ((m & mask) &&
+              ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
             // rounding
             val += 1;
           }
@@ -463,8 +476,12 @@ struct Float8E5M2 {
 #endif
 };
 
-inline ORT_HOST_DEVICE bool operator==(const Float8E5M2& left, const Float8E5M2& right) { return left.val == right.val; }
-inline ORT_HOST_DEVICE bool operator!=(const Float8E5M2& left, const Float8E5M2& right) { return left.val != right.val; }
+inline ORT_HOST_DEVICE bool operator==(const Float8E5M2& left, const Float8E5M2& right) {
+  return left.val == right.val;
+}
+inline ORT_HOST_DEVICE bool operator!=(const Float8E5M2& left, const Float8E5M2& right) {
+  return left.val != right.val;
+}
 inline ORT_HOST_DEVICE bool operator<(const Float8E5M2& left, const Float8E5M2& right) { return left.val < right.val; }
 
 // User defined suffixes to make it easier to declare
@@ -475,9 +492,7 @@ inline Float8E5M2 operator"" _f8e5m2fn(unsigned long long int v) {
   return Float8E5M2(narrow<uint8_t>(v), Float8E5M2::FromBits());
 }
 
-inline Float8E5M2 operator"" _f8e5m2fnp8(long double v) {
-  return Float8E5M2(static_cast<float>(v), true);
-}
+inline Float8E5M2 operator"" _f8e5m2fnp8(long double v) { return Float8E5M2(static_cast<float>(v), true); }
 
 #endif
 
@@ -540,7 +555,8 @@ struct Float8E5M2FNUZ {
             val |= 1;
           }
           auto mask = 1 << (21 + d);
-          if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
+          if ((m & mask) &&
+              ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
             // rounding
             val += 1;
           }
@@ -608,9 +624,15 @@ struct Float8E5M2FNUZ {
   inline ORT_HOST_DEVICE operator float() const { return ToFloat(); }
 };
 
-inline ORT_HOST_DEVICE bool operator==(const Float8E5M2FNUZ& left, const Float8E5M2FNUZ& right) { return left.val == right.val; }
-inline ORT_HOST_DEVICE bool operator!=(const Float8E5M2FNUZ& left, const Float8E5M2FNUZ& right) { return left.val != right.val; }
-inline ORT_HOST_DEVICE bool operator<(const Float8E5M2FNUZ& left, const Float8E5M2FNUZ& right) { return left.val < right.val; }
+inline ORT_HOST_DEVICE bool operator==(const Float8E5M2FNUZ& left, const Float8E5M2FNUZ& right) {
+  return left.val == right.val;
+}
+inline ORT_HOST_DEVICE bool operator!=(const Float8E5M2FNUZ& left, const Float8E5M2FNUZ& right) {
+  return left.val != right.val;
+}
+inline ORT_HOST_DEVICE bool operator<(const Float8E5M2FNUZ& left, const Float8E5M2FNUZ& right) {
+  return left.val < right.val;
+}
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat8E5M2 and Float8E5M2 from unsigned char
@@ -620,9 +642,7 @@ inline Float8E5M2FNUZ operator"" _f8e5m2fnuz(unsigned long long int v) {
   return Float8E5M2FNUZ(narrow<uint8_t>(v), Float8E5M2FNUZ::FromBits());
 }
 
-inline Float8E5M2FNUZ operator"" _f8e5m2fnuzp8(long double v) {
-  return Float8E5M2FNUZ(static_cast<float>(v), true);
-}
+inline Float8E5M2FNUZ operator"" _f8e5m2fnuzp8(long double v) { return Float8E5M2FNUZ(static_cast<float>(v), true); }
 
 #endif
 
