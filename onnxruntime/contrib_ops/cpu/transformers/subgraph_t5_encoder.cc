@@ -23,7 +23,7 @@ namespace transformers {
 
     Outputs:
       logits: (B, 1, vocab_size)
-      encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size) [optional]
+      encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size) or feature_attention_mask (bugbug)
 
       present_key_self_0: (B, num_heads, 1, head_size)
       present_value_self_0: (B, num_heads, 1, head_size)
@@ -60,8 +60,8 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
                 "encoder subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
-  ORT_RETURN_IF(subgraph_outputs[1]->Name() != "encoder_hidden_states",
-                "encoder subgraph output 1 shall be named encoder_hidden_states, got: ", subgraph_outputs[1]->Name());
+  ORT_RETURN_IF(subgraph_outputs[1]->Name() != "encoder_hidden_states" && subgraph_outputs[1]->Name() != "feature_attention_mask",
+                "encoder subgraph output 1 shall be named encoder_hidden_states or feature_attention_mask, got: ", subgraph_outputs[1]->Name());
   ORT_RETURN_IF(subgraph_outputs[2]->Name() != "present_key_self_0",
                 "encoder subgraph output 2 shall be named as present_key_self_0, got: ", subgraph_outputs[2]->Name());
   ORT_RETURN_IF(subgraph_outputs[3]->Name() != "present_value_self_0",

@@ -133,7 +133,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 // Create inputs for decoder from the following data sources:
 // encoder feeds: encoder_input_ids, encoder_attention_mask, decoder_input_ids (with start tokens)
 // encoder fetches: logits,
-//                  encoder_hidden_states,
+//                  encoder_hidden_states, (bugbug: attention_mask)
 //                  present_key_self_0, present_value_self_0, ..., present_key_cross_0, present_value_cross_0, ...
 // decoder_feeds: input_ids,
 //                encoder_attention_mask,
@@ -204,7 +204,8 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // The encoder_attention_mask is copied from the second input of encoder.
   OrtValue expanded_decoder_attention_masks;
   ORT_RETURN_IF_ERROR(expand_buffer_int32_func(stream,
-                                               encoder_feeds[1],
+                                               //encoder_feeds[1],
+                                               encoder_fetches[1], // bugbug: attention_mask from encoder output[1]
                                                num_beam,
                                                allocator,
                                                expanded_decoder_attention_masks,
