@@ -152,7 +152,7 @@ namespace Dml
                                 continue;
                             }
 
-                            if (true)
+                            if (iter->second.size() > 1)
                             {
                                 // By including non-transferrable tensors in isInitializerTransferable, it causes DML to upload and preprocess them
                                 // to duplicate locations rather than treating them as being non-constant, which is helpful for optimization.
