@@ -41,6 +41,7 @@ Status PadOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   // QNN Pad only has 1 input, the pads input & constant_value input need to be initializer and set as Qnn node parameter, axes input is not supported.
   if (do_op_validation) {
     ORT_RETURN_IF(inputs.size() > 3, "QNN Pad doesn't support axes.");
+    ORT_RETURN_IF(inputs.size() < 2, "QNN Pad requires the pads input.");
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
