@@ -32,7 +32,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.13.1.230730_win
+  default: qnn-v2.14.1.230828_win
 
 jobs:
 - job: 'build'

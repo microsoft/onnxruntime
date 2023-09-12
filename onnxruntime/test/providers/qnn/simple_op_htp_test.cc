@@ -16,6 +16,83 @@
 
 namespace onnxruntime {
 namespace test {
+
+// Runs a non-QDQ model on the QNN CPU backend and compares output to CPU EP.
+template <typename InputType = float>
+static void RunOpTestOnCPU(const std::string& op_type,
+                           const std::vector<TestInputDef<InputType>>& input_defs,
+                           const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                           int opset_version,
+                           ExpectedEPNodeAssignment expected_ep_assignment,
+                           const std::string& op_domain = kOnnxDomain) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnCpu.dll";
+#else
+  provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, attrs, op_domain),
+                  provider_options,
+                  opset_version,
+                  expected_ep_assignment);
+}
+
+// Test float DepthToSpace on the QNN CPU backend.
+// TODO: Flaky test tails often.
+// Value of: expected_tensor.DataAsSpan<float>()
+// Expected: contains 16 values, where each value and its corresponding value in 16-byte object
+// <10-00 00-00 00-00 00-00 40-00 23-D1 82-02 00-00> are an almost-equal pair
+// Actual: 16-byte object <10-00 00-00 00-00 00-00 40-00 12-D1 82-02 00-00>, where the value pair (2, 0.1) at
+// index #2 don't match, which is -1.9 from 2
+//
+// If/when fixed, enable QNN EP in cpu test TensorOpTest.SpaceToDepthTest_1
+TEST_F(QnnCPUBackendTests, DISABLED_SpaceToDepth_Flaky) {
+  std::vector<float> X =
+      {0.0f, 0.1f, 0.2f, 0.3f,
+       1.0f, 1.1f, 1.2f, 1.3f,
+
+       2.0f, 2.1f, 2.2f, 2.3f,
+       3.0f, 3.1f, 3.2f, 3.3f};
+
+  for (size_t i = 0; i < 4; i++) {
+    RunOpTestOnCPU("SpaceToDepth",
+                   {TestInputDef<float>({1, 2, 2, 4}, false, X)},
+                   {utils::MakeAttribute("blocksize", static_cast<int64_t>(2))},
+                   7,
+                   ExpectedEPNodeAssignment::All);
+  }
+}
+
+// Value of: expected_tensor.DataAsSpan<float>()
+// Expected: contains 108 values, where each value and its corresponding value in 16-byte object
+// <6C-00 00-00 00-00 00-00 40-00 23-BB 0E-02 00-00> are an almost-equal pair
+// Actual: 16-byte object <6C-00 00-00 00-00 00-00 40-00 12-BB 0E-02 00-00>, where the value pair (18, 1)
+// at index #2 don't match, which is -17 from 18
+//
+// If/when fixed, enable QNN EP in cpu test TensorOpTest.SpaceToDepthTest_2
+TEST_F(QnnCPUBackendTests, DISABLED_SpaceToDepth_Flaky2) {
+  const std::vector<float> X = {
+      0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.,
+      11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21.,
+      22., 23., 24., 25., 26., 27., 28., 29., 30., 31., 32.,
+      33., 34., 35., 36., 37., 38., 39., 40., 41., 42., 43.,
+      44., 45., 46., 47., 48., 49., 50., 51., 52., 53., 54.,
+      55., 56., 57., 58., 59., 60., 61., 62., 63., 64., 65.,
+      66., 67., 68., 69., 70., 71., 72., 73., 74., 75., 76.,
+      77., 78., 79., 80., 81., 82., 83., 84., 85., 86., 87.,
+      88., 89., 90., 91., 92., 93., 94., 95., 96., 97., 98.,
+      99., 100., 101., 102., 103., 104., 105., 106., 107.};
+
+  for (size_t i = 0; i < 4; i++) {
+    RunOpTestOnCPU("SpaceToDepth",
+                   {TestInputDef<float>({2, 3, 3, 6}, false, X)},
+                   {utils::MakeAttribute("blocksize", static_cast<int64_t>(3))},
+                   7,
+                   ExpectedEPNodeAssignment::All);
+  }
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model
