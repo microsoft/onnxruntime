@@ -156,9 +156,9 @@ int OrtAppendExecutionProvider(ort_session_options_handle_t session_options, con
 }
 
 int OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
-                                const char* dim_denotation,
+                                const char* dim_param_name,
                                 int dim_value) {
-  return CHECK_STATUS(AddFreeDimensionOverride, session_options, dim_denotation, dim_value);
+  return CHECK_STATUS(AddFreeDimensionOverrideByName, session_options, dim_param_name, dim_value);
 }
 
 int OrtAddSessionConfigEntry(OrtSessionOptions* session_options,

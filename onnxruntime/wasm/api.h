@@ -85,10 +85,10 @@ int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t
                                                     const char* name);
 
 /**
- * add a free dimension override for one input of a session.
+ * add a free dimension override for one dimension of a session's input.
  */
 int EMSCRIPTEN_KEEPALIVE OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
-                                                     const char* dim_denotation,
+                                                     const char* dim_param_name,
                                                      int dim_value);
 
 /**
