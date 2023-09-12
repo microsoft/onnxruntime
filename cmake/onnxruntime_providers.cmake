@@ -161,6 +161,9 @@ endif()
 if (onnxruntime_USE_CANN)
   set(PROVIDERS_CANN onnxruntime_providers_cann)
 endif()
+if (onnxruntime_USE_SHL)
+  set(PROVIDERS_SHL onnxruntime_providers_shl)
+endif()
 if (onnxruntime_USE_AZURE)
   set(PROVIDERS_AZURE onnxruntime_providers_azure)
 endif()
@@ -1858,6 +1861,71 @@ if (onnxruntime_USE_CANN)
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
+
+if (onnxruntime_USE_SHL)
+  if (onnxruntime_SHL_TARGET)
+    set(ALLOWED_TARGETS C920 C906)
+    list(FIND ALLOWED_TARGETS ${onnxruntime_SHL_TARGET} INDEX)
+    if(${INDEX} EQUAL 0)
+      set(SHL_TARGET "c920")
+      list(APPEND ORT_PROVIDER_FLAGS  -DSHL_RISCV_C920)
+      set(DEP_SHA1_shl_library af3b962f46ea252fdbfa9f6f8c9d9d20beeda7a9)
+    elseif(${INDEX} EQUAL 1)
+      set(SHL_TARGET "c906")
+      list(APPEND ORT_PROVIDER_FLAGS  -DSHL_RISCV_C906)
+      set(DEP_SHA1_shl_library b596a0adf277e8b3cf89888505b4c033f2081b5c)
+    elseif(${INDEX} EQUAL -1)
+      message(FATAL_ERROR "Invalid value '${onnxruntime_SHL_TARGET}' for onnxruntime_SHL_TARGET. Allowed values are ${ALLOWED_TARGETS}")
+    endif()
+  else()
+    set(SHL_TARGET "c920")
+    set(DEP_SHA1_shl_library af3b962f46ea252fdbfa9f6f8c9d9d20beeda7a9)
+    list(APPEND ORT_PROVIDER_FLAGS  -DSHL_RISCV_C920)
+  endif()
+
+
+  if (NOT DEFINED onnxruntime_SHL_HOME)
+    set(SHL_VERSION "v2.4.0")
+    set(SHL_DOWNLOAD_PATH "https://github.com/T-head-Semi/csi-nn2/releases/download")
+    FetchContent_Declare(
+          shl_library
+          URL ${SHL_DOWNLOAD_PATH}/${SHL_VERSION}/${SHL_TARGET}.tar.gz
+          URL_HASH SHA1=${DEP_SHA1_shl_library}
+        )
+    onnxruntime_fetchcontent_makeavailable(shl_library)
+    set(onnxruntime_SHL_HOME  ${CMAKE_CURRENT_BINARY_DIR}/_deps/shl_library-src)
+  endif()
+
+  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+  file(GLOB_RECURSE onnxruntime_providers_shl_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shl/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shl/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+  )
+
+  find_package(OpenMP REQUIRED)
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_shl_src})
+  onnxruntime_add_static_library(onnxruntime_providers_shl ${onnxruntime_providers_shl_src})
+  add_dependencies(onnxruntime_providers_shl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  onnxruntime_add_include_to_target(onnxruntime_providers_shl onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11)
+  target_link_libraries(onnxruntime_providers_shl PRIVATE onnx onnxruntime_common onnxruntime_framework)
+  target_include_directories(onnxruntime_providers_shl PRIVATE ${onnxruntime_SHL_HOME}/include)
+  target_link_libraries(onnxruntime_providers_shl PRIVATE -L${onnxruntime_SHL_HOME}/lib/ -lshl)
+  target_link_libraries(onnxruntime_providers_shl PRIVATE OpenMP::OpenMP_CXX)
+
+  set_target_properties(onnxruntime_providers_shl PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_shl PROPERTIES LINKER_LANGUAGE CXX)
+
+  install(TARGETS onnxruntime_providers_shl
+          ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+          FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+endif()
+
 
 if (onnxruntime_USE_AZURE)
 

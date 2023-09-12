@@ -684,6 +684,10 @@ def parse_arguments():
     parser.add_argument("--use_cann", action="store_true", help="Build with CANN")
     parser.add_argument("--cann_home", help="Path to CANN installation dir")
 
+    parser.add_argument("--use_shl", action="store_true", help="Build with SHL")
+    parser.add_argument("--shl_home", help="Path to SHL installation dir")
+    parser.add_argument("--shl_target", help="build for target board.")
+
     parser.add_argument(
         "--enable_rocm_profiling",
         action="store_true",
@@ -930,6 +934,7 @@ def generate_build_tree(
     qnn_home,
     snpe_root,
     cann_home,
+    shl_home,
     path_to_protoc_exe,
     configs,
     cmake_extra_defines,
@@ -1048,6 +1053,7 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
+        "-Donnxruntime_USE_SHL=" + ("ON" if args.use_shl else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
@@ -1146,6 +1152,9 @@ def generate_build_tree(
 
     if cann_home and os.path.exists(cann_home):
         cmake_args += ["-Donnxruntime_CANN_HOME=" + cann_home]
+
+    if shl_home and os.path.exists(shl_home):
+        cmake_args += ["-Donnxruntime_SHL_HOME=" + shl_home]
 
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
@@ -1371,6 +1380,14 @@ def generate_build_tree(
 
     if args.use_lock_free_queue:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
+
+    if args.use_shl:
+        shl_target = "C920"
+        if args.shl_target:
+            shl_target = args.shl_target
+        cmake_args += [
+            f"-Donnxruntime_SHL_TARGET={shl_target}",
+        ]
 
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
@@ -1967,6 +1984,7 @@ def build_python_wheel(
     use_cann,
     use_azure,
     use_qnn,
+    use_shl,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -2026,6 +2044,8 @@ def build_python_wheel(
             args.append("--use_azure")
         elif use_qnn:
             args.append("--use_qnn")
+        elif use_shl:
+            args.append("--use_shl")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2422,6 +2442,8 @@ def main():
 
     qnn_home = args.qnn_home
 
+    shl_home = args.shl_home
+
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
 
@@ -2569,6 +2591,7 @@ def main():
             qnn_home,
             snpe_root,
             cann_home,
+            shl_home,
             path_to_protoc_exe,
             configs,
             cmake_extra_defines,
@@ -2633,6 +2656,7 @@ def main():
                 args.use_cann,
                 args.use_azure,
                 args.use_qnn,
+                args.use_shl,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,

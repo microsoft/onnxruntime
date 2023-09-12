@@ -944,6 +944,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
                cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
         ->CreateProvider();
 #endif
+  } else if (type == kShlExecutionProvider) {
+#ifdef USE_SHL
+    const auto cit = provider_options_map.find(type);
+    if (cit != provider_options_map.end()){
+      return onnxruntime::ShlProviderFactoryCreator::Create(cit->second)->CreateProvider();
+    }
+    return onnxruntime::ShlProviderFactoryCreator::Create({})->CreateProvider();
+#endif
   } else {
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);

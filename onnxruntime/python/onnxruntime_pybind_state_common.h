@@ -23,7 +23,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN BACKEND_SHL
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
@@ -122,6 +122,12 @@ struct OrtStatus {
 #define BACKEND_CANN ""
 #endif
 
+#if USE_SHL
+#define BACKEND_SHL "-SHL"
+#else
+#define BACKEND_SHL ""
+#endif
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -161,6 +167,10 @@ extern std::string openvino_device_type;
 #ifdef USE_CANN
 #include "core/providers/cann/cann_provider_factory.h"
 #include "core/providers/cann/cann_execution_provider_info.h"
+#endif
+#ifdef USE_SHL
+#include "core/providers/shl/shl_provider_factory.h"
+#include "core/providers/shl/shl_provider_factory_creator.h"
 #endif
 
 #ifdef USE_CUDA

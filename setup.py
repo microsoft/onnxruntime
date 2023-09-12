@@ -86,6 +86,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     pass
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     package_name = "onnxruntime-qnn"
+elif parse_arg_remove_boolean(sys.argv, "--use_shl"):
+    package_name = "onnxruntime-shl"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -292,6 +294,17 @@ if platform.system() == "Linux":
     libs.append(providers_cann)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
+    if package_name == "onnxruntime-shl":
+        shl_libs = [
+            x
+            for x in ["libshl_c906.so.2", "libshl_c920.so.2"]
+            if path.isfile(path.join("_deps/shl_library-src/lib/", x))
+        ]
+        source = f"_deps/shl_library-src/lib/{shl_libs[0]}"
+        dest = f"onnxruntime/capi/{shl_libs[0]}"
+        libs.append(shl_libs[0])
+        logger.info("copying %s -> %s", source, dest)
+        copyfile(source, dest)
 elif platform.system() == "Darwin":
     libs = ["onnxruntime_pybind11_state.so", "libdnnl.2.dylib", "mimalloc.so"]  # TODO add libmklml and libiomp5 later.
     # DNNL & TensorRT EPs are built as shared libs

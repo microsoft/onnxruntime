@@ -180,6 +180,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
             false,
 #endif
         },
+        {
+            kShlExecutionProvider,
+#ifdef USE_SHL
+            true,
+#else
+            false,
+#endif
+        },
         {kCpuExecutionProvider, true},  // kCpuExecutionProvider is always last
 };
 

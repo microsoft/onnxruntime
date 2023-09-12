@@ -103,6 +103,11 @@ endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
 endif()
+
+if(onnxruntime_USE_SHL)
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_SHL_HOME}/include)
+endif()
+
 if(onnxruntime_USE_ROCM)
   target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
@@ -179,6 +184,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_SHL}
     ${PROVIDERS_AZURE}
     ${PROVIDERS_QNN}
     onnxruntime_optimizer
@@ -901,6 +907,16 @@ if (onnxruntime_USE_CANN)
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           $<TARGET_FILE:onnxruntime_providers_cann>
+          $<TARGET_FILE:onnxruntime_providers_shared>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+endif()
+
+if (onnxruntime_USE_SHL)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:onnxruntime_providers_shl>
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )

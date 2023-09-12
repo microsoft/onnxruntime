@@ -79,6 +79,9 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
               return CannProviderFactoryCreator::Create(&provider_options);
             }(),
 #endif
+#ifdef USE_SHL
+            onnxruntime::ShlProviderFactoryCreator::Create({}),
+#endif
         };
 
         for (const auto& f : factories) {

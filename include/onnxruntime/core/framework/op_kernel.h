@@ -203,6 +203,11 @@ KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace snpe
 }  // namespace contrib
 
+namespace shl_ep {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace shl_ep
+
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
 // Naming convention for operator kernel classes
