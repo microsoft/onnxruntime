@@ -17,71 +17,43 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <class Scalar>
-struct EightElementsDequant;
+inline __device__ float AccumulateEightElements(uint32_t values_quant, half scale, uint8_t zp, const half* a) {
+  half2 scale_half2 = {scale, scale};
+  half zp_adjust = -scale * __short2half_rn(zp);
+  half2 zp_adjust2 = {zp_adjust, zp_adjust};
+  const half2* a_half2 = reinterpret_cast<const half2*>(a);
+  half2 v0 = __hfma2(__halves2half2(__uint2half_rn(values_quant & 0xF), __uint2half_rn((values_quant >> 4) & 0xF)), scale_half2, zp_adjust2);
+  half2 v1 = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 8) & 0xF), __uint2half_rn((values_quant >> 12) & 0xF)), scale_half2, zp_adjust2);
+  half2 v2 = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 16) & 0xF), __uint2half_rn((values_quant >> 20) & 0xF)), scale_half2, zp_adjust2);
+  half2 v3 = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 24) & 0xF), __uint2half_rn((values_quant >> 28) & 0xF)), scale_half2, zp_adjust2);
+  v0 = __hmul2(v0, a_half2[0]);
+  v1 = __hmul2(v1, a_half2[1]);
+  v2 = __hfma2(v2, a_half2[2], v0);
+  v3 = __hfma2(v3, a_half2[3], v1);
+  v3 = __hadd2(v2, v3);
+  return float(v3.x) + float(v3.y);
+}
 
-template <>
-struct EightElementsDequant<float> {
-  float2 values[4];
-  inline __device__ void Dequant(uint32_t values_quant, float2 scale, float2 scale_x_zp) {
-    values[0] = {float(values_quant & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 4) & 0xF) * scale.y + scale_x_zp.y};
-    values[1] = {float((values_quant >> 8) & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 12) & 0xF) * scale.y + scale_x_zp.y};
-    values[2] = {float((values_quant >> 16) & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 20) & 0xF) * scale.y + scale_x_zp.y};
-    values[3] = {float((values_quant >> 24) & 0xF) * scale.x + scale_x_zp.x, float((values_quant >> 28) & 0xF) * scale.y + scale_x_zp.y};
-  }
-
-  inline __device__ void Dequant(uint32_t values_quant, float2 scale) {
-    values[0] = {float(values_quant & 0xF) * scale.x, float((values_quant >> 4) & 0xF) * scale.y};
-    values[1] = {float((values_quant >> 8) & 0xF) * scale.x, float((values_quant >> 12) & 0xF) * scale.y};
-    values[2] = {float((values_quant >> 16) & 0xF) * scale.x, float((values_quant >> 20) & 0xF) * scale.y};
-    values[3] = {float((values_quant >> 24) & 0xF) * scale.x, float((values_quant >> 28) & 0xF) * scale.y};
-  }
-};
-
-template <>
-struct EightElementsDequant<half> {
-  half2 values[4];
-  inline __device__ void Dequant(uint32_t values_quant, half2 scales, half2 scale_x_zp) {
-    values[0] = __hfma2(__halves2half2(__uint2half_rn(values_quant & 0xF), __uint2half_rn((values_quant >> 4) & 0xF)), scales, scale_x_zp);
-    values[1] = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 8) & 0xF), __uint2half_rn((values_quant >> 12) & 0xF)), scales, scale_x_zp);
-    values[2] = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 16) & 0xF), __uint2half_rn((values_quant >> 20) & 0xF)), scales, scale_x_zp);
-    values[3] = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 24) & 0xF), __uint2half_rn((values_quant >> 28) & 0xF)), scales, scale_x_zp);
-  }
-
-  inline __device__ void Dequant(uint32_t values_quant, half2 scales) {
-    values[0] = __hmul2(__halves2half2(__uint2half_rn(values_quant & 0xF), __uint2half_rn((values_quant >> 4) & 0xF)), scales);
-    values[1] = __hmul2(__halves2half2(__uint2half_rn((values_quant >> 8) & 0xF), __uint2half_rn((values_quant >> 12) & 0xF)), scales);
-    values[2] = __hmul2(__halves2half2(__uint2half_rn((values_quant >> 16) & 0xF), __uint2half_rn((values_quant >> 20) & 0xF)), scales);
-    values[3] = __hmul2(__halves2half2(__uint2half_rn((values_quant >> 24) & 0xF), __uint2half_rn((values_quant >> 28) & 0xF)), scales);
-  }
-};
-
-template <class Scalar>
-struct Scalar2;
-
-template <>
-struct Scalar2<float> {
-  using type = float2;
-  inline __device__ static float2 MakeScalar2(float f) {
-    return float2{f, f};
-  }
-
-  inline __device__ static float2 MulAdd(float2 a, float2 b, float2 c) {
-    return {a.x * b.x + c.x, a.y * b.y + c.y};
-  }
-};
-
-template <>
-struct Scalar2<half> {
-  using type = half2;
-  inline __device__ static half2 MakeScalar2(half h) {
-    return __halves2half2(h, h);
-  }
-
-  inline __device__ static half2 MulAdd(half2 a, half2 b, half2 c) {
-    return __hfma2(a, b, c);
-  }
-};
+inline __device__ float AccumulateEightElements(uint32_t values_quant, float scale, uint8_t zp, const float* a) {
+  float zp_adjust = -scale * zp;
+  float v0 = float(values_quant & 0xF) * scale + zp_adjust;
+  float v1 = float((values_quant >> 4) & 0xF) * scale + zp_adjust;
+  float v2 = float((values_quant >> 8) & 0xF) * scale + zp_adjust;
+  float v3 = float((values_quant >> 12) & 0xF) * scale + zp_adjust;
+  float v4 = float((values_quant >> 16) & 0xF) * scale + zp_adjust;
+  float v5 = float((values_quant >> 20) & 0xF) * scale + zp_adjust;
+  float v6 = float((values_quant >> 24) & 0xF) * scale + zp_adjust;
+  float v7 = float((values_quant >> 28) & 0xF) * scale + zp_adjust;
+  v0 = v0 * a[0];
+  v1 = v1 * a[1];
+  v2 = v2 * a[2];
+  v3 = v3 * a[3];
+  v4 = v4 * a[4] + v0;
+  v5 = v5 * a[5] + v1;
+  v6 = v6 * a[6] + v2;
+  v7 = v7 * a[7] + v3;
+  return v4 + v5 + v6 + v7;
+}
 
 constexpr int BLOCKSIZEN = 8;
 
@@ -118,43 +90,29 @@ __global__ void MatMulFloatInt4Kernel(
 
   a_data += m_id * k;
   b_data_quant += n_id * group_count * (group_size / 2);
-  typename Scalar2<T>::type res_pair = Scalar2<T>::MakeScalar2(static_cast<T>(0.f));
 
-  const typename Scalar2<T>::type* a_data_vec_2 = reinterpret_cast<const typename Scalar2<T>::type*>(a_data);
+  float sum = 0.f;
   for (int k_step = 0; k_step < k_iter; k_step++) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_step * 128 + lane_id * 4));
-    EightElementsDequant<T> eight_elements;
-    typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + (k_step * 256 + lane_id * 8) / group_size]);
-    typename Scalar2<T>::type scale_zp_pair = Scalar2<T>::MakeScalar2(-scale_pair.x * static_cast<T>(b_zp_vec[warp_id * group_count + (k_step * 256 + lane_id * 8) / group_size]));
-    eight_elements.Dequant(value, scale_pair, scale_zp_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[(lane_id << 2) + 0], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[(lane_id << 2) + 1], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[2], a_data_vec_2[(lane_id << 2) + 2], res_pair);
-    res_pair = Scalar2<T>::MulAdd(eight_elements.values[3], a_data_vec_2[(lane_id << 2) + 3], res_pair);
-    a_data_vec_2 += 128;
+    T scale = b_scale_vec[warp_id * group_count + (k_step * 256 + lane_id * 8) / group_size];
+    uint8_t zp = b_zp_vec[warp_id * group_count + (k_step * 256 + lane_id * 8) / group_size];
+    sum += AccumulateEightElements(value, scale, zp, a_data + (lane_id << 3));
+    a_data += 256;
   }
 
   // handle reminder
   int k_id = k_iter * 256;
   int k_remainder = k - k_iter * 256;
   if (k_remainder > 0) {
-    const typename Scalar2<T>::type* a_data_vec_2 = reinterpret_cast<const typename Scalar2<T>::type*>(a_data + k_id);
-
     if (lane_id * 8 < k_remainder) {
       uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_iter * 128 + lane_id * 4));
-      EightElementsDequant<T> eight_elements;
-      typename Scalar2<T>::type scale_pair = Scalar2<T>::MakeScalar2(b_scale_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size]);
-      typename Scalar2<T>::type scale_zp_pair = Scalar2<T>::MakeScalar2(-scale_pair.x * static_cast<T>(b_zp_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size]));
-      eight_elements.Dequant(value, scale_pair, scale_zp_pair);
-      res_pair = Scalar2<T>::MulAdd(eight_elements.values[0], a_data_vec_2[(lane_id << 2) + 0], res_pair);
-      res_pair = Scalar2<T>::MulAdd(eight_elements.values[1], a_data_vec_2[(lane_id << 2) + 1], res_pair);
-      res_pair = Scalar2<T>::MulAdd(eight_elements.values[2], a_data_vec_2[(lane_id << 2) + 2], res_pair);
-      res_pair = Scalar2<T>::MulAdd(eight_elements.values[3], a_data_vec_2[(lane_id << 2) + 3], res_pair);
+      T scale = b_scale_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
+      uint8_t zp = b_zp_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
+      sum += AccumulateEightElements(value, scale, zp, a_data + (lane_id << 3));
     }
   }
 
   // warp reduction
-  T sum = res_pair.x + res_pair.y;
   for (int i = 16; i > 0; i = i / 2) {
     sum += __shfl_down_sync(0xffffffff, sum, i);
   }
