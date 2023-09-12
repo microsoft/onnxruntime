@@ -3,15 +3,9 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include "core/optimizer/graph_transformer.h"
-#include "core/optimizer/qdq_transformer/qdq_util.h"
 
 namespace onnxruntime {
-
-using ONNX_NAMESPACE::TensorProto;
-using ONNX_NAMESPACE::TensorProto_DataType;
-using QDQ::InputIndex;
 
 /**
  * @Class DoubleQDQPairsRemover
@@ -30,33 +24,5 @@ class DoubleQDQPairsRemover : public GraphTransformer {
       bool& modified,
       int graph_level,
       const logging::Logger& logger) const override;
-
-  static bool IsNodeRemovable(
-      Graph& graph,
-      const NodeIndex& self_index,
-      NodeIndex& parent_index,
-      NodeIndex& child_index,
-      NodeIndex& grandchild_index);
-
-  template <typename T>
-  static bool FindNewZeroPointAndScale(
-      const Graph& graph,
-      const Node& node1,
-      const Node& node2,
-      float& new_scale,
-      T& new_zero_point,
-      bool& skip_reset);
-
-  template <typename T>
-  static void ApplyNewInputValue(
-      Graph& graph,
-      Node& node,
-      const InputIndex& index,
-      T value);
-
-  template <typename ZeroPointType>
-  static bool ResetParentAndGrandchildZeroPointAndScale(Graph& graph, const Node& self,
-                                                        const Node& child, Node& parent,
-                                                        Node& grandchild);
 };
 }  // namespace onnxruntime

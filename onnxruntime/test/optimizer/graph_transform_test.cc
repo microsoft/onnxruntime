@@ -83,6 +83,7 @@
 #include "test/util/include/test_utils.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
@@ -3829,12 +3830,12 @@ TEST_F(GraphTransformationTests, DoublQDQRemover_RemoveDupQDQ) {
   std::string zp_name_after_reshape_node;
   for (auto& node : graph.Nodes()) {
     if (node.Name() == "dq_2") {
-      dq_scale_name_before_reshape_node = node.InputDefs()[InputIndex::SCALE_ID]->Name();
-      zp_name_before_reshape_node = node.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+      dq_scale_name_before_reshape_node = node.InputDefs()[QDQ::InputIndex::SCALE_ID]->Name();
+      zp_name_before_reshape_node = node.InputDefs()[QDQ::InputIndex::ZERO_POINT_ID]->Name();
     }
     if (node.Name() == "q_3") {
-      dq_scale_name_after_reshape_node = node.InputDefs()[InputIndex::SCALE_ID]->Name();
-      zp_name_after_reshape_node = node.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+      dq_scale_name_after_reshape_node = node.InputDefs()[QDQ::InputIndex::SCALE_ID]->Name();
+      zp_name_after_reshape_node = node.InputDefs()[QDQ::InputIndex::ZERO_POINT_ID]->Name();
     }
   }
   EXPECT_EQ(dq_scale_name_before_reshape_node.empty(), false);
