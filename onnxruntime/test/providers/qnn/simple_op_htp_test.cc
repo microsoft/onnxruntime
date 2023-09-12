@@ -709,10 +709,11 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D) {
 
 // Test 16-bit QDQ Sub
 TEST_F(QnnHTPBackendTests, BinaryOp_Sub4D_U16) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  std::vector<float> input0_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  std::vector<float> input1_data = GetFloatDataInRange(0.0f, 20.0f, 8);
   RunQDQOpTest<uint16_t>("Sub",
-                         {TestInputDef<float>({1, 3, 8, 8}, false, input_data),
-                          TestInputDef<float>({1, 3, 8, 8}, false, input_data)},
+                         {TestInputDef<float>({1, 2, 2, 2}, false, input0_data),
+                          TestInputDef<float>({1, 2, 2, 2}, false, input1_data)},
                          {},
                          17,
                          ExpectedEPNodeAssignment::All,
