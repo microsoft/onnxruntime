@@ -135,7 +135,7 @@ bool TryMatMul4BitsWeight(
     int k,
     int group_size,
     cudaStream_t stream) {
-  if (n % BLOCKSIZEN != 0 || k % 8 != 0) {
+  if (n % BLOCKSIZEN != 0 || k % 8 != 0 || m > 1) {
     return false;
   }
   dim3 blocks((n + BLOCKSIZEN - 1) / BLOCKSIZEN, m);
