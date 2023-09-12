@@ -56,6 +56,7 @@ size_t GetAttentionWorkspaceSize(
 
 #if USE_FLASH_ATTENTION
   // Use portion of workspace for softmax buffer.
+  // TODO(aciddelgado): here we need appropriate bytes for num_splits for splitkv
   if (use_flash_attention) {
     size_t flash_buffer_bytes = onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, num_heads);
     return qkv_bytes + flash_buffer_bytes;

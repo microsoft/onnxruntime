@@ -22,8 +22,8 @@ Status CheckInputs(const T* query,
                    int num_heads,
                    int kv_num_heads,
                    float scale) {
-  //     past_key                   : (B, N_k, S*, H)
-  //     past_value                 : (B, N_k, S*, H)
+  //     past_key                   : (B, S*, N_k, H)
+  //     past_value                 : (B, S*, N_k, H)
   // When no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D_kv) or (B, N_k, S*, H)
