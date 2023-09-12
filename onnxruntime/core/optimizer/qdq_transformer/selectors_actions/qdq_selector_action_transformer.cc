@@ -33,7 +33,8 @@ void SplitQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 // create rules for ops that don't change the data
 void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 nodes. DQ, target, Q. Merge into target and remove DQ and Q.
-  const std::string action_name{"drop"};
+  const std::string drop_action_name{"drop"};
+  const std::string drop_action_no_int16_name{"drop_no_int16_support"};
   NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
 
@@ -43,32 +44,33 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
       MoveToSlot(dq, ArgType::kInput, 0, ArgType::kInput, 0),
       MoveToSlot(q, ArgType::kOutput, 0, ArgType::kOutput, 0)};
 
+  std::unique_ptr<Action> drop_action_no_int16 = std::make_unique<MergeIntoTarget>(
+      std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
+  std::unique_ptr<Action> drop_action = std::make_unique<MergeIntoTarget>(std::move(moves));
+
 #if !defined(ORT_MINIMAL_BUILD)
   // Use a separate selector + action that disallows 16-bit types for MaxPool and Resize.
   // int16 MaxPool is not supported by the ONNX specification.
   // int16 Resize is not supported by the ORT implementation (although allowed by ONNX).
   std::unique_ptr<NodeSelector> selector_disallow_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
-  std::unique_ptr<Action> action_disallow_16bit = std::make_unique<MergeIntoTarget>(
-      std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
-  qdq_selector_action_registry.RegisterSelectorAndAction("drop_no_int16_support",
+  qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_name,
                                                          {{"MaxPool", {12}},
                                                           {"Resize", {}}},
                                                          std::move(selector_disallow_16bit),
-                                                         std::move(action_disallow_16bit));
+                                                         std::move(drop_action_no_int16));
 
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropQDQNodesSelector>();
-  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
-  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+  qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_name,
                                                          {{"Gather", {}},
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
                                                           {"Squeeze", {}},
                                                           {"Unsqueeze", {}}},
                                                          std::move(selector),
-                                                         std::move(action));
+                                                         std::move(drop_action));
 #else
-  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
-  qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+  qdq_selector_action_registry.RegisterAction(drop_action_no_int16_name, std::move(drop_action_no_int16));
+  qdq_selector_action_registry.RegisterAction(drop_action_name, std::move(drop_action));
 #endif
 }
 
