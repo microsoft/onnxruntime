@@ -53,68 +53,74 @@ class NodeGroupSelector {
 // Zero point and scale are constant scalars and must match
 class DropQDQNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit DropQDQNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+  explicit DropQDQNodeGroupSelector(bool allow_16bit = true) : allow_16bit_(allow_16bit) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
-  bool int16_uint16_allowed_;
+  bool allow_16bit_;
 };
 
 // Single DQ -> node.
 class DropDQNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit DropDQNodeGroupSelector(bool allow_16bit = true) : allow_16bit_(allow_16bit) {}
+
+ private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool allow_16bit_;
 };
 
 // single input. default is to only support uint8.
 class UnaryNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit UnaryNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+  explicit UnaryNodeGroupSelector(bool allow_16bit = true) : allow_16bit_(allow_16bit) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
-  bool int16_uint16_allowed_;
+  bool allow_16bit_;
 };
 
 // 2 DQ nodes providing input -> node -> Q
 class BinaryNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit BinaryNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+  explicit BinaryNodeGroupSelector(bool allow_16bit = true) : allow_16bit_(allow_16bit) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
-  bool int16_uint16_allowed_;
+  bool allow_16bit_;
 };
 
 // Variadic DQ nodes -> node -> Q
 class VariadicNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit VariadicNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+  explicit VariadicNodeGroupSelector(bool allow_16bit = true) : allow_16bit_(allow_16bit) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
-  bool int16_uint16_allowed_;
+  bool allow_16bit_;
 };
 
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvNodeGroupSelector : public NodeGroupSelector {
  public:
   // default to 'true'
-  ConvNodeGroupSelector(bool int8_allowed = true, bool int16_uint16_allowed = true)
-      : int8_allowed_(int8_allowed), int16_uint16_allowed_(int16_uint16_allowed) {}
+  ConvNodeGroupSelector(bool int8_allowed = true, bool allow_16bit = true)
+      : int8_allowed_(int8_allowed), allow_16bit_(allow_16bit) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
@@ -122,20 +128,20 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 
   bool int8_allowed_;
-  bool int16_uint16_allowed_;
+  bool allow_16bit_;
 };
 
 class WhereNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit WhereNodeGroupSelector(bool int16_uint16_allowed = true)
-      : int16_uint16_allowed_(int16_uint16_allowed) {}
+  explicit WhereNodeGroupSelector(bool allow_16bit = true)
+      : allow_16bit_(allow_16bit) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
-  bool int16_uint16_allowed_;
+  bool allow_16bit_;
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
@@ -144,10 +150,10 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
  public:
   MatMulNodeGroupSelector(bool int8_allowed = true,
                           bool matmulintegertofloat_allowed = false,
-                          bool int16_uint16_allowed = true)
+                          bool allow_16bit = true)
       : int8_allowed_(int8_allowed),
         matmulintegertofloat_allowed_(matmulintegertofloat_allowed),
-        int16_uint16_allowed_(int16_uint16_allowed) {
+        allow_16bit_(allow_16bit) {
   }
 
  private:
@@ -156,21 +162,21 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
   bool int8_allowed_;
   bool matmulintegertofloat_allowed_;
-  bool int16_uint16_allowed_;
+  bool allow_16bit_;
 };
 
 // Input: DQ nodes for A, B and optional C
 // Output: optional Q node for Y
 class GemmNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit GemmNodeGroupSelector(bool int16_uint16_allowed = true) : int16_uint16_allowed_(int16_uint16_allowed) {}
+  explicit GemmNodeGroupSelector(bool allow_16bit = true) : allow_16bit_(allow_16bit) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
-  bool int16_uint16_allowed_;
+  bool allow_16bit_;
 };
 
 // Input: DQ nodes for input, scale, and B
@@ -233,32 +239,33 @@ class BaseSelector : public NodeSelector {
 
 class DropQDQNodesSelector : public BaseSelector {
  public:
-  explicit DropQDQNodesSelector(bool int16_uint16_allowed = true)
-      : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>(int16_uint16_allowed)) {}
+  explicit DropQDQNodesSelector(bool allow_16bit = false)
+      : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>(allow_16bit)) {}
 };
 
 class DropDQNodesSelector : public BaseSelector {
  public:
-  DropDQNodesSelector() : BaseSelector(std::make_unique<DropDQNodeGroupSelector>()) {}
+  explicit DropDQNodesSelector(bool allow_16bit = false)
+      : BaseSelector(std::make_unique<DropDQNodeGroupSelector>(allow_16bit)) {}
 };
 
 class UnarySelector : public BaseSelector {
  public:
-  explicit UnarySelector(bool int16_uint16_allowed = true)
-      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(int16_uint16_allowed)) {}
+  explicit UnarySelector(bool allow_16bit = false)
+      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit)) {}
 };
 
 class BinarySelector : public BaseSelector {
  public:
-  explicit BinarySelector(bool int16_uint16_allowed = true)
-      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(int16_uint16_allowed)) {}
+  explicit BinarySelector(bool allow_16bit = false)
+      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit)) {}
 };
 
 // Variadic DQ nodes -> node -> Q
 class InputVariadicSelector : public BaseSelector {
  public:
-  explicit InputVariadicSelector(bool int16_uint16_allowed = true)
-      : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(int16_uint16_allowed)) {}
+  explicit InputVariadicSelector(bool allow_16bit = false)
+      : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(allow_16bit)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -274,32 +281,32 @@ class OutputVariadicSelector : public BaseSelector {
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvSelector : public BaseSelector {
  public:
-  ConvSelector(bool int8_allowed = false, bool int16_uint16_allowed = true)
-      : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, int16_uint16_allowed)) {}
+  ConvSelector(bool int8_allowed = false, bool allow_16bit = false)
+      : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, allow_16bit)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
 
 class WhereSelector : public BaseSelector {
  public:
-  explicit WhereSelector(bool int16_uint16_allowed = true)
-      : BaseSelector(std::make_unique<WhereNodeGroupSelector>(int16_uint16_allowed)) {}
+  explicit WhereSelector(bool allow_16bit = false)
+      : BaseSelector(std::make_unique<WhereNodeGroupSelector>(allow_16bit)) {}
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
  public:
-  MatMulSelector(bool int8_allowed, bool int16_uint16_allowed = true)
+  MatMulSelector(bool int8_allowed, bool allow_16bit = false)
       : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true,
-                                                               int16_uint16_allowed)) {}
+                                                               allow_16bit)) {}
 };
 
 // Input: DQ nodes for A, B and optional C
 // Output: optional Q node for Y
 class GemmSelector : public BaseSelector {
  public:
-  explicit GemmSelector(bool int16_uint16_allowed = true)
-      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(int16_uint16_allowed)) {}
+  explicit GemmSelector(bool allow_16bit = false)
+      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(allow_16bit)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };

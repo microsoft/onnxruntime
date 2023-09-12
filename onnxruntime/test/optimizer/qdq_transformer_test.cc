@@ -1497,50 +1497,59 @@ TEST(QDQTransformerTests, ResizeReshapeSqueezeUnsqueeze) {
   test_case({1, 2, 26, 42}, {4}, true /*use_contrib_qdq*/);
 }
 
-TEST(QDQTransformerTests, ArgMax) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape,
-                       int axis,
-                       int keepdims,
-                       int select_last_index,
-                       bool use_contrib_qdq) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
-                                                   std::numeric_limits<uint8_t>::min(),
-                                                   std::numeric_limits<uint8_t>::max());
-      auto* output_arg = builder.MakeOutput();
+// Runs a test case that checks if the DQ node is dropped from DQ -> Op (e.g., ArgMax).
+template <typename QuantType>
+static void RunArgMaxDropDQTestCase(const std::vector<int64_t>& input_shape,
+                                    int axis,
+                                    int keepdims,
+                                    int select_last_index,
+                                    bool use_contrib_qdq,
+                                    bool expect_drop_dq = true) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape,
+                                                   std::numeric_limits<QuantType>::min(),
+                                                   std::numeric_limits<QuantType>::max());
+    auto* output_arg = builder.MakeOutput();
 
-      // add DQ
-      auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .003f, 1, dq_output, use_contrib_qdq);
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, 1, dq_output, use_contrib_qdq);
 
-      // add ArgMax
-      Node& argmax_node = builder.AddNode("ArgMax", {dq_output}, {output_arg});
-      argmax_node.AddAttribute("axis", static_cast<int64_t>(axis));
-      argmax_node.AddAttribute("keepdims", static_cast<int64_t>(keepdims));
-      argmax_node.AddAttribute("select_last_index", static_cast<int64_t>(select_last_index));
-    };
-
-    auto check_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
-      EXPECT_EQ(op_to_count["ArgMax"], 1);
-      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
-    };
-
-    TransformerTester(build_test_case, check_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      /* opset_version */ 13);
-    TransformerTester(build_test_case, check_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      /* opset_version */ 19);
+    // add ArgMax
+    Node& argmax_node = builder.AddNode("ArgMax", {dq_output}, {output_arg});
+    argmax_node.AddAttribute("axis", static_cast<int64_t>(axis));
+    argmax_node.AddAttribute("keepdims", static_cast<int64_t>(keepdims));
+    argmax_node.AddAttribute("select_last_index", static_cast<int64_t>(select_last_index));
   };
 
-  test_case({2, 13, 12, 37}, 1, 0, 0, false /*use_contrib_qdq*/);
-  test_case({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/);
-  test_case({2, 13, 12, 37}, 0, 1, 0, false /*use_contrib_qdq*/);
-  test_case({2, 13, 12, 37}, 0, 0, 1, false /*use_contrib_qdq*/);
+  auto check_graph = [use_contrib_qdq, expect_drop_dq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["ArgMax"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expect_drop_dq ? 0 : 1);
+  };
+
+  TransformerTester(build_test_case, check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    /* opset_version */ 13);
+  TransformerTester(build_test_case, check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    /* opset_version */ 19);
+}
+
+// Checks that the DQ node is dropped from DQ -> ArgMax. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, ArgMax) {
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, false);
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/);
+
+  // Should *not* drop DQ for 16-bit DQ -> ArgMax (because ORT does not support 16-bit input types for ArgMax).
+  RunArgMaxDropDQTestCase<uint16_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/);
+  RunArgMaxDropDQTestCase<int16_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/);
+
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 0, 1, 0, false);
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 0, 0, 1, false);
 }
 
 TEST(QDQTransformerTests, QLinearMatMul) {

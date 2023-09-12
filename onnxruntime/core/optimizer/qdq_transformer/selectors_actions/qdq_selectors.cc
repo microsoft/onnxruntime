@@ -123,7 +123,7 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input)) {
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
     return false;
   }
 
@@ -141,7 +141,7 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                     const Node& node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
-  int num_dq_inputs = NumActualValues(node, true);
+  const int num_dq_inputs = 1;
   if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
     return false;
   }
@@ -153,6 +153,12 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   (void)q_nodes;
   const Node& dq_node = *dq_nodes.front();
+  const int32_t dt_input = dq_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
 
   auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
     return graph_viewer.GetConstantInitializer(initializer_name, true);
@@ -176,7 +182,7 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   }
 
   // 16-bit int types must be explicitly allowed.
-  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input)) {
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
     return false;
   }
 
@@ -201,7 +207,7 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // 16-bit int types must be explicitly allowed.
-  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input_1)) {
+  if (!allow_16bit_ && Is16BitIntType(dt_input_1)) {
     return false;
   }
 
@@ -236,7 +242,7 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // 16-bit int types must be explicitly allowed.
-  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input)) {
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
     return false;
   }
 
@@ -281,7 +287,7 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // 16-bit int types must be explicitly allowed.
-  if (!int16_uint16_allowed_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
+  if (!allow_16bit_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
     return false;
   }
 
@@ -310,7 +316,7 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // 16-bit int types must be explicitly allowed.
-  if (!int16_uint16_allowed_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
+  if (!allow_16bit_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
     return false;
   }
 
@@ -358,7 +364,7 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // 16-bit int types must be explicitly allowed.
-  if (!int16_uint16_allowed_ && (Is16BitIntType(dt_A) || Is16BitIntType(dt_B))) {
+  if (!allow_16bit_ && (Is16BitIntType(dt_A) || Is16BitIntType(dt_B))) {
     return false;
   }
 
@@ -396,7 +402,7 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   }
 
   // 16-bit int types must be explicitly allowed.
-  if (!int16_uint16_allowed_ && Is16BitIntType(dt_input_1)) {
+  if (!allow_16bit_ && Is16BitIntType(dt_input_1)) {
     return false;
   }
 
