@@ -94,7 +94,8 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF(output_type != float32_type && output_type != float16_type,
                 "encoder subgraph output 0 (logits) shall be float or float16 data type");
 
-  for (int i = 1; i < num_subgraph_outputs; i++) {
+  // bugbug: for (int i = 1; due to output attention mask
+  for (int i = 2; i < num_subgraph_outputs; i++) {
     ORT_RETURN_IF(subgraph_outputs[i]->TypeAsProto()->tensor_type().elem_type() != output_type,
                   "encoder subgraph outputs 1, 2, ... shall have same data type");
   }

@@ -133,8 +133,8 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
         ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 2,
                       "Encoder subgraph shall have 2 inputs when decoder_start_token_id attribute is empty");
       } else {
-        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 3,
-                      "Encoder subgraph shall have 3 inputs when decoder_start_token_id attribute is available");
+        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 3 && t5_encoder_subgraph_->num_subgraph_inputs != 4,
+                      "Encoder subgraph shall have 3 or 4 inputs when decoder_start_token_id attribute is available");
       }
     } else if (attribute_name == "decoder") {
       ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
