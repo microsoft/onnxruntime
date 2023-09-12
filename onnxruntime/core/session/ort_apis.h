@@ -480,4 +480,5 @@ ORT_API_STATUS_IMPL(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ cons
                     _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 
 ORT_API_STATUS_IMPL(RegisterCustomEP, _In_ const char* library_path, _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys, _In_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(LoadExecutionProviderInfo, _In_ OrtEnv* env, _In_ const char* execution_provider_type, _In_ const char* library_path);
 }  // namespace OrtApis

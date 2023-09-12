@@ -2409,6 +2409,15 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomEP, _In_ const char* library_path, _I
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::LoadExecutionProviderInfo, _In_ OrtEnv* env, _In_ const char* execution_provider_type, _In_ const char* library_path) {
+  auto st = env->LoadExternalExecutionProvider(execution_provider_type, library_path);
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Cannot load external EP ");
+  }
+  return nullptr;
+}
+
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2767,6 +2776,7 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::CreateAndRegisterAllocatorV2,
 
     &OrtApis::RegisterCustomEP,
+    &OrtApis::LoadExecutionProviderInfo,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

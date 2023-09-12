@@ -402,7 +402,7 @@ class InferenceSession(Session):
 
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
-        available_providers.append('customEp2')
+        available_providers.append('customEp2')  # TODO: append external EP types from Environment
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if "TensorrtExecutionProvider" in available_providers:
