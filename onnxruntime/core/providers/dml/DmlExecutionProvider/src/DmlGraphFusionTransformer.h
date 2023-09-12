@@ -29,7 +29,7 @@ private:
                                             int graph_level,
                                             const onnxruntime::logging::Logger& logger) const final;
 
-    onnxruntime::common::Status DmlGraphFusionTransformer::ApplyImplHelper(
+    onnxruntime::common::Status ApplyImplHelper(
         onnxruntime::Graph& graph,
         bool& modified,
         int graph_level,
