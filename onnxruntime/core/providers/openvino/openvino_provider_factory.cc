@@ -62,7 +62,7 @@ struct OpenVINO_Provider : Provider {
     bool enable_npu_fast_compile = false;   // [enable_npu_fast_compile]: Fast-compile may be optionally enabled to
                                             // speeds up the model's compilation to NPU device specific format.
     const char* device_id = "";             // [device_id]: Selects a particular hardware device for inference.
-    size_t num_of_threads = 8;              // [num_of_threads]: Overrides the accelerator default value of number of
+    int num_of_threads = 8;                 // [num_of_threads]: Overrides the accelerator default value of number of
                                             //  threads with this value at runtime.
     const char* cache_dir = "";             // [cache_dir]: specify the path to
                                             // dump and load the blobs for the model caching/kernel caching (GPU)
@@ -107,13 +107,22 @@ struct OpenVINO_Provider : Provider {
       num_of_threads = std::stoi(provider_options_map.at("num_of_threads"));
       if (num_of_threads <= 0) {
         num_of_threads = 1;
+        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_threads' should be in the positive range.\n "
+                         << "Executing with num_threads=1";
       }
     }
 
     if (provider_options_map.find("num_streams") != provider_options_map.end()) {
       num_streams = std::stoi(provider_options_map.at("num_streams"));
-      if (num_streams <= 0 && num_streams > 8) {
-        ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_streams' should be in the range of 1-8 \n");
+      if (num_streams <= 0) {
+        num_streams = 1;
+        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_streams' should be in the range of 1-8.\n "
+                         << "Executing with num_streams=1";
+      }
+      if (num_streams>8) {
+        num_streams = 8;
+        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_streams' should be in the range of 1-8.\n "
+                         << "Executing with maximum num_streams=8.";
       }
     }
     std::string bool_flag = "";
