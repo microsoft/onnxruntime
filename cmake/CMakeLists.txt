@@ -1034,7 +1034,7 @@ function(onnxruntime_add_shared_library_module target_name)
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
   if (UNIX AND NOT APPLE)
-    target_link_options(${target_name} PRIVATE -z noexecstack -z nodelete)
+    target_link_options(${target_name} PRIVATE "LINKER:SHELL:-z nodelete" "LINKER:SHELL:-z noexecstack")
   endif()
 endfunction()
 
