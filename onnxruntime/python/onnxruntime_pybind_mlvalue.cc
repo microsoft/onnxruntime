@@ -222,7 +222,7 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
 
     ComPtr<ID3D12CommandQueue> cmd_queue;
     ORT_THROW_IF_FAILED(
-      d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+        d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
 
     auto context = std::make_shared<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get());
 
@@ -269,7 +269,7 @@ void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes) {
   ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(upload_heap_guid, &upload_heap_size, &upload_heap));
 
   upload_heap->BeginUploadToGpu(
-    dst_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, gsl::make_span(static_cast<const std::byte*>(src), num_bytes));
+      dst_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, gsl::make_span(static_cast<const std::byte*>(src), num_bytes));
   context->Flush();
 
   // We don't use the same command queue as the execution provider, so we need to sync to make sure that all data has
@@ -296,7 +296,7 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   // ReadbackFromGpu already syncs with the CPU and waits for the copy to be completed, so we don't need to sync after
   // this call
   readback_heap->ReadbackFromGpu(
-    gsl::make_span(static_cast<std::byte*>(dst), num_bytes), src_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      gsl::make_span(static_cast<std::byte*>(dst), num_bytes), src_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
 const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {

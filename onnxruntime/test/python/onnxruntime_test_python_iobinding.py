@@ -21,6 +21,7 @@ test_params = [
     ("dml", "DmlExecutionProvider", C_OrtDevice.dml),
 ]
 
+
 class TestIOBinding(unittest.TestCase):
     def _create_ortvalue_input_on_gpu(self, device):
         return onnxrt.OrtValue.ortvalue_from_numpy(
@@ -86,7 +87,7 @@ class TestIOBinding(unittest.TestCase):
                     ),
                 ]
 
-                for device, provider in devices:
+                for inner_device, provider in devices:
                     for dtype in [
                         np.float32,
                         np.float64,
@@ -101,7 +102,7 @@ class TestIOBinding(unittest.TestCase):
                         np.float16,
                         np.bool_,
                     ]:
-                        with self.subTest(dtype=dtype, device=str(device)):
+                        with self.subTest(dtype=dtype, inner_device=str(inner_device)):
                             x = np.arange(8).reshape((-1, 2)).astype(dtype)
                             proto_dtype = NP_TYPE_TO_TENSOR_TYPE[x.dtype]
 
@@ -124,9 +125,9 @@ class TestIOBinding(unittest.TestCase):
                             sess = onnxrt.InferenceSession(model_def.SerializeToString(), providers=provider)
 
                             bind = SessionIOBinding(sess._sess)
-                            ort_value = C_OrtValue.ortvalue_from_numpy(x, device)
+                            ort_value = C_OrtValue.ortvalue_from_numpy(x, inner_device)
                             bind.bind_ortvalue_input("X", ort_value)
-                            bind.bind_output("Y", device)
+                            bind.bind_output("Y", inner_device)
                             sess._sess.run_with_iobinding(bind, None)
                             ortvaluevector = bind.get_outputs()
                             self.assertIsInstance(ortvaluevector, OrtValueVector)
@@ -135,8 +136,8 @@ class TestIOBinding(unittest.TestCase):
                             assert_almost_equal(x, y)
 
                             bind = SessionIOBinding(sess._sess)
-                            bind.bind_input("X", device, dtype, x.shape, ort_value.data_ptr())
-                            bind.bind_output("Y", device)
+                            bind.bind_input("X", inner_device, dtype, x.shape, ort_value.data_ptr())
+                            bind.bind_output("Y", inner_device)
                             sess._sess.run_with_iobinding(bind, None)
                             ortvalue = bind.get_outputs()[0]
                             y = ortvalue.numpy()
@@ -148,7 +149,6 @@ class TestIOBinding(unittest.TestCase):
                 if execution_provider not in onnxrt.get_available_providers():
                     self.skipTest(f"Skipping on {device.upper()}.")
                 input = self._create_ortvalue_input_on_gpu(device)
-
 
                 session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
                 io_binding = session.io_binding()
