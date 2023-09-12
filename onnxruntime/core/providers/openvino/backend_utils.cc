@@ -58,7 +58,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   try {
     auto cnn_network = global_context.ie_core.ReadModel(model);
     if ((subgraph_context.precision == "FP16") &&
-        (global_context.device_type.find("VPUX") == std::string::npos)) {
+        (global_context.device_type.find("NPU") == std::string::npos)) {
       // FP16 transformations
       ov::pass::ConvertFP32ToFP16 pass_obj;
       pass_obj.run_on_model(cnn_network);

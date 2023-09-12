@@ -17,7 +17,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
 
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
-  openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
+  openvino_ep::BackendManager::GetGlobalContext().enable_npu_fast_compile = info.enable_npu_fast_compile_;
   openvino_ep::BackendManager::GetGlobalContext().cache_dir = info.cache_dir_;
   openvino_ep::BackendManager::GetGlobalContext().num_streams = info.num_streams_;
   openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
@@ -56,7 +56,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
               device_found = true;
               break;
             }
-            if (info.device_type_.find("VPUX") != std::string::npos && (info.precision_ == "FP16" || info.precision_ == "U8")) {
+            if (info.device_type_.find("NPU") != std::string::npos && (info.precision_ == "FP16" || info.precision_ == "U8")) {
               device_found = true;
               break;
             }

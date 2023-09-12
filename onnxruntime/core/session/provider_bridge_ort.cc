@@ -1432,7 +1432,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   if (legacy_ov_options->device_type != nullptr)
     ov_options_converted_map["device_type"] = legacy_ov_options->device_type;
 
-  ov_options_converted_map["enable_vpu_fast_compile"] = legacy_ov_options->enable_vpu_fast_compile;
+  ov_options_converted_map["enable_npu_fast_compile"] = legacy_ov_options->enable_npu_fast_compile;
 
   if (legacy_ov_options->device_id != nullptr)
     ov_options_converted_map["device_id"] = legacy_ov_options->device_id;

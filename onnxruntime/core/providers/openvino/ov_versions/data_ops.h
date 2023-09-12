@@ -47,7 +47,7 @@ class DataOps {
   std::multimap<std::string, UnsupportedOpMode> op_list_;
   std::vector<SupportedOp> subgraph_supported_;
   std::vector<SupportedOp> no_dimension_supported_;
-  std::set<Pairs> supported_types_vpu_;
+  std::set<Pairs> supported_types_npu_;
   std::set<Pairs> supported_types_cpu_;
   std::set<Pairs> supported_types_gpu_;
   std::set<Pairs> supported_types_initializer_;
