@@ -210,11 +210,12 @@ export class ModelTestContext {
     Logger.verbose('TestRunner.Perf', '***Perf Data End');
   }
 
-  release(): void {
+  async release(): Promise<void> {
     if (this.profile) {
       this.session.endProfiling();
     }
     this.logPerfData();
+    await this.session.release();
   }
 
   /**
