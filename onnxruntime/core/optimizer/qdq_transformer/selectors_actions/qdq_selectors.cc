@@ -334,9 +334,12 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
                                  const std::vector<const Node*>& dq_nodes,
                                  const std::vector<const Node*>& q_nodes) const {
   int num_outputs = NumActualValues(node, false);  // number of outputs that exist
-  return (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
-         q_nodes.size() == node.GetOutputEdgesCount() &&
-         !graph_viewer.NodeProducesGraphOutput(node);
+  bool output_check =  (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
+                      q_nodes.size() == node.GetOutputEdgesCount() &&
+                      !graph_viewer.NodeProducesGraphOutput(node);
+  if (!output_check) {
+    return false;
+  }
 
   // Pad has 1 or 2 dq input, the constant_value can be quantized or non-quantized.
   // QNN supports data input quantized with constant_value input non-quantized.
