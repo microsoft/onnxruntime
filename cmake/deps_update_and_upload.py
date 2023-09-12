@@ -3,6 +3,7 @@
 # https://aiinfra.visualstudio.com/Lotus/_artifacts/feed/Lotus/UPack/onnxruntime_build_dependencies/versions
 # Run without --do-upload once to verify downloading. Use --do-upload when you are ready to publish.
 # python cmake/deps_update_and_upload.py --root-path C:/temp/onnxruntime_deps --version 1.0.82 --do-upload
+# update version number in tools\ci_build\github\azure-pipelines\templates\download-deps.yml
 import re
 import subprocess
 import os
