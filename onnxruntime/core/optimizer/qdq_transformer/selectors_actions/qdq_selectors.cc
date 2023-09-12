@@ -330,6 +330,27 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
          dt_input_1 == dt_output;
 }
 
+bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                 const std::vector<const Node*>& dq_nodes,
+                                 const std::vector<const Node*>& q_nodes) const {
+  int num_outputs = NumActualValues(node, false);  // number of outputs that exist
+  return (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
+         q_nodes.size() == node.GetOutputEdgesCount() &&
+         !graph_viewer.NodeProducesGraphOutput(node);
+
+  // Pad has 1 or 2 dq input, the constant_value can be quantized or non-quantized.
+  // QNN supports data input quantized with constant_value input non-quantized.
+  const int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  if (dq_nodes.size() > 1) {
+    const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt_input_1 == dt_input_2 &&
+           dt_input_1 == dt_output;
+  } else {
+    return dt_input_1 == dt_output;
+  }
+}
+
 bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                                            const Node& node,
                                                            const std::vector<const Node*>& dq_nodes,
