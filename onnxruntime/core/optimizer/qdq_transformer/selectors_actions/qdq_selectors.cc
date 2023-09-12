@@ -334,7 +334,7 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
                                  const std::vector<const Node*>& dq_nodes,
                                  const std::vector<const Node*>& q_nodes) const {
   int num_outputs = NumActualValues(node, false);  // number of outputs that exist
-  bool output_check =  (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
+  bool output_check = (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
                       q_nodes.size() == node.GetOutputEdgesCount() &&
                       !graph_viewer.NodeProducesGraphOutput(node);
   if (!output_check) {
