@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
@@ -10,10 +9,6 @@ import {inputVariable, outputVariable, ShaderHelper} from './common';
 import {erfImpl} from './unary-op';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
-  if (inputs[0].dataType !== DataType.float) {
-    throw new Error('inputs should be float type');
-  }
-
   if (inputs[0].dims.length !== 3) {
     throw new Error('input should have 3 dimensions');
   }

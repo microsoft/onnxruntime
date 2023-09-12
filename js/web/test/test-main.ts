@@ -12,8 +12,7 @@ import {Logger} from '../lib/onnxjs/instrument';
 
 import {Test} from './test-types';
 
-if (ORT_WEB_TEST_CONFIG.model.some(
-        testGroup => testGroup.tests.some(test => ['cpu', 'dml', 'cuda', 'tensorrt'].includes(test.backend!)))) {
+if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
   // require onnxruntime-node
   require('../../node');
 }
