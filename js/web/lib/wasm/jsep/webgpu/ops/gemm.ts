@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {GemmUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {ShaderHelper} from './common';
+import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs) {
@@ -20,11 +19,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   // 'C' can be of dimensionality 0, 1 or 2 only
   if (inputs.length === 3 && inputs[2].dims.length > 2) {
     throw new Error('Invalid input shape of C');
-  }
-
-  if ((inputs[0].dataType !== DataType.float) || (inputs[1].dataType !== DataType.float) ||
-      (inputs.length === 3 && inputs[2].dataType !== DataType.float)) {
-    throw new Error('Invalid input type.');
   }
 
   if ((inputs[0].dataType !== inputs[1].dataType) ||
@@ -81,7 +75,7 @@ const createGemmProgramInfo =
         line = 'value += a[m * K + k] * b[k * N + n];';
       }
 
-      const dataType = 'f32';  // TODO: support other data type
+      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
       const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= alpha;';
       const calculateC = inputs.length === 3 ? `value += beta * c[${offsetC(M, N, inputs[2].dims)}];` : '';
       const inputStorageBuffersDeclarations = [

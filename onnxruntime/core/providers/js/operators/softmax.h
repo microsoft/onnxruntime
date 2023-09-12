@@ -8,7 +8,6 @@
 
 namespace onnxruntime {
 namespace js {
-template <typename T>
 class Softmax : public JsKernel {
  public:
   Softmax(const OpKernelInfo& info) : JsKernel(info) {
