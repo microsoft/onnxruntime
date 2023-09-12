@@ -41,7 +41,7 @@ GetTestQDQModelFn<QuantType> BuildPoolQDQTestCase(const std::string& op_type,
                                      std::vector<QuantParams<QuantType>>& output_qparams) {
     // input -> Q -> DQ ->
     NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
     NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     // MaxPool
@@ -233,7 +233,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_MaxPool_Large_Input2_Ceil_HTP_u8) {
 }
 
 // QNN v2.13: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
-TEST_F(QnnHTPBackendTests, DISABLED_MaxPool_LargeInput_1Pads) {
+// Fixed in QNN v2.14.1.
+TEST_F(QnnHTPBackendTests, MaxPool_LargeInput_1Pads) {
   RunQDQPoolOpTest<uint8_t>("MaxPool",
                             TestInputDef<float>({1, 64, 384, 576}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                             {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),

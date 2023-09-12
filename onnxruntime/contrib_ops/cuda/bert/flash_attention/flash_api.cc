@@ -159,8 +159,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                void* v,            // batch_size x seqlen_k x num_heads_k x head_size
                void* out,          // batch_size x seqlen_q x num_heads x head_size
                void* softmax_lse,  // batch_size x num_heads x seqlen_q
-               void* softmax_lse,  // batch_size x num_heads x seqlen_q
-               void* softmax_lse,  // batch_size x num_heads x seqlen_q
+               void* softmax_lse_accum, // TODO(aciddelgado): size
+               void* out_accum, // TODO(aciddelgado): size
                int batch_size,
                int num_heads,
                int num_heads_k,
@@ -201,7 +201,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
     // In any case we don't expect seqlen_q to be larger than 64 for inference.
     const int num_m_blocks = (seqlen_q + 64 - 1) / 64;
     params.num_splits = 1;
-    // TODO(aciddelgado): move this logic outside of api
+    // TODO(aciddelgado): appropriately move this logic outside of api
     params.num_splits = num_splits_heuristic(batch_size * num_heads * num_m_blocks, dprops->multiProcessorCount, num_n_blocks, 128);
     if (params.num_splits > 1) {
         at::Tensor softmax_lse_accum = torch::empty({params.num_splits, batch_size, num_heads, seqlen_q}, opts.dtype(at::kFloat));
@@ -269,7 +269,9 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                void* v,            // batch_size x seqlen_k_new x num_heads_k x head_size
                void* out,          // batch_size x seqlen_q x num_heads x head_size
                void* softmax_lse,  // batch_size x num_heads x seqlen_q
-                void* seqlens_k_, // batch_size TODO(aciddelgado): not sure where to get this, maybe from checkinputs function
+               void* softmax_lse_accum,  // TODO(aciddelgado): size
+               void* out_accum,  // TODO(aciddelgado): size
+                void* seqlens_k_, // batch_size
                 int batch_size,
                 int num_heads,
                 int num_heads_k,
