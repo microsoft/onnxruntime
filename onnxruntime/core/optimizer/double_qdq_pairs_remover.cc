@@ -9,8 +9,9 @@
 
 namespace onnxruntime {
 
+// Applies a new zero point or scale as the input for a Q/DQ node.
 template <typename T>
-static void ApplyNewInputValue(Graph& graph, Node& node, const QDQ::InputIndex& index, T value) {
+static void ApplyNewInputValue(Graph& graph, Node& node, QDQ::InputIndex index, T value) {
   const auto* input_tensor = graph_utils::GetConstantInitializer(graph, node.InputDefs()[index]->Name());
   Initializer input_init{*input_tensor, graph.ModelPath()};
   ONNX_NAMESPACE::TensorProto new_input_tensor(*input_tensor);
@@ -22,6 +23,7 @@ static void ApplyNewInputValue(Graph& graph, Node& node, const QDQ::InputIndex& 
   graph_utils::ReplaceNodeInput(node, index, new_input);
 }
 
+// Returns a new zero point and scale value for the given Q/DQ nodes.
 template <typename T>
 static bool FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2,
                                      float& new_scale, T& new_zero_point, bool& skip_reset) {
@@ -79,11 +81,13 @@ static bool FindNewZeroPointAndScale(const Graph& graph, const Node& node1, cons
   return true;
 }
 
-// The two QDQ pairs may have different zero-points and scales. Ex: Q1 -> DQ1 -> Q2 -> DQ2, where
+// Recomputes the zero point and scale of the outer Q/DQ nodes (i.e., Q1 and DQ2). This is necessary because
+// the original two QDQ pairs may have different zero-points and scales. Ex: Q1 -> DQ1 -> Q2 -> DQ2, where
 // the first pair has (zp1, scale1) and the second pair has (zp2, scale2).
-// After removing the middle two nodes, the zero point and scale of the final (outer) ops must be recomputed.
+// After removing the middle two nodes, the zero point and scale of the final (outer) ops must be recomputed
+// for correctness.
 template <typename ZeroPointType>
-static bool ResetOuterQDQZeroPointAndScale(Graph& graph, const Node& dq1, const Node& q2, Node& q1, Node& dq2) {
+static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, const Node& dq1, const Node& q2, Node& q1, Node& dq2) {
   bool skip_reset = false;
   float new_scale = 0.0f;
   ZeroPointType new_zero_point = 0;
@@ -101,6 +105,10 @@ static bool ResetOuterQDQZeroPointAndScale(Graph& graph, const Node& dq1, const 
   return true;
 }
 
+// Checks if the provided node index (dq1_index) is a part of a valid double QDQ pair sequence
+// (i.e., Q1 -> DQ1 -> Q2 -> DQ2) that can be reduced to the outer Q/DQ nodes (i.e., Q1 -> DQ2).
+// If so, the zero point and scale of the outer Q/DQ nodes are recomputed and the node indices of the other nodes
+// in the sequence (i.e., Q1, Q2, and DQ2) are returned via output parameters.
 static bool IsReducibleDoubleQDQSequence(Graph& graph, NodeIndex dq1_index, NodeIndex& q1_index,
                                          NodeIndex& q2_index, NodeIndex& dq2_index) {
   // Ensure that dq1 is a DQ operator, has one parent and one child, and is not a graph output
@@ -166,19 +174,19 @@ static bool IsReducibleDoubleQDQSequence(Graph& graph, NodeIndex dq1_index, Node
   auto dq1_zp_type = dq1_zp_tensor_proto->data_type();
 
   if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    return ResetOuterQDQZeroPointAndScale<uint8_t>(graph, *dq1, *q2, *q1, *dq2);
+    return RecomputeOuterQDQZeroPointAndScale<uint8_t>(graph, *dq1, *q2, *q1, *dq2);
   }
 
   if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-    return ResetOuterQDQZeroPointAndScale<int8_t>(graph, *dq1, *q2, *q1, *dq2);
+    return RecomputeOuterQDQZeroPointAndScale<int8_t>(graph, *dq1, *q2, *q1, *dq2);
   }
 
   if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
-    return ResetOuterQDQZeroPointAndScale<uint16_t>(graph, *dq1, *q2, *q1, *dq2);
+    return RecomputeOuterQDQZeroPointAndScale<uint16_t>(graph, *dq1, *q2, *q1, *dq2);
   }
 
   if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_INT16) {
-    return ResetOuterQDQZeroPointAndScale<int16_t>(graph, *dq1, *q2, *q1, *dq2);
+    return RecomputeOuterQDQZeroPointAndScale<int16_t>(graph, *dq1, *q2, *q1, *dq2);
   }
 
   return false;  // Unsupported zero-point type
