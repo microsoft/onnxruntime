@@ -2,10 +2,10 @@
 # Licensed under the MIT License.
 # pylint: disable=C0115,W0212,C0103,C0114
 
-import parameterized
 import unittest
 
 import numpy as np
+import parameterized
 from helper import get_name
 from numpy.testing import assert_almost_equal
 from onnx import helper
