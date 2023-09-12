@@ -450,7 +450,7 @@ namespace Dml
             // Add a unique partition if graph node usage is not supported.
             //
             // Partitioning is disabled in models with subgraphs to work around issues with implicit inputs.
-            // The partitioning algorithm does not currently consider such inputs.  Transfering shared initializers
+            // The partitioning algorithm does not currently consider such inputs. Transferring shared initializers
             // for partitions could also cause problems.  Note, operators with subgraphs are currently not efficient
             // anyhow due to CPU/GPU copies.
             if (containsSubgraph || !isDmlGraphNode)

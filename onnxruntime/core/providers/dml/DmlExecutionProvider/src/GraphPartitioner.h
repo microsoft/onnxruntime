@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <string>
+#include <unordered_map>
 #include "core/providers/dml/DmlExecutionProvider/src/GraphDescBuilder.h"
 
 namespace Dml

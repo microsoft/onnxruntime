@@ -67,7 +67,7 @@ namespace Dml
             auto* node = graph.GetNode(node_index);
             if (!node)
             {
-                continue; // node was removed
+                continue;  // node was removed
             }
 
             std::unordered_map<std::string, const onnxruntime::NodeArg*> subgraphImplicitInputDefs;
