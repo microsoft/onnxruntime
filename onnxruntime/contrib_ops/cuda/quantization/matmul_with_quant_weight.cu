@@ -5,13 +5,16 @@
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
+#include <cooperative_groups.h>
+#include <cuda/pipeline>
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "matmul_with_quant_weight.cuh"
 
-using namespace onnxruntime::cuda;
 using namespace cub;
+
+namespace nvidia_cuda = cuda;
 
 namespace onnxruntime {
 namespace contrib {
@@ -98,11 +101,33 @@ __global__ void MatMulFloatInt4Kernel(
 
   float sum = 0.f;
   int k_id = 0;
-  for (; k_id < (k & 0xffffff00); k_id += 256) {
+
+  constexpr int stages_count = 2;
+  constexpr int elements_per_ite = 256;
+  __shared__ T a_shared[elements_per_ite * stages_count];
+  auto group = cooperative_groups::this_thread_block();
+  T* a_shared_stages[stages_count] = {a_shared, a_shared + 2 * group.size()};
+
+  // Create a synchronization object (cuda::pipeline)
+  __shared__ nvidia_cuda::pipeline_shared_state<nvidia_cuda::thread_scope::thread_scope_block, stages_count> shared_state;
+  auto pipeline = nvidia_cuda::make_pipeline(group, &shared_state);
+
+  int k_step = 0;
+  int fetch = 0;
+  for (; k_id < (k & 0xffffff00); k_id += elements_per_ite, k_step++) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + (k_id >> 1) + lane_id * 4));
+    // fetch from global to shared
+    for (; fetch < k_iter && fetch < (k_step + stages_count); fetch++) {
+      pipeline.producer_acquire();
+      nvidia_cuda::memcpy_async(group, a_shared_stages[fetch % 2], a_data + k_id, sizeof(T) * elements_per_ite, pipeline);
+      pipeline.producer_commit();
+    }
+
+    pipeline.consumer_wait();
     T scale = b_scale_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
     uint8_t zp = b_zp_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
-    sum += AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3));
+    sum += AccumulateEightElements(value, scale, zp, a_shared_stages[k_step % 2] + (lane_id << 3));
+    pipeline.consumer_release();
   }
 
   // handle reminder
