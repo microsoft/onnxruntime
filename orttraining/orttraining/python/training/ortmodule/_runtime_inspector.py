@@ -5,12 +5,16 @@
 
 from enum import IntEnum
 from logging import Logger
-from typing import List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import onnx
 import torch
 from onnx import ModelProto, helper
 from onnx import onnx_pb as onnx_proto
+from sympy import Symbol, simplify
+from sympy.parsing.sympy_parser import parse_expr
+
+from ._execution_agent import TrainingAgent
 
 
 class Phase(IntEnum):
@@ -82,14 +86,15 @@ class RuntimeInspector:
         """Disable input density inspector."""
         self.input_density_ob = None
 
-    def enable_memory_inspector(self, module: torch.nn.Module):
+    def enable_memory_inspector(self, module: torch.nn.Module, print_memory_stats: bool) -> None:
         """Enable memory inspector for ORTModule.
 
         Args:
             module: ORTModule.
+            print_memory_stats: Whether to print memory stats.
         """
         if self.memory_ob is None:
-            self.memory_ob = MemoryObserver(module, self._logger)
+            self.memory_ob = MemoryObserver(module, print_memory_stats, self._logger)
         else:
             raise RuntimeError("Memory observer is already enabled.")
 
@@ -101,6 +106,45 @@ class RuntimeInspector:
         """
         if self.memory_ob is not None:
             self.memory_ob.inspect_memory(phase)
+
+    def find_memory_optimization_opportunity(
+        self, execution_agent: TrainingAgent, memory_optimizer_config, probe_level
+    ):
+        """Find memory optimization opportunity.
+
+        Args:
+            execution_agent: TrainingAgent.
+            memory_optimizer_config: Memory optimization config.
+            probe_level: Memory probe level.
+        """
+        if self.memory_ob is not None:
+            self.memory_ob.find_memory_optimization_opportunity(execution_agent, memory_optimizer_config, probe_level)
+
+    def collect_symbolic_dim_values(
+        self,
+        onnx_input_name_to_dynamic_axes_map: Dict[str, Dict[int, str]],
+        onnx_input_to_value_map: Dict[str, torch.Tensor],
+    ):
+        """Collect symbolic dim values."""
+        if self.memory_ob is not None:
+            self.memory_ob.collect_symbolic_dim_values(onnx_input_name_to_dynamic_axes_map, onnx_input_to_value_map)
+
+    def is_memory_inspector_enabled(self) -> bool:
+        """Check if memory inspector is enabled."""
+        return self.memory_ob is not None
+
+    def is_symbolic_dim_collecting_completed(self) -> bool:
+        """Check if symbolic dim collecting is completed."""
+        return self.memory_ob is not None and self.memory_ob.symbolic_dim_collecting_completed
+
+    def complete_symbolic_dim_collecting(self) -> None:
+        """Complete symbolic dim collecting."""
+        if self.memory_ob is not None:
+            self.memory_ob.symbolic_dim_collecting_completed = True
+
+    def disable_memory_inspector(self) -> None:
+        """Disable memory inspector."""
+        self.memory_ob = None
 
 
 class InputDensityObserver:
@@ -460,6 +504,16 @@ class InputDensityObserver:
         return value
 
 
+class MemoryOptimizationSummary:
+    """Memory optimization summary for a cluster id combination."""
+
+    def __init__(self, saving_str="", simplified_saving_expr=None, evaluated_saving=None, freq=0):
+        self.raw_symbolic_saving_str = saving_str
+        self.simplified_symbolic_saving_expr: Optional[Symbol] = simplified_saving_expr
+        self.evaluated_saving: Union[str, int, None] = evaluated_saving
+        self.freq = freq
+
+
 class MemoryObserver:
     """Memory inspector across the training lifetime.
 
@@ -470,8 +524,20 @@ class MemoryObserver:
     NORMALIZER_FACTOR = float(1024 * 1024)
     NORMALIZER_UNIT = "MiB"
 
-    def __init__(self, m: torch.nn.Module, logger: Logger):
+    def __init__(self, m: torch.nn.Module, print_memory_stats: bool, logger: Logger):
         self._logger = logger
+
+        # Memory optimization related.
+        self.memory_optimization_opportunity_table_str = None
+        self.cluster_id_combination_to_saving_symbolics_map: Dict[str, MemoryOptimizationSummary] = {}
+        # Rhe value is a list of symbolic dim values parsed from the first batch.
+        self.symbolic_dim_name_to_value_map: Dict = {}
+
+        # Used to control only the first batch is used to collect symbolic dim values.
+        self.symbolic_dim_collecting_completed = False
+
+        # For per-step memory inspection.
+        self._print_memory_stats = print_memory_stats
         self._current_step = 0
         self._rank = 0
         self._world_size = 1
@@ -485,7 +551,57 @@ class MemoryObserver:
 
         self._is_first_inspect = True
 
+    def collect_symbolic_dim_values(
+        self,
+        onnx_input_name_to_dynamic_axes_map: Dict[str, Dict[int, str]],
+        onnx_input_to_value_map: Dict[str, torch.Tensor],
+    ):
+        for input_name, dynamic_axes in onnx_input_name_to_dynamic_axes_map.items():
+            if input_name in onnx_input_to_value_map:
+                for dim_idx, dim_name in dynamic_axes.items():
+                    self.symbolic_dim_name_to_value_map[Symbol(dim_name)] = onnx_input_to_value_map[input_name].size()[
+                        dim_idx
+                    ]
+
+    def find_memory_optimization_opportunity(
+        self, execution_agent: TrainingAgent, memory_optimizer_config, probe_level
+    ):
+        (
+            self.memory_optimization_opportunity_table_str,
+            memory_optimization_saving_symbolics,
+        ) = execution_agent.get_serialized_ortmodule_memory_stat(memory_optimizer_config, probe_level)
+
+        cluster_id_to_saving_symbol_map: Dict[str, MemoryOptimizationSummary] = {}
+        for cluster_id, memory_saving_stat in memory_optimization_saving_symbolics.items():
+            memory_saving_symbolic = memory_saving_stat[0]
+            freq = memory_saving_stat[1]
+            expr = parse_expr(memory_saving_symbolic)
+            simplified_expr = simplify(expr)
+            r = simplified_expr.evalf(subs=self.symbolic_dim_name_to_value_map)
+            evaluated_saving = None
+            if r.is_number:
+                evaluated_saving = float(r)
+            else:
+                evaluated_saving = r
+
+            cluster_id_to_saving_symbol_map[cluster_id] = MemoryOptimizationSummary(
+                memory_saving_symbolic, simplified_expr, evaluated_saving, freq
+            )
+
+        # Sorted by evaluated_saving if it is a float
+        sorted_list = sorted(
+            cluster_id_to_saving_symbol_map.items(),
+            key=lambda x: x[1].evaluated_saving if isinstance(x[1].evaluated_saving, float) else 0,
+            reverse=True,
+        )
+
+        for cluster_id, values in sorted_list:
+            self.cluster_id_combination_to_saving_symbolics_map[cluster_id] = values
+
     def inspect_memory(self, cur_phase: Phase):
+        if not self._print_memory_stats:
+            return
+
         if not torch.cuda.is_available():
             return
 

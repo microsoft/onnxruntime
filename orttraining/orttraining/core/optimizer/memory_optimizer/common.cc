@@ -155,6 +155,7 @@ std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* sha
       oss << "*";
     }
   }
+  oss << ")";
 
   return oss.str();
 }

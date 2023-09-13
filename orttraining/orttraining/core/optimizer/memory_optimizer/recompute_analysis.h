@@ -31,18 +31,15 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
                     const InlinedVector<size_t>& activation_output_indices,
                     const InlinedVector<const Node*>& nodes_in_topological_order,
                     bool compromise_recompute = false,
-                    float save_ratio = 0.0f) : NodeOptimizationPlanBase(node) {
+                    float save_ratio = 1.0f) : NodeOptimizationPlanBase(node, activation_output_indices, save_ratio) {
     activation_output_indices_ = activation_output_indices;
     compromise_recompute_ = compromise_recompute;
-    save_ratio_ = save_ratio;
     // Be noted, recompute is node level, each node arg should have the same optimization type.
     nodes_in_topological_order_ = nodes_in_topological_order;
   }
 
-  const InlinedVector<size_t>& GetActivationOutputIndices() const { return activation_output_indices_; }
   const InlinedVector<const Node*>& GetNodesInTopoOrder() const { return nodes_in_topological_order_; }
   bool IsCompromiseRecompute() const { return compromise_recompute_; }
-  float GetSaveRatio() const { return save_ratio_; }
 
   OptimizationType GetOptimizationType() const override {
     return compromise_recompute_ ? OptimizationType::RecomputeWithCompromise
@@ -90,8 +87,6 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
  private:
   bool compromise_recompute_;
   InlinedVector<const Node*> nodes_in_topological_order_;
-  InlinedVector<size_t> activation_output_indices_;
-  float save_ratio_ = 1.0f;
 };
 
 /**

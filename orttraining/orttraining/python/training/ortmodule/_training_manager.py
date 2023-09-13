@@ -242,7 +242,6 @@ class TrainingManager(GraphExecutionManager):
                     self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
                     self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),
                 )
-
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_gradient_graph = False
@@ -431,7 +430,7 @@ class TrainingManager(GraphExecutionManager):
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
 
-        if self._need_output_memory_optimization_stat:
+        if self._runtime_inspector.is_memory_inspector_enabled():
             # Create a training agent without enabling memory optimization.
             execution_agent = TrainingAgent(
                 self._onnx_models.optimized_model.SerializeToString(),
@@ -445,9 +444,10 @@ class TrainingManager(GraphExecutionManager):
                 local_device_rank,
             )
 
-            self._serialized_memory_optimization_stat = execution_agent.get_serialized_ortmodule_memory_stat(
-                self._runtime_options.memory_optimizer_config, self._runtime_options.probe_level
+            self._runtime_inspector.find_memory_optimization_opportunity(
+                execution_agent, self._runtime_options.memory_optimizer_config, self._runtime_options.probe_level
             )
+
             del execution_agent
 
         # Enable memory optimization if it is enabled in the session options.

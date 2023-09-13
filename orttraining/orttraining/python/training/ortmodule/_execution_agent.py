@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from typing import Tuple
+
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
@@ -162,7 +164,9 @@ class TrainingAgent:
         """
         self._training_agent.run_backward(feeds, fetches, state)
 
-    def get_serialized_ortmodule_memory_stat(self, memory_optimization_config: str, recompute_probe_level: str) -> str:
+    def get_serialized_ortmodule_memory_stat(
+        self, memory_optimization_config: str, recompute_probe_level: str
+    ) -> Tuple[str, dict]:
         """
         Get serialized memory stats for OrtModule.
         """

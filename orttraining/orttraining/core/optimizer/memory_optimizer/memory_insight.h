@@ -103,6 +103,9 @@ std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
                                              const std::string& memory_optimization_config,
                                              const std::string recompute_probe_level,
                                              const logging::Logger& logger,
+                                             std::map<std::string, std::pair<std::string, int>>&
+                                                 cluster_id_combinations_to_saved_symbolic_byte_map,
                                              const OrtValueNameIdxMap& ortvalue_name_to_idx_map = {},
                                              const SequentialExecutionPlan& p_seq_exec_plan = {});
+
 }  // namespace onnxruntime::optimizer::memory_optimizer

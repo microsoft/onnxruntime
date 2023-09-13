@@ -16,8 +16,23 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
 #include "core/graph/graph.h"
+#include "core/framework/data_types.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
+
+// Uncomment for debugging Memory optimizer (MO).
+// #define MO_NEED_LOG_DEBUG_INFO 1
+
+#ifndef MO_LOG_DEBUG_INFO
+#ifdef MO_NEED_LOG_DEBUG_INFO
+#define MO_LOG_DEBUG_INFO(logger, message) LOGS(logger, WARNING) << message
+#else
+#define MO_LOG_DEBUG_INFO(logger, message) \
+  ORT_UNUSED_PARAMETER(logger);            \
+  do {                                     \
+  } while (0)
+#endif
+#endif
 
 using NodeOutputPort = std::pair<const Node*, int>;
 using ActivationUsedMap = InlinedHashMap<std::string, std::pair<bool, bool>>;
@@ -97,19 +112,56 @@ class ClusterApplyContext {
 
 class NodeOptimizationPlanBase {
  public:
-  NodeOptimizationPlanBase(const Node* node) : node(node){
+  NodeOptimizationPlanBase(const Node* node,
+                           const InlinedVector<size_t>& activation_output_indices,
+                           float save_ratio)
+      : node(node), activation_output_indices_(activation_output_indices), save_ratio_(save_ratio) {
+  }
 
-                                               };
   virtual ~NodeOptimizationPlanBase() = default;
 
   virtual OptimizationType GetOptimizationType() const = 0;
   virtual std::string GetClusterId() const = 0;
   virtual std::string NormalizeForNodeClusterId() const = 0;
-  virtual const InlinedVector<size_t>& GetActivationOutputIndices() const = 0;
 
+  const InlinedVector<size_t>& GetActivationOutputIndices() const { return activation_output_indices_; }
+
+  float GetSaveRatio() const { return save_ratio_; }
+
+  std::string GetMemorySavingSymbolicString() const {
+    std::string saving_str;
+    for (auto output_index : activation_output_indices_) {
+      // If the output is reusing other node's buffer, then no memory saving.
+      if (reuse_buffers.find(output_index) != reuse_buffers.end()) {
+        continue;
+      }
+
+      const auto& output_def = node->OutputDefs()[output_index];
+      MLDataType ml_data_type = DataTypeImpl::TypeFromProto(*output_def->TypeAsProto());
+      ORT_ENFORCE(ml_data_type->IsTensorType(), "ml_type must be a tensor type, but it is ",
+                  DataTypeImpl::ToString(ml_data_type));
+      const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
+      ORT_ENFORCE(nullptr != tensor_type_base);
+      MLDataType elt_type = tensor_type_base->GetElementType();
+      const auto byte_count_per_element = elt_type->Size();
+      if (!saving_str.empty()) {
+        saving_str += " + ";
+      }
+      saving_str = "(" + GetTensorElemCountInSymbolicString(node, output_index) + " * " +
+                   std::to_string(byte_count_per_element) + " * " +
+                   std::to_string(GetSaveRatio()) + ")";
+    }
+    if (saving_str.empty()) {
+      return saving_str;
+    }
+    return "(" + saving_str + ")";
+  }
+
+  const Node* node;
+  InlinedVector<size_t> activation_output_indices_;
+  float save_ratio_ = 1.0f;
   // A map: output index reusing other node's output (other_node, output index)
   InlinedHashMap<size_t, std::pair<const Node*, size_t>> reuse_buffers;
-  const Node* node;
 };
 
 int ParseIntValueFromString(std::string_view str);

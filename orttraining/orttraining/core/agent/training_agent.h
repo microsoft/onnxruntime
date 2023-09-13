@@ -47,7 +47,9 @@ class TrainingAgent {
                                               std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
 
   std::string GetSerializedORTModuleMemoryStat(const std::string& memory_optimization_config,
-                                               const std::string& recompute_probe_level) const;
+                                               const std::string& recompute_probe_level,
+                                               std::map<std::string, std::pair<std::string, int>>&
+                                                   cluster_id_combinations_to_saved_symbolic_byte_map) const;
 
  private:
   // TrainingAgent runs on a InferenceSession under the hood

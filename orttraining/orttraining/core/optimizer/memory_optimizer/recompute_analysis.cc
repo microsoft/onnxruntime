@@ -240,7 +240,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
 
       // This check is not matured now, subject to change.
       float ratio = InputOutputSizeRatio(curr_node);
-      save_ratio = 1.0f - ratio;
+      float saving_ratio = 1.0f - ratio;
       float is_current_node_compromisable = (ratio < 1.f);
       can_compromise_stashed_activation = can_compromise_stashed_activation || is_current_node_compromisable;
       if (is_current_node_compromisable) {
@@ -253,6 +253,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
                               << "recompute op list, and its output [" << cur_output_arg_name
                               << "] does not exist in backward, while it meets compromised check, we don't need trace "
                               << "bottom-up further.";
+        save_ratio = saving_ratio;
         continue;
       }
 
@@ -276,7 +277,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
         }
       }
     }
-    // After handle all entry node outputs, we set the flag to false.
+    // After handling all entry node outputs, we set the flag to false.
     is_first_queue_scan = false;
   }
 
@@ -313,7 +314,7 @@ std::shared_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
   }
 
   InlinedVector<const Node*> nodes_in_topological_order;
-  float save_ratio = 0.f;
+  float save_ratio = 1.f;
   ORT_ENFORCE(SelectRecomputeSubgraph(node,
                                       probe_level,
                                       candidate_output_args_map.at(&node),

@@ -209,6 +209,7 @@ def _combine_input_buffers_initializers(
     result = []
     embed_sparsity_results = OrderedDict()
     label_sparsity_results = OrderedDict()
+    onnx_input_to_value_map = OrderedDict()
 
     for input_idx, name in enumerate(onnx_input_names):
         inp = None
@@ -248,6 +249,8 @@ def _combine_input_buffers_initializers(
                 if label_density < 100:
                     label_sparsity_results[name] = label_density
             result.append(inp)
+
+            onnx_input_to_value_map[name] = inp
         else:
             raise wrap_exception(
                 ORTModuleONNXModelException, RuntimeError(f"Input is present in ONNX graph but not provided: {name}.")
@@ -255,6 +258,10 @@ def _combine_input_buffers_initializers(
 
     # params is a list of all initializers known to the onnx graph
     result.extend(params)
+
+    if rt_inspector.is_memory_inspector_enabled() and not rt_inspector.is_symbolic_dim_collecting_completed():
+        rt_inspector.collect_symbolic_dim_values(input_info.dynamic_axes, onnx_input_to_value_map)
+        rt_inspector.complete_symbolic_dim_collecting()
 
     return result, embed_sparsity_results, label_sparsity_results
 

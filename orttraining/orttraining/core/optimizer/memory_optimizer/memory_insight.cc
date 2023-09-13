@@ -216,6 +216,170 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
   }
 }
 
+void IterateNodeOptimizationPlan(const std::shared_ptr<NodeOptimizationPlanBase>& plan,
+                                 const InlinedHashMap<const Node*, InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
+                                     node_to_optimization_plans_map,
+                                 const InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>&
+                                     current_combination,
+                                 const logging::Logger& logger,
+                                 InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
+                                     all_combinations);
+
+void IterateNode(const Node* node,
+                 const InlinedHashMap<const Node*, InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
+                     node_to_optimization_plans_map,
+                 const InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>&
+                     current_combination,
+                 const logging::Logger& logger,
+                 InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
+                     all_combinations) {
+  MO_LOG_DEBUG_INFO(logger, "Enter IterateNode: " + node->Name());
+  if (node_to_optimization_plans_map.find(node) == node_to_optimization_plans_map.end()) {
+    MO_LOG_DEBUG_INFO(logger, "Exit IterateNode since reused node don't have optimization plans: " + node->Name());
+    return;
+  }
+
+  for (const std::shared_ptr<NodeOptimizationPlanBase>& plan : node_to_optimization_plans_map.at(node)) {
+    if (std::find(current_combination.begin(), current_combination.end(), plan) !=
+        current_combination.end()) {
+      continue;
+    }
+    InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>> new_combination = current_combination;
+    new_combination.push_back(plan);
+    IterateNodeOptimizationPlan(plan, node_to_optimization_plans_map, new_combination, logger, all_combinations);
+  }
+  MO_LOG_DEBUG_INFO(logger, "Exit IterateNode: " + node->Name());
+}
+
+void ListAllCombinations(const InlinedVector<InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>>&
+                             all_possible_node_optimization_plans,
+                         int index,
+                         const InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>& current_combination,
+                         const logging::Logger& logger,
+                         InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
+                             all_combinations) {
+  MO_LOG_DEBUG_INFO(logger, "Enter ListAllCombinations");
+  if (index == static_cast<int>(all_possible_node_optimization_plans.size())) {
+    if (std::find(all_combinations.begin(), all_combinations.end(), current_combination) ==
+        all_combinations.end()) {
+      all_combinations.push_back(current_combination);
+    }
+    MO_LOG_DEBUG_INFO(logger, "Exit ListAllCombinations after finding a new combination");
+    return;
+  }
+
+  for (const auto& plans : all_possible_node_optimization_plans[index]) {
+    for (const auto& plan : plans) {
+      InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>> new_combination = current_combination;
+      new_combination.push_back(plan);
+      ListAllCombinations(all_possible_node_optimization_plans, index + 1, new_combination, logger, all_combinations);
+    }
+  }
+
+  MO_LOG_DEBUG_INFO(logger, "Exit ListAllCombinations");
+}
+
+void IterateNodeOptimizationPlan(const std::shared_ptr<NodeOptimizationPlanBase>& plan,
+                                 const InlinedHashMap<const Node*, InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
+                                     node_to_optimization_plans_map,
+                                 const InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>&
+                                     current_combination,
+                                 const logging::Logger& logger,
+                                 InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
+                                     all_combinations) {
+  MO_LOG_DEBUG_INFO(logger, "Enter IterateNodeOptimizationPlan: " + plan->GetClusterId());
+
+  // No reuse buffer, don't need to iterate further, we found a plan combination already.
+  if (plan->reuse_buffers.size() == 0) {
+    MO_LOG_DEBUG_INFO(logger, "length of current_combination: " +
+                                  std::to_string(current_combination.size()) + ", " + plan->GetClusterId());
+    all_combinations.push_back(current_combination);
+    MO_LOG_DEBUG_INFO(logger, "Exit IterateNodeOptimizationPlan");
+    return;
+  }
+
+  InlinedVector<InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>>
+      all_possible_node_optimization_plans;
+  all_possible_node_optimization_plans.resize(plan->reuse_buffers.size());
+
+  size_t i = 0;
+  for (const auto& p : plan->reuse_buffers) {
+    MO_LOG_DEBUG_INFO(logger, ">>>reuse buffer: " + std::to_string(p.first));
+    IterateNode(p.second.first, node_to_optimization_plans_map, {}, logger, all_possible_node_optimization_plans[i]);
+    ++i;
+  }
+
+  ListAllCombinations(all_possible_node_optimization_plans, 0, current_combination, logger, all_combinations);
+
+  MO_LOG_DEBUG_INFO(logger, "Exit IterateNodeOptimizationPlan: " + plan->GetClusterId());
+}
+
+// Return a deterministic string for multiple plans combinations.
+std::string GetMultiplePlanClusterId(const InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>& plans) {
+  constexpr const int request_count = -1;  // -1 means apply optimization to all appearances.
+
+  std::ostringstream oss;
+  InlinedVector<std::string> sorted_plans;
+  for (const auto& plan : plans) {
+    sorted_plans.push_back(plan->GetClusterId() + ":" + std::to_string(static_cast<int>(plan->GetOptimizationType())) +
+                           ":" + std::to_string(request_count));
+  }
+
+  std::sort(sorted_plans.begin(), sorted_plans.end());
+
+  for (const auto& plan : sorted_plans) {
+    if (oss.str().size() > 0) {
+      oss << ",";
+    }
+    oss << plan;
+  }
+  return oss.str();
+}
+
+void GetMemorySavingSymbolicString(const MemoryOptimizationPlanner& memory_opt_planner,
+                                   const logging::Logger& logger,
+                                   std::map<std::string, std::pair<std::string, int>>&
+                                       combination_cluster_ids_to_saved_symbolic_byte_map) {
+  // Group by "ClusterId:OptimizationType:RequestCount".
+  InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>> all_combinations;
+
+  combination_cluster_ids_to_saved_symbolic_byte_map.clear();
+  const auto& node_to_optimization_plan_map = memory_opt_planner.GetNodeToOptimizationPlanMap();
+  for (const auto& node_to_optimization_plan : node_to_optimization_plan_map) {
+    const auto& node = node_to_optimization_plan.first;
+    InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>> current_combination;
+    MO_LOG_DEBUG_INFO(logger, ">>>Start looping node: " + node->Name());
+    IterateNode(node, node_to_optimization_plan_map, current_combination, logger, all_combinations);
+    MO_LOG_DEBUG_INFO(logger, "<<<End looping node: " + node->Name());
+  }
+
+  for (const auto& combination : all_combinations) {
+    std::string combination_cluster_id = GetMultiplePlanClusterId(combination);
+    std::string symbolic_byte_count = "";
+    for (const auto& plan : combination) {
+      if (symbolic_byte_count.size() > 0) {
+        symbolic_byte_count += " + ";
+      }
+      symbolic_byte_count += plan->GetMemorySavingSymbolicString();
+    }
+
+    if (symbolic_byte_count.size() > 0) {
+      symbolic_byte_count = "(" + symbolic_byte_count + ")";
+    }
+    auto& p = combination_cluster_ids_to_saved_symbolic_byte_map[combination_cluster_id];
+    const auto& original = p.first;
+    if (original.size() > 0) {
+      symbolic_byte_count = original + " + " + symbolic_byte_count;
+    }
+
+    MO_LOG_DEBUG_INFO(logger, "combination_cluster_id: " + combination_cluster_id +
+                                  ", symbolic_byte_count: " + symbolic_byte_count);
+
+    p.first = symbolic_byte_count;
+    p.second += 1;
+  }
+}
+
 namespace {
 
 template <typename T>
@@ -375,6 +539,8 @@ std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
                                              const std::string& memory_optimization_config,
                                              const std::string recompute_probe_level,
                                              const logging::Logger& logger,
+                                             std::map<std::string, std::pair<std::string, int>>&
+                                                 cluster_id_combinations_to_saved_symbolic_byte_map,
                                              const OrtValueNameIdxMap& ortvalue_name_to_idx_map,
                                              const SequentialExecutionPlan& p_seq_exec_plan) {
   ProbeLevel probe_level = ProbeLevel::Advanced;
@@ -423,8 +589,9 @@ std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
                   .IsOK());
 
   std::vector<std::pair<std::string, MemoryRecord>> records;
-  GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, records,
-                                         node_to_apply_context_map);
+  GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, records, node_to_apply_context_map);
+
+  GetMemorySavingSymbolicString(memory_opt_planner, logger, cluster_id_combinations_to_saved_symbolic_byte_map);
 
   return SerializeMemoryRecords(records, memory_optimization_config);
 }
