@@ -16,7 +16,7 @@ RUN dnf update -y &&\
     dnf install -y bash wget
 
 # Install python3
-RUN dnf install -y --no-install-recommends \
+RUN dnf install -y \
     python3 \
     python3-pip \
     python3-wheel &&\
@@ -29,10 +29,9 @@ RUN pip install setuptools>=41.0.0
 
 # Install TensorRT
 RUN v="8.6.1.6-1+cuda11.8" &&\
-    dnf update --refresh -y &&\
-    dnf install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} libnvinfer-lean8=${v} libnvinfer-vc-plugin8=${v} libnvinfer-dispatch8=${v}\
-        libnvinfer-headers-dev=${v} libnvinfer-headers-plugin-dev=${v} libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} libnvinfer-lean-dev=${v} libnvinfer-vc-plugin-dev=${v}  libnvinfer-dispatch-dev=${v}\
-        python3-libnvinfer=${v} libnvinfer-samples=${v} tensorrt-dev=${v} tensorrt-libs=${v}
+    yum downgrade tensorrt-devel-${version} tensorrt-${version} -y &&\
+    yum install yum-plugin-versionlock -y &&\
+    yum versionlock tensorrt-devel-${version} tensorrt-${version}
 
 RUN dnf clean dbcache
 
