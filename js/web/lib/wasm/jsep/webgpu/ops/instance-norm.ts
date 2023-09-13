@@ -6,8 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
-import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
+import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
 export interface InstanceNormAttributes extends AttributeWithCacheKey {
   epsilon: number;
@@ -105,6 +104,68 @@ const createInstanceNormProgramInfo =
       };
     };
 
+const createInstanceNormNHWCProgramInfo =
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
+      const xShape = inputs[0].dims;
+      const outputShape = xShape;
+      const outputSize = ShapeUtil.size(outputShape);
+      const N = xShape[0];
+      const C = xShape[xShape.length - 1];
+      const H = ShapeUtil.sizeFromDimension(xShape, 1) / C;
+
+      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+
+      const normCount = C * N;
+      const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const N: u32 = ${N};
+  const H: u32 = ${H};
+  const C: u32 = ${C};
+  const normSizeTyped: ${dataType} = ${H};
+  const imageSize: u32 = ${H * C};
+  const epsilon: f32 = ${attributes.epsilon};
+
+  @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
+  @group(0) @binding(1) var<storage, read> scale : array<${dataType}>;
+  @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
+  @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
+
+  ${shaderHelper.mainStart()}
+    let currentImageNumber = global_idx / C;
+    let currentChannelNumber = global_idx % C;
+
+    // offset is channel num * N
+    let offset = currentImageNumber * imageSize;
+    if (offset >= ${outputSize}) { return; }
+    var mean: ${dataType} = 0;
+
+    for (var i: u32 = 0u; i < H; i++) {
+        mean = mean + x[offset + i * C + currentChannelNumber];
+    }
+    mean = mean / normSizeTyped;
+
+    var squaredNorm: ${dataType} = 0;
+    for (var i: u32 = 0u; i < H; i++) {
+        let deviation: f32 = x[offset + i * C + currentChannelNumber] - mean;
+        squaredNorm = squaredNorm + deviation * deviation;
+    }
+    let invStdDev = 1 / sqrt(squaredNorm / normSizeTyped + epsilon);
+    let channelScale = invStdDev * scale[currentChannelNumber];
+    let channelShift = bias[currentChannelNumber] - mean * channelScale;
+    for (var i: u32 = 0u; i < H; i++) {
+        let currentOffset = offset + i * C + currentChannelNumber;
+        output[currentOffset] = x[currentOffset] * channelScale + channelShift;
+    }
+  }`;
+      return {
+        ...metadata,
+        outputs: [
+          {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+        ],
+        getShaderSource,
+        dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
+      };
+    };
+
 export const parseInstanceNormAttributes = (attributes: InstanceNormAttributes): InstanceNormAttributes =>
     createAttributeWithCacheKey({epsilon: attributes.epsilon, format: attributes.format});
 
@@ -116,36 +177,7 @@ export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAt
   };
 
   if (attributes.format === 'NHWC') {
-    // transpose x from NHWC to NCHW
-    const xShape = context.inputs[0].dims;
-    const transposedXPerm = [0, xShape.length - 1];
-    for (let i = 0; i < xShape.length - 2; i++) {
-      transposedXPerm.push(i + 1);
-    }
-    const xTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: transposedXPerm});
-    const transposedX = context.compute(
-        {
-          ...transposeProgramMetadata,
-          cacheHint: xTransposeAttribute.cacheKey,
-          get: () => createTransposeProgramInfo(context.inputs[0], xTransposeAttribute.perm)
-        },
-        {inputs: [context.inputs[0]], outputs: [-1]})[0];
-    const inputs = [transposedX, context.inputs[1], context.inputs[2]];
-    const y = context.compute(createInstanceNormProgramInfo(metadata, inputs, attributes), {inputs, outputs: [-1]})[0];
-    // transpose y from NCHW to NHWC again.
-    const transposedYPerm = [0];
-    for (let i = 0; i < xShape.length - 2; i++) {
-      transposedYPerm.push(i + 2);
-    }
-    transposedYPerm.push(1);
-    const yTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: transposedYPerm});
-    context.compute(
-        {
-          ...transposeProgramMetadata,
-          cacheHint: yTransposeAttribute.cacheKey,
-          get: () => createTransposeProgramInfo(y, yTransposeAttribute.perm)
-        },
-        {inputs: [y]});
+    context.compute(createInstanceNormNHWCProgramInfo(metadata, context.inputs, attributes));
   } else {
     context.compute(createInstanceNormProgramInfo(metadata, context.inputs, attributes));
   }
