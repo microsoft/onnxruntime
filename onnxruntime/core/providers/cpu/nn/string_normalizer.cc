@@ -203,7 +203,7 @@ class Utf8Converter {
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
-#if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 const std::string default_locale("en-US.UTF-8");
 #else
 const std::string default_locale("en_US.UTF-8");  // Other kinds of Apple Platforms including MacOS, etc
