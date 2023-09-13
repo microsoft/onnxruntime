@@ -12,7 +12,7 @@ def GenerateModel(model_name, has_casts=False):  # noqa: N802
         helper.make_node("Sqrt", ["add1_out"], ["sqrt_out"], "sqrt"),
         helper.make_node("Div", ["cast_sub_out" if has_casts else "sub_out", "sqrt_out"], ["div_out"], "div"),
         helper.make_node("Identity", ["gamma"], ["gamma_id_out"], "gamma_id"),
-        helper.make_node("gamma_id_out", ["gamma", "cast_div_out" if has_casts else "div_out"], ["mul_out"], "mul"),
+        helper.make_node("Mul", ["gamma_id_out", "cast_div_out" if has_casts else "div_out"], ["mul_out"], "mul"),
         helper.make_node("Identity", ["const_e6_f16"], ["const_e6_f16_out"], "const_e6_f16_id"),
         helper.make_node("Add", ["mul_out", "const_e6_f16_out"], ["C"], "add2"),
     ]
