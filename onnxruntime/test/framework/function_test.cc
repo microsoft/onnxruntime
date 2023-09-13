@@ -385,11 +385,6 @@ TEST(FunctionTest, AttrSaturate) {
 // TODO: change the expected value when this PR is merged in onnx:
 // https://github.com/onnx/onnx/pull/5246
 TEST(FunctionTest, AttrSaturateNan) {
-  Float8E4M3FNUZ f8(300.0);
-  float f8_r0 = f8.ToFloat();
-  std::cout << f8_r0 << std::endl;
-  std::cout << 1e6 << std::endl;
-
   const char* code = R"(
         <
         ir_version: 9,
