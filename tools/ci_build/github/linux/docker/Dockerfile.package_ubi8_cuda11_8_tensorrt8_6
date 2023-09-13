@@ -13,8 +13,7 @@ ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 
 RUN dnf update -y &&\
-    dnf install -y bash unattended-upgrades wget
-RUN unattended-upgrade
+    dnf install -y bash wget
 
 # Install python3
 RUN dnf install -y --no-install-recommends \
