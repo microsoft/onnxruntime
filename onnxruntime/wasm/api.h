@@ -85,6 +85,13 @@ int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t
                                                     const char* name);
 
 /**
+ * add a free dimension override for one dimension of a session's input.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
+                                                     const char* dim_param_name,
+                                                     int dim_value);
+
+/**
  * store configurations for a session.
  * @param session_options a handle to session options created by OrtCreateSessionOptions
  * @param config_key configuration keys and value formats are defined in
