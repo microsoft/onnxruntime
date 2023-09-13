@@ -710,6 +710,43 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+void SiluMulShapeInfer(InferenceContext& ctx) {
+  auto* output_shape =
+      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  auto input_shape = ctx.getInputType(0)->tensor_type().shape();
+  int last_dim = input_shape.dim_size() - 1;
+  for (int i = 0; i < input_shape.dim_size(); i++) {
+    int64_t value = input_shape.dim(i).dim_value();
+    if (i == last_dim) {
+        value = value / 2;
+    }
+    output_shape->add_dim()->set_dim_value(value);
+  }
+}
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SiluAndMul, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .SetDoc("silu and mul ")
+        .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          SiluMulShapeInfer(ctx);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DebugStep, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .SetDoc("debug ")
+        .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
 constexpr const char* DecoderMaskedSelfAttention_ver1_doc = R"DOC(
 Self attention that supports input sequence length of 1.
 

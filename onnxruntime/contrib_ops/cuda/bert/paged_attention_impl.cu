@@ -101,7 +101,9 @@ __global__ void single_query_cached_kv_attention_kernel(
 
   const int head_idx = blockIdx.x;
   const int num_heads = gridDim.x;
-  const int kv_head_idx = head_mapping[head_idx];
+  const int kv_head_idx = head_mapping ? head_mapping[head_idx] : head_idx;
+  const int kv_block_stride_m = head_mapping ? kv_block_stride : num_heads * HEAD_SIZE * BLOCK_SIZE;
+  const int kv_head_stride_m = head_mapping ? kv_head_stride : HEAD_SIZE * BLOCK_SIZE;
   const int seq_idx = blockIdx.y;
   const float alibi_slope = alibi_slopes == nullptr ? 0.f : alibi_slopes[head_idx];
 
@@ -170,7 +172,7 @@ __global__ void single_query_cached_kv_attention_kernel(
 
 #pragma unroll
       for (int j = 0; j < NUM_VECS_PER_THREAD; j++) {
-        const scalar_t* k_ptr = k_cache + physical_block_number * kv_block_stride + kv_head_idx * kv_head_stride + physical_block_offset * x;
+        const scalar_t* k_ptr = k_cache + physical_block_number * kv_block_stride_m + kv_head_idx * kv_head_stride_m + physical_block_offset * x;
         const int vec_idx = thread_group_offset + j * THREAD_GROUP_SIZE;
         const int offset1 = (vec_idx * VEC_SIZE) / x;
         const int offset2 = (vec_idx * VEC_SIZE) % x;
@@ -181,7 +183,7 @@ __global__ void single_query_cached_kv_attention_kernel(
       // This includes a reduction across the threads in the same thread group.
       float qk = scale * Qk_dot<scalar_t, THREAD_GROUP_SIZE>::dot(q_vecs[thread_group_offset], k_vecs);
       // Add the ALiBi bias if slopes are given.
-      qk += (alibi_slope != 0) ? alibi_slope * (token_idx - context_len) : 0;
+      qk += (alibi_slope != 0) ? alibi_slope * (token_idx - context_len + 1) : 0;
 
       if (thread_group_offset == 0) {
         // Store the partial reductions to shared memory.
@@ -208,6 +210,15 @@ __global__ void single_query_cached_kv_attention_kernel(
 
   // TODO(woosuk): Refactor this part.
   // Get the max qk value for the sequence.
+  qk_max = lane < NUM_WARPS ? red_smem[lane] : -FLT_MAX;
+#pragma unroll
+  for (int mask = NUM_WARPS / 2; mask >= 1; mask /= 2) {
+    qk_max = fmaxf(qk_max, __shfl_xor_sync(uint32_t(-1), qk_max, mask));
+  }
+  // Broadcast the max qk value to all threads.
+  qk_max = __shfl_sync(uint32_t(-1), qk_max, 0);
+
+  // Get the sum of the exp values.
   float exp_sum = 0.f;
   for (int i = thread_idx; i < context_len; i += NUM_THREADS) {
     float val = __expf(logits[i] - qk_max);
@@ -249,7 +260,7 @@ __global__ void single_query_cached_kv_attention_kernel(
     L_vec logits_vec;
     from_float(logits_vec, *reinterpret_cast<Float_L_vec*>(logits + token_idx));
 
-    const scalar_t* v_ptr = v_cache + physical_block_number * kv_block_stride + kv_head_idx * kv_head_stride;
+    const scalar_t* v_ptr = v_cache + physical_block_number * kv_block_stride_m + kv_head_idx * kv_head_stride_m;
 #pragma unroll
     for (int i = 0; i < NUM_ROWS_PER_THREAD; i++) {
       const int row_idx = lane / NUM_V_VECS_PER_ROW + i * NUM_ROWS_PER_ITER;
@@ -374,8 +385,37 @@ __global__ void reshape_and_cache_kernel(
   }
 }
 
-template <typename scalar_t>
-__global__ void rotary_embedding_neox_kernel(
+template <typename scalar_t, bool IS_NEOX>
+inline __device__ void apply_rotary_embedding(
+    scalar_t* __restrict__ arr,
+    const scalar_t* __restrict__ cos_ptr,
+    const scalar_t* __restrict__ sin_ptr,
+    int rot_offset,
+    int embed_dim) {
+  int x_index, y_index;
+  scalar_t cos, sin;
+  if (IS_NEOX) {
+    // GPT-NeoX style rotary embedding.
+    x_index = rot_offset;
+    y_index = embed_dim + rot_offset;
+    cos = __ldg(cos_ptr + x_index);
+    sin = __ldg(sin_ptr + x_index);
+  } else {
+    // GPT-J style rotary embedding.
+    x_index = 2 * rot_offset;
+    y_index = 2 * rot_offset + 1;
+    cos = __ldg(cos_ptr + x_index / 2);
+    sin = __ldg(sin_ptr + x_index / 2);
+  }
+
+  const scalar_t x = arr[x_index];
+  const scalar_t y = arr[y_index];
+  arr[x_index] = x * cos - y * sin;
+  arr[y_index] = y * cos + x * sin;
+}
+
+template <typename scalar_t, bool IS_NEOX>
+__global__ void rotary_embedding_kernel(
     const int64_t* __restrict__ positions,       // [num_tokens]
     scalar_t* __restrict__ query,                // [num_tokens, num_heads, head_size]
     scalar_t* __restrict__ key,                  // [num_tokens, num_kv_heads, head_size]
@@ -392,48 +432,59 @@ __global__ void rotary_embedding_neox_kernel(
   const scalar_t* cache_ptr = cos_sin_cache + pos * rot_dim;
 
   const int embed_dim = rot_dim / 2;
+  const scalar_t* cos_ptr = cache_ptr;
+  const scalar_t* sin_ptr = cache_ptr + embed_dim;
+
   const int nq = num_heads * embed_dim;
   for (int i = threadIdx.x; i < nq; i += blockDim.x) {
     const int head_idx = i / embed_dim;
     const int token_head = token_idx * query_stride + head_idx * head_size;
-
     const int rot_offset = i % embed_dim;
-    const int x_index = rot_offset;
-    const int y_index = embed_dim + rot_offset;
-
-    const int out_x = token_idx * query_stride + head_idx * head_size + x_index;
-    const int out_y = token_idx * query_stride + head_idx * head_size + y_index;
-
-    const scalar_t cos = __ldg(cache_ptr + x_index);
-    const scalar_t sin = __ldg(cache_ptr + y_index);
-
-    const scalar_t q_x = query[token_head + x_index];
-    const scalar_t q_y = query[token_head + y_index];
-    query[out_x] = q_x * cos - q_y * sin;
-    query[out_y] = q_y * cos + q_x * sin;
+    apply_rotary_embedding<scalar_t, IS_NEOX>(query + token_head, cos_ptr,
+                                              sin_ptr, rot_offset, embed_dim);
   }
 
   const int nk = num_kv_heads * embed_dim;
   for (int i = threadIdx.x; i < nk; i += blockDim.x) {
     const int head_idx = i / embed_dim;
     const int token_head = token_idx * key_stride + head_idx * head_size;
-
     const int rot_offset = i % embed_dim;
-    const int x_index = rot_offset;
-    const int y_index = embed_dim + rot_offset;
-
-    const int out_x = token_idx * key_stride + head_idx * head_size + x_index;
-    const int out_y = token_idx * key_stride + head_idx * head_size + y_index;
-
-    const scalar_t cos = __ldg(cache_ptr + x_index);
-    const scalar_t sin = __ldg(cache_ptr + y_index);
-
-    const scalar_t k_x = key[token_head + x_index];
-    const scalar_t k_y = key[token_head + y_index];
-    key[out_x] = k_x * cos - k_y * sin;
-    key[out_y] = k_y * cos + k_x * sin;
+    apply_rotary_embedding<scalar_t, IS_NEOX>(key + token_head, cos_ptr,
+                                              sin_ptr, rot_offset, embed_dim);
   }
 }
+
+template <typename scalar_t, int repeat, int num_lines_per_thread>
+__global__ void repeat_key_value_kernel(
+    scalar_t* __restrict__ key_output,    // [num_tokens, repeat*num_head,head_size]
+    scalar_t* __restrict__ value_output,  // [num_tokens, repeat*num_head,head_size]
+    const scalar_t* __restrict__ key,     // [num_tokens, num_head,head_size]
+    const scalar_t* __restrict__ value,   // [num_tokens, num_head,head_size]
+    const int head_size, int repeat_def) {
+  // const int num_lines_per_thread = 2;
+  const int head_idx = blockIdx.x * num_lines_per_thread;
+  for (int i = threadIdx.x; i < head_size; i += blockDim.x) {
+#pragma unroll
+    for (int line = 0; line < num_lines_per_thread; line++) {
+      scalar_t b_key = key[(head_idx + line) * head_size + i];
+      scalar_t b_value = value[(head_idx + line) * head_size + i];
+      if constexpr (repeat > 0) {
+#pragma unroll
+        for (int j = 0; j < repeat; j++) {
+          key_output[((head_idx + line) * repeat + j) * head_size + i] = b_key;
+          value_output[((head_idx + line) * repeat + j) * head_size + i] = b_value;
+        }
+      } else {
+#pragma unroll
+        for (int j = 0; j < repeat_def; j++) {
+          key_output[((head_idx + line) * repeat_def + j) * head_size + i] = b_key;
+          value_output[((head_idx + line) * repeat_def + j) * head_size + i] = b_value;
+        }
+      }
+    }
+  }
+}
+
 
 }  // namespace vllm
 
@@ -478,7 +529,7 @@ void single_query_cached_kv_attention_launcher(
   int num_heads = query_shapes[1];
   int head_size = query_shapes[2];
   // int max_num_blocks_per_seq = 1;            // block_tables.size(1);xxxxxxxxxxxxxxxxxxxxxxxx
-  int query_stride = head_size * num_heads;                                       // query.stride(0);
+  int query_stride = head_size * num_heads;  // query.stride(0);
   int kv_block_stride = num_heads * head_size / num_queries_per_kv * BLOCK_SIZE;  // xxxxxxxxxxxxxxxxxxxxxxxx
   int kv_head_stride = head_size * BLOCK_SIZE;                                    // key_cache.stride(1);
 
@@ -595,7 +646,7 @@ void single_query_cached_kv_attention(
     const void* query,         // [num_seqs, num_heads, head_size]
     const void* key_cache,     // [num_blocks, num_kv_heads, head_size/x, block_size, x]
     const void* value_cache,   // [num_blocks, num_kv_heads, head_size, block_size]
-    const void* head_mapping,  // [num_heads]
+    const int* head_mapping,  // [num_heads]
     float scale,
     const int* block_tables,  // [num_seqs, max_num_blocks_per_seq]
     const int max_num_blocks_per_seq,
@@ -678,6 +729,7 @@ void rotary_embedding_neox(
   // int rot_dim = cos_sin_cache.size(1);
   // int num_heads = query.size(1) / head_size;
   // int num_kv_heads = key.size(1) / head_size;
+  const bool is_neox = true;
   int query_stride = num_heads * head_size;
   int key_stride = num_kv_heads * head_size;
   // TORCH_CHECK(stride == key.stride(0));
@@ -693,23 +745,87 @@ void rotary_embedding_neox(
   } else if (dtype == 1) {
     // half
     using scalar_t = half;
-    vllm::rotary_embedding_neox_kernel<scalar_t><<<grid, block, 0, stream>>>(
-        positions,
-        static_cast<scalar_t*>(query),
-        static_cast<scalar_t*>(key),
-        static_cast<const scalar_t*>(cos_sin_cache),
-        rot_dim,
-        query_stride,
-        key_stride,
-        num_heads,
-        num_kv_heads,
-        head_size);
+    if (is_neox) {
+      vllm::rotary_embedding_kernel<scalar_t, true><<<grid, block, 0, stream>>>(
+          positions,
+          static_cast<scalar_t*>(query),
+          static_cast<scalar_t*>(key),
+          static_cast<const scalar_t*>(cos_sin_cache),
+          rot_dim,
+          query_stride,
+          key_stride,
+          num_heads,
+          num_kv_heads,
+          head_size);
+    } else {
+      vllm::rotary_embedding_kernel<scalar_t, false><<<grid, block, 0, stream>>>(
+          positions,
+          static_cast<scalar_t*>(query),
+          static_cast<scalar_t*>(key),
+          static_cast<const scalar_t*>(cos_sin_cache),
+          rot_dim,
+          query_stride,
+          key_stride,
+          num_heads,
+          num_kv_heads,
+          head_size);
+    }
     //} else if constexpr (std::is_same_v<T, BFloat16>) {
   } else if (dtype == 2) {
     // CALL_KERNEL_LAUNCHER_BLOCK_SIZE(__nv_bfloat16);
   }
 }
-
+template <typename scalar_t>
+void LaunchRepeatKeyValue(
+    const cudaStream_t stream,
+    scalar_t* key_out,      // [num_tokens, repeat*num_heads * head_size]
+    scalar_t* value_out,    // [num_tokens, repeat*num_heads * head_size]
+    const scalar_t* key,    // [num_tokens, num_heads * head_size]
+    const scalar_t* value,  // [num_tokens, num_heads * head_size]
+    const int64_t* input_shape,
+    int repeat) {
+  const int unroll_len = 2;
+  dim3 grid(input_shape[0] * input_shape[1] / unroll_len);
+  dim3 block(input_shape[2] > 256 ? 256 : input_shape[2]);
+  if (repeat == 8) {
+    vllm::repeat_key_value_kernel<scalar_t, 8, unroll_len><<<grid, block, 0, stream>>>(
+        static_cast<scalar_t*>(key_out),
+        static_cast<scalar_t*>(value_out),
+        static_cast<const scalar_t*>(key),
+        static_cast<const scalar_t*>(value),
+        input_shape[2], 0);
+  }else if (repeat == 4) {
+    vllm::repeat_key_value_kernel<scalar_t, 4, unroll_len><<<grid, block, 0, stream>>>(
+        static_cast<scalar_t*>(key_out),
+        static_cast<scalar_t*>(value_out),
+        static_cast<const scalar_t*>(key),
+        static_cast<const scalar_t*>(value),
+        input_shape[2], 0);
+  } else {
+    vllm::repeat_key_value_kernel<scalar_t, 0, unroll_len><<<grid, block, 0, stream>>>(
+        static_cast<scalar_t*>(key_out),
+        static_cast<scalar_t*>(value_out),
+        static_cast<const scalar_t*>(key),
+        static_cast<const scalar_t*>(value),
+        input_shape[2], repeat);
+  }
+}
+template void LaunchRepeatKeyValue<half>(
+    const cudaStream_t stream,
+    half* key_out,      // [num_tokens, repeat*num_heads * head_size]
+    half* value_out,    // [num_tokens, repeat*num_heads * head_size]
+    const half* key,    // [num_tokens, num_heads * head_size]
+    const half* value,  // [num_tokens, num_heads * head_size]
+    const int64_t* input_shape,
+    int repeat);
+template void LaunchRepeatKeyValue<float>(
+    const cudaStream_t stream,
+    float* key_out,      // [num_tokens, repeat*num_heads * head_size]
+    float* value_out,    // [num_tokens, repeat*num_heads * head_size]
+    const float* key,    // [num_tokens, num_heads * head_size]
+    const float* value,  // [num_tokens, num_heads * head_size]
+    const int64_t* input_shape,
+    int repeat);
 #undef WARP_SIZE
 #undef MAX
 #undef MIN
