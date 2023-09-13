@@ -49,6 +49,9 @@ def convert_initializer_to_16bits(initializer: onnx.TensorProto, target_type: on
     if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
         raise Exception("Do not support initializers with external data")
 
+    # Need to convert raw_data bytes to 16-bit values.
+    # NOTE: For tensors that use .int32_data instead of .raw_data, we don't need any special handling
+    # other than updating the data type. This is because the upper 24 bits are already cleared to zero.
     if initializer.HasField("raw_data"):
         num_byte_vals = len(initializer.raw_data)
 
