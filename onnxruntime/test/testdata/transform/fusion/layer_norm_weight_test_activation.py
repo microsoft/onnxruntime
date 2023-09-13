@@ -4,16 +4,17 @@ from onnx import OperatorSetIdProto, TensorProto, helper
 
 def GenerateModel(model_name, has_casts=False):  # noqa: N802
     nodes = [  # LayerNorm subgraph
-        helper.make_node("Identity", ["A"], ["A_id_out"], "id"),
-        helper.make_node("ReduceMean", ["A_id_out"], ["rd_out"], "reduce1", axes=[-1], keepdims=1),
-        helper.make_node("Sub", ["A_id_out", "rd_out"], ["sub_out"], "sub"),
+        helper.make_node("ReduceMean", ["A"], ["rd_out"], "reduce1", axes=[-1], keepdims=1),
+        helper.make_node("Sub", ["A", "rd_out"], ["sub_out"], "sub"),
         helper.make_node("Pow", ["cast_sub_out" if has_casts else "sub_out", "pow_in_2"], ["pow_out"], "pow"),
         helper.make_node("ReduceMean", ["pow_out"], ["rd2_out"], "reduce2", axes=[-1], keepdims=1),
         helper.make_node("Add", ["rd2_out", "const_e12_f32"], ["add1_out"], "add1"),
         helper.make_node("Sqrt", ["add1_out"], ["sqrt_out"], "sqrt"),
         helper.make_node("Div", ["cast_sub_out" if has_casts else "sub_out", "sqrt_out"], ["div_out"], "div"),
-        helper.make_node("Mul", ["gamma", "cast_div_out" if has_casts else "div_out"], ["mul_out"], "mul"),
-        helper.make_node("Add", ["mul_out", "const_e12_f16"], ["C"], "add2"),
+        helper.make_node("Identity", ["gamma"], ["gamma_id_out"], "gamma_id"),
+        helper.make_node("gamma_id_out", ["gamma", "cast_div_out" if has_casts else "div_out"], ["mul_out"], "mul"),
+        helper.make_node("Identity", ["const_e6_f16"], ["const_e6_f16_out"], "const_e6_f16_id"),
+        helper.make_node("Add", ["mul_out", "const_e6_f16_out"], ["C"], "add2"),
     ]
 
     if has_casts:
@@ -27,7 +28,7 @@ def GenerateModel(model_name, has_casts=False):  # noqa: N802
     initializers = [  # initializers
         helper.make_tensor("pow_in_2", TensorProto.FLOAT, [], [2]),
         helper.make_tensor("const_e12_f32", TensorProto.FLOAT, [], [1e-12]),
-        helper.make_tensor("const_e12_f16", TensorProto.FLOAT16, [], [1e-6]),
+        helper.make_tensor("const_e6_f16", TensorProto.FLOAT16, [], [1e-6]),
         helper.make_tensor(
             "gamma",
             TensorProto.FLOAT16 if has_casts else TensorProto.FLOAT,
