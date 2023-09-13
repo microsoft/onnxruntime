@@ -39,6 +39,16 @@ namespace Dml
         int graph_level,
         const onnxruntime::logging::Logger& logger) const
     {
+        return ApplyImplHelper(graph, modified, graph_level, logger, {});
+    }
+
+    onnxruntime::common::Status DmlGraphFusionTransformer::ApplyImplHelper(
+        onnxruntime::Graph& graph,
+        bool& modified,
+        int graph_level,
+        const onnxruntime::logging::Logger& logger,
+        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputDefs) const
+    {
         onnxruntime::ProviderType provider_type = onnxruntime::kDmlExecutionProvider;
         const gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
         const auto kernel_type_str_resolver = onnxruntime::OpSchemaKernelTypeStrResolver{};
@@ -48,6 +58,30 @@ namespace Dml
 
         std::vector<std::shared_ptr<CompiledPartitionInfo>> compiledPartitionInfos;
         std::vector<onnxruntime::NodeIndex> additionalSplittingNodes;
+
+        onnxruntime::GraphViewer graph_viewer(graph);
+        const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+        for (auto node_index : node_topology_list)
+        {
+            auto* node = graph.GetNode(node_index);
+            if (!node)
+            {
+                continue;  // node was removed
+            }
+
+            std::unordered_map<std::string, const onnxruntime::NodeArg*> subgraphImplicitInputDefs;
+            for (const onnxruntime::NodeArg* inputDef : node->ImplicitInputDefs())
+            {
+                subgraphImplicitInputDefs[inputDef->Name()] = inputDef;
+            }
+
+            for (auto& entry : node->GetAttributeNameToMutableSubgraphMap())
+            {
+                auto& subgraph = *entry.second;
+                ORT_RETURN_IF_ERROR(ApplyImplHelper(subgraph, modified, graph_level + 1, logger, subgraphImplicitInputDefs));
+            }
+        }
 
         do
         {
@@ -62,7 +96,8 @@ namespace Dml
                 m_providerImpl->GetSupportedDeviceDataTypeMask(),
                 graphNodePropertyMap,
                 requiredInitializerMap,
-                additionalSplittingNodes);
+                additionalSplittingNodes,
+                implicitInputDefs);
 
             // Reset the splitting nodes for the current iteration
             additionalSplittingNodes.clear();
