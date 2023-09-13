@@ -46,8 +46,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
+    FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
-    OVERRIDE_FIND_PACKAGE
   )
 endif()
 
