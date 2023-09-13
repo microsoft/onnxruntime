@@ -29,11 +29,11 @@ from typing import List
 
 import coloredlogs
 import onnx
-from fusion_options import FusionOptions
-from onnx_model_clip import ClipOnnxModel
-from onnx_model_unet import UnetOnnxModel
-from onnx_model_vae import VaeOnnxModel
-from optimizer import optimize_by_onnxruntime, optimize_model
+from onnxruntime.transformers.fusion_options import FusionOptions
+from onnxruntime.transformers.onnx_model_clip import ClipOnnxModel
+from onnxruntime.transformers.onnx_model_unet import UnetOnnxModel
+from onnxruntime.transformers.onnx_model_vae import VaeOnnxModel
+from onnxruntime.transformers.optimizer import optimize_by_onnxruntime, optimize_model
 from packaging import version
 
 import onnxruntime
