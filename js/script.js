@@ -583,16 +583,16 @@ function ot_buildMatcher() {
 var ot_validCombos = {
 
     "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA,ot_stable":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
     "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA,ot_nightly":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_nightly_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure",
 
     "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_stable":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
     
     "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_nightly":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_nightly_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
     
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
     "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
