@@ -203,7 +203,6 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
 
   // The encoder_attention_mask is copied from the second input of encoder.
   OrtValue expanded_decoder_attention_masks;
-  std::cout << "expanding decoder attention mask" << std::endl;
   ORT_RETURN_IF_ERROR(expand_buffer_int32_func(stream,
                                                //encoder_feeds[1],
                                                encoder_fetches[1], // bugbug: attention_mask from encoder output[1]
@@ -212,7 +211,6 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
                                                expanded_decoder_attention_masks,
                                                false,
                                                0 /*max_sequence_length*/));
-  std::cout << "expanded decoder attention mask" << std::endl;
 
   decoder_feeds.push_back(expanded_decoder_attention_masks);
 
