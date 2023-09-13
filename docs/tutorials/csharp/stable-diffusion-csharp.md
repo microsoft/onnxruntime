@@ -204,7 +204,7 @@ The text encoder creates the text embedding which is trained to encode the text 
 - Text Embedding: A vector of numbers that represents the text prompt created from the tokenization result. The text embedding is created by the `text_encoder` model. 
 
 ```csharp
-        public static OrtValue TextEncoder(int[] tokenizedInput)
+        public static float[] TextEncoder(int[] tokenizedInput)
         {
             // Create input tensor. OrtValue will not copy, will read from managed memory
             using var input_ids = OrtValue.CreateTensorValueFromMemory<int>(tokenizedInput,
@@ -218,26 +218,18 @@ The text encoder creates the text embedding which is trained to encode the text 
             // we know the shape
             var lastHiddenState = new float[1 * 77 * 768];
             using var outputOrtValue = OrtValue.CreateTensorValueFromMemory<float>(lastHiddenState, new long[] { 1, 77, 768 });
-            try
-            {
-                string[] input_names = { "input_ids" };
-                OrtValue[] inputs = { input_ids };
 
-                string[] output_names = { encodeSession.OutputNames[0] };
-                OrtValue[] outputs = { outputOrtValue };
+            string[] input_names = { "input_ids" };
+            OrtValue[] inputs = { input_ids };
 
-                // Run inference.
-                using var runOptions = new RunOptions();
-                encodeSession.Run(runOptions, input_names, inputs, output_names, outputs);
+            string[] output_names = { encodeSession.OutputNames[0] };
+            OrtValue[] outputs = { outputOrtValue };
 
-                return outputOrtValue;
-            }
-            catch(Exception ex)
-            {
-                // Dispose on error
-                outputOrtValue.Dispose();
-                throw;
-            }
+            // Run inference.
+            using var runOptions = new RunOptions();
+            encodeSession.Run(runOptions, input_names, inputs, output_names, outputs);
+
+            return lastHiddenState;
         }
 ```
 
