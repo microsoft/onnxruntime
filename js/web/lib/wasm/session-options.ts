@@ -143,6 +143,21 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
       setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
     }
 
+    if (sessionOptions.freeDimensionOverrides) {
+      for (const [name, value] of Object.entries(sessionOptions.freeDimensionOverrides)) {
+        if (typeof name !== 'string') {
+          throw new Error(`free dimension override name must be a string: ${name}`);
+        }
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+          throw new Error(`free dimension override value must be a non-negative integer: ${value}`);
+        }
+        const nameOffset = allocWasmString(name, allocs);
+        if (wasm._OrtAddFreeDimensionOverride(sessionOptionsHandle, nameOffset, value) !== 0) {
+          checkLastError(`Can't set a free dimension override: ${name} - ${value}.`);
+        }
+      }
+    }
+
     if (sessionOptions.extra !== undefined) {
       iterateExtraOptions(sessionOptions.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
         const keyDataOffset = allocWasmString(key, allocs);
