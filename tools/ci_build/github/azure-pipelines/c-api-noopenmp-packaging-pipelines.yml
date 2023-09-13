@@ -430,7 +430,7 @@ stages:
         StepName: 'Download Final Jar'
         ArtifactName: onnxruntime-java-gpu
         TargetPath: '$(Build.BinariesDirectory)/testdata'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
     - template: templates/get-docker-image-steps.yml
