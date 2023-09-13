@@ -6,6 +6,7 @@ export src_dir=$1
 export build_dir=$2
 export config=$3
 
+# it's for manylinux image
 export PATH=/opt/python/cp38-cp38/bin:$PATH
 
 echo Install Python Deps
@@ -24,4 +25,7 @@ python3 -m pip install $build_dir/$config/dist/*.whl
 echo Run $config unit tests
 pushd $build_dir/Release/
 python3 $src_dir/tools/ci_build/build.py --build_dir $build_dir --cmake_generator Ninja --config $config --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path ""
+
+echo Run symbolic shape infer test
+python3 /build/Release/onnxruntime_test_python_symbolic_shape_infer.py
 popd

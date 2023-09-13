@@ -155,8 +155,7 @@ stages:
             onnxruntimecpubuild \
               /bin/bash -c "
                 /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Release && \
-                echo Run symbolic shape infer test && \
-                python3 /build/Release/onnxruntime_test_python_symbolic_shape_infer.py
+                /bin/bash /onnxruntime_src/tools/scripts/symbolic_shape_infer_test.sh /build "
               "
         displayName: 'Run Release tests and symbolic shape infer test'
 
