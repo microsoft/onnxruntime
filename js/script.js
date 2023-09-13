@@ -582,11 +582,11 @@ function ot_buildMatcher() {
 
 var ot_validCombos = {
 
-    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA,ot_stable":
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_stable":
     "pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
-    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA,ot_nightly":
-    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure",
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_nightly":
+    "pip install --pre onnxruntime-training --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/<br/>pip install torch-ort<br/>python -m torch_ort.configure",
 
     "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_stable":
     "pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
@@ -595,17 +595,16 @@ var ot_validCombos = {
     "pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
     
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
-    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
+    "pip install --pre onnxruntime-training-cpu --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/",
 
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
-    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-nightly/pypi/simple/ onnxruntime-training-cpu",
+    "pip install --pre onnxruntime-training-cpu --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT_Nightly/pypi/simple/",
 
-    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_stable":
-    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training",
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_stable":
+    "pip install --pre onnxruntime-training --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/<br/>pip install torch-ort<br/>python -m torch_ort.configure",
 
-    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_nightly":
-    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training",
-
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_nightly":
+    "pip install --pre onnxruntime-training --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/<br/>pip install torch-ort<br/>python -m torch_ort.configure",
 
     "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable":
     "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
@@ -613,25 +612,25 @@ var ot_validCombos = {
     "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable":
     "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
 
-    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA,ot_stable":
+    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
-    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA,ot_stable":
+    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
     
-    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA,ot_stable":
+    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
     "ot_linux,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable":
     "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
-    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
+    "pip install --pre onnxruntime-training-cpu --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/",
 
     "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
-    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
+    "pip install --pre onnxruntime-training-cpu --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT_Nightly/pypi/simple/",
 
-    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA,ot_stable":
+    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
     "ot_windows,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable":
@@ -643,13 +642,13 @@ var ot_validCombos = {
     "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable":
     "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
 
-    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CUDA,ot_stable":
+    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
-    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA,ot_stable":
+    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
     
-    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CUDA,ot_stable":
+    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
     "ot_android,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable":
@@ -671,10 +670,10 @@ var ot_validCombos = {
         "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
 
     "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
-    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
+    "pip install --pre onnxruntime-training-cpu --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/",
 
     "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
-    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
+    "pip install --pre onnxruntime-training-cpu --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT_Nightly/pypi/simple/",
 
     "ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU,ot_stable":
         "Add 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
