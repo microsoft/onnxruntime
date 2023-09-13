@@ -74,7 +74,6 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: true
-        RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-MultiA10
@@ -95,7 +94,6 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: true
-        RunStaticCodeAnalysis: false
         ORT_EP_NAME: TRT
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-MultiA10
@@ -114,7 +112,6 @@ stages:
       isX86: false
       job_name_suffix: x64_mimalloc
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -134,7 +131,6 @@ stages:
       isX86: false
       job_name_suffix: x64_no_memory_profiling
       RunOnnxRuntimeTests: false
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -154,7 +150,6 @@ stages:
       isX86: false
       job_name_suffix: x64_minimal_no_exception
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -174,7 +169,6 @@ stages:
       isX86: false
       job_name_suffix: x64_debug_node_input_output
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
