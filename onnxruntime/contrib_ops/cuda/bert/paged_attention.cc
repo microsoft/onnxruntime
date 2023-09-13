@@ -105,8 +105,9 @@ void DumpTensor(cudaStream_t cuda_stream, const void* tensor_data, const std::st
   CUDA_CALL_THROW(cudaStreamSynchronize(cuda_stream));
 
   CUDA_CALL_THROW(cudaMemcpy(tmp.data(), tensor_data, size_in_bytes, cudaMemcpyDeviceToHost));
-  std::ofstream file(name + ".bin." + std::to_string(counter[name]), std::ios::binary);
-  file.write(tmp.data(), size_in_bytes);
+  FILE* file = fopen((name + ".bin." + std::to_string(counter[name])).c_str(), "wb");
+  fwrite(tmp.data(), 1, size_in_bytes, file);
+  fclose(file);
   counter[name]++;
 #else
   ORT_UNUSED_PARAMETER(cuda_stream);
@@ -207,8 +208,10 @@ PagedAttention<T>::PagedAttention(const OpKernelInfo& info) : CudaKernel(info), 
       head_mapping_host[i * num_queries_per_kv_ + j] = i;
     }
   }
-  head_mapping_.reset(GetScratchBuffer<int32_t>(num_heads, 0).release());
-  CUDA_CALL_THROW(cudaMemcpy(head_mapping_.get(), head_mapping_host.data(), 4 * num_heads_, cudaMemcpyHostToDevice));
+  auto cuda_mem = GetScratchBuffer<int32_t>(num_heads, 0);
+  head_mapping_.swap(cuda_mem);
+  CUDA_CALL_THROW(cudaMemcpy(head_mapping_.get(), head_mapping_host.data(), sizeof(int32_t) * num_heads_, cudaMemcpyHostToDevice));
+
   head_size_ = static_cast<int32_t>(head_size);
   ORT_ENFORCE(info.GetAttr("scale", &scale_).IsOK() && scale_ > 0);
   ORT_ENFORCE(info.GetAttr("mask_type", &mask_type_).IsOK() && (mask_type_ == "normal" || mask_type_ == "alibi" || mask_type_ == "RoPE"));
@@ -328,18 +331,13 @@ Status PagedAttention<T>::DoQKVProjectionIfNeed(OpKernelContext* context,
                          AttentionQkvFormat::QKV_TN3H, AttentionQkvFormat::Q_K_V_TNH,
                          0, num_valid_tokens, Stream(context));
 
-#ifdef DEBUG_TENSOR_DUMP
-  DumpTensor(Stream(context), gemm_buffer.get(), "split_OUT", static_cast<size_t>(m) * n * sizeof(T));
-  DumpTensor(Stream(context), gemm_buffer_pack.get(), "projection_QKV_OUT", static_cast<size_t>(m) * n * sizeof(T));
-#endif
-
   CHECK_CUDA_ERROR();
   return Status::OK();
 }
 
 template <typename T>
 Status PagedAttention<T>::RunMultiHeadAttention(Tensor* output, OpKernelContext* context,
-                                                PackedAttentionParameters& parameters,
+                                                PackedAttentionParameters parameters,
                                                 IAllocatorUniquePtr<T>& gemm_buffer) const {
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
@@ -365,12 +363,28 @@ Status PagedAttention<T>::RunMultiHeadAttention(Tensor* output, OpKernelContext*
   PackedMultiHeadAttentionData<CudaT> data;
   if (gemm_buffer.get()) {
     data.query = reinterpret_cast<const CudaT*>(gemm_buffer.get());
-    data.key = data.query + num_valid_tokens * num_heads_ * head_size_;
-    data.value = data.key + num_valid_tokens * num_heads_ * head_size_;
+    data.key = data.query + num_valid_tokens * num_kv_heads_ * head_size_;
+    data.value = data.key + num_valid_tokens * num_kv_heads_ * head_size_;
   } else {
     data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
     data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
     data.value = reinterpret_cast<const CudaT*>(value->Data<T>());
+  }
+
+  // broadcast key,value for GQA
+  TensorShape key_shape({parameters.valid_token_count, parameters.num_kv_heads, parameters.head_size});
+  size_t kv_repeat_space = key_shape.Size() * (num_queries_per_kv_ > 0 ? num_queries_per_kv_ : 0);
+  IAllocatorUniquePtr<CudaT> key_out = GetScratchBuffer<CudaT>(kv_repeat_space, context->GetComputeStream());
+  IAllocatorUniquePtr<CudaT> value_out = GetScratchBuffer<CudaT>(kv_repeat_space, context->GetComputeStream());
+  if (num_queries_per_kv_ > 1 && !ParseEnvironmentVariableWithDefault<bool>("repeat_kv_tile", false)) {
+    // repeat key and value
+    LaunchRepeatKeyValue<CudaT>(Stream(context), key_out.get(), value_out.get(),
+                                data.key, data.value, key_shape.GetDims().data(), num_queries_per_kv_);
+    CHECK_CUDA_ERROR();
+    data.key = key_out.get();
+    data.value = value_out.get();
+    parameters.num_kv_heads = parameters.num_heads;
+    DumpTensor(Stream(context), data.key, "repeat_key", kv_repeat_space * sizeof(CudaT));
   }
 
   data.bias = (bias == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());

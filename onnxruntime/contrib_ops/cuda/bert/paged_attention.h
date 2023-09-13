@@ -60,7 +60,7 @@ class PagedAttention final : public TrtFusedAttention<T>, public CudaKernel {
       const Tensor* value,
       const InputMetadata* input_metadata,
       PackedAttentionParameters& parameters) const;
-  Status RunMultiHeadAttention(Tensor* output, OpKernelContext* context, PackedAttentionParameters& parameters, IAllocatorUniquePtr<T>& gemm_buffer) const;
+  Status RunMultiHeadAttention(Tensor* output, OpKernelContext* context, PackedAttentionParameters parameters, IAllocatorUniquePtr<T>& gemm_buffer) const;
   Status DoQKVProjectionIfNeed(OpKernelContext* context, PackedAttentionParameters parameters,
                                IAllocatorUniquePtr<T>& gemm_buffer) const;
 
