@@ -12,7 +12,7 @@ ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
 
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 
-RUN dnf update &&\
+RUN dnf update -y &&\
     dnf install -y bash unattended-upgrades wget
 RUN unattended-upgrade
 

@@ -446,7 +446,7 @@ stages:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro \
-          onnxruntimepackagestest \
+          onnxruntimeubi8packagestest \
           /bin/bash /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -r /build -v $(OnnxRuntimeVersion)
       displayName: 'Test'
 
