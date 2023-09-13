@@ -436,7 +436,7 @@ class InferenceSession(Session):
 
         # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
         if "TensorrtExecutionProvider" in available_providers:
-            if "CUDAExecutionProvider" in available_providers:
+            if any(provider == "CUDAExecutionProvider" or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider") for provider in providers):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         elif "MIGraphXExecutionProvider" in available_providers:
             self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
