@@ -9,6 +9,7 @@ import {SerializableModeldata} from './proxy-messages';
 import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
 
 let runtimeInitialized: boolean;
+let runtimeInitializationPromise: Promise<void>|undefined;
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   private sessionId: number;
@@ -29,7 +30,11 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
     if (!runtimeInitialized) {
-      await initializeRuntime(env);
+      if (!runtimeInitializationPromise) {
+        runtimeInitializationPromise = initializeRuntime(env);
+      }
+      await runtimeInitializationPromise;
+      runtimeInitializationPromise = undefined;
       runtimeInitialized = true;
     }
 
