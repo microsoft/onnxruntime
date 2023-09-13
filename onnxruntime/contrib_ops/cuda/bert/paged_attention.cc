@@ -105,8 +105,9 @@ void DumpTensor(cudaStream_t cuda_stream, const void* tensor_data, const std::st
   CUDA_CALL_THROW(cudaStreamSynchronize(cuda_stream));
 
   CUDA_CALL_THROW(cudaMemcpy(tmp.data(), tensor_data, size_in_bytes, cudaMemcpyDeviceToHost));
-  std::ofstream file(name + ".bin." + std::to_string(counter[name]), std::ios::binary);
-  file.write(tmp.data(), size_in_bytes);
+  FILE*  file = fopen((name + ".bin." + std::to_string(counter[name])).c_str(), "wb");
+  fwrite(tmp.data(), 1,size_in_bytes, file);
+  fclose(file);
   counter[name]++;
 #else
   ORT_UNUSED_PARAMETER(cuda_stream);
@@ -327,11 +328,6 @@ Status PagedAttention<T>::DoQKVProjectionIfNeed(OpKernelContext* context,
                          num_heads_, head_size_, head_size_,
                          AttentionQkvFormat::QKV_TN3H, AttentionQkvFormat::Q_K_V_TNH,
                          0, num_valid_tokens, Stream(context));
-
-#ifdef DEBUG_TENSOR_DUMP
-  DumpTensor(Stream(context), gemm_buffer.get(), "split_OUT", static_cast<size_t>(m) * n * sizeof(T));
-  DumpTensor(Stream(context), gemm_buffer_pack.get(), "projection_QKV_OUT", static_cast<size_t>(m) * n * sizeof(T));
-#endif
 
   CHECK_CUDA_ERROR();
   return Status::OK();
