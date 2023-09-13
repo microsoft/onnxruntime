@@ -63,7 +63,12 @@ void addOrtValueMethods(pybind11::module& m) {
       // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
       // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
       CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
-
+#elif USE_DML
+      // InputDeflist is null because OrtValue creation is not tied to a specific model
+      // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+      // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
+      CreateGenericMLValue(
+        nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
 #else
       throw std::runtime_error(
           "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
@@ -126,6 +131,12 @@ void addOrtValueMethods(pybind11::module& m) {
             values_type,
             *(ml_value->GetMutable<Tensor>()),
             CpuToRocmMemCpy);
+#elif USE_DML
+          onnxruntime::python::CopyDataToTensor(
+            py_values,
+            values_type,
+            *(ml_value->GetMutable<Tensor>()),
+            CpuToDmlMemCpy);
 #else
         throw std::runtime_error(
             "Unsupported GPU device: Cannot find the supported GPU device.");
@@ -158,12 +169,18 @@ void addOrtValueMethods(pybind11::module& m) {
             throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
           }
           allocator = GetCudaAllocator(device.Id());
-#elif USE_DML
-          allocator = GetDmlAllocator(device.Id());
 #else
       throw std::runtime_error(
           "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
           "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+        } else if (strcmp(GetDeviceName(device), DML) == 0) {
+#if USE_DML
+          allocator = GetDmlAllocator(device.Id());
+#else
+          throw std::runtime_error(
+              "Can't allocate memory on the DirectML device using this package of OnnxRuntime. "
+              "Please use the DirectML package of OnnxRuntime to use this feature.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
@@ -290,11 +307,13 @@ void addOrtValueMethods(pybind11::module& m) {
 #ifdef USE_CUDA
         GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
 #elif USE_ROCM
-  GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
 #elif USE_CANN
-  GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCannToHostMemCpyFunction());
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCannToHostMemCpyFunction());
+#elif USE_DML
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetDmlToHostMemCpyFunction());
 #else
-  GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
         return obj;
       })
