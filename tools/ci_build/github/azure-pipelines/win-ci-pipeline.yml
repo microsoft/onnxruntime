@@ -44,7 +44,6 @@ stages:
         isX86: false
         job_name_suffix: x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
@@ -66,7 +65,6 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
@@ -86,7 +84,6 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: DNNL
         GenerateDocumentation: false
@@ -108,7 +105,6 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: true
-        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: XNNPACK
         GenerateDocumentation: false
@@ -129,7 +125,6 @@ stages:
         job_name_suffix: x64_release_winml
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         # WinML has many warnings
-        RunStaticCodeAnalysis: false
         EnablePython: false
         isTraining: false
         ORT_EP_NAME: CPU
@@ -150,7 +145,6 @@ stages:
         isX86: true
         job_name_suffix: x86_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
@@ -170,7 +164,6 @@ stages:
         isX86: false
         job_name_suffix: training_x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: true
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
@@ -190,7 +183,6 @@ stages:
         isX86: false
         job_name_suffix: training_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: true
         isTraining: true
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
@@ -210,7 +202,6 @@ stages:
         isX86: false
         job_name_suffix: ort_training_apis_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         EnablePython: false
         isTraining: true
         ORT_EP_NAME: CPU
@@ -231,7 +222,6 @@ stages:
         isX86: false
         job_name_suffix: x64_release_azure
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         EnablePython: false
         isTraining: false
         ORT_EP_NAME: CPU
