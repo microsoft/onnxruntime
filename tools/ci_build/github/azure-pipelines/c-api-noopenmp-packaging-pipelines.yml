@@ -429,7 +429,7 @@ stages:
       parameters:
         StepName: 'Download Final Jar'
         ArtifactName: onnxruntime-java-gpu
-        TargetPath: '$(Build.BinariesDirectory)/testdata'
+        TargetPath: '$(Build.BinariesDirectory)/final-jar'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
@@ -439,6 +439,7 @@ stages:
         Context: tools/ci_build/github/linux/docker/
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimeubi8packagestest
+        UpdateDepsTxt: false
 
     - bash: |
         docker run --rm \
