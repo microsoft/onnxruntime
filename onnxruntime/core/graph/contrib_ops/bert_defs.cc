@@ -1030,13 +1030,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1,
                "key",
                "Key with shape (batch_size, kv_sequence_length, kv_hidden_size) ",
-               "T",
-               OpSchema::Optional)
+               "T")
         .Input(2,
                "value",
                "Value with shape (batch_size, kv_sequence_length, kv_hidden_size)",
-               "T",
-               OpSchema::Optional)
+               "T")
         .Input(3,
                "past_key",
                "past state for self attention key with shape (batch_size, kv_num_heads, past_sequence_length, head_size)",
@@ -1046,6 +1044,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past_value",
                "past state for self attention value with shape (batch_size, kv_num_heads, past_sequence_length, head_size)",
                "T",
+               OpSchema::Optional)
+        .Input(5,
+               "past_sequence_length",
+               "When past_key and past_value is used, it is required to specify past_sequence_length (could be 0).",
+               "M",
                OpSchema::Optional)
         .Output(0,
                 "output",

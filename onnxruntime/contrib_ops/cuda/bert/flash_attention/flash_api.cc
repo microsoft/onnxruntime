@@ -98,7 +98,17 @@ size_t get_softmax_lse_size(int seqlen, int batch_size, int num_heads) {
   return bytes;
 }
 
-void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream) {
+size_t get_softmax_lse_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q) {
+  size_t bytes = sizeof(float) * num_splits * batch_size * seqlen_q * num_heads;
+  return bytes;
+}
+
+size_t get_out_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q, int head_size_rounded) {
+  size_t bytes = sizeof(float) * num_splits * batch_size * seqlen_q * num_heads * head_size_rounded;
+  return bytes;
+}
+
+void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream, bool force_split_kernel=false) {
   FP16_SWITCH(!params.is_bf16, [&] {
     FWD_HEADDIM_SWITCH(params.d, [&] {
       if (params.num_splits <= 1 && !force_split_kernel) {  // If we don't set it num_splits == 0
@@ -116,7 +126,14 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream) {
 // splits as that would incur more HBM reads/writes.
 // So we find the best efficiency, then find the smallest number of splits that gets 85%
 // of the best efficiency.
-inline int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks, int max_splits) {
+int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_heads, int head_size, int num_SMs, int max_splits, bool new_kv) {
+    // This needs to match with run_mha_fwd_splitkv_dispatch
+    const int block_n = head_size <= 64 ? 256 : (head_size <= 160 ? 128 : 64);
+    const int num_n_blocks = (seqlen_k + (!new_kv ? 0 : seqlen_q) + block_n - 1) / block_n;
+    // Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
+    // In any case we don't expect seqlen_q to be larger than 64 for inference.
+    const int num_m_blocks = (seqlen_q + 64 - 1) / 64;
+    int batch_nheads_mblocks = batch_size * num_heads * num_m_blocks;
     // If we have enough to almost fill the SMs, then just use 1 split
     if (batch_nheads_mblocks >= 0.8f * num_SMs) { return 1; }
     max_splits = std::min({max_splits, num_SMs, num_n_blocks});
@@ -159,8 +176,6 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                void* v,            // batch_size x seqlen_k x num_heads_k x head_size
                void* out,          // batch_size x seqlen_q x num_heads x head_size
                void* softmax_lse,  // batch_size x num_heads x seqlen_q
-               void* softmax_lse_accum, // TODO(aciddelgado): size
-               void* out_accum, // TODO(aciddelgado): size
                int batch_size,
                int num_heads,
                int num_heads_k,
@@ -168,7 +183,12 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                int seqlen_q,
                int seqlen_k,
                float softmax_scale,
-               bool is_causal) {
+               bool is_causal,
+               int num_splits,
+               void* softmax_lse_accum, // TODO(aciddelgado): size
+               void* out_accum // TODO(aciddelgado): size
+               ) {
+
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
@@ -190,25 +210,12 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    softmax_scale,
                    is_causal);
 
-    bool is_sm8x = dprops->major == 8 && dprops->minor >= 0;
-    bool is_sm90 = dprops->major == 9 && dprops->minor == 0;
-    // This needs to match with run_mha_fwd_splitkv_dispatch
-    const int block_n = is_sm90 || is_sm8x
-        ? (head_size <= 64 ? 256 : (head_size <= 160 ? 128 : 64))
-        : (head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64));
-    const int num_n_blocks = (seqlen_k + block_n - 1) / block_n;
-    // Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
-    // In any case we don't expect seqlen_q to be larger than 64 for inference.
-    const int num_m_blocks = (seqlen_q + 64 - 1) / 64;
-    params.num_splits = 1;
-    // TODO(aciddelgado): appropriately move this logic outside of api
-    params.num_splits = num_splits_heuristic(batch_size * num_heads * num_m_blocks, dprops->multiProcessorCount, num_n_blocks, 128);
-    if (params.num_splits > 1) {
-        at::Tensor softmax_lse_accum = torch::empty({params.num_splits, batch_size, num_heads, seqlen_q}, opts.dtype(at::kFloat));
-        at::Tensor out_accum = torch::empty({params.num_splits, batch_size, num_heads, seqlen_q, head_size_rounded}, opts.dtype(at::kFloat));
-        params.softmax_lseaccum_ptr = softmax_lse_accum.data_ptr();
-        params.oaccum_ptr = out_accum.data_ptr();
-    }
+  params.num_splits = num_splits;
+  if (params.num_splits > 1 && softmax_lse_accum != nullptr && out_accum != nullptr) {
+      params.softmax_lseaccum_ptr = softmax_lse_accum;
+      params.oaccum_ptr = out_accum;
+  }
+
   run_mha_fwd(params, stream);
   return Status::OK();
 }
@@ -265,12 +272,10 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                void* q,            // batch_size x seqlen_q x num_heads x head_size
                 void* kcache,            // batch_size x seqlen_k x num_heads_k x head_size
                 void* vcache,            // batch_size x seqlen_k x num_heads_k x head_size
-               void* k,            // batch_size x seqlen_k_new x num_heads_k x head_size
-               void* v,            // batch_size x seqlen_k_new x num_heads_k x head_size
+               void* k,            // (optional) batch_size x seqlen_k_new x num_heads_k x head_size
+               void* v,            // (optional) batch_size x seqlen_k_new x num_heads_k x head_size
                void* out,          // batch_size x seqlen_q x num_heads x head_size
                void* softmax_lse,  // batch_size x num_heads x seqlen_q
-               void* softmax_lse_accum,  // TODO(aciddelgado): size
-               void* out_accum,  // TODO(aciddelgado): size
                 void* seqlens_k_, // batch_size
                 int batch_size,
                 int num_heads,
@@ -281,13 +286,11 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                 int seqlen_k_new,
                 const float softmax_scale,
                 bool is_causal,
-                int num_splits
+                int num_splits,
+                void* softmax_lse_accum,  // TODO(aciddelgado): size
+               void* out_accum  // TODO(aciddelgado): size
                 ) {
     if (seqlen_q == 1) { is_causal = false; }  // causal=true is the same as causal=false in this case
-
-    // CHECK_SHAPE(q, batch_size, seqlen_q, num_heads, head_size_og);
-    // CHECK_SHAPE(kcache, batch_size, seqlen_k, num_heads_k, head_size_og);
-    // CHECK_SHAPE(vcache, batch_size, seqlen_k, num_heads_k, head_size_og);
 
     auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
     const int head_size_rounded = round_multiple(head_size, 32);
@@ -323,53 +326,21 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
         params.vnew_head_stride = head_size;
     }
 
-    // TODO(aciddelgado): should we have this cumulative pointer actually?
     params.is_seqlens_k_cumulative = seqlens_k_ == nullptr;
     if (seqlens_k_ != nullptr) {
         params.cu_seqlens_k = static_cast<int *>(seqlens_k_);
     }
 
-    bool is_sm8x = dprops->major == 8 && dprops->minor >= 0;
-    bool is_sm90 = dprops->major == 9 && dprops->minor == 0;
-    // This needs to match with run_mha_fwd_splitkv_dispatch
-    const int block_n = is_sm90 || is_sm8x
-        ? (head_size <= 64 ? 256 : (head_size <= 160 ? 128 : 64))
-        : (head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64));
-    const int num_n_blocks = (seqlen_k + (params.knew_ptr == nullptr ? 0 : seqlen_q) + block_n - 1) / block_n;
-    // Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
-    // In any case we don't expect seqlen_q to be larger than 64 for inference.
-    const int num_m_blocks = (seqlen_q + 64 - 1) / 64;
     params.num_splits = num_splits;
-    if (num_splits < 1) {
-        params.num_splits = num_splits_heuristic(batch_size * num_heads * num_m_blocks, dprops->multiProcessorCount, num_n_blocks, 128);
-    }
-    if (params.num_splits > 1) {
-        at::Tensor softmax_lse_accum = torch::empty({params.num_splits, batch_size, num_heads, seqlen_q}, opts.dtype(at::kFloat));
-        at::Tensor out_accum = torch::empty({params.num_splits, batch_size, num_heads, seqlen_q, head_size_rounded}, opts.dtype(at::kFloat));
-        params.softmax_lseaccum_ptr = softmax_lse_accum.data_ptr();
-        params.oaccum_ptr = out_accum.data_ptr();
+    if (params.num_splits > 1 && softmax_lse_accum != nullptr && out_accum != nullptr) {
+        params.softmax_lseaccum_ptr = softmax_lse_accum;
+        params.oaccum_ptr = out_accum;
     }
 
-    auto stream = at::cuda::getCurrentCUDAStream().stream();
     // Only split kernel supports appending to KV cache
-    run_mha_fwd(params, stream, /*force_split_kernel=*/k_.has_value());
+    run_mha_fwd(params, stream, /*force_split_kernel=*/k != nullptr);
 
-    if (head_size_og % 8 != 0) {
-        out = out.index({"...", torch::indexing::Slice(torch::indexing::None, head_size_og)});
-        if (out_.has_value()) { out_.value().copy_(out); }
-        if (k_.has_value()) {
-            // It's expensive to copy the KV cache here for the case where head size not divisible by 8,
-            // but we don't expect to get this case in practice. This is just so that the code works for that case.
-            kcache.copy_(kcache_padded.index({"...", torch::indexing::Slice(torch::indexing::None, head_size_og)}));
-            vcache.copy_(vcache_padded.index({"...", torch::indexing::Slice(torch::indexing::None, head_size_og)}));
-        }
-    }
-
-    if (seqlenq_nheads_swapped) {
-        out = out.transpose(1, 2);
-        softmax_lse = softmax_lse.transpose(1, 2);
-    }
-    return {out, softmax_lse};
+    return Status::OK();
 }
 
 }  // namespace flash

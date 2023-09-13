@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace group_query_attention_helper {
 
-// TODO(aciddelgado): double-check this
+// TODO(aciddelgado): double-check sequence lengths here, especially since we are using both cache and not cache api
 template <typename T>
 Status CheckInputs(const T* query,
                    const T* key,
@@ -21,21 +21,14 @@ Status CheckInputs(const T* query,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
+                   int past_sequence_length,
                    float scale) {
   //     past_key                   : (B, S*, N_k, H)
   //     past_value                 : (B, S*, N_k, H)
-  // When no packing for q/k/v:
+  // no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D_kv) or (B, N_k, S*, H)
   //     value            (V)       : (B, L, D_kv) or (B, N_k, S*, H)
-  // CURRENTLY UNSUPPORTED!! When packed kv is used:
-  //     query            (Q)       : (B, S, D)
-  //     key              (K)       : (B, L, N, 2, H)
-  //     value            (V)       : None
-  // CURRENTLY UNSUPPORTED!! When packed qkv is used:
-  //     query            (Q)       : (B, L, N, 3, H) or (B, S, 3*D)
-  //     key              (K)       : None
-  //     value            (V)       : None
 
   AttentionQkvFormat qkv_format;
 
@@ -58,7 +51,6 @@ Status CheckInputs(const T* query,
                         ? static_cast<int>(key_dims[2])
                         : (kv_num_heads * static_cast<int>(key_dims[3]));
 
-  int past_sequence_length = 0;
   int max_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
@@ -110,7 +102,6 @@ Status CheckInputs(const T* query,
                              "Input 'past_value' dimension 3 should be same as head_size, got ",
                              past_value_dims[3]);
     }
-    past_sequence_length = static_cast<int>(past_key_dims[2]);
     max_sequence_length = static_cast<int>(past_key_dims[2]);
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -199,6 +190,7 @@ Status CheckInputs(const T* query,
                                "Missing value tensor.");
   }
 
+  // TODO(aciddelgado): hay que cuadrar total vs max vs past, pero me parece que esto puede estar bien
   int total_sequence_length = past_sequence_length + kv_sequence_length;
   // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
   if (parameters != nullptr) {
@@ -232,13 +224,14 @@ Status CheckInputs(const T* query,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
+                   int past_sequence_length_,
                    float scale,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, scale);
+  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, past_sequence_length_, scale);
 }
 
 }  // namespace group_query_attention_helper

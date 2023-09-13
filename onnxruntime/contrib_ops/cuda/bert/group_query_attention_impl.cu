@@ -79,7 +79,7 @@ size_t GetAttentionWorkspaceSize(
 #if USE_FLASH_ATTENTION
 // TODO(aciddelgado): here we need appropriate bytes for num_splits for splitkv
   if (use_flash_attention) {
-    return qkv_bytes + onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, num_heads);
+    return qkv_bytes;
   }
 #else
   ORT_UNUSED_PARAMETER(use_flash_attention);
@@ -88,6 +88,12 @@ size_t GetAttentionWorkspaceSize(
   // TODO(aciddelgado): confirm call w kv_num_heads rt than num_heads
   return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, kv_num_heads, sequence_length,
                                                  total_sequence_length);
+}
+
+// Kernel for seqlens_k
+__global__ void repeat_seqlen(int* seqlens_k, int seqlen, int batch_size) {
+  int id = blockDim.x * blockIdx.x + threadIdx.x;
+  if(id < batch_size) seqlens_k[id];
 }
 
 // For GroupQueryAttention with past state
@@ -204,19 +210,15 @@ Status QkvToContext(
   T* q = nullptr;
   T* k = nullptr;
   T* v = nullptr;
-  T* scratch1 = data.workspace;
   if (data.has_qkv_workspace) {
     const int size_per_batch_q = sequence_length * head_size;
     const int size_per_batch_k = kv_sequence_length * head_size;
-    const int size_per_batch_v = kv_sequence_length * head_size;
     const size_t elements_q = static_cast<size_t>(q_batches) * static_cast<size_t>(size_per_batch_q);
     const size_t elements_k = static_cast<size_t>(kv_batches) * static_cast<size_t>(size_per_batch_k);
-    const size_t elements_v = static_cast<size_t>(kv_batches) * static_cast<size_t>(size_per_batch_v);
     qkv = data.workspace;
     q = qkv;
     k = q + elements_q;
     v = k + elements_k;
-    scratch1 = v + elements_v;
   }
 
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
@@ -244,36 +246,36 @@ Status QkvToContext(
   //   v = data.present + kv_batches * present_size_per_batch_k;
   // }
 
-  if (nullptr != data.past_key || nullptr != data.present_key) {
-    if (nullptr != data.past_key && nullptr == data.present_key) {
-      k = const_cast<T*>(data.past_key);
-      v = const_cast<T*>(data.past_value);
-    } else if (nullptr == data.past_key && nullptr != data.present_key) {
-      if (qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
-        k = data.present_key;
-        v = data.present_value;
-      } else { // TODO(aciddelgado): this if-else is weird!
-        assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
-        k = data.temp_k_workspace;
-        v = data.temp_v_workspace;
-      }
-    } else {
-      ORT_RETURN_IF_ERROR(
-          LaunchConcatTensorToTensor(stream, parameters.total_sequence_length, kv_sequence_length,
-                                      batch_size, head_size, kv_num_heads,
-                                      max_threads_per_block, 1, data.past_key, k, data.present_key));
-      ORT_RETURN_IF_ERROR(
-          LaunchConcatTensorToTensor(stream, parameters.total_sequence_length, kv_sequence_length,
-                                      batch_size, head_size, kv_num_heads,
-                                      max_threads_per_block, 1, data.past_value, v, data.present_value));
-      // Update pointers to present_k and present_v.
-      k = data.present_key;
-      v = data.present_value;
-    }
-  } else { // Without past or present kv, use kv directly
-    k = const_cast<T*>(data.key);
-    v = const_cast<T*>(data.value);
-  }
+  // if (nullptr != data.past_key || nullptr != data.present_key) {
+  //   if (nullptr != data.past_key && nullptr == data.present_key) {
+  //     k = const_cast<T*>(data.past_key);
+  //     v = const_cast<T*>(data.past_value);
+  //   } else if (nullptr == data.past_key && nullptr != data.present_key) {
+  //     if (qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+  //       k = data.present_key;
+  //       v = data.present_value;
+  //     } else { // TODO(aciddelgado): this if-else is weird!
+  //       assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
+  //       k = data.temp_k_workspace;
+  //       v = data.temp_v_workspace;
+  //     }
+  //   } else {
+  //     ORT_RETURN_IF_ERROR(
+  //         LaunchConcatTensorToTensor(stream, parameters.total_sequence_length, kv_sequence_length,
+  //                                     batch_size, head_size, kv_num_heads,
+  //                                     max_threads_per_block, 1, data.past_key, k, data.present_key));
+  //     ORT_RETURN_IF_ERROR(
+  //         LaunchConcatTensorToTensor(stream, parameters.total_sequence_length, kv_sequence_length,
+  //                                     batch_size, head_size, kv_num_heads,
+  //                                     max_threads_per_block, 1, data.past_value, v, data.present_value));
+  //     // Update pointers to present_k and present_v.
+  //     k = data.present_key;
+  //     v = data.present_value;
+  //   }
+  // } else { // Without past or present kv, use kv directly
+  //   k = const_cast<T*>(data.key);
+  //   v = const_cast<T*>(data.value);
+  // }
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(head_size)) : parameters.scale;
@@ -284,12 +286,8 @@ Status QkvToContext(
     assert(parameters.num_heads % parameters.kv_num_heads == 0);
 
     void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
-    void* key = reinterpret_cast<void*>(k);
-    void* value = reinterpret_cast<void*>(v);
-    // TODO(aciddelgado): packed KV, we can use query input directly.
-    // if (data.gemm_buffer == nullptr && data.key != nullptr && data.value == nullptr && data.bias == nullptr) {
-    //   query = reinterpret_cast<void*>(const_cast<T*>(data.query));
-    // }
+    void* key = reinterpret_cast<void*>(const_cast<T*>(data.key));
+    void* value = reinterpret_cast<void*>(const_cast<T*>(data.value));
 
     DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("q(BSNH)", reinterpret_cast<const T*>(query), batch_size, sequence_length, num_heads, head_size);
@@ -297,10 +295,36 @@ Status QkvToContext(
     DUMP_TENSOR_D("v(BSNH)", v, batch_size, parameters.total_sequence_length, kv_num_heads, head_size);
 
     bool is_causal = parameters.is_unidirectional;
-    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
-        device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(scratch1),
-        parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
-        parameters.sequence_length, parameters.total_sequence_length, scale, is_causal));
+
+    if (data.past_key == nullptr) {
+      // TODO(aciddelgado): add support for concatenating past and kv to present kv when seqlens_k is not given
+      ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
+          device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
+          parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+          parameters.sequence_length, parameters.total_sequence_length, scale, is_causal, parameters.num_splits,
+          reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum)));
+    } else {
+      // Assume past and present kv share buffer.
+      assert(parameters.past_sequence_length > 0);
+      assert(data.past_key == data.present_key);
+      assert(data.past_value == data.present_value);
+      assert(data.past_value != nullptr);
+
+      void* past_key = reinterpret_cast<void*>(const_cast<T*>(data.past_key));
+      void* past_value = reinterpret_cast<void*>(const_cast<T*>(data.past_value));
+
+      // Launch kernel to copy seqlen
+      int thr_per_blk = 256;
+      int blk_in_grid = ceil( float(parameters.batch_size) / thr_per_blk );
+      repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, parameters.batch_size);
+
+      // TODO(aciddelgado): check sequence lengths here
+      ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
+          device_prop, stream, query, past_key, past_value, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
+          data.seqlens_k, parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+          parameters.sequence_length, parameters.max_sequence_length, parameters.sequence_length, scale, is_causal,
+          parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum)));
+    }
 
     DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 

@@ -10,6 +10,7 @@
 # license information.
 # -------------------------------------------------------------------------
 import math
+import random
 
 import numpy
 import torch
@@ -26,18 +27,22 @@ class Config:
     batch_size = 0
     sequence_length = 0
     kv_sequence_length = 0
+    past_sequence_length = 0
     num_heads = 0
     kv_num_heads = 0
     head_size = 0
 
-    def __init__(self, b, s, s2, n, n2, h):
+    def __init__(self, b, s, s2, sp, n, n2, h):
         self.batch_size = b
         self.sequence_length = s
         self.kv_sequence_length = s2
+        self.past_sequence_length = sp
         self.num_heads = n
         self.kv_num_heads = n2
         self.head_size = h
 
+class ConfigWithPastKV(Config):
+    past_sequence_length = 0
 
 def create_packed_multihead_attention_graph(config):
     nodes = [
@@ -151,7 +156,7 @@ def create_multihead_attention_graph(config):
     return model.SerializeToString()
 
 
-def create_group_query_attention_graph(config, causal=False):
+def create_group_query_attention_graph(config, causal=False, new_kv=False):
     nodes = [
         helper.make_node(
             "GroupQueryAttention",
@@ -159,8 +164,13 @@ def create_group_query_attention_graph(config, causal=False):
                 "query",
                 "key",
                 "value",
+                "past_key" if new_kv else "",
+                "past_value" if new_kv else "",
+                "past_sequence_length" if new_kv else "",
             ],
-            ["output"],
+            [
+                "output"
+            ],
             "GroupQueryAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
@@ -169,45 +179,72 @@ def create_group_query_attention_graph(config, causal=False):
         ),
     ]
 
-    graph = helper.make_graph(
-        nodes,
-        "GroupQueryAttention_Graph",
-        [
+    graph_input = [
+        helper.make_tensor_value_info(
+            "query",
+            TensorProto.FLOAT16,
+            [
+                config.batch_size,
+                config.sequence_length,
+                config.num_heads * config.head_size,
+            ],
+        ),
+        helper.make_tensor_value_info(
+            "key",
+            TensorProto.FLOAT16,
+            [
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads * config.head_size,
+            ],
+        ),
+        helper.make_tensor_value_info(
+            "value",
+            TensorProto.FLOAT16,
+            [
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads * config.head_size,
+            ],
+        ),
+    ]
+
+    if new_kv:
+        graph_input += [
             helper.make_tensor_value_info(
-                "query",
+                "past_key",
                 TensorProto.FLOAT16,
                 [
                     config.batch_size,
                     config.sequence_length,
-                    config.num_heads * config.head_size,
+                    config.kv_num_heads,
+                    config.head_size,
                 ],
             ),
             helper.make_tensor_value_info(
-                "key",
+                "past_value",
                 TensorProto.FLOAT16,
                 [
                     config.batch_size,
-                    config.kv_sequence_length,
-                    config.kv_num_heads * config.head_size,
+                    config.sequence_length,
+                    config.kv_num_heads,
+                    config.head_size,
                 ],
             ),
-            helper.make_tensor_value_info(
-                "value",
-                TensorProto.FLOAT16,
-                [
-                    config.batch_size,
-                    config.kv_sequence_length,
-                    config.kv_num_heads * config.head_size,
-                ],
-            ),
-        ],
+            helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, [1],)
+        ]
+
+    graph = helper.make_graph(
+        nodes,
+        "GroupQueryAttention_Graph",
+        graph_input,
         [
             helper.make_tensor_value_info(
                 "output",
                 TensorProto.FLOAT16,
                 [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
             ),
-            # TODO(aciddelgado): return present key and value
+            # TODO(aciddelgado): return present key and value?
         ],
     )
 
@@ -395,19 +432,30 @@ def flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config
     return output
 
 
-def flash_attn_func(q, k, v, config, gqa=False, causal=False):
+def flash_attn_func(q, k, v, config, gqa=False, causal=False, new_k=None, new_v=None):
+    new_kv = new_k is not None
     if gqa:
-        onnx_model_str = create_group_query_attention_graph(config, causal)
+        onnx_model_str = create_group_query_attention_graph(config, causal, new_kv=new_kv)
     else:
         onnx_model_str = create_multihead_attention_graph(config)
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     k = torch.reshape(k, (config.batch_size, config.kv_sequence_length, -1))
     v = torch.reshape(v, (config.batch_size, config.kv_sequence_length, -1))
-    ort_inputs = {
-        "query": q.detach().cpu().numpy(),
-        "key": k.detach().cpu().numpy(),
-        "value": v.detach().cpu().numpy(),
-    }
+    if not new_kv:
+        ort_inputs = {
+            "query": q.detach().cpu().numpy(),
+            "key": k.detach().cpu().numpy(),
+            "value": v.detach().cpu().numpy(),
+        }
+    elif new_k is not None and new_v is not None:
+        ort_inputs = {
+            "query": q.detach().cpu().numpy(),
+            "key": new_k.detach().cpu().numpy(),
+            "value": new_v.detach().cpu().numpy(),
+            "past_key": k.detach().cpu().numpy(),
+            "past_value": v.detach().cpu().numpy(),
+            "past_sequence_length": config.past_sequence_length,
+        }
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
     ort_output = ort_session.run(None, ort_inputs)
@@ -604,13 +652,104 @@ def parity_check(
     )
 
 
+def parity_check_gqa(
+    config,
+    causal=False,
+    new_kv=False,
+    rtol=1e-3,
+    atol=1e-3,
+):
+    q = torch.randn(
+        config.batch_size,
+        config.sequence_length,
+        config.num_heads,
+        config.head_size,
+        device="cuda",
+        dtype=torch.float16,
+        requires_grad=False,
+    )
+    k = torch.randn(
+        config.batch_size,
+        config.kv_sequence_length,
+        config.kv_num_heads,
+        config.head_size,
+        device="cuda",
+        dtype=torch.float16,
+        requires_grad=False,
+    )
+    v = torch.randn(
+        config.batch_size,
+        config.kv_sequence_length,
+        config.kv_num_heads,
+        config.head_size,
+        device="cuda",
+        dtype=torch.float16,
+        requires_grad=False,
+    )
+    new_k = None
+    new_v = None
+    if new_kv:
+        new_k = torch.randn(
+            config.batch_size,
+            config.sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device="cuda",
+            dtype=torch.float16,
+            requires_grad=False,
+        )
+        new_v = torch.randn(
+            config.batch_size,
+            config.sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device="cuda",
+            dtype=torch.float16,
+            requires_grad=False,
+        )
+    out = flash_attn_func(q, k, v, config, gqa=True, causal=causal, new_k=new_k, new_v=new_v)
+    out = torch.squeeze(out, 0)
+    out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
+    out = out.detach().cpu().numpy()
+    # Pytorch to compare
+    out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=causal)
+    out_ref = out_ref.detach().cpu().numpy()
+
+    # print(out[0, 0, 0, :20])
+    # print(out_ref[0, 0, 0, :20])
+    # Compare results
+    print(
+        " causal:",
+        causal,
+        " B:",
+        config.batch_size,
+        " S:",
+        config.sequence_length,
+        " N:",
+        config.num_heads,
+        " kvN:",
+        config.kv_num_heads,
+        " h:",
+        config.head_size,
+        " Mean Error:",
+        numpy.mean(numpy.abs(out - out_ref)),
+        numpy.allclose(
+            out,
+            out_ref,
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        ),
+    )
+
+
 if __name__ == "__main__":
     # print("-------- TEST PACKED MHA ---------")
     # for b in [5]:
     #     for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
     #         for n in [6]:
     #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-    #                 config = Config(b, s, s, n, n, h)
+    #                 config = Config(b, s, s, 0, n, n, h)
     #                 parity_check(config, True)
     # print("-------- TEST MHA ---------")
     # for b in [5]:
@@ -628,7 +767,7 @@ if __name__ == "__main__":
     #     ]:
     #         for n in [6]:
     #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-    #                 config = Config(b, s, s2, n, n, h)
+    #                 config = Config(b, s, s2, 0, n, n, h)
     #                 parity_check(config, False)
     print("-------- TEST GQA ---------")
     for b in [5]:
@@ -647,5 +786,27 @@ if __name__ == "__main__":
             for (n, n2) in [(6, 6), (6, 3), (9, 9), (9, 3)]:
                 for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
                     for causal in [True, False]:
-                        config = Config(b, s, s2, n, n2, h)
-                        parity_check(config, False, gqa=True, causal=causal)
+                        config = Config(b, s, s2, 0, n, n2, h)
+                        parity_check_gqa(config, causal=causal)
+    print("-------- TEST GQA PAST ---------")
+    for b in [5]:
+        for s, s2 in [
+            (1, 128),
+            (1, 339),
+            (3, 1024),
+            (64, 800),
+            (64, 256),
+            (3, 799),
+            (64, 2048),
+            (16, 20000),
+            (1, 128 * 1024),
+            (16, 128 * 1024),
+            (128, 128),
+        ]:
+            for (n, n2) in [(6, 6), (6, 3), (9, 9), (9, 3)]:
+                for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+                    for causal in [True]:
+                        for new_kv in [True]:
+                            sp = random.randint(0, s2-s)
+                            config = Config(b, s, s2, sp, n, n2, h)
+                            parity_check_gqa(config, causal=causal, new_kv=new_kv, rtol=1e-3, atol=1e-3)

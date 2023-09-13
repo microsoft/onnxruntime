@@ -35,6 +35,10 @@ struct GroupQueryAttentionData {
   T* workspace;
   T* temp_k_workspace;
   T* temp_v_workspace;
+  T* softmax_lse;
+  T* softmax_lse_accum;
+  T* out_accum;
+  int* seqlens_k;
   T* output;
   T* present;
   T* present_key;

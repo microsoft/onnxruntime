@@ -98,6 +98,7 @@ struct GroupQueryAttentionParameters {
   bool is_unidirectional;     // causal
   bool do_rotary;
   float scale;
+  int num_splits;
   AttentionQkvFormat qkv_format;
 };
 
