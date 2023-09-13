@@ -154,7 +154,7 @@ stages:
             -e BUILD_BUILDNUMBER \
             onnxruntimecpubuild \
               /bin/bash -c "
-                set -ex; && \
+                set -ex; \
                 /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Release && \
                 /bin/bash /onnxruntime_src/tools/scripts/symbolic_shape_infer_test.sh /build
               "
