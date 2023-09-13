@@ -19,7 +19,7 @@ namespace transformers {
       encoder_input_ids: int32 (B, encode_sequence_length)
       encoder_attention_mask: int32 (B, encode_sequence_length)
       decoder_input_ids: int32 (B, 1)
-      encoder_input_features: float or MLFloat16 (B, feature_length) [optional]
+      encoder_input_images: float or MLFloat16 (B, C, W, H) [optional]
 
     Outputs:
       logits: (B, 1, vocab_size)
@@ -54,8 +54,8 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF(subgraph_inputs[2]->Name() != "decoder_input_ids",
                 "encoder subgraph input 2 shall be named as decoder_input_ids, got: ", subgraph_inputs[2]->Name());
   if (num_subgraph_inputs == 4) {
-    ORT_RETURN_IF(subgraph_inputs[3]->Name() != "encoder_input_features",
-                  "encoder subgraph input 3 shall be named as encoder_input_features, got: ", subgraph_inputs[3]->Name());
+    ORT_RETURN_IF(subgraph_inputs[3]->Name() != "encoder_input_images",
+                  "encoder subgraph input 3 shall be named as encoder_input_images, got: ", subgraph_inputs[3]->Name());
   }
 
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
@@ -87,7 +87,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   if (num_subgraph_inputs == 4) {
     ORT_RETURN_IF(subgraph_inputs[3]->TypeAsProto()->tensor_type().elem_type() != float32_type &&
                       subgraph_inputs[3]->TypeAsProto()->tensor_type().elem_type() != float16_type,
-                  "encoder subgraph input 3 (encoder_input_features) shall be float or float16 data type");
+                  "encoder subgraph input 3 (encoder_input_images) shall be float or float16 data type");
   }
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
@@ -109,7 +109,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 Status T5EncoderSubgraph::CreateInitialFeeds(
     const Tensor& original_encoder_input_ids,
     const OrtValue* attn_mask_value,
-    const OrtValue* input_features_value,
+    const OrtValue* input_images_value,
     const std::vector<const OrtValue*>& implicit_inputs,
     int pad_token_id,
     int start_token_id,
@@ -135,16 +135,16 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   // TODO(tianleiwu): expand the outputs instead of inputs to save computation.
   OrtValue encoder_input_ids;
   OrtValue encoder_attention_mask;
-  OrtValue encoder_input_features;
+  OrtValue encoder_input_images;
   ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&original_encoder_input_ids,
                                                  attn_mask_value,
-                                                 input_features_value,
+                                                 input_images_value,
                                                  pad_token_id,
                                                  start_token_id,
                                                  cpu_allocator,
                                                  encoder_input_ids,
                                                  encoder_attention_mask,
-                                                 encoder_input_features,
+                                                 encoder_input_images,
                                                  decoder_input_ids));
 
   const IExecutionProvider* provider = GetProvider();
@@ -152,7 +152,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   AllocatorPtr pinned_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
   const OrtMemoryInfo& location = default_allocator->Info();
 
-  if (input_features_value == nullptr) {
+  if (input_images_value == nullptr) {
     ORT_RETURN_IF_ERROR(add_to_feeds_func(
         ort_stream,
         {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
@@ -164,7 +164,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   } else {
     ORT_RETURN_IF_ERROR(add_to_feeds_func(
         ort_stream,
-        {encoder_input_ids, encoder_attention_mask, decoder_input_ids, encoder_input_features},
+        {encoder_input_ids, encoder_attention_mask, decoder_input_ids, encoder_input_images},
         feeds,
         buffer,
         default_allocator,
