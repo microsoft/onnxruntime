@@ -2,7 +2,7 @@ import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
 
 
-def GenerateModel(model_name, has_casts=False):  # noqa: N802
+def GenerateModel(model_name, has_casts=False, has_identity=False):  # noqa: N802
     nodes = [  # LayerNorm subgraph
         helper.make_node("ReduceMean", ["A"], ["rd_out"], "reduce1", axes=[-1], keepdims=1),
         helper.make_node("Sub", ["A", "rd_out"], ["sub_out"], "sub"),
@@ -11,10 +11,8 @@ def GenerateModel(model_name, has_casts=False):  # noqa: N802
         helper.make_node("Add", ["rd2_out", "const_e12_f32"], ["add1_out"], "add1"),
         helper.make_node("Sqrt", ["add1_out"], ["sqrt_out"], "sqrt"),
         helper.make_node("Div", ["cast_sub_out" if has_casts else "sub_out", "sqrt_out"], ["div_out"], "div"),
-        helper.make_node("Identity", ["gamma"], ["gamma_id_out"], "gamma_id"),
-        helper.make_node("Mul", ["gamma_id_out", "cast_div_out" if has_casts else "div_out"], ["mul_out"], "mul"),
-        helper.make_node("Identity", ["const_e6_f16"], ["const_e6_f16_out"], "const_e6_f16_id"),
-        helper.make_node("Add", ["mul_out", "const_e6_f16_out"], ["C"], "add2"),
+        helper.make_node("Mul", ["gamma_id_out" if has_identity else "gamma", "cast_div_out" if has_casts else "div_out"], ["mul_out"], "mul"),
+        helper.make_node("Add", ["mul_out", "const_e6_f16_out" if has_identity else "const_e6_f16"], ["C"], "add2"),
     ]
 
     if has_casts:
@@ -25,10 +23,18 @@ def GenerateModel(model_name, has_casts=False):  # noqa: N802
             ]
         )
 
+    if has_identity:
+        nodes.extend(
+            [
+                helper.make_node("Identity", ["gamma"], ["gamma_id_out"], "gamma_identity"),
+                helper.make_node("Identity", ["const_e6_f16"], ["const_e6_f16_out"], "const_e6_f16_identity"),
+            ]
+        )
+
     initializers = [  # initializers
         helper.make_tensor("pow_in_2", TensorProto.FLOAT, [], [2]),
         helper.make_tensor("const_e12_f32", TensorProto.FLOAT, [], [1e-12]),
-        helper.make_tensor("const_e6_f16", TensorProto.FLOAT16, [], [1e-6]),
+        helper.make_tensor("const_e6_f16", TensorProto.FLOAT16, [4], [1e-6, 1e-6, 1e-6, 1e-6]),
         helper.make_tensor(
             "gamma",
             TensorProto.FLOAT16 if has_casts else TensorProto.FLOAT,
@@ -65,4 +71,4 @@ def GenerateModel(model_name, has_casts=False):  # noqa: N802
     onnx.save(model, model_name)
 
 
-GenerateModel("layer_norm_weight_test_activation.onnx", True)
+GenerateModel("layer_norm_weight_test_activation.onnx", True, True)

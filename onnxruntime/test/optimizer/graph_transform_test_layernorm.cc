@@ -440,15 +440,15 @@ TEST_F(GraphTransformationTests, LayerNormWeightTest) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
-  ASSERT_TRUE(op_to_count["Sub"] == 0);
-  ASSERT_TRUE(op_to_count["Cast"] == 0);
-  ASSERT_TRUE(op_to_count["Pow"] == 0);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+  ASSERT_EQ(op_to_count["ReduceMean"], 0);
+  ASSERT_EQ(op_to_count["Sub"], 0);
+  ASSERT_EQ(op_to_count["Cast"], 0);
+  ASSERT_EQ(op_to_count["Pow"], 0);
+  ASSERT_EQ(op_to_count["Add"], 0);
+  ASSERT_EQ(op_to_count["Sqrt"], 0);
+  ASSERT_EQ(op_to_count["Div"], 0);
+  ASSERT_EQ(op_to_count["Mul"], 0);
+  ASSERT_EQ(op_to_count["LayerNormalization"], 1);
 
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "LayerNormalization") {
@@ -457,8 +457,6 @@ TEST_F(GraphTransformationTests, LayerNormWeightTest) {
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
       EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
-    } else {
-      EXPECT_TRUE(false) << "Unexpected node " << node.Name();
     }
   }
 }
