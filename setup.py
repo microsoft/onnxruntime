@@ -516,6 +516,10 @@ if enable_training or enable_training_apis:
                     # cpu version for documentation
                     local_version = "+cpu"
         else:
+            if rocm_version:
+                # Training ROCM package for ADO feeds is called onnxruntime-training-rocm
+                package_name = "onnxruntime-training-rocm"
+
             if not (cuda_version or rocm_version):
                 # Training CPU package for ADO feeds is called onnxruntime-training-cpu
                 package_name = "onnxruntime-training-cpu"
