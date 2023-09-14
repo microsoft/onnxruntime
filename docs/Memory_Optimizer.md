@@ -79,7 +79,7 @@ Besides the logs shown in `LogLevel.INFO`, you can also see different node patte
 
 The way we get the table:
 - For a specific node, it might has different optimization options, we [generates](../orttraining/orttraining/core/optimizer/memory_optimizer/common.h#L124C26-L124C26) a hash (called `Node Cluster ID`) for the node according to all available optimization options.
-- Map all nodes having same `Node Cluster ID`, collect the
+- Map all nodes having same `Node Cluster ID` in buckets, each bucket is displayed as one row.
 
 ```
 MemoryInsight Summary - User config: not provided
