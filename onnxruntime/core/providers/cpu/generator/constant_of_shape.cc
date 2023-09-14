@@ -75,9 +75,10 @@ Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
 
 }  // namespace
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ConstantOfShape,
     9,
+    19,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2",
