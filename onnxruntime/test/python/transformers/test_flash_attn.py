@@ -210,6 +210,14 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
         ),
     ]
 
+    graph_output = [
+        helper.make_tensor_value_info(
+            "output",
+            TensorProto.FLOAT16,
+            [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
+        ),
+    ]
+
     if new_kv:
         graph_input += [
             helper.make_tensor_value_info(
@@ -234,19 +242,24 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
             ),
             helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, [1],)
         ]
+        graph_output += [
+            helper.make_tensor_value_info(
+                "past_key",
+                TensorProto.FLOAT16,
+                [config.batch_size, config.kv_sequence_length, config.kv_num_heads, config.head_size],
+            ),
+            helper.make_tensor_value_info(
+                "past_value",
+                TensorProto.FLOAT16,
+                [config.batch_size, config.kv_sequence_length, config.kv_num_heads, config.head_size],
+            ),
+        ]
 
     graph = helper.make_graph(
         nodes,
         "GroupQueryAttention_Graph",
         graph_input,
-        [
-            helper.make_tensor_value_info(
-                "output",
-                TensorProto.FLOAT16,
-                [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
-            ),
-            # TODO(aciddelgado): return present key and value?
-        ],
+        graph_output,
     )
 
     model = helper.make_model(graph)
@@ -449,8 +462,8 @@ def flash_attn_func(q, k, v, config, gqa=False, causal=False, new_k=None, new_v=
             "value": v.detach().cpu().numpy(),
         }
     elif new_k is not None and new_v is not None:
-        past_k = k
-        past_v = v
+        past_k = k.clone()
+        past_v = v.clone()
         new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
         new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
         ort_inputs = {
@@ -463,9 +476,14 @@ def flash_attn_func(q, k, v, config, gqa=False, causal=False, new_k=None, new_v=
         }
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
-    ort_output = ort_session.run(None, ort_inputs)
-    output = torch.tensor(ort_output)
-    return output
+    if new_kv:
+        ort_output, present_k, present_v = ort_session.run(None, ort_inputs)
+        output = torch.tensor(ort_output)
+        return output, present_k, present_v
+    else:
+        ort_output = ort_session.run(None, ort_inputs)
+        output = torch.tensor(ort_output)
+        return output
 
 
 def construct_causal_mask(seqlen_q, seqlen_k, query_padding_mask=None, key_padding_mask=None,
@@ -621,7 +639,7 @@ def parity_check(
             dtype=torch.float16,
             requires_grad=False,
         )
-        out = flash_attn_func(q, k, v, config, gqa=gqa, causal=causal)
+        out = flash_attn_func(q, k, v, config, gqa=False, causal=causal)
         out = torch.squeeze(out, 0)
         out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
         out = out.detach().cpu().numpy()
@@ -712,15 +730,14 @@ def parity_check_gqa(
             dtype=torch.float16,
             requires_grad=False,
         )
-    out = flash_attn_func(q, k, v, config, gqa=True, causal=causal, new_k=new_k, new_v=new_v)
-    out = torch.squeeze(out, 0)
-    out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
-    out = out.detach().cpu().numpy()
-    # Pytorch to compare
     if not new_kv:
+        # Pytorch to compare
         out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=causal)
         out_ref = out_ref.detach().cpu().numpy()
+        # Flash function
+        out = flash_attn_func(q, k, v, config, gqa=True, causal=causal)
     else:
+        # Pytorch to compare
         k_cache_ref = k.clone()
         v_cache_ref = v.clone()
         cache_seqlens = torch.tensor([config.past_sequence_length], device="cuda").repeat(config.batch_size)
@@ -735,8 +752,15 @@ def parity_check_gqa(
         key_padding_mask = arange < cache_seqlens_expanded + (config.sequence_length if new_kv else 0)
         out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=causal)
         out_ref = out_ref.detach().cpu().numpy()
-        # out_pt, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=causal,
-        #                           upcast=False, reorder_ops=True)
+        # Flash function
+        out, present_k, present_v = flash_attn_func(q, k, v, config, gqa=True, causal=causal, new_k=new_k, new_v=new_v)
+    out = torch.squeeze(out, 0)
+    out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
+    out = out.detach().cpu().numpy()
+    if new_kv:
+        # Make sure past-present buffer updating correctly
+        assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
+        assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
 
     # print(out[0, 0, 0, :20])
     # print(out_ref[0, 0, 0, :20])
@@ -776,43 +800,43 @@ if __name__ == "__main__":
     #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
     #                 config = Config(b, s, s, 0, n, n, h)
     #                 parity_check(config, True)
-    # print("-------- TEST MHA ---------")
-    # for b in [5]:
-    #     for s, s2 in [
-    #         (113, 203),
-    #         (128, 217),
-    #         (113, 211),
-    #         (108, 256),
-    #         (256, 512),
-    #         (512, 256),
-    #         (1024, 1024),
-    #         (1023, 1024),
-    #         (1024, 1023),
-    #         (2048, 2048),
-    #     ]:
-    #         for n in [6]:
-    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-    #                 config = Config(b, s, s2, 0, n, n, h)
-    #                 parity_check(config, False)
-    # print("-------- TEST GQA ---------")
-    # for b in [5]:
-    #     for s, s2 in [
-    #         (113, 203),
-    #         (128, 217),
-    #         (113, 211),
-    #         (108, 256),
-    #         (256, 512),
-    #         (512, 256),
-    #         (1024, 1024),
-    #         (1023, 1024),
-    #         (1024, 1023),
-    #         (2048, 2048),
-    #     ]:
-    #         for (n, n2) in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-    #             for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
-    #                 for causal in [True, False]:
-    #                     config = Config(b, s, s2, 0, n, n2, h)
-    #                     parity_check_gqa(config, causal=causal)
+    print("-------- TEST MHA ---------")
+    for b in [5]:
+        for s, s2 in [
+            (113, 203),
+            (128, 217),
+            (113, 211),
+            (108, 256),
+            (256, 512),
+            (512, 256),
+            (1024, 1024),
+            (1023, 1024),
+            (1024, 1023),
+            (2048, 2048),
+        ]:
+            for n in [6]:
+                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+                    config = Config(b, s, s2, 0, n, n, h)
+                    parity_check(config, False)
+    print("-------- TEST GQA ---------")
+    for b in [5]:
+        for s, s2 in [
+            (113, 203),
+            (128, 217),
+            (113, 211),
+            (108, 256),
+            (256, 512),
+            (512, 256),
+            (1024, 1024),
+            (1023, 1024),
+            (1024, 1023),
+            (2048, 2048),
+        ]:
+            for (n, n2) in [(6, 6), (6, 3), (9, 9), (9, 3)]:
+                for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+                    for causal in [True, False]:
+                        config = Config(b, s, s2, 0, n, n2, h)
+                        parity_check_gqa(config, causal=causal)
     print("-------- TEST GQA PAST ---------")
     for b in [2]:
         for s, s2 in [

@@ -174,11 +174,13 @@ Status CheckInputs(const T* query,
   }
 
   int32_t past_sequence_length = 0;
-  if (past_seq_len != nullptr && !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "past_sequence_length tensor must be of one element when using past kv.");
+  if (past_seq_len != nullptr) {
+    if (!onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "past_sequence_length tensor must be of one element when using past kv.");
+    }
+    past_sequence_length = *((*past_seq_len).template Data<int32_t>());
   }
-  past_sequence_length = *((*past_seq_len).template Data<int32_t>());
 
   int total_sequence_length = past_sequence_length + kv_sequence_length;
   // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");

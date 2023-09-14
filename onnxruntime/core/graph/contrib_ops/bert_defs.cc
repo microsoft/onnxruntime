@@ -1037,12 +1037,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(3,
                "past_key",
-               "past state for self attention key with shape (batch_size, past_sequence_length, kv_num_heads, head_size)",
+               "past state key with shape (batch_size, max_sequence_length, kv_num_heads, head_size)."
+              "The first past_sequence_length values hold past kv and the remaining memory is cache, updated by op.",
                "T",
                OpSchema::Optional)
         .Input(4,
                "past_value",
-               "past state for self attention value with shape (batch_size, past_sequence_length, kv_num_heads, head_size)",
+               "past state value with shape (batch_size, max_sequence_length, kv_num_heads, head_size)"
+               "The first past_sequence_length values hold past kv and the remaining memory is cache, updated by op.",
                "T",
                OpSchema::Optional)
         .Input(5,
@@ -1056,14 +1058,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "present state for cross attention key with shape (batch_size, kv_num_heads, kv_sequence_length, head_size)"
-                "or present state for self attention key with shape (batch_size, kv_num_heads, total_sequence_length, head_size)",
+                "present state key with shape (batch_size, max_sequence_length, kv_num_heads, head_size)",
                 "T",
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "present state for cross attention value with shape (batch_size, kv_num_heads, kv_sequence_length, head_size)"
-                "or present state for self attention value with shape (batch_size, kv_num_heads, total_sequence_length, head_size)",
+                "present state value with shape (batch_size, max_sequence_length, kv_num_heads, head_size)",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")

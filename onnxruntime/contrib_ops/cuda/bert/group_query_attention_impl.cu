@@ -140,8 +140,8 @@ Status QkvToContext(
       int blk_in_grid = ceil( float(batch_size) / thr_per_blk );
       repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
 
-      DUMP_TENSOR_INIT();
-      DUMP_TENSOR_D("seqlens_k", reinterpret_cast<const int32_t*>(data.seqlens_k), 1, batch_size+1);
+      // DUMP_TENSOR_INIT();
+      // DUMP_TENSOR_D("seqlens_k", reinterpret_cast<const int32_t*>(data.seqlens_k), 1, batch_size+1);
 
       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
           device_prop, stream, query, past_key, past_value, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
@@ -151,7 +151,7 @@ Status QkvToContext(
           reinterpret_cast<void*>(data.out_accum)));
     }
 
-    DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
+    // DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
     return Status::OK();
   }

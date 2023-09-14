@@ -989,6 +989,7 @@ Status QkvToContext(
       query = reinterpret_cast<void*>(const_cast<T*>(data.query));
     }
 
+    DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("q(BSNH)", reinterpret_cast<const T*>(query), batch_size, sequence_length, num_heads, qk_head_size);
     DUMP_TENSOR_D("k(BSNH)", k, batch_size, parameters.total_sequence_length, num_heads, qk_head_size);
     DUMP_TENSOR_D("v(BSNH)", v, batch_size, parameters.total_sequence_length, num_heads, v_head_size);
