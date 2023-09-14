@@ -1,7 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unistd.h>
+#include <cstring>
+#include <ctime>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "nccl_kernels.h"
+#include "core/platform/env_var_utils.h"
+
 #include "mpi_include.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
@@ -35,14 +44,122 @@ static ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   }
 }
 
+namespace IPC {
+#define FLLOG (std::cerr << __FILE__ << ":" << __LINE__ << " ")
+#define FLLOGERRNO (std::cerr << __FILE__ << ":" << __LINE__ << " " << strerror(errno) << " ")
+
+static int PortNumber = 18888;
+int WriteOnRank0(ncclUniqueId* nccl_id, int word_size) {
+  int fd = socket(AF_INET,     /* network versus AF_LOCAL */
+                  SOCK_STREAM, /* reliable, bidirectional, arbitrary payload size */
+                  0);          /* system picks underlying protocol (TCP) */
+  if (fd < 0) {
+    FLLOGERRNO << ("socket\n"); /* terminate */
+    return -1;
+  }
+
+  /* bind the server's local address in memory */
+  struct sockaddr_in saddr;
+  memset(&saddr, 0, sizeof(saddr));                /* clear the bytes */
+  saddr.sin_family = AF_INET;                      /* versus AF_LOCAL */
+  saddr.sin_addr.s_addr = inet_addr("127.0.0.1");  // htonl(INADDR_ANY); /* host-to-network endian */
+  saddr.sin_port = htons(PortNumber);              /* for listening */
+
+  if (bind(fd, (struct sockaddr*)&saddr, sizeof(saddr)) < 0) {
+    FLLOGERRNO << ("bind\n"); /* terminate */
+    return -1;
+  }
+  /* listen to the socket */
+  if (listen(fd, word_size) < 0) {
+    FLLOGERRNO << ("bind\n"); /* terminate */
+    return -1;
+  }
+
+  FLLOG << "Listening on port " << PortNumber << " for clients...\n";
+  /* a server traditionally listens indefinitely */
+  word_size--;  // rank 0 is not in word_size
+  while (word_size-- > 0) {
+    int client_fd = accept(fd, nullptr, nullptr); /* accept blocks */
+    if (client_fd < 0) {
+      FLLOGERRNO << ("accept\n"); /* terminate */
+      return -1;
+    }
+    FLLOG << ("Accepted new client\n");
+    if (write(client_fd, (nccl_id), sizeof(ncclUniqueId)) != sizeof(ncclUniqueId)) {
+      FLLOGERRNO << ("write\n"); /* terminate */
+      return -1;
+    }
+    close(client_fd); /* break connection */
+  }
+  close(fd); /* break connection */
+  return 0;
+}
+
+int ReadFromRank0(ncclUniqueId* nccl_id) {
+  int sockfd = socket(AF_INET,     /* versus AF_LOCAL */
+                      SOCK_STREAM, /* reliable, bidirectional */
+                      0);          /* system picks protocol (TCP) */
+  if (sockfd < 0) {
+    FLLOGERRNO << ("socket");
+    return -1;
+  }
+
+  /* connect to the server: configure server's address 1st */
+  struct sockaddr_in saddr;
+  memset(&saddr, 0, sizeof(saddr));
+  saddr.sin_family = AF_INET;
+  saddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  saddr.sin_port = htons(PortNumber); /* port number in big-endian */
+  time_t start_time = time(0);
+  int conn_ret = connect(sockfd, (struct sockaddr*)&saddr, sizeof(saddr));
+  while (time(0) - start_time < 40 && conn_ret < 0) {
+    FLLOGERRNO << (" retry..."); /* terminate */
+    // return -1;
+    sleep(1);
+    conn_ret = connect(sockfd, (struct sockaddr*)&saddr, sizeof(saddr));
+  }
+  if (conn_ret < 0) {
+    FLLOGERRNO << ("connect"); /* terminate */
+    return -1;
+  }
+  /* Write some stuff and read the echoes. */
+  FLLOG << ("Connect to server, read ncclUniqueId...");
+
+  if (read(sockfd, (nccl_id), sizeof(ncclUniqueId)) != sizeof(ncclUniqueId)) {
+    FLLOGERRNO << ("read"); /* terminate */
+    return -1;
+  }
+
+  close(sockfd);
+  return 0;
+}
+}  // namespace IPC
+
+int IPC_Bcast(ncclUniqueId* nccl_id, int rank, int world_size) {
+  if (rank == 0) {
+    if (IPC::WriteOnRank0(nccl_id, world_size) != 0) {
+      return (-1);
+    }
+  } else if (IPC::ReadFromRank0(nccl_id) != 0) {
+    return (-1);
+  }
+
+  return 0;
+}
+
 #ifdef USE_MPI
-static Status CreateNcclCommByMPI(int world_size, int rank, ncclComm_t* comm) {
+static Status CreateNcclComm(int world_size, int rank, ncclComm_t* comm, bool is_launched_by_mpi) {
   // Create new NCCL communicator
   ncclUniqueId nccl_id;
   if (rank == 0) {
     NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&nccl_id));
   }
-  MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, MPI_COMM_WORLD));
+  if (is_launched_by_mpi) {
+    MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, MPI_COMM_WORLD));
+  } else if (IPC_Bcast(&nccl_id, rank, world_size) != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "IPC_Bcast nccl_id failed with :", strerror(errno));
+  }
+
   NCCL_RETURN_IF_ERROR(ncclCommInitRank(comm, world_size, nccl_id, rank));
 
   return Status::OK();
@@ -60,11 +177,17 @@ NcclContext::NcclContext() {
 
   // get world_size and rank from MPI
   MPI_Comm_size(MPI_COMM_WORLD, &world_size_);
-
   MPI_Comm_rank(MPI_COMM_WORLD, &rank_);
+  bool is_launched_by_mpi = true;
+  if (world_size_ < 1) {
+    is_launched_by_mpi = false;
+    world_size_ = ParseEnvironmentVariableWithDefault<int32_t>("LOCAL_WORLD_SIZE", -1);
+    rank_ = ParseEnvironmentVariableWithDefault<int32_t>("LOCAL_RANK", -1);
+    ORT_ENFORCE(world_size_ != -1 && rank_ != -1);
+  }
 
   // Initialize global Parallel Group NCCL Communicator
-  auto ret = CreateNcclCommByMPI(world_size_, rank_, &comm_);
+  auto ret = CreateNcclComm(world_size_, rank_, &comm_, is_launched_by_mpi);
   ORT_ENFORCE(ret.IsOK());
 
 #else

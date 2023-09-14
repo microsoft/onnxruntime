@@ -63,6 +63,16 @@ void rotary_embedding_neox(
     int num_kv_heads,
     int dtype);
 
+template <typename scalar_t>
+void LaunchRepeatKeyValue(
+    const cudaStream_t stream,
+    scalar_t* key_out,      // [num_tokens, repeat*num_heads * head_size]
+    scalar_t* value_out,    // [num_tokens, repeat*num_heads * head_size]
+    const scalar_t* key,    // [num_tokens, num_heads * head_size]
+    const scalar_t* value,  // [num_tokens, num_heads * head_size]
+    const int64_t* input_shape,
+    int repeat);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

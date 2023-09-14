@@ -454,6 +454,38 @@ __global__ void rotary_embedding_kernel(
   }
 }
 
+template <typename scalar_t, int repeat, int num_lines_per_thread>
+__global__ void repeat_key_value_kernel(
+    scalar_t* __restrict__ key_output,    // [num_tokens, repeat*num_head,head_size]
+    scalar_t* __restrict__ value_output,  // [num_tokens, repeat*num_head,head_size]
+    const scalar_t* __restrict__ key,     // [num_tokens, num_head,head_size]
+    const scalar_t* __restrict__ value,   // [num_tokens, num_head,head_size]
+    const int head_size, int repeat_def) {
+  // const int num_lines_per_thread = 2;
+  const int head_idx = blockIdx.x * num_lines_per_thread;
+  for (int i = threadIdx.x; i < head_size; i += blockDim.x) {
+#pragma unroll
+    for (int line = 0; line < num_lines_per_thread; line++) {
+      scalar_t b_key = key[(head_idx + line) * head_size + i];
+      scalar_t b_value = value[(head_idx + line) * head_size + i];
+      if constexpr (repeat > 0) {
+#pragma unroll
+        for (int j = 0; j < repeat; j++) {
+          key_output[((head_idx + line) * repeat + j) * head_size + i] = b_key;
+          value_output[((head_idx + line) * repeat + j) * head_size + i] = b_value;
+        }
+      } else {
+#pragma unroll
+        for (int j = 0; j < repeat_def; j++) {
+          key_output[((head_idx + line) * repeat_def + j) * head_size + i] = b_key;
+          value_output[((head_idx + line) * repeat_def + j) * head_size + i] = b_value;
+        }
+      }
+    }
+  }
+}
+
+
 }  // namespace vllm
 
 #define LAUNCH_ATTENTION_KERNEL(T, HEAD_SIZE, BLOCK_SIZE, NUM_THREADS)                 \
@@ -743,7 +775,57 @@ void rotary_embedding_neox(
     // CALL_KERNEL_LAUNCHER_BLOCK_SIZE(__nv_bfloat16);
   }
 }
-
+template <typename scalar_t>
+void LaunchRepeatKeyValue(
+    const cudaStream_t stream,
+    scalar_t* key_out,      // [num_tokens, repeat*num_heads * head_size]
+    scalar_t* value_out,    // [num_tokens, repeat*num_heads * head_size]
+    const scalar_t* key,    // [num_tokens, num_heads * head_size]
+    const scalar_t* value,  // [num_tokens, num_heads * head_size]
+    const int64_t* input_shape,
+    int repeat) {
+  const int unroll_len = 2;
+  dim3 grid(input_shape[0] * input_shape[1] / unroll_len);
+  dim3 block(input_shape[2] > 256 ? 256 : input_shape[2]);
+  if (repeat == 8) {
+    vllm::repeat_key_value_kernel<scalar_t, 8, unroll_len><<<grid, block, 0, stream>>>(
+        static_cast<scalar_t*>(key_out),
+        static_cast<scalar_t*>(value_out),
+        static_cast<const scalar_t*>(key),
+        static_cast<const scalar_t*>(value),
+        input_shape[2], 0);
+  }else if (repeat == 4) {
+    vllm::repeat_key_value_kernel<scalar_t, 4, unroll_len><<<grid, block, 0, stream>>>(
+        static_cast<scalar_t*>(key_out),
+        static_cast<scalar_t*>(value_out),
+        static_cast<const scalar_t*>(key),
+        static_cast<const scalar_t*>(value),
+        input_shape[2], 0);
+  } else {
+    vllm::repeat_key_value_kernel<scalar_t, 0, unroll_len><<<grid, block, 0, stream>>>(
+        static_cast<scalar_t*>(key_out),
+        static_cast<scalar_t*>(value_out),
+        static_cast<const scalar_t*>(key),
+        static_cast<const scalar_t*>(value),
+        input_shape[2], repeat);
+  }
+}
+template void LaunchRepeatKeyValue<half>(
+    const cudaStream_t stream,
+    half* key_out,      // [num_tokens, repeat*num_heads * head_size]
+    half* value_out,    // [num_tokens, repeat*num_heads * head_size]
+    const half* key,    // [num_tokens, num_heads * head_size]
+    const half* value,  // [num_tokens, num_heads * head_size]
+    const int64_t* input_shape,
+    int repeat);
+template void LaunchRepeatKeyValue<float>(
+    const cudaStream_t stream,
+    float* key_out,      // [num_tokens, repeat*num_heads * head_size]
+    float* value_out,    // [num_tokens, repeat*num_heads * head_size]
+    const float* key,    // [num_tokens, num_heads * head_size]
+    const float* value,  // [num_tokens, num_heads * head_size]
+    const int64_t* input_shape,
+    int repeat);
 #undef WARP_SIZE
 #undef MAX
 #undef MIN
