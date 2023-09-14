@@ -199,8 +199,8 @@ void MemoryOptimizer::PrintSummary(const optimizer::memory_optimizer::MemoryOpti
                                    const logging::Logger& logger) const {
   std::vector<std::pair<std::string, optimizer::memory_optimizer::MemoryRecord>> records_grouped_by_node_cluster_id;
   optimizer::memory_optimizer::GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner,
-                                                                      records_grouped_by_node_cluster_id,
-                                                                      node_to_apply_contexts_map);
+                                                                      node_to_apply_contexts_map,
+                                                                      records_grouped_by_node_cluster_id);
   LOGS(logger, INFO) << SerializeMemoryRecords(records_grouped_by_node_cluster_id, optimizer_config_) << "\n";
 }
 

@@ -106,8 +106,8 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
 }
 
 void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& memory_opt_planner,
-                                            std::vector<std::pair<std::string, MemoryRecord>>& generated_records,
-                                            const NodeToClusterApplyContextMap& node_to_apply_contexts_map) {
+                                            const NodeToClusterApplyContextMap& node_to_apply_contexts_map,
+                                            std::vector<std::pair<std::string, MemoryRecord>>& generated_records) {
   // Group by node cluster id, generate memory record.
   InlinedHashMap<std::string, MemoryRecord> records;
   const auto& node_to_optimization_plan_map = memory_opt_planner.GetNodeToOptimizationPlanMap();
@@ -173,7 +173,8 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
         } else if (plan->GetOptimizationType() == OptimizationType::Recompute) {
           record.recomputed_outputs.emplace_back(output_index,
                                                  GetTensorElemCountInSymbolicString(node, output_index),
-                                                 byte_count_per_element);
+                                                 byte_count_per_element,
+                                                 plan->GetSaveRatio());
         }
       }
     }
@@ -446,20 +447,19 @@ void FormatRecomputeMemoryRecords(int option_index,
   const auto activation_count = compromise_recompute ? record.compromise_recomputed_outputs.size()
                                                      : record.recomputed_outputs.size();
   for (size_t i = 0; i < activation_count; ++i) {
-    size_t output_port;
-    std::string shape_str;
-    int bytes_per_element;
-
-    float save_ratio = 1.0f;
+    const MemoryRecord::OutputStat* stat;
     if (compromise_recompute) {
-      std::tie(output_port, shape_str, bytes_per_element, save_ratio) = record.compromise_recomputed_outputs[i];
+      stat = &record.compromise_recomputed_outputs[i];
     } else {
-      std::tie(output_port, shape_str, bytes_per_element) = record.recomputed_outputs[i];
+      stat = &record.recomputed_outputs[i];
     }
 
-    rows.push_back(empty_first_col + ToFixedLengthString("   - Output " + std::to_string(output_port), kTitleWidthInSecondColumn) +
-                   ": [" + shape_str + "], byte/elem: " + std::to_string(bytes_per_element) +
-                   ", " + std::to_string(static_cast<int>(save_ratio * 100)) + "% saved");
+    rows.push_back(empty_first_col +
+                   ToFixedLengthString("   - Output " + std::to_string(stat->output_index), kTitleWidthInSecondColumn) +
+                   ": [" + stat->output_shape_str + "], byte/elem: " +
+                   std::to_string(stat->output_byte_count_per_element) +
+                   ", " + std::to_string(static_cast<int>(stat->saving_ratio * 100)) +
+                   "% saved");
   }
 }
 }  // namespace
@@ -547,8 +547,8 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
                                              const logging::Logger& logger,
                                              std::map<std::string, std::pair<std::string, int>>&
                                                  cluster_id_combinations_to_saved_symbolic_byte_map,
-                                             const OrtValueNameIdxMap& ortvalue_name_to_idx_map,
-                                             const SequentialExecutionPlan& p_seq_exec_plan) {
+                                             const OrtValueNameIdxMap* ortvalue_name_to_idx_map,
+                                             const SequentialExecutionPlan* p_seq_exec_plan) {
   ProbeLevel probe_level = ProbeLevel::Advanced;
   if (!recompute_probe_level.empty()) {
     int probe_level_int = ParseIntValueFromString(recompute_probe_level);
@@ -590,12 +590,14 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
                     .IsOK());
   }
 
-  ORT_ENFORCE(memory_opt_planner.UpdateNodePlansFromExecutionPlan(graph_viewer, ortvalue_name_to_idx_map,
-                                                                  p_seq_exec_plan)
-                  .IsOK());
+  if (ortvalue_name_to_idx_map != nullptr && p_seq_exec_plan != nullptr)
+    ORT_ENFORCE(memory_opt_planner.UpdateNodePlansFromExecutionPlan(graph_viewer,
+                                                                    *ortvalue_name_to_idx_map,
+                                                                    *p_seq_exec_plan)
+                    .IsOK());
 
   std::vector<std::pair<std::string, MemoryRecord>> records;
-  GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, records, node_to_apply_context_map);
+  GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, node_to_apply_context_map, records);
 
   GetMemorySavingSymbolicString(memory_opt_planner, logger, cluster_id_combinations_to_saved_symbolic_byte_map);
 

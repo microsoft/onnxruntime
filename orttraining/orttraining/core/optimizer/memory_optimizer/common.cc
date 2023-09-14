@@ -34,6 +34,7 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
                               InlinedHashMap<const Node*, bool>& is_forward_nodes) {
   ORT_ENFORCE(boundary_op_order_in_topological_sort >= 0);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  is_forward_nodes.clear();
   is_forward_nodes.reserve(node_ids.size());
 
   auto is_forward_pass_operator = [](ptrdiff_t op_order_in_topological_sort,
@@ -60,11 +61,19 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
     is_forward_nodes[p_node] = true;
 
     for (auto& output_arg : node.OutputDefs()) {
+      if (!output_arg->Exists() || output_arg->Name().empty()) {
+        continue;
+      }
+
       bool used_in_fw = false;
       bool used_in_bw = false;
       for (auto& consumer_node : graph_viewer.GetConsumerNodes(output_arg->Name())) {
-        size_t consumer_node_index_in_topological_order =
-            node_index_to_its_order_in_topological_sort_map.at(consumer_node->Index());
+        ORT_ENFORCE(consumer_node != nullptr, "Consumer node should not be null.");
+        auto it = node_index_to_its_order_in_topological_sort_map.find(consumer_node->Index());
+        ORT_ENFORCE(it !=
+                        node_index_to_its_order_in_topological_sort_map.end(),
+                    "Consumer node should be in topological order map.");
+        size_t consumer_node_index_in_topological_order = it->second;
         if (is_forward_pass_operator(static_cast<ptrdiff_t>(consumer_node_index_in_topological_order),
                                      boundary_op_order_in_topological_sort)) {
           used_in_fw = true;
@@ -72,6 +81,9 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
           used_in_bw = true;
         }
       }
+
+      ORT_ENFORCE(fw_op_output_arg_used_map.find(output_arg->Name()) == fw_op_output_arg_used_map.end(),
+                  "Duplicated output arg found named: ", output_arg->Name());
       fw_op_output_arg_used_map.insert({{output_arg->Name(), std::make_pair(used_in_fw, used_in_bw)}});
     }
   }

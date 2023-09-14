@@ -19,21 +19,35 @@ namespace onnxruntime::optimizer::memory_optimizer {
  */
 class MemoryRecord {
  public:
+  class OutputStat {
+   public:
+    OutputStat(size_t output_index, std::string_view output_shape, size_t output_byte_count_per_element,
+               float saving_ratio)
+        : output_index(output_index),
+          output_shape_str(output_shape),
+          output_byte_count_per_element(output_byte_count_per_element),
+          saving_ratio(saving_ratio) {}
+
+    // output index, shape, byte count per element, saving ratio
+    size_t output_index;
+    std::string output_shape_str;
+    size_t output_byte_count_per_element;
+    float saving_ratio;
+  };
+
   // Recompute Column
   std::string recompute_subgraph_str;
-  /// output index, shape, byte count per element
-  std::vector<std::tuple<size_t, std::string, int>> recomputed_outputs;
+  InlinedVector<OutputStat> recomputed_outputs;
   int request_recompute_count = 0;
   int actual_recompute_count = 0;
-  std::unordered_map<size_t, int> output_port_reuse_recompute_count;
+  InlinedHashMap<size_t, int> output_port_reuse_recompute_count;
 
   // RecomputeWithCompromise Column
   std::string recompute_with_compromise_subgraph_str;
-  /// output index, shape, byte count per element, saving ratio
-  std::vector<std::tuple<size_t, std::string, int, float>> compromise_recomputed_outputs;
+  InlinedVector<OutputStat> compromise_recomputed_outputs;
   int request_recompute_with_compromise_count = 0;
   int actual_recompute_with_compromise_count = 0;
-  std::unordered_map<size_t, int> output_port_reuse_recompute_with_compromise_count;
+  InlinedHashMap<size_t, int> output_port_reuse_recompute_with_compromise_count;
 
   // Frequency Column
   int freq = 0;
@@ -65,14 +79,14 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
  * each represents one node cluster id.
  *
  * @param memory_opt_planner The optimization planner to get optimization plans.
+ * @param node_to_apply_contexts_map The optimization applying information.
  * @param generated_records Returns the generated memory optimization statistics table.
- * @param node_to_apply_contexts_map Optional. If provided, we will append the optimization applying information
  * (for example, how many are actually applied) to each MemoryRecord.
  */
 void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& memory_opt_planner,
-                                            std::vector<std::pair<std::string, MemoryRecord>>& generated_records,
                                             const NodeToClusterApplyContextMap&
-                                                node_to_apply_contexts_map);
+                                                node_to_apply_contexts_map,
+                                            std::vector<std::pair<std::string, MemoryRecord>>& generated_records);
 
 /**
  * @brief Serialize the memory optimization statistics table to a string.
@@ -104,7 +118,7 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
                                              const logging::Logger& logger,
                                              std::map<std::string, std::pair<std::string, int>>&
                                                  cluster_id_combinations_to_saved_symbolic_byte_map,
-                                             const OrtValueNameIdxMap& ortvalue_name_to_idx_map = {},
-                                             const SequentialExecutionPlan& p_seq_exec_plan = {});
+                                             const OrtValueNameIdxMap* ortvalue_name_to_idx_map = nullptr,
+                                             const SequentialExecutionPlan* p_seq_exec_plan = nullptr);
 
 }  // namespace onnxruntime::optimizer::memory_optimizer

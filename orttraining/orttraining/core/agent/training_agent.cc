@@ -121,8 +121,8 @@ std::string TrainingAgent::GetSerializedORTModuleMemoryStat(std::string_view mem
       recompute_probe_level,
       *inference_session_.GetLogger(),
       cluster_id_combinations_to_saved_symbolic_byte_map,
-      ortvalue_name_to_idx_map,
-      p_seq_exec_plan);
+      &ortvalue_name_to_idx_map,
+      &p_seq_exec_plan);
 }
 
 }  // namespace training
