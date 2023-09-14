@@ -267,7 +267,7 @@ class _RuntimeOptions:
 
         # Configuration for dev tools.
         self.print_input_density = False
-        self.print_memory_stat = False
+        self.print_memory_stat_by_step = False
 
         # Configuration for fallback.
         self.fallback_policy = ortmodule.ORTMODULE_FALLBACK_POLICY
@@ -326,8 +326,7 @@ class _RuntimeOptions:
         if "ORTMODULE_PRINT_INPUT_DENSITY" in os.environ:
             self.print_input_density = int(os.getenv("ORTMODULE_PRINT_INPUT_DENSITY")) == 1
         if "ORTMODULE_PRINT_MEMORY_STATS" in os.environ:
-            self.print_memory_stat = int(os.getenv("ORTMODULE_PRINT_MEMORY_STATS")) == 1
-        self.print_memory_stat = self.print_memory_stat or self.memory_optimizer_config
+            self.print_memory_stat_by_step = int(os.getenv("ORTMODULE_PRINT_MEMORY_STATS")) == 1
 
         # Configuration for fallback.
         if "ORTMODULE_FALLBACK_POLICY" in os.environ:

@@ -5,7 +5,7 @@
 
 from enum import IntEnum
 from logging import Logger
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, OrderedDict, Tuple, Union
 
 import onnx
 import torch
@@ -86,7 +86,7 @@ class RuntimeInspector:
         """Disable input density inspector."""
         self.input_density_ob = None
 
-    def enable_memory_inspector(self, module: torch.nn.Module, print_memory_stats: bool) -> None:
+    def enable_memory_inspector(self, module: torch.nn.Module, print_memory_stats_by_step: bool) -> None:
         """Enable memory inspector for ORTModule.
 
         Args:
@@ -94,7 +94,7 @@ class RuntimeInspector:
             print_memory_stats: Whether to print memory stats.
         """
         if self.memory_ob is None:
-            self.memory_ob = MemoryObserver(module, print_memory_stats, self._logger)
+            self.memory_ob = MemoryObserver(module, print_memory_stats_by_step, self._logger)
         else:
             raise RuntimeError("Memory observer is already enabled.")
 
@@ -524,20 +524,20 @@ class MemoryObserver:
     NORMALIZER_FACTOR = float(1024 * 1024)
     NORMALIZER_UNIT = "MiB"
 
-    def __init__(self, m: torch.nn.Module, print_memory_stats: bool, logger: Logger):
+    def __init__(self, m: torch.nn.Module, print_memory_stats_by_step: bool, logger: Logger):
         self._logger = logger
 
         # Memory optimization related.
         self.memory_optimization_opportunity_table_str = None
         self.cluster_id_combination_to_saving_symbolics_map: Dict[str, MemoryOptimizationSummary] = {}
-        # Rhe value is a list of symbolic dim values parsed from the first batch.
+        ## The value is a list of symbolic dim values parsed from the first batch.
         self.symbolic_dim_name_to_value_map: Dict = {}
 
-        # Used to control only the first batch is used to collect symbolic dim values.
+        ## Used to control only the first batch is used to collect symbolic dim values.
         self.symbolic_dim_collecting_completed = False
 
         # For per-step memory inspection.
-        self._print_memory_stats = print_memory_stats
+        self._print_memory_stats_by_step = print_memory_stats_by_step
         self._current_step = 0
         self._rank = 0
         self._world_size = 1
@@ -550,6 +550,9 @@ class MemoryObserver:
         self._last_phase = Phase.POST_BACKWARD if m.training else Phase.POST_FORWARD
 
         self._is_first_inspect = True
+
+        # For peak memory summary.
+        self._peak_memory_summary = OrderedDict()
 
     def collect_symbolic_dim_values(
         self,
@@ -599,9 +602,6 @@ class MemoryObserver:
             self.cluster_id_combination_to_saving_symbolics_map[cluster_id] = values
 
     def inspect_memory(self, cur_phase: Phase):
-        if not self._print_memory_stats:
-            return
-
         if not torch.cuda.is_available():
             return
 
@@ -620,31 +620,54 @@ class MemoryObserver:
         if (cur_phase - self._pre_phase) != 1:
             raise RuntimeError(f"Invalid phase transition detected: {self._pre_phase} -> {cur_phase}")
 
-        cur_mem_allocated = self._normalize(torch.cuda.memory_allocated())
-        max_mem_allocated = self._normalize(torch.cuda.max_memory_allocated())
-        cur_mem_cached = self._normalize(torch.cuda.memory_reserved())
-        max_mem_cached = self._normalize(torch.cuda.max_memory_reserved())
-        torch_mem_stat = torch.cuda.memory_stats()
-        cur_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.current", 0))
-        max_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.peak", 0))
-
-        mem_stats = [
-            ["phase", _convert_phase_to_string(cur_phase)],
-            ["allocated", cur_mem_allocated],  # current memory alloeated for tensors
-            ["max allocated", max_mem_allocated],  # peak memory allocated for tensors
-            ["cached", cur_mem_cached],  # current memory cached for caching allocator
-            ["max cached", max_mem_cached],  # peak memory cached for caching allocator.
-            ["inactive", cur_mem_inactive],  # amount of inactive, non-releasable memory
-            ["max inactive", max_mem_inactive],  # peak of inactive, non-releasable memory
-        ]
-
-        summ = f"{self._rank_info} step {self._current_step} memory ({MemoryObserver.NORMALIZER_UNIT})"
-        for stat in mem_stats:
-            summ += f" | {stat[0]}: {stat[1]}"
+        stabilized_mem_summary_print_condition = (
+            self._current_step > 15 and self._current_step < 65 and (self._current_step & (self._current_step - 1) == 0)
+        )
 
         # For the 10+ steps, only print when it is power of 2.
-        if self._current_step < 10 or (self._current_step & (self._current_step - 1) == 0):
-            self._logger.info(summ)
+        if self._print_memory_stats_by_step or stabilized_mem_summary_print_condition:
+            cur_mem_allocated = self._normalize(torch.cuda.memory_allocated())
+            max_mem_allocated = self._normalize(torch.cuda.max_memory_allocated())
+            cur_mem_cached = self._normalize(torch.cuda.memory_reserved())
+            max_mem_cached = self._normalize(torch.cuda.max_memory_reserved())
+            torch_mem_stat = torch.cuda.memory_stats()
+            cur_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.current", 0))
+            max_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.peak", 0))
+
+            mem_stats = [
+                ["phase", _convert_phase_to_string(cur_phase)],
+                ["allocated", cur_mem_allocated],  # current memory allocated for tensors
+                ["max allocated", max_mem_allocated],  # peak memory allocated for tensors
+                ["cached", cur_mem_cached],  # current memory cached for the caching allocator
+                ["max cached", max_mem_cached],  # peak memory cached for caching allocator.
+                ["inactive", cur_mem_inactive],  # amount of inactive, non-releasable memory
+                ["max inactive", max_mem_inactive],  # peak of inactive, non-releasable memory
+            ]
+
+            if self._print_memory_stats_by_step:
+                summ = f"{self._rank_info} step {self._current_step} memory ({MemoryObserver.NORMALIZER_UNIT})"
+                for stat in mem_stats:
+                    summ += f" | {stat[0]}: {stat[1]}"
+
+                self._logger.info(summ)
+
+            # Accumulate peak memory summary.
+            phase_pair = mem_stats[0]
+            if phase_pair[1] not in self._peak_memory_summary:
+                self._peak_memory_summary[phase_pair[1]] = OrderedDict()
+
+            cur_phase_peak_summary = self._peak_memory_summary[phase_pair[1]]
+            for stat in mem_stats[1:]:
+                if stat[0] not in cur_phase_peak_summary:
+                    cur_phase_peak_summary[stat[0]] = 0.0
+                cur_phase_peak_summary[stat[0]] = max(cur_phase_peak_summary[stat[0]], float(stat[1]))
+
+            if cur_phase == self._last_phase:
+                for phase, phase_summary in self._peak_memory_summary.items():
+                    summ = f"{self._rank_info} until step {self._current_step}, {phase} peak memory ({MemoryObserver.NORMALIZER_UNIT})"
+                    for stat in phase_summary.items():
+                        summ += f" | {stat[0]}: {stat[1]}"
+                    self._logger.info(summ)
 
         if cur_phase == self._last_phase:
             self._increase_step()

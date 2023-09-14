@@ -93,7 +93,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Inspector for runtime information, for example input data, memory usage, etc.
         self._runtime_inspector = RuntimeInspector(self._logger)
-        self._runtime_inspector.enable_memory_inspector(self._original_module, self._runtime_options.print_memory_stat)
+        self._runtime_inspector.enable_memory_inspector(
+            self._original_module, self._runtime_options.print_memory_stat_by_step
+        )
 
         # Tracker for ORTModule model export, session creation overhead.
         self.time_tracker = _logger.TimeTracker()
@@ -621,7 +623,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 "Memory Optimizer",
                 len(self._runtime_options.memory_optimizer_config) > 0,
                 (
-                    f"RecomputeConfig: {self._runtime_options.memory_optimizer_config}, ProbeLevel: {self._runtime_options.probe_level}"
+                    f"User config: {self._runtime_options.memory_optimizer_config}, probe level: {self._runtime_options.probe_level}"
                     if len(self._runtime_options.memory_optimizer_config) > 0
                     else "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>"
                 )
@@ -633,10 +635,28 @@ class GraphExecutionManager(GraphExecutionInterface):
             mem_plan_count = len(self._runtime_inspector.memory_ob.cluster_id_combination_to_saving_symbolics_map)
 
             if mem_plan_count > 0:
-                tbl.add_row(["", "", "", "", f"{'Config':<60}{'Freq':<8}{'Saving(B)':<16}Saving Symbolic(Bytes)"])
+                tbl.add_row(["", "", "", "", f"{'Config':<60}{'Freq':<8}{'Max Saving(B)':<16}Saving Symbolic(Bytes)"])
 
                 index = 1
-                user_configs = self._runtime_options.memory_optimizer_config.split(",")
+
+                def _get_user_config_without_freq(configs: str):
+                    if len(configs) == 0:
+                        return []
+                    config_list = configs.split(",")
+                    configs_with_out_freq = []
+                    for config in config_list:
+                        config_values = config.split(":")
+                        freq = int(config_values[2])
+                        if freq == 0:
+                            continue
+                        configs_with_out_freq.append(config_values[0] + ":" + config_values[1])
+
+                    return configs_with_out_freq
+
+                user_configs_with_out_freq = _get_user_config_without_freq(
+                    self._runtime_options.memory_optimizer_config
+                )
+
                 for (
                     cluster_id,
                     saving_symbolic,
@@ -645,12 +665,12 @@ class GraphExecutionManager(GraphExecutionInterface):
                     if isinstance(saving_bytes, float):
                         saving_bytes = f"{saving_bytes:,.0f}"
 
-                    cluster_ids = cluster_id.split(",")
+                    cluster_ids_without_freq = _get_user_config_without_freq(cluster_id)
                     _add_record(
                         tbl,
                         [
                             f" - Plan {index}",
-                            all(cluster_id in user_configs for cluster_id in cluster_ids),
+                            all(cluster_id in user_configs_with_out_freq for cluster_id in cluster_ids_without_freq),
                             f"{cluster_id:<60}{saving_symbolic.freq:<8}{saving_bytes:<16}{saving_symbolic.simplified_symbolic_saving_expr}",
                         ],
                     )
@@ -663,7 +683,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
                 saving_recommendation = "memory saving is calculated based on the 1st batch symbolic dim values:\n"
                 for dim_param, dim_value in self._runtime_inspector.memory_ob.symbolic_dim_name_to_value_map.items():
-                    saving_recommendation += f" {dim_param}={dim_value},"
+                    saving_recommendation += f"  {dim_param}={dim_value},"
                 notes.append(saving_recommendation)
 
         _add_record(
@@ -755,5 +775,5 @@ class GraphExecutionManager(GraphExecutionInterface):
         stat += f"\n{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
         self._logger.warning(stat)
 
-        if self._runtime_inspector.is_memory_inspector_enabled():
+        if self._runtime_inspector.is_memory_inspector_enabled() and output_memory_optimization_details:
             self._logger.debug(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)

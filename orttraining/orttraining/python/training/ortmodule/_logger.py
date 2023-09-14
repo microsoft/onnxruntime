@@ -31,7 +31,7 @@ class LogLevel(IntEnum):
 ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
     LogLevel.VERBOSE: [Severity.VERBOSE, logging.DEBUG],
     LogLevel.DEVINFO: [Severity.INFO, logging.INFO],
-    LogLevel.INFO: [Severity.WARNING, logging.INFO],
+    LogLevel.INFO: [Severity.INFO, logging.INFO],
     LogLevel.WARNING: [Severity.WARNING, logging.WARNING],
     LogLevel.ERROR: [Severity.ERROR, logging.ERROR],
     LogLevel.FATAL: [Severity.FATAL, logging.FATAL],

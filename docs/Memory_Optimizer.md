@@ -25,65 +25,51 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 3. Run the training as usual and redirect all outputs into log file; then stop it after training few steps.
 4. Check the logging file, and search "Summary", you could find something like this:
 	```
-	MemoryOptimizer Summary:
-	User config:
+	Memory Optimizer      :   OFF   :   Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>, available configs:
+										Config                                                      Freq    Max Saving(B)   Saving Symbolic(Bytes)
+	- Plan 1             :   OFF   :   Reshape+Where+BiasSoftmax+:1:-1                             5       671,088,640     640.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
+	- Plan 2             :   OFF   :   Cast+:1:-1                                                  6       402,587,648     inputs_input_ids_dim0*inputs_input_ids_dim1*(384.0*inputs_input_ids_dim1 - 64.0)
+	- Plan 3             :   OFF   :   Reshape+Where+:1:-1                                         1       134,217,728     128.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
+	- Plan 4             :   OFF   :   BiasSoftmax+:1:-1                                           1       134,086,656     128.0*inputs_input_ids_dim0*inputs_input_ids_dim1*(inputs_input_ids_dim1 - 1)
+	- Plan 5             :   OFF   :   BiasGelu+:1:-1                                              6       125,808,640     inputs_input_ids_dim0*(122880.0*inputs_input_ids_dim1 - 20480.0)
+	- Plan 6             :   OFF   :   FusedMatMul+:1:-1                                           6       125,808,640     inputs_input_ids_dim0*(122880.0*inputs_input_ids_dim1 - 20480.0)
+	- Plan 7             :   OFF   :   FusedMatMul+Add+FusedMatMul+Add+Add+Add+:1:-1               5       26,214,400      25600.0*inputs_input_ids_dim0*inputs_input_ids_dim1
+	- Plan 8             :   OFF   :   Add+:1:-1                                                   1       5,237,760       5120.0*inputs_input_ids_dim0*(inputs_input_ids_dim1 - 1)
+	- Plan 9             :   OFF   :   Reshape+Unsqueeze+Unsqueeze+Cast+Sub+Mul+Cast+:1:-1         1       4,096           4.0*inputs_input_ids_dim0*inputs_input_ids_dim1
+	- Plan 10            :   OFF   :   Cast+:2:-1                                                  1       2,048           2.0*inputs_input_ids_dim0*inputs_input_ids_dim1
 
-	=================================
-	########Recompute########
-	Subgraph: CumSum+Sub+Mul+Unsqueeze+Cast+Mul+Cast+Reshape+Mul+FusedMatMul+Add+Reshape+Cast+Where+Softmax+
-		OptimizationType: Disabled
-		Patterns:
-		PatternShape:input_ids_dim0 x 16 x input_ids_dim1 x input_ids_dim1 x  Frequency:23
-	--------------------------------
-	Subgraph: FastGelu+
-		OptimizationType: Disabled
-		Patterns:
-		PatternShape:input_ids_dim0 x input_ids_dim1 x 4096 x   Frequency:24
-	=================================
-	########RecomputeWithCompromise########
-	Subgraph: Cast+Where+Softmax+
-		OptimizationType: Disabled
-		Patterns:
-		PatternShape:input_ids_dim0 x 16 x input_ids_dim1 x input_ids_dim1 x  Frequency:24
-	--------------------------------
-	=================================
+
+	Note 1: use comma to enable multiple memory optimization plans at the same time:
+	export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...
+	Note 2: memory saving is calculated based on the 1st batch symbolic dim values:
+	inputs_input_ids_dim0=1,  inputs_input_ids_dim1=1024,  inputs_attention_mask_dim0=1,  inputs_attention_mask_dim1=1024,  inputs_labels_dim0=1,  inputs_labels_dim1=1024,
 	```
-5. As shown above, 'Subgraph' shows 1) a string representative for a re-computable subgraph; and 2) current status of memory optimization. All are disabled for recompute in this case.
-6. Set environment variable `ORTMODULE_MEMORY_OPT_CONFIG` to enable some of the subgraph to do recompute. In below example, 12 FastGelu related subgraphs are allowed to recompute.
-`FastGelu+` is the subgraph string representative; `1` in the middle indicates 'Recompute' is enabled (0, on the contrary indicates it's disabled); `12` means the initial 12 subgraph occurrences will be recomputed, all others are left as it is, filling `-1` will make all occurrences be recomputed.
+5. As shown above, 'Config' shows 1) a string representative for a re-computable subgraph; and 2) current status of memory optimization. All are disabled for recompute in this case.
+6. Set environment variable `ORTMODULE_MEMORY_OPT_CONFIG` to enable some of the subgraph to do recompute. In below example, 12 BiasGelu related subgraphs are allowed to recompute.
+`BiasGelu+` is the subgraph string representative; `1` in the middle indicates 'Recompute' is enabled (0, on the contrary indicates it's disabled); `6` means the initial 6 subgraph occurrences will be recomputed, all others are left as it is, filling `-1` will make all occurrences be recomputed.
 	```
-	export ORTMODULE_MEMORY_OPT_CONFIG="FastGelu+:1:12" # Use comma as separator for enabling more than one subgraphs.
+	export ORTMODULE_MEMORY_OPT_CONFIG="BiasGelu+:1:6" # Use comma as separator for enabling more than one subgraphs.
 	```
 7. Then run the training again, and you will see logs like this:
 	```
-	MemoryOptimizer Summary:
-	User config:
-	**FastGelu+:1:12**
-	=================================
-	########Recompute########
-	Subgraph: CumSum+Sub+Mul+Unsqueeze+Cast+Mul+Cast+Reshape+Mul+FusedMatMul+Add+Reshape+Cast+Where+Softmax+
-		OptimizationType: Disabled
-		Patterns:
-		PatternShape:input_ids_dim0 x 16 x input_ids_dim1 x input_ids_dim1 x  Frequency:23
-	--------------------------------
-	Subgraph: FastGelu+
-		OptimizationType: **Recompute (requested_count=12, actual applied_count=12)**
-		Patterns:
-		PatternShape:input_ids_dim0 x input_ids_dim1 x 4096 x   Frequency:24
-	=================================
-	########RecomputeWithCompromise########
-	Subgraph: Cast+Where+Softmax+
-		OptimizationType: Disabled
-		Patterns:
-		PatternShape:input_ids_dim0 x 16 x input_ids_dim1 x input_ids_dim1 x  Frequency:24
-	--------------------------------
-	=================================
+	Memory Optimizer      :   ON    :   User config: Reshape+Where+BiasSoftmax+:1:-1, probe level: 1, available configs:
+										Config                                                      Freq    Max Saving(B)   Saving Symbolic(Bytes)
+	- Plan 1             :   ON    :   Reshape+Where+BiasSoftmax+:1:-1                             5       671,088,640     640.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
+	- Plan 2             :   OFF   :   Cast+:1:-1                                                  6       402,587,648     inputs_input_ids_dim0*inputs_input_ids_dim1*(384.0*inputs_input_ids_dim1 - 64.0)
+	- Plan 3             :   OFF   :   Reshape+Where+:1:-1                                         1       134,217,728     128.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
+	- Plan 4             :   OFF   :   BiasSoftmax+:1:-1                                           1       134,086,656     128.0*inputs_input_ids_dim0*inputs_input_ids_dim1*(inputs_input_ids_dim1 - 1)
+	- Plan 5             :   OFF   :   BiasGelu+:1:-1                                              6       125,808,640     inputs_input_ids_dim0*(122880.0*inputs_input_ids_dim1 - 20480.0)
+	- Plan 6             :   OFF   :   FusedMatMul+:1:-1                                           6       125,808,640     inputs_input_ids_dim0*(122880.0*inputs_input_ids_dim1 - 20480.0)
+	- Plan 7             :   OFF   :   FusedMatMul+Add+FusedMatMul+Add+Add+Add+:1:-1               5       26,214,400      25600.0*inputs_input_ids_dim0*inputs_input_ids_dim1
+	- Plan 8             :   OFF   :   Add+:1:-1                                                   1       5,237,760       5120.0*inputs_input_ids_dim0*(inputs_input_ids_dim1 - 1)
+	- Plan 9             :   OFF   :   Reshape+Unsqueeze+Unsqueeze+Cast+Sub+Mul+Cast+:1:-1         1       4,096           4.0*inputs_input_ids_dim0*inputs_input_ids_dim1
+	- Plan 10            :   OFF   :   Cast+:2:-1                                                  1       2,048           2.0*inputs_input_ids_dim0*inputs_input_ids_dim1
 	```
 8. You may need iterate few times on step 6 and 7 until you find a good config for this model to run a bigger batch size. Or you may fail to find if memory optimization does not apply to the model well.
 
 ## Compromised Recompute
 
-If you check the above logs, there is a separate section called "RecomputeWithCompromise". Recompute the subgraphs under it usually will save part of the activation (for example half of them), not all of them. Follow the same way to enable it.
+If you check the above logs, there is a config `Cast+:2:-1`, `2` indicates it's a recomputation than can save part of the stashed activation size, not all. Recompute the subgraphs under it usually will save part of the activation (for example half of them), not all of them. Follow the same way to enable it.
 
 ## Notes
 
