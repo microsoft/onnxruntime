@@ -63,9 +63,10 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   return v4 + v5 + v6 + v7;
 }
 
-constexpr int BLOCKSIZEN = 8;
+// constexpr int BLOCKSIZEN = 8;
+// constexpr int BLOCKSIZEN_HALF = 4;
 
-template <class T, int group_size>
+template <class T, int group_size, int BLOCKSIZEN>
 __global__ void MatMulFloatInt4Kernel(
     T* output,
     const T* a_data,
@@ -104,18 +105,23 @@ __global__ void MatMulFloatInt4Kernel(
 
   constexpr int stages_count = 2;
   constexpr int elements_per_ite = 256;
-  __shared__ alignas(alignof(float4)) T a_shared[stages_count][32][8];
+  constexpr int bytes_per_thread = 4;
+  __shared__ alignas(alignof(float4)) T a_shared[stages_count][elements_per_ite];
 
   nvidia_cuda::pipeline<nvidia_cuda::thread_scope_thread> pipe = nvidia_cuda::make_pipeline();
 
   int k_step = 0;
   int fetch = 0;
+  int shared_offset = std::is_same_v<T, float> ? thread_id : (thread_id << 1);
   for (; k_id < (k & 0xffffff00); k_id += elements_per_ite, k_step++) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + (k_id >> 1) + lane_id * 4));
     // fetch from global to shared
     for (; fetch < k_iter && fetch < (k_step + stages_count); fetch++) {
       pipe.producer_acquire();
-      nvidia_cuda::memcpy_async(&a_shared[fetch % 2][thread_id >> 3][thread_id & 0x07], a_data + fetch * elements_per_ite + thread_id, sizeof(T), pipe);
+      nvidia_cuda::memcpy_async(&a_shared[fetch % 2][shared_offset],
+                                a_data + fetch * elements_per_ite + shared_offset,
+                                bytes_per_thread,
+                                pipe);
       // nvidia_cuda::memcpy_async(group, a_shared_stages[fetch % 2], a_data + fetch * elements_per_ite, sizeof(T) * elements_per_ite, pipeline);
       pipe.producer_commit();
     }
@@ -124,7 +130,7 @@ __global__ void MatMulFloatInt4Kernel(
     __syncthreads();
     T scale = b_scale_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
     uint8_t zp = b_zp_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
-    sum += AccumulateEightElements(value, scale, zp, a_shared[k_step % 2][lane_id]);
+    sum += AccumulateEightElements(value, scale, zp, a_shared[k_step % 2] + (lane_id << 3));
     pipe.consumer_release();
   }
 
@@ -158,24 +164,25 @@ bool TryMatMul4BitsWeight(
     int k,
     int group_size,
     cudaStream_t stream) {
-  if (n % BLOCKSIZEN != 0 || k % 8 != 0) {
+  constexpr int block_size_n = std::is_same_v<T, float> ? 8 : 4;
+  if (n % block_size_n != 0 || k % 8 != 0) {
     return false;
   }
-  dim3 blocks((n + BLOCKSIZEN - 1) / BLOCKSIZEN, m);
-  dim3 threads(32, 8);
-  int shared_mem_size = (sizeof(T) + 1) * ((k + group_size - 1) / group_size * 8);
+  dim3 blocks((n + block_size_n - 1) / block_size_n, m);
+  dim3 threads(32, block_size_n);
+  int shared_mem_size = (sizeof(T) + 1) * ((k + group_size - 1) / group_size * block_size_n);
 
   if (16 == group_size) {
-    MatMulFloatInt4Kernel<T, 16><<<blocks, threads, shared_mem_size, stream>>>(
+    MatMulFloatInt4Kernel<T, 16, block_size_n><<<blocks, threads, shared_mem_size, stream>>>(
         output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
   } else if (32 == group_size) {
-    MatMulFloatInt4Kernel<T, 32><<<blocks, threads, shared_mem_size, stream>>>(
+    MatMulFloatInt4Kernel<T, 32, block_size_n><<<blocks, threads, shared_mem_size, stream>>>(
         output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
   } else if (64 == group_size) {
-    MatMulFloatInt4Kernel<T, 64><<<blocks, threads, shared_mem_size, stream>>>(
+    MatMulFloatInt4Kernel<T, 64, block_size_n><<<blocks, threads, shared_mem_size, stream>>>(
         output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
   } else if (128 == group_size) {
-    MatMulFloatInt4Kernel<T, 128><<<blocks, threads, shared_mem_size, stream>>>(
+    MatMulFloatInt4Kernel<T, 128, block_size_n><<<blocks, threads, shared_mem_size, stream>>>(
         output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
   } else {
     ORT_THROW("block size ", group_size, " is not supported");
