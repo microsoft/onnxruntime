@@ -216,6 +216,22 @@ std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorS
   return GetTensorShapeAndTypeHelper(type, std::move(shape), dim_params);
 }
 
+//std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(
+//    const ONNX_NAMESPACE::TypeProto& type_proto,
+//    const ONNX_NAMESPACE::TensorShapeProto& shape_proto) {
+//
+//  onnxruntime::TensorShape shape;
+//
+//  auto value_case = type_proto.value_case();
+//  auto dtype = (value_case == ONNX_NAMESPACE::TypeProto::kTensorType) ? type_proto.tensor_type().elem_type()
+//                                                                      : type_proto.sparse_tensor_type().elem_type();
+//  ONNXTensorElementDataType type = TensorDataTypeToOnnxRuntimeTensorElementDataType(dtype);
+//  if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
+//    ORT_NOT_IMPLEMENTED("Tensor type is undefined");
+//  }
+//  return GetTensorShapeAndTypeHelper(type, std::move(shape), 0);
+//}
+
 ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape,
                     _In_ const OrtValue* v, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN

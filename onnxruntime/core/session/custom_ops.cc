@@ -25,6 +25,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
 static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
+static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #endif
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -590,6 +591,28 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
   schema.SetDomain(domain);
   schema.SinceVersion(1);
   schema.AllowUncheckedAttributes();
+
+  if (op->version >= min_ort_version_with_shape_inference) {
+    if (op->InferOutputShapes) {
+      schema.TypeAndShapeInferenceFunction([op](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
+        auto num_inputs = infer_ctx.getNumInputs();
+        for (int i = 0; i < num_inputs; ++i) {
+          const auto* input_type = infer_ctx.getInputType(i);
+          if (input_type) {
+            const auto value_case = input_type->value_case();
+            /*if (value_case != TypeProto::kTensorType && value_case != TypeProto::kSparseTensorType) {
+              fail_type_inference("Attribute expected to have tensor or sparse tensor type");
+            }*/
+            if (value_case == ONNX_NAMESPACE::TypeProto::kTensorType) {
+              // return input_type->tensor_type().shape();
+            } else {
+              // return input_type->sparse_tensor_type().shape();
+            }
+          }
+        }
+      });
+    }
+  }
   return schema;
 }
 

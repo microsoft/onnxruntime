@@ -37,7 +37,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 16
+#define ORT_API_VERSION 17
 
 #ifdef __cplusplus
 extern "C" {
@@ -4504,6 +4504,9 @@ struct OrtCustomOp {
 
   // Perform the computation step.
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
+
+  // Infer outputs type and shapes by inputs
+  void(ORT_API_CALL* InferOutputShapes)();
 };
 
 /*
