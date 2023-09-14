@@ -3,13 +3,13 @@
 
 #pragma once
 
+#include <array>
 #include <unordered_map>
 
 #include "core/common/common.h"
 #include "core/platform/ort_mutex.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tuning_results.h"
-//#include "core/common/gsl.h"
 
 namespace onnxruntime {
 

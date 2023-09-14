@@ -19,7 +19,6 @@ limitations under the License.
 #ifdef _WIN32
 #include <winerror.h>
 #endif
-// #include "core/common/gsl.h"
 namespace onnxruntime {
 namespace common {
 
@@ -121,18 +120,14 @@ class [[nodiscard]] Status {
 
   Status(StatusCategory category, int code);
 
-  // GSL_SUPPRESS(r.11)
-  Status(const Status& other) {
-    state_ = nullptr;
-    if (other.state_ != nullptr) state_ = std::make_unique<State>(*other.state_);
-  }
-  // GSL_SUPPRESS(r.11)
+  Status(const Status& other)
+      : state_((other.state_ == nullptr) ? nullptr : new State(*other.state_)) {}
   Status& operator=(const Status& other) {
     if (state_ != other.state_) {
       if (other.state_ == nullptr) {
         state_.reset();
       } else {
-        state_.reset(std::make_unique<State>(*other.state_).release());
+        state_.reset(new State(*other.state_));
       }
     }
     return *this;
