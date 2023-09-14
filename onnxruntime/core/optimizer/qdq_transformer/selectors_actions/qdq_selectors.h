@@ -311,21 +311,6 @@ class GemmSelector : public BaseSelector {
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
 
-// Input: DQ nodes for input, scale, and B (bias)
-// Output: Q node for output
-class InstanceNormalizationSelector : public BaseSelector {
- public:
-  InstanceNormalizationSelector()
-      : BaseSelector(std::make_unique<InstanceAndLayerNormalizationNodeGroupSelector>()) {}
-};
-
-// DQ nodes for X, W and optionally B, (mean, var not required) -> node -> Q
-class BatchNormalizationSelector : public BaseSelector {
- public:
-  BatchNormalizationSelector(bool int8_allowed = false)
-      : BaseSelector(std::make_unique<BatchNormalizationNodeGroupSelector>(int8_allowed)) {}
-};
-
 }  // namespace QDQ
 }  // namespace onnxruntime
 

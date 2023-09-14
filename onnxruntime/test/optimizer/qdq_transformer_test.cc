@@ -1207,25 +1207,30 @@ TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
   RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(3, 1, 1, use_contrib_qdq);
 }
 
-// Because split isn't one the supported ops, this will stay the same
-TEST(QDQTransformerTests, Split) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis,
-                       bool use_contrib_qdq = false) {
-    auto check_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
-      EXPECT_EQ(op_to_count["Split"], 1);
-      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
-      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
-    };
-    TransformerTester(BuildQDQSplitTestCase<int8_t, int8_t>(input_shape, axis, use_contrib_qdq),
-                      check_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      {12, 18, 19});
+// Runs a test that checks if DQ -> Split -> Q (many) is replaced with just Split.
+template <typename InputQType, typename OutputQType>
+static void RunDropSplitQDQTestCase(const std::vector<int64_t>& input_shape, int64_t axis,
+                                    bool use_contrib_qdq = false) {
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Split"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
   };
-  test_case({6, 18, 54}, 0);
-  test_case({6, 18, 54}, 0, true);  // Use com.microsoft QDQ ops
+  TransformerTester(BuildQDQSplitTestCase<InputQType, OutputQType>(input_shape, axis, use_contrib_qdq),
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    {12, 18, 19});
+}
+
+// Test that DQ -> Split -> Q (many) is replaced with just Split for various quantization types.
+TEST(QDQTransformerTests, Split) {
+  RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0);
+  RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, true);      // Use com.microsoft int8 QDQ ops
+  RunDropSplitQDQTestCase<int16_t, int16_t>({6, 18, 54}, 0, true);    // Use com.microsoft int16 QDQ ops
+  RunDropSplitQDQTestCase<uint16_t, uint16_t>({6, 18, 54}, 0, true);  // Use com.microsoft uint16 QDQ ops
 }
 
 // Because split isn't one the supported ops, this will stay the same
