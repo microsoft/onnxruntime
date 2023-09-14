@@ -50,8 +50,7 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
 # PyTorch and ORT.
 class ONNXExporterTest(unittest.TestCase):
     opset_version = 17
-    # For IR version 3 type export.
-    keep_initializers_as_inputs = True
+    keep_initializers_as_inputs = True  # For IR version 3 type export.
 
     def setUp(self):
         torch.manual_seed(0)
