@@ -564,7 +564,7 @@ def main():
     setattr(args, "target_device", target_device)  # noqa: B010
     setattr(args, "use_fp16", use_fp16)  # noqa: B010
     setattr(args, "has_audio_stream", False)  # noqa: B010
-    setattr(args, "eos_token_id", config.eos_token_id)
+    setattr(args, "eos_token_id", config.eos_token_id)  # noqa: B010
 
     logger.info(f"Forced decoder prompt ids: {args.decoder_input_ids}")
 
