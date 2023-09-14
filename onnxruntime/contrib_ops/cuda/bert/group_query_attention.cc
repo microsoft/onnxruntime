@@ -31,7 +31,7 @@ namespace cuda {
           .InputMemoryType(OrtMemTypeCPUInput, 5), \
       GroupQueryAttention<T>);
 
-// REGISTER_KERNEL_TYPED(float) // TODO(aciddelgado): support regular float?
+// REGISTER_KERNEL_TYPED(float) // TODO(aciddelgado): support regular float later w/o flash?
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
@@ -65,7 +65,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   GroupQueryAttentionParameters parameters;
-  // TODO(aciddelgado): we need to cross check past_sequence_length_ as well
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs<Tensor>(query,
                                                                         key,
                                                                         value,
@@ -86,12 +85,13 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> present_dims{
-      parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
-  TensorShape present_shape(present_dims);
   // TODO(aciddelgado): we need to inplace present and past, as in they need to point to same place
-  Tensor* present_key = context->Output(1, present_shape);
-  Tensor* present_value = context->Output(2, present_shape);
+  // std::vector<int64_t> present_dims{
+  //     parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
+  // TensorShape present_shape(present_dims);
+  // Tensor* present_key = context->Output(1, present_shape);
+  // Tensor* present_value = context->Output(2, present_shape);
+
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
                              onnxruntime::flash::is_supported(device_prop,
@@ -102,24 +102,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_flash_attention = false;
 #endif
 
-  // constexpr size_t element_size = sizeof(T);
-  // size_t workspace_bytes = GetAttentionWorkspaceSize(element_size,
-  //                                                   parameters.batch_size,
-  //                                                   parameters.num_heads,
-  //                                                   parameters.kv_num_heads,
-  //                                                   parameters.head_size,
-  //                                                   parameters.sequence_length,
-  //                                                   parameters.kv_sequence_length,
-  //                                                   parameters.total_sequence_length,
-  //                                                   use_flash_attention);
-  // auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
-
-  // TODO(aciddelgado): what are these temp work space and i should probably remove
-  // const size_t past_kv_bytes = element_size * parameters.batch_size * parameters.past_sequence_length * parameters.kv_num_heads * parameters.head_size;
-  // const bool use_temp_k_v_workspace = use_flash_attention;
-  // auto temp_k_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_kv_bytes, context->GetComputeStream()) : nullptr;
-  // auto temp_v_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_kv_bytes, context->GetComputeStream()) : nullptr;
-
   typedef typename ToCudaType<T>::MappedType CudaT;
   GroupQueryAttentionData<CudaT> data;
 
@@ -128,7 +110,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
 
   // split kv buffers
-  // TODO(aciddelgado): should we restructure the inputs of the node to reflect the flash api, eg past_key vs key vs key_cache?
   // TODO(aciddelgado): restructure these functions so they take parameters as input rather than individual numbers
   parameters.num_splits = onnxruntime::flash::num_splits_heuristic(
       parameters.batch_size, parameters.sequence_length, parameters.max_sequence_length, parameters.num_heads,
@@ -166,14 +147,13 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.past_key = (nullptr == past_key) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
   data.past_value = (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.has_qkv_workspace = true;
-  // data.workspace = reinterpret_cast<CudaT*>(work_space.get());
-  // data.temp_k_workspace = use_temp_k_v_workspace ? reinterpret_cast<CudaT*>(temp_k_work_space.get()) : nullptr;
-  // data.temp_v_workspace = use_temp_k_v_workspace ? reinterpret_cast<CudaT*>(temp_v_work_space.get()) : nullptr;
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = nullptr;
   // TODO(aciddelgado): present should point to past...
-  data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
-  data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+  // data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
+  // data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+  data.present_key = nullptr;
+  data.present_value = nullptr;
   data.use_flash_attention = use_flash_attention;
 
   cublasHandle_t cublas = GetCublasHandle(context);

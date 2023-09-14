@@ -11,7 +11,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace group_query_attention_helper {
 
-// TODO(aciddelgado): double-check sequence lengths here, especially since we are using both cache and not cache api
 template <typename T>
 Status CheckInputs(const T* query,
                    const T* key,
@@ -148,9 +147,6 @@ Status CheckInputs(const T* query,
                                "Missing key tensor.");
   }
 
-  // TODO(aciddelgado): what is this note referring to/do I support?
-  // NOTE: In Cross-Attention, we pass the past key and value to 'key' and 'value' instead of 'past_key' and 'past_value'.
-  // bool pass_past_in_kv = false;
   if (value != nullptr) {
     const auto& value_dims = value->Shape().GetDims();
     if (value_dims.size() != 3) {
@@ -184,7 +180,6 @@ Status CheckInputs(const T* query,
   }
   past_sequence_length = *((*past_seq_len).template Data<int32_t>());
 
-  // TODO(aciddelgado): hay que cuadrar total vs max vs past, pero me parece que esto puede estar bien
   int total_sequence_length = past_sequence_length + kv_sequence_length;
   // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
   if (parameters != nullptr) {
@@ -201,7 +196,6 @@ Status CheckInputs(const T* query,
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->is_unidirectional = true;
-    output_parameters->do_rotary = false; // TODO(aciddelgado): huh?
     output_parameters->scale = scale;
     output_parameters->qkv_format = qkv_format;
   }

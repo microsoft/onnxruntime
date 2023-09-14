@@ -51,8 +51,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                float softmax_scale,
                bool is_causal,
                int num_splits=0,
-               void* softmax_lse_accum=nullptr, // TODO(aciddelgado): size
-               void* out_accum=nullptr // TODO(aciddelgado): size
+               void* softmax_lse_accum, // num_splits x batch_size x seqlen_q x num_heads
+               void* out_accum // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
                );
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
@@ -93,11 +93,9 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                 const float softmax_scale,
                 bool is_causal,
                 int num_splits=0,
-                void* softmax_lse_accum=nullptr,  // TODO(aciddelgado): size
-               void* out_accum=nullptr  // TODO(aciddelgado): size
+               void* softmax_lse_accum, // num_splits x batch_size x seqlen_q x num_heads
+               void* out_accum // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
                 );
-
-// TODO(aciddelgado): accum buffer size functions
 
 size_t get_softmax_lse_size(int max_seqlen_q, int batch_size, int num_heads);
 size_t get_softmax_lse_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q);

@@ -96,7 +96,6 @@ struct GroupQueryAttentionParameters {
   int kv_hidden_size;         // hidden size of K or V
   int kv_num_heads;           // number of heads for K or V
   bool is_unidirectional;     // causal
-  bool do_rotary;
   float scale;
   int num_splits;
   AttentionQkvFormat qkv_format;

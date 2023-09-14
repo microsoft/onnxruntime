@@ -93,6 +93,7 @@ void set_params_fprop(Flash_fwd_params& params,
   params.is_seqlens_k_cumulative = true;
 }
 
+// TODO(aciddelgado): sizeof(float) or float16?
 size_t get_softmax_lse_size(int seqlen, int batch_size, int num_heads) {
   size_t bytes = sizeof(float) * batch_size * num_heads * seqlen;
   return bytes;
@@ -185,8 +186,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                float softmax_scale,
                bool is_causal,
                int num_splits,
-               void* softmax_lse_accum, // TODO(aciddelgado): size
-               void* out_accum // TODO(aciddelgado): size
+               void* softmax_lse_accum, // num_splits x batch_size x seqlen_q x num_heads
+               void* out_accum // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
                ) {
 
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
@@ -289,8 +290,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                 const float softmax_scale,
                 bool is_causal,
                 int num_splits,
-                void* softmax_lse_accum,  // TODO(aciddelgado): size
-               void* out_accum  // TODO(aciddelgado): size
+               void* softmax_lse_accum, // num_splits x batch_size x seqlen_q x num_heads
+               void* out_accum // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
                 ) {
     if (seqlen_q == 1) { is_causal = false; }  // causal=true is the same as causal=false in this case
 
