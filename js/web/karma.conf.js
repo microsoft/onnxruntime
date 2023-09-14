@@ -3,10 +3,22 @@
 
 'use strict';
 
-const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
-const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
-const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
-const forceLocalHost = !!require('minimist')(process.argv)['force-localhost'];
+const args = require('minimist')(process.argv, {});
+const bundleMode = args['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
+const karmaPlugins = args['karma-plugins'] || undefined;
+const timeoutMocha = args['timeout-mocha'] || 60000;
+const forceLocalHost = !!args['force-localhost'];
+
+// parse chromium flags
+let chromiumFlags = args['chromium-flags'];
+if (!chromiumFlags) {
+  chromiumFlags = [];
+} else if (typeof chromiumFlags === 'string') {
+  chromiumFlags = [chromiumFlags];
+} else if (!Array.isArray(chromiumFlags)) {
+  throw new Error(`Invalid command line arg: --chromium-flags: ${chromiumFlags}`);
+}
+
 const commonFile = bundleMode === 'dev' ? '../common/dist/ort-common.js' : '../common/dist/ort-common.min.js'
 const mainFile = bundleMode === 'dev' ? 'test/ort.dev.js' : 'test/ort.perf.js';
 
@@ -91,37 +103,10 @@ module.exports = function(config) {
     listenAddress,
     customLaunchers: {
       // the following flags are used to make sure Edge on CI agents to initialize WebGPU correctly.
-      EdgeWebGpuTest: {base: 'Edge', flags: ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de']},
-      ChromeTest: {base: 'Chrome', flags: ['--enable-features=SharedArrayBuffer']},
-      ChromeTestHeadless: {base: 'ChromeHeadless', flags: ['--enable-features=SharedArrayBuffer']},
-      ChromeDebug:
-          {debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer']},
-      ChromeCanaryTest: {
-        base: 'ChromeCanary',
-        flags: ['--enable-features=SharedArrayBuffer', '--enable-experimental-web-platform-features']
-      },
-      ChromeCanaryDebug: {
-        debug: true,
-        base: 'ChromeCanary',
-        flags: [
-          '--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer',
-          '--enable-experimental-web-platform-features'
-        ]
-      },
-      ChromeWebGpuProfileTest: {
-        base: 'Chrome',
-        flags:
-            ['--window-size=1,1', '--enable-features=SharedArrayBuffer', '--disable-dawn-features=disallow_unsafe_apis']
-      },
-      ChromeWebGpuProfileDebug: {
-        debug: true,
-        base: 'Chrome',
-        flags: [
-          '--remote-debugging-port=9333',
-          '--enable-features=SharedArrayBuffer',
-          '--disable-dawn-features=disallow_unsafe_apis',
-        ]
-      },
+      EdgeTest: {base: 'Edge', flags: chromiumFlags},
+      ChromeTest: {base: 'Chrome', flags: chromiumFlags},
+      ChromeTestHeadless: {base: 'ChromeHeadless', flags: chromiumFlags},
+      ChromeCanaryTest: {base: 'ChromeCanary', flags: chromiumFlags},
       //
       // ==== BrowserStack browsers ====
       //
