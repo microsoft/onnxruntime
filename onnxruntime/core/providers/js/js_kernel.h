@@ -11,6 +11,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/js/js_execution_provider.h"
+#include "core/providers/js/js_data_types.h"
 
 struct pthreadpool;
 
