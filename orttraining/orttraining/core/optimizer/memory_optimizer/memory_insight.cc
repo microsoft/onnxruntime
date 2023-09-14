@@ -12,12 +12,17 @@
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
+// Placeholder string for table row separator, which is used to be replaced by table row separator finally.
 static const std::string kTableRowSeparator = "TABLE_SEPARATOR_PLACEHOLDER";
+// Placeholder string for table border, which is used to be replaced by table border finally.
 static const std::string kTableBorder = "TABLE_BORDER_PLACEHOLDER";
-constexpr const int kFirstColumnWidth = 7;
-constexpr const int kTitleWidth = 15;
 
-Status FindORTModuleMemoryOpportunity(const Graph& graph,
+// The max length of the first column in the table.
+constexpr const int kFirstColumnWidth = 7;
+// The max length of left part (e.g. title) in the second column.
+constexpr const int kTitleWidthInSecondColumn = 15;
+
+Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       const ProbeLevel probe_level,
                                       const logging::Logger& logger,
                                       InlinedHashMap<NodeIndex, ptrdiff_t>&
@@ -26,20 +31,20 @@ Status FindORTModuleMemoryOpportunity(const Graph& graph,
                                       InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                           candidate_output_args_map,
                                       MemoryOptimizationPlanner& memory_opt_planner) {
-  GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
   // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
   yield_op_order_in_topological_sort = -1;
   for (size_t i = 0; i < node_ids.size(); ++i) {
-    const Node* p_node = graph.GetNode(node_ids[i]);
+    const Node* p_node = graph_viewer.GetNode(node_ids[i]);
     if (p_node == nullptr) { /* skip removed nodes*/
       continue;
     }
 
     if (p_node->OpType() == "YieldOp") {
       if (yield_op_order_in_topological_sort != -1) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "There are multiple YieldOps in the graph.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "There are multiple YieldOps in the graph, node: ",
+                               p_node->Name(), " is the second one.");
       }
       yield_op_order_in_topological_sort = static_cast<ptrdiff_t>(i);
     }
@@ -50,7 +55,7 @@ Status FindORTModuleMemoryOpportunity(const Graph& graph,
   InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
 
   InlinedHashMap<const Node*, bool> is_forward_nodes;
-  ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph,
+  ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph_viewer,
                                                      yield_op_order_in_topological_sort,
                                                      fw_op_output_arg_used_map,
                                                      candidate_output_args_map,
@@ -59,7 +64,7 @@ Status FindORTModuleMemoryOpportunity(const Graph& graph,
 
   // The first pass - find the candidate subgraphs.
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
-    const Node* p_node = graph.GetNode(node_ids[i]);
+    const Node* p_node = graph_viewer.GetNode(node_ids[i]);
     if (p_node == nullptr) {
       continue;
     }
@@ -111,23 +116,24 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
     const auto& node_plans = node_to_optimization_plan.second;
     const std::string node_cluster_id = memory_opt_planner.GenerateNodeClusterId(node);
 
-    bool already_exist = records.find(node_cluster_id) != records.end();
-
-    auto& record = records[node_cluster_id];
+    auto record_it = records.find(node_cluster_id);
+    bool already_exist = record_it != records.end();
+    auto& record = record_it->second;
     record.freq++;
 
     // Collect more information for display.
     for (auto& plan : node_plans) {
-      // Same cluster id, plans might still have different reuse_buffer pattern, so we need to collect all of them.
+      // Same node cluster id, plans might still have different reuse_buffer pattern, so we need to collect all of them.
       if (plan->reuse_buffers.size() > 0) {
-        const InlinedVector<size_t> output_indices = plan->GetActivationOutputIndices();
+        gsl::span<const size_t> output_indices = plan->GetActivationOutputIndices();
         for (auto output_index : output_indices) {
+          bool is_output_reusing_buffers = plan->reuse_buffers.find(output_index) != plan->reuse_buffers.end();
           if (plan->GetOptimizationType() == OptimizationType::RecomputeWithCompromise) {
-            if (plan->reuse_buffers.find(output_index) != plan->reuse_buffers.end()) {
+            if (is_output_reusing_buffers) {
               record.output_port_reuse_recompute_with_compromise_count[output_index] += 1;
             }
           } else if (plan->GetOptimizationType() == OptimizationType::Recompute) {
-            if (plan->reuse_buffers.find(output_index) != plan->reuse_buffers.end()) {
+            if (is_output_reusing_buffers) {
               record.output_port_reuse_recompute_count[output_index] += 1;
             }
           }
@@ -146,7 +152,7 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
         record.recompute_subgraph_str = dynamic_cast<NodeRecomputePlan*>(plan.get())->GetNodesInTopoOrderStr();
       }
 
-      const InlinedVector<size_t> output_indices = plan->GetActivationOutputIndices();
+      gsl::span<const size_t> output_indices = plan->GetActivationOutputIndices();
       for (auto output_index : output_indices) {
         const auto& output_def = node->OutputDefs()[output_index];
         MLDataType ml_data_type = DataTypeImpl::TypeFromProto(*output_def->TypeAsProto());
@@ -162,7 +168,7 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
               output_index,
               GetTensorElemCountInSymbolicString(node, output_index),
               byte_count_per_element,
-              dynamic_cast<NodeRecomputePlan*>(plan.get())->GetSaveRatio());
+              plan->GetSaveRatio());
 
         } else if (plan->GetOptimizationType() == OptimizationType::Recompute) {
           record.recomputed_outputs.emplace_back(output_index,
@@ -407,18 +413,18 @@ void FormatRecomputeMemoryRecords(int option_index,
 
   rows.push_back(empty_first_col);
   rows.push_back(empty_first_col +
-                 ToFixedLengthString(">>Option " + std::to_string(option_index), kTitleWidth) + ": " +
+                 ToFixedLengthString(">>Option " + std::to_string(option_index), kTitleWidthInSecondColumn) + ": " +
                  OptimizationTypeToString(opt_type) + " subgraph " + subgraph_str);
 
   if (request_count) {
     // Only show this if user requested it.
     rows.push_back(
         empty_first_col +
-        ToFixedLengthString("  Status", kTitleWidth) + ": " + "Enabled, requested count=" +
+        ToFixedLengthString("  Status", kTitleWidthInSecondColumn) + ": " + "Enabled, requested count=" +
         std::to_string(request_count) +
         ", actual applied count=" + std::to_string(actual_count));
   } else {
-    rows.push_back(empty_first_col + ToFixedLengthString("  Status", kTitleWidth) +
+    rows.push_back(empty_first_col + ToFixedLengthString("  Status", kTitleWidthInSecondColumn) +
                    ": Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=" +
                    subgraph_str + ":" + std::to_string(static_cast<int>(opt_type)) + ":-1");
   }
@@ -429,7 +435,7 @@ void FormatRecomputeMemoryRecords(int option_index,
   const auto& reused_buffers = compromise_recompute ? record.output_port_reuse_recompute_with_compromise_count
                                                     : record.output_port_reuse_recompute_count;
   if (reused_buffers.size() > 0) {
-    std::string reused_buffers_summary = empty_first_col + ToFixedLengthString("   - ReuseFreq", kTitleWidth) + ": ";
+    std::string reused_buffers_summary = empty_first_col + ToFixedLengthString("   - ReuseFreq", kTitleWidthInSecondColumn) + ": ";
     for (const auto& p : reused_buffers) {
       reused_buffers_summary += " Output " + std::to_string(p.first) + "(" + std::to_string(p.second) + "),";
     }
@@ -451,7 +457,7 @@ void FormatRecomputeMemoryRecords(int option_index,
       std::tie(output_port, shape_str, bytes_per_element) = record.recomputed_outputs[i];
     }
 
-    rows.push_back(empty_first_col + ToFixedLengthString("   - Output " + std::to_string(output_port), kTitleWidth) +
+    rows.push_back(empty_first_col + ToFixedLengthString("   - Output " + std::to_string(output_port), kTitleWidthInSecondColumn) +
                    ": [" + shape_str + "], byte/elem: " + std::to_string(bytes_per_element) +
                    ", " + std::to_string(static_cast<int>(save_ratio * 100)) + "% saved");
   }
@@ -460,7 +466,7 @@ void FormatRecomputeMemoryRecords(int option_index,
 
 std::string SerializeMemoryRecords(
     const std::vector<std::pair<std::string, MemoryRecord>>& records_grouped_by_node_cluster_id,
-    const std::string user_config) {
+    std::string_view user_config) {
   InlinedVector<std::string> rows;
   rows.push_back(kTableBorder);
   rows.push_back("|" + ToFixedLengthString("Freq", kFirstColumnWidth) +
@@ -518,7 +524,7 @@ std::string SerializeMemoryRecords(
   std::string table_border_full(max_length, '=');
   std::ostringstream summary;
   summary << std::endl;
-  summary << "MemoryInsight Summary - User config: " + (user_config.empty() ? "not provided" : user_config)
+  summary << MakeString("MemoryInsight Summary - User config: ", (user_config.empty() ? "not provided" : user_config))
           << std::endl;
   for (auto& row : rows) {
     if (row == kTableRowSeparator) {
@@ -535,9 +541,9 @@ std::string SerializeMemoryRecords(
   return summary.str();
 }
 
-std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
-                                             const std::string& memory_optimization_config,
-                                             const std::string recompute_probe_level,
+std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
+                                             std::string_view memory_optimization_config,
+                                             std::string_view recompute_probe_level,
                                              const logging::Logger& logger,
                                              std::map<std::string, std::pair<std::string, int>>&
                                                  cluster_id_combinations_to_saved_symbolic_byte_map,
@@ -559,7 +565,7 @@ std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
   // The first pass - find the candidate subgraphs.
   MemoryOptimizationPlanner memory_opt_planner;
   ORT_ENFORCE(FindORTModuleMemoryOpportunity(
-                  graph,
+                  graph_viewer,
                   probe_level,
                   logger,
                   node_index_to_its_order_in_topological_sort_map,
@@ -584,7 +590,7 @@ std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
                     .IsOK());
   }
 
-  ORT_ENFORCE(memory_opt_planner.UpdateNodePlansFromExecutionPlan(graph, ortvalue_name_to_idx_map,
+  ORT_ENFORCE(memory_opt_planner.UpdateNodePlansFromExecutionPlan(graph_viewer, ortvalue_name_to_idx_map,
                                                                   p_seq_exec_plan)
                   .IsOK());
 

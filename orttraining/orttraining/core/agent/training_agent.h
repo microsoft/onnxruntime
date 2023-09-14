@@ -5,6 +5,9 @@
 
 #include <thread>
 #include <future>
+#include <map>
+#include <utility>
+#include <string>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -46,8 +49,8 @@ class TrainingAgent {
                                               const std::vector<OrtDevice>& outputs_device_info,
                                               std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
 
-  std::string GetSerializedORTModuleMemoryStat(const std::string& memory_optimization_config,
-                                               const std::string& recompute_probe_level,
+  std::string GetSerializedORTModuleMemoryStat(std::string_view memory_optimization_config,
+                                               std::string_view recompute_probe_level,
                                                std::map<std::string, std::pair<std::string, int>>&
                                                    cluster_id_combinations_to_saved_symbolic_byte_map) const;
 

@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/common/inlined_containers.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
@@ -43,7 +42,7 @@ class MemoryRecord {
 /**
  * @brief Iterate the graph and find all possible memory optimization opportunities for related nodes.
  *
- * @param graph  The graph to iterate.
+ * @param graph_viewer  The graph to iterate.
  * @param probe_level The level to control allowed operations during recomputable subgraph detecting.
  * @param logger Logger.
  * @param node_index_to_its_order_in_topological_sort_map  The mapping of node index to its order in topological sort.
@@ -52,7 +51,7 @@ class MemoryRecord {
  * @param mem_opt_stats  A store to maintain all found optimization plans for related nodes.
  * @return Status
  */
-Status FindORTModuleMemoryOpportunity(const Graph& graph,
+Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       const ProbeLevel probe_level,
                                       const logging::Logger& logger,
                                       InlinedHashMap<NodeIndex, ptrdiff_t>&
@@ -79,19 +78,19 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
  * @brief Serialize the memory optimization statistics table to a string.
  *
  * @param records_grouped_by_node_cluster_id The memory optimization statistics table.
- * @param user_config Optional. If provided, we will append the user configuration to the serialized string.
+ * @param user_config The user configuration to the serialized string.
  * @return std::string
  */
 std::string SerializeMemoryRecords(const std::vector<std::pair<std::string, MemoryRecord>>&
                                        records_grouped_by_node_cluster_id,
-                                   const std::string user_config = "");
+                                   std::string_view user_config);
 
 /**
  * @brief A public API exposed to retrieve the memory optimization statistics table, given a graph.
  *
  * If possible, session's allocation plans and execution plan will also be available to help the analysis.
  *
- * @param graph The graph to analyze.
+ * @param graph_viewer The graph to analyze.
  * @param memory_optimization_config The user configuration to control the memory optimization.
  * @param recompute_probe_level The level to control allowed operations during recomputable subgraph detecting.
  * @param logger Logger.
@@ -99,9 +98,9 @@ std::string SerializeMemoryRecords(const std::vector<std::pair<std::string, Memo
  * @param p_seq_exec_plan Optional. If provided, we will use it to get allocation plans.
  * @return std::string
  */
-std::string GetSerializedORTModuleMemoryStat(const Graph& graph,
-                                             const std::string& memory_optimization_config,
-                                             const std::string recompute_probe_level,
+std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
+                                             std::string_view memory_optimization_config,
+                                             std::string_view recompute_probe_level,
                                              const logging::Logger& logger,
                                              std::map<std::string, std::pair<std::string, int>>&
                                                  cluster_id_combinations_to_saved_symbolic_byte_map,

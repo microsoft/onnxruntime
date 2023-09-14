@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/common/inlined_containers.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/sequential_execution_plan.h"
@@ -23,7 +22,7 @@ class MemoryOptimizationPlanner {
     node_to_optimization_plans_map[node].emplace_back(plan);
   }
 
-  Status UpdateNodePlansFromExecutionPlan(const Graph& graph,
+  Status UpdateNodePlansFromExecutionPlan(const GraphViewer& graph_viewer,
                                           const OrtValueNameIdxMap& ortvalue_name_to_idx_map,
                                           const SequentialExecutionPlan& p_seq_exec_plan);
 

@@ -11,7 +11,7 @@
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
-Status MemoryOptimizationPlanner::UpdateNodePlansFromExecutionPlan(const Graph& graph,
+Status MemoryOptimizationPlanner::UpdateNodePlansFromExecutionPlan(const GraphViewer& graph_viewer,
                                                                    const OrtValueNameIdxMap& ortvalue_name_to_idx_map,
                                                                    const SequentialExecutionPlan& p_seq_exec_plan) {
   InlinedHashMap<int, std::string> idx_to_ortvalue_name_map;
@@ -39,7 +39,7 @@ Status MemoryOptimizationPlanner::UpdateNodePlansFromExecutionPlan(const Graph& 
         int reused_ort_value_idx = per_alloc_plan.reused_buffer;
         const auto& reused_ort_value_name = idx_to_ortvalue_name_map.at(reused_ort_value_idx);
 
-        const Node* p_node = graph.GetProducerNode(reused_ort_value_name);
+        const Node* p_node = graph_viewer.GetProducerNode(reused_ort_value_name);
         ORT_ENFORCE(p_node != nullptr);
         int src_op_output_index = optimizer_utils::IndexOfNodeOutput(*p_node, *node_arg);
         node_plan->reuse_buffers[output_index] = std::make_pair(p_node, src_op_output_index);

@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include "core/common/inlined_containers.h"
-
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {

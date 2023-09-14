@@ -1,6 +1,10 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <map>
+#include <utility>
+#include <string>
+
 #include "orttraining/core/agent/training_agent.h"
 #include "core/framework/utils.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -91,7 +95,8 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
                                                            const std::vector<std::string>& feed_names,
                                                            const std::vector<std::string>& fetches_names,
                                                            const std::vector<OrtDevice>& outputs_device_info,
-                                                           std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager) {
+                                                           std::unique_ptr<FeedsFetchesManager>&
+                                                               feeds_fetches_manager) {
   ORT_THROW_IF_ERROR(FeedsFetchesManager::Create(feed_names, fetches_names, session_state.GetOrtValueNameIdxMap(),
                                                  feeds_fetches_manager));
   auto& fetch_info = feeds_fetches_manager->GetMutableFetchesDeviceCopyInfo();
@@ -102,16 +107,16 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
   ORT_ENFORCE(utils::InitializeFeedFetchCopyInfo(session_state, *feeds_fetches_manager) == Status::OK());
 }
 
-std::string TrainingAgent::GetSerializedORTModuleMemoryStat(const std::string& memory_optimization_config,
-                                                            const std::string& recompute_probe_level,
+std::string TrainingAgent::GetSerializedORTModuleMemoryStat(std::string_view memory_optimization_config,
+                                                            std::string_view recompute_probe_level,
                                                             std::map<std::string, std::pair<std::string, int>>&
-                                                                cluster_id_combinations_to_saved_symbolic_byte_map) const {
+                                                                cluster_id_combinations_to_saved_symbolic_byte_map)
+    const {
   auto& session_state = inference_session_.GetSessionState();
-  const Graph& graph = session_state.GetGraphViewer().GetGraph();
   const OrtValueNameIdxMap& ortvalue_name_to_idx_map = session_state.GetOrtValueNameIdxMap();
   const SequentialExecutionPlan& p_seq_exec_plan = *session_state.GetExecutionPlan();
   return optimizer::memory_optimizer::GetSerializedORTModuleMemoryStat(
-      graph,
+      session_state.GetGraphViewer(),
       memory_optimization_config,
       recompute_probe_level,
       *inference_session_.GetLogger(),

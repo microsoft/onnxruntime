@@ -9,14 +9,10 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/common/inlined_containers.h"
-#include "core/common/const_pointer_container.h"
-#include "core/common/status.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/graph/basic_types.h"
-#include "core/graph/constants.h"
-#include "core/graph/graph_nodes.h"
-#include "core/graph/graph.h"
 #include "core/framework/data_types.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
@@ -65,7 +61,7 @@ struct UserConfig {
 /**
  * @brief Find all stashed activations, e.g. activations used by forward operators and backward operators.
  *
- * @param graph Graph to iterate.
+ * @param graph_viewer Graph to iterate.
  * @param boundary_op_order_in_topological_sort The order of the boundary op in the topological sort.
  * @param fw_op_output_arg_used_map Activation usage mapping.
  * @param candidate_output_args_map Candidate activations, which are consumed by both fw and bw ops.
@@ -73,7 +69,7 @@ struct UserConfig {
  * @param logger Logger.
  * @return Status
  */
-Status GetStashedActivationCandidates(const Graph& graph,
+Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
                                       const ptrdiff_t boundary_op_order_in_topological_sort,
                                       InlinedHashMap<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map,
                                       InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map,
@@ -87,7 +83,7 @@ Status GetStashedActivationCandidates(const Graph& graph,
  * @param subgraph_string_representation Returns subgraph string representation.
  * @param log_info Returns log info for users.
  */
-void NodesInTopoOrderToString(const InlinedVector<const Node*>& nodes_in_topological_order,
+void NodesInTopoOrderToString(gsl::span<const Node* const> nodes_in_topological_order,
                               std::string& subgraph_string_representation,
                               std::string& log_info);
 
@@ -100,8 +96,6 @@ class ClusterApplyContext {
  public:
   ClusterApplyContext() = default;
 
-  // virtual ~ClusterApplyContext() = default;
-
   OptimizationType type;
   int requested_count{0};
   int total_frequency{0};  // The occurrence of this subgraph pattern in the graph.
@@ -110,12 +104,18 @@ class ClusterApplyContext {
   int skip_count{0};     // The number of times this subgraph instance has been skipped in reversed topological order.
 };
 
+/**
+ * @brief Base class for a concrete optimization plan.
+ *
+ */
 class NodeOptimizationPlanBase {
  public:
   NodeOptimizationPlanBase(const Node* node,
-                           const InlinedVector<size_t>& activation_output_indices,
+                           gsl::span<const size_t> activation_output_indices,
                            float save_ratio)
-      : node(node), activation_output_indices_(activation_output_indices), save_ratio_(save_ratio) {
+      : node(node),
+        activation_output_indices_(activation_output_indices.begin(), activation_output_indices.end()),
+        save_ratio_(save_ratio) {
   }
 
   virtual ~NodeOptimizationPlanBase() = default;
@@ -124,7 +124,7 @@ class NodeOptimizationPlanBase {
   virtual std::string GetClusterId() const = 0;
   virtual std::string NormalizeForNodeClusterId() const = 0;
 
-  const InlinedVector<size_t>& GetActivationOutputIndices() const { return activation_output_indices_; }
+  gsl::span<const size_t> GetActivationOutputIndices() const { return activation_output_indices_; }
 
   float GetSaveRatio() const { return save_ratio_; }
 
@@ -166,7 +166,7 @@ class NodeOptimizationPlanBase {
 
 int ParseIntValueFromString(std::string_view str);
 
-Status ParseConfigFromString(const std::string memory_optimization_config,
+Status ParseConfigFromString(std::string_view memory_optimization_config,
                              InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map);
 
 }  // namespace onnxruntime::optimizer::memory_optimizer

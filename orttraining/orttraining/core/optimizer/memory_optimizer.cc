@@ -1,7 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <iomanip>
+#include <memory>
+#include <utility>
+#include <string>
+#include <vector>
 
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
@@ -29,8 +34,9 @@ Status MemoryOptimizer::ParseConfigFromString(const std::string& enable_memory_o
                                               const std::string& level) {
   optimizer_config_ = enable_memory_optimizer;
 
-  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseConfigFromString(enable_memory_optimizer,
-                                                                         pattern_subgraph_to_user_optimizer_config_map_));
+  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseConfigFromString(
+      enable_memory_optimizer,
+      pattern_subgraph_to_user_optimizer_config_map_));
 
   int probe_level = optimizer::memory_optimizer::ParseIntValueFromString(level);
   ORT_RETURN_IF_NOT(probe_level < static_cast<int>(optimizer::memory_optimizer::ProbeLevel::LevelMax) &&
@@ -50,7 +56,8 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
                                   ptrdiff_t boundary_op_order_in_topological_sort,
                                   Node* node,
                                   std::shared_ptr<optimizer::memory_optimizer::NodeOptimizationPlanBase>& node_plan,
-                                  std::shared_ptr<optimizer::memory_optimizer::ClusterApplyContext>& apply_context) const {
+                                  std::shared_ptr<optimizer::memory_optimizer::ClusterApplyContext>& apply_context)
+    const {
   bool graph_is_modified = false;
   int skip_count = (apply_context->requested_count == -1)
                        ? 0
@@ -132,9 +139,10 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   InlinedHashMap<NodeIndex, ptrdiff_t> node_index_to_its_order_in_topological_sort_map;
 
   // The first pass - find the candidate subgraphs.
+  GraphViewer graph_viewer(graph);
   optimizer::memory_optimizer::MemoryOptimizationPlanner memory_opt_planner;
   ORT_ENFORCE(optimizer::memory_optimizer::FindORTModuleMemoryOpportunity(
-                  graph,
+                  graph_viewer,
                   recompute_probe_level_,
                   logger,
                   node_index_to_its_order_in_topological_sort_map,
@@ -145,7 +153,8 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 
   // Finalize the plan according to user config,
   // then create a ClusterApplyContext for each unique cluster (having the same node pattern)
-  InlinedHashMap<const Node*, std::shared_ptr<optimizer::memory_optimizer::NodeOptimizationPlanBase>> node_to_opt_plan_map;
+  InlinedHashMap<const Node*, std::shared_ptr<optimizer::memory_optimizer::NodeOptimizationPlanBase>>
+      node_to_opt_plan_map;
   optimizer::memory_optimizer::NodeToClusterApplyContextMap node_to_apply_context_map;
   ORT_ENFORCE(memory_opt_planner.FinalizeNodePlansFromUserConfig(pattern_subgraph_to_user_optimizer_config_map_,
                                                                  node_to_opt_plan_map,
@@ -157,7 +166,6 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // The reason we do reversed topological order is that we want the later layers' recompute nodes can be appended
   // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
   // layers.
-  GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     Node* p_node = graph.GetNode(node_ids[i]);
@@ -184,8 +192,9 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 }
 
 void MemoryOptimizer::PrintSummary(const optimizer::memory_optimizer::MemoryOptimizationPlanner& memory_opt_planner,
-                                   const InlinedHashMap<const Node*,
-                                                        std::shared_ptr<optimizer::memory_optimizer::ClusterApplyContext>>&
+                                   const InlinedHashMap<
+                                       const Node*,
+                                       std::shared_ptr<optimizer::memory_optimizer::ClusterApplyContext>>&
                                        node_to_apply_contexts_map,
                                    const logging::Logger& logger) const {
   std::vector<std::pair<std::string, optimizer::memory_optimizer::MemoryRecord>> records_grouped_by_node_cluster_id;

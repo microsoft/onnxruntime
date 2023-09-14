@@ -25,8 +25,8 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 3. Run the training as usual and redirect all outputs into log file; then stop it after training few steps.
 4. Check the logging file, and search "Summary", you could find something like this:
 	```
-	Memory Optimizer      :   OFF   :   Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>, available configs:
-										Config                                                      Freq    Max Saving(B)   Saving Symbolic(Bytes)
+	Memory Optimizer     :   OFF   :   Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>, available configs:
+	                                   Config                                                      Freq    Max Saving(B)   Saving Symbolic(Bytes)
 	- Plan 1             :   OFF   :   Reshape+Where+BiasSoftmax+:1:-1                             5       671,088,640     640.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
 	- Plan 2             :   OFF   :   Cast+:1:-1                                                  6       402,587,648     inputs_input_ids_dim0*inputs_input_ids_dim1*(384.0*inputs_input_ids_dim1 - 64.0)
 	- Plan 3             :   OFF   :   Reshape+Where+:1:-1                                         1       134,217,728     128.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
@@ -52,8 +52,8 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 	```
 7. Then run the training again, and you will see logs like this:
 	```
-	Memory Optimizer      :   ON    :   User config: Reshape+Where+BiasSoftmax+:1:-1, probe level: 1, available configs:
-										Config                                                      Freq    Max Saving(B)   Saving Symbolic(Bytes)
+	Memory Optimizer     :   ON    :   User config: Reshape+Where+BiasSoftmax+:1:-1, probe level: 1, available configs:
+	                                   Config                                                      Freq    Max Saving(B)   Saving Symbolic(Bytes)
 	- Plan 1             :   ON    :   Reshape+Where+BiasSoftmax+:1:-1                             5       671,088,640     640.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
 	- Plan 2             :   OFF   :   Cast+:1:-1                                                  6       402,587,648     inputs_input_ids_dim0*inputs_input_ids_dim1*(384.0*inputs_input_ids_dim1 - 64.0)
 	- Plan 3             :   OFF   :   Reshape+Where+:1:-1                                         1       134,217,728     128.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2

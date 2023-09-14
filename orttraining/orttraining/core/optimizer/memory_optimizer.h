@@ -68,7 +68,8 @@ class MemoryOptimizer : public GraphTransformer {
    * @return void
    */
   void PrintSummary(const optimizer::memory_optimizer::MemoryOptimizationPlanner& mem_opt_stats,
-                    const InlinedHashMap<const Node*, std::shared_ptr<optimizer::memory_optimizer::ClusterApplyContext>>&
+                    const InlinedHashMap<const Node*,
+                                         std::shared_ptr<optimizer::memory_optimizer::ClusterApplyContext>>&
                         node_to_apply_contexts_map,
                     const logging::Logger& logger) const;
 
