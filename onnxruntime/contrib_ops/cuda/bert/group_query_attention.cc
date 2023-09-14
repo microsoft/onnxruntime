@@ -26,7 +26,9 @@ namespace cuda {
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create()) \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
+          .InputMemoryType(OrtMemTypeCPUInput, 5), \
       GroupQueryAttention<T>);
 
 // REGISTER_KERNEL_TYPED(float) // TODO(aciddelgado): support regular float?
@@ -41,7 +43,6 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0 && num_heads % kv_num_heads == 0);
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
-  past_sequence_length_ = info.GetAttrOrDefault<int64_t>("past_sequence_length", 0);
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -58,8 +59,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
-  const Tensor* past_key = context->Input<Tensor>(6);
-  const Tensor* past_value = context->Input<Tensor>(7);
+  const Tensor* past_key = context->Input<Tensor>(3);
+  const Tensor* past_value = context->Input<Tensor>(4);
+  const Tensor* past_seq_len = context->Input<Tensor>(5);
 
   auto& device_prop = GetDeviceProp();
   GroupQueryAttentionParameters parameters;
@@ -72,7 +74,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                         &parameters,
                                                                         num_heads_,
                                                                         kv_num_heads_,
-                                                                        past_sequence_length_,
+                                                                        past_seq_len,
                                                                         scale_,
                                                                         device_prop.maxThreadsPerBlock));
   parameters.is_unidirectional = is_unidirectional_;
@@ -85,7 +87,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
-      parameters.batch_size, parameters.kv_num_heads, parameters.total_sequence_length, parameters.head_size};
+      parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
   TensorShape present_shape(present_dims);
   // TODO(aciddelgado): we need to inplace present and past, as in they need to point to same place
   Tensor* present_key = context->Output(1, present_shape);
@@ -100,22 +102,23 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_flash_attention = false;
 #endif
 
-  constexpr size_t element_size = sizeof(T);
-  size_t workspace_bytes = GetAttentionWorkspaceSize(element_size,
-                                                    parameters.batch_size,
-                                                    parameters.num_heads,
-                                                    parameters.kv_num_heads,
-                                                    parameters.head_size,
-                                                    parameters.sequence_length,
-                                                    parameters.kv_sequence_length,
-                                                    parameters.total_sequence_length,
-                                                    use_flash_attention);
-  auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
+  // constexpr size_t element_size = sizeof(T);
+  // size_t workspace_bytes = GetAttentionWorkspaceSize(element_size,
+  //                                                   parameters.batch_size,
+  //                                                   parameters.num_heads,
+  //                                                   parameters.kv_num_heads,
+  //                                                   parameters.head_size,
+  //                                                   parameters.sequence_length,
+  //                                                   parameters.kv_sequence_length,
+  //                                                   parameters.total_sequence_length,
+  //                                                   use_flash_attention);
+  // auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
-  const size_t past_kv_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.kv_num_heads * parameters.head_size;
-  const bool use_temp_k_v_workspace = use_flash_attention;
-  auto temp_k_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_kv_bytes, context->GetComputeStream()) : nullptr;
-  auto temp_v_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_kv_bytes, context->GetComputeStream()) : nullptr;
+  // TODO(aciddelgado): what are these temp work space and i should probably remove
+  // const size_t past_kv_bytes = element_size * parameters.batch_size * parameters.past_sequence_length * parameters.kv_num_heads * parameters.head_size;
+  // const bool use_temp_k_v_workspace = use_flash_attention;
+  // auto temp_k_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_kv_bytes, context->GetComputeStream()) : nullptr;
+  // auto temp_v_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_kv_bytes, context->GetComputeStream()) : nullptr;
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   GroupQueryAttentionData<CudaT> data;
@@ -163,9 +166,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.past_key = (nullptr == past_key) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
   data.past_value = (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.has_qkv_workspace = true;
-  data.workspace = reinterpret_cast<CudaT*>(work_space.get());
-  data.temp_k_workspace = use_temp_k_v_workspace ? reinterpret_cast<CudaT*>(temp_k_work_space.get()) : nullptr;
-  data.temp_v_workspace = use_temp_k_v_workspace ? reinterpret_cast<CudaT*>(temp_v_work_space.get()) : nullptr;
+  // data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  // data.temp_k_workspace = use_temp_k_v_workspace ? reinterpret_cast<CudaT*>(temp_k_work_space.get()) : nullptr;
+  // data.temp_v_workspace = use_temp_k_v_workspace ? reinterpret_cast<CudaT*>(temp_v_work_space.get()) : nullptr;
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = nullptr;
   // TODO(aciddelgado): present should point to past...

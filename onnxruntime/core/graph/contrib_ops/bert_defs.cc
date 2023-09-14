@@ -1037,12 +1037,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(3,
                "past_key",
-               "past state for self attention key with shape (batch_size, kv_num_heads, past_sequence_length, head_size)",
+               "past state for self attention key with shape (batch_size, past_sequence_length, kv_num_heads, head_size)",
                "T",
                OpSchema::Optional)
         .Input(4,
                "past_value",
-               "past state for self attention value with shape (batch_size, kv_num_heads, past_sequence_length, head_size)",
+               "past state for self attention value with shape (batch_size, past_sequence_length, kv_num_heads, head_size)",
                "T",
                OpSchema::Optional)
         .Input(5,
@@ -1067,6 +1067,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain past sequence length to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);
         }));

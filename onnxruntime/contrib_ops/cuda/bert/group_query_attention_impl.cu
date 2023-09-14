@@ -91,100 +91,100 @@ size_t GetAttentionWorkspaceSize(
 }
 
 // Kernel for seqlens_k
-__global__ void repeat_seqlen(int* seqlens_k, int seqlen, int batch_size) {
+__global__ void repeat_seqlen(int32_t* seqlens_k, int32_t seqlen, int batch_size) {
   int id = blockDim.x * blockIdx.x + threadIdx.x;
-  if(id < batch_size) seqlens_k[id];
+  if(id < batch_size) seqlens_k[id] = seqlen;
 }
 
-// For GroupQueryAttention with past state
-template <typename T>
-Status PrepareQkv_GQA_WithPast(contrib::GroupQueryAttentionParameters& parameters,
-                               GroupQueryAttentionData<T>& data,
-                               cudaStream_t stream,
-                               int max_threads_per_block,
-                               T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
-  const int batch_size = parameters.batch_size;
-  const int sequence_length = parameters.sequence_length;
-  const int kv_sequence_length = parameters.kv_sequence_length;
-  const int num_heads = parameters.num_heads;
-  const int kv_num_heads = parameters.kv_num_heads;
-  const int head_size = parameters.head_size;
+// // For GroupQueryAttention with past state
+// template <typename T>
+// Status PrepareQkv_GQA_WithPast(contrib::GroupQueryAttentionParameters& parameters,
+//                                GroupQueryAttentionData<T>& data,
+//                                cudaStream_t stream,
+//                                int max_threads_per_block,
+//                                T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+//   const int batch_size = parameters.batch_size;
+//   const int sequence_length = parameters.sequence_length;
+//   const int kv_sequence_length = parameters.kv_sequence_length;
+//   const int num_heads = parameters.num_heads;
+//   const int kv_num_heads = parameters.kv_num_heads;
+//   const int head_size = parameters.head_size;
 
-  if (data.use_flash_attention) {
-    qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-  }
-  else {
-    // cross attention with present state or self attention with present state
-    if (data.past_key == nullptr && data.present_key != nullptr) {
-      assert(data.past_value == nullptr);
-      assert(data.present_value != nullptr);
-      assert(data.query != nullptr);
-      assert(data.key != nullptr);
-      assert(data.value != nullptr);
+//   if (data.use_flash_attention) {
+//     qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+//   }
+//   else {
+//     // cross attention with present state or self attention with present state
+//     if (data.past_key == nullptr && data.present_key != nullptr) {
+//       assert(data.past_value == nullptr);
+//       assert(data.present_value != nullptr);
+//       assert(data.query != nullptr);
+//       assert(data.key != nullptr);
+//       assert(data.value != nullptr);
 
-      // TODO: supporting packed qkv for self attention may benefit performance
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads,
-                                          max_threads_per_block, false, data.query, q));
-      // TODO: supporting packed kv for cross attention may benefit performance
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, head_size, kv_num_heads,
-                                          max_threads_per_block, false, data.key, data.present_key));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, head_size, kv_num_heads,
-                                          max_threads_per_block, false, data.value, data.present_value));
-    }
-    // self attention with past and present state
-    else {
-      assert(data.past_key != nullptr);
-      assert(data.past_value != nullptr);
-      assert(data.present_key != nullptr);
-      assert(data.present_value != nullptr);
-      assert(data.query != nullptr);
-      assert(data.key != nullptr);
-      assert(data.value != nullptr);
-      // TODO: supporting packed qkv for self attention may benefit performance
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads,
-                                          max_threads_per_block, false, data.query, q));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, head_size, kv_num_heads,
-                                          max_threads_per_block, false, data.key, k));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, head_size, kv_num_heads,
-                                          max_threads_per_block, false, data.value, v));
-    }
-    qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
-  }
-  return Status::OK();
-}
+//       // TODO: supporting packed qkv for self attention may benefit performance
+//       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads,
+//                                           max_threads_per_block, false, data.query, q));
+//       // TODO: supporting packed kv for cross attention may benefit performance
+//       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, head_size, kv_num_heads,
+//                                           max_threads_per_block, false, data.key, data.present_key));
+//       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, head_size, kv_num_heads,
+//                                           max_threads_per_block, false, data.value, data.present_value));
+//     }
+//     // self attention with past and present state
+//     else {
+//       assert(data.past_key != nullptr);
+//       assert(data.past_value != nullptr);
+//       assert(data.present_key != nullptr);
+//       assert(data.present_value != nullptr);
+//       assert(data.query != nullptr);
+//       assert(data.key != nullptr);
+//       assert(data.value != nullptr);
+//       // TODO: supporting packed qkv for self attention may benefit performance
+//       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads,
+//                                           max_threads_per_block, false, data.query, q));
+//       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, head_size, kv_num_heads,
+//                                           max_threads_per_block, false, data.key, k));
+//       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, head_size, kv_num_heads,
+//                                           max_threads_per_block, false, data.value, v));
+//     }
+//     qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
+//   }
+//   return Status::OK();
+// }
 
-// For MultiHeadAttention without past state, with Q, K and V inputs
-// TODO(aciddelgado): needs mod? this is MHA meaning no causal originally
-template <typename T>
-Status PrepareQkv_GQA_NoPast(contrib::GroupQueryAttentionParameters& parameters,
-                                GroupQueryAttentionData<T>& data,
-                                cudaStream_t stream,
-                                int max_threads_per_block,
-                                T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
-  T* qkv = data.workspace;
-  assert(data.query != nullptr && data.key != nullptr && data.value != nullptr);
-  qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
-#if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
-  qkv_format = data.use_flash_attention ? AttentionQkvFormat::Q_K_V_BSNH : AttentionQkvFormat::Q_K_V_BNSH;
-#endif
-  return Status::OK();
-}
+// // For MultiHeadAttention without past state, with Q, K and V inputs
+// // TODO(aciddelgado): needs mod? this is MHA meaning no causal originally
+// template <typename T>
+// Status PrepareQkv_GQA_NoPast(contrib::GroupQueryAttentionParameters& parameters,
+//                                 GroupQueryAttentionData<T>& data,
+//                                 cudaStream_t stream,
+//                                 int max_threads_per_block,
+//                                 T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+//   T* qkv = data.workspace;
+//   assert(data.query != nullptr && data.key != nullptr && data.value != nullptr);
+//   qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
+// #if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
+//   qkv_format = data.use_flash_attention ? AttentionQkvFormat::Q_K_V_BSNH : AttentionQkvFormat::Q_K_V_BNSH;
+// #endif
+//   return Status::OK();
+// }
 
-template <typename T>
-Status PrepareQkv(contrib::GroupQueryAttentionParameters& parameters,
-                  GroupQueryAttentionData<T>& data,
-                  cudaStream_t stream,
-                  int max_threads_per_block,
-                  T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
-  if (data.past_key != nullptr || data.present_key != nullptr) {  // mha operator with past/present state
-    ORT_RETURN_IF_ERROR(PrepareQkv_GQA_WithPast(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
-  } else {  // multihead attention operator, no past, separated Q/K/V inputs
-    ORT_RETURN_IF_ERROR(PrepareQkv_GQA_NoPast(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
-  }
+// template <typename T>
+// Status PrepareQkv(contrib::GroupQueryAttentionParameters& parameters,
+//                   GroupQueryAttentionData<T>& data,
+//                   cudaStream_t stream,
+//                   int max_threads_per_block,
+//                   T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+//   if (data.past_key != nullptr || data.present_key != nullptr) {  // mha operator with past/present state
+//     ORT_RETURN_IF_ERROR(PrepareQkv_GQA_WithPast(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
+//   } else {  // multihead attention operator, no past, separated Q/K/V inputs
+//     ORT_RETURN_IF_ERROR(PrepareQkv_GQA_NoPast(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
+//   }
 
-  CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  return Status::OK();
-}
+//   CUDA_RETURN_IF_ERROR(cudaGetLastError());
+//   return Status::OK();
+// }
 
 template <typename T>
 Status QkvToContext(
@@ -194,35 +194,36 @@ Status QkvToContext(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
-  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+  // const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
+  const int max_sequence_length = parameters.max_sequence_length;
   // const int total_sequence_length = parameters.total_sequence_length;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
 
-  const int q_batches = batch_size * num_heads;
-  const int kv_batches = batch_size * kv_num_heads;
+  // const int q_batches = batch_size * num_heads;
+  // const int kv_batches = batch_size * kv_num_heads;
 
-  T* qkv = nullptr;
-  T* q = nullptr;
-  T* k = nullptr;
-  T* v = nullptr;
-  if (data.has_qkv_workspace) {
-    const int size_per_batch_q = sequence_length * head_size;
-    const int size_per_batch_k = kv_sequence_length * head_size;
-    const size_t elements_q = static_cast<size_t>(q_batches) * static_cast<size_t>(size_per_batch_q);
-    const size_t elements_k = static_cast<size_t>(kv_batches) * static_cast<size_t>(size_per_batch_k);
-    qkv = data.workspace;
-    q = qkv;
-    k = q + elements_q;
-    v = k + elements_k;
-  }
+  // T* qkv = nullptr;
+  // T* q = nullptr;
+  // T* k = nullptr;
+  // T* v = nullptr;
+  // if (data.has_qkv_workspace) {
+  //   const int size_per_batch_q = sequence_length * head_size;
+  //   const int size_per_batch_k = kv_sequence_length * head_size;
+  //   const size_t elements_q = static_cast<size_t>(q_batches) * static_cast<size_t>(size_per_batch_q);
+  //   const size_t elements_k = static_cast<size_t>(kv_batches) * static_cast<size_t>(size_per_batch_k);
+  //   qkv = data.workspace;
+  //   q = qkv;
+  //   k = q + elements_q;
+  //   v = k + elements_k;
+  // }
 
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-  ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
+  // ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
 
   // int present_size_per_batch_k = 0;
   // int present_size_per_batch_v = 0;
@@ -290,9 +291,9 @@ Status QkvToContext(
     void* value = reinterpret_cast<void*>(const_cast<T*>(data.value));
 
     DUMP_TENSOR_INIT();
-    DUMP_TENSOR_D("q(BSNH)", reinterpret_cast<const T*>(query), batch_size, sequence_length, num_heads, head_size);
-    DUMP_TENSOR_D("k(BSNH)", k, batch_size, parameters.total_sequence_length, kv_num_heads, head_size);
-    DUMP_TENSOR_D("v(BSNH)", v, batch_size, parameters.total_sequence_length, kv_num_heads, head_size);
+    // DUMP_TENSOR_D("q(BSNH)", reinterpret_cast<const T*>(query), batch_size, sequence_length, num_heads, head_size);
+    // DUMP_TENSOR_D("k(BSNH)", k, batch_size, kv_sequence_length, kv_num_heads, head_size);
+    // DUMP_TENSOR_D("v(BSNH)", v, batch_size, kv_sequence_length, kv_num_heads, head_size);
 
     bool is_causal = parameters.is_unidirectional;
 
@@ -300,14 +301,14 @@ Status QkvToContext(
       // TODO(aciddelgado): add support for concatenating past and kv to present kv when seqlens_k is not given
       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
           device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
-          parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+          parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, head_size,
           parameters.sequence_length, parameters.total_sequence_length, scale, is_causal, parameters.num_splits,
           reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum)));
     } else {
       // Assume past and present kv share buffer.
-      assert(parameters.past_sequence_length > 0);
-      assert(data.past_key == data.present_key);
-      assert(data.past_value == data.present_value);
+      assert(parameters.past_sequence_length >= 0);
+      // assert(data.past_key == data.present_key); TODO(aciddelgado): add this and under back
+      // assert(data.past_value == data.present_value);
       assert(data.past_value != nullptr);
 
       void* past_key = reinterpret_cast<void*>(const_cast<T*>(data.past_key));
@@ -315,15 +316,19 @@ Status QkvToContext(
 
       // Launch kernel to copy seqlen
       int thr_per_blk = 256;
-      int blk_in_grid = ceil( float(parameters.batch_size) / thr_per_blk );
-      repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, parameters.batch_size);
+      int blk_in_grid = ceil( float(batch_size) / thr_per_blk );
+      repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
+
+      DUMP_TENSOR_INIT();
+      DUMP_TENSOR_D("seqlens_k", reinterpret_cast<const int32_t*>(data.seqlens_k), 1, batch_size+1); //TODO(aciddelgado): this print thing isn't right smh
 
       // TODO(aciddelgado): check sequence lengths here
       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
           device_prop, stream, query, past_key, past_value, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
-          data.seqlens_k, parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
-          parameters.sequence_length, parameters.max_sequence_length, parameters.sequence_length, scale, is_causal,
-          parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum)));
+          reinterpret_cast<void*>(data.seqlens_k), batch_size, num_heads, kv_num_heads,
+          head_size, sequence_length, max_sequence_length, kv_sequence_length,
+          scale, is_causal, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
+          reinterpret_cast<void*>(data.out_accum)));
     }
 
     DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);

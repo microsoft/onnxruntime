@@ -21,7 +21,7 @@ Status CheckInputs(const T* query,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   int past_sequence_length,
+                   const T* past_seq_len,
                    float scale) {
   //     past_key                   : (B, S*, N_k, H)
   //     past_value                 : (B, S*, N_k, H)
@@ -78,19 +78,19 @@ Status CheckInputs(const T* query,
                              past_value_dims[0]);
     }
 
-    if (past_key_dims[1] != kv_num_heads) {
+    // TODO(aciddelgado): change if support outside concatenation
+    if (past_key_dims[1] != past_value_dims[1]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' dimension 1 should be same as number of heads, got ",
+                             "Input 'past_key' and 'past_value' should have same dimension 1 (kv sequence length), got ",
                              past_key_dims[1]);
     }
-    if (past_value_dims[1] != kv_num_heads) {
+    if (past_key_dims[2] != kv_num_heads) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' dimension 1 should be same as number of heads, got ",
-                             past_value_dims[1]);
+                             "Input 'past_key' shall have kv_num_heads");
     }
-    if (past_key_dims[2] != past_value_dims[2]) {
+    if (past_value_dims[2] != kv_num_heads) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length)");
+                             "Input 'past_value' shall have kv_num_heads");
     }
     if (past_key_dims[3] != head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -102,7 +102,8 @@ Status CheckInputs(const T* query,
                              "Input 'past_value' dimension 3 should be same as head_size, got ",
                              past_value_dims[3]);
     }
-    max_sequence_length = static_cast<int>(past_key_dims[2]);
+    // We assume all sequence in past kv are left-padded to max sequence length
+    max_sequence_length = static_cast<int>(past_key_dims[1]);
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
@@ -124,29 +125,24 @@ Status CheckInputs(const T* query,
                              "Input 'query' and 'key' shall have same dim 0 (batch size)");
     }
 
-    if (key_dims.size() == 3) {
-      if (num_heads % kv_num_heads != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
-                               num_heads % kv_num_heads);
-      }
-      if (key_dims[2] != value_dims[2]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'key' and 'value' shall have same dim 2 (kv_hidden_size)");
-      }
-
-      qkv_format = Q_K_V_BSNH;
-      kv_sequence_length = static_cast<int>(key_dims[1]);
-    } else {  // key_dims.size() == 4 (cross-attention with past_key)
-      if (static_cast<int>(key_dims[1]) != kv_num_heads || static_cast<int>(key_dims[3]) != head_size) {
-        return ORT_MAKE_STATUS(
-            ONNXRUNTIME, INVALID_ARGUMENT,
-            "Expect 'key' shape (batch_size, kv_num_heads, kv_sequence_length, head_size) for past_key");
-      }
-
-      qkv_format = UNKNOWN;
-      kv_sequence_length = static_cast<int>(key_dims[2]);
+    if (key_dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'key' is expected to have 3 dimensions, got ",
+                             query_dims.size());
     }
+
+    if (num_heads % kv_num_heads != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
+                              num_heads % kv_num_heads);
+    }
+    if (key_dims[2] != value_dims[2]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "Input 'key' and 'value' shall have same dim 2 (kv_hidden_size)");
+    }
+
+    qkv_format = Q_K_V_BSNH;
+    kv_sequence_length = static_cast<int>(key_dims[1]);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Missing key tensor.");
@@ -157,8 +153,8 @@ Status CheckInputs(const T* query,
   // bool pass_past_in_kv = false;
   if (value != nullptr) {
     const auto& value_dims = value->Shape().GetDims();
-    if (value_dims.size() != 3 && value_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 or 4 dimensions, got ",
+    if (value_dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
                              value_dims.size());
     }
 
@@ -167,28 +163,26 @@ Status CheckInputs(const T* query,
                              "Input 'query' and 'value' shall have same dim 0 (batch_size)");
     }
 
-    if (value_dims.size() == 3) {
-      if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
-      }
-    } else {  // value_dims.size() == 4
-      if (static_cast<int64_t>(kv_sequence_length) != value_dims[2]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'past_key' and 'past_value' shall have the same dim 2 (kv_sequence_length)");
-      }
-      // pass_past_in_kv = true;
+    if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
     }
 
-    int v_hidden_size = (value_dims.size() == 3) ? value_dims[2] : value_dims[1] * value_dims[3];
+    int v_hidden_size = value_dims[2];
     if (v_hidden_size != kv_hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
     }
-
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Missing value tensor.");
   }
+
+  int32_t past_sequence_length = 0;
+  if (past_seq_len != nullptr && !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "past_sequence_length tensor must be of one element when using past kv.");
+  }
+  past_sequence_length = *((*past_seq_len).template Data<int32_t>());
 
   // TODO(aciddelgado): hay que cuadrar total vs max vs past, pero me parece que esto puede estar bien
   int total_sequence_length = past_sequence_length + kv_sequence_length;
@@ -224,14 +218,14 @@ Status CheckInputs(const T* query,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   int past_sequence_length_,
+                   const T* past_seq_len,
                    float scale,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, past_sequence_length_, scale);
+  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, past_seq_len, scale);
 }
 
 }  // namespace group_query_attention_helper

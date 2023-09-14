@@ -267,6 +267,8 @@ bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, in
   return (is_sm8x || is_sm90) && (head_size % 8 == 0) && (head_size <= 256) && (num_heads % num_heads_k == 0);
 }
 
+// This API is used when past key and value are present... since cached, these are assumed to have sequence length
+// of max_sequence_length, so seqlen_k == max_sequence_length. The actual past sequence length is held in seqlens_k_.
 Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                cudaStream_t stream,
                void* q,            // batch_size x seqlen_q x num_heads x head_size
