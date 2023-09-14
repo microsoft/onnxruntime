@@ -587,6 +587,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         def _add_record(tbl, columns):
             tbl.add_row([columns[0], ":", "ON" if columns[1] else "OFF", ":", columns[2]])
 
+        notes = []
+
         tbl = PrettyTable()
         tbl.align = "l"
         tbl.hrules = 2  # no horizontal lines
@@ -623,45 +625,46 @@ class GraphExecutionManager(GraphExecutionInterface):
                     if len(self._runtime_options.memory_optimizer_config) > 0
                     else "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>"
                 )
-                + ", available configs:"
-                if output_memory_optimization_details
-                else "",
+                + (", available configs:" if output_memory_optimization_details else ""),
             ],
         )
 
         if self._runtime_inspector.is_memory_inspector_enabled() and output_memory_optimization_details:
-            tbl.add_row(["", "", "", "", f"{'Config':<60}{'Freq':<8}{'Saving(B)':<16}Saving Symbolic(Bytes)"])
+            mem_plan_count = len(self._runtime_inspector.memory_ob.cluster_id_combination_to_saving_symbolics_map)
 
-            index = 1
-            user_configs = self._runtime_options.memory_optimizer_config.split(",")
-            for (
-                cluster_id,
-                saving_symbolic,
-            ) in self._runtime_inspector.memory_ob.cluster_id_combination_to_saving_symbolics_map.items():
-                saving_bytes = saving_symbolic.evaluated_saving
-                if isinstance(saving_bytes, float):
-                    saving_bytes = f"{saving_bytes:,.0f}"
+            if mem_plan_count > 0:
+                tbl.add_row(["", "", "", "", f"{'Config':<60}{'Freq':<8}{'Saving(B)':<16}Saving Symbolic(Bytes)"])
 
-                cluster_ids = cluster_id.split(",")
-                _add_record(
-                    tbl,
-                    [
-                        f" - Plan {index}",
-                        all(cluster_id in user_configs for cluster_id in cluster_ids),
-                        f"{cluster_id:<60}{saving_symbolic.freq:<8}{saving_bytes:<16}{saving_symbolic.simplified_symbolic_saving_expr}",
-                    ],
-                )
-                index += 1
+                index = 1
+                user_configs = self._runtime_options.memory_optimizer_config.split(",")
+                for (
+                    cluster_id,
+                    saving_symbolic,
+                ) in self._runtime_inspector.memory_ob.cluster_id_combination_to_saving_symbolics_map.items():
+                    saving_bytes = saving_symbolic.evaluated_saving
+                    if isinstance(saving_bytes, float):
+                        saving_bytes = f"{saving_bytes:,.0f}"
 
-            saving_recommendation = "\nNote 1: use comma to enable multiple plans at the same time.\n"
-            saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...\n"
+                    cluster_ids = cluster_id.split(",")
+                    _add_record(
+                        tbl,
+                        [
+                            f" - Plan {index}",
+                            all(cluster_id in user_configs for cluster_id in cluster_ids),
+                            f"{cluster_id:<60}{saving_symbolic.freq:<8}{saving_bytes:<16}{saving_symbolic.simplified_symbolic_saving_expr}",
+                        ],
+                    )
+                    index += 1
 
-            saving_recommendation += "Note 2: saving is calculated based on the 1st batch symbolic dim values:"
-            for dim_param, dim_value in self._runtime_inspector.memory_ob.symbolic_dim_name_to_value_map.items():
-                saving_recommendation += f"\n  {dim_param}={dim_value},"
-            saving_recommendation += "\n"
+                saving_recommendation = "use comma to enable multiple memory optimization plans at the same time:\n"
+                saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
 
-            tbl.add_row(["", "", "", "", saving_recommendation])
+                notes.append(saving_recommendation)
+
+                saving_recommendation = "memory saving is calculated based on the 1st batch symbolic dim values:\n"
+                for dim_param, dim_value in self._runtime_inspector.memory_ob.symbolic_dim_name_to_value_map.items():
+                    saving_recommendation += f" {dim_param}={dim_value},"
+                notes.append(saving_recommendation)
 
         _add_record(
             tbl,
@@ -744,7 +747,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Collect ORTModule overheads for different phases.
         stat += f"\n{self.time_tracker.to_string(self._debug_options.logging.log_level < LogLevel.WARNING)}\n"
         stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
-        stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
+
+        # Add notes
+        for index, note in enumerate(notes):
+            stat += f"Note {index + 1}: {note}\n"
+
+        stat += f"\n{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
         self._logger.warning(stat)
 
         if self._runtime_inspector.is_memory_inspector_enabled():
