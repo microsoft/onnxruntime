@@ -21,19 +21,21 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
     return {};
   }
 
+  if (num_elems == 1) {
+    return {min_val};
+  }
+
   std::vector<float> data;
   data.reserve(num_elems);
 
-  const float step_size = (max_val - min_val) / static_cast<float>(num_elems);
+  const float step_size = (max_val - min_val) / static_cast<float>(num_elems - 1);
   float val = min_val;
   for (size_t i = 0; i < num_elems; i++) {
     data.push_back(val);
     val += step_size;
   }
 
-  // Try to ensure that 0.0 and max_val are also included in the array.
-  // If num_elems is less than 3, then not all of min_val, 0, and max_val will be present.
-  data[num_elems / 2] = 0.0f;
+  // Ensure that max_val is included exactly (due to rounding from adding step sizes).
   data[num_elems - 1] = max_val;
 
   return data;

@@ -210,14 +210,12 @@ class FusionAttentionUnet(Fusion):
                 )
 
                 matmul_node_name = self.model.create_node_name("MatMul", name_prefix="MatMul_QKV")
-                weight = helper.make_tensor(
+                self.add_initializer(
                     name=matmul_node_name + "_weight",
                     data_type=TensorProto.FLOAT,
                     dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
-                    vals=qkv_weight.flatten().tolist(),
+                    vals=qkv_weight,
                 )
-
-                self.model.add_initializer(weight, self.this_graph_name)
 
                 matmul_node = helper.make_node(
                     "MatMul",
@@ -227,13 +225,13 @@ class FusionAttentionUnet(Fusion):
                 )
                 self.node_name_to_graph_name[matmul_node.name] = self.this_graph_name
 
-                shape_tensor = helper.make_tensor(
+                self.add_initializer(
                     name=matmul_node_name + "_reshape_shape",
                     data_type=TensorProto.INT64,
                     dims=[5],
                     vals=[0, 0, n, 3, h],
+                    raw=False,
                 )
-                self.model.add_initializer(shape_tensor, self.this_graph_name)
 
                 reshape_node = helper.make_node(
                     "Reshape",
@@ -251,14 +249,12 @@ class FusionAttentionUnet(Fusion):
 
                 attention_node_name = self.model.create_node_name("Attention")
 
-                weight = helper.make_tensor(
+                self.add_initializer(
                     name=attention_node_name + "_qkv_weight",
                     data_type=TensorProto.FLOAT,
                     dims=[qw_in_size, qkv_weight_dim],
-                    vals=qkv_weight.flatten().tolist(),
+                    vals=qkv_weight,
                 )
-
-                self.model.add_initializer(weight, self.this_graph_name)
         else:  # cross attention
             attention_node_name = self.model.create_node_name("MultiHeadAttention")
             if self.enable_packed_kv:
@@ -282,14 +278,12 @@ class FusionAttentionUnet(Fusion):
                 kv_weight = np.dstack([kw.reshape(c, n, h), vw.reshape(c, n, h)]).reshape(c, n * 2 * h)
 
                 matmul_node_name = self.model.create_node_name("MatMul", name_prefix="MatMul_KV")
-                weight = helper.make_tensor(
+                self.add_initializer(
                     name=matmul_node_name + "_weight",
                     data_type=TensorProto.FLOAT,
                     dims=[kv_weight.shape[0], kv_weight.shape[1]],
-                    vals=kv_weight.flatten().tolist(),
+                    vals=kv_weight,
                 )
-
-                self.model.add_initializer(weight, self.this_graph_name)
 
                 matmul_node = helper.make_node(
                     "MatMul",
@@ -299,13 +293,13 @@ class FusionAttentionUnet(Fusion):
                 )
                 self.node_name_to_graph_name[matmul_node.name] = self.this_graph_name
 
-                shape_tensor = helper.make_tensor(
+                self.add_initializer(
                     name=matmul_node_name + "_reshape_shape",
                     data_type=TensorProto.INT64,
                     dims=[5],
                     vals=[0, 0, n, 2, h],
+                    raw=False,
                 )
-                self.model.add_initializer(shape_tensor, self.this_graph_name)
 
                 reshape_node = helper.make_node(
                     "Reshape",
@@ -321,13 +315,12 @@ class FusionAttentionUnet(Fusion):
         qkv_bias = np.zeros([3, hidden_size], dtype=np.float32)
         qkv_bias_dim = 3 * hidden_size
 
-        bias = helper.make_tensor(
+        self.add_initializer(
             name=attention_node_name + "_qkv_bias",
             data_type=TensorProto.FLOAT,
             dims=[qkv_bias_dim],
-            vals=qkv_bias.flatten().tolist(),
+            vals=qkv_bias,
         )
-        self.model.add_initializer(bias, self.this_graph_name)
 
         if is_self_attention:
             if not self.enable_packed_qkv:
@@ -519,14 +512,12 @@ class FusionAttentionUnet(Fusion):
                 )
 
                 matmul_node_name = self.model.create_node_name("MatMul", name_prefix="MatMul_QKV")
-                weight = helper.make_tensor(
+                self.add_initializer(
                     name=matmul_node_name + "_weight",
                     data_type=TensorProto.FLOAT,
                     dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
-                    vals=qkv_weight.flatten().tolist(),
+                    vals=qkv_weight,
                 )
-
-                self.model.add_initializer(weight, self.this_graph_name)
 
                 matmul_node = helper.make_node(
                     "MatMul",
@@ -539,13 +530,14 @@ class FusionAttentionUnet(Fusion):
                 # Do the same thing with the LoRA weights, but don't constant fold the result. The goal is to allow
                 # the Q/K/V weights to be changed without having to re-run the optimizer.
                 lora_weight_shape_tensor_name = q_lora_last_node.name + "_reshape_shape"
-                lora_weight_shape_tensor = helper.make_tensor(
+
+                self.add_initializer(
                     name=lora_weight_shape_tensor_name,
                     data_type=TensorProto.INT64,
                     dims=[4],
                     vals=[0, 0, n, h],
+                    raw=False,
                 )
-                self.model.add_initializer(lora_weight_shape_tensor, self.this_graph_name)
 
                 # Reshape the LoRA Q weights
                 q_lora_reshape_node_name = self.model.create_node_name("Reshape", name_prefix="Reshape_LoRA_Q")
@@ -594,13 +586,13 @@ class FusionAttentionUnet(Fusion):
 
                 # Reshape the LoRA concatenated weights to [..., n * 3 * h]
                 reshaped_lora_weights_shape_tensor_name = qkv_lora_concat_node.name + "_reshape_shape"
-                reshaped_lora_weights_shape_tensor = helper.make_tensor(
+                self.add_initializer(
                     name=reshaped_lora_weights_shape_tensor_name,
                     data_type=TensorProto.INT64,
                     dims=[3],
                     vals=[0, 0, n * 3 * h],
+                    raw=False,
                 )
-                self.model.add_initializer(reshaped_lora_weights_shape_tensor, self.this_graph_name)
 
                 qkv_lora_reshaped_node_name = self.model.create_node_name("Reshape", name_prefix="Reshape_LoRA_QKV")
                 qkv_lora_reshaped_node = helper.make_node(
@@ -623,13 +615,13 @@ class FusionAttentionUnet(Fusion):
 
                 # Finally, reshape the concatenated Q/K/V result to 5D
                 shape_tensor_name = add_weights_node_name + "_reshape_shape"
-                shape_tensor = helper.make_tensor(
+                self.add_initializer(
                     name=shape_tensor_name,
                     data_type=TensorProto.INT64,
                     dims=[5],
                     vals=[0, 0, n, 3, h],
+                    raw=False,
                 )
-                self.model.add_initializer(shape_tensor, self.this_graph_name)
 
                 reshape_node = helper.make_node(
                     "Reshape",
@@ -678,14 +670,12 @@ class FusionAttentionUnet(Fusion):
                 kv_weight = np.dstack([kw.reshape(c, n, h), vw.reshape(c, n, h)]).reshape(c, n * 2 * h)
 
                 matmul_node_name = self.model.create_node_name("MatMul", name_prefix="MatMul_KV")
-                weight = helper.make_tensor(
+                self.add_initializer(
                     name=matmul_node_name + "_weight",
                     data_type=TensorProto.FLOAT,
                     dims=[kv_weight.shape[0], kv_weight.shape[1]],
-                    vals=kv_weight.flatten().tolist(),
+                    vals=kv_weight,
                 )
-
-                self.model.add_initializer(weight, self.this_graph_name)
 
                 matmul_node = helper.make_node(
                     "MatMul",
@@ -698,13 +688,13 @@ class FusionAttentionUnet(Fusion):
                 # Do the same thing with the LoRA weights, but don't constant fold the result. The goal is to allow
                 # the Q/K/V weights to be changed without having to re-run the optimizer.
                 kv_lora_weight_shape_tensor_name = q_lora_last_node.name + "_reshape_shape"
-                lora_weight_shape_tensor = helper.make_tensor(
+                self.add_initializer(
                     name=kv_lora_weight_shape_tensor_name,
                     data_type=TensorProto.INT64,
                     dims=[4],
                     vals=[0, 0, n, h],
+                    raw=False,
                 )
-                self.model.add_initializer(lora_weight_shape_tensor, self.this_graph_name)
 
                 # Reshape the LoRA K weights
                 k_lora_reshape_node_name = self.model.create_node_name("Reshape", name_prefix="Reshape_LoRA_K")
@@ -739,13 +729,13 @@ class FusionAttentionUnet(Fusion):
 
                 # Reshape the LoRA concatenated weights to [..., n * 2 * h]
                 reshaped_kv_lora_weights_shape_tensor_name = kv_lora_concat_node.name + "_reshape_shape"
-                reshaped_kv_lora_weights_shape_tensor = helper.make_tensor(
+                self.add_initializer(
                     name=reshaped_kv_lora_weights_shape_tensor_name,
                     data_type=TensorProto.INT64,
                     dims=[3],
                     vals=[0, 0, n * 2 * h],
+                    raw=False,
                 )
-                self.model.add_initializer(reshaped_kv_lora_weights_shape_tensor, self.this_graph_name)
 
                 kv_lora_reshaped_node_name = self.model.create_node_name("Reshape", name_prefix="Reshape_LoRA_KV")
                 kv_lora_reshaped_node = helper.make_node(
@@ -768,13 +758,13 @@ class FusionAttentionUnet(Fusion):
 
                 # Finally, reshape the concatenated K/V result to 5D
                 shape_tensor_name = add_kv_weights_node_name + "_reshape_shape"
-                shape_tensor = helper.make_tensor(
+                self.add_initializer(
                     name=shape_tensor_name,
                     data_type=TensorProto.INT64,
                     dims=[5],
                     vals=[0, 0, n, 2, h],
+                    raw=False,
                 )
-                self.model.add_initializer(shape_tensor, self.this_graph_name)
 
                 reshape_node = helper.make_node(
                     "Reshape",
@@ -802,14 +792,12 @@ class FusionAttentionUnet(Fusion):
         # No bias, use zeros
         qkv_bias = np.zeros([3, hidden_size], dtype=np.float32)
         qkv_bias_dim = 3 * hidden_size
-
-        bias = helper.make_tensor(
+        self.add_initializer(
             name=attention_node_name + "_qkv_bias",
             data_type=TensorProto.FLOAT,
             dims=[qkv_bias_dim],
-            vals=qkv_bias.flatten().tolist(),
+            vals=qkv_bias,
         )
-        self.model.add_initializer(bias, self.this_graph_name)
 
         if is_self_attention:
             if not self.enable_packed_qkv:
