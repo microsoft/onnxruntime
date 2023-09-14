@@ -361,8 +361,8 @@ def run_ort_inference(args, inputs, model):
         return outputs
 
     def handle_output(output):
-        if 50257 in output:
-            first_end = np.where(output == 50257)[0][0]
+        if args.eos_token_id in output:
+            first_end = np.where(output == args.eos_token_id)[0][0]
             return output[: first_end + 1]
 
         return output
@@ -506,7 +506,12 @@ def parse_args():
     parser.add_argument("--pt-num-rows", type=int, default=1000, help="Number of rows for PyTorch profiler to display")
     parser.add_argument("--verbose", default=False, action="store_true")
     parser.add_argument("--log-folder", type=str, default=os.path.join("."), help="Folder to cache log files")
-    parser.add_argument("--tune", default=False, action="store_true")
+    parser.add_argument(
+        "--tune",
+        default=False,
+        action="store_true",
+        help="Only used by ROCm EP, enable TunableOp tuning to select fastest kernel",
+    )
 
     args = parser.parse_args()
 
@@ -559,6 +564,7 @@ def main():
     setattr(args, "target_device", target_device)  # noqa: B010
     setattr(args, "use_fp16", use_fp16)  # noqa: B010
     setattr(args, "has_audio_stream", False)  # noqa: B010
+    setattr(args, "eos_token_id", config.eos_token_id)
 
     logger.info(f"Forced decoder prompt ids: {args.decoder_input_ids}")
 

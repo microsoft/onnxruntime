@@ -533,6 +533,9 @@ class RocmMemoryMonitor(MemoryMonitor):
         return self.rocm_smi.getMemInfo(dev, "VRAM")[0] / 1024 / 1024
 
     def measure_gpu_usage(self):
+        if self.rocm_smi is None:
+            return None
+
         device_count = len(self.rocm_smi.listDevices()) if self.rocm_smi is not None else 0
         max_gpu_usage = [0 for i in range(device_count)]
         gpu_name = [f"GPU{i}" for i in range(device_count)]
