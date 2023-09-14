@@ -138,6 +138,21 @@ TEST(MatMulWithCompressWeight, Float32) {
   }
 }
 
+TEST(MatMulWithCompressWeight, Float32_1024) {
+  for (auto M : {1, }) {
+    for (auto N : {32}) {
+      for (auto K : {1024}) {
+        for (auto block_size : {16,}) {
+          std::cout << "Begin M:" << M << ", N:" << N << ",K:" << K << ",block_size:" << block_size << std::endl;
+          RunTest(M, N, K, block_size, false, false);
+          // RunTest(M, N, K, block_size, true, false);
+          std::cout << "End M:" << M << ", N:" << N << ",K:" << K << ",block_size:" << block_size << std::endl;
+        }
+      }
+    }
+  }
+}
+
 #if defined(USE_CUDA)
 TEST(MatMulWithCompressWeight, Float16) {
   for (auto M : {1, 2, 100}) {

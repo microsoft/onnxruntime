@@ -85,5 +85,4 @@ endif()
 add_dependencies(kernel_explorer onnxruntime_pybind11_state)
 
 enable_testing()
-find_package(Python COMPONENTS Interpreter REQUIRED)
 add_test(NAME test_kernels COMMAND ${Python_EXECUTABLE} -m pytest ..)

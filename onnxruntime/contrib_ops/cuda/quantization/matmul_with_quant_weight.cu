@@ -104,7 +104,7 @@ __global__ void MatMulFloatInt4Kernel(
 
   constexpr int stages_count = 2;
   constexpr int elements_per_ite = 256;
-  __shared__ alignas(alignof(float4)) T a_shared[stages_count][256];
+  __shared__ alignas(alignof(float4)) T a_shared[stages_count][32][8];
 
   nvidia_cuda::pipeline<nvidia_cuda::thread_scope_thread> pipe = nvidia_cuda::make_pipeline();
 
