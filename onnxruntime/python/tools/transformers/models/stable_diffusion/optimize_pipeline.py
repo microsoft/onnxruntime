@@ -118,12 +118,6 @@ def _optimize_sd_pipeline(
         # Prepare output directory
         optimized_model_path = target_dir / name / "model.onnx"
         output_dir = optimized_model_path.parent
-        if optimized_model_path.exists():
-            if not overwrite:
-                raise RuntimeError(f"output onnx model path existed: {optimized_model_path}")
-
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if use_external_data_format is None:
