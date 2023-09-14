@@ -414,15 +414,33 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
+#ifdef ENABLE_TRAINING_CORE
       if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
         scale = mul_node.MutableInputDefs()[i];
       }
+#else
+      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
+          graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
+        if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+          scale = mul_node.MutableInputDefs()[i];
+        }
+      }
+#endif
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
+#ifdef ENABLE_TRAINING_CORE
       if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
         bias = last_add_node.MutableInputDefs()[i];
       }
+#else
+      if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
+          graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
+        if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+          bias = last_add_node.MutableInputDefs()[i];
+        }
+      }
+#endif
     }
     if (scale == nullptr || bias == nullptr) {
       continue;
