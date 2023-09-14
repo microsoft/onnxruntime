@@ -91,7 +91,7 @@ __global__ void MatMulFloatInt4Kernel(
   T* b_scale_vec = (T*)shared_buffer;
   uint8_t* b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + BLOCKSIZEN * group_count);
   int offset = n_block_id * BLOCKSIZEN * group_count;
-  for (int i = thread_id; i < BLOCKSIZEN * group_count; i += 256) {
+  for (int i = thread_id; i < BLOCKSIZEN * group_count; i += 32 * BLOCKSIZEN) {
     b_scale_vec[i] = scales_data[offset + i];
     b_zp_vec[i] = zero_points != nullptr ? zero_points[offset + i] : uint8_t(8);
   }
