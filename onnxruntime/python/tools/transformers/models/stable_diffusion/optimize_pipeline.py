@@ -95,6 +95,8 @@ def _optimize_sd_pipeline(
         "safety_checker": [],
     }
 
+    is_xl = (source_dir / "text_encoder_2").exists()
+
     if force_fp32_ops:
         for fp32_operator in force_fp32_ops:
             parts = fp32_operator.split(":")
@@ -108,7 +110,8 @@ def _optimize_sd_pipeline(
     for name, model_type in model_type_mapping.items():
         onnx_model_path = source_dir / name / "model.onnx"
         if not os.path.exists(onnx_model_path):
-            logger.info("input onnx model does not exist: %s", onnx_model_path)
+            if name != "safety_checker":
+                logger.info("input onnx model does not exist: %s", onnx_model_path)
             # some model are optional so we do not raise error here.
             continue
 
@@ -150,12 +153,15 @@ def _optimize_sd_pipeline(
         )
 
         if float16:
-            logger.info("Convert %s to float16 ...", name)
-            op_block_list = ["RandomNormalLike"]
-            m.convert_float_to_float16(
-                keep_io_types=False,
-                op_block_list=op_block_list + force_fp32_operators[name],
-            )
+            # For SD-XL, use FP16 in VAE decoder will cause NaN and black image so we keep it in FP32.
+            if is_xl and name == "vae_decoder":
+                logger.info("Skip converting %s to float16 to avoid NaN", name)
+            else:
+                logger.info("Convert %s to float16 ...", name)
+                m.convert_float_to_float16(
+                    keep_io_types=False,
+                    op_block_list=force_fp32_operators[name],
+                )
 
         if enable_runtime_optimization:
             # Use this step to see the final graph that executed by Onnx Runtime.
