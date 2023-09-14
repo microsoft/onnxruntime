@@ -80,7 +80,7 @@ Status ProcessConstantValue(QnnModelWrapper& qnn_model_wrapper,
   // constant_value is quantized
   if (input.quant_param.has_value()) {
     // QNN prefers pad_constant_value quantized with quantization params same as in[0], and data stored as 32-bit signed integer
-    // Onnx doesn't gurantee it has same quantization parameter as in[0], so get back the float32 value and use non-quantized data directly
+    // Onnx doesn't guarantee it has same quantization parameter as in[0], so get back the float32 value and use non-quantized data directly
     constant_value_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
     float constant_value = 0;
     switch (input_info.qnn_data_type) {
