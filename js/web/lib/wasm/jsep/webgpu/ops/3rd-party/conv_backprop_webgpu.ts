@@ -20,9 +20,13 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
+import {createAttributeWithCacheKey} from '../../attribute-with-cache-key';
+import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
 import {inputVariable, outputVariable, ShaderHelper} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
+import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from '../transpose';
+
+const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: [2, 3, 1, 0]});
 
 const createConvTranspose2DOpProgramShaderSource =
     (shaderHelper: ShaderHelper, inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
@@ -114,7 +118,7 @@ const createConvTranspose2DOpProgramShaderSource =
                                       dot(xValue, wValue3));
                 dotProd[0] = dotProd[0] + tmpval;
 
-                xValue =  ${dy.get('batch', 'idyR', 'idyC2', 'd2')};
+                xValue = ${dy.get('batch', 'idyR', 'idyC2', 'd2')};
 
                 dotProd[1] = dotProd[1] + vec4<f32>(dot(xValue, wValue0),
                                                     dot(xValue, wValue1),
@@ -156,7 +160,7 @@ const createConvTranspose2DOpProgramShaderSource =
         }
 
         for (var i: u32 = 0; i < ${workPerThread}; i = i + 1) {
-          let value = dotProd[i] + ${hasBias ? 'bias[c+i]' : '0.0'};
+          let value = dotProd[i] + ${hasBias ? 'bias[d1]' : '0.0'};
           ${output.set('batch', 'r', 'c + i', 'd1', 'value')};
         }
       }`;
@@ -232,30 +236,51 @@ const createConvTranspose2DOpProgramShaderSource =
               (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)});
   const pads : vec2<i32> = vec2<i32>(i32(effectiveFilterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]})/2,
                                      i32(effectiveFilterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]})/2);
-    ${shaderHelper.mainStart()}
+    ${shaderHelper.mainStart(isVec4 ? [
+        4, 4, 4
+      ]: [64, 1, 1])}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
   ${isVec4 ? codeSnippet4 : codeSnippet}}`;
     };
 
 export const createConvTranspose2DProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvTransposeAttributes,
+    (context: ComputeContext, inputs: readonly TensorView[], metadata: ProgramMetadata,
+     attributes: ConvTransposeAttributes,
      squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
       const hasBias = inputs.length > 2;
-      // const isChannelsLast = attributes.format === 'NHWC';
+      const isChannelsLast = attributes.format === 'NHWC';
       const outputShape = attributes.outputShape;
       const outputSize = ShapeUtil.size(outputShape);
+      const outputHeight = outputShape[isChannelsLast ? 1 : 2];
+      const outputWidth = outputShape[isChannelsLast ? 2 : 3];
+      const batchSize = outputShape[0];
+      const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
+      const outChannels = outputShape[isChannelsLast ? 3 : 1];
+      const isVec4 = isChannelsLast && attributes.group === 1 && inChannels % 4 === 0 && outChannels % 4 === 0;
 
-      // const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
-      // TODO Enable isVec4 for performance
-      // Disabled due to weight matrix layout issue
-      // const isVec4 = attributes.group === 1 && isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
-      const dispatch = [
-        Math.ceil(outputSize / 64),
-        1,
-        1,
-      ];
+      const dispatch = isVec4 ?
+          [Math.ceil(outputWidth / 4 / 4), Math.ceil(outputHeight / 4 / 2), Math.ceil((outChannels * batchSize) / 4)] :
+          [
+            Math.ceil(outputSize / 64),
+            1,
+            1,
+          ];
       LOG_DEBUG('verbose', () => `[conv2d_backprop_webgpu] dispatch = ${dispatch}`);
-
+      const updatedInputs = inputs.slice();
+      if (isVec4) {
+        const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
+            context.compute(
+                {
+                  ...transposeProgramMetadata,
+                  cacheHint: weightTransposeAttribute.cacheKey,
+                  get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
+                },
+                {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
+        if (attributes.wIsConst && !context.kernelCustomData.wT) {
+          context.kernelCustomData.wT = transposedWeight;
+        }
+        updatedInputs.splice(1, 1, transposedWeight);
+      }
       return {
         ...metadata,
         outputs: [{
@@ -265,6 +290,7 @@ export const createConvTranspose2DProgramInfo =
         }],
         dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
         getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
-            shaderHelper, inputs, attributes, outputShape, hasBias, dispatch[1] === 1 && dispatch[2] === 1),
+            shaderHelper, updatedInputs, attributes, outputShape, hasBias, dispatch[1] === 1 && dispatch[2] === 1,
+            isVec4),
       };
     };

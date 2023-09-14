@@ -63,7 +63,7 @@ const getAdjustedConvTransposeAttributes =
     <T extends ConvTransposeAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
       const kernelShape = attributes.kernelShape.slice();
       // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
-      if (attributes.kernelShape.length === 0 || attributes.kernelShape.reduce((a, b) => a * b, 0) === 0) {
+      if (attributes.kernelShape.length === 0 || attributes.kernelShape.reduce((a, b) => a * b, 1) === 0) {
         kernelShape.length = 0;
         for (let i = 2; i < inputs[1].dims.length; ++i) {
           kernelShape.push(inputs[1].dims[i]);
@@ -216,13 +216,13 @@ const createConvTranspose2DProgramMetadata = (hasBias: boolean, cacheHint: strin
 });
 
 const createConvTranspose2DProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
+    (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
      squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfoLoader => {
       const hasBias = inputs.length === 3;
       const metadata = createConvTranspose2DProgramMetadata(hasBias, attributes.cacheKey);
       return {
         ...metadata,
-        get: () => createConvTranspose2DProgramInfo(inputs, metadata, attributes, squeezeOutputShapeFunction)
+        get: () => createConvTranspose2DProgramInfo(context, inputs, metadata, attributes, squeezeOutputShapeFunction)
       };
     };
 
@@ -230,8 +230,9 @@ const convTranspose2d =
     (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
 
-      context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes));
+      context.compute(createConvTranspose2DProgramInfoLoader(context, inputs, adjustedAttributes));
     };
+
 const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
   // extend the input to 2D by adding H dimension
   const isChannelLast = attributes.format === 'NHWC';
@@ -271,7 +272,7 @@ const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttri
   kernelShape = [1].concat(kernelShape);
   const adjustedAttributes =
       getAdjustedConvTransposeAttributes({...attributes, pads, strides, dilations, kernelShape}, inputs);
-  context.compute(createConvTranspose2DProgramInfoLoader(
+  context.compute(createConvTranspose2DProgramInfoLoader(context,
       inputs, adjustedAttributes,
       outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] :
                                      [outputShape[0], outputShape[1], outputShape[3]]));
