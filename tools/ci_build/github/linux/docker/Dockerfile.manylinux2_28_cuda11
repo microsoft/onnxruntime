@@ -1,5 +1,5 @@
-ARG BASEIMAGE=nvidia/cuda:11.4.2-cudnn8-devel-centos7
-ARG POLICY=manylinux2014
+ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=
 ARG LD_LIBRARY_PATH_ARG=

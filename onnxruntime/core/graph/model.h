@@ -310,7 +310,8 @@ class Model {
   // map from function id to pointer of model local function proto
   // FunctionProto is hosted in ModelProto.
   // this map will be used for the local functions' schema's type/shape inference.
-  InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
+  // This container is used by ONNX code and must be an std::unordered_map.
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
   // this is the container that host the generated schemas for model local functions.
   // the generated schemare will be used for graph resolving and type/shape inference.
   // those schemas' type/shape inference will reference to the model_local_functions_ as context,

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <unordered_map>
 
 #include "core/common/common.h"

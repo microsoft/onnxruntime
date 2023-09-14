@@ -30,6 +30,7 @@ Do not modify directly.*
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
+| Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
 | Equal | ai.onnx(7-10,11-12,13-18,19+) |  |
 | Erf | ai.onnx(9-12,13+) |  |
@@ -44,10 +45,12 @@ Do not modify directly.*
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | Greater | ai.onnx(7-8,9-12,13+) |  |
+| GreaterOrEqual | ai.onnx(12-15,16+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
 | Less | ai.onnx(7-8,9-12,13+) |  |
+| LessOrEqual | ai.onnx(12-15,16+) |  |
 | Log | ai.onnx(6-12,13+) |  |
 | MatMul | ai.onnx(1-12,13+) |  |
 | MaxPool | ai.onnx(1-7,8-9,10,11,12+); com.ms.internal.nhwc(11,12+) | need perf optimization; need implementing activation |

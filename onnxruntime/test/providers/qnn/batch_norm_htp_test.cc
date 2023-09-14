@@ -114,15 +114,15 @@ GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float
     const int64_t num_channels = input_shape[1];
 
     NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
     NodeArg* input_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     NodeArg* scale = MakeTestInput(builder, scale_def);
-    QuantParams<ScaleQType> scale_qparams = GetTestInputQuantParams(scale_def);
+    QuantParams<ScaleQType> scale_qparams = GetTestInputQuantParams<ScaleQType>(scale_def);
     NodeArg* scale_qdq = AddQDQNodePair<ScaleQType>(builder, scale, scale_qparams.scale, scale_qparams.zero_point);
 
     NodeArg* bias = MakeTestInput(builder, bias_def);
-    QuantParams<BiasQType> bias_qparams = GetTestInputQuantParams(bias_def);
+    QuantParams<BiasQType> bias_qparams = GetTestInputQuantParams<BiasQType>(bias_def);
     NodeArg* bias_qdq = AddQDQNodePair<BiasQType>(builder, bias, bias_qparams.scale, bias_qparams.zero_point);
 
     std::vector<float> mean_vals(num_channels);
