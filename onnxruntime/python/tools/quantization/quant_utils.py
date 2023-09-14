@@ -123,6 +123,27 @@ ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
 }
 
+ONNX_INT_TYPE_RANGE = {
+    onnx_proto.TensorProto.UINT8: (0, 255),
+    onnx_proto.TensorProto.INT8: (-128, 127),
+    onnx_proto.TensorProto.UINT16: (0, 65535),
+    onnx_proto.TensorProto.INT16: (-32768, 32767),
+}
+
+ONNX_INT_TYPE_SYMMETRIC_RANGE = {
+    onnx_proto.TensorProto.UINT8: (0, 255),
+    onnx_proto.TensorProto.INT8: (-127, 127),
+    onnx_proto.TensorProto.UINT16: (0, 65535),
+    onnx_proto.TensorProto.INT16: (-32767, 32767),
+}
+
+ONNX_INT_TYPE_REDUCED_RANGE = {
+    onnx_proto.TensorProto.UINT8: (0, 127),
+    onnx_proto.TensorProto.INT8: (-64, 64),
+    onnx_proto.TensorProto.UINT16: (0, 32767),
+    onnx_proto.TensorProto.INT16: (-16384, 16384),
+}
+
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     assert (
@@ -158,16 +179,18 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
 
+        # If low and high are None, set them to the minimum and maximum values representable by
+        # dtype's bitwidth (symmetric).
         if dtype == numpy.uint8 or dtype == numpy.int8:
             if low is None:
-                low = -127
+                low = ONNX_INT_TYPE_SYMMETRIC_RANGE[onnx_proto.TensorProto.INT8][0]
             if high is None:
-                high = 255
+                high = ONNX_INT_TYPE_SYMMETRIC_RANGE[onnx_proto.TensorProto.UINT8][1]
         elif dtype == numpy.uint16 or dtype == numpy.int16:
             if low is None:
-                low = -32767
+                low = ONNX_INT_TYPE_SYMMETRIC_RANGE[onnx_proto.TensorProto.INT16][0]
             if high is None:
-                high = 65535
+                high = ONNX_INT_TYPE_SYMMETRIC_RANGE[onnx_proto.TensorProto.UINT16][1]
 
         cliplow = max(qmin, low)
         cliphigh = min(qmax, high)
@@ -306,25 +329,22 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
     :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
     :return: qmin, qmax
     """
-    if qType == onnx_proto.TensorProto.UINT8:
-        (qmin, qmax) = (0, 127) if reduce_range else (0, 255)
-    elif qType == onnx_proto.TensorProto.INT8:
-        if symmetric:
-            (qmin, qmax) = (-64, 64) if reduce_range else (-127, 127)
-        else:
-            (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
-    elif qType == onnx_proto.TensorProto.UINT16:
-        (qmin, qmax) = (0, 32767) if reduce_range else (0, 65535)
-    elif qType == onnx_proto.TensorProto.INT16:
-        if symmetric:
-            (qmin, qmax) = (-16384, 16384) if reduce_range else (-32767, 32767)
-        else:
-            (qmin, qmax) = (-16384, 16384) if reduce_range else (-32768, 32767)
-    elif qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+    if qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
         raise NotImplementedError("This function is not implemented for float 8 as not needed.")
+
+    qrange = None
+
+    if reduce_range:
+        qrange = ONNX_INT_TYPE_REDUCED_RANGE.get(qType)
+    elif symmetric:
+        qrange = ONNX_INT_TYPE_SYMMETRIC_RANGE.get(qType)
     else:
+        qrange = ONNX_INT_TYPE_RANGE.get(qType)
+
+    if not qrange:
         raise ValueError(f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported.")
-    return qmin, qmax
+
+    return qrange
 
 
 def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
