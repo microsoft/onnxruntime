@@ -162,7 +162,9 @@ class BaseOpBuilder : public IOpBuilder {
         {"BatchNormalization", QNN_OP_BATCHNORM},
         {"LayerNormalization", QNN_OP_LAYER_NORM},
 
-        {"LRN", QNN_OP_LRN}};
+        {"LRN", QNN_OP_LRN},
+
+        {"Pad", QNN_OP_PAD}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;

@@ -118,9 +118,9 @@ Status ProcessModeAttribute(QnnModelWrapper& qnn_model_wrapper,
   Qnn_Scalar_t mode_qnn_scalar = QNN_SCALAR_INIT;
   mode_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
   if ("DCR" == mode) {
-    mode_qnn_scalar.uint32Value = 0;
+    mode_qnn_scalar.uint32Value = QNN_OP_DEPTH_TO_SPACE_MODE_DCR;
   } else if ("CRD" == mode) {
-    mode_qnn_scalar.uint32Value = 1;  // CRD mode
+    mode_qnn_scalar.uint32Value = QNN_OP_DEPTH_TO_SPACE_MODE_CRD;  // CRD mode
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DepthToSpace mode only support DCR & CRD.");
   }

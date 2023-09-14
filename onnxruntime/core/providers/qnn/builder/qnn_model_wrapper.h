@@ -117,6 +117,7 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
+  // TODO(hecli) rename to GetTensorInfo
   Status GetOnnxInputInfo(const NodeUnitIODef& input, OnnxInputInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,

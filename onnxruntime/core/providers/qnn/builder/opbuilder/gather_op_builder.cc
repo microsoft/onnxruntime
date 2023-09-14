@@ -13,7 +13,6 @@
 namespace onnxruntime {
 namespace qnn {
 
-// Operator which only need to hanle node inputs & outputs, no attributes or no need to handle attributes
 class GatherOpBuilder : public BaseOpBuilder {
  public:
   GatherOpBuilder() : BaseOpBuilder("GatherOpBuilder") {}
