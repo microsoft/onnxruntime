@@ -4506,7 +4506,9 @@ struct OrtCustomOp {
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
 
   // Infer outputs type and shapes by inputs
-  void(ORT_API_CALL* InferOutputShapes)();
+  void(ORT_API_CALL* InferOutputShapes)(_In_ const struct OrtCustomOp* op,
+                                        _In_ const OrtTensorTypeAndShapeInfo** input_type_shapes,
+                                        _Out_ OrtTensorTypeAndShapeInfo** output_type_shapes);
 };
 
 /*

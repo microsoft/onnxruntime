@@ -21,6 +21,7 @@
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "onnx/defs/shape_inference.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
@@ -596,18 +597,36 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     if (op->InferOutputShapes) {
       schema.TypeAndShapeInferenceFunction([op](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
         auto num_inputs = infer_ctx.getNumInputs();
+        InlinedVector<OrtTensorTypeAndShapeInfo> input_type_shape_vec;
+        InlinedVector<const OrtTensorTypeAndShapeInfo*> input_type_shape_ptr_vec;
         for (int i = 0; i < num_inputs; ++i) {
           const auto* input_type = infer_ctx.getInputType(i);
           if (input_type) {
-            const auto value_case = input_type->value_case();
-            /*if (value_case != TypeProto::kTensorType && value_case != TypeProto::kSparseTensorType) {
-              fail_type_inference("Attribute expected to have tensor or sparse tensor type");
-            }*/
+            const auto& value_case = input_type->value_case();
             if (value_case == ONNX_NAMESPACE::TypeProto::kTensorType) {
-              // return input_type->tensor_type().shape();
-            } else {
-              // return input_type->sparse_tensor_type().shape();
+              const auto& type_proto = input_type->tensor_type();
+              const auto& shape_proto = type_proto.shape();
+              auto elem_type = utils::CApiElementTypeFromProtoType(type_proto.elem_type());
+              auto tensor_shape = utils::GetTensorShapeFromTensorShapeProto(shape_proto);
+              input_type_shape_vec.emplace_back(*OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, nullptr)); //todo - support symbolic dim params
+              input_type_shape_ptr_vec.emplace_back(&input_type_shape_vec.back());
+            }  // else sparse tensors?
+          }
+        } // for each input
+        auto num_outputs = infer_ctx.getNumOutputs();
+        using OrtTensorTypeAndShapeInfoPtr = OrtTensorTypeAndShapeInfo*;
+        InlinedVector<OrtTensorTypeAndShapeInfoPtr> output_type_shape_ptr_vec(num_outputs, nullptr);
+        op->InferOutputShapes(op, input_type_shape_ptr_vec.data(), output_type_shape_ptr_vec.data());
+
+        for (int i = 0; i < num_outputs; ++i) {
+          if (output_type_shape_ptr_vec[i]) {
+            const auto& output_shape = output_type_shape_ptr_vec[i]->shape;
+            ONNX_NAMESPACE::TensorShapeProto output_shape_proto;
+            for (auto dim : output_shape.GetDims()) {
+              output_shape_proto.add_dim()->set_dim_value(dim);
             }
+            ONNX_NAMESPACE::updateOutputShape(infer_ctx, i, output_shape_proto);
+            std::unique_ptr<OrtTensorTypeAndShapeInfo> output_shape_recycler(output_type_shape_ptr_vec[i]);
           }
         }
       });
@@ -781,8 +800,12 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     for (auto schema_iter : schema_map) {
       schemas.push_back(schema_iter.second);
       InlinedVector<const KernelDef*> kernel_defs = std::move(kernel_def_map[schema_iter.first]);
-      ONNX_NAMESPACE::InferenceFunction infer_fn = [kernel_defs](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
+      auto shape_infer_fn = schemas.back().GetTypeAndShapeInferenceFunction();
+      ONNX_NAMESPACE::InferenceFunction infer_fn = [shape_infer_fn, kernel_defs](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
         InferOutputTypes(kernel_defs, infer_ctx);
+        if (shape_infer_fn) {
+          shape_infer_fn(infer_ctx);
+        }
       };
       schemas.back().TypeAndShapeInferenceFunction(infer_fn);
     }

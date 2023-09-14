@@ -18,6 +18,7 @@
 #include "onnxruntime_cxx_api.h"
 #include <optional>
 #include <numeric>
+#include <functional>
 #include <unordered_set>
 
 namespace Ort {
@@ -251,7 +252,30 @@ class Tensor<std::string_view> : public TensorBase {
 
 using TensorPtr = std::unique_ptr<Custom::TensorBase>;
 
+////////////////////////////// OrtTensorShape //////////////////////////////////
+//struct OrtTensorShape {
+//  OrtTensorShape(const OrtTensorTypeAndShapeInfo* tensor_shape = nullptr) {
+//    if (tensor_shape) {
+//      auto ort_api = GetApi();
+//      size_t dims = 0;
+//      ort_api.GetDimensionsCount(tensor_shape, &dims);
+//    }
+//  }
+//  size_t size() const {
+//    return dims.size();
+//  }
+//  int64_t operator[](size_t ith) const {
+//    return dims.at(ith);
+//  }
+//  void append(int64_t dim) {
+//    dims.push_back(dim);
+//  }
+//  std::vector<int64_t> dims;
+//};
 //////////////////////////// OrtLiteCustomOp ////////////////////////////////
+
+using TensorShapeVec = std::vector<Ort::TensorTypeAndShapeInfo>;
+using ShapeInferenceFn = std::function<void(const TensorShapeVec& input_shapes, TensorShapeVec& output_shape)>;
 
 struct OrtLiteCustomOp : public OrtCustomOp {
   using ConstOptionalFloatTensor = std::optional<const Custom::Tensor<float>&>;
@@ -597,7 +621,41 @@ struct OrtLiteCustomOp : public OrtCustomOp {
     OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp*) { return 0; };
     OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp*) { return 0; };
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp*) { return 0; };
+
+    // register a dummpy shape inference function
+    OrtCustomOp::InferOutputShapes = [](const OrtCustomOp* op,
+                                        const OrtTensorTypeAndShapeInfo** input_shapes,
+                                        OrtTensorTypeAndShapeInfo** output_shapes) {
+      auto self = reinterpret_cast<const OrtLiteCustomOp*>(op);
+      if (self->shape_infer_fn_) {
+        TensorShapeVec input_shapes_wrap_vec;
+        size_t num_inputs = op->GetInputTypeCount(op);
+        for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
+          input_shapes_wrap_vec.emplace_back(const_cast<OrtTensorTypeAndShapeInfo*>(input_shapes[ith_input]));
+        }
+
+        size_t num_outputs = op->GetOutputTypeCount(op);
+        TensorShapeVec output_shapes_wrap_vec(num_outputs);
+    
+        self->shape_infer_fn_(input_shapes_wrap_vec, output_shapes_wrap_vec);
+
+        for (size_t ith_output = 0; ith_output < num_outputs; ++ith_output) {
+            output_shapes[ith_output] = output_shapes_wrap_vec[ith_output].release();
+        }
+
+        for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
+            input_shapes_wrap_vec[ith_input].release(); // input_shapes_wrap_vec does not own the pointer
+        }
+      }
+    };
   }
+
+  OrtLiteCustomOp* SetShapeInferenceFn(ShapeInferenceFn fn) {
+    shape_infer_fn_ = std::move(fn);
+    return this;
+  }
+
+  ShapeInferenceFn shape_infer_fn_;
 
   const std::string op_name_;
   const std::string execution_provider_;

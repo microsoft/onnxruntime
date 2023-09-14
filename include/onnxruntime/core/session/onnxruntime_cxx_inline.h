@@ -1143,6 +1143,14 @@ inline std::vector<int64_t> TensorTypeAndShapeInfoImpl<T>::GetShape() const {
 }
 
 template <typename T>
+inline void TensorTypeAndShapeInfoImpl<T>::SetShape(const std::vector<int64_t>& shape) {
+  if (!this->p_) {
+    GetApi().CreateTensorTypeAndShapeInfo(&this->p_);
+  }
+  GetApi().SetDimensions(this->p_, shape.data(), shape.size());
+}
+
+template <typename T>
 inline ConstTensorTypeAndShapeInfo TypeInfoImpl<T>::GetTensorTypeAndShapeInfo() const {
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(this->p_, &out));

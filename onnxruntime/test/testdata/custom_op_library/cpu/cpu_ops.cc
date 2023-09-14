@@ -23,6 +23,13 @@ void KernelOne(const Ort::Custom::Tensor<float>& X,
   }
 }
 
+void KernelOneShapeInference(const TensorShapeVec& input_shapes, TensorShapeVec& output_shapes) {
+  for (const auto& input_shape : input_shapes) {
+    auto shape = input_shape.GetShape();
+    output_shapes[0].SetShape(shape);
+  }
+}
+
 // lite custom op as a function
 void KernelTwo(const Ort::Custom::Tensor<float>& X,
                Ort::Custom::Tensor<int32_t>& Y) {
@@ -163,7 +170,7 @@ void FilterFloat8(const Ort::Custom::Tensor<Ort::Float8E4M3FN_t>& floats_in,
 #endif
 
 void RegisterOps(Ort::CustomOpDomain& domain) {
-  static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CPUExecutionProvider", KernelOne)};
+  static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CPUExecutionProvider", KernelOne)->SetShapeInferenceFn(KernelOneShapeInference)};
   static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};
   static const std::unique_ptr<OrtLiteCustomOp> c_MulTopOpFloat{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<float>)};
   static const std::unique_ptr<OrtLiteCustomOp> c_MulTopOpInt32{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<int32_t>)};
