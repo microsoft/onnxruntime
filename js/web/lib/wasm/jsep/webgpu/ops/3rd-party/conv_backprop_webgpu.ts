@@ -111,14 +111,16 @@ const createConvTranspose2DOpProgramShaderSource =
                 let wValue2 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 2', 'd2')};
                 let wValue3 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 3', 'd2')};
 
-                var xValue = ${dy.get('batch', 'idyR', 'idyC', 'd2')};
+                var xValue = ${
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
                 let tmpval = vec4<f32>(dot(xValue, wValue0),
                                       dot(xValue, wValue1),
                                       dot(xValue, wValue2),
                                       dot(xValue, wValue3));
                 dotProd[0] = dotProd[0] + tmpval;
 
-                xValue = ${dy.get('batch', 'idyR', 'idyC2', 'd2')};
+                xValue = ${
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC2', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC2')};
 
                 dotProd[1] = dotProd[1] + vec4<f32>(dot(xValue, wValue0),
                                                     dot(xValue, wValue1),
@@ -133,7 +135,8 @@ const createConvTranspose2DOpProgramShaderSource =
                 let wValue2 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 2', 'd2')};
                 let wValue3 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 3', 'd2')};
 
-                var xValue = ${dy.get('batch', 'idyR', 'idyC', 'd2')};
+                var xValue = ${
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC')};
                 let tmpval = vec4<f32>(dot(xValue, wValue0),
                                       dot(xValue, wValue1),
                                       dot(xValue, wValue2),
@@ -148,7 +151,8 @@ const createConvTranspose2DOpProgramShaderSource =
                 let wValue2 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 2', 'd2')};
                 let wValue3 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 3', 'd2')};
 
-                var xValue = ${dy.get('batch', 'idyR', 'idyC2', 'd2')};
+                var xValue = ${
+          isChannelsLast ? dy.get('batch', 'idyR', 'idyC2', 'd2') : dy.get('batch', 'd2', 'idyR', 'idyC2')};
                 let tmpval = vec4<f32>(dot(xValue, wValue0),
                                       dot(xValue, wValue1),
                                       dot(xValue, wValue2),
@@ -161,7 +165,9 @@ const createConvTranspose2DOpProgramShaderSource =
 
         for (var i: u32 = 0; i < ${workPerThread}; i = i + 1) {
           let value = dotProd[i] + ${hasBias ? 'bias[d1]' : '0.0'};
-          ${output.set('batch', 'r', 'c + i', 'd1', 'value')};
+          ${
+          isChannelsLast ? output.set('batch', 'r', 'c + i', 'd1', 'value') :
+                           output.set('batch', 'd1', 'r', 'c + i', 'value')};
         }
       }`;
       const codeSnippet = `
@@ -236,9 +242,9 @@ const createConvTranspose2DOpProgramShaderSource =
               (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)});
   const pads : vec2<i32> = vec2<i32>(i32(effectiveFilterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]})/2,
                                      i32(effectiveFilterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]})/2);
-    ${shaderHelper.mainStart(isVec4 ? [
-        4, 4, 4
-      ]: [64, 1, 1])}
+    ${shaderHelper.mainStart(isVec4 ? [4, 4, 4] : [
+        64, 1, 1
+      ])}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
   ${isVec4 ? codeSnippet4 : codeSnippet}}`;
     };
@@ -256,7 +262,7 @@ export const createConvTranspose2DProgramInfo =
       const batchSize = outputShape[0];
       const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
       const outChannels = outputShape[isChannelsLast ? 3 : 1];
-      const isVec4 = isChannelsLast && attributes.group === 1 && inChannels % 4 === 0 && outChannels % 4 === 0;
+      const isVec4 = attributes.group === 1 && inChannels % 4 === 0 && outChannels % 4 === 0;
 
       const dispatch = isVec4 ?
           [Math.ceil(outputWidth / 4 / 4), Math.ceil(outputHeight / 4 / 2), Math.ceil((outChannels * batchSize) / 4)] :
