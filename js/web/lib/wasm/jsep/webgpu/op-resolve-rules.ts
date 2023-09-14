@@ -24,6 +24,7 @@ import {parseSoftmaxAttributes, softmax} from './ops/softmax';
 import {parseSplitAttributes, split} from './ops/split';
 import {tile} from './ops/tile';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
+import {where} from './ops/where';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
 
@@ -110,4 +111,5 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ThresholdedRelu', [unaryOps.thresholdedRelu, unaryOps.parseAlphaAttributes]],
   ['Tile', [tile]],
   ['Transpose', [transpose, parseTransposeAttributes]],
+  ['Where', [where]],
 ]);

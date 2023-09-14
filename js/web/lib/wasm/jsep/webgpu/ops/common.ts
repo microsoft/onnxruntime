@@ -525,6 +525,43 @@ export const outputVariable =
         createIndicesHelper(name, type, shape, false, components);
 
 /**
+ * A helper class for generating WGSL code for manipulating broadcast indices for a shader's input.
+ */
+export interface BroadcastHelper {
+  /**
+   * WGSL code for getting offset from broadcast indices.
+   *
+   */
+  broadcastIndicesToOffset(): string;
+}
+
+class BroadcastHelperImpl implements BroadcastHelper {
+  constructor(private inputs: IndicesHelper[], private output: IndicesHelper) {}
+
+  broadcastIndicesToOffset(): string {
+    let implementation = '';
+    for (let j = 0; j < this.inputs.length; j++) {
+      const dims = this.inputs[j].shape;
+      const name = this.inputs[j].name.substring(0, 1).toUpperCase();
+      const strides = ShapeUtil.computeStrides(dims);
+      const offsets: string[] = [];
+      for (let i = dims.length - 1; i >= 0; i--) {
+        const idx = this.output.indicesGet('outputIndices', i + this.output.shape.length - dims.length);
+        offsets.push(`${strides[i]}u * (${idx} % ${dims[i]}u)`);
+      }
+      implementation += `fn broadcastIndicesToOffset${name}(outputIndices: ${this.output.type.indices}) -> u32 {
+               return ${offsets.length > 0 ? offsets.join('+') : '0u'};
+             }
+            `;
+    }
+    return implementation;
+  }
+}
+
+export const createBroadcastHelper = (inputs: IndicesHelper[], output: IndicesHelper): BroadcastHelper =>
+    new BroadcastHelperImpl(inputs, output);
+
+/**
  * A ShaderHelper is a helper class for generating WGSL code.
  */
 export interface ShaderHelper {
