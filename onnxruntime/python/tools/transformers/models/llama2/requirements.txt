@@ -1,0 +1,7 @@
+mpi4py
+transformers==4.32.1
+coloredlogs
+optimum
+sentencepiece
+psutil
+onnx

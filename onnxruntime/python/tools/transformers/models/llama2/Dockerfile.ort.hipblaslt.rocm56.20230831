@@ -1,0 +1,37 @@
+# Image: ort_tuning_rocm5.6_triton_hipblaslt:20230831
+FROM rocm/pytorch-nightly:2023-08-10-rocm5.6
+
+RUN pip install -U cmake
+RUN apt update && apt install -y openmpi-bin libopenmpi-dev
+
+WORKDIR /root
+
+# Install hipBLASLt
+RUN git clone https://github.com/rocmsoftwareplatform/hipBLASLt && \
+    cd hipBLASLt && \
+    ./install.sh -idc && \
+    cd - && rm -rf hipBLASLt
+
+# Install ort
+ENV MPI_HOME=/usr/lib/x86_64-linux-gnu/openmpi
+ENV ROCM_VERSION=5.6.0
+RUN git clone https://github.com/microsoft/onnxruntime && \
+    cd onnxruntime && \
+    git checkout llama2/opt && \
+    bash ./build.sh \
+        --config Release --enable_training --build_wheel --update --build --cmake_generator Ninja --skip_tests \
+        --use_rocm --rocm_version=${ROCM_VERSION} --rocm_home /opt/rocm --enable_nccl \
+        --nccl_home /opt/rocm --allow_running_as_root --use_mpi --mpi_home $MPI_HOME \
+        --enable_rocm_profiling \
+        --cmake_extra_defines onnxruntime_USE_COMPOSABLE_KERNEL=ON \
+                              onnxruntime_USE_ROCBLAS_EXTENSION_API=ON \
+                              onnxruntime_USE_HIPBLASLT=ON \
+                              onnxruntime_USE_TRITON_KERNEL=OFF \
+                              onnxruntime_BUILD_KERNEL_EXPLORER=ON && \
+    pip install build/Linux/Release/dist/*.whl
+
+RUN cd /tmp && python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
+
+RUN pip install mpi4py
+
+COPY Dockerfile.ort.hipblaslt.rocm56.20230831 /root/Dockerfile.ort.hipblaslt.rocm56.20230831
