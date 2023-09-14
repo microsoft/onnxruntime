@@ -775,5 +775,5 @@ class GraphExecutionManager(GraphExecutionInterface):
         stat += f"\n{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
         self._logger.warning(stat)
 
-        if self._runtime_inspector.is_memory_inspector_enabled() and output_memory_optimization_details:
-            self._logger.debug(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)
+        if self._runtime_inspector.is_memory_inspector_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
+            self._logger.info(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)

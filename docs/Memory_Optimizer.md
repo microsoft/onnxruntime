@@ -71,6 +71,58 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 
 If you check the above logs, there is a config `Cast+:2:-1`, `2` indicates it's a recomputation than can save part of the stashed activation size, not all. Recompute the subgraphs under it usually will save part of the activation (for example half of them), not all of them. Follow the same way to enable it.
 
+## Memory Optimization Debug Infos
+
+Using following log level
+	> ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.DEVINFO))
+Besides the logs shown in `LogLevel.INFO`, you can also see different node patterns that can apply different optimization options.
+
+The way we get the table:
+- For a specific node, it might has different optimization options, we [generates](../orttraining/orttraining/core/optimizer/memory_optimizer/common.h#L124C26-L124C26) a hash (called `Node Cluster ID`) for the node according to all available optimization options.
+- Map all nodes having same `Node Cluster ID`, collect the
+
+```
+MemoryInsight Summary - User config: not provided
+===========================================================================================================================================
+|Freq   | Memory Optimization Opportunities (Clustered by node-level activation patterns)                                                 |
+|_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+|6      |For each row options are mutually exclusive, only one of them can be enabled.                                                    |
+|       |                                                                                                                                 |
+|       |>>Option 1     : Recompute subgraph FusedMatMul+Add+Reshape+                                                                     |
+|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=FusedMatMul+Add+Reshape+:1:-1                          |
+|       |  Stashed Activations:                                                                                                           |
+|       |   - ReuseFreq :  Output 0(6),                                                                                                   |
+|       |   - Output 0  : [((inputs_input_ids_dim0)*(inputs_input_ids_dim1)*(32)*(240))], byte/elem: 2, 100% saved                        |
+|_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+|5      |For each row options are mutually exclusive, only one of them can be enabled.                                                    |
+|       |                                                                                                                                 |
+|       |>>Option 1     : Recompute subgraph FusedMatMul+                                                                                 |
+|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=FusedMatMul+:1:-1                                      |
+|       |  Stashed Activations:                                                                                                           |
+|       |   - Output 0  : [((inputs_input_ids_dim0)*(inputs_input_ids_dim1)*(10240))], byte/elem: 2, 100% saved                           |
+|_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+|5      |For each row options are mutually exclusive, only one of them can be enabled.                                                    |
+|       |                                                                                                                                 |
+|       |>>Option 1     : Recompute subgraph Cast+                                                                                        |
+|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=Cast+:1:-1                                             |
+|       |  Stashed Activations:                                                                                                           |
+|       |   - Output 0  : [((inputs_input_ids_dim0)*(32)*(inputs_input_ids_dim1)*(inputs_input_ids_dim1))], byte/elem: 2, 100% saved      |
+|_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+|1      |For each row options are mutually exclusive, only one of them can be enabled.                                                    |
+|       |                                                                                                                                 |
+|       |>>Option 1     : Recompute subgraph Reshape+Unsqueeze+Unsqueeze+Cast+Sub+Mul+Cast+                                               |
+|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=Reshape+Unsqueeze+Unsqueeze+Cast+Sub+Mul+Cast+:1:-1    |
+|       |  Stashed Activations:                                                                                                           |
+|       |   - Output 0  : [((inputs_input_ids_dim0)*(1)*(1)*(inputs_input_ids_dim1))], byte/elem: 4, 100% saved                           |
+|       |                                                                                                                                 |
+|       |>>Option 2     : RecomputeWithCompromise subgraph Cast+                                                                          |
+|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=Cast+:2:-1                                             |
+|       |  Stashed Activations:                                                                                                           |
+|       |   - Output 0  : [((inputs_input_ids_dim0)*(1)*(1)*(inputs_input_ids_dim1))], byte/elem: 4, 50% saved                            |
+|_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+
+```
+
 ## Notes
 
 The feature is in experimental stage, we will tune and refine it according to real use cases.
