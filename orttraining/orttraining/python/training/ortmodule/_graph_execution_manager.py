@@ -586,6 +586,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         if get_rank() != 0:
             return
 
+        if self._runtime_inspector.is_memory_inspector_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
+            self._logger.info(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)
+
         def _add_record(tbl, columns):
             tbl.add_row([columns[0], ":", "ON" if columns[1] else "OFF", ":", columns[2]])
 
@@ -774,6 +777,3 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         stat += f"\n{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
         self._logger.warning(stat)
-
-        if self._runtime_inspector.is_memory_inspector_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
-            self._logger.info(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)
