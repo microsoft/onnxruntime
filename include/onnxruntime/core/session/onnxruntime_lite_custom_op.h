@@ -26,15 +26,62 @@ namespace Custom {
 
 class TensorBase {
  public:
-  TensorBase(OrtKernelContext* ctx) : ctx_(ctx) {}
+  TensorBase(OrtKernelContext* ctx,
+             size_t indice,
+             bool is_input) : ctx_(ctx), indice_(indice), is_input_(is_input) {}
+
   virtual ~TensorBase() {}
+
   operator bool() const {
     return shape_.has_value();
   }
 
+  const std::vector<int64_t>& Shape() const {
+    if (!shape_.has_value()) {
+      ORT_CXX_API_THROW("tensor shape is not yet initialized", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
+    return shape_.value();
+  }
+
+  ONNXTensorElementDataType Type() const {
+    return type_;
+  }
+
+  int64_t NumberOfElement() const {
+    if (shape_.has_value()) {
+      return std::accumulate(shape_->begin(), shape_->end(), 1LL, std::multiplies<int64_t>());
+    } else {
+      return 0;
+    }
+  }
+
+  std::string Shape2Str() const {
+    if (shape_.has_value()) {
+      std::string shape_str;
+      for (const auto& dim : *shape_) {
+        shape_str.append(std::to_string(dim));
+        shape_str.append(", ");
+      }
+      return shape_str;
+    } else {
+      return "empty";
+    }
+  }
+
+  bool IsCpuTensor() const {
+    return strcmp("Cpu", mem_type_) == 0;
+  }
+
+  virtual const void* DataRaw() const = 0;
+  virtual size_t SizeInBytes() const = 0;
+
  protected:
   struct KernelContext ctx_;
+  size_t indice_;
+  bool is_input_;
   std::optional<std::vector<int64_t>> shape_;
+  ONNXTensorElementDataType type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  const char* mem_type_ = "Cpu";
 };
 
 template <typename T>
@@ -49,13 +96,14 @@ struct Span {
   T operator[](size_t indice) const {
     return data_[indice];
   }
+  const T* data() const { return data_; }
 };
 
 template <typename T>
 class Tensor : public TensorBase {
  public:
   using TT = typename std::remove_reference<T>::type;
-  Tensor(OrtKernelContext* ctx, size_t indice, bool is_input) : TensorBase(ctx), indice_(indice), is_input_(is_input) {
+  Tensor(OrtKernelContext* ctx, size_t indice, bool is_input) : TensorBase(ctx, indice, is_input) {
     if (is_input_) {
       if (indice >= ctx_.GetInputCount()) {
         ORT_CXX_API_THROW("invalid indice for Ort::Custom::Tensor", OrtErrorCode::ORT_INVALID_ARGUMENT);
@@ -63,19 +111,6 @@ class Tensor : public TensorBase {
       const_value_ = ctx_.GetInput(indice);
       auto type_shape_info = const_value_.GetTensorTypeAndShapeInfo();
       shape_ = type_shape_info.GetShape();
-    }
-  }
-  const std::vector<int64_t>& Shape() const {
-    if (!shape_.has_value()) {
-      ORT_CXX_API_THROW("tensor shape is not yet initialized", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
-    }
-    return shape_.value();
-  }
-  int64_t NumberOfElement() const {
-    if (shape_.has_value()) {
-      return std::accumulate(shape_->begin(), shape_->end(), 1LL, std::multiplies<int64_t>());
-    } else {
-      return 0;
     }
   }
   const TT* Data() const {
@@ -105,10 +140,14 @@ class Tensor : public TensorBase {
     }
     return *Data();
   }
+  const void* DataRaw() const override {
+    return reinterpret_cast<const void*>(Data());
+  }
 
+  size_t SizeInBytes() const override {
+    return NumberOfElement() * sizeof(TT);
+  }
  private:
-  size_t indice_;
-  bool is_input_;
   ConstValue const_value_;  // for input
   TT* data_{};              // for output
   Span<T> span_;
@@ -119,7 +158,7 @@ class Tensor<std::string> : public TensorBase {
  public:
   using strings = std::vector<std::string>;
 
-  Tensor(OrtKernelContext* ctx, size_t indice, bool is_input) : TensorBase(ctx), indice_(indice), is_input_(is_input) {
+  Tensor(OrtKernelContext* ctx, size_t indice, bool is_input) : TensorBase(ctx, indice, is_input) {
     if (is_input_) {
       if (indice >= ctx_.GetInputCount()) {
         ORT_CXX_API_THROW("invalid indice for Ort::Custom::Tensor", OrtErrorCode::ORT_INVALID_ARGUMENT);
@@ -148,15 +187,20 @@ class Tensor<std::string> : public TensorBase {
       }
     }
   }
-  int64_t NumberOfElement() const {
-    if (shape_.has_value()) {
-      return std::accumulate(shape_->begin(), shape_->end(), 1ULL, std::multiplies<int64_t>());
-    } else {
-      return 0;
-    }
-  }
   const strings& Data() const {
     return input_strings_;
+  }
+  const void* DataRaw() const override {
+    if (input_strings_.size() != 1) {
+      ORT_CXX_API_THROW("DataRaw() only applies to string scalar", ORT_RUNTIME_EXCEPTION);
+    }
+    return reinterpret_cast<const void*>(input_strings_[0].c_str());
+  }
+  size_t SizeInBytes() const override {
+    if (input_strings_.size() != 1) {
+      ORT_CXX_API_THROW("SizeInBytes() only applies to string scalar", ORT_RUNTIME_EXCEPTION);
+    }
+    return input_strings_[0].size();
   }
   void SetStringOutput(const strings& ss, const std::vector<int64_t>& dims) {
     shape_ = dims;
@@ -180,8 +224,6 @@ class Tensor<std::string> : public TensorBase {
   }
 
  private:
-  size_t indice_;
-  bool is_input_;
   std::vector<std::string> input_strings_;  // for input
 };
 
@@ -191,7 +233,7 @@ class Tensor<std::string_view> : public TensorBase {
   using strings = std::vector<std::string>;
   using string_views = std::vector<std::string_view>;
 
-  Tensor(OrtKernelContext* ctx, size_t indice, bool is_input) : TensorBase(ctx), indice_(indice), is_input_(is_input) {
+  Tensor(OrtKernelContext* ctx, size_t indice, bool is_input) : TensorBase(ctx, indice, is_input) {
     if (is_input_) {
       if (indice >= ctx_.GetInputCount()) {
         ORT_CXX_API_THROW("invalid indice for Ort::Custom::Tensor", OrtErrorCode::ORT_INVALID_ARGUMENT);
@@ -212,15 +254,20 @@ class Tensor<std::string_view> : public TensorBase {
       }
     }
   }
-  int64_t NumberOfElement() const {
-    if (shape_.has_value()) {
-      return std::accumulate(shape_->begin(), shape_->end(), 1ULL, std::multiplies<int64_t>());
-    } else {
-      return 0;
-    }
-  }
   const string_views& Data() const {
     return input_string_views_;
+  }
+  const void* DataRaw() const override {
+    if (input_string_views_.size() != 1) {
+      ORT_CXX_API_THROW("DataRaw() only applies to string scalar", ORT_RUNTIME_EXCEPTION);
+    }
+    return reinterpret_cast<const void*>(input_string_views_[0].data());
+  }
+  size_t SizeInBytes() const override {
+    if (input_string_views_.size() != 1) {
+      ORT_CXX_API_THROW("SizeInBytes() only applies to string scalar", ORT_RUNTIME_EXCEPTION);
+    }
+    return input_string_views_[0].size();
   }
   void SetStringOutput(const strings& ss, const std::vector<int64_t>& dims) {
     shape_ = dims;
@@ -244,8 +291,6 @@ class Tensor<std::string_view> : public TensorBase {
   }
 
  private:
-  size_t indice_;
-  bool is_input_;
   std::vector<char> chars_;                           // for input
   std::vector<std::string_view> input_string_views_;  // for input
 };
