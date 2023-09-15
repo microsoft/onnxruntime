@@ -41,11 +41,15 @@ jobs:
     clean: true
     submodules: recursive
 
-  - template: templates/get-docker-image-steps.yml
+  - template: set-python-manylinux-variables-step.yml
+  - template: get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      DockerBuildArgs: >-
+        --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+        --network=host
+        --build-arg ROCM_VERSION=$(RocmVersion)
       Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-build
 
   #- script: |-
@@ -72,19 +76,23 @@ jobs:
       script: |-
         export ROCM_HOME=/opt/rocm
         docker run --rm \
+          --ipc=host \
+          --network=host \
+          --cap-add=SYS_PTRACE \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
           --user $UID:$(id -g $USER) \
+          -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+          -e CCACHE_DIR=/cache \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $(CCACHE_DIR):/cache \
-          -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-build \
           /bin/bash -c "
             set -ex; \
             ccache -s; \
-            python tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3 tools/ci_build/build.py \
               --config $(BuildConfig) \
               --enable_training \
               --mpi_home /opt/ompi \
