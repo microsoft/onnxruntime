@@ -21,11 +21,12 @@ Models created with this script:
 - fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx
 - fusion/constant_folding_qdq_node_unit.graph_output.qdq16_contrib.onnx
 """
+from __future__ import annotations
+
 import argparse
 import os
 import struct
 import sys
-from typing import Dict
 
 import onnx
 from onnx import shape_inference
@@ -65,10 +66,10 @@ def convert_initializer_to_16bits(initializer: onnx.TensorProto, target_type: on
 
 
 def convert_qdq_op_to_16bit(
-    name_to_initializer: Dict[str, onnx.TensorProto],
-    name_to_values: Dict[str, onnx.ValueInfoProto],
-    name_to_inputs: Dict[str, onnx.ValueInfoProto],
-    name_to_outputs: Dict[str, onnx.ValueInfoProto],
+    name_to_initializer: dict[str, onnx.TensorProto],
+    name_to_values: dict[str, onnx.ValueInfoProto],
+    name_to_inputs: dict[str, onnx.ValueInfoProto],
+    name_to_outputs: dict[str, onnx.ValueInfoProto],
     node: onnx.NodeProto,
 ):
     zp_input = node.input[2] if len(node.input) > 2 else None
