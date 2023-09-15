@@ -244,6 +244,7 @@ Status LaunchConcatPastToPresent(cudaStream_t stream,
       present);
 }
 
+#ifndef USE_ROCM // exclude from hipify
 template <typename T>
 Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
                            int sequence_length, int total_sequence_length, bool pass_past_in_kv,
@@ -325,6 +326,7 @@ template Status ConcatPastToPresent<half>(int batch_size, int num_heads, int qk_
                                           int max_threads_per_block,
                                           AttentionData<half>& data,
                                           QkvData<half>& qkv);
+#endif
 
 }  // namespace cuda
 }  // namespace contrib
