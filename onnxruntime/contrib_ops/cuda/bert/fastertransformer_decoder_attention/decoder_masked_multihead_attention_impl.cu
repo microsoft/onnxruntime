@@ -34,6 +34,24 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+namespace details {
+#define FOR_WITH_CONDITION_TRUE_FALSE_PATH(loop_var, end_count, condition, true_exec, false_exec) \
+  for (int loop_var = 0; loop_var < end_count; ++loop_var) {                                      \
+    if (condition) {                                                                              \
+      true_exec;                                                                                  \
+    } else {                                                                                      \
+      false_exec;                                                                                 \
+    }                                                                                             \
+  }
+
+#define FOR_WITH_CONDITION_TRUE_PATH(loop_var, end_count, condition, true_exec) \
+  for (int loop_var = 0; loop_var < end_count; ++loop_var) {                    \
+    if (condition) {                                                            \
+      true_exec;                                                                \
+    }                                                                           \
+  }
+}  // namespace details
+
 using namespace decoder_masked_self_attention_details;
 
 template <
@@ -173,7 +191,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     q = add_vec(q, q_bias);
   }
-
 
   T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
 
@@ -345,54 +362,72 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
-  for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
+  constexpr int K_PROC_MULTIPLICITY_FACTOR = 4;
+
+  for (int ti = ko; ti < ti_end; ti += K_PER_ITER * K_PROC_MULTIPLICITY_FACTOR) {
+    bool is_masked[K_PROC_MULTIPLICITY_FACTOR];
+
+    FOR_WITH_CONDITION_TRUE_FALSE_PATH(iter, K_PROC_MULTIPLICITY_FACTOR, (ti + iter * K_PER_ITER) < tlength,
+                                       is_masked[iter] = (params.mask != nullptr) && (params.mask[bi_total_seq_length + (ti + iter * K_PER_ITER)] == 0),
+                                       is_masked[iter] = false);
 
     // The keys loaded from the key cache.
-    K_vec_k k_vec[K_VECS_PER_THREAD];
+    K_vec_k k_vec[K_PROC_MULTIPLICITY_FACTOR][K_VECS_PER_THREAD];
+    float qk[K_PROC_MULTIPLICITY_FACTOR];
 
-    if (has_beams) {
+    // Trigger loading of data in batches
+    for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
+      int ti_local = ti + iter * K_PER_ITER;
+
+      if (has_beams) {
 #pragma unroll
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        int jj = ii * params.max_sequence_length + ti;
+        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+          int jj = ii * params.max_sequence_length + ti_local;
 
-        if (ti < tlength) {
-          const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
-              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
+          if (ti_local < tlength) {
+            const int beam_offset = beam_indices[ti_local] * params.num_heads * params.max_sequence_length * head_size;
+            k_vec[iter][ii] = vec_conversion<K_vec_k, K_vec_m>(
+                (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
+          }
         }
-      }
-    } else {
+      } else {
 #pragma unroll
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        int jj = ii * params.max_sequence_length + ti;
+        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+          int jj = ii * params.max_sequence_length + ti_local;
 
-        if (ti < tlength) {
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
-              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
+          if (ti_local < tlength) {
+            k_vec[iter][ii] = vec_conversion<K_vec_k, K_vec_m>(
+                (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
+          }
         }
       }
     }
 
-    // Perform the dot product and normalize qk.
+    // Perform the compute (dot product and normalize qk.)
     // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
-    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
+    for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
+      qk[iter] = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec[iter]) * inv_sqrt_dh;
 
-    // This is a deviation from FasterTransformer kernel implementation
-    // but this aligns with ORT's other Attention kernels which strives to
-    // mimic PyTorch when dealing with mask filter values
-    if (is_masked) {
-      qk += params.mask_filter_value;
+      // This is a deviation from FasterTransformer kernel implementation
+      // but this aligns with ORT's other Attention kernels which strives to
+      // mimic PyTorch when dealing with mask filter values
+      if (is_masked[iter]) {
+        qk[iter] += params.mask_filter_value;
+      }
     }
 
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
-    if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
-      if (params.relative_attention_bias != nullptr) {
-        qk = add_vec(qk,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
+    for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
+      int ti_local = ti + iter * K_PER_ITER;
+
+      if (ti_local < tlength && tidx % THREADS_PER_KEY == 0) {
+        if (params.relative_attention_bias != nullptr) {
+          qk[iter] = add_vec(qk[iter],
+                             reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti_local]);
+        }
+        qk_max = fmaxf(qk_max, qk[iter]);
+        qk_smem[ti_local] = qk[iter];
       }
-      qk_max = fmaxf(qk_max, qk);
-      qk_smem[ti] = qk;
     }
   }
 
