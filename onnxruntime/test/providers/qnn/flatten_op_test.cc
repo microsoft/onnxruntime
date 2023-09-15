@@ -85,21 +85,21 @@ static void RunQDQFlattenTestOnHTP(const TestInputDef<float>& input_def,
 // Test that Flatten input (rank4) with axis == 0.
 TEST_F(QnnCPUBackendTests, Flatten_Rank4_Axis0) {
   RunFlattenTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                      {utils::MakeAttribute("axis", static_cast<int64_t>(0))},  // Attributes
+                      {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
                       ExpectedEPNodeAssignment::All);
 }
 
 // Test that Flatten input (rank4) with axis == -1.
 TEST_F(QnnCPUBackendTests, Flatten_Rank4_AxisNeg1) {
   RunFlattenTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                      {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},  // Attributes
+                      {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
                       ExpectedEPNodeAssignment::All);
 }
 
 // Test that Flatten input (rank5) with axis == 2.
 TEST_F(QnnCPUBackendTests, Flatten_Rank5_Axis2) {
   RunFlattenTestOnCPU(TestInputDef<float>({1, 2, 3, 4, 4}, false, -10.0f, 10.0f),
-                      {utils::MakeAttribute("axis", static_cast<int64_t>(2))},  // Attributes
+                      {utils::MakeAttribute("axis", static_cast<int64_t>(2))},
                       ExpectedEPNodeAssignment::All);
 }
 
