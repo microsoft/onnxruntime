@@ -2389,12 +2389,15 @@ class SymbolicShapeInference:
     def _infer_RotaryEmbedding(self, node):  # noqa: N802
         if len(node.output) == 1:
             self._propagate_shape_and_type(node)
-        else:
+        elif len(node.output) == 2:
             # Extraneous constant nodes outputted by RotaryEmbedding
-            assert len(node.output) == 3
+            self._propagate_shape_and_type(node, input_index=1, output_index=0)
+            self._propagate_shape_and_type(node, input_index=0, output_index=1)  # true output
+        elif len(node.output) == 3:
+            # Extraneous constant nodes outputted by RotaryEmbedding
             self._propagate_shape_and_type(node, input_index=1, output_index=0)
             self._propagate_shape_and_type(node, input_index=1, output_index=1)
-            self._propagate_shape_and_type(node, input_index=0, output_index=2)
+            self._propagate_shape_and_type(node, input_index=0, output_index=2)  # true output
 
     def _infer_PythonOp(self, node):  # noqa: N802
         output_tensor_types = get_attribute(node, "output_tensor_types")
