@@ -93,16 +93,16 @@ __global__ void ConcatTensorToTensorLarge(const int tensor_add_sequence_length,
 }
 
 Status LaunchConcatTensorToTensor(cudaStream_t stream,
-                                const int all_sequence_length,
-                                const int sequence_length,
-                                const int batch_size,
-                                const int head_size,
-                                const int num_heads,
-                                const int max_threads_per_block,
-                                const int matrix_num,
-                                const float* tensor_in,
-                                const float* tensor_add,
-                                float* tensor_out) {
+                                  const int all_sequence_length,
+                                  const int sequence_length,
+                                  const int batch_size,
+                                  const int head_size,
+                                  const int num_heads,
+                                  const int max_threads_per_block,
+                                  const int matrix_num,
+                                  const float* tensor_in,
+                                  const float* tensor_add,
+                                  float* tensor_out) {
   const dim3 grid(all_sequence_length, batch_size, matrix_num);
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;
@@ -137,16 +137,16 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
 }
 
 Status LaunchConcatTensorToTensor(cudaStream_t stream,
-                                const int all_sequence_length,
-                                const int sequence_length,
-                                const int batch_size,
-                                const int head_size,
-                                const int num_heads,
-                                const int max_threads_per_block,
-                                const int matrix_num,
-                                const half* tensor_in,
-                                const half* tensor_add,
-                                half* tensor_out) {
+                                  const int all_sequence_length,
+                                  const int sequence_length,
+                                  const int batch_size,
+                                  const int head_size,
+                                  const int num_heads,
+                                  const int max_threads_per_block,
+                                  const int matrix_num,
+                                  const half* tensor_in,
+                                  const half* tensor_add,
+                                  half* tensor_out) {
   const dim3 grid(all_sequence_length, batch_size, matrix_num);
   if (0 == (head_size % 4)) {
     const int H = head_size / 4;
@@ -197,15 +197,15 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
 }
 
 Status LaunchConcatPastToPresent(cudaStream_t stream,
-                               const int all_sequence_length,
-                               const int sequence_length,
-                               const int batch_size,
-                               const int head_size,
-                               const int num_heads,
-                               const int max_threads_per_block,
-                               const float* past,
-                               const float* k_v,
-                               float* present) {
+                                 const int all_sequence_length,
+                                 const int sequence_length,
+                                 const int batch_size,
+                                 const int head_size,
+                                 const int num_heads,
+                                 const int max_threads_per_block,
+                                 const float* past,
+                                 const float* k_v,
+                                 float* present) {
   return LaunchConcatTensorToTensor(
       stream,
       all_sequence_length,
@@ -221,15 +221,15 @@ Status LaunchConcatPastToPresent(cudaStream_t stream,
 }
 
 Status LaunchConcatPastToPresent(cudaStream_t stream,
-                               const int all_sequence_length,
-                               const int sequence_length,
-                               const int batch_size,
-                               const int head_size,
-                               const int num_heads,
-                               const int max_threads_per_block,
-                               const half* past,
-                               const half* k_v,
-                               half* present) {
+                                 const int all_sequence_length,
+                                 const int sequence_length,
+                                 const int batch_size,
+                                 const int head_size,
+                                 const int num_heads,
+                                 const int max_threads_per_block,
+                                 const half* past,
+                                 const half* k_v,
+                                 half* present) {
   return LaunchConcatTensorToTensor(
       stream,
       all_sequence_length,
@@ -243,6 +243,90 @@ Status LaunchConcatPastToPresent(cudaStream_t stream,
       k_v,
       present);
 }
+
+#ifndef USE_ROCM // exclude from hipify
+template <typename T>
+Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                           int sequence_length, int total_sequence_length, bool pass_past_in_kv,
+                           cudaStream_t stream,
+                           int max_threads_per_block,
+                           AttentionData<T>& data,
+                           QkvData<T>& qkv) {
+  // Concat past key value to present (2xBxNxLxH), where L is kv_sequence_length and T is total_sequence_length.
+  // past_k (BxNxPxH) + k (BxNxLxH) => present_k (BxNxTxH)
+  // past_v (BxNxPxH) + v (BxNxLxH) => present_v (BxNxTxH)
+  // When there is past state, the head size for Q/K/V shall be same: H == H_v.
+
+  if (nullptr != data.present) {
+    assert(qkv.format == AttentionQkvFormat::Q_K_V_BNSH || qkv.format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
+    ORT_RETURN_IF_ERROR(
+        LaunchConcatPastToPresent(
+            stream, total_sequence_length, sequence_length, batch_size, qk_head_size, num_heads,
+            max_threads_per_block, data.past, qkv.k, data.present));
+
+    // Update pointers to present_k and present_v.
+    qkv.k = data.present;
+    qkv.v = data.present + batch_size * num_heads * total_sequence_length * qk_head_size;
+  }
+
+  if (nullptr != data.past_key || nullptr != data.present_key) {
+    if (nullptr != data.past_key && nullptr == data.present_key) {
+      qkv.k = const_cast<T*>(data.past_key);
+      qkv.v = const_cast<T*>(data.past_value);
+    } else if (nullptr == data.past_key && nullptr != data.present_key) {
+      if (qkv.format == AttentionQkvFormat::Q_K_V_BNSH) {
+        qkv.k = data.present_key;
+        qkv.v = data.present_value;
+      } else {
+        assert(qkv.format == AttentionQkvFormat::Q_K_V_BSNH);
+        qkv.k = data.temp_k_workspace;
+        qkv.v = data.temp_v_workspace;
+      }
+    } else if (pass_past_in_kv) {
+      // past_key and past_value are used directly as key and value in attention computations
+      qkv.k = const_cast<T*>(data.past_key);
+      qkv.v = const_cast<T*>(data.past_value);
+
+      // This path has a memory copy from past_key and past_value to present_key and present_value
+      // Avoid this path since the memory copy is unnecessary because past_key == present_key and
+      // past_value == present_value
+      int64_t k_size = (int64_t)batch_size * num_heads * total_sequence_length * qk_head_size;
+      int64_t v_size = (int64_t)batch_size * num_heads * total_sequence_length * v_head_size;
+      cudaMemcpyAsync(data.present_key, data.past_key, k_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+      cudaMemcpyAsync(data.present_value, data.past_value, v_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+    } else {
+      ORT_RETURN_IF_ERROR(
+          LaunchConcatTensorToTensor(stream, total_sequence_length, sequence_length,
+                                     batch_size, qk_head_size, num_heads,
+                                     max_threads_per_block, 1, data.past_key, qkv.k, data.present_key));
+      ORT_RETURN_IF_ERROR(
+          LaunchConcatTensorToTensor(stream, total_sequence_length, sequence_length,
+                                     batch_size, v_head_size, num_heads,
+                                     max_threads_per_block, 1, data.past_value, qkv.v, data.present_value));
+      // Update pointers to present_k and present_v.
+      qkv.k = data.present_key;
+      qkv.v = data.present_value;
+    }
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// Template Instantiation
+template Status ConcatPastToPresent<float>(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                                           int sequence_length, int total_sequence_length, bool pass_past_in_kv,
+                                           cudaStream_t stream,
+                                           int max_threads_per_block,
+                                           AttentionData<float>& data,
+                                           QkvData<float>& qkv);
+
+template Status ConcatPastToPresent<half>(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                                          int sequence_length, int total_sequence_length, bool pass_past_in_kv,
+                                          cudaStream_t stream,
+                                          int max_threads_per_block,
+                                          AttentionData<half>& data,
+                                          QkvData<half>& qkv);
+#endif
 
 }  // namespace cuda
 }  // namespace contrib
