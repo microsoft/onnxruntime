@@ -97,6 +97,8 @@ def setup_torch_model(args, use_cuda=True):
                 model.to(torch.device(rank))
             model.eval()
             model.requires_grad_(False)
+            if args.cugraph:
+                model.addition_init(1, model.device, config.torch_dtype, config.max_position_embeddings)
             if args.compile:
                 if args.custom_gen:
                     model = torch.compile(model)
@@ -162,16 +164,81 @@ def custom_generate(model, input_ids, attention_mask, max_new_tokens=128, **kwar
         output_ids.append(tokens)
     return torch.concat(output_ids, dim=1)
 
+decoder_generate_graph = None
+graph_inputs = None
+graph_outputs = None
+def torch_generate_with_graph(args, model, input_ids, attention_mask, max_new_tokens=128, use_cache=True, **kwargs):
+    past_kvs = None
+    output_ids = [input_ids,]
+    tokens = input_ids
+    _, pos = input_ids.shape
+    position_ids = None
+    for i in range(max_new_tokens):
+        model_inputs = model.prepare_inputs(tokens, position_ids=position_ids, attention_mask=attention_mask, past_key_values=past_kvs, use_cache=use_cache, **kwargs)
+
+        torch.cuda.nvtx.range_push('forward')
+        if past_kvs is not None and args.cugraph:
+            # in decoding phase
+            global decoder_generate_graph
+            global graph_inputs
+            global graph_outputs
+            if decoder_generate_graph is None:
+                # copy input_ids and position into another memory to be re-used by graph
+                model_inputs['input_ids'] = torch.empty_like(model_inputs['input_ids']).copy_(model_inputs['input_ids'])
+                model_inputs['position_ids'] = torch.empty_like(model_inputs['position_ids']).copy_(model_inputs['position_ids'])
+
+                # warm up for graph
+                s = torch.cuda.Stream()
+                s.wait_stream(torch.cuda.current_stream())
+                with torch.cuda.stream(s):
+                    model(**model_inputs)
+                torch.cuda.current_stream().wait_stream(s)
+
+                # record graph
+                g1 = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(g1):
+                    results = model(**model_inputs)
+                graph_inputs = model_inputs
+                graph_outputs = results
+                decoder_generate_graph = g1
+            # copy inputs into graph_inputs
+            # only input_ids and position need to be copied.
+            # attention_mask is modified by prepare_inputs
+            # past_kv is modified by attention layer
+            for k in ['input_ids', 'position_ids']:
+                graph_inputs[k].copy_(model_inputs[k])
+
+            decoder_generate_graph.replay()
+            results = graph_outputs
+        else:
+            results = model(**model_inputs)
+
+        torch.cuda.nvtx.range_pop()
+
+        logits = results.logits
+        past_kvs = results.past_key_values
+        position_ids = torch.tensor([pos], dtype=torch.long, device=model.device)
+        position_ids.unsqueeze(0)
+        pos += 1
+
+        # greedy search
+        tokens = torch.argmax(logits[:, -1, :], dim=1, keepdim=True)
+
+        output_ids.append(tokens)
+    return torch.concat(output_ids, dim=1)
 
 def _run_gen(args, model, tokenizer, input_ids, attention_mask, name):
     if args.custom_gen:
         print_out("[generate] Using custom_generate")
-        gen = partial(custom_generate, model)
+        if args.cugraph and args.torch:
+          gen = partial(torch_generate_with_graph, args, model)
+        else:
+          gen = partial(custom_generate, model)
     else:
         print_out("[generate] Using original model.generate")
         gen = model.generate
 
-    gen_func = lambda: gen(
+    outputs = gen(
         input_ids=input_ids,
         attention_mask=attention_mask,
         max_new_tokens=128,
@@ -181,21 +248,6 @@ def _run_gen(args, model, tokenizer, input_ids, attention_mask, name):
         top_p=1.0,
         use_cache=True,
     )
-
-    if args.cugraph:
-        s = torch.cuda.Stream(device=model.device)
-        s.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(s):
-            gen_func()  # warmup
-        print_out("[generate] CUDAGraph enabled")
-
-        torch.cuda.current_stream().wait_stream(s)
-        g1 = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(g1, stream=s):
-            outputs = gen_func()
-        g1.replay()
-    else:
-        outputs = gen_func()
 
     print_out("input ids size: ", input_ids.shape, " value: ", input_ids)
     print_out("output size: ", outputs[0].shape, " value: ", outputs[0])
@@ -260,7 +312,10 @@ def _run_bmk(args, model, name):
 
     if args.custom_gen:
         print_out("[benchmark] Using custom_generate")
-        gen = partial(custom_generate, model)
+        if args.cugraph and args.torch:
+          gen = partial(torch_generate_with_graph, args, model)
+        else:
+          gen = partial(custom_generate, model)
     else:
         print_out("[benchmark] Using original model.generate")
         gen = model.generate
@@ -287,17 +342,6 @@ def _run_bmk(args, model, name):
                 top_p=1.0,
                 use_cache=True,
             )
-
-            if args.cugraph:
-                s = torch.cuda.Stream(device=model.device)
-                s.wait_stream(torch.cuda.current_stream())
-                with torch.cuda.stream(s):
-                    gen_func()  # warmup
-                torch.cuda.current_stream().wait_stream(s)
-                g1 = torch.cuda.CUDAGraph()
-                with torch.cuda.graph(g1, stream=s):
-                    gen_func()
-                gen_func = lambda: g1.replay()
 
             item = func_benchmark(gen_func, warm=args.warm, steps=args.loop_cnt)
             cost.append(item)

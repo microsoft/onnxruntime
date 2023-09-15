@@ -10,10 +10,12 @@ from transformers.activations import ACT2FN
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     LlamaMLP,
+    LlamaModel,
     LlamaForCausalLM,
     rotate_half,
     repeat_kv,
     apply_rotary_pos_emb,
+    _make_causal_mask,
 )
 
 from modeling.parallel_layers import (
@@ -31,8 +33,10 @@ class RotaryEmbedding(torch.autograd.Function):
         seq_len = q.shape[-2]
         if past_key is not None:
             seq_len += past_key.shape[-2]
-        cos = cos_cache[:, :, :seq_len, ...].to(q.dtype)
-        sin = sin_cache[:, :, :seq_len, ...].to(q.dtype)
+        #cos = cos_cache[:, :, :seq_len, ...].to(q.dtype)
+        #sin = sin_cache[:, :, :seq_len, ...].to(q.dtype)
+        cos = cos_cache.to(q.dtype)
+        sin = sin_cache.to(q.dtype)
 
         cos = cos.reshape(cos.shape[2], cos.shape[3])
         sin = sin.reshape(sin.shape[2], sin.shape[3])
@@ -95,6 +99,13 @@ def new_attention_init(self, config):
 
     self._init_rope()
 
+def attention_init_kv_cache(self, batch_size, device, dtype):
+    '''
+    add kv cache buffer into attention_layer, this function needs to be called after parallel_split
+    because it needs num_key_value_heads
+    '''
+    self.key_cache = torch.zeros((batch_size, self.num_key_value_heads, self.max_position_embeddings, self.head_dim), device=device, dtype=dtype)
+    self.value_cache = torch.zeros((batch_size, self.num_key_value_heads, self.max_position_embeddings, self.head_dim), device=device, dtype=dtype)
 
 def new_attention_forward(
     self,
@@ -135,29 +146,36 @@ def new_attention_forward(
     if past_key_value is not None:
         kv_seq_len += past_key_value[0].shape[-2]
 
-    if torch.onnx.is_in_onnx_export():
-        query_states = RotaryEmbedding.apply(
-            query_states,
-            position_ids,
-            self.rotary_emb.cos_cached,
-            self.rotary_emb.sin_cached,
-            past_key_value[0] if past_key_value is not None else None,
-        )
-        key_states = RotaryEmbedding.apply(
-            key_states,
-            position_ids,
-            self.rotary_emb.cos_cached,
-            self.rotary_emb.sin_cached,
-            past_key_value[0] if past_key_value is not None else None,
-        )
-    else:
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+    # use RotaryEmbedding for cudagraph, it need to handle cos_cache and sin_cache.
+    query_states = RotaryEmbedding.apply(
+        query_states,
+        position_ids,
+        self.rotary_emb.cos_cached,
+        self.rotary_emb.sin_cached,
+        past_key_value[0] if past_key_value is not None else None,
+    )
+    key_states = RotaryEmbedding.apply(
+        key_states,
+        position_ids,
+        self.rotary_emb.cos_cached,
+        self.rotary_emb.sin_cached,
+        past_key_value[0] if past_key_value is not None else None,
+    )
+    #cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+    #query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
-    if past_key_value is not None:
-        # reuse k, v, self_attention
-        key_states = torch.cat([past_key_value[0], key_states], dim=2)
-        value_states = torch.cat([past_key_value[1], value_states], dim=2)
+    if getattr(self, 'key_cache', None) is not None:
+        kv_position = position_ids[:, None, :, None].expand(key_states.shape[0], key_states.shape[1], position_ids.shape[1], key_states.shape[3])
+        self.key_cache.scatter_(2, kv_position, key_states)
+        self.value_cache.scatter_(2, kv_position, value_states)
+
+        key_states = self.key_cache
+        value_states = self.value_cache
+    else:
+        if past_key_value is not None:
+            # reuse k, v, self_attention
+            key_states = torch.cat([past_key_value[0], key_states], dim=2)
+            value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
     past_key_value = (key_states, value_states) if use_cache else None
 
@@ -167,17 +185,18 @@ def new_attention_forward(
 
     attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
-    if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-        raise ValueError(
-            f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-            f" {attn_weights.size()}"
-        )
+    # not need to check attn_weights and attention_mask's shape, because they are all use the max_seq_len
+    #if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+    #    raise ValueError(
+    #        f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+    #        f" {attn_weights.size()}"
+    #    )
 
     if attention_mask is not None:
-        if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-            raise ValueError(
-                f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-            )
+        #if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+        #    raise ValueError(
+        #        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+        #    )
         attn_weights = attn_weights + attention_mask
 
     # upcast attention to fp32
@@ -237,8 +256,84 @@ def parallel_model(self):
 
     _split_model(self)
 
+def addition_init(self, batch_size, device, dtype, max_seq_len):
+    '''
+    This function is attached to LlamaForCausalLM, used to init kv_cache buffer and attention_mask buffer
+    These buffers are used for cudagraph
+    '''
+    def _init_fn(model):
+        if isinstance(model, LlamaAttention):
+            model.init_kv_cache(batch_size, device, dtype)
+        for _, m in model._modules.items():
+            _init_fn(m)
 
+    _init_fn(self)
+
+    self.decoder_attn_mask = torch.zeros((batch_size, 1, 1, max_seq_len), dtype=dtype, device=device)
+
+def prepare_inputs(self, input_ids, position_ids=None, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs):
+    '''
+    This function is a replacement for prepare_inputs_for_generation
+    It modifies attention_mask buffer for generation.
+    '''
+    dtype = self.decoder_attn_mask.dtype
+    min_value = torch.finfo(dtype).min
+    if past_key_values is None:
+        device = self.decoder_attn_mask.device
+        max_seq_len = self.decoder_attn_mask.shape[3]
+        bsz, seq_len = input_ids.shape
+
+        self.decoder_attn_mask[:] = min_value
+        self.decoder_attn_mask[:bsz, :, :, :seq_len] = 0.
+
+        mask = _make_causal_mask((bsz, seq_len), dtype, device)
+
+        attention_mask = torch.full((bsz, 1, seq_len, max_seq_len), min_value, dtype=dtype, device=device)
+        attention_mask[:,:,:,:seq_len] = mask
+
+        position_ids = torch.arange(0, seq_len, dtype=torch.long, device=device)
+        position_ids = position_ids.unsqueeze(0).view(-1, seq_len)
+        model_inputs = {
+                'input_ids': input_ids,
+                'position_ids': position_ids,
+                'attention_mask': attention_mask,
+                'past_key_values': past_key_values,
+                'use_cache': True,
+        }
+        return model_inputs
+
+    # for decoding phase, update mask at new position
+    # position_ids shape is [b, seq_len]
+    pos = position_ids[-1]
+    self.decoder_attn_mask[:, :, :, pos] = 0.
+
+    model_inputs = {
+            'input_ids': input_ids,
+            'position_ids': position_ids,
+            'attention_mask': self.decoder_attn_mask,
+            'past_key_values': past_key_values,
+            'use_cache': True,
+    }
+    return model_inputs
+
+
+def prepare_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
+    '''
+    this is a hook for LlamaModel._prepare_decoder_attention_mask
+    attention_mask has been modified by prepare_inputs, so here directly return it
+    '''
+    if len(attention_mask.shape) == 2:
+        # fallback to origin prepare attention_mask
+        return self._prepare_decoder_attention_mask_backup(attention_mask, input_shape, inputs_embeds, past_key_values_length)
+
+    return attention_mask
+
+LlamaModel._prepare_decoder_attention_mask_backup = LlamaModel._prepare_decoder_attention_mask
+LlamaModel._prepare_decoder_attention_mask = prepare_attention_mask
+LlamaAttention.init_kv_cache = attention_init_kv_cache
 LlamaAttention.forward = new_attention_forward
+LlamaForCausalLM.addition_init = addition_init
+LlamaForCausalLM.prepare_inputs = prepare_inputs
 
 if get_world_size() > 1:
     LlamaMLP.__init__ = new_mlp_init
