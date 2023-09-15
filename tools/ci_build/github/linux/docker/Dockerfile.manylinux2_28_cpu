@@ -1,4 +1,4 @@
-ARG BASEIMAGE=amd64/almalinux:8
+ARG BASEIMAGE=registry.access.redhat.com/ubi8/ubi
 ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
