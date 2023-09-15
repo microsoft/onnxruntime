@@ -272,8 +272,8 @@ const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttri
   kernelShape = [1].concat(kernelShape);
   const adjustedAttributes =
       getAdjustedConvTransposeAttributes({...attributes, pads, strides, dilations, kernelShape}, inputs);
-  context.compute(createConvTranspose2DProgramInfoLoader(context,
-      inputs, adjustedAttributes,
+  context.compute(createConvTranspose2DProgramInfoLoader(
+      context, inputs, adjustedAttributes,
       outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] :
                                      [outputShape[0], outputShape[1], outputShape[3]]));
 };
