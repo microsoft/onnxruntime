@@ -131,9 +131,7 @@ ONNX_INT_TYPE_RANGE = {
 }
 
 ONNX_INT_TYPE_SYMMETRIC_RANGE = {
-    onnx_proto.TensorProto.UINT8: (0, 255),
     onnx_proto.TensorProto.INT8: (-127, 127),
-    onnx_proto.TensorProto.UINT16: (0, 65535),
     onnx_proto.TensorProto.INT16: (-32767, 32767),
 }
 
@@ -179,21 +177,8 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
 
-        # If low and high are None, set them to the minimum and maximum values representable by
-        # dtype's bitwidth (symmetric).
-        if dtype == numpy.uint8 or dtype == numpy.int8:
-            if low is None:
-                low = ONNX_INT_TYPE_SYMMETRIC_RANGE[onnx_proto.TensorProto.INT8][0]
-            if high is None:
-                high = ONNX_INT_TYPE_SYMMETRIC_RANGE[onnx_proto.TensorProto.UINT8][1]
-        elif dtype == numpy.uint16 or dtype == numpy.int16:
-            if low is None:
-                low = ONNX_INT_TYPE_SYMMETRIC_RANGE[onnx_proto.TensorProto.INT16][0]
-            if high is None:
-                high = ONNX_INT_TYPE_SYMMETRIC_RANGE[onnx_proto.TensorProto.UINT16][1]
-
-        cliplow = max(qmin, low)
-        cliphigh = min(qmax, high)
+        cliplow = max(qmin, low) if low is not None else qmin
+        cliphigh = min(qmax, high) if high is not None else qmax
         arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
         numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
         return arr_fp32.astype(dtype)
@@ -336,8 +321,8 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
 
     if reduce_range:
         qrange = ONNX_INT_TYPE_REDUCED_RANGE.get(qType)
-    elif symmetric:
-        qrange = ONNX_INT_TYPE_SYMMETRIC_RANGE.get(qType)
+    elif symmetric and qType in ONNX_INT_TYPE_SYMMETRIC_RANGE:
+        qrange = ONNX_INT_TYPE_SYMMETRIC_RANGE[qType]
     else:
         qrange = ONNX_INT_TYPE_RANGE.get(qType)
 
