@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
@@ -238,5 +238,18 @@ export const greater = (context: ComputeContext): void => {
 export const less = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(
       context.inputs, 'Less', ({scalar: (a, b) => `u32(${a}<${b})`, vector: (a, b) => `vec4<u32>(${a}<${b})`}),
+      undefined, undefined, DataType.bool));
+};
+
+export const greaterOrEqual = (context: ComputeContext): void => {
+  context.compute(createBinaryOpProgramInfoLoader(
+      context.inputs, 'GreaterOrEqual',
+      ({scalar: (a, b) => `u32(${a}>=${b})`, vector: (a, b) => `vec4<u32>(${a}>=${b})`}), undefined, undefined,
+      DataType.bool));
+};
+
+export const lessOrEqual = (context: ComputeContext): void => {
+  context.compute(createBinaryOpProgramInfoLoader(
+      context.inputs, 'LessOrEqual', ({scalar: (a, b) => `u32(${a}<=${b})`, vector: (a, b) => `vec4<u32>(${a}<=${b})`}),
       undefined, undefined, DataType.bool));
 };

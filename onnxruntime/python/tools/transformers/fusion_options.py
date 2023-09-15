@@ -45,6 +45,9 @@ class FusionOptions:
         self.enable_gemm_fast_gelu = False
         self.group_norm_channels_last = True
 
+        if model_type == "clip":
+            self.enable_embed_layer_norm = False
+
         # Set default to sequence length for BERT model to use fused attention to speed up.
         # Note that embed layer normalization will convert 2D mask to 1D when mask type is MaskIndexEnd.
         self.attention_mask_format = AttentionMaskFormat.AttentionMask
