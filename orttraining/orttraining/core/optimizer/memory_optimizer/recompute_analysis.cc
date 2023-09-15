@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <deque>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
 #include "core/framework/data_types.h"
@@ -31,7 +38,7 @@ float InputOutputSizeRatio(const Node* node) {
     }
     const auto& ptype1 = input->Type();
     const auto& ptype2 = output->Type();
-    float ratio = float(GetElementSize(ptype1)) / (float)GetElementSize(ptype2);
+    float ratio = static_cast<float>(GetElementSize(ptype1)) / static_cast<float>(GetElementSize(ptype2));
     return ratio;
   }
 
@@ -328,7 +335,7 @@ void NodesInTopoOrderToString(gsl::span<const Node* const> nodes_in_topological_
 
 }  // namespace
 
-std::shared_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
+std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
                                                          const ProbeLevel probe_level,
                                                          const ActivationUsedMap& fw_op_output_arg_used_map,
                                                          const InlinedHashMap<NodeIndex, ptrdiff_t>&
@@ -364,7 +371,7 @@ std::shared_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
 
   LOGS(logger, VERBOSE) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << log_info;
 
-  return std::make_shared<NodeRecomputePlan>(&node, candidate_output_args_map.at(&node),
+  return std::make_unique<NodeRecomputePlan>(&node, candidate_output_args_map.at(&node),
                                              nodes_in_topological_order,
                                              compromise_stashed_activation,
                                              save_ratio);

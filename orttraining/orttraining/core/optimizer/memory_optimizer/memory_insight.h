@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <map>
+#include <string>
+#include <utility>
+
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
@@ -116,6 +120,7 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
                                              std::string_view memory_optimization_config,
                                              std::string_view recompute_probe_level,
                                              const logging::Logger& logger,
+                                             // used as Python binding, so used std::map instead of InlinedHashMap
                                              std::map<std::string, std::pair<std::string, int>>&
                                                  cluster_id_combinations_to_saved_symbolic_byte_map,
                                              const OrtValueNameIdxMap* ortvalue_name_to_idx_map = nullptr,

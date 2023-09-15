@@ -1,7 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <iomanip>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -13,9 +19,9 @@
 namespace onnxruntime::optimizer::memory_optimizer {
 
 // Placeholder string for table row separator, which is used to be replaced by table row separator finally.
-static const std::string kTableRowSeparator = "TABLE_SEPARATOR_PLACEHOLDER";
+constexpr const char kTableRowSeparator[] = "TABLE_SEPARATOR_PLACEHOLDER";
 // Placeholder string for table border, which is used to be replaced by table border finally.
-static const std::string kTableBorder = "TABLE_BORDER_PLACEHOLDER";
+constexpr const char kTableBorder[] = "TABLE_BORDER_PLACEHOLDER";
 
 // The max length of the first column in the table.
 constexpr const int kFirstColumnWidth = 7;
@@ -215,7 +221,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
     }
 
     bool can_compromise_stashed_activation = false;
-    std::shared_ptr<NodeRecomputePlan> recompute_plan =
+    std::unique_ptr<NodeRecomputePlan> recompute_plan =
         CheckNodeForRecompute(*p_node,
                               probe_level,
                               fw_op_output_arg_used_map,
@@ -224,7 +230,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                               logger, false,
                               can_compromise_stashed_activation);
     if (recompute_plan != nullptr) {
-      memory_opt_planner.AddNodeOptimizationPlan(p_node, recompute_plan);
+      memory_opt_planner.AddNodeOptimizationPlan(p_node, std::move(recompute_plan));
     }
 
     if (can_compromise_stashed_activation) {
@@ -232,13 +238,14 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                             << ") for compromised recompute";
       // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist
       // during backward pass, then we can consider to recomute them.
-      recompute_plan = CheckNodeForRecompute(*p_node, probe_level, fw_op_output_arg_used_map,
-                                             node_index_to_its_order_in_topological_sort_map,
-                                             candidate_output_args_map,
-                                             logger, true,
-                                             can_compromise_stashed_activation);
-      if (recompute_plan != nullptr) {
-        memory_opt_planner.AddNodeOptimizationPlan(p_node, recompute_plan);
+      std::unique_ptr<NodeRecomputePlan> recompute_with_compromise_plan =
+          CheckNodeForRecompute(*p_node, probe_level, fw_op_output_arg_used_map,
+                                node_index_to_its_order_in_topological_sort_map,
+                                candidate_output_args_map,
+                                logger, true,
+                                can_compromise_stashed_activation);
+      if (recompute_with_compromise_plan != nullptr) {
+        memory_opt_planner.AddNodeOptimizationPlan(p_node, std::move(recompute_with_compromise_plan));
       }
     }
   }
@@ -365,6 +372,7 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
   }
 }
 
+// Function declare to make it compile.
 void IterateNodeOptimizationPlan(const std::shared_ptr<NodeOptimizationPlanBase>& plan,
                                  const InlinedHashMap<const Node*, InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
                                      node_to_optimization_plans_map,
@@ -374,6 +382,9 @@ void IterateNodeOptimizationPlan(const std::shared_ptr<NodeOptimizationPlanBase>
                                  InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
                                      all_combinations);
 
+/*
+ * Iterate from a node, generate combinations for each optimization plan for it.
+ */
 void IterateNode(const Node* node,
                  const InlinedHashMap<const Node*, InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
                      node_to_optimization_plans_map,
@@ -428,6 +439,10 @@ void ListAllCombinations(const InlinedVector<InlinedVector<InlinedVector<std::sh
   MO_LOG_DEBUG_INFO(logger, "Exit ListAllCombinations");
 }
 
+/**
+ * Iterate from a node optimization plan, if there is any buffer reuse in its node outputs,
+ * iterate all possible reuse buffer plan combinations.
+ */
 void IterateNodeOptimizationPlan(const std::shared_ptr<NodeOptimizationPlanBase>& plan,
                                  const InlinedHashMap<const Node*, InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
                                      node_to_optimization_plans_map,

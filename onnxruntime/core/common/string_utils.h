@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -42,9 +43,7 @@ inline InlinedVector<std::string_view> SplitString(std::string_view string_to_sp
  * @param s The string to trim.
  */
 inline void LeftTrimString(std::string& s) {
-  s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
-            return !std::isspace(ch);
-          }));
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
 }
 
 /**
@@ -52,10 +51,7 @@ inline void LeftTrimString(std::string& s) {
  * @param s The string to trim.
  */
 inline void RightTrimString(std::string& s) {
-  s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
-            return !std::isspace(ch);
-          }).base(),
-          s.end());
+  s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
 }
 
 /**

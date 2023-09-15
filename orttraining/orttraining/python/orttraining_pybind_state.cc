@@ -729,11 +729,19 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("get_serialized_ortmodule_memory_stat", [](TrainingAgent* agent, const std::string& memory_optimization_config, const std::string& recompute_probe_level) -> std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>> {
-        std::map<std::string, std::pair<std::string, int>> cluster_id_combinations_to_saved_symbolic_byte_map;
-        std::string opportunity_table = agent->GetSerializedORTModuleMemoryStat(memory_optimization_config, recompute_probe_level, cluster_id_combinations_to_saved_symbolic_byte_map);
-        return std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>>(opportunity_table, cluster_id_combinations_to_saved_symbolic_byte_map);
-      });
+      .def("get_serialized_ortmodule_memory_stat",            // for memory optimization
+           [](TrainingAgent* agent,                           // agent
+              const std::string& memory_optimization_config,  // user config string
+              const std::string& recompute_probe_level        // user config string for probe level
+              ) -> std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>> {
+             std::map<std::string, std::pair<std::string, int>> cluster_id_combinations_to_saved_symbolic_byte_map;
+             std::string opportunity_table =
+                 agent->GetSerializedORTModuleMemoryStat(memory_optimization_config,
+                                                         recompute_probe_level,
+                                                         cluster_id_combinations_to_saved_symbolic_byte_map);
+             return std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>>(
+                 opportunity_table, cluster_id_combinations_to_saved_symbolic_byte_map);
+           });
 
   py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local(), py::arithmetic{})
       .value("NONE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None)

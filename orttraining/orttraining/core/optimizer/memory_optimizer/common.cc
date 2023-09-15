@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <charconv>
+#include <vector>
+#include <utility>
 
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "core/graph/graph_utils.h"
@@ -15,7 +17,7 @@ namespace onnxruntime::optimizer::memory_optimizer {
 
 namespace {
 
-static std::string empty_dim_param_placeholder = "empty_dim_param";
+constexpr const char empty_dim_param_placeholder[] = "empty_dim_param";
 static int64_t index_empty_dim = 0;
 
 void TensorShapeProtoToDimParamVector(const ONNX_NAMESPACE::TensorShapeProto* shape,

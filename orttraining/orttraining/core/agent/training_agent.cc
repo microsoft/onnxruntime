@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <map>
+#include <memory>
 #include <utility>
 #include <string>
 

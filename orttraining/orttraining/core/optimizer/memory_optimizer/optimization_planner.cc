@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/framework/ort_value_name_idx_map.h"

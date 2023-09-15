@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 
@@ -87,7 +90,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
  * @param can_compromise_stashed_activation A bool return value, to indicate there is opportunaties for finding a
  * compromised subgraph.
  */
-std::shared_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
+std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
                                                          const ProbeLevel probe_level,
                                                          const ActivationUsedMap& fw_op_output_arg_used_map,
                                                          const InlinedHashMap<NodeIndex, ptrdiff_t>&
