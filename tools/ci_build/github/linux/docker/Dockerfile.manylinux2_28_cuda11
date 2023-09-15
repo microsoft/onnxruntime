@@ -156,7 +156,7 @@ ENV SSL_CERT_FILE=/opt/_internal/certs.pem
 CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
-
+ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 #Add our own dependencies
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
