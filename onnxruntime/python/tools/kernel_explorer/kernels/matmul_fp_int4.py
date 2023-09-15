@@ -27,7 +27,8 @@ def dtype_to_funcs_cublas(dtype):
 
 
 
-dtypes = ["float16", "float32"]
+#dtypes = ["float16", "float32"]
+dtypes = ["float16", ]
 
 
 @dataclass
@@ -80,13 +81,14 @@ def profile_with_args(m, n, k, dtype, sort):
         for func in dtype_to_funcs(dtype):
             profile_matmul_fp_int4_func(m, n, k, dtype, func)
 
-        for func in dtype_to_funcs_cublas(dtype):
-            profile_gemm_func(m, n, k, dtype, func)
+        # for func in dtype_to_funcs_cublas(dtype):
+        #     profile_gemm_func(m, n, k, dtype, func)
 
 
 def profile():
     dims_m = [1]
-    dims = [4096, 12288,]
+    #dims = [4096, 12288,]
+    dims = [4096,]
     for dt in dtypes:
         for m in dims_m:
             for n in dims:
