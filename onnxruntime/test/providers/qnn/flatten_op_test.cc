@@ -41,7 +41,7 @@ template <typename DataType>
 static void RunFlattenTestOnHTP(const TestInputDef<DataType>& input_def,
                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
-                                int opset = 12) {
+                                int opset = 13) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
