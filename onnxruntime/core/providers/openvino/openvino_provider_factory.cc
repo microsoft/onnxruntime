@@ -97,15 +97,18 @@ struct OpenVINO_Provider : Provider {
     if (provider_options_map.find("cache_dir") != provider_options_map.end()) {
       cache_dir = provider_options_map.at("cache_dir").c_str();
     }
+
     if (provider_options_map.find("context") != provider_options_map.end()) {
-      context = (void*)provider_options_map.at("context").c_str();
+      std::string str = provider_options_map.at("context");
+      unsigned long long int number = std::strtoull(str.c_str(), nullptr, 16);
+      context = reinterpret_cast<void*>(number);
     }
 
     if (provider_options_map.find("num_of_threads") != provider_options_map.end()) {
       num_of_threads = std::stoi(provider_options_map.at("num_of_threads"));
       if (num_of_threads <= 0) {
         num_of_threads = 1;
-        }
+      }
     }
 
     if (provider_options_map.find("num_streams") != provider_options_map.end()) {
