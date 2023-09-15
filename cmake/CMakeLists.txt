@@ -1402,7 +1402,7 @@ if (onnxruntime_USE_CUDA)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
   endif()
   if (NOT WIN32)
-    list(APPEND CUDA_NVCC_FLAGS --debug_mode -generate-line-info --compiler-options -fPIC)
+    list(APPEND CUDA_NVCC_FLAGS --compiler-options -fPIC)
   endif()
   
   #set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --generate-line-info")
