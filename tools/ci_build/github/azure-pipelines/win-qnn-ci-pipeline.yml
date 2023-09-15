@@ -71,7 +71,6 @@ jobs:
   # '_Ret &std::_Visit_strategy<1>::_Visit2<_Ret,_ListOfIndexVectors,_Callable,const
   # std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver>&>(size_t,_Callable &&,
   # const std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver> &)'
-
   - template: templates/jobs/win-ci-build-steps.yml
     parameters:
       WithCache: True
@@ -85,7 +84,6 @@ jobs:
 
   - powershell: |
      python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests
-
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run unit tests'
 
