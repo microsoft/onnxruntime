@@ -367,16 +367,20 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER * K_PROC_MULTIPLICITY_FACTOR) {
     bool is_masked[K_PROC_MULTIPLICITY_FACTOR];
 
-    FOR_WITH_CONDITION_TRUE_FALSE_PATH(iter, K_PROC_MULTIPLICITY_FACTOR, (ti + iter * K_PER_ITER) < tlength,
-                                       is_masked[iter] = (params.mask != nullptr) && (params.mask[bi_total_seq_length + (ti + iter * K_PER_ITER)] == 0),
-                                       is_masked[iter] = false);
+    for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
+      if ((ti + iter * K_PER_ITER) < tlength) {
+        is_masked[iter] = (params.mask != nullptr) && (params.mask[bi_total_seq_length + (ti + iter * K_PER_ITER)] == 0);
+      }
+    }
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_PROC_MULTIPLICITY_FACTOR][K_VECS_PER_THREAD];
     float qk[K_PROC_MULTIPLICITY_FACTOR];
 
-    // Trigger loading of data in batches
+// Trigger loading of data in batches
+#pragma unroll
     for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
+
       int ti_local = ti + iter * K_PER_ITER;
 
       if (has_beams) {
@@ -405,6 +409,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     // Perform the compute (dot product and normalize qk.)
     // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
+#pragma unroll
     for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
       qk[iter] = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec[iter]) * inv_sqrt_dh;
 
@@ -417,6 +422,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     }
 
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
+#pragma unroll
     for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
       int ti_local = ti + iter * K_PER_ITER;
 

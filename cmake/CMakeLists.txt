@@ -1405,7 +1405,7 @@ if (onnxruntime_USE_CUDA)
     list(APPEND CUDA_NVCC_FLAGS --debug_mode -generate-line-info --compiler-options -fPIC)
   endif()
   
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --generate-line-info")
+  #set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --generate-line-info")
 
   # Options passed to cudafe
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
