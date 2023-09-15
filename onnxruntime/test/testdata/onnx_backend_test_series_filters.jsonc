@@ -234,7 +234,7 @@
         "^test_resize_upsample_sizes_nearest_floor_align_corners_cuda",
         "^test_resize_upsample_sizes_nearest_not_larger_cuda",
         "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cuda",
-        // onnx 1.15 (opset 15) new and updated op tests
+        // onnx 1.15 (opset 20) new and updated op tests
         "^test_ai_onnx_ml_label_encoder_string_int",
         "^test_ai_onnx_ml_label_encoder_string_int_no_default",
         "^test_ai_onnx_ml_label_encoder_tensor_mapping",
@@ -362,7 +362,21 @@
         "^test_layer_normalization_4d_axis_negative_1_expanded_ver18_cpu",
         "^test_layer_normalization_4d_axis_negative_2_expanded_ver18_cpu",
         "^test_layer_normalization_4d_axis_negative_3_expanded_ver18_cpu",
-        "^test_layer_normalization_default_axis_expanded_ver18_cpu"
+        "^test_layer_normalization_default_axis_expanded_ver18_cpu",
+        // onnx 1.15 (opset 20) new and updated op tests (test_affine_grid_???_expanded utilizes ConstantOfShape so it needs to be skipped as well)
+        // https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=1139541&view=logs&j=249e9d58-0012-5814-27cf-6a201adbd9cf&t=bb33e81f-0527-50e0-0fd2-e94f509f0a82
+        // only supported with cpu provider
+        "^test_affine_grid_2d",
+        "^test_affine_grid_2d_align_corners",
+        "^test_affine_grid_2d_align_corners_expanded",
+        "^test_affine_grid_2d_expanded",
+        "^test_affine_grid_3d",
+        "^test_affine_grid_3d_align_corners",
+        "^test_affine_grid_3d_align_corners_expanded",
+        "^test_affine_grid_3d_expanded",
+        "^test_constantofshape_float_ones",
+        "^test_constantofshape_int_shape_zero",
+        "^test_constantofshape_int_zeros"
     ],
     "current_failing_tests_NNAPI": [
         "^test_maxpool_2d_uint8",
@@ -615,7 +629,22 @@
         "^test_sequence_map_identity_1_sequence_cpu",
         "^test_sequence_map_identity_1_sequence_expanded_cpu",
         "^test_sequence_map_identity_2_sequences_cpu",
-        "^test_sequence_map_identity_2_sequences_expanded_cpu"
+        "^test_sequence_map_identity_2_sequences_expanded_cpu",
+        // onnx 1.15 (opset 20) new and updated op tests (test_affine_grid_???_expanded utilizes ConstantOfShape so it needs to be skipped as well)
+        // https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=1139542&view=logs&j=3032dfba-5baf-5872-0871-2e69cb7f4b6a&t=f0d05deb-fc26-5aaf-e43e-7db2764c07da
+        // only supported with cpu provider
+        "^test_affine_grid_2d",
+        "^test_affine_grid_2d_align_corners",
+        "^test_affine_grid_2d_align_corners_expanded",
+        "^test_affine_grid_2d_expanded",
+        "^test_affine_grid_3d",
+        "^test_affine_grid_3d_align_corners",
+        "^test_affine_grid_3d_align_corners_expanded",
+        "^test_affine_grid_3d_expanded",
+        "^test_constantofshape_float_ones",
+        "^test_constantofshape_int_shape_zero",
+        "^test_constantofshape_int_zeros"
+
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
