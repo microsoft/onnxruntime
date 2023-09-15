@@ -3,7 +3,7 @@ set -e -x
 
 # Development tools and libraries
 if [ -f /etc/redhat-release ]; then
-  dnf -y install graphviz
+  yum -y install graphviz
   os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
 elif [ -f /etc/os-release ]; then
   apt-get update && apt-get install -y graphviz
