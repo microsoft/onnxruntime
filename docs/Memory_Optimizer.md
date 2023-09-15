@@ -22,8 +22,8 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 1. Make sure ONNX Runtime training wheel is installed and correctly configured.
 2. Integrate models using `ORTModule`, be noted log_level should be equal or lower than INFO.
 	> ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.INFO))
-3. Run the training as usual and redirect all outputs into log file; then stop it after training few steps.
-4. Check the logging file, and search "Summary", you could find something like this:
+3. Run the training as usual; then stop it after training few steps.
+4. Check the logs, you could find something like this:
 	```
 	Memory Optimizer     :   OFF   :   Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>, available configs:
 	                                   Config                                                      Freq    Max Saving(B)   Saving Symbolic(Bytes)
@@ -44,8 +44,8 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 	Note 2: memory saving is calculated based on the 1st batch symbolic dim values:
 	inputs_input_ids_dim0=1,  inputs_input_ids_dim1=1024,  inputs_attention_mask_dim0=1,  inputs_attention_mask_dim1=1024,  inputs_labels_dim0=1,  inputs_labels_dim1=1024,
 	```
-5. As shown above, 'Config' shows 1) a string representative for a re-computable subgraph; and 2) current status of memory optimization. All are disabled for recompute in this case.
-6. Set environment variable `ORTMODULE_MEMORY_OPT_CONFIG` to enable some of the subgraph to do recompute. In below example, 12 BiasGelu related subgraphs are allowed to recompute.
+5. As shown above, `Config` is a string representative for a re-computable subgraph. All are disabled for recompute in this case.
+6. Set environment variable `ORTMODULE_MEMORY_OPT_CONFIG` to enable some of the subgraph to do recompute. In below example, `6` `BiasGelu+` related subgraphs are allowed to recompute.
 `BiasGelu+` is the subgraph string representative; `1` in the middle indicates 'Recompute' is enabled (0, on the contrary indicates it's disabled); `6` means the initial 6 subgraph occurrences will be recomputed, all others are left as it is, filling `-1` will make all occurrences be recomputed.
 	```
 	export ORTMODULE_MEMORY_OPT_CONFIG="BiasGelu+:1:6" # Use comma as separator for enabling more than one subgraphs.
