@@ -50,6 +50,17 @@ index 961e34d..55ae11b 100755
      make install > /dev/null
  }
  
+diff --git a/finalize.sh b/finalize.sh
+index 621eab9..4cbcf90 100755
+--- a/finalize.sh
++++ b/finalize.sh
+@@ -86,6 +86,3 @@ clean_pyc /opt/_internal
+ rm -rf /root/.cache
+ 
+ hardlink -cv /opt/_internal
+-
+-# update system packages
+-LC_ALL=C ${MY_DIR}/update-system-packages.sh
 diff --git a/install-entrypoint.sh b/install-entrypoint.sh
 index 9ef1e99..ec52833 100755
 --- a/install-entrypoint.sh
