@@ -413,25 +413,26 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
+    std::cout << "LayerNormFusion Checking Scale and Bias" << std::endl;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        print("LayerNormFusion Scale determined");
+        std::cout << "LayerNormFusion Scale determined" << std::endl;
         scale = mul_node.MutableInputDefs()[i];
       }
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        print("LayerNormFusion bias determined");
+        std::cout << "LayerNormFusion bias determined" << std::endl;
         bias = last_add_node.MutableInputDefs()[i];
       }
     }
     if (scale == nullptr || bias == nullptr) {
-      print("LayerNormFusion Scale or Bias is Nullptr");
+      std::cout << "LayerNormFusion Scale or Bias is Nullptr" << std::endl;
       if (scale == nullptr){
-        print("LayerNormFusion Scale is Nullptr");
+        std::cout << "LayerNormFusion Scale is Nullptr" << std::endl;
       } else{
-        print("LayerNormFusion Bias is Nullptr");
+        std::cout << "LayerNormFusion Bias is Nullptr" << std::endl;
       }
       continue;
     }
@@ -445,7 +446,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
     }
     if (!same_dim){
-      print("LayerNormFusion Scale and Bias dimension Not same!");
+      std::cout << "LayerNormFusion Scale and Bias dimension Not same!" << std::endl;
       continue;
     }
 
@@ -467,7 +468,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }
-    print("LayerNormFusion Get epsilon");
+    std::cout << "LayerNormFusion Get epsilon" << std::endl;
 
     // The axis definition of layer_norm is ranging from axis to the last dim
     layer_norm_node.AddAttribute("axis", static_cast<int64_t>(axes_values[0]));
@@ -477,7 +478,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         scale->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
       layer_norm_node.AddAttribute("stash_type", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE));
     }
-    print("LayerNormFusoin stash type cast");
+    std::cout << "LayerNormFusoin stash type cast" << std::endl;
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());
@@ -485,7 +486,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // move input edges to add (first in list) across to the layer_norm_node.
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
     // remove all the other nodes.
-    print("LayerNormFusion FinalizeNodeFusion");
+    std::cout << "LayerNormFusion FinalizeNodeFusion" << std::endl;
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
 #ifdef ENABLE_TRAINING_CORE
