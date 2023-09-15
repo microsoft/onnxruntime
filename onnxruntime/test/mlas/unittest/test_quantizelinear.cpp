@@ -15,7 +15,7 @@ class MlasQuantizeLinearTest : public MlasTestBase {
       float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
       FloatValue = std::max(FloatValue, static_cast<float>(std::numeric_limits<QuantInt>::min()));
       FloatValue = std::min(FloatValue, static_cast<float>(std::numeric_limits<QuantInt>::max()));
-      OutputReference[n] = (QuantInt)FloatValue;
+      OutputReference[n] = static_cast<QuantInt>(FloatValue);
     }
   }
 
