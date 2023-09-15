@@ -20,7 +20,7 @@
 // modified to fit the needs of the project
 
 import {LOG_DEBUG} from '../../../log';
-import {TensorView} from '../../../tensor';
+import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
 import {ConvTransposeAttributes} from '../conv-transpose';
