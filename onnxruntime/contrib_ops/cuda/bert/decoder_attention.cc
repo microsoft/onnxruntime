@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/decoder_attention.h"
+#include "contrib_ops/cuda/bert/decoder_attention_impl.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
