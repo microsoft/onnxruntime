@@ -22,6 +22,147 @@ constexpr const int kFirstColumnWidth = 7;
 // The max length of left part (e.g. title) in the second column.
 constexpr const int kTitleWidthInSecondColumn = 15;
 
+/**
+ * @brief Prepare info including activation usage, node usage in fw and bw.
+ *
+ * @param graph Graph to iterate.
+ * @param boundary_op_order_in_topological_sort index of the boundary op between fw and bw.
+ * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
+ * @param fw_op_output_arg_used_map Collected activation usage mapping.
+ *   - key: node arg name
+ *   - value: a pair of bool, representing whether the activation is used by forward nodes or by backward nodes.
+ * @param is_forward_nodes Collected node is forward pass op mapping.
+ */
+void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
+                              const ptrdiff_t boundary_op_order_in_topological_sort,
+                              const InlinedHashMap<NodeIndex, size_t>&
+                                  node_index_to_its_order_in_topological_sort_map,
+                              ActivationUsedMap& fw_op_output_arg_used_map,
+                              InlinedHashMap<const Node*, bool>& is_forward_nodes) {
+  ORT_ENFORCE(boundary_op_order_in_topological_sort >= 0);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  is_forward_nodes.clear();
+  is_forward_nodes.reserve(node_ids.size());
+
+  auto is_forward_pass_operator = [](ptrdiff_t op_order_in_topological_sort,
+                                     ptrdiff_t boundary_op_order_in_topological_sort) -> bool {
+    return op_order_in_topological_sort <= boundary_op_order_in_topological_sort;
+  };
+
+  fw_op_output_arg_used_map.clear();
+  fw_op_output_arg_used_map.reserve(node_ids.size());
+  for (size_t i = 0; i < node_ids.size(); ++i) {
+    const Node* p_node = graph_viewer.GetNode(node_ids[i]);
+    if (p_node == nullptr /* skip removed nodes*/) {
+      continue;
+    }
+
+    const Node& node = *p_node;
+
+    bool is_forward_op = is_forward_pass_operator(static_cast<ptrdiff_t>(i), boundary_op_order_in_topological_sort);
+    if (!is_forward_op) {
+      is_forward_nodes[p_node] = false;
+      continue;
+    }
+
+    is_forward_nodes[p_node] = true;
+
+    for (auto& output_arg : node.OutputDefs()) {
+      if (!output_arg->Exists() || output_arg->Name().empty()) {
+        continue;
+      }
+
+      bool used_in_fw = false;
+      bool used_in_bw = false;
+      for (auto& consumer_node : graph_viewer.GetConsumerNodes(output_arg->Name())) {
+        ORT_ENFORCE(consumer_node != nullptr, "Consumer node should not be null.");
+        auto it = node_index_to_its_order_in_topological_sort_map.find(consumer_node->Index());
+        ORT_ENFORCE(it !=
+                        node_index_to_its_order_in_topological_sort_map.end(),
+                    "Consumer node should be in topological order map.");
+        size_t consumer_node_index_in_topological_order = it->second;
+        if (is_forward_pass_operator(static_cast<ptrdiff_t>(consumer_node_index_in_topological_order),
+                                     boundary_op_order_in_topological_sort)) {
+          used_in_fw = true;
+        } else {
+          used_in_bw = true;
+        }
+      }
+
+      ORT_ENFORCE(fw_op_output_arg_used_map.find(output_arg->Name()) == fw_op_output_arg_used_map.end(),
+                  "Duplicated output arg found named: ", output_arg->Name());
+      fw_op_output_arg_used_map.insert({{output_arg->Name(), std::make_pair(used_in_fw, used_in_bw)}});
+    }
+  }
+}
+
+/**
+ * @brief Find all stashed activations, e.g. activations used by forward operators and backward operators.
+ *
+ * @param graph_viewer Graph to iterate.
+ * @param boundary_op_order_in_topological_sort The order of the boundary op in the topological sort.
+ * @param fw_op_output_arg_used_map Activation usage mapping.
+ * @param candidate_output_args_map Candidate activations, which are consumed by both fw and bw ops.
+ * @param is_forward_nodes Whether a node is a forward node.
+ * @param logger Logger.
+ * @return Status
+ */
+
+Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
+                                      const ptrdiff_t boundary_op_order_in_topological_sort,
+                                      ActivationUsedMap& fw_op_output_arg_used_map,
+                                      InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                          candidate_output_args_map,
+                                      InlinedHashMap<const Node*, bool>& is_forward_nodes,
+                                      const logging::Logger& logger) {
+  if (boundary_op_order_in_topological_sort < 0) {
+    LOGS(logger, VERBOSE) << "No boundary op found. Skip memory optimization.";
+    return Status::OK();
+  }
+
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+
+  InlinedHashMap<NodeIndex, size_t> node_index_to_its_order_in_topological_sort_map;
+  for (size_t i = 0; i < node_ids.size(); ++i) {
+    const Node* p_node = graph_viewer.GetNode(node_ids[i]);
+    if (p_node == nullptr) { /* skip removed nodes*/
+      continue;
+    }
+
+    node_index_to_its_order_in_topological_sort_map[p_node->Index()] = i;
+  }
+
+  GetForwardOutputUsageMap(graph_viewer, boundary_op_order_in_topological_sort,
+                           node_index_to_its_order_in_topological_sort_map,
+                           fw_op_output_arg_used_map,
+                           is_forward_nodes);
+
+  for (auto& kv : fw_op_output_arg_used_map) {
+    // used by fw and bw, then it is a candidate.
+    if (kv.second.first && kv.second.second) {
+      const Node* n = graph_viewer.GetProducerNode(kv.first);
+      ORT_ENFORCE(n, "Activation should have a producer node");
+      size_t k = 0;
+      for (k = 0; k < n->OutputDefs().size(); ++k) {
+        if (n->OutputDefs()[k]->Name().compare(kv.first) == 0) {
+          break;
+        }
+      }
+
+      if (std::find(candidate_output_args_map[n].begin(), candidate_output_args_map[n].end(), k) !=
+          candidate_output_args_map[n].end()) {
+        ORT_ENFORCE(false, "Duplicated candidate output found.");
+      }
+
+      candidate_output_args_map[n].push_back(k);
+      LOGS(logger, VERBOSE) << "Find candidate output named [" << kv.first << "] of Node " << n->Name() << "("
+                            << n->OpType() << ")";
+    }
+  }
+
+  return Status::OK();
+}
+
 Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       const ProbeLevel probe_level,
                                       const logging::Logger& logger,
@@ -52,7 +193,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
     node_index_to_its_order_in_topological_sort_map[p_node->Index()] = static_cast<ptrdiff_t>(i);
   }
 
-  InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
+  ActivationUsedMap fw_op_output_arg_used_map;
 
   InlinedHashMap<const Node*, bool> is_forward_nodes;
   ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph_viewer,

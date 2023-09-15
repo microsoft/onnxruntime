@@ -4,6 +4,7 @@
 #pragma once
 
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
+#include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
@@ -30,13 +31,13 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
                     const InlinedVector<const Node*>& nodes_in_topological_order,
                     bool compromise_recompute = false,
                     float save_ratio = 1.0f) : NodeOptimizationPlanBase(node, activation_output_indices, save_ratio) {
-    activation_output_indices_ = activation_output_indices;
     compromise_recompute_ = compromise_recompute;
     // Be noted, recompute is node level, each node arg should have the same optimization type.
     nodes_in_topological_order_ = nodes_in_topological_order;
   }
 
   const InlinedVector<const Node*>& GetNodesInTopoOrder() const { return nodes_in_topological_order_; }
+
   bool IsCompromiseRecompute() const { return compromise_recompute_; }
 
   OptimizationType GetOptimizationType() const override {
@@ -49,11 +50,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
    * The cluster id is used to identify a unique subgraph.
    * User can pass such cluster id to enable specific memory optimization for some subgraph.
    */
-  std::string GetClusterId() const {
-    std::ostringstream oss;
-    oss << GetNodesInTopoOrderStr();
-    return oss.str();
-  }
+  std::string GetClusterId() const;
 
   /**
    * @brief Get the serialized string for this recompute plan to create Node-level cluster id.
@@ -63,24 +60,9 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
    * Node cluster id is used to categorize nodes into different groups, showing them as one row in memory
    * optimization opportunity table.
    */
-  std::string NormalizeForNodeClusterId() const {
-    std::ostringstream oss;
-    oss << "recompute:" << node->OpType() << "-"
-        << compromise_recompute_ << "-";
-    for (auto output_index : activation_output_indices_) {
-      oss << output_index << ":" << GetTensorElemCountInSymbolicString(node, output_index);
-      oss << ":" << node->OutputDefs()[output_index]->TypeAsProto()->tensor_type().elem_type() << "-";
-    }
+  std::string NormalizeForNodeClusterId() const;
 
-    oss << GetNodesInTopoOrderStr();
-    return oss.str();
-  }
-
-  std::string GetNodesInTopoOrderStr() const {
-    std::string subgraph_str_representation, log_info;
-    NodesInTopoOrderToString(nodes_in_topological_order_, subgraph_str_representation, log_info);
-    return subgraph_str_representation;
-  }
+  std::string GetNodesInTopoOrderStr() const;
 
  private:
   bool compromise_recompute_;

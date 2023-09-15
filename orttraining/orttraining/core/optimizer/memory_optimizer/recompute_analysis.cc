@@ -150,7 +150,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
 
   std::deque<NodeOutputPort> q;
   for (auto output_index : node_output_index_candidates) {
-    q.push_back(NodeOutputPort(&entry_node, static_cast<int>(output_index)));
+    q.push_back(NodeOutputPort(&entry_node, output_index));
   }
 
   bool early_stop = false;
@@ -297,6 +297,35 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
   return Status::OK();
 }
 
+/**
+ * @brief Convert the recompute subgraph to its string representation.
+ *
+ * @param nodes_in_topological_order The subgraph nodes in topological order.
+ * @param subgraph_string_representation Returns subgraph string representation.
+ * @param log_info Returns log info for users.
+ */
+void NodesInTopoOrderToString(gsl::span<const Node* const> nodes_in_topological_order,
+                              std::string& subgraph_string_representation,
+                              std::string& log_info) {
+  std::ostringstream oss;
+  std::ostringstream subgraph_string_representation_oss;
+  size_t node_count = nodes_in_topological_order.size();
+  for (size_t i = 0; i < node_count; ++i) {
+    if (i < node_count - 1) {  // Ignore the last node.
+      oss << "(name:" << nodes_in_topological_order[i]->Name() << ", type:" << nodes_in_topological_order[i]->OpType()
+          << "),";
+    }
+
+    subgraph_string_representation_oss << nodes_in_topological_order[i]->OpType() << "+";
+  }
+
+  subgraph_string_representation = subgraph_string_representation_oss.str();
+  log_info = oss.str();
+  if (log_info.size() > 0) {
+    log_info = " with its precedent nodes: " + log_info;
+  }
+}
+
 }  // namespace
 
 std::shared_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
@@ -339,6 +368,31 @@ std::shared_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
                                              nodes_in_topological_order,
                                              compromise_stashed_activation,
                                              save_ratio);
+}
+
+std::string NodeRecomputePlan::GetClusterId() const {
+  std::ostringstream oss;
+  oss << GetNodesInTopoOrderStr();
+  return oss.str();
+}
+
+std::string NodeRecomputePlan::NormalizeForNodeClusterId() const {
+  std::ostringstream oss;
+  oss << "recompute:" << node->OpType() << "-"
+      << compromise_recompute_ << "-";
+  for (auto& output_index : GetActivationOutputIndices()) {
+    oss << output_index << ":" << GetTensorElemCountInSymbolicString(node, output_index);
+    oss << ":" << node->OutputDefs()[output_index]->TypeAsProto()->tensor_type().elem_type() << "-";
+  }
+
+  oss << GetNodesInTopoOrderStr();
+  return oss.str();
+}
+
+std::string NodeRecomputePlan::GetNodesInTopoOrderStr() const {
+  std::string subgraph_str_representation, log_info;
+  NodesInTopoOrderToString(nodes_in_topological_order_, subgraph_str_representation, log_info);
+  return subgraph_str_representation;
 }
 
 }  // namespace onnxruntime::optimizer::memory_optimizer
