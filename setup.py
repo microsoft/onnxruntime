@@ -214,7 +214,7 @@ try:
                     "libhsa-runtime64.so.1",
                 ]
 
-                tensorrt_dependencies = ["libnvinfer.so.8.6", "libnvinfer_plugin.so.8.6", "libnvonnxparser.so.8.6"]
+                tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
