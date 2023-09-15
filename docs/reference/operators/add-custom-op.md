@@ -1,4 +1,3 @@
-
 ---
 title: Custom operators
 parent: Operators
