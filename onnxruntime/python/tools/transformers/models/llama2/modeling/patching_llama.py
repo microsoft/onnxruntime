@@ -13,9 +13,10 @@ from transformers.models.llama.modeling_llama import (
     LlamaForCausalLM,
     rotate_half,
     repeat_kv,
+    apply_rotary_pos_emb,
 )
 
-from models.parallel_layers import (
+from modeling.parallel_layers import (
     get_world_size,
     TensorParallelColumnLinear,
     TensorParallelRowLinear,
@@ -232,6 +233,6 @@ if get_world_size() > 1:
     LlamaAttention.parallel_split = parallel_split
     LlamaForCausalLM.parallel_model = parallel_model
 
-    print("[models.patching_llama] Patching complete!")
+    print("[modeling.patching_llama] Patching complete!")
 else:
-    print("[models.patching_llama] Only LlamaAttention.forward patched.")
+    print("[modeling.patching_llama] Only LlamaAttention.forward patched.")

@@ -18,7 +18,7 @@ from ort_llama import OrtModelForLlamaCausalLM
 from dist_settings import init_dist, get_rank, get_size, barrier, print_out
 
 init_dist()
-from models import patching_llama  # noqa: E402
+from modeling import patching_llama  # noqa: E402
 
 import torch.nn.init
 
