@@ -320,6 +320,7 @@ def run_benchmark(args, local_rank):
 
 def main(args):
     local_rank = get_rank()
+    torch.cuda.set_device(local_rank)
     decoder_model = DECODER_MODEL.format(local_rank)
     decoder_past_model = DECODER_PAST_MODEL.format(local_rank)
     merged_model = MERGED_MODEL.format(local_rank)

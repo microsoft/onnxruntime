@@ -210,10 +210,23 @@ def new_attention_forward(
 
 ## New functions
 def parallel_split(self):
+    '''
+    parallel split for LlamaAttention
+    '''
     world_size = get_world_size()
     self.num_heads = self.num_heads // world_size
-    self.num_key_value_heads = self.num_key_value_heads // world_size
+    nrep = 1
+    if self.num_key_value_heads < world_size:
+        assert world_size % self.num_key_value_heads == 0
+        nrep = world_size // self.num_key_value_heads
 
+    if nrep > 1:
+        # repeat k, v proj to world_size * self.head_dim
+        self.k_proj.repeat(nrep, self.num_key_value_heads, self.head_dim)
+        self.v_proj.repeat(nrep, self.num_key_value_heads, self.head_dim)
+
+    self.num_key_value_heads = (self.num_key_value_heads * nrep) // world_size
+    self.num_key_value_groups = self.num_heads // self.num_key_value_heads
 
 def parallel_model(self):
     def _split_model(model):

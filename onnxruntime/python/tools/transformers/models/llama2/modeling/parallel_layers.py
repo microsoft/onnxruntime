@@ -57,6 +57,15 @@ class TensorParallelColumnLinear(nn.Module):
 
         self.reset_parameters()
 
+    def repeat(self, nrep, num_heads, head_dim):
+        weight = self.weight.view(num_heads, head_dim, self.in_features)
+        weight = weight[:,None,:,:].expand(num_heads, nrep, head_dim, self.in_features).reshape(-1, self.in_features)
+        self.weight = nn.Parameter(weight)
+        if self.use_bias:
+            bias = self.bias.view(num_heads, head_dim)
+            bias = bias[:,None,:,:].expand(num_heads, nrep, head_dim).reshape(-1)
+            self.bias = nn.Parameter(bias)
+
     def parallel_split(self):
         if self.tp_world_size == 1:
             return
