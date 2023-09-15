@@ -47,7 +47,7 @@ jobs:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     QNN_SDK_ROOT: 'C:\data\qnnsdk\${{parameters.QnnSdk}}'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  timeoutInMinutes: 150
+  timeoutInMinutes: 180
   workspace:
     clean: all
   steps:
