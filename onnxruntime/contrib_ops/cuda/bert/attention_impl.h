@@ -81,24 +81,20 @@ struct AttentionData {
 
   mutable CumulatedSequenceLengthCache* cumulated_sequence_length_q_cache = nullptr;
   mutable CumulatedSequenceLengthCache* cumulated_sequence_length_kv_cache = nullptr;
-};
 
-// Intermediate data pointers available after PrepareQKV
-template <typename T>
-struct QkvData {
+  // Intermediate data
   T* q = nullptr;
   T* k = nullptr;
   T* v = nullptr;
-  T* after_v = nullptr;  // pointer right after v
-  AttentionQkvFormat format = AttentionQkvFormat::Q_K_V_BSNH;
+  T* scratch = nullptr;
+  AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
 };
 
 template <typename T>
 Status PrepareQkv(contrib::AttentionParameters& parameters,
                   AttentionData<T>& data,
                   cudaStream_t stream,
-                  int max_threads_per_block,
-                  QkvData<T>& qkv_data);
+                  int max_threads_per_block);
 
 template <typename T>
 Status QkvToContext(
@@ -157,8 +153,7 @@ Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int 
                            int sequence_length, int total_sequence_length, bool pass_past_in_kv,
                            cudaStream_t stream,
                            int max_threads_per_block,
-                           AttentionData<T>& data,
-                           QkvData<T>& qkv);
+                           AttentionData<T>& data);
 
 template <typename T>
 Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,

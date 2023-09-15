@@ -435,8 +435,8 @@ template <typename T>
 Status PrepareQkv(contrib::AttentionParameters& parameters,
                   AttentionData<T>& data,
                   cudaStream_t stream,
-                  int max_threads_per_block,
-                  QkvData<T>& qkv) {
+                  int max_threads_per_block) {
+  data.scratch = data.workspace;
   if (data.has_qkv_workspace) {
     const int size_per_batch_q = parameters.sequence_length * parameters.head_size;
     const int size_per_batch_k = parameters.kv_sequence_length * parameters.head_size;
@@ -445,27 +445,27 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     const size_t elements_q = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_q);
     const size_t elements_k = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_k);
     const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
-    qkv.q = data.workspace;
-    qkv.k = data.workspace + elements_q;
-    qkv.v = qkv.k + elements_k;
-    qkv.after_v = qkv.v + elements_v;
+    data.q = data.workspace;
+    data.k = data.workspace + elements_q;
+    data.v = data.k + elements_k;
+    data.scratch = data.v + elements_v;
   }
 
   if (nullptr != data.gemm_buffer) {  // Attention operator
     ORT_RETURN_IF_ERROR(PrepareQkv_Attention<T>(parameters, data, stream, max_threads_per_block,
-                                                qkv.format));
+                                                data.qkv_format));
   } else if (data.past_key != nullptr || data.present_key != nullptr) {  // mha operator with past/present state
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_WithPast(parameters, data, stream, max_threads_per_block,
-                                                qkv.q, qkv.k, qkv.v, qkv.format));
+                                                data.q, data.k, data.v, data.qkv_format));
   } else if (data.key == nullptr) {  // multihead attention operator, no past, packed qkv
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedQKV(parameters, data, stream, max_threads_per_block,
-                                                 qkv.q, qkv.k, qkv.v, qkv.format));
+                                                 data.q, data.k, data.v, data.qkv_format));
   } else if (data.value == nullptr) {  // multihead attention operator, no past, packed kv
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedKV(parameters, data, stream, max_threads_per_block,
-                                                qkv.q, qkv.k, qkv.v, qkv.format));
+                                                data.q, data.k, data.v, data.qkv_format));
   } else {  // multihead attention operator, no past, separated Q/K/V inputs
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_NotPacked(parameters, data, stream, max_threads_per_block,
-                                                 qkv.q, qkv.k, qkv.v, qkv.format));
+                                                 data.q, data.k, data.v, data.qkv_format));
   }
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -477,15 +477,13 @@ template Status PrepareQkv<float>(
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data,
     cudaStream_t stream,
-    int max_threads_per_block,
-    QkvData<float>& qkv);
+    int max_threads_per_block);
 
 template Status PrepareQkv<half>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data,
     cudaStream_t stream,
-    int max_threads_per_block,
-    QkvData<half>& qkv);
+    int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib
