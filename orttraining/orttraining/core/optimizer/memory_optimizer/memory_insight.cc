@@ -116,9 +116,10 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
     const auto& node_plans = node_to_optimization_plan.second;
     const std::string node_cluster_id = memory_opt_planner.GenerateNodeClusterId(node);
 
-    auto record_it = records.find(node_cluster_id);
-    bool already_exist = record_it != records.end();
-    auto& record = record_it->second;
+    std::pair<InlinedHashMap<std::string, MemoryRecord>::iterator, bool> insert_result =
+        records.insert({node_cluster_id, MemoryRecord()});
+    bool already_exist = !insert_result.second;
+    auto& record = insert_result.first->second;
     record.freq++;
 
     // Collect more information for display.
@@ -579,9 +580,9 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
   // then create a ClusterApplyContext for each unique cluster (having the same node pattern)
 
   NodeToClusterApplyContextMap node_to_apply_context_map;
+
   if (!memory_optimization_config.empty()) {
-    ORT_ENFORCE(ParseConfigFromString(memory_optimization_config,
-                                      cluster_id_to_config_map)
+    ORT_ENFORCE(ParseConfigFromString(memory_optimization_config, cluster_id_to_config_map)
                     .IsOK());
     InlinedHashMap<const Node*, std::shared_ptr<NodeOptimizationPlanBase>> node_to_opt_plan_map;
     ORT_ENFORCE(memory_opt_planner.FinalizeNodePlansFromUserConfig(cluster_id_to_config_map,
@@ -590,11 +591,12 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
                     .IsOK());
   }
 
-  if (ortvalue_name_to_idx_map != nullptr && p_seq_exec_plan != nullptr)
+  if (ortvalue_name_to_idx_map != nullptr && p_seq_exec_plan != nullptr) {
     ORT_ENFORCE(memory_opt_planner.UpdateNodePlansFromExecutionPlan(graph_viewer,
                                                                     *ortvalue_name_to_idx_map,
                                                                     *p_seq_exec_plan)
                     .IsOK());
+  }
 
   std::vector<std::pair<std::string, MemoryRecord>> records;
   GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, node_to_apply_context_map, records);
