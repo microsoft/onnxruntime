@@ -24,10 +24,8 @@ void KernelOne(const Ort::Custom::Tensor<float>& X,
 }
 
 void KernelOneShapeInference(const TensorShapeVec& input_shapes, TensorShapeVec& output_shapes) {
-  for (const auto& input_shape : input_shapes) {
-    auto shape = input_shape.GetShape();
-    output_shapes[0].SetShape(shape);
-  }
+  auto shape = input_shapes[0].GetShape();
+  output_shapes[0].SetShape(shape);
 }
 
 // lite custom op as a function
