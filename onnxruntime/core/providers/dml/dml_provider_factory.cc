@@ -174,6 +174,41 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
 }
 
+std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateDXCore(ComPtr<IDXCoreAdapter> dxcore_device) {
+  // Create D3D12 Device from DXCore Adapter
+  ComPtr<ID3D12Device> d3d12_device;
+  ORT_THROW_IF_FAILED(D3D12CreateDevice(dxcore_device.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+
+  // Create DML Device from D3D12 device
+  D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
+  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+  cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
+
+  ComPtr<ID3D12CommandQueue> cmd_queue;
+  ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+
+  DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
+
+  // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
+#if _DEBUG && !_GAMING_XBOX
+  ComPtr<ID3D12DebugDevice> debug_device;
+  (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device));  // ignore failure
+  const bool is_d3d12_debug_layer_enabled = (debug_device != nullptr);
+
+  if (is_d3d12_debug_layer_enabled) {
+    flags |= DML_CREATE_DEVICE_FLAG_DEBUG;
+  }
+#endif
+
+  ComPtr<IDMLDevice> dml_device;
+  ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
+                                   flags,
+                                   DML_FEATURE_LEVEL_5_0,
+                                   IID_PPV_ARGS(&dml_device)));
+
+  return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
+}
+
 }  // namespace onnxruntime
 
 // [[deprecated]]
@@ -210,7 +245,7 @@ bool supportsGraphics(ComPtr<IDXCoreAdapter> adapter) {
     return adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
 }
 
-ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
 API_IMPL_BEGIN
   //options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::Create(device_id));
   
@@ -317,6 +352,8 @@ API_IMPL_BEGIN
     // check if ordered_adapter count is 0 (no adapters?)
     ComPtr<IDXCoreAdapter> highest_pri_adapter = ordered_adapters[0];
     // return the create function for a dxcore device
+    options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::CreateDXCore(
+        highest_pri_adapter));
 
 API_IMPL_END
   return nullptr;
@@ -368,7 +405,7 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &CreateGPUAllocationFromD3DResource,
   &FreeGPUAllocation,
   &GetD3D12ResourceFromAllocation,
-  &SessionOptionsAppendExecutionProvider_DML2
+  &OrtSessionOptionsAppendExecutionProvider_DML2
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {

@@ -138,7 +138,7 @@ struct OrtDmlApi {
   // }
 
   // null means default
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
+  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
 };
 
 #ifdef __cplusplus
