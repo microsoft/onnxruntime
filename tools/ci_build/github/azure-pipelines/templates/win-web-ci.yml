@@ -161,7 +161,7 @@ jobs:
     displayName: 'Run ort-web tests (wasm,webgl,xnnpack backend)'
     condition: ne('${{ parameters.RunWebGpuTests }}', 'true')
   - script: |
-     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu
+     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu --chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
     condition: ne('${{ parameters.RunWebGpuTests }}', 'false')

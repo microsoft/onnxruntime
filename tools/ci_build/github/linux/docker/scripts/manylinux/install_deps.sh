@@ -13,6 +13,9 @@ else
   exit 1
 fi
 
+# Install dotnet
+source $(cd "$(dirname "${BASH_SOURCE[0]}")/.." &> /dev/null && pwd)/install_dotnet.sh
+
 if [ ! -d "/opt/conda/bin" ]; then
     PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11")
 else

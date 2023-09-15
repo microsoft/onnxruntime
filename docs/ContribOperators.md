@@ -1330,15 +1330,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The axis along which same quantization parameters are applied. It's optional.If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars.If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>x</tt> : T1</dt>
 <dd>N-D quantized Input tensor to be de-quantized.</dd>
 <dt><tt>x_scale</tt> : T2</dt>
-<dd>Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization.If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
-<dt><tt>x_zero_point</tt> : T1</dt>
-<dd>Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization.If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
+<dd>Scale for input 'x'. It can be a scalar, which means a per-tensor/layer dequantization, or a 1-D tensor for per-axis dequantization.</dd>
+<dt><tt>x_zero_point</tt> (optional) : T1</dt>
+<dd>Zero point for input 'x'. Shape must match x_scale. It's optional. Zero point is 0 when it's not specified.</dd>
 </dl>
 
 #### Outputs
@@ -1351,8 +1351,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(int8), tensor(uint8)</dt>
-<dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.</dd>
+<dt><tt>T1</tt> : tensor(int8), tensor(uint8), tensor(int32)</dt>
+<dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors or 32-bit signed integer tensors.</dd>
 <dt><tt>T2</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'y', 'x_scale' to float tensors.</dd>
 </dl>
@@ -4209,15 +4209,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The axis along which same quantization parameters are applied. It's optional.If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars.If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>x</tt> : T1</dt>
 <dd>N-D full precision Input tensor to be quantized.</dd>
 <dt><tt>y_scale</tt> : T1</dt>
-<dd>Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor,which means a per-tensor or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
-<dt><tt>y_zero_point</tt> : T2</dt>
-<dd>Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensoror per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
+<dd>Scale for doing quantization to get 'y'. It can be a scalar, which means per-tensor/layer quantization, or a 1-D tensor for per-axis quantization.</dd>
+<dt><tt>y_zero_point</tt> (optional) : T2</dt>
+<dd>Zero point for doing quantization to get 'y'. Shape must match y_scale. Default is uint8 with zero point of 0 if it's not specified.</dd>
 </dl>
 
 #### Outputs

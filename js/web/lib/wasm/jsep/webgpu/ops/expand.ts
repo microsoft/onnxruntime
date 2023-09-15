@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
@@ -58,8 +58,6 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   const inputShape = ${input.indices(...inputShape)};
   ${shaderHelper.declareVariables(input, output)}
-  ${output.impl('offsetToIndices')}
-  ${input.impl('indicesToOffset', 'get')}
   ${shaderHelper.mainStart()}
   ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
     let outputIndices = ${output.offsetToIndices('global_idx')};

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
@@ -217,6 +217,10 @@ export const leakyRelu = (context: ComputeContext, attributes: AlphaAttributes):
   context.compute(createElementwiseProgramInfoLoader(
       context.inputs[0], 'LeakyRelu', a => `select(leaky_relu_alpha_ * ${a}, ${a}, ${a} >= vec4<f32>(0.0))`,
       `const leaky_relu_alpha_: f32 = f32(${attributes.alpha});`, attributes.cacheKey));
+};
+
+export const not = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Not', a => `!${a}`));
 };
 
 export const neg = (context: ComputeContext): void => {

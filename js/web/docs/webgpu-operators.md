@@ -30,20 +30,27 @@ Do not modify directly.*
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
+| Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
+| Equal | ai.onnx(7-10,11-12,13-18,19+) |  |
 | Erf | ai.onnx(9-12,13+) |  |
 | Exp | ai.onnx(6-12,13+) |  |
 | Expand | ai.onnx(8-12,13+) |  |
 | Flatten | ai.onnx(1-8,9-10,11-12,13+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
 | Gather | ai.onnx(1-10,11-12,13+) |  |
+| GatherElements | ai.onnx(11-12,13+) |  |
 | Gelu | com.microsoft(1+) |  |
-| Gemm | ai.onnx(7-8,9-10,11+) |  |
+| Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
+| Greater | ai.onnx(7-8,9-12,13+) |  |
+| GreaterOrEqual | ai.onnx(12-15,16+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
+| Less | ai.onnx(7-8,9-12,13+) |  |
+| LessOrEqual | ai.onnx(12-15,16+) |  |
 | Log | ai.onnx(6-12,13+) |  |
 | MatMul | ai.onnx(1-12,13+) |  |
 | MaxPool | ai.onnx(1-7,8-9,10,11,12+); com.ms.internal.nhwc(11,12+) | need perf optimization; need implementing activation |
@@ -51,6 +58,8 @@ Do not modify directly.*
 | MemcpyToHost | ai.onnx(1+) |  |
 | Mul | ai.onnx(7-12,13,14+) |  |
 | Neg | ai.onnx(6-12,13+) |  |
+| Not | ai.onnx(1+) |  |
+| Pad | ai.onnx(2-10,11-12,13-17,18,19+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
 | ReduceL1 | ai.onnx(1-10,11-12,13-17,18+) |  |

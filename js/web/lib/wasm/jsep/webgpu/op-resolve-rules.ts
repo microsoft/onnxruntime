@@ -6,12 +6,15 @@ import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
+import {einsum, parseEinsumAttributes} from './ops/einsum';
 import {expand} from './ops/expand';
 import {gather, parseGatherAttributes} from './ops/gather';
+import {gatherElements, parseGatherElementsAttributes} from './ops/gather-elements';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {instanceNorm, parseInstanceNormAttributes} from './ops/instance-norm';
 import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
+import {pad, parsePadAttributes} from './ops/pad';
 import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
@@ -51,25 +54,34 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Cos', [unaryOps.cos]],
   ['Cosh', [unaryOps.cosh]],
   ['Div', [binaryOps.div]],
+  ['Einsum', [einsum, parseEinsumAttributes]],
   ['Elu', [unaryOps.elu, unaryOps.parseAlphaAttributes]],
+  ['Equal', [binaryOps.equal]],
   ['Erf', [unaryOps.erf]],
   ['Exp', [unaryOps.exp]],
   ['Expand', [expand]],
   ['Floor', [unaryOps.floor]],
   ['Gather', [gather, parseGatherAttributes]],
+  ['GatherElements', [gatherElements, parseGatherElementsAttributes]],
   ['Gelu', [unaryOps.gelu]],
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],
   ['GlobalMaxPool', [pool.globalMaxPool, pool.parseGlobalMaxPoolAttributes]],
+  ['Greater', [binaryOps.greater]],
+  ['GreaterOrEqual', [binaryOps.greaterOrEqual]],
   ['InstanceNormalization', [instanceNorm, parseInstanceNormAttributes]],
   ['LayerNormalization', [layerNorm, parseLayerNormAttributes]],
   ['LeakyRelu', [unaryOps.leakyRelu, unaryOps.parseAlphaAttributes]],
+  ['Less', [binaryOps.less]],
+  ['LessOrEqual', [binaryOps.lessOrEqual]],
   ['Log', [unaryOps.log]],
   ['MatMul', [matMul]],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
   ['MaxPool', [pool.maxPool, pool.parseMaxPoolAttributes]],
   ['Mul', [binaryOps.mul]],
   ['Neg', [unaryOps.neg]],
+  ['Not', [unaryOps.not]],
+  ['Pad', [pad, parsePadAttributes]],
   ['Pow', [binaryOps.pow]],
   ['Reciprocal', [unaryOps.reciprocal]],
   ['ReduceMin', [reduceMin, parseReduceAttributes]],

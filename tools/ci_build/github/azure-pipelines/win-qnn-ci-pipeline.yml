@@ -1,3 +1,4 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -10,7 +11,6 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -24,15 +24,15 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
 
 parameters:
 
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.13.1.230730_win
+  default: qnn-v2.14.1.230828_win
 
 jobs:
 - job: 'build'
@@ -105,4 +105,3 @@ jobs:
       .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\lib\x86_64-windows-msvc\QnnCpu.dll" C:\data\float32_models
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run float32 model tests'
-
