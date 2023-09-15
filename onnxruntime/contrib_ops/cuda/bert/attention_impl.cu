@@ -400,9 +400,7 @@ Status UnfusedAttention(
     Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
-    float scale,
-    int present_size_per_batch_k,
-    int present_size_per_batch_v) {
+    float scale) {
   assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
 
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
@@ -433,6 +431,10 @@ Status UnfusedAttention(
   DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("q[BNSH]", data.q, batch_size, num_heads, sequence_length, qk_head_size);
   DUMP_TENSOR_D("k[BNSH]", data.k, batch_size, num_heads, total_sequence_length, qk_head_size);
+
+  const int present_size_per_batch_k = (parameters.past_present_share_buffer ? parameters.max_sequence_length : total_sequence_length) * qk_head_size;
+  const int present_size_per_batch_v = (parameters.past_present_share_buffer ? parameters.max_sequence_length : total_sequence_length) * v_head_size;
+
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_T, CUBLAS_OP_N,
       total_sequence_length, sequence_length, qk_head_size,
@@ -524,11 +526,8 @@ Status QkvToContext(
 
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
-  int present_size_per_batch_k = 0;
-  int present_size_per_batch_v = 0;
+
   if (!parameters.past_present_share_buffer) {
-    present_size_per_batch_k = total_sequence_length * qk_head_size;
-    present_size_per_batch_v = total_sequence_length * v_head_size;
     ORT_RETURN_IF_ERROR(ConcatPastToPresent(batch_size, num_heads, qk_head_size, v_head_size,
                                             sequence_length, total_sequence_length, parameters.pass_past_in_kv,
                                             stream, max_threads_per_block, data));
@@ -560,10 +559,8 @@ Status QkvToContext(
         (nullptr != fused_runner && parameters.is_unidirectional) ? nullptr : data.bias,  // For fused causal, bias has been added to gemm_buffer
         data.gemm_buffer, data.present));
 
-    present_size_per_batch_k = parameters.max_sequence_length * qk_head_size;
-    present_size_per_batch_v = present_size_per_batch_k;
     data.k = data.present;
-    data.v = data.present + batch_size * num_heads * present_size_per_batch_k;
+    data.v = data.present + batch_size * num_heads * parameters.max_sequence_length * qk_head_size;
   }
 
   // Q, K and V are ready now
@@ -592,8 +589,7 @@ Status QkvToContext(
   }
 #endif
 
-  return UnfusedAttention(device_prop, cublas, ort_stream, parameters, data, scale,
-                          present_size_per_batch_k, present_size_per_batch_v);
+  return UnfusedAttention(device_prop, cublas, ort_stream, parameters, data, scale);
 }
 
 // Template Instantiation
