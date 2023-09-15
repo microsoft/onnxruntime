@@ -111,7 +111,7 @@
 						platforms.
 					</p>
 					<div class="card-actions">
-						<a class="btn btn-primary">ORT Web Docs →</a>
+						<a class="btn btn-primary">Check the latest on performance enhancements →</a>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
@@ -129,7 +129,7 @@
 						days.
 					</p>
 					<div class="card-actions">
-						<a class="btn btn-primary">ORT Mobile Docs →</a>
+						<a href="./testimonials" class="btn btn-primary">See what ONNX Runtime users are saying →</a>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
