@@ -87,7 +87,7 @@ static bool FindNewZeroPointAndScale(const Graph& graph, const Node& node1, cons
 // After removing the middle two nodes, the zero point and scale of the final (outer) ops must be recomputed
 // for correctness.
 template <typename ZeroPointType>
-static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, const Node& dq1, const Node& q2, Node& q1, Node& dq2) {
+static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, Node& q1, const Node& dq1, const Node& q2, Node& dq2) {
   bool skip_reset = false;
   float new_scale = 0.0f;
   ZeroPointType new_zero_point = 0;
@@ -109,7 +109,7 @@ static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, const Node& dq1, co
 // (i.e., Q1 -> DQ1 -> Q2 -> DQ2) that can be reduced to the outer Q/DQ nodes (i.e., Q1 -> DQ2).
 // If so, the zero point and scale of the outer Q/DQ nodes are recomputed and the node indices of the other nodes
 // in the sequence (i.e., Q1, Q2, and DQ2) are returned via output parameters.
-static bool IsReducibleDoubleQDQSequence(Graph& graph, NodeIndex dq1_index, NodeIndex& q1_index,
+static bool IsReducibleDoubleQDQSequence(Graph& graph, NodeIndex& q1_index, NodeIndex dq1_index,
                                          NodeIndex& q2_index, NodeIndex& dq2_index) {
   // Ensure that dq1 is a DQ operator, has one parent and one child, and is not a graph output
   Node* dq1 = graph.GetNode(dq1_index);
@@ -174,19 +174,19 @@ static bool IsReducibleDoubleQDQSequence(Graph& graph, NodeIndex dq1_index, Node
   auto dq1_zp_type = dq1_zp_tensor_proto->data_type();
 
   if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    return RecomputeOuterQDQZeroPointAndScale<uint8_t>(graph, *dq1, *q2, *q1, *dq2);
+    return RecomputeOuterQDQZeroPointAndScale<uint8_t>(graph, *q1, *dq1, *q2, *dq2);
   }
 
   if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-    return RecomputeOuterQDQZeroPointAndScale<int8_t>(graph, *dq1, *q2, *q1, *dq2);
+    return RecomputeOuterQDQZeroPointAndScale<int8_t>(graph, *q1, *dq1, *q2, *dq2);
   }
 
   if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
-    return RecomputeOuterQDQZeroPointAndScale<uint16_t>(graph, *dq1, *q2, *q1, *dq2);
+    return RecomputeOuterQDQZeroPointAndScale<uint16_t>(graph, *q1, *dq1, *q2, *dq2);
   }
 
   if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_INT16) {
-    return RecomputeOuterQDQZeroPointAndScale<int16_t>(graph, *dq1, *q2, *q1, *dq2);
+    return RecomputeOuterQDQZeroPointAndScale<int16_t>(graph, *q1, *dq1, *q2, *dq2);
   }
 
   return false;  // Unsupported zero-point type
@@ -204,7 +204,7 @@ Status DoubleQDQPairsRemover::ApplyImpl(
     NodeIndex q1_index = 0;
     NodeIndex q2_index = 0;
     NodeIndex dq2_index = 0;
-    if (IsReducibleDoubleQDQSequence(graph, dq1_index, q1_index, q2_index, dq2_index)) {
+    if (IsReducibleDoubleQDQSequence(graph, q1_index, dq1_index, q2_index, dq2_index)) {
       graph.RemoveEdge(q1_index, dq1_index, 0, 0);
       graph.RemoveEdge(dq1_index, q2_index, 0, 0);
       graph.RemoveEdge(q2_index, dq2_index, 0, 0);
