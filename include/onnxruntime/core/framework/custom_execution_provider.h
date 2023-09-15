@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_lite_custom_op.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
+#include "core/framework/stream_handles.h"
 #include <climits>
 
 namespace Ort {
@@ -54,6 +55,7 @@ namespace onnxruntime{
         virtual bool CanCopy(const OrtDevice&, const OrtDevice&) { return false; }
         //virtual void MemoryCpy(OrtValue&, const OrtValue&) {}
         virtual void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) {}
+        virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry&, std::map<OrtDevice, OrtAllocator*>&) const {}
 
         protected:
         std::vector<OrtAllocator*> allocators_;

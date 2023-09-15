@@ -90,6 +90,8 @@ bool MatchKernelDefTypes(const Node& node,
     return offsets;
   }();
 
+  // custom kernel's type constraints look like {"Input0"->[float, double], "Input1"->[..,..], "Output0"->[..,..]}
+  // compare the ith arg with the node's corresponding arg directly
   if (kernel_type_constraints.find("Input0") != kernel_type_constraints.end() ||
       kernel_type_constraints.find("Output0") != kernel_type_constraints.end()) {
     for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {

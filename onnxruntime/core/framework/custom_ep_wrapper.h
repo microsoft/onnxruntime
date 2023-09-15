@@ -60,6 +60,17 @@ namespace onnxruntime {
 
         std::unique_ptr<IDataTransfer> GetDataTransfer() const override { return std::make_unique<ExternalDataTransfer>(external_ep_impl_.get()); }
 
+        // TODO: 1. should we reserve allocators? 2. when to release OrtAllocator*?
+        virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override {
+            std::map<OrtDevice, OrtAllocator*> ort_allocators;
+            for (auto& [device, allocator] : allocators) {
+                std::shared_ptr<IAllocator> iallocator(allocator);
+                std::unique_ptr<OrtAllocatorImplWrappingIAllocator> ort_allocator = std::make_unique<OrtAllocatorImplWrappingIAllocator>(std::move(iallocator));
+                ort_allocators.insert({device, ort_allocator.release()});
+            }
+            external_ep_impl_->RegisterStreamHandlers(stream_handle_registry, ort_allocators);
+        }
+
     private:
         std::unique_ptr<CustomExecutionProvider> external_ep_impl_;
         std::shared_ptr<KernelRegistry> kernel_registry_;
