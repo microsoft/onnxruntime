@@ -724,11 +724,15 @@ void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
 
 void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
   // move the outputs from second_node to first_node
+  std::cout << "LayerNormFusion Removing Node Output Edges" << std::endl;
   RemoveNodeOutputEdges(graph, first_node);
+  std::cout << "LayerNormFusion Moving Node Output Edges" << std::endl;
   MoveAllNodeOutputs(graph, second_node, first_node);
 
   // second node now has no output edges and can be removed
+  std::cout << "LayerNormFusion Removing Second Node" << std::endl;
   graph.RemoveNode(second_node.Index());
+  std::cout << "LayerNormFusion Complete" << std::endl;
 }
 
 void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node_start,
