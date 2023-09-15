@@ -67,8 +67,7 @@ jobs:
   # const std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver> &)'
   - template: templates/jobs/win-ci-prebuild-steps.yml
     parameters:
-      EnvSetupScript: $(EnvSetupScript)
-      DownloadCUDA: true
+      DownloadCUDA: false
       BuildArch: $(buildArch)
       BuildConfig: $(BuildConfig)
       MachinePool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
