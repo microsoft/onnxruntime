@@ -1,14 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfoLoader} from '../types';
 
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
 import {InternalActivationAttributes} from './fuse-utils';
-
 
 const createMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
   name: 'MatMul',
