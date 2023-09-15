@@ -22,7 +22,7 @@ export class TrainingSession implements TrainingSessionInterface {
       Promise<TrainingSession>;
   static create(
       checkpointState: string|ArrayBufferLike|Uint8Array, trainModelData: string|ArrayBufferLike|Uint8Array,
-      evalModelData?: string|ArrayBufferLike|Uint8Array, optimizerModelData?: string|ArrayBufferLike|Uint8Array,
+      optimizerModelData?: string|ArrayBufferLike|Uint8Array, evalModelData?: string|ArrayBufferLike|Uint8Array,
       options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
   static async create(
       arg0: string|ArrayBufferLike|Uint8Array, arg1: string|ArrayBufferLike|Uint8Array,
@@ -32,16 +32,16 @@ export class TrainingSession implements TrainingSessionInterface {
     let options: SessionOptions = {};
     const checkpointState: string|Uint8Array = processModel(arg0);
     const trainModel: string|Uint8Array = processModel(arg1);
-    let evalModel: string|Uint8Array = '';
     let optimizerModel: string|Uint8Array = '';
+    let evalModel: string|Uint8Array = '';
 
     if (typeof arg2 !== 'undefined') {
       const [return1, return2] = processModelOrOptions(arg2, options, evalModel);
       options = return1;
-      evalModel = return2;
+      optimizerModel = return2;
     }
     if (typeof arg3 !== 'undefined') {
-      optimizerModel = processModel(arg3);
+      evalModel = processModel(arg3);
     }
     if (typeof arg4 !== 'undefined') {
       options = arg4;

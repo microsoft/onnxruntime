@@ -99,7 +99,7 @@ export interface TrainingSessionFactory {
    * @returns A promise that resolves to an InferenceSession object.
    */
   create(
-      checkpointStateUri: string, trainModelURI: string, evalModelURI?: string, optimizerModelURI?: string,
+      checkpointStateUri: string, trainModelURI: string, optimizerModelURI?: string, evalModelURI?: string,
       options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
 
   /**
@@ -110,8 +110,8 @@ export interface TrainingSessionFactory {
    * @returns A promise that resolves to an InferenceSession object.
    */
   create(
-      checkpointStateBuffer: ArrayBufferLike, trainModelBuffer: ArrayBufferLike, evalModelBuffer?: ArrayBufferLike,
-      optimizerModelBuffer?: ArrayBufferLike, options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
+      checkpointStateBuffer: ArrayBufferLike, trainModelBuffer: ArrayBufferLike, optimizerModelBuffer?: ArrayBufferLike,
+      evalModelBuffer?: ArrayBufferLike, options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
 
   /**
    * Create a new training session and load model asynchronously from a Uint8Array.
@@ -121,8 +121,8 @@ export interface TrainingSessionFactory {
    * @returns A promise that resolves to an InferenceSession object.
    */
   create(
-      checkpointState: Uint8Array, trainModelData: Uint8Array, evalModelData?: Uint8Array,
-      optimizerModelData?: Uint8Array, options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
+      checkpointState: Uint8Array, trainModelData: Uint8Array, optimizerModelData?: Uint8Array,
+      evalModelData?: Uint8Array, options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
 
   // #endregion
 }
