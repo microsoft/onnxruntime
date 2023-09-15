@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
 import {createConv2DMatMulProgramInfo} from './3rd-party/conv2d_mm_webgpu';

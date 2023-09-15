@@ -30,6 +30,7 @@ Do not modify directly.*
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
+| Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
 | Equal | ai.onnx(7-10,11-12,13-18,19+) |  |
 | Erf | ai.onnx(9-12,13+) |  |
@@ -58,6 +59,7 @@ Do not modify directly.*
 | Mul | ai.onnx(7-12,13,14+) |  |
 | Neg | ai.onnx(6-12,13+) |  |
 | Not | ai.onnx(1+) |  |
+| Pad | ai.onnx(2-10,11-12,13-17,18,19+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
 | ReduceL1 | ai.onnx(1-10,11-12,13-17,18+) |  |

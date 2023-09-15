@@ -5,19 +5,15 @@
 #
 # This script converts stable diffusion onnx models from float to half (mixed) precision for GPU inference.
 #
-# Before running this script, follow README.md to setup python environment and convert stable diffusion checkpoint to float32 onnx models.
+# Before running this script, follow README.md to setup python environment and convert stable diffusion checkpoint
+# to float32 onnx models.
 #
-# For example, the float32 ONNX pipeline is saved to ./sd-v1-5 directory, you can optimize and convert it to float16 like the following:
+# For example, the float32 ONNX pipeline is saved to ./sd-v1-5 directory, you can optimize and convert it to float16
+# like the following:
 #    python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
 #
-# Note that the optimizations are carried out for CUDA Execution Provider at first, other EPs may not have the support for the fused opeartors.
-# In this case, the users should disable the operator fusion manually to workaround.
-#
-# Stable diffusion 2.1 model will get black images using float16 Attention. A walkaround is to force Attention to run in float32 like the following:
-#    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:Attention
-#
-# If you are using nightly package (or built from source), you can force MultiHeadAttention to run in float32:
-#    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:MultiHeadAttention
+# Note that the optimizations are carried out for CUDA Execution Provider at first, other EPs may not have the support
+# for the fused opeartors. The users could disable the operator fusion manually to workaround.
 
 import argparse
 import logging
@@ -25,8 +21,9 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
+import __init__  # noqa: F401. Walk-around to run this script directly
 import coloredlogs
 import onnx
 from fusion_options import FusionOptions
@@ -49,10 +46,11 @@ def has_external_data(onnx_model_path):
     return False
 
 
-def optimize_sd_pipeline(
+def _optimize_sd_pipeline(
     source_dir: Path,
     target_dir: Path,
     overwrite: bool,
+    use_external_data_format: Optional[bool],
     float16: bool,
     force_fp32_ops: List[str],
     enable_runtime_optimization: bool,
@@ -64,6 +62,7 @@ def optimize_sd_pipeline(
         source_dir (Path): Root of input directory of stable diffusion onnx pipeline with float32 models.
         target_dir (Path): Root of output directory of stable diffusion onnx pipeline with optimized models.
         overwrite (bool): Overwrite files if exists.
+        use_external_data_format (Optional[bool]): use external data format.
         float16 (bool): use half precision
         force_fp32_ops(List[str]): operators that are forced to run in float32.
         enable_runtime_optimization(bool): run graph optimization using Onnx Runtime.
@@ -96,6 +95,8 @@ def optimize_sd_pipeline(
         "safety_checker": [],
     }
 
+    is_xl = (source_dir / "text_encoder_2").exists()
+
     if force_fp32_ops:
         for fp32_operator in force_fp32_ops:
             parts = fp32_operator.split(":")
@@ -109,22 +110,18 @@ def optimize_sd_pipeline(
     for name, model_type in model_type_mapping.items():
         onnx_model_path = source_dir / name / "model.onnx"
         if not os.path.exists(onnx_model_path):
-            logger.info("input onnx model does not exist: %s", onnx_model_path)
+            if name != "safety_checker":
+                logger.info("input onnx model does not exist: %s", onnx_model_path)
             # some model are optional so we do not raise error here.
             continue
 
         # Prepare output directory
         optimized_model_path = target_dir / name / "model.onnx"
         output_dir = optimized_model_path.parent
-        if optimized_model_path.exists():
-            if not overwrite:
-                raise RuntimeError(f"output onnx model path existed: {optimized_model_path}")
-
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        use_external_data = has_external_data(onnx_model_path)
+        if use_external_data_format is None:
+            use_external_data_format = has_external_data(onnx_model_path)
 
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
         logger.info(f"Optimize {onnx_model_path}...")
@@ -150,29 +147,29 @@ def optimize_sd_pipeline(
         )
 
         if float16:
-            logger.info("Convert %s to float16 ...", name)
-            op_block_list = ["RandomNormalLike"]
-            m.convert_float_to_float16(
-                keep_io_types=False,
-                op_block_list=op_block_list + force_fp32_operators[name],
-            )
+            # For SD-XL, use FP16 in VAE decoder will cause NaN and black image so we keep it in FP32.
+            if is_xl and name == "vae_decoder":
+                logger.info("Skip converting %s to float16 to avoid NaN", name)
+            else:
+                logger.info("Convert %s to float16 ...", name)
+                m.convert_float_to_float16(
+                    keep_io_types=False,
+                    op_block_list=force_fp32_operators[name],
+                )
 
         if enable_runtime_optimization:
-            if use_external_data and version.parse(onnxruntime.__version__) < version.parse("1.16.0"):
-                raise RuntimeError("Need onnxruntime version 1.16 or later to save model with external data")
-
             # Use this step to see the final graph that executed by Onnx Runtime.
             with tempfile.TemporaryDirectory() as tmp_dir:
                 # Save to a temporary file so that we can load it with Onnx Runtime.
                 logger.info("Saving a temporary model to run OnnxRuntime graph optimizations...")
                 tmp_model_path = Path(tmp_dir) / "model.onnx"
-                m.save_model_to_file(str(tmp_model_path), use_external_data_format=use_external_data)
-                ort_optimized_model_path = Path(tmp_dir) / "opt.onnx"
+                m.save_model_to_file(str(tmp_model_path), use_external_data_format=use_external_data_format)
+                ort_optimized_model_path = Path(tmp_dir) / "optimized.onnx"
                 optimize_by_onnxruntime(
                     str(tmp_model_path),
                     use_gpu=True,
                     optimized_model_path=str(ort_optimized_model_path),
-                    save_as_external_data=use_external_data,
+                    save_as_external_data=use_external_data_format,
                 )
                 model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
                 m = model_type_class_mapping[model_type](model)
@@ -184,35 +181,24 @@ def optimize_sd_pipeline(
         logger.info("*" * 20)
 
 
-def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
+def _copy_extra_directory(source_dir: Path, target_dir: Path):
     """Copy extra directory that does not have onnx model
 
     Args:
         source_dir (Path): source directory
         target_dir (Path): target directory
-        overwrite (bool): overwrite if exists
 
     Raises:
         RuntimeError: source path does not exist
-        RuntimeError: output path exists but overwrite is false.
     """
-    extra_dirs = ["scheduler", "tokenizer", "feature_extractor"]
+    extra_dirs = ["scheduler", "tokenizer", "tokenizer_2", "feature_extractor"]
 
     for name in extra_dirs:
         source_path = source_dir / name
-
         if not os.path.exists(source_path):
-            message = f"source path does not exist: {source_path}"
-            if name not in ["feature_extractor"]:
-                raise RuntimeError(message)
             continue
 
         target_path = target_dir / name
-        if target_path.exists():
-            if not overwrite:
-                raise RuntimeError(f"output path existed: {target_path}")
-            shutil.rmtree(target_path)
-
         shutil.copytree(source_path, target_path)
         logger.info("%s => %s", source_path, target_path)
 
@@ -223,10 +209,6 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
             raise RuntimeError(f"source path does not exist: {source_path}")
 
         target_path = target_dir / name
-        if target_path.exists():
-            if not overwrite:
-                raise RuntimeError(f"output path existed: {target_path}")
-            os.remove(target_path)
         shutil.copyfile(source_path, target_path)
         logger.info("%s => %s", source_path, target_path)
 
@@ -236,16 +218,45 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
         source_path = source_dir / onnx_model_dir / "config.json"
         target_path = target_dir / onnx_model_dir / "config.json"
         if source_path.exists():
-            if target_path.exists():
-                if not overwrite:
-                    raise RuntimeError(f"output path existed: {target_path}")
-                os.remove(target_path)
             target_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_path, target_path)
             logger.info("%s => %s", source_path, target_path)
 
 
-def parse_arguments():
+def optimize_stable_diffusion_pipeline(
+    input_dir: str,
+    output_dir: str,
+    overwrite: bool,
+    use_external_data_format: Optional[bool],
+    float16: bool,
+    enable_runtime_optimization: bool,
+    args,
+):
+    if os.path.exists(output_dir):
+        if args.overwrite:
+            shutil.rmtree(output_dir, ignore_errors=True)
+        else:
+            raise RuntimeError("output directory existed:{output_dir}. Add --overwrite to empty the directory.")
+
+    source_dir = Path(input_dir)
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    _copy_extra_directory(source_dir, target_dir)
+
+    _optimize_sd_pipeline(
+        source_dir,
+        target_dir,
+        overwrite,
+        use_external_data_format,
+        float16,
+        args.force_fp32_ops,
+        enable_runtime_optimization,
+        args,
+    )
+
+
+def parse_arguments(argv: Optional[List[str]] = None):
     """Parse arguments
 
     Returns:
@@ -289,7 +300,8 @@ def parse_arguments():
         "--inspect",
         required=False,
         action="store_true",
-        help="Inspect the optimized graph from Onnx Runtime for debugging purpose. This option has no impact on model performance.",
+        help="Save the optimized graph from Onnx Runtime. "
+        "This option has no impact on inference performance except it might reduce session creation time.",
     )
     parser.set_defaults(inspect=False)
 
@@ -301,37 +313,31 @@ def parse_arguments():
     )
     parser.set_defaults(overwrite=False)
 
+    parser.add_argument(
+        "-e",
+        "--use_external_data_format",
+        required=False,
+        action="store_true",
+        help="Onnx model larger than 2GB need to use external data format. "
+        "If specifed, save each onnx model to two files: one for onnx graph, another for weights. "
+        "If not specified, use same format as original model by default. ",
+    )
+    parser.set_defaults(use_external_data_format=None)
+
     FusionOptions.add_arguments(parser)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     return args
 
 
-def main():
-    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
-    args = parse_arguments()
+def main(argv: Optional[List[str]] = None):
+    args = parse_arguments(argv)
     logger.info("Arguments: %s", str(args))
-
-    if os.path.exists(args.output):
-        if args.overwrite:
-            shutil.rmtree(args.output, ignore_errors=True)
-        else:
-            raise RuntimeError("output directory existed:{args.output}. Add --overwrite to empty the directory.")
-
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    copy_extra_directory(Path(args.input), Path(args.output), args.overwrite)
-    optimize_sd_pipeline(
-        Path(args.input),
-        Path(args.output),
-        args.overwrite,
-        args.float16,
-        args.force_fp32_ops,
-        args.inspect,
-        args,
+    optimize_stable_diffusion_pipeline(
+        args.input, args.output, args.overwrite, args.use_external_data_format, args.float16, args.inspect, args
     )
 
 
 if __name__ == "__main__":
+    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
     main()
