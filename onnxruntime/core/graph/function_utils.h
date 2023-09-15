@@ -31,6 +31,8 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
  * @param function_name The name of the function.
  * @param model_local_functions The map of local functions in the same onnx model.
  *                              This will be used as context for the function's type/shape inference.
+ *                              This argument is captured by shape inferencing lambda by reference and must
+ *                              be alive at the time of the shape inferencing.
  * @param domain_version_map Domain to version map used in current onnx model.
  * @param schema_registry The schema registry current model is using.
  * @param logger The logger current model is using.
@@ -38,7 +40,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
  */
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
                                                        const std::string& function_name,
-                                                       const InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+                                                       const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                                                        const std::unordered_map<std::string, int>& domain_version_map,
                                                        const SchemaRegistryManager& schema_registry,
                                                        const logging::Logger& logger,

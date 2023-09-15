@@ -155,6 +155,12 @@ int OrtAppendExecutionProvider(ort_session_options_handle_t session_options, con
   return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, nullptr, nullptr, 0);
 }
 
+int OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
+                                const char* dim_param_name,
+                                int dim_value) {
+  return CHECK_STATUS(AddFreeDimensionOverrideByName, session_options, dim_param_name, dim_value);
+}
+
 int OrtAddSessionConfigEntry(OrtSessionOptions* session_options,
                              const char* config_key,
                              const char* config_value) {
@@ -394,9 +400,11 @@ char* OrtEndProfiling(ort_session_handle_t session) {
 #define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
 
-ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint_data_buffer, size_t checkpoint_size) {
+ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint_data_buffer,
+                                                                                size_t checkpoint_size) {
   OrtCheckpointState* checkpoint_state = nullptr;
-  return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint_data_buffer, checkpoint_size, &checkpoint_state) == ORT_OK)
+  return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint_data_buffer,
+                                checkpoint_size, &checkpoint_state) == ORT_OK)
              ? checkpoint_state
              : nullptr;
 }
@@ -414,7 +422,7 @@ ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(cons
                                                                             void* optimizer_model,
                                                                             size_t optimizer_size) {
   OrtTrainingSession* training_session = nullptr;
-  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromArray, g_env, options,
+  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromBuffer, g_env, options,
                                 training_checkpoint_state_handle, train_model, train_size,
                                 eval_model, eval_size, optimizer_model, optimizer_size,
                                 &training_session) == ORT_OK)

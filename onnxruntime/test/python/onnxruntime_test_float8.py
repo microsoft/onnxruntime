@@ -8,9 +8,11 @@ import sys
 import unittest
 
 import numpy as np
+import packaging.version as pv
 import parameterized
 from numpy.testing import assert_allclose
 from onnx import TensorProto
+from onnx import __version__ as onnx_version
 from onnx.checker import check_model
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor, make_tensor_value_info
 from onnx.reference import ReferenceEvaluator
@@ -37,7 +39,7 @@ class TestInferenceSession(unittest.TestCase):
     <https://onnx.ai/onnx/api/numpy_helper.html#onnx.numpy_helper.float8e5m2_to_float32>`_.
     """
 
-    dtypes = frozenset({"FLOAT": np.float32, "FLOAT16": np.float16})
+    dtypes = {"FLOAT": np.float32, "FLOAT16": np.float16}  # noqa: RUF012
     x = np.array(
         [0.4068359375, 352, 416, 336, 304, 272, -248, -100, 1e-4, 1e-2, 416, 432, 1e5, np.inf, -np.inf, np.nan],
         dtype=np.float32,
@@ -76,7 +78,7 @@ class TestInferenceSession(unittest.TestCase):
                     240.0,
                     240.0,
                     -240.0,
-                    -104.0,
+                    -96.0,
                     0.0,
                     0.009765625,
                     240.0,
@@ -113,7 +115,7 @@ class TestInferenceSession(unittest.TestCase):
                 [
                     0.4375,
                     384.0,
-                    448.0,
+                    384.0,
                     320.0,
                     320.0,
                     256.0,
@@ -121,7 +123,7 @@ class TestInferenceSession(unittest.TestCase):
                     -96.0,
                     0.0001068115234375,
                     0.009765625,
-                    448.0,
+                    384.0,
                     448.0,
                     57344.0,
                     57344.0,
@@ -167,7 +169,7 @@ class TestInferenceSession(unittest.TestCase):
                     np.nan,
                     np.nan,
                     np.nan,
-                    -104.0,
+                    -96.0,
                     0.0,
                     0.009765625,
                     np.nan,
@@ -204,7 +206,7 @@ class TestInferenceSession(unittest.TestCase):
                 [
                     0.4375,
                     384.0,
-                    448.0,
+                    384.0,
                     320.0,
                     320.0,
                     256.0,
@@ -212,7 +214,7 @@ class TestInferenceSession(unittest.TestCase):
                     -96.0,
                     0.0001068115234375,
                     0.009765625,
-                    448.0,
+                    384.0,
                     448.0,
                     np.nan,
                     np.nan,
@@ -245,6 +247,7 @@ class TestInferenceSession(unittest.TestCase):
         check_model(onnx_model)
         return onnx_model
 
+    @unittest.skipIf(pv.Version(onnx_version) < pv.Version("1.15.0"), reason="needs onnx>=1.15.0")
     @parameterized.parameterized.expand(
         [
             ("FLOAT8E4M3FN", "FLOAT", 1),
@@ -429,6 +432,7 @@ class TestInferenceSession(unittest.TestCase):
         check_model(onnx_model)
         return onnx_model
 
+    @unittest.skipIf(pv.Version(onnx_version) < pv.Version("1.15.0"), reason="needs onnx>=1.15.0")
     @parameterized.parameterized.expand(
         [
             ("FLOAT8E4M3FN", "FLOAT", 1),
@@ -688,6 +692,18 @@ class TestInferenceSession(unittest.TestCase):
         assert_allclose(expect, y)
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
+
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running on CUDA.")
+    def test_compare_cpu_cuda_e4m3fn(self):
+        folder = os.path.join(os.path.dirname(__file__), "..", "testdata", "float8")
+        model = os.path.join(folder, "te.cast_fp8_1_fp32.onnx")
+        data = np.load(os.path.join(folder, "te.cast_fp8_1_fp32_input.npy"))
+
+        sess_cpu = onnxruntime.InferenceSession(model, providers=["CPUExecutionProvider"])
+        sess_cuda = onnxruntime.InferenceSession(model, providers=["CUDAExecutionProvider"])
+        cpu_res = sess_cpu.run(None, {"input": data})[0]
+        cuda_res = sess_cuda.run(None, {"input": data})[0]
+        self.assertEqual(cuda_res.tolist(), cpu_res.tolist())
 
 
 if __name__ == "__main__":
