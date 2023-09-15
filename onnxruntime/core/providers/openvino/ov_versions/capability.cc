@@ -87,7 +87,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
         return result;
       }
     }
-    
+
     // Nodes that work well in models but not as a single node
     if (nodes.size() == 1) {
       // If reshape is not an intermediate node, shape needs to be an initializer
@@ -106,7 +106,6 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);
-
 
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported by OpenVINO";
     // Enable CI Logs
