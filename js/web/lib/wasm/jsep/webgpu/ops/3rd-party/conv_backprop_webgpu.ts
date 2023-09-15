@@ -18,7 +18,7 @@
 // sampled from [@tensorflow/tfjs] tfjs-backend-webgpu/src/conv_backprop_webgpu.ts
 
 import {LOG_DEBUG} from '../../../log';
-import {TensorView} from '../../../tensor';
+import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
 import {inputVariable, outputVariable, ShaderHelper} from '../common';

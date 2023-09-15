@@ -8,7 +8,7 @@ import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
-import {TensorView} from './tensor';
+import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
 import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 

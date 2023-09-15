@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {BroadcastUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfoLoader} from '../types';
 

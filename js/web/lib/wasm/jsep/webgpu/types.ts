@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, TensorView} from '../tensor';
+import {TensorView} from '../tensor-view';
 
 import {ShaderHelper} from './ops/common';
 
@@ -19,7 +19,6 @@ export interface GpuData {
 }
 
 export interface TensorInfo {
-  id?: Tensor.Id;
   dims: readonly number[];
   dataType: number;
   gpuDataType: GpuDataType;
