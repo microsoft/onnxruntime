@@ -13,70 +13,6 @@
 namespace onnxruntime {
 namespace test {
 
-// The bug is from a QDQ model, and Conv node gets processed before it's producer Mul node
-// A Transpose node gets inserted between Mul and the dynamic weight tensor shape on Conv
-// to make Conv weight with shape HWNC
-// However it changes Mul output shape to HWNC and cause issue
-// It has to be QDQ model, because the DQ node with initializer on Conv gets processed first
-// and DQ node requires its node unit to be processed
-// So, Conv gets processed before Mul node
-TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
-  ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  auto BuildConvMulGraph = [](ModelTestBuilder& builder) {
-    // DQ node for Conv input
-    auto* dq_i_output = builder.MakeIntermediate();
-    auto* conv_dq_input = builder.MakeInitializer<uint8_t>({1, 32, 16, 113}, static_cast<uint8_t>(0), static_cast<uint8_t>(127));
-
-    // DQ node for Conv bias
-    auto* dq_bias_output = builder.MakeIntermediate();
-    auto* bias = builder.MakeInitializer<int32_t>({16}, static_cast<int32_t>(0), static_cast<int32_t>(127));
-
-    // Mul node
-    // DQ nodes for Mul
-    auto* mul_dq1_output = builder.MakeIntermediate();
-    auto* mul_input1 = builder.MakeInput<uint8_t>({16, 32, 1, 1}, static_cast<uint8_t>(0), static_cast<uint8_t>(127));
-
-    auto* mul_dq2_output = builder.MakeIntermediate();
-    auto* mul_input2 = builder.MakeInitializer<uint8_t>({16, 1, 1, 1}, static_cast<uint8_t>(0), static_cast<uint8_t>(127));
-    builder.AddDequantizeLinearNode<uint8_t>(mul_input1, .03f, 0, mul_dq1_output);
-    builder.AddDequantizeLinearNode<uint8_t>(mul_input2, .03f, 0, mul_dq2_output);
-
-    auto* mul_output = builder.MakeIntermediate();
-    builder.AddNode("Mul", {mul_dq1_output, mul_dq2_output}, {mul_output});
-
-    auto* mul_dq_output = AddQDQNodePair<uint8_t>(builder, mul_output, .03f, 0);
-
-    builder.AddDequantizeLinearNode<uint8_t>(conv_dq_input, .04f, 0, dq_i_output);
-    builder.AddDequantizeLinearNode<int32_t>(bias, .0012f, 0, dq_bias_output);
-    // Conv node
-    auto* conv_output = builder.MakeIntermediate();
-
-    Node& conv_node = builder.AddNode("Conv", {dq_i_output, mul_dq_output, dq_bias_output}, {conv_output});
-    conv_node.AddAttribute("auto_pad", "NOTSET");
-    conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
-    conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
-    conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
-
-    auto* q_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<uint8_t>(conv_output, .039f, 0, q_output);
-
-    auto* dq_output = builder.MakeOutput();
-    builder.AddDequantizeLinearNode<uint8_t>(q_output, .039f, 0, dq_output);
-  };
-
-  RunQnnModelTest(BuildConvMulGraph,
-                  provider_options,
-                  13,
-                  ExpectedEPNodeAssignment::All);
-}
-
 // Creates a graph with a single float32 Conv operator. Used for testing CPU backend.
 static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, const TestInputDef<float>& input_def,
                                            const TestInputDef<float>& weights_def,
@@ -156,13 +92,13 @@ static GetTestQDQModelFn<InputQType> BuildQDQConvTestCase(const std::string& con
 
     // input -> Q/DQ ->
     auto* input = MakeTestInput(builder, input_def);
-    QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
     auto* input_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale, input_qparams.zero_point);
     conv_inputs.push_back(input_qdq);
 
     // weights -> Q/DQ ->
     auto* weights = MakeTestInput(builder, weights_def);
-    QuantParams<InputQType> weights_qparams = GetTestInputQuantParams(weights_def);
+    QuantParams<InputQType> weights_qparams = GetTestInputQuantParams<InputQType>(weights_def);
     auto* weights_qdq = AddQDQNodePair<InputQType>(builder, weights, weights_qparams.scale, weights_qparams.zero_point);
     conv_inputs.push_back(weights_qdq);
 
@@ -394,6 +330,70 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+// The bug is from a QDQ model, and Conv node gets processed before it's producer Mul node
+// A Transpose node gets inserted between Mul and the dynamic weight tensor shape on Conv
+// to make Conv weight with shape HWNC
+// However it changes Mul output shape to HWNC and cause issue
+// It has to be QDQ model, because the DQ node with initializer on Conv gets processed first
+// and DQ node requires its node unit to be processed
+// So, Conv gets processed before Mul node
+TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto BuildConvMulGraph = [](ModelTestBuilder& builder) {
+    // DQ node for Conv input
+    auto* dq_i_output = builder.MakeIntermediate();
+    auto* conv_dq_input = builder.MakeInitializer<uint8_t>({1, 32, 16, 113}, static_cast<uint8_t>(0), static_cast<uint8_t>(127));
+
+    // DQ node for Conv bias
+    auto* dq_bias_output = builder.MakeIntermediate();
+    auto* bias = builder.MakeInitializer<int32_t>({16}, static_cast<int32_t>(0), static_cast<int32_t>(127));
+
+    // Mul node
+    // DQ nodes for Mul
+    auto* mul_dq1_output = builder.MakeIntermediate();
+    auto* mul_input1 = builder.MakeInput<uint8_t>({16, 32, 1, 1}, static_cast<uint8_t>(0), static_cast<uint8_t>(127));
+
+    auto* mul_dq2_output = builder.MakeIntermediate();
+    auto* mul_input2 = builder.MakeInitializer<uint8_t>({16, 1, 1, 1}, static_cast<uint8_t>(0), static_cast<uint8_t>(127));
+    builder.AddDequantizeLinearNode<uint8_t>(mul_input1, .03f, 0, mul_dq1_output);
+    builder.AddDequantizeLinearNode<uint8_t>(mul_input2, .03f, 0, mul_dq2_output);
+
+    auto* mul_output = builder.MakeIntermediate();
+    builder.AddNode("Mul", {mul_dq1_output, mul_dq2_output}, {mul_output});
+
+    auto* mul_dq_output = AddQDQNodePair<uint8_t>(builder, mul_output, .03f, 0);
+
+    builder.AddDequantizeLinearNode<uint8_t>(conv_dq_input, .04f, 0, dq_i_output);
+    builder.AddDequantizeLinearNode<int32_t>(bias, .0012f, 0, dq_bias_output);
+    // Conv node
+    auto* conv_output = builder.MakeIntermediate();
+
+    Node& conv_node = builder.AddNode("Conv", {dq_i_output, mul_dq_output, dq_bias_output}, {conv_output});
+    conv_node.AddAttribute("auto_pad", "NOTSET");
+    conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+    conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(conv_output, .039f, 0, q_output);
+
+    auto* dq_output = builder.MakeOutput();
+    builder.AddDequantizeLinearNode<uint8_t>(q_output, .039f, 0, dq_output);
+  };
+
+  RunQnnModelTest(BuildConvMulGraph,
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All);
+}
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as a dynamic input.
