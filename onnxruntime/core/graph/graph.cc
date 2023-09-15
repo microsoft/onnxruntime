@@ -4145,8 +4145,6 @@ Status Graph::InlineFunction(Node& callnode) {
 
   // std::cout << "Graph after inlining\n\n" << *this << std::endl << std::flush;
 
-  ORT_RETURN_IF_ERROR(this->Resolve());
-
   return Status::OK();
 }
 

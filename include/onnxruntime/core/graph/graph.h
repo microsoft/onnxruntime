@@ -1135,6 +1135,7 @@ class Graph {
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.
+  The Graph needs to be Resolve()d after this call.
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
