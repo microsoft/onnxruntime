@@ -88,5 +88,7 @@ void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_r
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime

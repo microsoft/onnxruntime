@@ -19,7 +19,7 @@
 //
 // modified to fit the needs of the project
 
-import {TensorView} from '../../../tensor';
+import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
 import {
