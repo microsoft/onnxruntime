@@ -95,6 +95,8 @@ steps:
       createLogFile: true
     env:
       CCACHE_DIR: ${{parameters.CacheDir}}
+      CCACHE_DEBUG: 1
+      CCACHE_DEBUGDIR: $(Agent.TempDirectory)/cache_debug
 
   - ${{ if eq(parameters.WithCache, true) }}:
     - powershell: |
@@ -103,3 +105,9 @@ steps:
       displayName: cache stat
       env:
         CCACHE_DIR: ${{parameters.CacheDir}}
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'publish cache log'
+      inputs:
+        artifactName: 'cache-log'
+        targetPath: $(Agent.TempDirectory)/cache_debug
