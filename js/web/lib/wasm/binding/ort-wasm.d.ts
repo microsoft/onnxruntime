@@ -54,6 +54,7 @@ export interface OrtWasmModule extends EmscriptenModule {
       enableProfiling: boolean, profileFilePrefix: number, logId: number, logSeverityLevel: number,
       logVerbosityLevel: number, optimizedModelFilePath: number): number;
   _OrtAppendExecutionProvider(sessionOptionsHandle: number, name: number): number;
+  _OrtAddFreeDimensionOverride(sessionOptionsHandle: number, name: number, dim: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
 
