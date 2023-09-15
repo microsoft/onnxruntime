@@ -52,6 +52,12 @@ jobs:
     clean: all
   steps:
 
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.8'
+      addToPath: true
+      architecture: $(buildArch)
+
   # TODO: Remove --compile_no_warning_as_error once we update from MSVC Runtime library version 14.32 or we
   # fix/silence the following warning from the <variant> STL header. This warning halts compilation due to
   # the /external:templates- option, which allows warnings from external libs for template instantiations.
@@ -65,14 +71,6 @@ jobs:
   # '_Ret &std::_Visit_strategy<1>::_Visit2<_Ret,_ListOfIndexVectors,_Callable,const
   # std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver>&>(size_t,_Callable &&,
   # const std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver> &)'
-  - template: templates/jobs/win-ci-prebuild-steps.yml
-    parameters:
-      DownloadCUDA: false
-      BuildArch: $(buildArch)
-      BuildConfig: $(BuildConfig)
-      MachinePool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-      WithCache: true
-      Today: $(Today)
 
   - template: templates/jobs/win-ci-build-steps.yml
     parameters:

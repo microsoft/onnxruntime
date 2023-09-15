@@ -45,6 +45,18 @@ parameters:
 
 steps:
   - ${{ if eq(parameters.WithCache, true) }}:
+    - powershell: |
+        if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))
+        {
+          choco install ccache -y --version 4.7.4
+          $ccache_path = (Get-Command ccache).Source
+          $ccache_parent_dir = (Split-Path -parent $ccache_path)
+          Copy-Item "C:\ProgramData\chocolatey\lib\ccache\tools\ccache-4.7.4-windows-x86_64\ccache.exe" -Destination "C:\ProgramData\chocolatey\bin\cl.exe"
+          Get-ChildItem $ccache_parent_dir
+          ccache --version
+        }
+      displayName: Install ccache
+
     - task: Cache@2
       inputs:
         ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
