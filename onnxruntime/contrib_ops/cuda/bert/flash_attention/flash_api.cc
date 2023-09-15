@@ -215,6 +215,9 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   if (params.num_splits > 1 && softmax_lse_accum != nullptr && out_accum != nullptr) {
       params.softmax_lseaccum_ptr = softmax_lse_accum;
       params.oaccum_ptr = out_accum;
+  } else {
+    params.softmax_lseaccum_ptr = nullptr;
+    params.oaccum_ptr = nullptr;
   }
 
   run_mha_fwd(params, stream);
@@ -338,6 +341,9 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     if (params.num_splits > 1 && softmax_lse_accum != nullptr && out_accum != nullptr) {
         params.softmax_lseaccum_ptr = softmax_lse_accum;
         params.oaccum_ptr = out_accum;
+    } else {
+      params.softmax_lseaccum_ptr = nullptr;
+      params.oaccum_ptr = nullptr;
     }
 
     // Only split kernel supports appending to KV cache
