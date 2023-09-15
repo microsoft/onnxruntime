@@ -7,6 +7,7 @@ import os
 import shutil
 import unittest
 
+import numpy as np
 import pytest
 from parity_utilities import find_transformers_source
 
@@ -18,6 +19,12 @@ else:
     from onnxruntime.transformers.compare_bert_results import run_test
     from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.optimizer import optimize_model
+
+if find_transformers_source(["models", "stable_diffusion"]):
+    from optimize_pipeline import main as optimize_stable_diffusion
+else:
+    from onnxruntime.transformers.models.stable_diffusion.optimize_pipeline import main as optimize_stable_diffusion
+
 
 TINY_MODELS = {
     "stable-diffusion": "hf-internal-testing/tiny-stable-diffusion-torch",
@@ -150,6 +157,114 @@ class TestStableDiffusionOptimization(unittest.TestCase):
                 "BiasGelu": 5,
             },
         )
+
+    @pytest.mark.slow
+    def test_optimize_sdxl_fp32(self):
+        save_directory = "tiny-random-stable-diffusion-xl"
+        if os.path.exists(save_directory):
+            shutil.rmtree(save_directory, ignore_errors=True)
+
+        model_type = "stable-diffusion-xl"
+        model_name = TINY_MODELS[model_type]
+
+        from optimum.onnxruntime import ORTStableDiffusionXLPipeline
+
+        baseline = ORTStableDiffusionXLPipeline.from_pretrained(model_name, export=True)
+        if not os.path.exists(save_directory):
+            baseline.save_pretrained(save_directory)
+
+        batch_size, num_images_per_prompt, height, width = 2, 2, 64, 64
+        latents = baseline.prepare_latents(
+            batch_size * num_images_per_prompt,
+            baseline.unet.config["in_channels"],
+            height,
+            width,
+            dtype=np.float32,
+            generator=np.random.RandomState(0),
+        )
+
+        optimized_directory = "tiny-random-stable-diffusion-xl-optimized"
+        argv = [
+            "--input",
+            save_directory,
+            "--output",
+            optimized_directory,
+            "--disable_group_norm",
+            "--disable_bias_splitgelu",
+            "--overwrite",
+        ]
+        optimize_stable_diffusion(argv)
+
+        treatment = ORTStableDiffusionXLPipeline.from_pretrained(optimized_directory, provider="CUDAExecutionProvider")
+        inputs = {
+            "prompt": ["starry night by van gogh"] * batch_size,
+            "num_inference_steps": 3,
+            "num_images_per_prompt": num_images_per_prompt,
+            "height": height,
+            "width": width,
+            "guidance_rescale": 0.1,
+            "output_type": "np",
+        }
+
+        ort_outputs_1 = baseline(latents=latents, **inputs)
+        ort_outputs_2 = treatment(latents=latents, **inputs)
+        self.assertTrue(np.allclose(ort_outputs_1.images[0], ort_outputs_2.images[0], atol=1e-3))
+
+    @pytest.mark.slow
+    def test_optimize_sdxl_fp16(self):
+        """This tests optimized fp16 pipeline, and result is deterministic for a given seed"""
+        save_directory = "tiny-random-stable-diffusion-xl"
+        if os.path.exists(save_directory):
+            shutil.rmtree(save_directory, ignore_errors=True)
+
+        model_type = "stable-diffusion-xl"
+        model_name = TINY_MODELS[model_type]
+
+        from optimum.onnxruntime import ORTStableDiffusionXLPipeline
+
+        baseline = ORTStableDiffusionXLPipeline.from_pretrained(model_name, export=True)
+        if not os.path.exists(save_directory):
+            baseline.save_pretrained(save_directory)
+
+        optimized_directory = "tiny-random-stable-diffusion-xl-optimized-fp16"
+        argv = [
+            "--input",
+            save_directory,
+            "--output",
+            optimized_directory,
+            "--disable_group_norm",
+            "--disable_bias_splitgelu",
+            "--float16",
+            "--overwrite",
+        ]
+        optimize_stable_diffusion(argv)
+
+        fp16_pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
+            optimized_directory, provider="CUDAExecutionProvider"
+        )
+        batch_size, num_images_per_prompt, height, width = 1, 1, 64, 64
+        inputs = {
+            "prompt": ["starry night by van gogh"] * batch_size,
+            "num_inference_steps": 3,
+            "num_images_per_prompt": num_images_per_prompt,
+            "height": height,
+            "width": width,
+            "guidance_rescale": 0.1,
+            "output_type": "latent",
+        }
+
+        seed = 123
+        np.random.seed(seed)
+        ort_outputs_1 = fp16_pipeline(**inputs)
+
+        np.random.seed(seed)
+        ort_outputs_2 = fp16_pipeline(**inputs)
+
+        np.random.seed(seed)
+        ort_outputs_3 = fp16_pipeline(**inputs)
+
+        self.assertTrue(np.array_equal(ort_outputs_1.images[0], ort_outputs_2.images[0]))
+        self.assertTrue(np.array_equal(ort_outputs_1.images[0], ort_outputs_3.images[0]))
 
 
 if __name__ == "__main__":
