@@ -84,8 +84,10 @@ async function main() {
             .flat();
 
     for (const backend of DEFAULT_BACKENDS) {
-      nodeTests.set(backend, loadNodeTests(backend, allNodeTestsFolders));
-      opTests.set(backend, loadOpTests(backend));
+      if (args.backends.indexOf(backend) !== -1) {
+        nodeTests.set(backend, loadNodeTests(backend, allNodeTestsFolders));
+        opTests.set(backend, loadOpTests(backend));
+      }
     }
   }
 
