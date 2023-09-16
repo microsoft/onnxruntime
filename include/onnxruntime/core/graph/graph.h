@@ -83,10 +83,10 @@ class Node {
        gsl::span<NodeArg* const> output_args,
        const NodeAttributes* attributes,
        std::string_view domain) {
-    Init(std::string{name}, std::string{op_type}, std::string{description},
-         std::vector<NodeArg*>{input_args.begin(), input_args.end()},
-         std::vector<NodeArg*>{output_args.begin(), output_args.end()},
-         attributes, std::string{domain});
+    Init(name, op_type, description,
+         input_args,
+         output_args,
+         attributes, domain);
   }
 #endif
 
@@ -216,6 +216,12 @@ class Node {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.input_defs);
   }
 
+  /** Gets the Node's input definitions as span.
+   */
+  gsl::span<NodeArg* const> InputDefsAsSpan() const noexcept {
+    return definitions_.input_defs;
+  }
+
   /** Gets the implicit inputs to this Node.
   If this Node contains a subgraph, these are the NodeArg's that are implicitly consumed by Nodes within that
   subgraph. e.g. If and Loop operators.*/
@@ -223,10 +229,22 @@ class Node {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.implicit_input_defs);
   }
 
+  /** Gets the Node's implicit input definitions as span.
+   */
+  gsl::span<NodeArg* const> ImplicitInputDefsAsSpan() const noexcept {
+    return definitions_.implicit_input_defs;
+  }
+
   /** Gets the Node's output definitions.
   @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
   ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.output_defs);
+  }
+
+  /** Gets the Node's output definitions as span.
+   */
+  gsl::span<NodeArg* const> OutputDefsAsSpan() const noexcept {
+    return definitions_.output_defs;
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -563,13 +581,13 @@ class Node {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  void Init(const std::string& name,
-            const std::string& op_type,
-            const std::string& description,
-            const std::vector<NodeArg*>& input_args,
-            const std::vector<NodeArg*>& output_args,
+  void Init(std::string_view name,
+            std::string_view op_type,
+            std::string_view description,
+            gsl::span<NodeArg* const> input_args,
+            gsl::span<NodeArg* const> output_args,
             const NodeAttributes* attributes,
-            const std::string& domain);
+            std::string_view domain);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1141,6 +1159,47 @@ class Graph {
   */
   Status InlineFunction(Node& node);
 
+  /**
+  Directly insert the nodes in the function proto provided into the dest graph.
+  The function converts Constant nodes into the initializers in the destination graph.
+  It then creates a node in the destination graph for each of the function nodes.
+  The function names are expected to be specialized, and, therefore unique.
+
+  The Graph needs to be Resolve()d after this call.
+  @param func_to_inline
+  @param model_path model path of the graph where func_to_inline is from
+  @param dest_graph graph where we want node copies to appear
+  @returns Status indicating success or providing an error message.
+  */
+
+  Status FunctionToGraph(const ONNX_NAMESPACE::FunctionProto& func_to_inline, const Path& model_path, Graph& dest_graph);
+
+  /**
+   Inline a graph into this graph. This function copies nodes and initializers of graph_to_inline into
+   this graph. Constant nodes are converted into initializers. Names of all the entities are expected
+   to be updated to be unique as well as the Defs.
+   @param graph_to_inline to be inlined
+   @param model_path model path of the subgraph
+   @param inlined_to_target_map - map of indices of the graph_to_inline to indices of nodes
+    copied into this graph.
+  */
+  Status InlineSubgraph(const Graph& graph_to_inline,
+                        const Path& model_path,
+                        InlinedHashMap<NodeIndex, NodeIndex>& inlined_to_target_map);
+
+  /**
+  This function redirects this graph edges that involved inlined_function and redirects them into the nodes
+  of the inlined graph.
+  @param inlined_node function that was converted to a graph
+  @param inlined_graph the graph instance that was construted from the inlined_node function. It is
+    expected to be independently Resolve()d before this function is called.
+  @param old_to_new_map map between indices of the graph that was constructed from the function to be
+  inlined to this graph node indices.
+  */
+  Status FinalizeFunctionGraphInline(const Node& inlined_node,
+                                     const Graph& inlined_graph,
+                                     const InlinedHashMap<NodeIndex, NodeIndex>& old_to_new_map);
+
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..
   e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to
@@ -1390,6 +1449,13 @@ class Graph {
   // Add node with specified <node_proto>.
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
                 const ArgNameToTypeMap& name_to_type);
+
+  /** Helper that converts and adds constant node proto to an initializer in the graph.
+      The function requires that all of the nodes names in the constant_node_proto has already been specialized.
+   @param constant_node_proto Constant node to convert
+   @param model_path model path where constant_node_proto is from
+  */
+  Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto, const Path& model_path);
 
 #endif
 
