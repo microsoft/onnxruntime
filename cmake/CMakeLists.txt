@@ -1465,7 +1465,7 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-if (UNIX AND onnxruntime_USE_MPI)
+if (UNIX AND (onnxruntime_USE_MPI OR onnxruntime_USE_NCCL))
   if (EXISTS "${onnxruntime_MPI_HOME}")
     set(MPI_HOME "${onnxruntime_MPI_HOME}")
   elseif (EXISTS "/bert_ort/openmpi")

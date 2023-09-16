@@ -160,7 +160,7 @@ static Status CreateNcclCommunicator(int world_size, int rank, ncclComm_t* comm,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please compile ORT with USE_MPI.");
 #endif
   } else if (IPC_Bcast(&nccl_id, rank, world_size) != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "IPC_Bcast nccl_id failed with :", strerror(errno));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "IPC_Bcast nccl_id failed with :", strerror(errno));
   }
 
   NCCL_RETURN_IF_ERROR(ncclCommInitRank(comm, world_size, nccl_id, rank));
