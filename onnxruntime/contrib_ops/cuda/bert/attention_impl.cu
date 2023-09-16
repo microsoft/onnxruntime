@@ -281,6 +281,7 @@ Status FusedTrtSelfAttention<float>(
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED, "Trt fused attention does not support float tensor");
 }
 
+#if USE_FLASH_ATTENTION
 template <typename T>
 Status FlashAttention(
     const cudaDeviceProp& device_prop,
@@ -329,7 +330,9 @@ Status FlashAttention(
     float scale) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED, "flash attention does not support float tensor");
 }
+#endif
 
+#if USE_MEMORY_EFFICIENT_ATTENTION
 template <typename T>
 Status EfficientAttention(
     const cudaDeviceProp& device_prop,
@@ -392,6 +395,7 @@ Status EfficientAttention(
 
   return Status::OK();
 }
+#endif
 
 template <typename T>
 Status UnfusedAttention(
@@ -526,7 +530,6 @@ Status QkvToContext(
 
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
-
   if (!parameters.past_present_share_buffer) {
     ORT_RETURN_IF_ERROR(ConcatPastToPresent(batch_size, num_heads, qk_head_size, v_head_size,
                                             sequence_length, total_sequence_length, parameters.pass_past_in_kv,
@@ -552,12 +555,14 @@ Status QkvToContext(
       cudaMemcpyAsync(data.present, data.past, kv_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
     }
 
+    // For fused causal, bias has been added to gemm_buffer.
+    const T* bias = (nullptr != fused_runner && parameters.is_unidirectional) ? nullptr : data.bias;
+
     // append last k v to present
     ORT_RETURN_IF_ERROR(LaunchAddBiasTransAppendKvToPresent(
         stream, parameters.max_sequence_length, parameters.past_sequence_length, sequence_length,
         batch_size, qk_head_size, num_heads, max_threads_per_block,
-        (nullptr != fused_runner && parameters.is_unidirectional) ? nullptr : data.bias,  // For fused causal, bias has been added to gemm_buffer
-        data.gemm_buffer, data.present));
+        bias, data.gemm_buffer, data.present));
 
     data.k = data.present;
     data.v = data.present + batch_size * num_heads * parameters.max_sequence_length * qk_head_size;
