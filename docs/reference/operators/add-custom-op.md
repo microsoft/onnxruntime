@@ -34,6 +34,7 @@ void KernelOne(const Ort::Custom::Tensor<float>& X,
 
 int main() {
   Ort::CustomOpDomain v1_domain{"v1"};
+  // please make sure that custom_op_one has the same lifetime as the consuming session
   std::unique_ptr<OrtLiteCustomOp> custom_op_one{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CPUExecutionProvider", KernelOne)};
   v1_domain.Add(custom_op_one.get());
   Ort::SessionOptions session_options;
@@ -73,6 +74,7 @@ struct Merge {
 
 int main() {
   Ort::CustomOpDomain v2_domain{"v2"};
+  // please make sure that mrg_op_ptr has the same lifetime as the consuming session
   std::unique_ptr<Ort::Custom::OrtLiteCustomOp> mrg_op_ptr{Ort::Custom::CreateLiteCustomOp<Merge>("Merge", "CPUExecutionProvider")};
   v2_domain.Add(mrg_op_ptr.get());
   Ort::SessionOptions session_options;
@@ -94,6 +96,7 @@ For both cases:
 - Support [std::string_view](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L188) as input and [std::string](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L117) as output, please find usage [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/test_inference.cc#L3129).
 - For custom op functions running on CPUExecutionProvider, [span](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h#L40) and scalar as inputs are supported, please find usage [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L43).
 - For custom op functions that expect kernel context, please see an example [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L43).
+- When using unique_ptr to host a created custom op, please be sure to keep it alive along with the consuming session.
 
 More examples could be found [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc) and [here](https://github.com/microsoft/onnxruntime/blob/rel-1.16.0/onnxruntime/test/shared_lib/test_inference.cc#L3123).
 
