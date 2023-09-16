@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 using namespace onnxruntime::cuda;
 
