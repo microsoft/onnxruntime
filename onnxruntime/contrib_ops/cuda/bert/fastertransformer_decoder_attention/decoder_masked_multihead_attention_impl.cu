@@ -362,14 +362,18 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
+  // TODO(hasesh): Tune this parameter based on more model profiling
   constexpr int K_PROC_MULTIPLICITY_FACTOR = 4;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER * K_PROC_MULTIPLICITY_FACTOR) {
     bool is_masked[K_PROC_MULTIPLICITY_FACTOR];
 
+#pragma unroll
     for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
-      if ((ti + iter * K_PER_ITER) < tlength) {
-        is_masked[iter] = (params.mask != nullptr) && (params.mask[bi_total_seq_length + (ti + iter * K_PER_ITER)] == 0);
+      int ti_local = ti + iter * K_PER_ITER;
+
+      if (ti_local < tlength) {
+        is_masked[iter] = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti_local] == 0);
       }
     }
 
@@ -380,7 +384,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 // Trigger loading of data in batches
 #pragma unroll
     for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
-
       int ti_local = ti + iter * K_PER_ITER;
 
       if (has_beams) {
@@ -539,18 +542,37 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   V_vec_acum out;
   zero(out);
 
+  // TODO(hasesh): Tune this parameter based on more model profiling
+  constexpr int V_PROC_MULTIPLICITY_FACTOR = K_PROC_MULTIPLICITY_FACTOR;
+
   // Loop over the timesteps to compute the partial outputs.
-  for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
-    // Fetch offset based on cache_indir when beam sampling
-    const int beam_src = has_beams ? params.cache_indir[bi_max_seq_length + ti] : 0;
-    const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
+  for (int ti = vo; ti < tlength; ti += V_PER_ITER * V_PROC_MULTIPLICITY_FACTOR) {
+    // Load the values from the cache in batches.
+    V_vec_k v[V_PROC_MULTIPLICITY_FACTOR];
 
-    // Load the values from the cache.
-    V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
+#pragma unroll
+    for (int iter = 0; iter < V_PROC_MULTIPLICITY_FACTOR; ++iter) {
+      int ti_local = ti + iter * V_PER_ITER;
 
-    // Load the logits from shared memory.
-    T logit = logits_smem[ti];
-    out = fma(logit, v, out);
+      if (ti_local < tlength) {
+        // Fetch offset based on cache_indir when beam sampling
+        const int beam_src = has_beams ? params.cache_indir[bi_max_seq_length + ti_local] : 0;
+        const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
+
+        v[iter] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti_local * head_size]));
+      }
+    }
+
+    // Load the logits from shared memory and perform the compute operation (fma).
+#pragma unroll
+    for (int iter = 0; iter < V_PROC_MULTIPLICITY_FACTOR; ++iter) {
+      int ti_local = ti + iter * V_PER_ITER;
+
+      if (ti_local < tlength) {
+        T logit = logits_smem[ti_local];
+        out = fma(logit, v[iter], out);
+      }
+    }
   }
 
   // One group of threads computes the product(s) for the current timestep.
