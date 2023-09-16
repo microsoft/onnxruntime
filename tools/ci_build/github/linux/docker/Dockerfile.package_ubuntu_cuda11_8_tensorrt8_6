@@ -7,15 +7,11 @@
 # Build base image with required system packages
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04 AS base
 
-# The local directory into which to build and install CMAKE
-ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
-
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${ONNXRUNTIME_LOCAL_CODE_DIR}/cmake-3.27.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update &&\
     apt-get install -y git bash wget
-RUN unattended-upgrade
 
 # Install python3
 RUN apt-get install -y --no-install-recommends \
