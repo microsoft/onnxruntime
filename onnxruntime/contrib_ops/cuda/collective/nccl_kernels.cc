@@ -147,15 +147,18 @@ int IPC_Bcast(ncclUniqueId* nccl_id, int rank, int world_size) {
   return 0;
 }
 
-#ifdef USE_MPI
-static Status CreateNcclComm(int world_size, int rank, ncclComm_t* comm, bool is_launched_by_mpi) {
+static Status CreateNcclCommunicator(int world_size, int rank, ncclComm_t* comm, bool is_launched_by_mpi) {
   // Create new NCCL communicator
   ncclUniqueId nccl_id;
   if (rank == 0) {
     NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&nccl_id));
   }
   if (is_launched_by_mpi) {
+#ifdef USE_MPI
     MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, MPI_COMM_WORLD));
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please compile ORT with USE_MPI.");
+#endif
   } else if (IPC_Bcast(&nccl_id, rank, world_size) != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "IPC_Bcast nccl_id failed with :", strerror(errno));
   }
@@ -164,7 +167,6 @@ static Status CreateNcclComm(int world_size, int rank, ncclComm_t* comm, bool is
 
   return Status::OK();
 }
-#endif
 
 NcclContext::NcclContext() {
 #ifdef USE_MPI
@@ -174,12 +176,15 @@ NcclContext::NcclContext() {
     int mpi_threads_provided = 0;
     MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided);
   }
-
+  world_size_ = -1;
   // get world_size and rank from MPI
   MPI_Comm_size(MPI_COMM_WORLD, &world_size_);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank_);
   bool is_launched_by_mpi = true;
-  if (world_size_ < 1) {
+#else
+  bool is_launched_by_mpi = false;
+#endif
+  if (is_launched_by_mpi == false || world_size_ < 1) {
     is_launched_by_mpi = false;
     world_size_ = ParseEnvironmentVariableWithDefault<int32_t>("LOCAL_WORLD_SIZE", -1);
     rank_ = ParseEnvironmentVariableWithDefault<int32_t>("LOCAL_RANK", -1);
@@ -187,12 +192,8 @@ NcclContext::NcclContext() {
   }
 
   // Initialize global Parallel Group NCCL Communicator
-  auto ret = CreateNcclComm(world_size_, rank_, &comm_, is_launched_by_mpi);
+  auto ret = CreateNcclCommunicator(world_size_, rank_, &comm_, is_launched_by_mpi);
   ORT_ENFORCE(ret.IsOK());
-
-#else
-  ORT_THROW("ORT must be built with MPI to use NCCL.");
-#endif
 }
 
 NcclContext::~NcclContext() {
