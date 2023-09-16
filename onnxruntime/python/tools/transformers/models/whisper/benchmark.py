@@ -337,7 +337,7 @@ def run_ort_inference(args, inputs, model):
             for k, v in inputs.items():
                 io_binding.bind_cpu_input(k, v)
             for output in model.get_outputs():
-                io_binding.bind_output(output.name)
+                io_binding.bind_output(output.name, device_type=args.device, device_id=args.device_id)
             return io_binding
 
         return inputs

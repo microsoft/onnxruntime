@@ -49,6 +49,7 @@ def get_inputs(args: argparse.Namespace):
             past_seq_len=0,
             seq_len=args.sequence_length,
             use_fp16=args.use_fp16,
+            split_kv=args.split_kv,
         )
         iter_inputs = get_msft_sample_inputs(
             args.config,
@@ -56,6 +57,7 @@ def get_inputs(args: argparse.Namespace):
             past_seq_len=args.sequence_length,
             seq_len=1,
             use_fp16=args.use_fp16,
+            split_kv=args.split_kv,
         )
 
     else:
@@ -322,7 +324,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
             for k, v in inputs.items():
                 io_binding.bind_cpu_input(k, v)
             for output in model.get_outputs():
-                io_binding.bind_output(output.name)
+                io_binding.bind_output(output.name, device_type=args.device, device_id=args.device_id)
             return io_binding
 
         return inputs
@@ -422,6 +424,12 @@ def get_args():
         type=str,
         default="",
         help="Path to ONNX model",
+    )
+    parser.add_argument(
+        "--split-kv",
+        default=False,
+        action="store_true",
+        help="Run LLaMA-2 Microsoft exported model that contains KV cache as separate inputs/outputs per layer",
     )
 
     # Args for running and evaluating the model
