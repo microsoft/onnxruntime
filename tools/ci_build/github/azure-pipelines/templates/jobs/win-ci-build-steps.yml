@@ -12,6 +12,10 @@ parameters:
   type: string
   default: "$(Agent.TempDirectory)/ort_ccache"
 
+- name: DebugCache
+  type: boolean
+  default: false
+
 - name: AdditionalKey
   type: string
   default: ""
@@ -95,11 +99,11 @@ steps:
       createLogFile: true
     env:
       CCACHE_DIR: ${{parameters.CacheDir}}
-      CCACHE_DEBUG: 1
-      CCACHE_DEBUGDIR: $(Agent.TempDirectory)/cache_debug
       CCACHE_SLOPPINESS: file_macro,time_macros,include_file_mtime,include_file_ctime
       CCACHE_COMPILERCHECK: content
-
+      ${{if eq(parameters.DebugCache, true)}}:
+        CCACHE_DEBUG: 1
+        CCACHE_DEBUGDIR: $(Agent.TempDirectory)/cache_debug
 
   - ${{ if eq(parameters.WithCache, true) }}:
     - powershell: |
@@ -109,8 +113,9 @@ steps:
       env:
         CCACHE_DIR: ${{parameters.CacheDir}}
 
-    - task: PublishPipelineArtifact@0
-      displayName: 'publish cache log'
-      inputs:
-        artifactName: 'cache-log'
-        targetPath: $(Agent.TempDirectory)/cache_debug
+    - ${{if eq(parameters.DebugCache, true)}}:
+      - task: PublishPipelineArtifact@0
+        displayName: 'publish cache log'
+        inputs:
+          artifactName: 'cache-log'
+          targetPath: $(Agent.TempDirectory)/cache_debug
