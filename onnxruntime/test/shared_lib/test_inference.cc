@@ -3121,9 +3121,9 @@ TEST(LiteCustomOpTest, CustomFunc) {
 }
 
 struct Merge {
-  Merge(const OrtApi* ort_api, const OrtKernelInfo* info) {
+  Merge(const OrtApi& ort_api, const OrtKernelInfo& info) {
     int64_t reverse;
-    ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "reverse", &reverse) == nullptr);
+    ORT_ENFORCE(ort_api.KernelInfoGetAttribute_int64(&info, "reverse", &reverse) == nullptr);
     reverse_ = reverse != 0;
   }
   void Compute(const Ort::Custom::Tensor<std::string_view>& strings_in,

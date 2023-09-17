@@ -568,6 +568,12 @@ struct OrtLiteCustomOp : public OrtCustomOp {
     ParseArgs<Ts...>(input_types, output_types);                                                                         \
   }                                                                                                                      \
   template <typename T, typename... Ts>                                                                                  \
+  static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const std::optional<pack_type>>::value>::type     \
+  ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) { \
+    input_types.push_back(onnx_type);                                                                                    \
+    ParseArgs<Ts...>(input_types, output_types);                                                                         \
+  }                                                                                                                      \
+  template <typename T, typename... Ts>                                                                                  \
   static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, std::optional<pack_type>>::value>::type           \
   ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) { \
     input_types.push_back(onnx_type);                                                                                    \
@@ -780,8 +786,13 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
 // For the complete example, please search keyword "LiteCustomOpTest" under "<cloned_src_dir>/onnxruntime/test/".
 template <typename CustomOp>
 struct OrtLiteCustomStruct : public OrtLiteCustomOp {
+
   template <typename... Args>
   using CustomComputeFn = void (CustomOp::*)(Args...);
+
+  template <typename... Args>
+  using ConstCustomComputeFn = void (CustomOp::*)(Args...) const;
+
   using MyType = OrtLiteCustomStruct<CustomOp>;
 
   struct Kernel {
@@ -799,6 +810,16 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
 
   template <typename... Args>
   void init(CustomComputeFn<Args...>) {
+    init<Args...>();
+  }
+
+  template <typename... Args>
+  void init(ConstCustomComputeFn<Args...>) {
+    init<Args...>();
+  }
+
+  template <typename... Args>
+  void init() {
     ParseArgs<Args...>(input_types_, output_types_);
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
@@ -812,7 +833,7 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
       auto kernel = std::make_unique<Kernel>();
       Ort::ThrowOnError(ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_));
       Ort::ThrowOnError(ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_));
-      kernel->custom_op_ = std::make_unique<CustomOp>(ort_api, info);
+      kernel->custom_op_ = std::make_unique<CustomOp>(*ort_api, *info);
       auto self = static_cast<const OrtLiteCustomStruct*>(this_);
       kernel->ep_ = self->execution_provider_;
       return reinterpret_cast<void*>(kernel.release());
