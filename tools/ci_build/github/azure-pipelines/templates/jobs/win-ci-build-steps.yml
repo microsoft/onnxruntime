@@ -97,6 +97,8 @@ steps:
       CCACHE_DIR: ${{parameters.CacheDir}}
       CCACHE_DEBUG: 1
       CCACHE_DEBUGDIR: $(Agent.TempDirectory)/cache_debug
+      CCACHE_SLOPPINESS: file_macro,time_macros,include_file_mtime,include_file_ctime
+      CCACHE_COMPILERCHECK: content
 
   - ${{ if eq(parameters.WithCache, true) }}:
     - powershell: |
