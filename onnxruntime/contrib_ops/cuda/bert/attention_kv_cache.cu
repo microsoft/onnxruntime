@@ -259,7 +259,9 @@ Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int 
   // When there is past state, the head size for Q/K/V shall be same: H == H_v.
 
   if (nullptr != data.present) {
-    assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH || data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
+    assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH ||
+           data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
+
     ORT_RETURN_IF_ERROR(
         LaunchConcatPastToPresent(
             stream, total_sequence_length, sequence_length, batch_size, qk_head_size, num_heads,

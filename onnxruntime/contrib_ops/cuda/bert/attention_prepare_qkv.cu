@@ -405,22 +405,25 @@ Status PrepareQkv_MHA_NotPacked(contrib::AttentionParameters& parameters,
 
     // Query (BxSxNxH) => Q (BxNxSxH)
     constexpr int format = 0;
-    LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, sequence_length, num_heads, qk_head_size,
-                              data.query, data.bias, q,
-                              true, -1);
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, sequence_length, num_heads, qk_head_size,
+        data.query, data.bias, q,
+        true, -1);
 
     // Key (BxLxNxH) => K (BxNxLxH)
-    LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, kv_sequence_length, num_heads, qk_head_size,
-                              data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, k,
-                              true, -1);
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, kv_sequence_length, num_heads, qk_head_size,
+        data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, k,
+        true, -1);
 
     // Value (BxLxNxH_v) => K (BxNxLxH_v)
-    LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, kv_sequence_length, num_heads, v_head_size,
-                              data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, v,
-                              true, -1);
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, kv_sequence_length, num_heads, v_head_size,
+        data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, v,
+        true, -1);
 
     DUMP_TENSOR_D("q(BNSH)", q, batch_size, num_heads, sequence_length, qk_head_size);
     DUMP_TENSOR_D("k(BNSH)", k, batch_size, num_heads, kv_sequence_length, qk_head_size);

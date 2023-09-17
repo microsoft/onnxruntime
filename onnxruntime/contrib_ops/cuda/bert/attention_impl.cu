@@ -216,7 +216,8 @@ Status FusedTrtCrossAttention<float>(
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED, "Trt fused cross attention does not support float tensor");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
+                         "Trt fused cross attention does not support float tensor");
 }
 
 template <typename T>
@@ -278,7 +279,8 @@ Status FusedTrtSelfAttention<float>(
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED, "Trt fused attention does not support float tensor");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
+                         "Trt fused attention does not support float tensor");
 }
 
 #if USE_FLASH_ATTENTION
@@ -308,7 +310,8 @@ Status FlashAttention(
   DUMP_TENSOR_D("k(BSNH)", data.k,
                 parameters.batch_size, parameters.total_sequence_length, parameters.num_heads, parameters.head_size);
   DUMP_TENSOR_D("v(BSNH)", data.v,
-                parameters.batch_size, parameters.total_sequence_length, parameters.num_heads, parameters.v_head_size);
+                parameters.batch_size, parameters.total_sequence_length,
+                parameters.num_heads, parameters.v_head_size);
 
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.scratch),
@@ -356,8 +359,11 @@ Status EfficientAttention(
   DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("q(BSNH)", reinterpret_cast<const T*>(query),
                 parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.head_size);
-  DUMP_TENSOR_D("k(BSNH)", data.k, parameters.batch_size, parameters.total_sequence_length, parameters.num_heads, parameters.head_size);
-  DUMP_TENSOR_D("v(BSNH)", data.v, parameters.batch_size, parameters.total_sequence_length, parameters.num_heads, parameters.v_head_size);
+  DUMP_TENSOR_D("k(BSNH)", data.k,
+                parameters.batch_size, parameters.total_sequence_length, parameters.num_heads, parameters.head_size);
+  DUMP_TENSOR_D("v(BSNH)", data.v,
+                parameters.batch_size, parameters.total_sequence_length,
+                parameters.num_heads, parameters.v_head_size);
 
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
@@ -375,10 +381,12 @@ Status EfficientAttention(
                        : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
   p.seqstart_q_ptr = nullptr == data.mask_index
                          ? nullptr
-                         : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + parameters.batch_size));
+                         : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(
+                               data.mask_index + parameters.batch_size));
   p.seqstart_k_ptr = nullptr == data.mask_index
                          ? nullptr
-                         : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + 2 * parameters.batch_size + 1));
+                         : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(
+                               data.mask_index + 2 * parameters.batch_size + 1));
   p.query = query;
   p.key = key;
   p.value = value;
@@ -436,8 +444,11 @@ Status UnfusedAttention(
   DUMP_TENSOR_D("q[BNSH]", data.q, batch_size, num_heads, sequence_length, qk_head_size);
   DUMP_TENSOR_D("k[BNSH]", data.k, batch_size, num_heads, total_sequence_length, qk_head_size);
 
-  const int present_size_per_batch_k = (parameters.past_present_share_buffer ? parameters.max_sequence_length : total_sequence_length) * qk_head_size;
-  const int present_size_per_batch_v = (parameters.past_present_share_buffer ? parameters.max_sequence_length : total_sequence_length) * v_head_size;
+  const int present_sequence_length = parameters.past_present_share_buffer
+                                          ? parameters.max_sequence_length
+                                          : total_sequence_length;
+  const int present_size_per_batch_k = present_sequence_length * qk_head_size;
+  const int present_size_per_batch_v = present_sequence_length * v_head_size;
 
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_T, CUBLAS_OP_N,
@@ -463,7 +474,8 @@ Status UnfusedAttention(
     const TransformerOptions* options = TransformerOptions::GetInstance();
     bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
 
-    T* persistent_softmax_workspace = data.scratch;  // replace Q*K' in place with masked score for persistent softmax.
+    // replace Q*K' in place with masked score for persistent softmax.
+    T* persistent_softmax_workspace = data.scratch;
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(
             ort_stream, total_sequence_length, sequence_length, batch_size, num_heads,
