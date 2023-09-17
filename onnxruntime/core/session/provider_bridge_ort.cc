@@ -1784,34 +1784,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
   auto options = std::make_unique<OrtTensorRTProviderOptionsV2>();
-  options->device_id = 0;
-  options->has_user_compute_stream = 0;
-  options->user_compute_stream = nullptr;
-  options->trt_max_partition_iterations = 1000;
-  options->trt_min_subgraph_size = 1;
-  options->trt_max_workspace_size = 1 << 30;
-  options->trt_fp16_enable = false;
-  options->trt_int8_enable = false;
-  options->trt_int8_calibration_table_name = nullptr;
-  options->trt_int8_use_native_calibration_table = false;
-  options->trt_dla_enable = false;
-  options->trt_dla_core = false;
-  options->trt_dump_subgraphs = false;
-  options->trt_engine_cache_enable = false;
-  options->trt_engine_cache_path = nullptr;
-  options->trt_engine_decryption_enable = false;
-  options->trt_engine_decryption_lib_path = nullptr;
-  options->trt_force_sequential_engine_build = false;
-  options->trt_context_memory_sharing_enable = false;
-  options->trt_layer_norm_fp32_fallback = false;
-  options->trt_timing_cache_enable = false;
-  options->trt_force_timing_cache = false;
-  options->trt_detailed_build_log = false;
-  options->trt_extra_plugin_lib_paths = nullptr;
-  options->trt_profile_min_shapes = nullptr;
-  options->trt_profile_max_shapes = nullptr;
-  options->trt_profile_opt_shapes = nullptr;
-  options->trt_cuda_graph_enable = false;
   *out = options.release();
   return nullptr;
 #else
