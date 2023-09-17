@@ -290,6 +290,7 @@
     "name": "ConvTranspose with bias addition C",
     "operator": "ConvTranspose",
     "attributes": [{ "name": "kernel_shape", "data": [1, 1], "type": "ints" }],
+    "opset": {"domain" :"com.ms.internal.nhwc", "version": 11},
     "cases": [
       {
         "name": "T[0]",
