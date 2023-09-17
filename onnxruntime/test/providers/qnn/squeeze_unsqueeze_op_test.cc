@@ -244,7 +244,7 @@ TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_f32) {
 TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank5_f32) {
   // We can't use the usual model-building functions because they add standalone Quantize and Dequantize nodes
   // at the input and output. These Q/DQ ops get lowered to QNN's Quantize and Dequantize operators, which DO NOT
-  // support rank 5 tensors. Therefore, we have to create a test model that only instantiates the DQ -> Squeeze -> Q
+  // support rank 5 tensors. Therefore, we have to create a test model that only instantiates the DQ -> Unsqueeze -> Q
   // QDQ node group, which gets lowered to a single QNN Reshape node.
   GetTestModelFn model_fn = [](ModelTestBuilder& builder) {
     // input (u8) -> DQ ->
