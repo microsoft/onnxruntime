@@ -1807,6 +1807,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   options->trt_timing_cache_enable = false;
   options->trt_force_timing_cache = false;
   options->trt_detailed_build_log = false;
+  options->trt_build_heuristics_enable = false;
+  options->trt_sparsity_enable = false;
+  options->trt_builder_optimization_level = 3;
+  options->trt_auxiliary_streams = -1;
+  options->trt_tactic_sources = nullptr;
   options->trt_extra_plugin_lib_paths = nullptr;
   options->trt_profile_min_shapes = nullptr;
   options->trt_profile_max_shapes = nullptr;
