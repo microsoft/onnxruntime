@@ -43,7 +43,7 @@ def profile_dequantize_int4_func(n, k, dtype, func):
     f = getattr(ke, func)
     my_op = f(output_d, quant_d, scales_d, n, k)
     duration_ms = my_op.Profile()
-    total_bytes = (n * k) * (dtype_to_bytes(dtype))
+    total_bytes = 2 * (n * k) * (dtype_to_bytes(dtype))
 
     ke.report(DequantizeInt4Metric(func, dtype, duration_ms, total_bytes, n, k))
 

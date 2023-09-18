@@ -47,10 +47,7 @@ __global__ void Dequantize4BitsKernel(
     const uint8_t* quant_data,
     const T* scale_data,
     const uint8_t* zero_points,
-    int k,
-    int k_block,
     int block_size,
-    int block_blob_size,
     int blocks_per_tb) {
   int block_id = blockIdx.x * blocks_per_tb + (threadIdx.x * 8) / block_size;
   int element_offset = block_id * block_size + (threadIdx.x * 8) % block_size;
@@ -76,17 +73,13 @@ Status Dequantize4Bits(
   int blocks_per_tb = GridDim::maxThreadsPerBlock * 8 / block_size;
   int k_blocks = k / block_size;
   int blocks_per_grid = static_cast<int>(CeilDiv(n * k_blocks, blocks_per_tb));
-  int block_blob_size = block_size / 2;
 
   Dequantize4BitsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       output,
       quant_data,
       scales_data,
       zero_points,
-      k,
-      k_blocks,
       block_size,
-      block_blob_size,
       blocks_per_tb);
 
   return Status::OK();
