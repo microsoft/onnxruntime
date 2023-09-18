@@ -3,6 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <cassert>
 #include <string>
 
 #include "test/providers/qnn/qnn_test_utils.h"
@@ -130,12 +131,56 @@ TEST_F(QnnCPUBackendTests, Gemm_TransAB_Dynamic_B_And_Bias) {
 // HTP tests:
 //
 
-#if 0
+// Returns a function that builds a model with a QDQ Gemm node.
+template <typename InputAQType, typename InputBQType>
+inline GetTestQDQModelFn<InputAQType> BuildQDQGemmTestCase(const std::vector<TestInputDef<float>>& input_defs,
+                                                           const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
+  return [input_defs, attrs](ModelTestBuilder& builder,
+                             std::vector<QuantParams<InputAQType>>& output_qparams) {
+    const size_t num_inputs = input_defs.size();
+    assert(num_inputs == 2 || num_inputs == 3);
+
+    std::vector<NodeArg*> op_inputs;
+    op_inputs.reserve(num_inputs);
+
+    // Process input 0
+    NodeArg* input0 = MakeTestInput<float>(builder, input_defs[0]);
+    QuantParams<InputAQType> input0_qparams = GetTestInputQuantParams<InputAQType>(input_defs[0]);
+    NodeArg* input0_after_qdq = AddQDQNodePair<InputAQType>(builder, input0, input0_qparams.scale,
+                                                            input0_qparams.zero_point);
+    op_inputs.push_back(input0_after_qdq);
+
+    // Process input 1
+    NodeArg* input1 = MakeTestInput<float>(builder, input_defs[1]);
+    QuantParams<InputBQType> input1_qparams = GetTestInputQuantParams<InputBQType>(input_defs[1]);
+    NodeArg* input1_after_qdq = AddQDQNodePair<InputBQType>(builder, input1, input1_qparams.scale,
+                                                            input1_qparams.zero_point);
+    op_inputs.push_back(input1_after_qdq);
+
+    // Process bias
+    if (num_inputs == 3) {
+      NodeArg* bias_input = MakeTestQDQBiasInput(builder, input_defs[2], input0_qparams.scale * input1_qparams.scale);
+      op_inputs.push_back(bias_input);
+    }
+
+    // Op -> op_output
+    auto* gemm_output = builder.MakeIntermediate();
+    Node& gemm_node = builder.AddNode("Gemm", op_inputs, {gemm_output});
+
+    for (const auto& attr : attrs) {
+      gemm_node.AddAttributeProto(attr);
+    }
+
+    // op_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<InputAQType>(builder, gemm_output, output_qparams[0].scale,
+                                                       output_qparams[0].zero_point);
+  };
+}
+
 // Runs a QDQ Gemm model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and that inference
 // running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP (when compared to the baseline float32 model).
-template <typename QType>
-static void RunQDQGemmTestOnHTP(const TestInputDef<float>& input0_def,
-                                const TestInputDef<float>& input1_def,
+template <typename InputAQType, typename InputBQType>
+static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_defs,
                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                 int opset = 13) {
@@ -147,13 +192,79 @@ static void RunQDQGemmTestOnHTP(const TestInputDef<float>& input0_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy<QType>(BuildOpTestCase<float>("Gemm", {input0_def, input1_def}, attrs),     // baseline float32 model
-                              BuildQDQOpTestCase<QType>("Gemm", {input0_def, input1_def}, attrs),  // QDQ model
-                              provider_options,
-                              opset,
-                              expected_ep_assignment);
+  TestQDQModelAccuracy<InputAQType>(BuildOpTestCase<float>("Gemm", input_defs, attrs),
+                                    BuildQDQGemmTestCase<InputAQType, InputBQType>(input_defs, attrs),
+                                    provider_options,
+                                    opset,
+                                    expected_ep_assignment);
 }
-#endif
+
+// Test QDQ Gemm with dynamic inputs A and Bias. The B input is an initializer.
+TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_Static_B_Dynamic_Bias) {
+  std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
+  std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
+  RunQDQGemmTestOnHTP<uint8_t, uint8_t>({TestInputDef<float>({1, 6}, false, input_a_data),
+                                         TestInputDef<float>({6, 4}, true, input_b_data),
+                                         TestInputDef<float>({1, 4}, false, input_c_data)},
+                                        {},
+                                        ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Gemm with dynamic A and B inputs. The Bias is static.
+// TODO: Inaccuracy detected for output 'output', element 0.
+// Output quant params: scale=0.48132994771003723, zero_point=0.
+// Expected val: 120.73912048339844
+// QNN QDQ val: 77.012794494628906 (err 43.726325988769531)
+// CPU QDQ val: 119.85115814208984 (err 0.88796234130859375)
+TEST_F(QnnHTPBackendTests, DISABLED_Gemm_Dynamic_A_B_Static_Bias) {
+  std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
+  std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
+  RunQDQGemmTestOnHTP<uint8_t, uint8_t>({TestInputDef<float>({1, 6}, false, input_a_data),
+                                         TestInputDef<float>({6, 4}, false, input_b_data),  // Dynamic => inaccuracy
+                                         TestInputDef<float>({1, 4}, true, input_c_data)},
+                                        {},
+                                        ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Gemm with static B and Bias inputs.
+TEST_F(QnnHTPBackendTests, Gemm_Static_B_And_Bias) {
+  std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
+  std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
+  RunQDQGemmTestOnHTP<uint8_t, uint8_t>({TestInputDef<float>({1, 6}, false, input_a_data),
+                                         TestInputDef<float>({6, 4}, true, input_b_data),
+                                         TestInputDef<float>({1, 4}, true, input_c_data)},
+                                        {},
+                                        ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Gemm with transposed A/B and static B and Bias inputs.
+TEST_F(QnnHTPBackendTests, Gemm_TransAB_Static_B_And_Bias) {
+  std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
+  std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
+  RunQDQGemmTestOnHTP<uint8_t, uint8_t>({TestInputDef<float>({6, 1}, false, input_a_data),
+                                         TestInputDef<float>({4, 6}, true, input_b_data),
+                                         TestInputDef<float>({1, 4}, true, input_c_data)},
+                                        {utils::MakeAttribute("transA", static_cast<int64_t>(1)),
+                                         utils::MakeAttribute("transB", static_cast<int64_t>(1))},
+                                        ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Gemm with transposed A/B and dynamic (i.e., not initializer) B and Bias inputs.
+TEST_F(QnnHTPBackendTests, Gemm_TransAB_Dynamic_B_And_Bias) {
+  std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
+  std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
+  RunQDQGemmTestOnHTP<uint8_t, uint8_t>({TestInputDef<float>({6, 1}, false, input_a_data),
+                                         TestInputDef<float>({4, 6}, false, input_b_data),
+                                         TestInputDef<float>({1, 4}, false, input_c_data)},
+                                        {utils::MakeAttribute("transA", static_cast<int64_t>(1)),
+                                         utils::MakeAttribute("transB", static_cast<int64_t>(1))},
+                                        ExpectedEPNodeAssignment::All);
+}
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
