@@ -146,9 +146,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.past = nullptr;
   data.past_key = (nullptr == past_key) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
   data.past_value = (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
-  data.has_qkv_workspace = true;
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
-  data.present = nullptr;
   // TODO(aciddelgado): present should point to past...
   // data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   // data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());

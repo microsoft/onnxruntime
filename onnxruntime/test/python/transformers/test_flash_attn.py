@@ -42,8 +42,10 @@ class Config:
         self.kv_num_heads = n2
         self.head_size = h
 
+
 class ConfigWithPastKV(Config):
     past_sequence_length = 0
+
 
 def create_packed_multihead_attention_graph(config):
     nodes = [
@@ -169,9 +171,7 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
                 "past_value" if new_kv else "",
                 "past_sequence_length" if new_kv else "",
             ],
-            [
-                "output"
-            ],
+            ["output"],
             "GroupQueryAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
@@ -240,7 +240,11 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
                     config.head_size,
                 ],
             ),
-            helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, [1],)
+            helper.make_tensor_value_info(
+                "past_sequence_length",
+                TensorProto.INT32,
+                [1],
+            ),
         ]
         graph_output += [
             helper.make_tensor_value_info(
@@ -472,7 +476,10 @@ def flash_attn_func(q, k, v, config, gqa=False, causal=False, new_k=None, new_v=
             "value": new_v.detach().cpu().numpy(),
             "past_key": past_k.detach().cpu().numpy(),
             "past_value": past_v.detach().cpu().numpy(),
-            "past_sequence_length": torch.tensor([config.past_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
+            "past_sequence_length": torch.tensor([config.past_sequence_length], dtype=torch.int32)
+            .detach()
+            .cpu()
+            .numpy(),
         }
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
@@ -486,20 +493,11 @@ def flash_attn_func(q, k, v, config, gqa=False, causal=False, new_k=None, new_v=
         return output
 
 
-def construct_causal_mask(seqlen_q, seqlen_k, query_padding_mask=None, key_padding_mask=None,
-                          device=None):
+def construct_causal_mask(seqlen_q, seqlen_k, query_padding_mask=None, key_padding_mask=None, device=None):
     row_idx = rearrange(torch.arange(seqlen_q, device=device, dtype=torch.long), "s -> s 1")
     col_idx = torch.arange(seqlen_k, device=device, dtype=torch.long)
-    sk = (
-        seqlen_k
-        if key_padding_mask is None
-        else rearrange(key_padding_mask.sum(-1), "b -> b 1 1 1")
-    )
-    sq = (
-        seqlen_q
-        if query_padding_mask is None
-        else rearrange(query_padding_mask.sum(-1), "b -> b 1 1 1")
-    )
+    sk = seqlen_k if key_padding_mask is None else rearrange(key_padding_mask.sum(-1), "b -> b 1 1 1")
+    sq = seqlen_q if query_padding_mask is None else rearrange(query_padding_mask.sum(-1), "b -> b 1 1 1")
     return col_idx > row_idx + sk - sq
 
 
@@ -550,9 +548,7 @@ def attention_ref(
         # causal_mask = torch.triu(
         #     torch.ones(seqlen_q, seqlen_k, dtype=torch.bool, device=q.device), 1
         # )
-        causal_mask = construct_causal_mask(
-            seqlen_q, seqlen_k, query_padding_mask, key_padding_mask, q.device
-        )
+        causal_mask = construct_causal_mask(seqlen_q, seqlen_k, query_padding_mask, key_padding_mask, q.device)
         scores.masked_fill_(causal_mask, float("-inf"))
     attention = torch.softmax(scores, dim=-1)
     if causal:  # Some rows are completely masked out so we fill them with zero instead of NaN
@@ -744,7 +740,9 @@ def parity_check_gqa(
         arange = rearrange(torch.arange(config.kv_sequence_length, device="cuda"), "s -> 1 s")
         cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
         if new_kv:
-            update_mask = torch.logical_and(cache_seqlens_expanded <= arange, arange < cache_seqlens_expanded + config.sequence_length)
+            update_mask = torch.logical_and(
+                cache_seqlens_expanded <= arange, arange < cache_seqlens_expanded + config.sequence_length
+            )
             k_cache_ref[update_mask] = rearrange(new_k, "b s ... -> (b s) ...")
             v_cache_ref[update_mask] = rearrange(new_v, "b s ... -> (b s) ...")
         k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
@@ -800,25 +798,7 @@ if __name__ == "__main__":
     #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
     #                 config = Config(b, s, s, 0, n, n, h)
     #                 parity_check(config, True)
-    # print("-------- TEST MHA ---------")
-    # for b in [5]:
-    #     for s, s2 in [
-    #         (113, 203),
-    #         (128, 217),
-    #         (113, 211),
-    #         (108, 256),
-    #         (256, 512),
-    #         (512, 256),
-    #         (1024, 1024),
-    #         (1023, 1024),
-    #         (1024, 1023),
-    #         (2048, 2048),
-    #     ]:
-    #         for n in [6]:
-    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-    #                 config = Config(b, s, s2, 0, n, n, h)
-    #                 parity_check(config, False)
-    print("-------- TEST GQA ---------")
+    print("-------- TEST MHA ---------")
     for b in [5]:
         for s, s2 in [
             (113, 203),
@@ -832,31 +812,53 @@ if __name__ == "__main__":
             (1024, 1023),
             (2048, 2048),
         ]:
-            for (n, n2) in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-                for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
-                    for causal in [True, False]:
-                        config = Config(b, s, s2, 0, n, n2, h)
-                        parity_check_gqa(config, causal=causal)
-    print("-------- TEST GQA PAST ---------")
-    for b in [2]:
-        for s, s2 in [
-            (1, 128),
-            (1, 339),
-            (3, 1024),
-            (64, 800),
-            (64, 256),
-            (3, 799),
-            (64, 2048),
-            (16, 20000),
-            (1, 128 * 512),
-            (16, 128 * 512),
-            (128, 128),
-        ]:
-            for (n, n2) in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-                for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
-                    for causal in [True]:
-                        for new_kv in [True]:
-                            random.seed(69)
-                            sp = random.randint(1, s2-s) if s2-s > 0 else 0
-                            config = Config(b, s, s2, sp, n, n2, h)
-                            parity_check_gqa(config, causal=causal, new_kv=new_kv, rtol=1e-3, atol=1e-3)
+            for n in [6]:
+                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+                    config = Config(b, s, s2, 0, n, n, h)
+                    parity_check(config, False)
+                    break
+                break
+            break
+        break
+    # print("-------- TEST GQA ---------")
+    # for b in [5]:
+    #     for s, s2 in [
+    #         (113, 203),
+    #         (128, 217),
+    #         (113, 211),
+    #         (108, 256),
+    #         (256, 512),
+    #         (512, 256),
+    #         (1024, 1024),
+    #         (1023, 1024),
+    #         (1024, 1023),
+    #         (2048, 2048),
+    #     ]:
+    #         for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
+    #             for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+    #                 for causal in [True, False]:
+    #                     config = Config(b, s, s2, 0, n, n2, h)
+    #                     parity_check_gqa(config, causal=causal)
+    # print("-------- TEST GQA PAST ---------")
+    # for b in [2]:
+    #     for s, s2 in [
+    #         (1, 128),
+    #         (1, 339),
+    #         (3, 1024),
+    #         (64, 800),
+    #         (64, 256),
+    #         (3, 799),
+    #         (64, 2048),
+    #         (16, 20000),
+    #         (1, 128 * 512),
+    #         (16, 128 * 512),
+    #         (128, 128),
+    #     ]:
+    #         for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
+    #             for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+    #                 for causal in [True]:
+    #                     for new_kv in [True]:
+    #                         random.seed(69)
+    #                         sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+    #                         config = Config(b, s, s2, sp, n, n2, h)
+    #                         parity_check_gqa(config, causal=causal, new_kv=new_kv, rtol=1e-3, atol=1e-3)

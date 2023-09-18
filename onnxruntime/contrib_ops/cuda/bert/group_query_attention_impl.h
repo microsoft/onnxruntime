@@ -12,38 +12,22 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-size_t GetAttentionWorkspaceSize(
-    size_t element_size,
-    size_t batch_size,
-    size_t num_heads,
-    size_t kv_num_heads,
-    size_t head_size,
-    size_t sequence_length,
-    size_t kv_sequence_length,
-    size_t total_sequence_length,
-    bool use_flash_attention);
-
 template <typename T>
 struct GroupQueryAttentionData {
-  const T* query;
-  const T* key;
-  const T* value;
-  const T* past;
-  const T* past_key;
-  const T* past_value;
-  bool has_qkv_workspace;
-  T* workspace;
-  T* temp_k_workspace;
-  T* temp_v_workspace;
-  T* softmax_lse;
-  T* softmax_lse_accum;
-  T* out_accum;
-  int* seqlens_k;
-  T* output;
-  T* present;
-  T* present_key;
-  T* present_value;
-  bool use_flash_attention;
+  const T* query = nullptr;
+  const T* key = nullptr;
+  const T* value = nullptr;
+  const T* past = nullptr;
+  const T* past_key = nullptr;
+  const T* past_value = nullptr;
+  T* softmax_lse = nullptr;
+  T* softmax_lse_accum = nullptr;
+  T* out_accum = nullptr;
+  int* seqlens_k = nullptr;
+  T* output = nullptr;
+  T* present_key = nullptr;
+  T* present_value = nullptr;
+  bool use_flash_attention = false;
 };
 
 template <typename T>

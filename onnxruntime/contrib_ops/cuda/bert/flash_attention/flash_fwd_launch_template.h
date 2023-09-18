@@ -49,6 +49,9 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
         // ORT_ENFORCE(cudaFuncSetAttribute(
         //     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
       }
+      // int ctas_per_sm;
+      // cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+      //     &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
       // cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
       //     &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
       //  printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);

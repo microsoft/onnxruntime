@@ -52,32 +52,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-size_t GetAttentionWorkspaceSize(
-    size_t element_size,
-    size_t batch_size,
-    size_t num_heads,
-    size_t kv_num_heads,
-    size_t head_size,
-    size_t sequence_length,
-    size_t kv_sequence_length,
-    size_t total_sequence_length,
-    bool use_flash_attention) {
-  const size_t qkv_bytes = (element_size * batch_size * num_heads * sequence_length * head_size) +
-                           (2 * element_size * batch_size * kv_num_heads * kv_sequence_length * head_size);
-
-#if USE_FLASH_ATTENTION
-  if (use_flash_attention) {
-    return qkv_bytes;
-  }
-#else
-  ORT_UNUSED_PARAMETER(use_flash_attention);
-#endif
-
-  // TODO(aciddelgado): confirm call w kv_num_heads rt than num_heads
-  return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, kv_num_heads, sequence_length,
-                                                 total_sequence_length);
-}
-
 // Kernel for seqlens_k
 __global__ void repeat_seqlen(int32_t* seqlens_k, int32_t seqlen, int batch_size) {
   int id = blockDim.x * blockIdx.x + threadIdx.x;
@@ -150,6 +124,7 @@ Status QkvToContext(
           scale, is_causal, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
           reinterpret_cast<void*>(data.out_accum)));
     }
+
 
     // DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
