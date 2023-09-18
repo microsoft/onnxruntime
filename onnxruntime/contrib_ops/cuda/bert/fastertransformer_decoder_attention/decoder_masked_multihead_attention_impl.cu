@@ -386,23 +386,25 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     for (int iter = 0; iter < K_PROC_MULTIPLICITY_FACTOR; ++iter) {
       int ti_local = ti + iter * K_PER_ITER;
 
-      if (has_beams) {
-#pragma unroll
-        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-          int jj = ii * params.max_sequence_length + ti_local;
+      // Time step bounds check
+      if (ti_local < tlength) {
+        if (has_beams) {  // Beam search
 
-          if (ti_local < tlength) {
-            const int beam_offset = beam_indices[ti_local] * params.num_heads * params.max_sequence_length * head_size;
+          const int beam_offset = beam_indices[ti_local] * params.num_heads * params.max_sequence_length * head_size;
+
+#pragma unroll
+          for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+            int jj = ii * params.max_sequence_length + ti_local;
+
             k_vec[iter][ii] = vec_conversion<K_vec_k, K_vec_m>(
                 (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
           }
-        }
-      } else {
-#pragma unroll
-        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-          int jj = ii * params.max_sequence_length + ti_local;
+        } else {  // Greedy search
 
-          if (ti_local < tlength) {
+#pragma unroll
+          for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+            int jj = ii * params.max_sequence_length + ti_local;
+
             k_vec[iter][ii] = vec_conversion<K_vec_k, K_vec_m>(
                 (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
           }
