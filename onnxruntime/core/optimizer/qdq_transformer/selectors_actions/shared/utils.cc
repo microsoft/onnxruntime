@@ -123,6 +123,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetLogicalComparisonOpVersions
 static const OpVersionsAndSelector::OpVersionsMap GetWhereOpVersionsMap() {
   return {{"Where", {}}};
 }
+static const OpVersionsAndSelector::OpVersionsMap GetPadOpVersionsMap() {
+  return {{"Pad", {}}};
+}
 
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
@@ -217,6 +220,13 @@ void RegisterWhereSelectors(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterPadSelectors(Selectors& qdq_selectors) {
+  /* register selectors for Pad ops */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<PadNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetPadOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -231,6 +241,7 @@ void SelectorManager::CreateSelectors() {
   RegisterBatchNormalizationSelector(qdq_selectors_);
   RegisterLogicalComparisonSelectors(qdq_selectors_);
   RegisterWhereSelectors(qdq_selectors_);
+  RegisterPadSelectors(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

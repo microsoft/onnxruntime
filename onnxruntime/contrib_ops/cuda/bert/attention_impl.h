@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
+
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
-#include "contrib_ops/cpu/bert/attention_common.h"
+#include "core/common/gsl.h"
 #include "core/framework/allocator.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -49,38 +50,55 @@ size_t GetAttentionWorkspaceSize(
 
 template <typename T>
 struct AttentionData {
-  T* gemm_buffer;
-  const T* bias;
+  T* gemm_buffer = nullptr;
+  const T* bias = nullptr;
 
-  const T* query;
-  const T* key;
-  const T* value;
-  const int* mask_index;
+  const T* query = nullptr;
+  const T* key = nullptr;
+  const T* value = nullptr;
+  const int* mask_index = nullptr;
   gsl::span<const int64_t> mask_index_dims;
-  const T* past;
-  const T* past_key;
-  const T* past_value;
-  const T* relative_position_bias;
+  const T* past = nullptr;
+  const T* past_key = nullptr;
+  const T* past_value = nullptr;
+  const T* relative_position_bias = nullptr;
 
-  bool has_qkv_workspace;
-  T* workspace;
-  T* temp_k_workspace;
-  T* temp_v_workspace;
+  bool has_qkv_workspace = false;
+  T* workspace = nullptr;
+  T* temp_k_workspace = nullptr;
+  T* temp_v_workspace = nullptr;
 
-  T* output;
-  T* present;
-  T* present_key;
-  T* present_value;
+  T* output = nullptr;
+  T* present = nullptr;
+  T* present_key = nullptr;
+  T* present_value = nullptr;
 
-  void* fused_runner;
-  const void* fused_cross_attention_kernel;
+  void* fused_runner = nullptr;
+  const void* fused_cross_attention_kernel = nullptr;
 
-  bool use_flash_attention;
-  bool use_memory_efficient_attention;
+  bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
 
-  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_q_cache;
-  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_kv_cache;
+  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_q_cache = nullptr;
+  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_kv_cache = nullptr;
 };
+
+// Intermediate data pointers available after PrepareQKV
+template <typename T>
+struct QkvData {
+  T* q = nullptr;
+  T* k = nullptr;
+  T* v = nullptr;
+  T* after_v = nullptr;  // pointer right after v
+  AttentionQkvFormat format = AttentionQkvFormat::Q_K_V_BSNH;
+};
+
+template <typename T>
+Status PrepareQkv(contrib::AttentionParameters& parameters,
+                  AttentionData<T>& data,
+                  cudaStream_t stream,
+                  int max_threads_per_block,
+                  QkvData<T>& qkv_data);
 
 template <typename T>
 Status QkvToContext(
@@ -161,27 +179,13 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const half* tensor_add,
                                   half* tensor_out);
 
-Status LaunchConcatPastToPresent(cudaStream_t stream,
-                                 const int all_sequence_length,
-                                 const int sequence_length,
-                                 const int batch_size,
-                                 const int head_size,
-                                 const int num_heads,
-                                 const int max_threads_per_block,
-                                 const float* past,
-                                 const float* k_v,
-                                 float* present);
-
-Status LaunchConcatPastToPresent(cudaStream_t stream,
-                                 const int all_sequence_length,
-                                 const int sequence_length,
-                                 const int batch_size,
-                                 const int head_size,
-                                 const int num_heads,
-                                 const int max_threads_per_block,
-                                 const half* past,
-                                 const half* k_v,
-                                 half* present);
+template <typename T>
+Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                           int sequence_length, int total_sequence_length, bool pass_past_in_kv,
+                           cudaStream_t stream,
+                           int max_threads_per_block,
+                           AttentionData<T>& data,
+                           QkvData<T>& qkv);
 
 template <typename T>
 Status LaunchStridedCopy(cudaStream_t stream,
