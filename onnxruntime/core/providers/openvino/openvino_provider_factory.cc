@@ -82,6 +82,7 @@ struct OpenVINO_Provider : Provider {
                                                          "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                          "GPU.0_FP16", "GPU.1_FP16",
                                                          "NPU_FP16", "NPU_U8"};
+
       if (!((ov_supported_device_types.find(device_type) != ov_supported_device_types.end()) ||
             (device_type.find("HETERO:") == 0) || (device_type.find("MULTI:") == 0) || (device_type.find("AUTO:") == 0))) {
         ORT_THROW(
@@ -97,8 +98,11 @@ struct OpenVINO_Provider : Provider {
     if (provider_options_map.find("cache_dir") != provider_options_map.end()) {
       cache_dir = provider_options_map.at("cache_dir").c_str();
     }
+
     if (provider_options_map.find("context") != provider_options_map.end()) {
-      context = (void*)provider_options_map.at("context").c_str();
+      std::string str = provider_options_map.at("context");
+      unsigned long long int number = std::strtoull(str.c_str(), nullptr, 16);
+      context = reinterpret_cast<void*>(number);
     }
 
     if (provider_options_map.find("num_of_threads") != provider_options_map.end()) {

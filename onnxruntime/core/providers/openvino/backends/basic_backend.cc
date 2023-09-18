@@ -9,7 +9,6 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "../backend_utils.h"
-// #include <ngraph/pass/constant_folding.hpp>
 #include "basic_backend.h"
 #include "../backend_manager.h"
 
@@ -157,7 +156,6 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
     std::pair<std::string, ov::Any> device_property;
     device_property = std::make_pair("PLUGIN_THROTTLE", "1");
     device_config.emplace(ov::device::properties("GPU_CONFIG_KEY", device_property));
-    // device_config[GPU_CONFIG_KEY(PLUGIN_THROTTLE)] = "1";
   }
 }
 
@@ -273,8 +271,8 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
         // Create an Input Remote Blob
         auto input = ie_cnn_network_->get_parameters().at(0);
         auto remote_blob = remote_context_->create_tensor(input->get_element_type(), input->get_shape(), *shared_buffer_const);
-        ov::Tensor tensor = static_cast<ov::Tensor>(remote_blob);
-        OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor);
+        ov::Tensor tensor_remote = static_cast<ov::Tensor>(remote_blob);
+        OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor_remote);
         infer_request->SetTensor(input_name, tensor_ptr);
       } else {
         OVTensorPtr graph_input_blob;
@@ -316,8 +314,8 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
         // Create a shared Blob, set the Infer Request Output Blob
         auto output = ie_cnn_network_->get_results().at(0);
         auto remote_tensor = remote_context_->create_tensor(output->get_element_type(), output->get_shape(), *shared_buffer_const);
-        ov::Tensor tensor = static_cast<ov::Tensor>(remote_tensor);
-        OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor);
+        ov::Tensor tensor_t = static_cast<ov::Tensor>(remote_tensor);
+        OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor_t);
         try {
           infer_request->SetTensor(output_name, tensor_ptr);
         } catch (const char* msg) {
