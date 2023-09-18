@@ -11,16 +11,20 @@ using namespace Ort::Custom;
 
 namespace Cpu {
 
-void KernelOne(const Ort::Custom::Tensor<float>& X,
+Ort::Status KernelOne(const Ort::Custom::Tensor<float>& X,
                const Ort::Custom::Tensor<float>& Y,
                Ort::Custom::Tensor<float>& Z) {
-  auto input_shape = X.Shape();
+  if (X.NumberOfElement()!=Y.NumberOfElement()) {
+    return Ort::Status("x and y has different number of elements", OrtErrorCode::ORT_INVALID_ARGUMENT);
+  }
+  auto x_shape = X.Shape();
   auto x_raw = X.Data();
   auto y_raw = Y.Data();
-  auto z_raw = Z.Allocate(input_shape);
+  auto z_raw = Z.Allocate(x_shape);
   for (int64_t i = 0; i < Z.NumberOfElement(); ++i) {
     z_raw[i] = x_raw[i] + y_raw[i];
   }
+  return Ort::Status{nullptr};
 }
 
 // lite custom op as a function

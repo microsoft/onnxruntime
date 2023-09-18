@@ -3126,9 +3126,12 @@ struct Merge {
     ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "reverse", &reverse) == nullptr);
     reverse_ = reverse != 0;
   }
-  void Compute(const Ort::Custom::Tensor<std::string_view>& strings_in,
-               std::string_view string_in,
-               Ort::Custom::Tensor<std::string>* strings_out) {
+  Ort::Status Compute(const Ort::Custom::Tensor<std::string_view>& strings_in,
+                      std::string_view string_in,
+                      Ort::Custom::Tensor<std::string>* strings_out) {
+    if (strings_in.NumberOfElement() == 0) {
+      return Ort::Status("the 1st input must have more than one string!", OrtErrorCode::ORT_INVALID_ARGUMENT);
+    }
     std::vector<std::string> string_pool;
     for (const auto& s : strings_in.Data()) {
       string_pool.emplace_back(s.data(), s.size());
@@ -3141,6 +3144,7 @@ struct Merge {
       std::reverse(string_pool.begin(), string_pool.end());
     }
     strings_out->SetStringOutput(string_pool, {static_cast<int64_t>(string_pool.size())});
+    return Ort::Status(nullptr);
   }
   bool reverse_ = false;
 };
