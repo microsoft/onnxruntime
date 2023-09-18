@@ -80,6 +80,7 @@ Options:
 
  --no-sandbox                  This flag will be passed to Chrome.
                                  Sometimes Chrome need this flag to work together with Karma.
+ --chromium-flags=<...>        This flag will be passed to Chrome and Edge browsers. Can be used multiple times.
 
 Examples:
 
@@ -173,6 +174,7 @@ export interface TestRunnerCliArgs {
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
   globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
+  chromiumFlags: string[];
 }
 
 
@@ -384,8 +386,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const globalEnvFlags = parseGlobalEnvFlags(args);
 
   if (backend.includes('webnn') && !globalEnvFlags.wasm!.proxy) {
-    // Backend webnn is restricted in the dedicated worker.
-    globalEnvFlags.wasm!.proxy = true;
+    throw new Error('Backend webnn requires flag "wasm-enable-proxy" to be set to true.');
   }
 
   // Options:
@@ -443,6 +444,17 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
 
+  // parse chromium flags
+  let chromiumFlags = args['chromium-flags'];
+  if (!chromiumFlags) {
+    chromiumFlags = [];
+  } else if (typeof chromiumFlags === 'string') {
+    chromiumFlags = [chromiumFlags];
+  } else if (!Array.isArray(chromiumFlags)) {
+    throw new Error(`Invalid command line arg: --chromium-flags: ${chromiumFlags}`);
+  }
+
+
   npmlog.verbose('TestRunnerCli.Init', ` Mode:              ${mode}`);
   npmlog.verbose('TestRunnerCli.Init', ` Env:               ${env}`);
   npmlog.verbose('TestRunnerCli.Init', ` Debug:             ${debug}`);
@@ -466,6 +478,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     webglOptions,
     wasmOptions,
     globalEnvFlags,
-    noSandbox
+    noSandbox,
+    chromiumFlags
   };
 }

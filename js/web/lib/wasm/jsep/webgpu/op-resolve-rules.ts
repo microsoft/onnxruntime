@@ -14,6 +14,7 @@ import {gemm, parseGemmAttributes} from './ops/gemm';
 import {instanceNorm, parseInstanceNormAttributes} from './ops/instance-norm';
 import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
+import {pad, parsePadAttributes} from './ops/pad';
 import * as pool from './ops/pool';
 import {range} from './ops/range';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
@@ -81,6 +82,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Mul', [binaryOps.mul]],
   ['Neg', [unaryOps.neg]],
   ['Not', [unaryOps.not]],
+  ['Pad', [pad, parsePadAttributes]],
   ['Pow', [binaryOps.pow]],
   ['Range', [range]],
   ['Reciprocal', [unaryOps.reciprocal]],
