@@ -993,7 +993,11 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
     encoder.remove_duplicated_initializer(signature_cache1)
     decoder.remove_duplicated_initializer(signature_cache2)
     initializers = remove_shared_initializers(
-        decoder.model.graph, encoder.model.graph, "s_", signature_cache1, signature_cache2
+        decoder.model.graph,
+        encoder.model.graph,
+        shared_prefix="s_",
+        signature_cache1=signature_cache1,
+        signature_cache2=signature_cache2,
     )
     return initializers
 
