@@ -1,6 +1,7 @@
 parameters:
 - name: EnvSetupScript
   type: string
+  default: setup_env.bat
 
 - name: BuildConfig
   type: string
