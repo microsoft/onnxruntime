@@ -413,7 +413,17 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
+    std::cout << "LayerNormFusion Checking Scale and Bias" << std::endl;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
+      std::cout << "LayerNormFusion Checking Scale" << std::endl;
+      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i]))){
+        std::cout << "LayerNormFusion Scale NodeArgIsConstant" << std::endl;
+      }
+      std::cout << "LayerNormFusion Scale NodeArgIsConstant Check Complete" << std::endl;
+      if (graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])){
+        std::cout << "LayerNormFusion Scale GraphIsInput" << std::endl;
+      }
+      std::cout << "LayerNormFusion Scale GraphIsInput Check Complete" << std::endl;
 #ifdef ENABLE_TRAINING_CORE
       if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
         scale = mul_node.MutableInputDefs()[i];
