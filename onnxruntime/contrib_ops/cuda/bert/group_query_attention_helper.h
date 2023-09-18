@@ -47,8 +47,8 @@ Status CheckInputs(const T* query,
 
   int kv_sequence_length = sequence_length;
   int kv_hidden_size = (key_dims.size() == 3)
-                        ? static_cast<int>(key_dims[2])
-                        : (kv_num_heads * static_cast<int>(key_dims[3]));
+                           ? static_cast<int>(key_dims[2])
+                           : (kv_num_heads * static_cast<int>(key_dims[3]));
 
   int max_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
@@ -132,19 +132,19 @@ Status CheckInputs(const T* query,
 
     if (num_heads % kv_num_heads != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
-                              num_heads % kv_num_heads);
+                             "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
+                             num_heads % kv_num_heads);
     }
     if (key_dims[2] != value_dims[2]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "Input 'key' and 'value' shall have same dim 2 (kv_hidden_size)");
+                             "Input 'key' and 'value' shall have same dim 2 (kv_hidden_size)");
     }
 
     qkv_format = Q_K_V_BSNH;
     kv_sequence_length = static_cast<int>(key_dims[1]);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Missing key tensor.");
+                           "Missing key tensor.");
   }
 
   if (value != nullptr) {
@@ -161,7 +161,7 @@ Status CheckInputs(const T* query,
 
     if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
+                             "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
     }
 
     int v_hidden_size = value_dims[2];
@@ -170,14 +170,14 @@ Status CheckInputs(const T* query,
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Missing value tensor.");
+                           "Missing value tensor.");
   }
 
   int32_t past_sequence_length = 0;
   if (past_seq_len != nullptr) {
     if (!onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "past_sequence_length tensor must be of one element when using past kv.");
+                             "past_sequence_length tensor must be of one element when using past kv.");
     }
     past_sequence_length = *((*past_seq_len).template Data<int32_t>());
   }

@@ -18,17 +18,17 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      GroupQueryAttention,                                         \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create()) \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+#define REGISTER_KERNEL_TYPED(T)                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
+      GroupQueryAttention,                                             \
+      kMSDomain,                                                       \
+      1,                                                               \
+      T,                                                               \
+      kCudaExecutionProvider,                                          \
+      (*KernelDefBuilder::Create())                                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
-          .InputMemoryType(OrtMemTypeCPUInput, 5), \
+          .InputMemoryType(OrtMemTypeCPUInput, 5),                     \
       GroupQueryAttention<T>);
 
 // REGISTER_KERNEL_TYPED(float) // TODO(aciddelgado): support regular float later w/o flash?

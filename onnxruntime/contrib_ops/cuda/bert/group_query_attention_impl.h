@@ -38,7 +38,6 @@ Status QkvToContext(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data);
 
-
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

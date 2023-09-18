@@ -234,7 +234,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
 }
 
 void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
-                                             int past_key_index) {
+                                              int past_key_index) {
   // Output 0 has shape (batch_size, sequence_length, hidden_size)
 
   // Q, K and V without packing:
@@ -1038,7 +1038,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(3,
                "past_key",
                "past state key with shape (batch_size, max_sequence_length, kv_num_heads, head_size)."
-              "The first past_sequence_length values hold past kv and the remaining memory is cache, updated by op.",
+               "The first past_sequence_length values hold past kv and the remaining memory is cache, updated by op.",
                "T",
                OpSchema::Optional)
         .Input(4,

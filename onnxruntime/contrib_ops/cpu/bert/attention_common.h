@@ -90,12 +90,12 @@ struct GroupQueryAttentionParameters {
   int kv_sequence_length;     // input sequence length of K or V
   int total_sequence_length;  // past_sequence_length + kv_sequence_length
   int max_sequence_length;
-  int hidden_size;            // hidden size of Q
+  int hidden_size;  // hidden size of Q
   int num_heads;
   int head_size;
-  int kv_hidden_size;         // hidden size of K or V
-  int kv_num_heads;           // number of heads for K or V
-  bool is_unidirectional;     // causal
+  int kv_hidden_size;      // hidden size of K or V
+  int kv_num_heads;        // number of heads for K or V
+  bool is_unidirectional;  // causal
   float scale;
   int num_splits;
   AttentionQkvFormat qkv_format;

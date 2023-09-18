@@ -11,7 +11,6 @@
 # -------------------------------------------------------------------------
 import math
 import random
-from ctypes import c_int32
 
 import numpy
 import torch

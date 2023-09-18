@@ -20,10 +20,10 @@ class GroupQueryAttention final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  int num_heads_;    // number of attention heads
+  int num_heads_;     // number of attention heads
   int kv_num_heads_;  // different for k and v for group query attention
   int past_sequence_length_;
-  bool is_unidirectional_; // causal
+  bool is_unidirectional_;  // causal
   float scale_;
   bool disable_flash_attention_;
 };
