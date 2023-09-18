@@ -86,13 +86,11 @@ def profile_with_args(m, n, k, dtype, sort):
 
 def profile():
     dims_m = [1]
-    dims = [4096, 12288,]
     for dt in dtypes:
         for m in dims_m:
-            for n in dims:
-                for k in dims:
-                    profile_with_args(m, n, k, dt, True)
-                    print()
+            for n,k in ((4096, 4096), (4096, 12288), (12288, 4096)):
+                profile_with_args(m, n, k, dt, True)
+                print()
 
 
 if __name__ == "__main__":
