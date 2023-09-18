@@ -21,6 +21,7 @@ Abstract:
 #include "mlasi.h"
 
 #if defined(MLAS_NEON64_INTRINSICS) || defined(MLAS_SSE2_INTRINSICS)
+#include <type_traits>
 
 //
 // QuantizeLinear implementation using NEON or SSE2 intrinsics.
@@ -79,6 +80,20 @@ MlasQuantizeLinearPackBytes(
     MLAS_INT32X4 IntegerVector
     );
 
+template <typename OutputType>
+void
+MlasQuantizeLinearStore4PackedValues(
+    MLAS_INT32X4 IntegerVector,
+    OutputType* Output
+    );
+
+template <typename OutputType>
+void
+MlasQuantizeLinearStoreSingleValue(
+    MLAS_INT32X4 IntegerVector,
+    OutputType* Output
+    );
+
 #if defined(MLAS_NEON64_INTRINSICS)
 
 template<typename OutputType>
@@ -98,6 +113,104 @@ MlasQuantizeLinearPackBytes(
     ByteVector = vuzp1q_u8(ByteVector, ByteVector);
 
     return vreinterpretq_s32_u8(ByteVector);
+}
+
+template<>
+MLAS_INT32X4
+MlasQuantizeLinearPackBytes<uint16_t>(
+    MLAS_INT32X4 IntegerVector
+    )
+{
+    //
+    // Swizzle the least significant u16 from each int32_t element to the
+    // bottom eight bytes of the vector register.
+    //
+
+    uint16x8_t WordVector = vreinterpretq_u16_s32(IntegerVector);
+    WordVector = vuzp1q_u16(WordVector, WordVector);
+    return vreinterpretq_s32_u16(WordVector);
+}
+
+template<>
+MLAS_INT32X4
+MlasQuantizeLinearPackBytes<int16_t>(
+    MLAS_INT32X4 IntegerVector
+    )
+{
+    //
+    // Swizzle the least significant u16 from each int32_t element to the
+    // bottom eight bytes of the vector register.
+    //
+
+    int16x8_t WordVector = vreinterpretq_s16_s32(IntegerVector);
+    WordVector = vuzp1q_s16(WordVector, WordVector);
+    return vreinterpretq_s32_s16(WordVector);
+}
+
+template <typename OutputType>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearStore4PackedValues(
+    MLAS_INT32X4 IntegerVector,
+    OutputType* Output
+    )
+{
+    // Copies the lower 4 packed elements of the vector into memory (Output).
+
+    if constexpr (std::is_same_v<OutputType, uint8_t> || std::is_same_v<OutputType, int8_t>) {
+        vst1q_lane_s32(reinterpret_cast<int32_t*>(Output), IntegerVector, 0);
+    } else {
+        static_assert(std::is_same_v<OutputType, uint16_t> || std::is_same_v<OutputType, int16_t>);
+        vst1q_lane_s64(reinterpret_cast<int64_t*>(Output), vreinterpretq_s64_s32(IntegerVector), 0);
+    }
+}
+
+template <>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearStoreSingleValue<uint8_t>(
+    MLAS_INT32X4 IntegerVector,
+    uint8_t* Output
+    )
+{
+    // Copies the lower 8-bit element of the vector into memory (Output).
+    vst1q_lane_u8(Output, vreinterpretq_u8_s32(IntegerVector), 0);
+}
+
+template <>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearStoreSingleValue<int8_t>(
+    MLAS_INT32X4 IntegerVector,
+    int8_t* Output
+    )
+{
+    // Copies the lower 8-bit element of the vector into memory (Output).
+    vst1q_lane_s8(Output, vreinterpretq_s8_s32(IntegerVector), 0);
+}
+
+template <>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearStoreSingleValue<uint16_t>(
+    MLAS_INT32X4 IntegerVector,
+    uint16_t* Output
+    )
+{
+    // Copies the lower 16-bit element of the vector into memory (Output).
+    vst1q_lane_u16(Output, vreinterpretq_u16_s32(IntegerVector), 0);
+}
+
+template <>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearStoreSingleValue<int16_t>(
+    MLAS_INT32X4 IntegerVector,
+    int16_t* Output
+    )
+{
+    // Copies the lower 16-bit element of the vector into memory (Output).
+    vst1q_lane_s16(Output, vreinterpretq_s16_s32(IntegerVector), 0);
 }
 
 #else
@@ -126,6 +239,86 @@ MlasQuantizeLinearPackBytes<int8_t>(
     IntegerVector = _mm_packs_epi16(IntegerVector, IntegerVector);
 
     return IntegerVector;
+}
+
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasQuantizeLinearPackBytes<uint16_t>(
+    MLAS_INT32X4 IntegerVector
+    )
+{
+#if defined(MLAS_SSE41_INTRINSICS)
+    IntegerVector = _mm_packus_epi32(IntegerVector, IntegerVector);  // 16-bit values packed in lower 8 bytes.
+#else
+    // Cannot use _mm_packus_epi32 because that was not available until SSE4.1.
+    // Instead, emulate by sign-extending the first 16-bits of each packed 32-bit element.
+    // Afterwards, can use _mm_packs_epi32, which is available on SSE2.
+    // See: https://stackoverflow.com/a/11028244
+
+    IntegerVector = _mm_slli_epi32(IntegerVector, 16);
+    IntegerVector = _mm_srai_epi32(IntegerVector, 16);  // Sign-extend: undo left shift with right arithmetic shift
+    IntegerVector = _mm_packs_epi32(IntegerVector, IntegerVector);  // 16-bit values packed in lower 8 bytes.
+#endif  // defined(MLAS_SSE41_INTRINSICS)
+
+    return IntegerVector;
+}
+
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasQuantizeLinearPackBytes<int16_t>(
+    MLAS_INT32X4 IntegerVector
+    )
+{
+    IntegerVector = _mm_packs_epi32(IntegerVector, IntegerVector);  // 16-bit values packed in lower 8 bytes.
+
+    return IntegerVector;
+}
+
+template <typename OutputType>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearStore4PackedValues(
+    MLAS_INT32X4 IntegerVector,
+    OutputType* Output
+    )
+{
+    // Copies the lower 4 packed elements of the vector into memory (Output).
+
+    if constexpr (std::is_same_v<OutputType, uint8_t> || std::is_same_v<OutputType, int8_t>) {
+        *(reinterpret_cast<int32_t*>(Output)) = _mm_cvtsi128_si32(IntegerVector);
+    } else {
+        static_assert(std::is_same_v<OutputType, uint16_t> || std::is_same_v<OutputType, int16_t>);
+
+#if defined(MLAS_TARGET_IX86)
+        // x86 does not support _mm_cvtsi128_si64, so use _mm_maskmoveu_si128 instead.
+        constexpr uint32_t bytes_high_bit = 0x80808080;
+        const __m128i first_8_bytes_mask = _mm_set_epi32(0, 0, bytes_high_bit, bytes_high_bit);
+        _mm_maskmoveu_si128(IntegerVector, first_8_bytes_mask, reinterpret_cast<char*>(Output));
+#else
+        *(reinterpret_cast<int64_t*>(Output)) = _mm_cvtsi128_si64(IntegerVector);
+#endif  // defined(MLAS_TARGET_IX86)
+    }
+}
+
+template <typename OutputType>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearStoreSingleValue(
+    MLAS_INT32X4 IntegerVector,
+    OutputType* Output
+    )
+{
+    static_assert(std::is_same_v<OutputType, uint8_t> ||
+                  std::is_same_v<OutputType, int8_t> ||
+                  std::is_same_v<OutputType, uint16_t> ||
+                  std::is_same_v<OutputType, int16_t>);
+
+    // Copies the lower element of the vector into memory (Output).
+    // Expects that the 32-bit element in lane 0 is already within the valid numerical
+    // range of the OutputType.
+    *Output = static_cast<OutputType>(_mm_cvtsi128_si32(IntegerVector));
 }
 
 #endif
@@ -180,12 +373,7 @@ Return Value:
             MinimumValueVector, MaximumValueVector, ZeroPointVector);
 
         IntegerVector = MlasQuantizeLinearPackBytes<OutputType>(IntegerVector);
-
-#if defined(MLAS_NEON64_INTRINSICS)
-        vst1q_lane_s32((int32_t*)Output, IntegerVector, 0);
-#else
-        *((int32_t*)Output) = _mm_cvtsi128_si32(IntegerVector);
-#endif
+        MlasQuantizeLinearStore4PackedValues(IntegerVector, Output);
 
         Input += 4;
         Output += 4;
@@ -202,11 +390,7 @@ Return Value:
         auto IntegerVector = MlasQuantizeLinearVector(FloatVector, ScaleVector,
             MinimumValueVector, MaximumValueVector, ZeroPointVector);
 
-#if defined(MLAS_NEON64_INTRINSICS)
-        vst1q_lane_u8((uint8_t*)Output + n, vreinterpretq_u8_s32(IntegerVector), 0);
-#else
-        *((uint8_t*)Output + n) = (uint8_t)_mm_cvtsi128_si32(IntegerVector);
-#endif
+        MlasQuantizeLinearStoreSingleValue(IntegerVector, &Output[n]);
     }
 }
 
@@ -234,6 +418,32 @@ MlasQuantizeLinearU8Kernel(
 )
 {
     MlasQuantizeLinearKernel<uint8_t>(Input, Output, N, Scale, ZeroPoint);
+}
+
+void
+MLASCALL
+MlasQuantizeLinearU16Kernel(
+    const float* Input,
+    uint16_t* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint
+)
+{
+    MlasQuantizeLinearKernel<uint16_t>(Input, Output, N, Scale, ZeroPoint);
+}
+
+void
+MLASCALL
+MlasQuantizeLinearS16Kernel(
+    const float* Input,
+    int16_t* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint
+)
+{
+    MlasQuantizeLinearKernel<int16_t>(Input, Output, N, Scale, ZeroPoint);
 }
 
 template<>
@@ -274,6 +484,44 @@ MlasQuantizeLinear<uint8_t>(
         Input, Output, N, Scale, ZeroPoint);
 }
 
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<uint16_t>(
+    const float* Input,
+    uint16_t* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint
+    )
+{
+#if defined(MLAS_TARGET_AMD64)
+    GetMlasPlatform().QuantizeLinearU16Kernel(
+#else
+    MlasQuantizeLinearU16Kernel(
+#endif
+        Input, Output, N, Scale, ZeroPoint);
+}
+
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<int16_t>(
+    const float* Input,
+    int16_t* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint
+    )
+{
+#if defined(MLAS_TARGET_AMD64)
+    GetMlasPlatform().QuantizeLinearS16Kernel(
+#else
+    MlasQuantizeLinearS16Kernel(
+#endif
+        Input, Output, N, Scale, ZeroPoint);
+}
+
 #else
 
 #if defined(MLAS_TARGET_POWER)
@@ -304,6 +552,34 @@ MlasQuantizeLinear<uint8_t>(
     )
 {
     GetMlasPlatform().QuantizeLinearU8Kernel(Input, Output, N, Scale, ZeroPoint);
+}
+
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<int16_t>(
+    const float* Input,
+    int16_t* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint
+    )
+{
+    GetMlasPlatform().QuantizeLinearS16Kernel(Input, Output, N, Scale, ZeroPoint);
+}
+
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<uint16_t>(
+    const float* Input,
+    uint16_t* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint
+    )
+{
+    GetMlasPlatform().QuantizeLinearU16Kernel(Input, Output, N, Scale, ZeroPoint);
 }
 
 #endif
@@ -381,6 +657,29 @@ MlasQuantizeLinear<uint8_t>(
     float Scale,
     uint8_t ZeroPoint
     );
+
+template
+void
+MLASCALL
+MlasQuantizeLinear<int16_t>(
+    const float* Input,
+    int16_t* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint
+    );
+
+template
+void
+MLASCALL
+MlasQuantizeLinear<uint16_t>(
+    const float* Input,
+    uint16_t* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint
+    );
+
 #endif
 
 #endif

@@ -266,6 +266,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   std::vector<std::string> output_names;
   InferenceModel(f32_model_data, "f32_model_logger", nullptr, ExpectedEPNodeAssignment::All,
                  f32_helper.feeds_, output_names, cpu_f32_outputs);
+  ASSERT_FALSE(cpu_f32_outputs.empty());
+
   const size_t num_outputs = cpu_f32_outputs.size();
 
   // Compute output range(s) and quantization params.
@@ -432,7 +434,8 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
 // to input_scale * weights_scale. See quantization tool: onnx_quantizer.py::quantize_bias_static()
 //
 // i.e., initial bias => manual quantization (int32) => DQ => final float bias
-NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale);
+NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
+                              bool use_contrib_qdq = false);
 
 /**
  * Returns a function that builds a model with a single operator with N inputs of the same element type.
@@ -479,9 +482,10 @@ template <typename InputQType>
 inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_type,
                                                         const std::vector<TestInputDef<float>>& input_defs,
                                                         const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                                        const std::string& op_domain = kOnnxDomain) {
-  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder,
-                                                 std::vector<QuantParams<InputQType>>& output_qparams) {
+                                                        const std::string& op_domain = kOnnxDomain,
+                                                        bool use_contrib_qdq = false) {
+  return [op_type, input_defs, attrs, op_domain,
+          use_contrib_qdq](ModelTestBuilder& builder, std::vector<QuantParams<InputQType>>& output_qparams) {
     std::vector<NodeArg*> op_inputs;
     op_inputs.reserve(input_defs.size());
 
@@ -489,7 +493,7 @@ inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_ty
       NodeArg* input = MakeTestInput<float>(builder, input_def);
       QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
       NodeArg* input_after_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale,
-                                                            input_qparams.zero_point);
+                                                            input_qparams.zero_point, use_contrib_qdq);
       op_inputs.push_back(input_after_qdq);
     }
 
@@ -503,7 +507,7 @@ inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_ty
 
     // op_output -> Q -> DQ -> output
     AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, op_output, output_qparams[0].scale,
-                                                      output_qparams[0].zero_point);
+                                                      output_qparams[0].zero_point, use_contrib_qdq);
   };
 }
 

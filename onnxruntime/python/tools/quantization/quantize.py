@@ -240,6 +240,11 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
             f"weight_type={weight_type}!=QuantType.QFLOAT8E4M3FN"
         )
 
+    q16_types = [QuantType.QInt16, QuantType.QUInt16]
+
+    if (activation_type in q16_types or weight_type in q16_types) and quant_format != QuantFormat.QDQ:
+        raise ValueError("Only QuantFormat.QDQ supports 16-bit quantization types.")
+
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QInt8 and quant_format != QuantFormat.QDQ:
         logging.warning(
             "Please use QuantFormat.QDQ for activation type QInt8 and weight type QInt8. "
@@ -356,6 +361,11 @@ def quantize_static(
                 SmoothQuantFolding = True/False :
                     Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
                     SmoothQuant will be folded into the previous op if the previous op is foldable.
+                UseQDQContribOps = True/False :
+                    Default is False. If enabled, the inserted QuantizeLinear and DequantizeLinear ops will have the
+                    `com.microsoft` domain, which forces use of ONNX Runtime's QuantizeLinear and DequantizeLinear
+                    contrib op implementations. The contrib op implementations may support features not standardized
+                    into the ONNX specification (e.g., 16-bit quantization types).
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:

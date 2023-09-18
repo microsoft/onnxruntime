@@ -116,7 +116,8 @@ void InferenceModel(const std::string& model_data, const char* log_id,
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &output_vals));
 }
 
-NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale) {
+NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
+                              bool use_contrib_qdq) {
   NodeArg* bias_int32 = nullptr;
 
   // Bias must be int32 to be detected as a QDQ node unit.
@@ -124,7 +125,8 @@ NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<floa
   if (bias_def.IsRandomData()) {
     // Create random initializer def that is quantized to int32
     const auto& rand_info = bias_def.GetRandomDataInfo();
-    TestInputDef<int32_t> bias_int32_def(bias_def.GetShape(), bias_def.IsInitializer(), static_cast<int32_t>(rand_info.min / bias_scale),
+    TestInputDef<int32_t> bias_int32_def(bias_def.GetShape(), bias_def.IsInitializer(),
+                                         static_cast<int32_t>(rand_info.min / bias_scale),
                                          static_cast<int32_t>(rand_info.max / bias_scale));
     bias_int32 = MakeTestInput(builder, bias_int32_def);
   } else {
@@ -143,7 +145,7 @@ NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<floa
   }
 
   auto* bias = builder.MakeIntermediate();
-  builder.AddDequantizeLinearNode<int32_t>(bias_int32, bias_scale, 0, bias);
+  builder.AddDequantizeLinearNode<int32_t>(bias_int32, bias_scale, 0, bias, use_contrib_qdq);
 
   return bias;
 }

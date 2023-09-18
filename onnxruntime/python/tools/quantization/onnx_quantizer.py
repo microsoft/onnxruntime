@@ -104,7 +104,7 @@ class ONNXQuantizer:
         )
         self.q_matmul_const_b_only = "MatMulConstBOnly" in self.extra_options and self.extra_options["MatMulConstBOnly"]
         self.is_weight_symmetric = (
-            weight_qType in (QuantType.QInt8, QuantType.QFLOAT8E4M3FN)
+            weight_qType in (QuantType.QInt8, QuantType.QInt16, QuantType.QFLOAT8E4M3FN)
             if "WeightSymmetric" not in self.extra_options
             else self.extra_options["WeightSymmetric"]
         )
