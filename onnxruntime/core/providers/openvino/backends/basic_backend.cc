@@ -126,10 +126,10 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 #endif
 #if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
-  if (global_context_.device_type.find("VPUX") != std::string::npos) {
+  if (global_context_.device_type.find("NPU") != std::string::npos) {
     std::pair<std::string, ov::Any> device_property;
-    device_property = std::make_pair("VPU_COMPILER_TYPE", "MLIR");
-    device_config.emplace(ov::device::properties("VPUX", device_property));
+    device_property = std::make_pair("NPU_COMPILER_TYPE", "MLIR");
+    device_config.emplace(ov::device::properties("NPU", device_property));
   }
 #endif
 }
@@ -195,6 +195,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         auto tensor_info = tensor.GetTensorTypeAndShapeInfo();
         auto tensor_shape = tensor_info.GetShape();
         auto tensor_size = tensor_shape.size();
+        const char* tensor_data = tensor.GetTensorData<char>();
         auto tensor_iter = 0;
         ov::Shape input_tensor_shape = ov::Shape(tensor_size, 0);
         for (auto i = tensor_shape.begin(); i != tensor_shape.end(); ++i) {
@@ -202,8 +203,15 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           tensor_iter += 1;
         }
         auto input = ie_cnn_network_->get_parameters().at(input_idx);
-        OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(input->get_element_type(), input_tensor_shape);
-        FillInputBlob(tensor_ptr, batch_slice_idx, input_name, context, subgraph_context_);
+        OVTensorPtr tensor_ptr;
+        // avoid input copies on the CPU device
+        if (global_context_.device_type.find("CPU") != std::string::npos) {
+          tensor_ptr = std::make_shared<ov::Tensor>(input->get_element_type(), input_tensor_shape, (void*)tensor_data);
+        } else {
+          tensor_ptr = std::make_shared<ov::Tensor>(input->get_element_type(), input_tensor_shape);
+          FillInputBlob(tensor_ptr, batch_slice_idx, input_name, context, subgraph_context_);
+        }
+
         try {
           infer_request->SetTensor(input_name, tensor_ptr);
         } catch (const char* msg) {

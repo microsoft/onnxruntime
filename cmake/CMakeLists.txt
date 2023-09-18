@@ -2,12 +2,7 @@
 # Licensed under the MIT License.
 
 # Minimum CMake required
-if(WIN32)
-  # TODO: actually we need cmake 3.26+ on Windows but QNN EP's build machine doesn't have it
-  cmake_minimum_required(VERSION 3.25)
-else()
-  cmake_minimum_required(VERSION 3.26)
-endif()
+cmake_minimum_required(VERSION 3.26)
 
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
@@ -19,13 +14,7 @@ cmake_policy(SET CMP0117 NEW)
 cmake_policy(SET CMP0104 OLD)
 
 # Enable Hot Reload for MSVC compilers if supported.
-if (POLICY CMP0141)
-  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
-    cmake_policy(SET CMP0141 NEW)
-  else()
-    cmake_policy(SET CMP0141 OLD)
-  endif()
-endif()
+cmake_policy(SET CMP0141 NEW)
 
 # Project
 project(onnxruntime C CXX ASM)
@@ -865,6 +854,7 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
+      target_compile_definitions(${target_name} PRIVATE -DDISABLE_CUSPARSE_DEPRECATED)
     endif()
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
@@ -1270,12 +1260,12 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
   endif()
 
-  if (onnxruntime_USE_OPENVINO_VPUX_FP16)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_FP16=1)
+  if (onnxruntime_USE_OPENVINO_NPU_FP16)
+    add_definitions(-DOPENVINO_CONFIG_NPU_FP16=1)
   endif()
 
-  if (onnxruntime_USE_OPENVINO_VPUX_U8)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_U8=1)
+  if (onnxruntime_USE_OPENVINO_NPU_U8)
+    add_definitions(-DOPENVINO_CONFIG_NPU_U8=1)
   endif()
 
   if (onnxruntime_USE_OPENVINO_GPU_FP32_NP)
@@ -1298,13 +1288,13 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 
-  if (onnxruntime_USE_OPENVINO_VPUX_FP32_NP)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_FP32=1)
+  if (onnxruntime_USE_OPENVINO_NPU_FP32_NP)
+    add_definitions(-DOPENVINO_CONFIG_NPU_FP32=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 
-  if (onnxruntime_USE_OPENVINO_VPUX_FP16_NP)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_FP16=1)
+  if (onnxruntime_USE_OPENVINO_NPU_FP16_NP)
+    add_definitions(-DOPENVINO_CONFIG_NPU_FP16=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 

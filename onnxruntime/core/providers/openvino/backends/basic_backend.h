@@ -29,7 +29,7 @@ class BasicBackend : public IBackend {
   void Infer(OrtKernelContext* context) override;
 
  private:
-  bool ImportBlob(std::string hw_target, bool vpu_status);
+  bool ImportBlob(std::string hw_target, bool npu_status);
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
   void PopulateConfigValue(ov::AnyMap& device_config);

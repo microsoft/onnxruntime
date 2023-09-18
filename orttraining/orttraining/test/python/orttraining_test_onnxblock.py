@@ -554,6 +554,32 @@ def test_adamw_optimizer_execution():
         _ = ort_session.run(ort_output_names, ort_inputs)
 
 
+@pytest.mark.parametrize(
+    "block",
+    [SimpleTrainingBlockWithMSELoss, SimpleTrainingBlockWithCrossEntropyLoss, SimpleTrainingBlockWithBCEWithLogitsLoss],
+)
+@pytest.mark.parametrize("grad_clipping", [None, onnxblock.optim.ClipGradNorm(2.5)])
+def test_sgd_optimizer_composition(block, grad_clipping):
+    # Given
+    device = "cpu"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+
+    # When / Then no error occurs
+    simple_block = block()
+    for name, _ in pt_model.named_parameters():
+        simple_block.requires_grad(name)
+
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    optimizer = onnxblock.optim.SGD(clip_grad=grad_clipping)
+    with onnxblock.empty_base() as accessor:
+        _ = optimizer(simple_block.parameters())
+        optimizer_model = accessor.model
+        assert optimizer_model
+
+
 def test_retrieve_parameters():
     # Given
     device = "cuda"

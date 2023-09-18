@@ -56,6 +56,7 @@ class GemmFastGeluTunable : public IKernelExplorer {
   }
 
   void Run() override {
+    WithMaxTuningDurationMs max_duration(TuningContext(), 250);
     ORT_THROW_IF_ERROR((op_(&params_)));
   }
 

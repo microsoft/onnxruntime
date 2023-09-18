@@ -610,7 +610,7 @@ typedef struct OrtMIGraphXProviderOptions {
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
   OrtOpenVINOProviderOptions() : device_type{},
-                                 enable_vpu_fast_compile{},
+                                 enable_npu_fast_compile{},
                                  device_id{},
                                  num_of_threads{},
                                  cache_dir{},
@@ -623,7 +623,7 @@ typedef struct OrtOpenVINOProviderOptions {
    * Valid settings are one of: "CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"
    */
   const char* device_type;
-  unsigned char enable_vpu_fast_compile;  ///< 0 = disabled, nonzero = enabled
+  unsigned char enable_npu_fast_compile;  ///< 0 = disabled, nonzero = enabled
   const char* device_id;
   size_t num_of_threads;  ///< 0 = Use default number of threads
   const char* cache_dir;  // path is set to empty by default
@@ -4308,8 +4308,6 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseROCMProviderOptions)(_Frees_ptr_opt_ OrtROCMProviderOptions* input);
 
-  /// @}
-
   /** \brief Create an allocator with specific type and register it with the ::OrtEnv
    *  This API enhance CreateAndRegisterAllocator that it can create an allocator with specific type, not just CPU allocator
    *  Enables sharing the allocator between multiple sessions that use the same env instance.
@@ -4398,6 +4396,19 @@ struct OrtApi {
    * \since Version 1.16.
    */
   ORT_API2_STATUS(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
+
+  /**
+   * Get a EP resoure.
+   * E.g. a cuda stream or a cublas handle
+   *
+   * \param context - Kernel context
+   * \param resouce_version - Version of the resource
+   * \param resource_id - Type of resource
+   * \param resource - A pointer to returned resource
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
 };
 
 /*

@@ -8,8 +8,9 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
 
-#include "core/graph/graph.h"
+#include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 namespace test {
@@ -38,7 +39,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
-  RunAndVerifyOutputsWithEP(model_data, "QNN_EP_TestLogID",
+  RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, verification_params);
 }

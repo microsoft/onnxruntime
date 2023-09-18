@@ -196,8 +196,6 @@
         "^test_reshape_reordered_last_dims*",
         "^test_reshape_zero_and_negative_dim*",
         "^test_reshape_zero_dim*",
-        "^test_size*",
-        "^test_size_example*",
         // TODO: fialures with Windows GPU CI Pipeline that are introduced with ONNX opset 19. Need to be fixed before ORT 1.15 release.
         "^test_averagepool_*",
         "^test_wrap_pad_cuda",
@@ -432,6 +430,10 @@
         "test_range_float_type_positive_delta_expanded_cpu", // Error but not a failure.
         "test_scan_sum_cpu", // Disabled due to output mismatch with tolerance.
         "test_scan9_sum_cpu" // Disabled due to output mismatch with tolerance.
+    ],
+    "current_failing_tests_OPENVINO_NPU_FP16": [
+        "^test_prelu_broadcast",
+        "test_loop11_cpu"
     ],
     "current_failing_tests_OPENVINO_opset18": [
         // pending opset 18 support, RUNTIME_EXCEPTION : Encountered unknown exception in Initialize()

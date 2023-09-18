@@ -1,5 +1,18 @@
 trigger: none
-
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'js/node'
+    - 'onnxruntime/core/providers/js'
 name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 
 # gid of video and render group on gcramdrr1-mi100-085 and -86
@@ -9,7 +22,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 5.5
+    value: 5.6
 
 jobs:
 - job: Linux_Build
@@ -31,10 +44,12 @@ jobs:
     clean: true
     submodules: recursive
 
+
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
@@ -131,6 +146,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2

@@ -160,13 +160,16 @@ stages:
       PackageName: ${{ parameters.PackageName }}
       RunWebGpuTests: ${{ parameters.RunWebGpuTests }}
 
-- ${{ if ne(parameters.IsReleasePipeline, true) }}:
-  - stage: Test_web_BrowserStack
-    dependsOn: Build_wasm_Release
-    jobs:
-    - template: web-browserstack-ci.yml
-      parameters:
-        CommitOverride: true
+# Disable BrowserStack test
+# TODO: fix and re-enable in PostMerge test
+#
+# - ${{ if ne(parameters.IsReleasePipeline, true) }}:
+#   - stage: Test_web_BrowserStack
+#     dependsOn: Build_wasm_Release
+#     jobs:
+#     - template: web-browserstack-ci.yml
+#       parameters:
+#         CommitOverride: true
 
 - ${{ if ne(parameters.IsReleasePipeline, true) }}:
   - stage: Test_web_MultiBrowsers

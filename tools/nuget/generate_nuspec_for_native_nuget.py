@@ -178,7 +178,7 @@ def generate_icon(line_list, icon_file):
 
 
 def generate_license(line_list):
-    line_list.append('<license type="file">LICENSE.txt</license>')
+    line_list.append('<license type="file">LICENSE</license>')
 
 
 def generate_project_url(line_list, project_url):
@@ -190,7 +190,7 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.12.0"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.12.1"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -1059,8 +1059,11 @@ def generate_files(line_list, args):
                 "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
             )
 
+    # README
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "README.md") + '" target="README.md" />')
+
     # Process License, ThirdPartyNotices, Privacy
-    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE.txt") + '" target="LICENSE.txt" />')
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE") + '" target="LICENSE" />')
     files_list.append(
         "<file src="
         + '"'
