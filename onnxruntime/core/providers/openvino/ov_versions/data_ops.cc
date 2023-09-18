@@ -82,6 +82,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Add", V_2020_4, {"CPU", "GPU"}},
     {"Add", V_2023_0, {"NPU"}},
     {"And", V_2020_4, {"CPU", "GPU"}},
+    {"And", V_2023_1, {"NPU"}},
     {"ArgMax", V_2020_4, {"CPU"}},
     {"ArgMax", V_2021_1, {"GPU"}},
     {"ArgMin", V_2020_4, {"CPU"}},
@@ -103,12 +104,14 @@ std::vector<SupportedOp> supported_op_mode = {
     {"BitShift", V_2023_1, {"NPU"}},
     {"Cast", V_2020_4, {"CPU", "GPU"}},
     {"Cast", V_2023_0, {"NPU"}},
+    {"CastLike", V_2023_1, {"CPU", "GPU", "NPU"}},
     {"Ceil", V_2020_4, {"GPU"}},
     {"Ceil", V_2021_4, {"CPU"}},
     {"Ceil", V_2023_1, {"NPU"}},
     {"Celu", V_2022_1, {"CPU", "GPU"}},
     {"Clip", V_2020_4, {"CPU", "GPU"}},
     {"Clip", V_2023_0, {"NPU"}},
+    {"Compress", V_2023_1, {"CPU", "GPU"}},
     {"Concat", V_2020_4, {"CPU", "GPU"}},
     {"Concat", V_2023_0, {"NPU"}},
     {"Constant", V_2020_4, {"CPU", "GPU"}},
@@ -175,6 +178,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"GridSample", V_2022_3, {"CPU"}},
     {"GridSample", V_2023_0, {"GPU"}},
     {"GridSample", V_2023_1, {"NPU"}},
+    {"HardMax", V_2023_1, {"CPU", "GPU", "NPU"}},
     {"Identity", V_2020_4, {"CPU", "GPU"}},
     {"Identity", V_2023_0, {"NPU"}},  // NoOP
     {"If", V_2022_3, {"CPU", "GPU"}},
@@ -196,6 +200,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Log", V_2023_0, {"NPU"}},
     {"LogSoftMax", V_2022_1, {"CPU", "GPU"}},
     {"Loop", V_2021_4, {"CPU", "GPU"}},
+    {"LpNormalization", V_2023_1, {"CPU", "GPU", "NPU"}},
+    {"LpPool", V_2023_1, {"CPU", "GPU", "NPU"}},
     {"LRN", V_2020_4, {"CPU", "GPU"}},
     {"LRN", V_2023_0, {"NPU"}},
     {"LSTM", V_2020_4, {"CPU", "GPU"}},
@@ -240,6 +246,8 @@ std::vector<SupportedOp> supported_op_mode = {
     // {"QLinearMatMul", V_2023_1, {"NPU"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"QuantizeLinear", V_2023_0, {"NPU"}},
+    {"RNN", V_2023_1, {"CPU", "GPU"}},
+    {"RandomNormalLike", V_2023_0, {"CPU", "GPU"}},
     {"RandomNormalLike", V_2023_0, {"CPU", "GPU"}},
     {"RandomNormalLike", V_2023_1, {"NPU"}},
     {"RandomNormal", V_2023_0, {"CPU", "GPU"}},
@@ -280,6 +288,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Reshape", V_2023_0, {"NPU"}},
     {"ReverseSequence", V_2022_1, {"CPU", "GPU"}},
     {"RoiAlign", V_2021_1, {"CPU", "GPU"}},
+    {"RoiAlign", V_2023_1, {"NPU"}},
     {"Round", V_2021_4, {"CPU", "GPU"}},
     {"Round", V_2023_1, {"NPU"}},
     {"Scatter", V_2022_1, {"CPU", "GPU"}},
@@ -339,11 +348,9 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Trilu", V_2023_1, {"NPU"}},
     {"TopK", V_2020_4, {"CPU", "GPU"}},
     {"TopK", V_2023_0, {"NPU"}},
+    {"Upsample", V_2020_4, {"CPU", "GPU"}},
     {"Unsqueeze", V_2020_4, {"CPU", "GPU"}},
     {"Unsqueeze", V_2023_0, {"NPU"}},
-    {"Upsample", V_2021_1, {"CPU"}},
-    {"Upsample", V_2021_4, {"GPU"}},
-    // {"Upsample", V_2023_0, {"NPU"}},
     {"Where", V_2022_1, {"CPU", "GPU"}},
     {"Where", V_2023_0, {"NPU"}},  // Added for whisper decoder model.
     {"Xor", V_2022_1, {"CPU", "GPU"}},
@@ -431,8 +438,9 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               // Abs is not supproted with INT8 or INT32 as input data type on GPU
-                               if (device_id_.find("GPU") != std::string::npos) {
+                               // Abs is not supproted with INT8 or INT32 as input data type on GPU and NPU
+                               if ((device_id_.find("GPU") != std::string::npos) ||
+                                   (device_id_.find("NPU") != std::string::npos)) {
                                  for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                    if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
                                        node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
@@ -652,7 +660,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"PRelu", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_arg = node->InputDefs()[1];
                                auto shape = input_arg->Shape();
@@ -763,7 +771,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Squeeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph. Conversion fails in convert_function_to_cnn_network.
@@ -777,7 +785,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
