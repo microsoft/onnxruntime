@@ -636,17 +636,17 @@ namespace Dml
     }
 
     void DmlOperator::ConvertNHWCToNCHW(
-        const uint32_t& dimCount, 
+        const uint32_t dimCount, 
         const gsl::span<const uint32_t> nhwcSizes,
         std::vector<uint32_t>& nchwSizes,
         std::vector<uint32_t>& nchwInputStrides)
     {
         int i = 0;
-        const uint32_t inputBatch = nhwcSizes[ i++ ];
-        const uint32_t inputDepth = dimCount == 5 ? nhwcSizes[ i++ ] : 0;
-        const uint32_t inputHeight = nhwcSizes[ i++ ];
-        const uint32_t inputWidth = nhwcSizes[ i++ ];
-        const uint32_t inputChannels = nhwcSizes[ i++ ];
+        const uint32_t inputBatch = nhwcSizes[i++];
+        const uint32_t inputDepth = dimCount == 5 ? nhwcSizes[i++] : 0;
+        const uint32_t inputHeight = nhwcSizes[i++];
+        const uint32_t inputWidth = nhwcSizes[i++];
+        const uint32_t inputChannels = nhwcSizes[i++];
 
         if (dimCount == 4)
         {

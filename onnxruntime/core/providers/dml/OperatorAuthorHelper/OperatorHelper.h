@@ -213,7 +213,9 @@ std::vector<DimensionType> InitializeKernelOutputDimsTranspose(
     gsl::span<const DimensionType> inputDimensions,
     const KernelArgs& args);
 
-KernelArgs InitializeGlobalKernel(gsl::span<const DimensionType> inputDimensions);
+KernelArgs InitializeGlobalKernel(
+        const MLOperatorAttributes& kernelInfo,
+        gsl::span<const DimensionType> inputDimensions);
 
 KernelArgs InitializeKernel(
     const MLOperatorAttributes& kernelInfo,
@@ -1068,7 +1070,7 @@ public:
         bool useGlobalPooling
     )
     :   m_kernel(useGlobalPooling
-            ? InitializeGlobalKernel(shape.GetInputTensorShape(0))
+            ? InitializeGlobalKernel(info, shape.GetInputTensorShape(0))
             : InitializeKernel(info, static_cast<uint32_t>(shape.GetInputTensorShape(0).size()), gsl::span<uint32_t>()))
     {
         if (!useGlobalPooling)
@@ -1174,7 +1176,16 @@ class QLinearAveragePoolingHelper : public PoolingHelperBase
 {
 public:
     template <typename Info_t, typename Shape_t>
-    QLinearAveragePoolingHelper(const Info_t& info, const Shape_t& shape/*, bool useGlobalPooling */) : PoolingHelperBase(info, shape, false) {}
+    QLinearAveragePoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, false) {}
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+};
+
+class QLinearGlobalAveragePoolingHelper : public PoolingHelperBase
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    QLinearGlobalAveragePoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, true) {}
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
 };
@@ -1509,6 +1520,7 @@ using ShapeInferenceHelper_LpPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalLpPool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
 using ShapeInferenceHelper_QLinearAveragePool = QLinearAveragePoolingHelper;
+using ShapeInferenceHelper_QLinearGlobalAveragePool = QLinearGlobalAveragePoolingHelper;
 using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
 using ShapeInferenceHelper_RoiAlign16 = VersionedOpsetHelper<RoiAlignHelper, 16>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;

@@ -35,11 +35,8 @@ public:
         std::vector<DimensionType> inputShape = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(OrtInputTensors::ortInput);
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
 
-        // Initialize the input descriptions with broadcasting
-        m_inputTensorDescs[OrtInputTensors::ortInput] = CreateTensorDescFromInput(kernelInfo, OrtInputTensors::ortInput, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape);
-
         uint32_t dmlDimSize = m_inputTensorDescs[OrtInputTensors::ortInput].GetDimensionCount();
-        // Resize the Input Scale to be the same dimension as the input tensor.
+        // Reshape the Input Scale to be the same dimension as the input tensor.
         // The 1D tensor needs to be moved to the H channel.
         m_inputTensorDescs[OrtInputTensors::ortInputScale] = CreateTensorDescFromInput(
             kernelInfo, 
@@ -203,6 +200,5 @@ public:
 
 DML_OP_DEFINE_CREATION_FUNCTION(QLinearAveragePool, DmlOperatorQuantizedPoolingTemplate<false>);
 DML_OP_DEFINE_CREATION_FUNCTION(QLinearGlobalAveragePool, DmlOperatorQuantizedPoolingTemplate<true>);
-//DML_OP_DEFINE_CREATION_FUNCTION(QLinearGlobalAveragePool, DmlOperatorQLinearAveragePooling, true); //useGobalPool
 
 } // namespace Dml
