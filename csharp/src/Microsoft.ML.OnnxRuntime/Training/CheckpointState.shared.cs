@@ -144,15 +144,12 @@ namespace Microsoft.ML.OnnxRuntime
             var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);
             var propertyValueUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyValue);
 
-            IntPtr unmanagedPointer = Marshal.AllocHGlobal(propertyValueUtf8.Length);
-            try
+            unsafe
             {
-                Marshal.Copy(propertyValueUtf8, 0, unmanagedPointer, propertyValueUtf8.Length);
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtAddProperty(handle, propertyNameUtf8, PropertyType.String, unmanagedPointer));
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(unmanagedPointer);
+                fixed (byte* p = propertyValueUtf8)
+                {
+                    NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtAddProperty(handle, propertyNameUtf8, PropertyType.String, (IntPtr)p));
+                }
             }
         }
 
@@ -173,23 +170,32 @@ namespace Microsoft.ML.OnnxRuntime
 
             if (propertyType == PropertyType.Int)
             {
-                var longPropertyValue = Marshal.ReadInt64(propertyValue);
-                allocator.FreeMemory(propertyValue);
-                return longPropertyValue;
+                Int64 value;
+                unsafe
+                {
+                    value = *(Int64*)propertyValue;
+                }
+                return value;
             }
             else if (propertyType == PropertyType.Float)
             {
-                float[] value = new float[1];
-                Marshal.Copy(propertyValue, value, 0, 1);
-                allocator.FreeMemory(propertyValue);
-                return value[0];
+                float value;
+                unsafe
+                {
+                    value = *(float*)propertyValue;
+                }
+                return value;
             }
             else if (propertyType == PropertyType.String)
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(propertyValue, allocator);
             }
 
-            throw new ArgumentException("Expected the property type to be one of long, float or string. Unknown type retrieved " + propertyValue.ToString());
+            try {
+                throw new ArgumentException("Expected the property type to be one of long, float or string. Unknown type retrieved " + propertyValue.ToString());
+            } finally {
+                allocator.FreeMemory(propertyValue);
+            }
         }
 
         /// <summary>
