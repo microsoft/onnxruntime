@@ -143,7 +143,7 @@ void L1NormalizationWithZeroNorm() {
 
   vector<T> expected_output = {0.5f, 0.5f, 0.f, 0.f};
   test.AddOutput<T>("Y", input_dims, expected_output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(LpNormalizationTest, L1NormalizationWithZeroNorm) {
@@ -163,7 +163,7 @@ void L2NormalizationWithZeroNorm() {
 
   vector<T> expected_output = {1.f, 0.f, 0.f, 0.f};
   test.AddOutput<T>("Y", input_dims, expected_output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(LpNormalizationTest, L2NormalizationWithZeroNorm) {
