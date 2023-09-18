@@ -323,8 +323,11 @@ class WhisperHelper:
                 inputs[name] = np.array([[config.decoder_start_token_id, 50259, 50359, 50363]], dtype=ort_to_np[dtype])
             elif name == "logits_processor":
                 inputs[name] = np.array([1], dtype=ort_to_np[dtype])
+            elif name == "temperature":
+                inputs[name] = np.array([2.0], dtype=ort_to_np[dtype])
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
+        
         ort_outputs = ort_session.run(None, inputs)[0][0]
 
         if pt_outputs.shape != ort_outputs.shape:

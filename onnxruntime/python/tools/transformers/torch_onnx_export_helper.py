@@ -41,7 +41,7 @@ def torch_onnx_export(
             training=training,
             input_names=input_names,
             output_names=output_names,
-            operator_export_type=operator_export_type,
+            #operator_export_type=operator_export_type,
             opset_version=opset_version,
             do_constant_folding=do_constant_folding,
             dynamic_axes=dynamic_axes,

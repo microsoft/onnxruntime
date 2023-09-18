@@ -2,6 +2,9 @@ import logging
 import os
 
 import onnx
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision
 from convert_generation import get_shared_initializers, update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha
 from onnx import TensorProto, helper
@@ -42,6 +45,7 @@ def chain_model(args):
         "",  # attention mask
         "decoder_input_ids" if args.use_forced_decoder_ids else "",
         "logits_processor" if args.use_logits_processor else "",
+        "temperature" if args.use_temperature else "",
     ]
     beam_outputs = ["sequences"]
 
@@ -120,6 +124,10 @@ def chain_model(args):
     if args.use_logits_processor:
         logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
         graph_inputs.append(logits_processor)
+    
+    if args.use_temperature:
+        temperature = helper.make_tensor_value_info("temperature", TensorProto.FLOAT, [1])
+        graph_inputs.append(temperature)
 
     # graph outputs
     sequences = helper.make_tensor_value_info(

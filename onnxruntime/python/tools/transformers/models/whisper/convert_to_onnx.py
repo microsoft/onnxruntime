@@ -8,8 +8,9 @@ import argparse
 import copy
 import logging
 import os
-
+import sys
 import torch
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from whisper_chain import chain_model
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
@@ -109,6 +110,14 @@ def parse_arguments(argv=None):
         help="Use logits_processor as an extra graph input to enable specific logits processing",
     )
     parser.set_defaults(use_specific_logits_processor=False)
+
+    parser.add_argument(
+        "--use_temperature",
+        required=False,
+        action="store_true",
+        help="Use temperature as an extra graph input to enable logits processing",
+    )
+    parser.set_defaults(use_temperature=False)
 
     parser.add_argument(
         "-v",
