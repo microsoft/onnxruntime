@@ -40,20 +40,17 @@ namespace Microsoft.ML.OnnxRuntime
             String = 2
         }
 
-        private void AddPropertyImpl<T>(string propertyName, PropertyType propertyType, T propertyValue)
+        private void AddPropertyImpl<T>(string propertyName, PropertyType propertyType, T propertyValue) where T : unmanaged
         {
             var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);
             T[] value = new T[1];
             value[0] = propertyValue;
-            Memory<T> memory = value;
-            using (var memHandle = memory.Pin())
+            unsafe
             {
-                IntPtr memPtr;
-                unsafe
+                fixed (T* memPtr = value)
                 {
-                    memPtr = (IntPtr)memHandle.Pointer;
+                    NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtAddProperty(handle, propertyNameUtf8, propertyType, (IntPtr)memPtr));
                 }
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtAddProperty(handle, propertyNameUtf8, propertyType, memPtr));
             }
         }
 
@@ -191,9 +188,12 @@ namespace Microsoft.ML.OnnxRuntime
                 return NativeOnnxValueHelper.StringFromNativeUtf8(propertyValue, allocator);
             }
 
-            try {
+            try
+            {
                 throw new ArgumentException("Expected the property type to be one of long, float or string. Unknown type retrieved " + propertyValue.ToString());
-            } finally {
+            }
+            finally
+            {
                 allocator.FreeMemory(propertyValue);
             }
         }
@@ -240,7 +240,15 @@ namespace Microsoft.ML.OnnxRuntime
                 var typeAndShapeInfo = new OrtTensorTypeAndShapeInfo(typeAndShapeInfoHandle);
                 var parameter = OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance, typeAndShapeInfo.ElementDataType, typeAndShapeInfo.Shape);
 
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParameter(handle, parameterNameUtf8, parameter.Handle));
+                try
+                {
+                    NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParameter(handle, parameterNameUtf8, parameter.Handle));
+                }
+                catch (OnnxRuntimeException e)
+                {
+                    parameter.Dispose();
+                    throw e;
+                }
 
                 return parameter;
             }
