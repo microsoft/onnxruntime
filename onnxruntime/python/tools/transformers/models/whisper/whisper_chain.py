@@ -58,6 +58,13 @@ def chain_model(args):
     else:
         beam_inputs.append("")
 
+    if args.use_temperature:
+        beam_inputs.append("temperature")
+    else:
+        beam_inputs.append("")
+
+    
+
     beam_outputs = ["sequences"]
     if args.output_sequence_scores:
         beam_outputs.append("sequence_scores")
@@ -156,6 +163,12 @@ def chain_model(args):
             "extra_decoding_ids", TensorProto.INT32, ["batch_size", "extra_decoding_ids_len"]
         )
         graph_inputs.append(extra_decoding_ids)
+
+    if args.use_temperature:
+        temperature = helper.make_tensor_value_info("temperature", TensorProto.FLOAT, [1])
+        graph_inputs.append(temperature)
+
+    
 
     # graph outputs
     sequences = helper.make_tensor_value_info(

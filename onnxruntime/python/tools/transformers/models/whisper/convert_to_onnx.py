@@ -266,6 +266,14 @@ def parse_arguments(argv=None):
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
 
+    parser.add_argument(
+        "--use_temperature",
+        required=False,
+        action="store_true",
+        help="Use temperature as an extra graph input to enable logits processing",
+    )
+
+    parser.set_defaults(use_temperature=False)
     args = parser.parse_args(argv)
 
     return args
