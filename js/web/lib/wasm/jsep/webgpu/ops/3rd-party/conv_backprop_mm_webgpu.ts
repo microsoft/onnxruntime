@@ -123,10 +123,9 @@ export const createConv2DTransposeMatMulProgramInfo =
                       (outWidth % 4 === 0 && !isChannelsLast)) &&
           outChannels % 4 === 0;
 
-      const dispatchX = !isChannelsLast ? outChannels : outWidth * outHeight;
-      const dispatchY = !isChannelsLast ? outWidth * outHeight : outChannels;
-      const workGroupSize: [number, number, number] =
-          isVec4 ? [8, 8, 1] : [dispatchX <= 4 ? 4 : 16, dispatchX > 4 && dispatchY <= 4 ? 4 : 16, 1];
+      const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
+      const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
+      const workGroupSize: [number, number, number] = isVec4 ? [8, 8, 1] : [4, 4, 1];
       const elementsPerThread =
           isVec4 ? [4, 4, 1] : [dispatchX <= 4 ? 1 : 2, dispatchX > 4 && dispatchY <= 4 ? 1 : 2, 1];
       const dispatch = [
