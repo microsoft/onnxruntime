@@ -345,7 +345,13 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
+    // Default mask value
+    int32_t mask_value = 1;
+
+    // Trigger fetching mask value
+    if (params.mask != nullptr) {
+      mask_value = params.mask[bi_total_seq_length + ti];
+    }
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
@@ -378,7 +384,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to
     // mimic PyTorch when dealing with mask filter values
-    if (is_masked) {
+    if (mask_value == 0) {
       qk += params.mask_filter_value;
     }
 
