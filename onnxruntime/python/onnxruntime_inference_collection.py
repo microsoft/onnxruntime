@@ -522,7 +522,7 @@ class InferenceSession(Session):
         for i in range(len(providers)):
             if providers[i] == "TensorrtExecutionProvider":
                 C.register_tensorrt_plugins_as_custom_ops(session_options, provider_options[i])
-            elif (isinstance(providers[i], tuple) and provider[0] == "TensorrtExecutionProvider"): 
+            elif (isinstance(providers[i], tuple) and providers[0] == "TensorrtExecutionProvider"): 
                 C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
 
 class IOBinding:
