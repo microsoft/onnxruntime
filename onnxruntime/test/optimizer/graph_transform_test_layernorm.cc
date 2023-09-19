@@ -419,10 +419,12 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "SimplifiedLayerNormalization") {
       // LayerNormalization should have two inputs.
-      EXPECT_EQ(node.InputDefs().size(), 2u) << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
+      EXPECT_EQ(node.InputDefs().size(), 2u) <<
+        "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
-      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+      EXPECT_EQ(scale_shape->dim_size(), 1) <<
+        "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
     } else {
       EXPECT_TRUE(false) << "Unexpected node " << node.Name();
     }
