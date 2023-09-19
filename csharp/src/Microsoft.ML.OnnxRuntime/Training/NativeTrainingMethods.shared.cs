@@ -387,7 +387,8 @@ namespace Microsoft.ML.OnnxRuntime
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetParameter(
                                                     IntPtr /*(OrtCheckpointState*)*/ checkpointState,
                                                     byte[] /*(const char*)*/ parameterName,
-                                                    IntPtr /*(OrtValue*)*/ parameter
+                                                    IntPtr /*(OrtAllocator*)*/ allocator,
+                                                    out IntPtr /*(OrtValue**)*/ parameter
                                                     );
 
             public static DOrtGetParameter OrtGetParameter;

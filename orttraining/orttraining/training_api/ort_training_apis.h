@@ -101,6 +101,7 @@ ORT_API_STATUS_IMPL(UpdateParameter, _Inout_ OrtCheckpointState* checkpoint_stat
                     _In_ const char* parameter_name, _In_ OrtValue* parameter);
 
 ORT_API_STATUS_IMPL(GetParameter, _In_ const OrtCheckpointState* checkpoint_state,
-                    _In_ const char* parameter_name, _Inout_ OrtValue* parameter);
+                    _In_ const char* parameter_name, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ OrtValue** parameter);
 
 }  // namespace OrtTrainingApis

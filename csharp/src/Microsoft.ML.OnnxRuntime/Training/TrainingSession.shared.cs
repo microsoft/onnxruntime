@@ -517,8 +517,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             float[] bufferMemory = new float[bufferSize.ToUInt64()];
 
-            var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
-            var shape = new long[] { (long)bufferSize.ToUInt64() };
+            var shape = new long[] { (long)bufferSize };
             var buffer = OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance, Tensors.TensorElementType.Float, shape);
 
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyParametersToBuffer(_nativeHandle, buffer.Handle, onlyTrainable));
@@ -529,46 +528,30 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Loads the training session model parameters from a contiguous buffer
         /// </summary>
-        /// <param name="buffer">Contiguous buffer to load the parameters from.</param>
-        public void FromBuffer(OrtValue buffer)
+        /// <param name="ortValue">Contiguous buffer to load the parameters from.</param>
+        /// <param name="onlyTrainable">Whether to only load trainable parameters or to load all parameters.</param>
+        public void FromBuffer(OrtValue ortValue, bool onlyTrainable)
         {
-            if (buffer.OnnxType != OnnxValueType.ONNX_TYPE_TENSOR)
+            if (ortValue.OnnxType != OnnxValueType.ONNX_TYPE_TENSOR)
             {
                 throw new ArgumentException("Incorrect buffer received. Expected a tensor buffer.");
             }
 
-            IntPtr typeAndShapeInfo = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(buffer.Handle, out typeAndShapeInfo));
-            UIntPtr numDimensions = UIntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(typeAndShapeInfo, out numDimensions));
-            if (numDimensions.ToUInt64() != 1)
+            var tensorInfo = ortValue.GetTensorTypeAndShape();
+            if (tensorInfo.ElementDataType != Tensors.TensorElementType.Float)
             {
-                string errorMessage = "Incorrect buffer shape received. Expected a contiguous tensor buffer. Expected number of dimensions: 1, Actual: " + numDimensions.ToString();
-                throw new ArgumentException(errorMessage);
-            }
-
-            // Here buffer size represents the number of elements in the buffer
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShapeInfo, out UIntPtr bufferSize));
-
-            // OrtGetParametersSize returns the total number of elements in the model's parameters.
-            UIntPtr numElementsTrainingOnly = UIntPtr.Zero;
-            const bool onlyTrainable = true;
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out numElementsTrainingOnly, onlyTrainable));
-            if ((ulong)bufferSize == (ulong)numElementsTrainingOnly)
-            {
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyBufferToParameters(_nativeHandle, buffer.Handle, onlyTrainable));
-                return;
+                throw new ArgumentException("Incorrect buffer received. Expected a tensor buffer of type float.");
             }
 
             UIntPtr numElements = UIntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out numElements, !onlyTrainable));
-            if ((ulong)bufferSize != (ulong)numElements)
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out numElements, onlyTrainable));
+            if ((ulong)tensorInfo.ElementCount != (ulong)numElements)
             {
-                string errorMessage = "Incorrect buffer size received. Expected size to be one of " + numElementsTrainingOnly.ToString() + " (training only) or " + numElements.ToString() + " (all parameters). Actual size: " + bufferSize.ToString();
+                string errorMessage = "Incorrect buffer size received. Expected size to be " + numElements.ToString() + ". Actual size: " + tensorInfo.ElementCount.ToString();
                 throw new ArgumentException(errorMessage);
             }
 
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyBufferToParameters(_nativeHandle, buffer.Handle, !onlyTrainable));
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyBufferToParameters(_nativeHandle, ortValue.Handle, onlyTrainable));
         }
 
         /// <summary>

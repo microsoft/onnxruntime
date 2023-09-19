@@ -704,19 +704,21 @@ struct OrtTrainingApi {
   /** \brief Gets the data associated with the model parameter from the checkpoint state for the given parameter name.
    *
    * This function retrieves the model parameter data from the checkpoint state for the given parameter name.
-   * The parameter is copied over to the provided OrtValue. The training session must be already created
+   * The parameter is copied over and returned as an OrtValue. The training session must be already created
    * with the checkpoint state that contains the parameter being retrieved.
    * The parameter must exist in the checkpoint state to be able to retrieve it successfully.
    *
    * \param[in] checkpoint_state The checkpoint state.
    * \param[in] parameter_name Name of the parameter being retrieved.
+   * \param[in] allocator Allocator used to allocate the memory for the parameter.
    * \param[out] parameter The parameter data that is retrieved from the checkpoint state.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
   ORT_API2_STATUS(GetParameter, _In_ const OrtCheckpointState* checkpoint_state,
-                  _In_ const char* parameter_name, _Inout_ OrtValue* parameter);
+                  _In_ const char* parameter_name, _Inout_ OrtAllocator* allocator,
+                  _Outptr_ OrtValue** parameter);
 
   /// @}
 };

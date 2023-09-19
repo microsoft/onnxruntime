@@ -525,7 +525,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var fetchedShape = typeShape.Shape;
                     Assert.Equal(397510, fetchedShape[0]);
 
-                    trainingSession.FromBuffer(buffer);
+                    trainingSession.FromBuffer(buffer, true);
                 }
             }
         }
