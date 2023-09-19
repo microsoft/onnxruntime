@@ -263,10 +263,16 @@ bool IsHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
 }
 
 bool IsGPU(ComPtr<IDXCoreAdapter> compute_adapter) {
+    // Only considering hardware adapters
+    if (!IsHardwareAdapter(compute_adapter))
+        return false;
     return compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
 }
 
 bool IsNPU(ComPtr<IDXCoreAdapter> compute_adapter) {
+    // Only considering hardware adapters
+    if (!IsHardwareAdapter(compute_adapter))
+        return false;
     return !(compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS));
 }
 
@@ -303,10 +309,6 @@ API_IMPL_BEGIN
         ComPtr<IDXCoreAdapter> candidateAdapter;
         ORT_THROW_IF_FAILED(
             d3D12CoreComputeAdapters->GetAdapter(i, candidateAdapter.GetAddressOf()));
-
-        // Only considering hardware adapters
-        if (!IsHardwareAdapter(candidateAdapter))
-            continue;
 
         if (dev_filter == OrtDmlDeviceFilter::Gpu) // consider GPUs only
         {
