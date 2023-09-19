@@ -1,0 +1,39 @@
+jobs:
+- job: MacArm64Build
+  pool: onnxruntime-mac-m1-cpu
+
+  variables:
+    condaEnvName: onnxruntime_ci_env
+    pythonVersion: 3.9
+    cmakeVersion: 3.27.4
+
+  steps:
+
+  # Note: We will use a dedicated conda environment to keep the Python dependencies contained.
+  # On a hosted agent this would not be necessary.
+  - bash: |
+      echo "##vso[task.prependpath]/usr/local/miniconda3/bin"
+    displayName: Add Conda to PATH
+
+  - bash: |
+      set -e -x
+      conda create --name $(condaEnvName) --yes python=$(pythonVersion)
+      # 'conda activate' doesn't work in this context, so we just prepend the env directory to path
+      echo "##vso[task.prependpath]~/.conda/envs/$(condaEnvName)/bin"
+    displayName: Create conda environment '$(condaEnvName)' and add to PATH
+
+  - bash: |
+      python -m pip install cmake~=$(cmakeVersion).0
+    displayName: Install CMake $(cmakeVersion)
+
+  - bash: |
+      python $(Build.SourcesDirectory)/tools/ci_build/build.py \
+        --build_apple_framework \
+        --use_coreml \
+        --enable_training_apis \
+        --update --build --parallel --test
+
+  - bash: |
+      conda env remove --name $(condaEnvName) --yes
+    displayName: Remove conda environment '$(condaEnvName)'
+    condition: always()
