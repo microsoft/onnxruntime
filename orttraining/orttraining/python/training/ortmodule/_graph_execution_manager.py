@@ -428,8 +428,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                 [name for name, _ in self._flattened_module.named_parameters()],
             )
 
-            # Cannot append pull weight trigger name to input names here, otherwise, the later check find
-            # input info mismatch, will re-initialize the graph builder.
+            # Cannot append pull weight trigger name to input names as following, otherwise, the later check (
+            # https://github.com/microsoft/onnxruntime/blob/068300d97eb25e5b52324e7af54a45ed1fa6a4c3/orttraining/orttraining/python/training/ortmodule/_training_manager.py#L466C18-L466C18)
+            # find input info mismatch, will re-initialize the graph builder.
             # self._input_info.require_grad_names.append(STAGE3_PULL_WEIGHT_TRIGGER_NAME)
 
         # Cache model for future runs
