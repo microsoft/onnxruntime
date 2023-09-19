@@ -202,7 +202,7 @@ namespace DmlGraphFusionHelper
 
                 // Tensor sizes in DML must be a multiple of 4 bytes large.
                 tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
-                WriteToFile(iter->first + ".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
+                WriteToFile(modelName, ConvertToWString(iter->first) + L".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
 
                 if (inputRawData)
                 {
@@ -291,22 +291,20 @@ namespace DmlGraphFusionHelper
     inline uint32_t GetConstantNodeGraphInputIndex(
         const std::string& constantName,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphConstantNameToMainGraphInputIndex,
-        GraphEdgeIndexInfo& graphInputIndexInfo,
+        uint32_t& graphMaxInputIndex,
         std::unordered_map<std::string_view, uint32_t>& localConstantNameToIndexMap)
     {
         if (serializedGraphConstantNameToMainGraphInputIndex == nullptr)
         {
             if (localConstantNameToIndexMap.find(constantName) == localConstantNameToIndexMap.end())
             {
-                localConstantNameToIndexMap[constantName] = ++graphInputIndexInfo.maxIndex;
-                graphInputIndexInfo.hasEdge = true;
+                localConstantNameToIndexMap[constantName] = ++graphMaxInputIndex;
             }
             return localConstantNameToIndexMap[constantName];
         }
         else
         {
-            graphInputIndexInfo.maxIndex = std::max(graphInputIndexInfo.maxIndex, serializedGraphConstantNameToMainGraphInputIndex->at(constantName));
-            graphInputIndexInfo.hasEdge = true;
+            graphMaxInputIndex = std::max(graphMaxInputIndex, serializedGraphConstantNameToMainGraphInputIndex->at(constantName));
             return serializedGraphConstantNameToMainGraphInputIndex->at(constantName);
         }
     }
@@ -314,6 +312,7 @@ namespace DmlGraphFusionHelper
     template <size_t ALLOCATOR_SIZE>
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
+        const uint32_t inputCount,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         IDMLDevice* device,
         StackAllocator<ALLOCATOR_SIZE>& allocator,
@@ -343,17 +342,17 @@ namespace DmlGraphFusionHelper
             }
         }
 
-        GraphEdgeIndexInfo graphInputIndexInfo = {};
+        uint32_t graphMaxInputIndex = 0;
 
         for (size_t i = 0; i < graphDesc.InputEdges.size(); ++i)
         {
             DML_INPUT_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_INPUT_GRAPH_EDGE_DESC>();
             // 1. If serializedGraphInputIndexToMainGraphInputIndex is not null:
-            //      then use the corresponding main graph input index, because the caller will use corresponding 
-            //      main graph input index for extracting the actual input tensor from the main graph and 
+            //      then use the corresponding main graph input index, because the caller will use corresponding
+            //      main graph input index for extracting the actual input tensor from the main graph and
             //      the caller does not own the creation of dml bindings directly.
             //      Use Case: When the caller is ORT (DML EP) or DmlEngine.
-            // 
+            //
             // 2. If serializedGraphInputIndexToMainGraphInputIndex is null:
             //      then assign the sequential graph input index, because the owns the creationg of dml bindings
             //      directly.
@@ -364,8 +363,7 @@ namespace DmlGraphFusionHelper
             edge->ToNodeInputIndex = graphDesc.InputEdges[i].ToNodeInputIndex;
             edge->Name = graphDesc.InputEdges[i].Name.data();
 
-            graphInputIndexInfo.maxIndex = std::max(graphInputIndexInfo.maxIndex, edge->GraphInputIndex);
-            graphInputIndexInfo.hasEdge = true;
+            graphMaxInputIndex = std::max(graphMaxInputIndex, edge->GraphInputIndex);
             dmlInputEdges.push_back(DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INPUT, edge});
         }
 
@@ -388,12 +386,12 @@ namespace DmlGraphFusionHelper
             if (isConstantEdge)
             {
                 const std::string& constantName = graphDesc.Nodes[graphDesc.IntermediateEdges[i].FromNodeIndex].Name;
-            
+
                 DML_INPUT_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_INPUT_GRAPH_EDGE_DESC>();
                 edge->GraphInputIndex = GetConstantNodeGraphInputIndex(
                     constantName,
                     serializedGraphConstantNameToMainGraphInputIndex,
-                    graphInputIndexInfo,
+                    graphMaxInputIndex,
                     localConstantNameToIndexMap);
                 edge->ToNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].ToNodeIndex];
                 edge->ToNodeInputIndex = graphDesc.IntermediateEdges[i].ToNodeInputIndex;
@@ -413,7 +411,7 @@ namespace DmlGraphFusionHelper
             }
         }
 
-        dmlGraphDesc.InputCount = graphInputIndexInfo.hasEdge ? graphInputIndexInfo.maxIndex + 1 : 0;
+        dmlGraphDesc.InputCount = inputCount;
         dmlGraphDesc.OutputCount = graphDesc.OutputCount;
         dmlGraphDesc.NodeCount = gsl::narrow_cast<uint32_t>(dmlGraphNodes.size());
         dmlGraphDesc.Nodes = dmlGraphNodes.data();
@@ -474,18 +472,15 @@ namespace DmlGraphFusionHelper
             providerImpl,
             serializedGraphInputIndexToMainGraphInputIndex,
             serializedGraphConstantNameToMainGraphInputIndex);
-        
+
         const std::wstring modelName = GetModelName(graph.ModelPath());
         auto buffer = SerializeDmlGraph(serializedDmlGraphDesc);
 
-        std::filesystem::create_directory(modelName);
-        const std::wstring partitionName = 
-            modelName +
-            (modelName.empty() ? L"" : L"/") +
+        const std::wstring partitionName =
             L"Partition_" +
             std::to_wstring(partitionIndex) +
             L".bin";
-        WriteToFile(partitionName, buffer.data(), buffer.size());
+        WriteToFile(modelName, partitionName, buffer.data(), buffer.size());
 
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
         StackAllocator<1024> allocator; // Used for converting DmlSerializedGraphDesc to DML_GRAPH_DESC
@@ -497,6 +492,7 @@ namespace DmlGraphFusionHelper
         std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges;
         ConvertGraphDesc<1024>(
             serializedDmlGraphDesc,
+            fusedNodeInputCount,
             dmlGraphDesc,
             device.Get(),
             allocator,

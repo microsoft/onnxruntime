@@ -4,9 +4,18 @@
 #pragma once
 #include <string>
 #include <string_view>
+#include <locale>
+#include <codecvt>
+        
 
 namespace Dml
 {
+    static inline std::wstring ConvertToWString(std::string_view str)
+    {
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>,wchar_t> g_converterToUtf16;
+        return g_converterToUtf16.from_bytes(str.data());
+    }
+
     static inline std::wstring GetModelName(const onnxruntime::Path& modelPath)
     {
         if (modelPath.GetComponents().empty())
@@ -32,6 +41,7 @@ namespace Dml
             switch (c)
             {
             case '\\':
+            case '/':
             case '\"':
             case '|':
             case '<':
@@ -54,6 +64,7 @@ namespace Dml
             switch (c)
             {
             case '\\':
+            case '/':
             case '\"':
             case '|':
             case '<':
@@ -68,26 +79,17 @@ namespace Dml
         return newName;
     }
 
-    static inline void WriteToFile(std::wstring_view fileName, std::uint8_t* data, size_t dataSize)
+    static inline void WriteToFile(std::wstring_view directoryName, std::wstring_view fileName, std::uint8_t* data, size_t dataSize)
     {
         std::wstring sanitizedFileName = GetSanitizedFileName(fileName);
-        std::ofstream file(sanitizedFileName, std::ios::binary);
+        std::filesystem::create_directory(directoryName);
+        std::wstring fullSanitizedFileName = std::wstring(directoryName) +
+                                (directoryName.empty() ? L"" : L"/") +
+                                sanitizedFileName;
+        std::ofstream file(fullSanitizedFileName, std::ios::binary);
         if (!file.is_open()) 
         {
             std::wstringstream errorMessage;
-            errorMessage << "File named: " << fileName << " could not be opened\n";
-            ORT_THROW_HR(E_INVALIDARG);
-        }
-        file.write(reinterpret_cast<const char*>(data), dataSize);
-    }
-
-    static inline void WriteToFile(std::string_view fileName, std::uint8_t* data, size_t dataSize)
-    {
-        std::string sanitizedFileName = GetSanitizedFileName(fileName);
-        std::ofstream file(sanitizedFileName, std::ios::binary);
-        if (!file.is_open()) 
-        {
-            std::stringstream errorMessage;
             errorMessage << "File named: " << fileName << " could not be opened\n";
             ORT_THROW_HR(E_INVALIDARG);
         }
