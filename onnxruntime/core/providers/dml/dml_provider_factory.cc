@@ -255,11 +255,11 @@ ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
 }
 
 bool IsHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
-    bool isHardware{ false };
+    bool is_hardware{ false };
     THROW_IF_FAILED(adapter->GetProperty(
         DXCoreAdapterProperty::IsHardware,
-        &isHardware));
-    return isHardware;
+        &is_hardware));
+    return is_hardware;
 }
 
 bool IsGPU(ComPtr<IDXCoreAdapter> compute_adapter) {
