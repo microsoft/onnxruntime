@@ -5,6 +5,11 @@ jobs:
   steps:
   - checkout: none
   - bash: |
-      python3 --version
-      pwd
-      hostname
+      set -e -x
+      conda create --name test_env --yes python=3.9
+      conda activate test_env
+      which python
+
+  - bash: |
+      set -e -x
+      conda env remove --name test_env --yes
