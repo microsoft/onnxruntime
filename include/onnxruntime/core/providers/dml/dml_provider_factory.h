@@ -119,28 +119,6 @@ struct OrtDmlApi {
    */
   ORT_API2_STATUS(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* dml_resource, _Out_ ID3D12Resource** d3d_resource);
 
-
-    //ORT_API2_STATUS(FreeGPUAllocation_2, _In_ void* dml_resource);
-
-  //ORT_API2_STATUS(GetNPUDevice, _Out_ int* device_id);
-
-  //ORT_API2_STATUS(GetMLDevice, _In_ bool npu_first, _Out_ int* device_ids);
-
-  // enum class Ordering {
-  //     SAME,       // DXGI/DXCore as is today...
-  //     NONE,       // Take the first one
-  //     GPUS_FIRST,
-  //     NPUS_FIRST
-  // };
-
-  // Ordering foo[3][3] = {
-  //                // Default,                HighPerformance,      LowPower
-  //     /*None*/    { Ordering::GPUS_FIRST,   Ordering::GPUS_FIRST, Ordering::NPUS_FIRST       },
-  //     /*Gpu*/     { Ordering::SAME,         Ordering::SAME      , Ordering::SAME             },
-  //     /*Npu*/     { Ordering::NONE,         Ordering::NONE      , Ordering::NONE             },
-
-  // }
-
   // null means default
   ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
 };

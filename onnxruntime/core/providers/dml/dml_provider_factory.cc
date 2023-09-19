@@ -276,8 +276,6 @@ ORT_API_STATUS_IMPL(FreeGPUAllocation_2, _In_ void* ptr) {
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
 API_IMPL_BEGIN
-  //options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::Create(device_id));
-  
     OrtDmlPerformancePreference p = device_opts->p;
     OrtDmlDeviceFilter f = device_opts->f;
 
