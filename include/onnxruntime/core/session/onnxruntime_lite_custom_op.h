@@ -384,6 +384,7 @@ struct Variadic : public TensorBase {
   const TensorPtr& operator[](size_t indice) const {
     return tensors_.at(indice);
   }
+
  private:
   TensorPtrs tensors_;
 };

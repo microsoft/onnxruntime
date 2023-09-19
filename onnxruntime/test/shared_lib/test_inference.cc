@@ -1410,10 +1410,10 @@ TEST(CApiTest, test_custom_op_library) {
 
 // It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
-TEST(CApiTest, DISABLED_test_custom_op_library) {
+TEST(CApiTest, test_custom_op_library_copy_variadic) {
 // To accomodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
-TEST(CApiTest, DISABLED_test_custom_op_library) {
+TEST(CApiTest, test_custom_op_library_copy_variadic) {
 #else
 TEST(CApiTest, test_custom_op_library_copy_variadic) {
 #endif
