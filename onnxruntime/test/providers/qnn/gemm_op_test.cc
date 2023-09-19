@@ -30,7 +30,7 @@ static void RunGemmTestOnCPU(const std::vector<TestInputDef<DataType>>& input_de
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildOpTestCase("Gemm", input_defs, attrs),
+  RunQnnModelTest(BuildOpTestCase<float>("Gemm", input_defs, {}, attrs),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -192,7 +192,7 @@ static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_de
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy<InputAQType>(BuildOpTestCase<float>("Gemm", input_defs, attrs),
+  TestQDQModelAccuracy<InputAQType>(BuildOpTestCase<float>("Gemm", input_defs, {}, attrs),
                                     BuildQDQGemmTestCase<InputAQType, InputBQType>(input_defs, attrs),
                                     provider_options,
                                     opset,

@@ -29,7 +29,7 @@ static void RunFlattenTestOnCPU(const TestInputDef<DataType>& input_def,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildOpTestCase<DataType>("Flatten", {input_def}, attrs),
+  RunQnnModelTest(BuildOpTestCase<DataType>("Flatten", {input_def}, {}, attrs),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -50,7 +50,7 @@ static void RunFlattenTestOnHTP(const TestInputDef<DataType>& input_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  RunQnnModelTest(BuildOpTestCase<DataType>("Flatten", {input_def}, attrs),
+  RunQnnModelTest(BuildOpTestCase<DataType>("Flatten", {input_def}, {}, attrs),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -71,8 +71,8 @@ static void RunQDQFlattenTestOnHTP(const TestInputDef<float>& input_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildOpTestCase<float>("Flatten", {input_def}, attrs),     // baseline float32 model
-                       BuildQDQOpTestCase<QType>("Flatten", {input_def}, attrs),  // QDQ model
+  TestQDQModelAccuracy(BuildOpTestCase<float>("Flatten", {input_def}, {}, attrs),     // baseline float32 model
+                       BuildQDQOpTestCase<QType>("Flatten", {input_def}, {}, attrs),  // QDQ model
                        provider_options,
                        opset,
                        expected_ep_assignment);

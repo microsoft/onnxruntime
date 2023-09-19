@@ -14,23 +14,6 @@
 namespace onnxruntime {
 namespace test {
 
-// Returns a function that creates a graph with a single Reshape operator.
-template <typename DataType>
-static GetTestModelFn BuildReshapeTestCase(const TestInputDef<DataType>& input_def,
-                                           const TestInputDef<int64_t>& shape_def,
-                                           const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [input_def, shape_def, attrs](ModelTestBuilder& builder) {
-    NodeArg* input = MakeTestInput(builder, input_def);
-    NodeArg* shape_input = MakeTestInput(builder, shape_def);
-    NodeArg* output = builder.MakeOutput();
-    Node& reshape_node = builder.AddNode("Reshape", {input, shape_input}, {output});
-
-    for (const auto& attr : attrs) {
-      reshape_node.AddAttributeProto(attr);
-    }
-  };
-}
-
 // Returns a function that creates a graph with a QDQ Reshape operator.
 template <typename QuantType>
 GetTestQDQModelFn<QuantType> BuildQDQReshapeTestCase(const TestInputDef<float>& input_def,
@@ -78,7 +61,7 @@ static void RunReshapeTestOnCPU(const TestInputDef<DataType>& input_def,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildReshapeTestCase(input_def, shape_def, attrs),
+  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>("Reshape", {input_def}, {shape_def}, attrs),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -100,7 +83,7 @@ static void RunReshapeTestOnHTP(const TestInputDef<DataType>& input_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  RunQnnModelTest(BuildReshapeTestCase(input_def, shape_def, attrs),
+  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>("Reshape", {input_def}, {shape_def}, attrs),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -122,8 +105,10 @@ static void RunQDQReshapeTestOnHTP(const TestInputDef<float>& input_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildReshapeTestCase(input_def, shape_def, attrs),            // baseline float32 model
-                       BuildQDQReshapeTestCase<QType>(input_def, shape_def, attrs),  // QDQ model
+  auto f32_model_builder = BuildOpTestCase<float, int64_t>("Reshape", {input_def}, {shape_def}, attrs);
+  auto qdq_model_builder = BuildQDQReshapeTestCase<QType>(input_def, shape_def, attrs);
+  TestQDQModelAccuracy(f32_model_builder,
+                       qdq_model_builder,
                        provider_options,
                        opset,
                        expected_ep_assignment);

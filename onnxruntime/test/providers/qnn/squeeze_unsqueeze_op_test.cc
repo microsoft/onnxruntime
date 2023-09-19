@@ -13,19 +13,6 @@
 namespace onnxruntime {
 namespace test {
 
-// Returns a function that creates a graph with a single (Un)Squeeze operator.
-template <typename DataType>
-static GetTestModelFn BuildSqueezeTestCase(const std::string& op_type,  // Squeeze or Unsqueeze
-                                           const TestInputDef<DataType>& input_def,
-                                           const TestInputDef<int64_t>& axes_def) {
-  return [op_type, input_def, axes_def](ModelTestBuilder& builder) {
-    NodeArg* input = MakeTestInput(builder, input_def);
-    NodeArg* axes_input = MakeTestInput(builder, axes_def);
-    NodeArg* output = builder.MakeOutput();
-    builder.AddNode(op_type, {input, axes_input}, {output});
-  };
-}
-
 // Returns a function that creates a graph with a QDQ (Un)Squeeze operator.
 template <typename QuantType>
 GetTestQDQModelFn<QuantType> BuildQDQSqueezeTestCase(const std::string& op_type,  // Squeeze or Unsqueeze
@@ -69,7 +56,7 @@ static void RunSqueezeTestOnCPU(const std::string& op_type,  // Squeeze or Unsqu
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildSqueezeTestCase<DataType>(op_type, input_def, axes_def),
+  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -91,7 +78,7 @@ static void RunSqueezeTestOnHTP(const std::string& op_type,  // Squeeze or Unsqu
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  RunQnnModelTest(BuildSqueezeTestCase<DataType>(op_type, input_def, axes_def),
+  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -114,8 +101,8 @@ static void RunQDQSqueezeTestOnHTP(const std::string& op_type,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildSqueezeTestCase<float>(op_type, input_def, axes_def),     // baseline float32 model
-                       BuildQDQSqueezeTestCase<QType>(op_type, input_def, axes_def),  // QDQ model
+  TestQDQModelAccuracy(BuildOpTestCase<float, int64_t>(op_type, {input_def}, {axes_def}, {}),  // baseline float32 model
+                       BuildQDQSqueezeTestCase<QType>(op_type, input_def, axes_def),           // QDQ model
                        provider_options,
                        opset,
                        expected_ep_assignment);

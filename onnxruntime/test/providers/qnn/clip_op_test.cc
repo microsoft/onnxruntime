@@ -28,7 +28,7 @@ static void RunClipTestOnCPU(const std::vector<TestInputDef<DataType>>& input_de
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildOpTestCase<DataType>("Clip", input_defs, {}),
+  RunQnnModelTest(BuildOpTestCase<DataType>("Clip", input_defs, {}, {}),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -116,8 +116,8 @@ static void RunQDQClipTestOnHTP(const std::vector<TestInputDef<float>>& input_de
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildOpTestCase("Clip", input_defs, {}),  // baseline float32 model
-                       BuildQDQClipTestCase<QType>(input_defs),  // QDQ model
+  TestQDQModelAccuracy(BuildOpTestCase<float>("Clip", input_defs, {}, {}),  // baseline float32 model
+                       BuildQDQClipTestCase<QType>(input_defs),             // QDQ model
                        provider_options,
                        opset,
                        expected_ep_assignment);

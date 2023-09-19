@@ -32,7 +32,7 @@ static void RunOpTestOnCPU(const std::string& op_type,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, attrs, op_domain),
+  RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, {}, attrs, op_domain),
                   provider_options,
                   opset_version,
                   expected_ep_assignment);
@@ -113,8 +113,8 @@ static void RunQDQOpTest(const std::string& op_type,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, attrs, op_domain),
-                       BuildQDQOpTestCase<InputQType>(op_type, input_defs, attrs, op_domain, use_contrib_qdq),
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, {}, attrs, op_domain),
+                       BuildQDQOpTestCase<InputQType>(op_type, input_defs, {}, attrs, op_domain, use_contrib_qdq),
                        provider_options,
                        opset_version,
                        expected_ep_assignment,
@@ -137,7 +137,7 @@ static void RunOpTest(const std::string& op_type,
 #endif
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
-  RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, attrs, op_domain),
+  RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, {}, attrs, op_domain),
                   provider_options,
                   opset_version,
                   expected_ep_assignment);
@@ -698,8 +698,8 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
 
   // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
   // 1st run will generate the Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}),
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
                        provider_options,
                        14,
                        ExpectedEPNodeAssignment::All);
@@ -708,8 +708,8 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
 
   // 2nd run will load and run from Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}),
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
                        provider_options,
                        14,
                        ExpectedEPNodeAssignment::All);

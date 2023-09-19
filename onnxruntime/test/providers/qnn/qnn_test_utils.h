@@ -438,25 +438,33 @@ NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<floa
                               bool use_contrib_qdq = false);
 
 /**
- * Returns a function that builds a model with a single operator with N inputs of the same element type.
+ * Returns a function that builds a model with a single operator with N inputs type InputType1 and M inputs
+ * of type InputType2.
  *
  * \param op_type The operator to instantiate.
- * \param input_defs List of input definitions.
+ * \param input_defs_1 List of input definitions of type InputType1.
+ * \param input_defs_2 List of input definitions of type InputType2.
  * \param attrs List of operator attributes.
  * \param op_domain The operator's domain. Defaults to the ONNX domain (i.e., "").
  * \returns A model building function.
  */
-template <typename InputType>
+template <typename InputType1, typename InputType2 = int64_t>
 inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
-                                      const std::vector<TestInputDef<InputType>>& input_defs,
+                                      const std::vector<TestInputDef<InputType1>>& input_defs_1,
+                                      const std::vector<TestInputDef<InputType2>>& input_defs_2,
                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                       const std::string& op_domain = kOnnxDomain) {
-  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder) {
+  return [op_type, input_defs_1, input_defs_2, attrs, op_domain](ModelTestBuilder& builder) {
     std::vector<NodeArg*> op_inputs;
-    op_inputs.reserve(input_defs.size());
+    op_inputs.reserve(input_defs_1.size() + input_defs_2.size());
 
-    for (const auto& input_def : input_defs) {
-      NodeArg* input = MakeTestInput<InputType>(builder, input_def);
+    for (const auto& input_def : input_defs_1) {
+      NodeArg* input = MakeTestInput<InputType1>(builder, input_def);
+      op_inputs.push_back(input);
+    }
+
+    for (const auto& input_def : input_defs_2) {
+      NodeArg* input = MakeTestInput<InputType2>(builder, input_def);
       op_inputs.push_back(input);
     }
 
@@ -470,7 +478,8 @@ inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
 }
 
 /**
- * Returns a function that builds a model with a single QDQ operator with N inputs of the same element type.
+ * Returns a function that builds a model with a single QDQ operator with N float (quantizeable) inputs
+ * and M inputs of a potentially different type.
  *
  * \param op_type The operator to instantiate.
  * \param input_defs List of input definitions.
@@ -478,23 +487,31 @@ inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
  * \param op_domain The operator's domain. Defaults to the ONNX domain (i.e., "").
  * \returns A model building function.
  */
-template <typename InputQType>
-inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_type,
-                                                        const std::vector<TestInputDef<float>>& input_defs,
-                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                                        const std::string& op_domain = kOnnxDomain,
-                                                        bool use_contrib_qdq = false) {
-  return [op_type, input_defs, attrs, op_domain,
-          use_contrib_qdq](ModelTestBuilder& builder, std::vector<QuantParams<InputQType>>& output_qparams) {
+template <typename QuantType, typename OtherInputType = int64_t>
+inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(const std::string& op_type,
+                                                       const std::vector<TestInputDef<float>>& quant_input_defs,
+                                                       const std::vector<TestInputDef<OtherInputType>>& non_quant_input_defs,
+                                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                                       const std::string& op_domain = kOnnxDomain,
+                                                       bool use_contrib_qdq = false) {
+  return [op_type, quant_input_defs, non_quant_input_defs, attrs, op_domain,
+          use_contrib_qdq](ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams) {
     std::vector<NodeArg*> op_inputs;
-    op_inputs.reserve(input_defs.size());
+    op_inputs.reserve(quant_input_defs.size() + non_quant_input_defs.size());
 
-    for (const auto& input_def : input_defs) {
+    // Create QDQ inputs
+    for (const auto& input_def : quant_input_defs) {
       NodeArg* input = MakeTestInput<float>(builder, input_def);
-      QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
-      NodeArg* input_after_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale,
-                                                            input_qparams.zero_point, use_contrib_qdq);
+      QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+      NodeArg* input_after_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale,
+                                                           input_qparams.zero_point, use_contrib_qdq);
       op_inputs.push_back(input_after_qdq);
+    }
+
+    // Create non-QDQ inputs
+    for (const auto& input_def : non_quant_input_defs) {
+      NodeArg* input = MakeTestInput<OtherInputType>(builder, input_def);
+      op_inputs.push_back(input);
     }
 
     // Op -> op_output
@@ -506,8 +523,8 @@ inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_ty
     }
 
     // op_output -> Q -> DQ -> output
-    AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, op_output, output_qparams[0].scale,
-                                                      output_qparams[0].zero_point, use_contrib_qdq);
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, op_output, output_qparams[0].scale,
+                                                     output_qparams[0].zero_point, use_contrib_qdq);
   };
 }
 
