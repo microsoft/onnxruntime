@@ -234,18 +234,6 @@ API_IMPL_END
   return nullptr;
 }
 
-bool IsHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
-    bool isHardware{ false };
-    THROW_IF_FAILED(adapter->GetProperty(
-        DXCoreAdapterProperty::IsHardware,
-        &isHardware));
-    return isHardware;
-}
-
-bool SupportsGraphics(ComPtr<IDXCoreAdapter> adapter) {
-    return adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
-}
-
 ORT_API_STATUS_IMPL(CreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource) {
   API_IMPL_BEGIN
 #ifdef USE_DML
@@ -264,6 +252,22 @@ ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
 #endif  // USE_DML
   return nullptr;
   API_IMPL_END
+}
+
+bool IsHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
+    bool isHardware{ false };
+    THROW_IF_FAILED(adapter->GetProperty(
+        DXCoreAdapterProperty::IsHardware,
+        &isHardware));
+    return isHardware;
+}
+
+bool IsGPU(ComPtr<IDXCoreAdapter> compute_adapter) {
+    return compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
+}
+
+bool IsNPU(ComPtr<IDXCoreAdapter> compute_adapter) {
+    return !(compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS));
 }
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
@@ -306,19 +310,19 @@ API_IMPL_BEGIN
 
         if (dev_filter == OrtDmlDeviceFilter::Gpu) // consider GPUs only
         {
-            if (SupportsGraphics(candidateAdapter)) {
+            if (IsGPU(candidateAdapter)) {
                 ordered_adapters.push_back(candidateAdapter);
             }
         }
         else if(dev_filter == OrtDmlDeviceFilter::Npu) // consider NPUs only
         {
-            if (!SupportsGraphics(candidateAdapter)) {
+            if (IsNPU(candidateAdapter)) {
                 ordered_adapters.push_back(candidateAdapter);
             }
         }
         else // consider both GPUs and NPUs
         {
-            if (SupportsGraphics(candidateAdapter)) {
+            if (IsGPU(candidateAdapter)) {
                 gpu_adapters.push_back(candidateAdapter);
             } else {
                 npu_adapters.push_back(candidateAdapter);
