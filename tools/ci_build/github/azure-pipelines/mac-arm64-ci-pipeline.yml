@@ -28,10 +28,12 @@ jobs:
 
   - bash: |
       python $(Build.SourcesDirectory)/tools/ci_build/build.py \
+        --build_dir $(Build.BinariesDirectory) \
         --build_apple_framework \
         --use_coreml \
         --enable_training_apis \
         --update --build --parallel --test
+    displayName: Build and test onnxruntime
 
   - bash: |
       conda env remove --name $(condaEnvName) --yes
