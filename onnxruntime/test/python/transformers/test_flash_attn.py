@@ -42,10 +42,6 @@ class Config:
         self.head_size = h
 
 
-class ConfigWithPastKV(Config):
-    past_sequence_length = 0
-
-
 def create_packed_multihead_attention_graph(config):
     nodes = [
         helper.make_node(
@@ -484,10 +480,12 @@ def flash_attn_func(q, k, v, config, gqa=False, causal=False, new_k=None, new_v=
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
     if new_kv:
         ort_output, present_k, present_v = ort_session.run(None, ort_inputs)
+        ort_output = numpy.array(ort_output)
         output = torch.tensor(ort_output)
         return output, present_k, present_v
     else:
         ort_output = ort_session.run(None, ort_inputs)
+        ort_output = numpy.array(ort_output)
         output = torch.tensor(ort_output)
         return output
 
@@ -790,13 +788,13 @@ def parity_check_gqa(
 
 
 if __name__ == "__main__":
-    # print("-------- TEST PACKED MHA ---------")
-    # for b in [5]:
-    #     for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
-    #         for n in [6]:
-    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-    #                 config = Config(b, s, s, 0, n, n, h)
-    #                 parity_check(config, True)
+    print("-------- TEST PACKED MHA ---------")
+    for b in [5]:
+        for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
+            for n in [6]:
+                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+                    config = Config(b, s, s, 0, n, n, h)
+                    parity_check(config, True)
     print("-------- TEST MHA ---------")
     for b in [5]:
         for s, s2 in [
@@ -815,49 +813,45 @@ if __name__ == "__main__":
                 for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
                     config = Config(b, s, s2, 0, n, n, h)
                     parity_check(config, False)
-                    break
-                break
-            break
-        break
-    # print("-------- TEST GQA ---------")
-    # for b in [5]:
-    #     for s, s2 in [
-    #         (113, 203),
-    #         (128, 217),
-    #         (113, 211),
-    #         (108, 256),
-    #         (256, 512),
-    #         (512, 256),
-    #         (1024, 1024),
-    #         (1023, 1024),
-    #         (1024, 1023),
-    #         (2048, 2048),
-    #     ]:
-    #         for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-    #             for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
-    #                 for causal in [True, False]:
-    #                     config = Config(b, s, s2, 0, n, n2, h)
-    #                     parity_check_gqa(config, causal=causal)
-    # print("-------- TEST GQA PAST ---------")
-    # for b in [2]:
-    #     for s, s2 in [
-    #         (1, 128),
-    #         (1, 339),
-    #         (3, 1024),
-    #         (64, 800),
-    #         (64, 256),
-    #         (3, 799),
-    #         (64, 2048),
-    #         (16, 20000),
-    #         (1, 128 * 512),
-    #         (16, 128 * 512),
-    #         (128, 128),
-    #     ]:
-    #         for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-    #             for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
-    #                 for causal in [True]:
-    #                     for new_kv in [True]:
-    #                         random.seed(69)
-    #                         sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-    #                         config = Config(b, s, s2, sp, n, n2, h)
-    #                         parity_check_gqa(config, causal=causal, new_kv=new_kv, rtol=1e-3, atol=1e-3)
+    print("-------- TEST GQA ---------")
+    for b in [5]:
+        for s, s2 in [
+            (113, 203),
+            (128, 217),
+            (113, 211),
+            (108, 256),
+            (256, 512),
+            (512, 256),
+            (1024, 1024),
+            (1023, 1024),
+            (1024, 1023),
+            (2048, 2048),
+        ]:
+            for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
+                for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+                    for causal in [True, False]:
+                        config = Config(b, s, s2, 0, n, n2, h)
+                        parity_check_gqa(config, causal=causal)
+    print("-------- TEST GQA PAST ---------")
+    for b in [2]:
+        for s, s2 in [
+            (1, 128),
+            (1, 339),
+            (3, 1024),
+            (64, 800),
+            (64, 256),
+            (3, 799),
+            (64, 2048),
+            (16, 20000),
+            (1, 128 * 512),
+            (16, 128 * 512),
+            (128, 128),
+        ]:
+            for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
+                for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+                    for causal in [True]:
+                        for new_kv in [True]:
+                            random.seed(69)
+                            sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                            config = Config(b, s, s2, sp, n, n2, h)
+                            parity_check_gqa(config, causal=causal, new_kv=new_kv, rtol=1e-3, atol=1e-3)

@@ -113,7 +113,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // TODO(aciddelgado): restructure these functions so they take parameters as input rather than individual numbers
   parameters.num_splits = onnxruntime::flash::num_splits_heuristic(
       parameters.batch_size, parameters.sequence_length, parameters.max_sequence_length, parameters.num_heads,
-      parameters.head_size, device_prop.multiProcessorCount, 128, past_key != nullptr);
+      parameters.head_size, device_prop.multiProcessorCount, 128, past_key != nullptr, device_prop.major == 8 && device_prop.minor > 0);
   if (parameters.num_splits > 1) {
     // softmax_lse_accum buffer
     size_t softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(
