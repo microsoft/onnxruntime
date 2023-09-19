@@ -99,7 +99,6 @@ struct OrtDmlApi {
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML1, _In_ OrtSessionOptions* options,
                   _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
 
-
   /**
    * CreateGPUAllocationFromD3DResource
    * This API creates a DML EP resource based on a user-specified D3D12 resource.
@@ -112,14 +111,17 @@ struct OrtDmlApi {
    */
   ORT_API2_STATUS(FreeGPUAllocation, _In_ void* dml_resource);
 
-
   /**
    * GetD3D12ResourceFromAllocation
    * This API gets the D3D12 resource when an OrtValue has been allocated by the DML EP.
    */
   ORT_API2_STATUS(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* dml_resource, _Out_ ID3D12Resource** d3d_resource);
 
-  // null means default
+  /**
+   * OrtSessionOptionsAppendExecutionProvider_DML2
+   * Creates a DirectML Execution Provider given the supplied device options that contain a performance preference
+   * (high power, low power, or defult) and a device filter (None, GPU, or NPU).
+   */
   ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
 };
 
