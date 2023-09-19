@@ -602,6 +602,11 @@
       // // "test_hardsigmoid",
       // // "test_hardswish_expanded",
       // // "test_hardswish",
+      "test_if",
+      // TODO: Uncomment 'test_if_seq' and 'test_if_opt' once the test infra
+      // supports Sequence and Optional types
+      // "test_if_seq",
+      // "test_if_opt",
       "test_instancenorm_epsilon",
       "test_instancenorm_example",
       // "test_isinf_negative",
