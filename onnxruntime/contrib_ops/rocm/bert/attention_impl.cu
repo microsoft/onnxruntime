@@ -30,6 +30,7 @@ limitations under the License.
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/rocm/bert/attention_impl.h"
 #include "contrib_ops/rocm/bert/attention_softmax.h"
+#include "contrib_ops/rocm/bert/decoder_attention_impl.h"
 
 using namespace onnxruntime::rocm;
 
