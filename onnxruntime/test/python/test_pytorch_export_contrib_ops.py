@@ -49,9 +49,7 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
 # These set of tests verify ONNX model export and compares outputs between
 # PyTorch and ORT.
 class ONNXExporterTest(unittest.TestCase):
-    from torch.onnx.symbolic_helper import _export_onnx_opset_version
-
-    opset_version = _export_onnx_opset_version
+    opset_version = 17
     keep_initializers_as_inputs = True  # For IR version 3 type export.
 
     def setUp(self):
