@@ -7,8 +7,9 @@
 namespace onnxruntime {
 struct ProviderInfo_TensorRT {
   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
-  virtual OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) = 0;
   virtual OrtStatus* UpdateProviderOptions(void* provider_options, const ProviderOptions& options) = 0;
+  virtual OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) = 0;
+  virtual OrtStatus* ReleaseCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list) = 0; 
 
  protected:
   ~ProviderInfo_TensorRT() = default;  // Can only be destroyed through a subclass instance

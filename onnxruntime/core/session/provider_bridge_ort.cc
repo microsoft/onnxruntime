@@ -1649,7 +1649,9 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
   options->provider_factories.push_back(factory);
 
   std::vector<OrtCustomOpDomain*> custom_op_domains;
-  TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
+  std::string extra_plugin_lib_paths = onnxruntime::Env::Default().GetEnvironmentVar("trt_extra_plugin_lib_paths");
+  onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
+  provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
   for (auto ptr : custom_op_domains) {
     options->custom_op_domains_.push_back(ptr);
   }
@@ -1680,7 +1682,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   options->provider_factories.push_back(factory);
 
   std::vector<OrtCustomOpDomain*> custom_op_domains;
-  TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
+  onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
+  provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, "");
   for (auto ptr : custom_op_domains) {
     options->custom_op_domains_.push_back(ptr);
   }
@@ -1788,10 +1791,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   options->provider_factories.push_back(factory);
 
   std::vector<OrtCustomOpDomain*> custom_op_domains;
-  TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
+  std::string extra_plugin_lib_paths = (tensorrt_options == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
+  onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
+  provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
   for (auto ptr : custom_op_domains) {
     options->custom_op_domains_.push_back(ptr);
   }
+
   return nullptr;
   API_IMPL_END
 }
@@ -1918,9 +1924,14 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
 #ifdef USE_TENSORRT
   if (ptr != nullptr) {
-    delete ptr->trt_int8_calibration_table_name;
-    delete ptr->trt_engine_cache_path;
-    delete ptr->trt_engine_decryption_lib_path;
+    delete[] ptr->trt_int8_calibration_table_name;
+    delete[] ptr->trt_engine_cache_path;
+    delete[] ptr->trt_engine_decryption_lib_path;
+    delete[] ptr->trt_tactic_sources;
+    delete[] ptr->trt_extra_plugin_lib_paths;
+    delete[] ptr->trt_profile_min_shapes;
+    delete[] ptr->trt_profile_max_shapes;
+    delete[] ptr->trt_profile_opt_shapes;
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);

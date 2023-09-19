@@ -27,6 +27,11 @@ struct ProviderInfo_TensorRT_Impl final : ProviderInfo_TensorRT {
     return nullptr;
   }
 
+  OrtStatus* UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
+    TensorrtExecutionProviderInfo::UpdateProviderOptions(provider_options, options);
+    return nullptr;
+  }
+
   OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) override {
     common::Status status = CreateTensorRTCustomOpDomainList(domain_list, extra_plugin_lib_paths);
     if (!status.IsOK()) {
@@ -35,10 +40,11 @@ struct ProviderInfo_TensorRT_Impl final : ProviderInfo_TensorRT {
     return nullptr;
   }
 
-  OrtStatus* UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
-    TensorrtExecutionProviderInfo::UpdateProviderOptions(provider_options, options);
+  OrtStatus* ReleaseCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list) override {
+    ReleaseTensorRTCustomOpDomainList(domain_list); 
     return nullptr;
   }
+
 } g_info;
 
 struct TensorrtProviderFactory : IExecutionProviderFactory {
@@ -75,10 +81,6 @@ struct Tensorrt_Provider : Provider {
     info.device_id = device_id;
     info.has_trt_options = false;
 
-    common::Status status = CreateTensorRTCustomOpDomainList(info);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't create custom ops for TRT plugins.";
-    }
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -119,11 +121,6 @@ struct Tensorrt_Provider : Provider {
     info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
     info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
     info.cuda_graph_enable = options.trt_cuda_graph_enable != 0;
-
-    common::Status status = CreateTensorRTCustomOpDomainList(info);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't create custom ops for TRT plugins.";
-    }
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }
