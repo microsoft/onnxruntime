@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <dxcore.h>
+#include <vector>
 
 #include <DirectML.h>
 #ifndef _GAMING_XBOX
@@ -295,17 +296,11 @@ API_IMPL_BEGIN
     int compute_only_device_id = -1;
 
     // will hold all the adapters in the order specified by the device options
-    ComPtr<IDXCoreAdapter>* ordered_adapters =
-        (ComPtr<IDXCoreAdapter>*) malloc(count * sizeof(ComPtr<IDXCoreAdapter>));
-    int ordered_adapter_count = 0;
+    auto ordered_adapters = std::vector<ComPtr<IDXCoreAdapter>>();
 
     // Used in the case that both GPU and NPU adapters are considered
-    ComPtr<IDXCoreAdapter>* gpu_adapters =
-        (ComPtr<IDXCoreAdapter>*) malloc(count * sizeof(ComPtr<IDXCoreAdapter>));
-    int gpu_adapter_count = 0;
-    ComPtr<IDXCoreAdapter>* npu_adapters =
-        (ComPtr<IDXCoreAdapter>*) malloc(count * sizeof(ComPtr<IDXCoreAdapter>));
-    int npu_adapter_count = 0;
+    auto gpu_adapters = std::vector<ComPtr<IDXCoreAdapter>>();
+    auto npu_adapters = std::vector<ComPtr<IDXCoreAdapter>>();
 
     // Iterate through all compute capable adapters
     for (uint32_t i = 0; i < count; ++i)
@@ -321,25 +316,21 @@ API_IMPL_BEGIN
         if (f == OrtDmlDeviceFilter::Gpu) // consider GPUs only
         {
             if (supportsGraphics(candidateAdapter)) {
-                ordered_adapters[ordered_adapter_count] = candidateAdapter;
-                ordered_adapter_count++;
+                ordered_adapters.push_back(candidateAdapter);
             }
         }
         else if(f == OrtDmlDeviceFilter::Npu) // consider NPUs only
         {
             if (!supportsGraphics(candidateAdapter)) {
-                ordered_adapters[ordered_adapter_count] = candidateAdapter;
-                ordered_adapter_count++;
+                ordered_adapters.push_back(candidateAdapter);
             }
         }
         else // consider both GPUs and NPUs
         {
             if (supportsGraphics(candidateAdapter)) {
-                gpu_adapters[gpu_adapter_count] = candidateAdapter;
-                gpu_adapter_count++;
+                gpu_adapters.push_back(candidateAdapter);
             } else {
-                npu_adapters[npu_adapter_count] = candidateAdapter;
-                npu_adapter_count++;
+                npu_adapters.push_back(candidateAdapter);
             }
         }
     }
@@ -347,33 +338,22 @@ API_IMPL_BEGIN
     if (f == OrtDmlDeviceFilter::None) // considering both NPUs and GPUs
     {
         // order the adapters based on the performance preference
-        ComPtr<IDXCoreAdapter>* high_pri_adapters;
-        ComPtr<IDXCoreAdapter>* low_pri_adapters;
-        int num_high_pri_adapters;
-        int num_low_pri_adapters;
+        std::vector<ComPtr<IDXCoreAdapter>> high_pri_adapters;
+        std::vector<ComPtr<IDXCoreAdapter>> low_pri_adapters;
         if (p == OrtDmlPerformancePreference::LowPower) // NPUs first
         {
             high_pri_adapters = npu_adapters;
-            num_high_pri_adapters = npu_adapter_count;
             low_pri_adapters = gpu_adapters;
-            num_low_pri_adapters = gpu_adapter_count;
         }
         else // GPUs first
         {
             high_pri_adapters = gpu_adapters;
-            num_high_pri_adapters = gpu_adapter_count;
             low_pri_adapters = npu_adapters;
-            num_low_pri_adapters = npu_adapter_count;
         }
 
-        for (int i = 0; i < num_high_pri_adapters; i++) {
-            ordered_adapters[ordered_adapter_count] = high_pri_adapters[i];
-            ordered_adapter_count++;
-        }
-        for (int i = 0; i < num_low_pri_adapters; i++) {
-            ordered_adapters[ordered_adapter_count] = low_pri_adapters[i];
-            ordered_adapter_count++;
-        }
+        ordered_adapters.reserve(high_pri_adapters.size() + low_pri_adapters.size());
+        ordered_adapters.insert(ordered_adapters.end(), high_pri_adapters.begin(), high_pri_adapters.end());
+        ordered_adapters.insert(ordered_adapters.end(), low_pri_adapters.begin(), low_pri_adapters.end());
     }
 
     // check if ordered_adapter count is 0 (no adapters?)
