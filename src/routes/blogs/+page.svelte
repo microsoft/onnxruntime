@@ -202,7 +202,7 @@
 
 <div class="container mx-auto">
 	<div class="flex">
-		<h1 class="text-5xl my-auto">Blogs & Announcements</h1>
+		<h1 class="text-5xl my-auto mx-4">Blogs & Announcements</h1>
 		<div class="ml-5 hidden md:flex">
 			<ImageBlogs />
 		</div>

@@ -21,16 +21,6 @@
 	};
 </script>
 
-<!-- <article on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="card bg-base-200">
-	<figure><img  src={imgsrc} alt={imgalt} /></figure>
-	<div class="card-body">
-		<h2 class="card-title">{title}</h2>
-		<p>
-			{description}
-		</p>
-        <p class="text-secondary text-right">-{author}</p>
-	</div>
-</article> -->
 <article
 	on:mouseenter={handleEnter}
 	on:mouseleave={handleLeave}
@@ -38,7 +28,7 @@
 >
 	<div class="md:flex">
 		<div class="md:shrink-0 my-auto">
-			<img class="md:h-48 w-full" src={imgsrc} alt={imgalt} />
+			<img class="md:h-48 w-full hidden md:flex" src={imgsrc} alt={imgalt} />
 		</div>
 		<div class="p-8">
 			<p class="block mt-1 leading-tight font-bold text-neutral text-lg">{title}</p>

@@ -29,8 +29,7 @@
 					>
 					<a
 						href="https://onnxruntime.ai/docs/tutorials/csharp/stable-diffusion-csharp.html"
-						class="btn-primary btn xl:hidden"
-						>Inference Stable Diffusion with C# and ONNX Runtime →</a
+						class="btn-primary btn xl:hidden">Inference Stable Diffusion →</a
 					>
 				</div>
 			</div>
@@ -41,11 +40,12 @@
 				<div class="card-actions">
 					<a
 						href="https://medium.com/microsoftazure/accelerating-stable-diffusion-inference-with-onnx-runtime-203bd7728540"
-						class="btn btn-primary hidden xl:inline-flex">Learn how to accelerate Stable Diffusion with ONNX Runtime →</a
+						class="btn btn-primary hidden xl:inline-flex"
+						>Learn how to accelerate Stable Diffusion with ONNX Runtime →</a
 					>
 					<a
 						href="https://medium.com/microsoftazure/accelerating-stable-diffusion-inference-with-onnx-runtime-203bd7728540"
-						class="btn btn-primary xl:hidden">Accelerate Stable Diffusion with ONNX Runtime →</a
+						class="btn btn-primary xl:hidden">Accelerate Stable Diffusion →</a
 					>
 				</div>
 			</div>

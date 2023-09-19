@@ -37,7 +37,7 @@
 			</p>
 			<a
 				href="https://huggingface.co/docs/optimum/exporters/onnx/overview"
-				class="btn btn-primary md:mb-4 mr-0 mb-0 md:mr-4">Learn more about Hugging Face Optimum →</a
+				class="btn btn-primary mr-0 mb-4 md:mr-4">Learn more about Hugging Face Optimum →</a
 			>
 			<a href="https://huggingface.co/docs/transformers.js/index" class="btn btn-primary"
 				>Learn more about Transformers.js →</a

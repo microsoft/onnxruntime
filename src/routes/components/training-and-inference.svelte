@@ -13,7 +13,7 @@
 		ONNX Runtime can be used to accelerate both large model training and on-device training.
 	</p>
 	<a href="./training" class="btn btn-primary">Learn more about ONNX Runtime Training →</a>
-	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 mx-10">
+	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 md:mx-10">
 		<div class="bg-slate-500 p-4">
 			<div class="grid lg:grid-cols-4 place-items-center">
 				<div class="col-span-3">
@@ -53,7 +53,7 @@
 		across Office, Azure, Bing, as well as thousands of community projects.
 	</p>
 	<a href="./inference" class="btn btn-primary">Learn more about ONNX Runtime Inferencing →</a>
-	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 mx-10">
+	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 md:mx-10">
 		<div class="bg-slate-500 p-4">
 			<div class="grid lg:grid-cols-4 place-items-center">
 				<div class="col-span-3">

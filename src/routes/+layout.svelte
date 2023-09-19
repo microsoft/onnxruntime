@@ -32,7 +32,7 @@
 	<meta property="og:type" content="website" />
 </svelte:head>
 <Analytics />
-<div class="selection:bg-success">
+<div class="selection:bg-primary">
 	<Header />
 	{#key data.pathname}
 		<div in:fade={{ duration: 300, delay: 400 }} out:fade={{ duration: 300 }}>

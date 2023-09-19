@@ -86,6 +86,6 @@
 		<div class="text-xl pt-1">Installation Instructions</div>
 	</div>
 	<div class="col-span-4 grid gap-2 bg-base-300 p-2 rounded-sm">
-		{radioValue == "" ? "Please select a combination of resources" : radioValue }
+		{radioValue == '' ? 'Please select a combination of resources' : radioValue}
 	</div>
 </div>

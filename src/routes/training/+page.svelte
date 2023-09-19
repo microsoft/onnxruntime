@@ -23,10 +23,9 @@
 				proven technologies of ONNX Runtime and ONNX format.
 			</p>
 			<br />
-			<div class="bg-white w-1/2 p-5">
-				<code class="">
+			<div class="bg-white w-100 md:w-1/2 p-4">
+				<code>
 					<span class="text-red-500">- model = build_model() # User's PyTorch model</span><br />
-
 					<span class="text-green-500">+ model = ORTModule(build_model())</span>
 				</code>
 			</div>
@@ -37,7 +36,7 @@
 			>
 		</div>
 		<div class="mx-auto">
-			<ImageLargemodeltraining widthscale={2} heightscale={2} />
+			<ImageLargemodeltraining widthscale={1.8} heightscale={1.8} />
 		</div>
 	</div>
 </div>
@@ -67,7 +66,7 @@
 				<p>
 					The same model and API works with NVIDIA and AMD GPUs, and the extensible "execution
 					provider" architecture allow you to plug-in custom operators, optimizer and hardware
-					accelerators​.
+					accelerators.
 				</p>
 			</div>
 		</div>

@@ -1,7 +1,7 @@
 <svg
 	class=""
-	width="376"
-	height="216"
+	width="338.4"
+	height="194.4"
 	viewBox="0 0 188 108"
 	fill="none"
 	xmlns="http://www.w3.org/2000/svg"

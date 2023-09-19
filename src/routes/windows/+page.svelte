@@ -55,7 +55,7 @@
 		recent blogs:
 	</p>
 	<a
-		class="btn btn-primary"
+		class="btn btn-primary mb-4 md:mb:0"
 		href="https://blogs.windows.com/windowsdeveloper/2023/05/23/unlocking-the-end-to-end-windows-ai-developer-experience-using-onnx-runtime-and-olive/"
 		>Unlocking the end-to-end Windows AI developer experience using ONNX Runtime and Olive →</a
 	>
@@ -72,14 +72,31 @@
 			<div class="card-body">
 				<h2 class="card-title">Windows ML Samples Gallery</h2>
 				<p>
-					This gallery demonstrates different machine learning scenarios and features using <a class="text-blue-500" href="https://docs.microsoft.com/en-us/windows/ai/windows-ml/">Windows
-						ML</a> in an interactive format. The app is an interactive companion that shows the
-					integration of <a class="text-blue-500" href="https://docs.microsoft.com/en-us/uwp/api/windows.ai.machinelearning">Windows Machine Learning Library APIs</a> into a desktop <a class="text-blue-500" href="https://docs.microsoft.com/en-us/uwp/api/windows.ai.machinelearning">WinUI 3</a> application.
+					This gallery demonstrates different machine learning scenarios and features using <a
+						class="text-blue-500"
+						href="https://docs.microsoft.com/en-us/windows/ai/windows-ml/">Windows ML</a
+					>
+					in an interactive format. The app is an interactive companion that shows the integration
+					of
+					<a
+						class="text-blue-500"
+						href="https://docs.microsoft.com/en-us/uwp/api/windows.ai.machinelearning"
+						>Windows Machine Learning Library APIs</a
+					>
+					into a desktop
+					<a
+						class="text-blue-500"
+						href="https://docs.microsoft.com/en-us/uwp/api/windows.ai.machinelearning">WinUI 3</a
+					> application.
 				</p>
 				<div class="card-actions">
 					<a
 						href="https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/WinMLSamplesGallery"
-						class="btn btn-primary">Check out the Windows ML Sample Gallery →</a
+						class="btn btn-primary hidden md:inline">Check out the Windows ML Sample Gallery →</a
+					>
+					<a
+						href="https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/WinMLSamplesGallery"
+						class="btn btn-primary md:hidden">Windows ML Sample Gallery →</a
 					>
 				</div>
 			</div>

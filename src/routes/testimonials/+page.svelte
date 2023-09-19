@@ -274,8 +274,8 @@
 <div class="container mx-auto">
 	<div class="flex mb-5">
 		<div class="mr-5 my-auto">
-			<h1 class="text-5xl">Our Partners</h1>
-			<h2 class="text-2xl mb-4">
+			<h1 class="text-5xl mx-4">Our Customers</h1>
+			<h2 class="text-xl mb-4 mx-4">
 				Hear from some of the products and companies using ONNX Runtime:
 			</h2>
 		</div>
@@ -284,7 +284,7 @@
 		</div>
 	</div>
 
-	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mx-4 md:mx-0">
 		{#each quotes as quote}
 			<TestimonialCard
 				title={quote.title}

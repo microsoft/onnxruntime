@@ -7,7 +7,7 @@
 	import ImagePt3 from '../../images/undraw/image_PT3.svelte';
 	import ImagePt4 from '../../images/undraw/image_PT4.svelte';
 	import ImagePt5 from '../../images/undraw/image_PT5.svelte';
-	import pythonfree from '../../images/python-free.png';
+	import prodready from '../../images/prod-ready.png';
 	const title = 'PyTorch + ONNX Runtime';
 	const description =
 		'PyTorch leads the deep learning landscape with its readily digestible and flexible API; the large number of ready-made models available, particularly in the natural language (NLP) domain; as well as its domain specific libraries.';
@@ -74,22 +74,22 @@
 			</article>
 			<article class="card bg-base-300 lg:mt-48 grid md:grid-cols-3">
 				<div class="card-body col-span-2 order-last md:order-first">
-					<h2 class="card-title">Python not required</h2>
+					<h2 class="card-title">Production Ready</h2>
 					<p>
-						Training PyTorch models requires Python but that can be a significant obstacle to
-						deploying PyTorch models to many production environments, especially Android and iOS
-						mobile devices. ONNX Runtime is designed for production and provides APIs in C/C++, C#,
-						Java, and Objective-C, helping create a bridge from your PyTorch training environment to
-						a successful PyTorch production deployment.
+						Train and deploy models reliably and at scale using a built-in PyTorch environment
+						within Azure Machine Learning to ensure that the latest PyTorch version is fully
+						supported through a lightweight, standalone environment that includes needed components
+						like ONNX Runtime for Training to effectively run optimized training for large models.
 					</p>
 					<div class="card-actions">
-						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary"
-							><span class="hidden md:inline">ONNX Runtime's</span> Python-free APIs →</a
+						<a
+							href="https://techcommunity.microsoft.com/t5/ai-machine-learning-blog/azure-container-for-pytorch-is-now-generally-available-in-azure/ba-p/3774616"
+							class="btn btn-primary">Learn about ACPT →</a
 						>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
-					<img src={pythonfree} alt="" />
+					<img src={prodready} alt="" />
 				</figure>
 			</article>
 		</div>
@@ -111,7 +111,10 @@
 						platforms.
 					</p>
 					<div class="card-actions">
-						<a class="btn btn-primary">Check the latest on performance enhancements →</a>
+						<a class="btn btn-primary hidden md:inline"
+							>Check the latest on performance enhancements →</a
+						>
+						<a class="btn btn-primary md:hidden">Performance enhancements →</a>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
@@ -129,7 +132,10 @@
 						days.
 					</p>
 					<div class="card-actions">
-						<a href="./testimonials" class="btn btn-primary">See what ONNX Runtime users are saying →</a>
+						<a href="./testimonials" class="btn btn-primary hidden md:inline"
+							>See what ONNX Runtime users are saying →</a
+						>
+						<a href="./testimonials" class="btn btn-primary md:hidden">Testimonials →</a>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">

@@ -16,7 +16,7 @@
 				Linux, Windows, and Mac allows you to build and deploy applications without worry.
 			</p>
 		</div>
-		<div class="m-auto grid lg:hidden">
+		<div class="m-auto lg:hidden">
 			<Ortcrossplatform />
 		</div>
 	</div>
