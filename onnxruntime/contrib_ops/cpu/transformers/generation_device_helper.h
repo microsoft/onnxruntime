@@ -36,7 +36,7 @@ namespace GenerationDeviceHelper {
 #ifdef USE_CUDA
 using ReorderPastStateFunc = std::function<Status(
     const void* cuda_device_prop,  // cudaDeviceProp
-    Tensor& past_state,
+    std::vector<Tensor*>& past_state_vector,
     Tensor& past_state_staging,
     Stream* stream)>;  // cublasHandle_t
 

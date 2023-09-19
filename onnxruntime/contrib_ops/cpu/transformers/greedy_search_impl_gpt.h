@@ -204,12 +204,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
   GreedySearchState<T> greedy_state;
   greedy_state.Init(this->cpu_allocator_,
                     this->temp_space_allocator_,
-                    static_cast<int>(parameters->BatchBeamSize()),
-                    static_cast<int>(parameters->vocab_size),
-                    static_cast<int>(parameters->sequence_length),
-                    static_cast<int>(parameters->max_length),
-                    static_cast<int>(parameters->num_heads),
-                    static_cast<int>(parameters->head_size),
+                    static_cast<const IGenerationParameters&>(*this->parameters_),
                     gpt_subgraph_.has_decoder_masked_attention_,
                     this->IsCuda());
 
@@ -346,12 +341,14 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
       // operations.
       // If we ever do them in different streams, we must use different staging buffers to avoid data
       // races.
+      std::vector<Tensor*> reorder_candidate_tensors;
       for (size_t i = 0; i < static_cast<size_t>(gpt_subgraph_.num_layers); ++i) {
-        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
-                                                     *fetches[offset + i].GetMutable<Tensor>(),
-                                                     greedy_state.staging_for_past_state_reorder,
-                                                     this->ort_stream_));
+        reorder_candidate_tensors.push_back(fetches[offset + i].GetMutable<Tensor>());
       }
+      ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                   reorder_candidate_tensors,
+                                                   greedy_state.staging_for_past_state_reorder,
+                                                   this->ort_stream_));
     }
 #endif
 

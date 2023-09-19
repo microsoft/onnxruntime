@@ -41,7 +41,7 @@ struct IBeamSearchState {
 
   gsl::span<int32_t> sequences_device;  // shape (2 * batch_size * max_length)
 
-  Tensor staging_for_past_state_reorder;  // Tensor of shape (batch_size * num_beams, num_heads, max_length, head_size)
+  Tensor staging_for_past_state_reorder;  // Tensor of size (num_layers * batch_size * num_beams * num_heads * max_length * head_size)
 };
 
 struct IBeamSearchCpuState {
@@ -67,7 +67,7 @@ struct IGreedySearchState {
   gsl::span<int32_t> temp_topk_tokens_buffer;  // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1(GPU only)
   gsl::span<T> topk_scores_buffer;             // shape (batch_size), output buffer for topk stage 2 (GPU only)
   gsl::span<int32_t> topk_tokens_buffer;       // shape (batch_size), output buffer for topk stage 2 (GPU only)
-  Tensor staging_for_past_state_reorder;       // Tensor of shape (batch_size * num_beams(1), num_heads, max_length, head_size)
+  Tensor staging_for_past_state_reorder;       // Tensor of size (num_layers * batch_size * num_beams(1) * num_heads * max_length * head_size)
 };
 
 template <typename T>

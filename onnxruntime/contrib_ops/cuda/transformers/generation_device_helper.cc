@@ -57,23 +57,36 @@ namespace GenerationCudaDeviceHelper {
 // extra overhead.
 Status ReorderPastState(
     const void* cuda_device_prop,
-    Tensor& past_state,
+    std::vector<Tensor*>& past_state_vector,
     Tensor& past_state_staging,
     Stream* stream) {
   ORT_ENFORCE(stream);
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream->GetHandle());
   cublasHandle_t cublas_handle = static_cast<CudaStream*>(stream)->cublas_handle_;
 
+  Tensor& past_state = *past_state_vector[0];
   const auto& past_state_shape = past_state.Shape();
 
   const auto& past_state_dims = past_state_shape.GetDims();
   const bool packed_past = past_state_dims.size() == 5;
 
-  // Copy the 'K' values into the temp staging buffer
-  size_t past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
+  size_t batch_size = packed_past ? past_state_dims[1] : past_state_dims[0];
+  size_t num_heads = packed_past ? past_state_dims[2] : past_state_dims[1];
+  size_t max_length = packed_past ? past_state_dims[3] : past_state_dims[2];
+  size_t head_size = packed_past ? past_state_dims[4] : past_state_dims[3];
+
+  size_t each_past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
+  size_t total_past_num = past_state_vector.size();
+
   void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state_size,
-                                       cudaMemcpyDeviceToDevice, cuda_stream));
+  std::vector<void*> past_state_buffer_ptrs(past_state_vector.size());
+  for (size_t i = 0; i < total_past_num; ++i) {
+    past_state_buffer_ptrs[i] = past_state_vector[i]->MutableDataRaw();
+  }
+
+  void* past_state_buffer_ptrs_device = nullptr // bugbug
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_buffer_ptrs_device, past_state_buffer_ptrs.data, total_past_num,
+                                       cudaMemcpyHostToDevice, cuda_stream));
 
   // Now consider the original 'K' values to be of shape [B, N, max_length, head_size / x, x] and transpose it into
   // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
@@ -95,11 +108,7 @@ Status ReorderPastState(
                                                  chunk_size};
 
   // TODO(hasesh): Explore perf tuning for this Transpose operation
-  return onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream,
-                                                   cublas_handle, permutation,
-                                                   past_state_staging, past_state,
-                                                   &transpose_input_shape_override,
-                                                   &transpose_output_shape_override);
+
 }
 
 Status InitCacheIndir(Tensor& cache_indir, Stream* stream) {

@@ -75,35 +75,30 @@ struct GreedySearchState : public IGreedySearchState<T> {
 
   void Init(AllocatorPtr cpu_allocator,
             AllocatorPtr allocator,
-            int batch_size,
-            int vocab_size,
-            int sequence_length,
-            int max_length,
-            int num_heads,
-            int head_size,
+            const IGenerationParameters& parameters,
             bool has_decoder_masked_self_attention,
             bool is_cuda) {
     // below buffers are on cpu
     this->sequences_space = AllocateBuffer<int32_t>(cpu_allocator,
                                                     sequences_space_buffer_,
-                                                    SafeInt<size_t>(2) * batch_size * max_length);
+                                                    SafeInt<size_t>(2) * parameters.batch_size * parameters.max_length);
     memset(this->sequences_space.data(), 0, this->sequences_space.size_bytes());
-    this->sequences.Init(this->sequences_space, static_cast<int>(batch_size), sequence_length, max_length);
+    this->sequences.Init(this->sequences_space, static_cast<int>(parameters.batch_size), parameters.sequence_length, parameters.max_length);
 
-    this->sequence_lengths = AllocateBuffer<int32_t>(cpu_allocator, sequence_lengths_buffer_, batch_size);
-    this->eos_meet = AllocateBuffer<bool>(cpu_allocator, eos_meet_buffer_, batch_size);
+    this->sequence_lengths = AllocateBuffer<int32_t>(cpu_allocator, sequence_lengths_buffer_, parameters.batch_size);
+    this->eos_meet = AllocateBuffer<bool>(cpu_allocator, eos_meet_buffer_, parameters.batch_size);
     memset(this->eos_meet.data(), 0, this->eos_meet.size_bytes());
 
-    this->next_tokens = AllocateBuffer<int32_t>(cpu_allocator, next_tokens_buffer_, SafeInt<size_t>(batch_size));
+    this->next_tokens = AllocateBuffer<int32_t>(cpu_allocator, next_tokens_buffer_, SafeInt<size_t>(parameters.batch_size));
 
     // below buffers are on cpu or cuda
-    size_t next_token_size = SafeInt<size_t>(batch_size) * vocab_size;
+    size_t next_token_size = SafeInt<size_t>(parameters.batch_size) * parameters.vocab_size;
     this->next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size);
-    this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_size);
+    this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, parameters.batch_size);
 
     if (is_cuda) {
       AllocateTempBufferForGetGreedySearchTopOne<T>(
-          batch_size,
+          parameters.batch_size,
           allocator,
           this->temp_topk_buffer_,
           this->temp_topk_scores_buffer,
@@ -114,7 +109,8 @@ struct GreedySearchState : public IGreedySearchState<T> {
       // If at all we need to, we only need to re-order past state for CUDA as
       //`DecoderMaskedSelfAttention` is only supported on CUDA
       if (has_decoder_masked_self_attention) {
-        TensorShape staging_for_past_state_reorder_buffer_shape = {batch_size, num_heads, max_length, head_size};
+        TensorShape staging_for_past_state_reorder_buffer_shape = {
+          parameters.num_layers * parameters.batch_size * parameters.num_heads * parameters.max_length * parameters.head_size};
 
         Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
 

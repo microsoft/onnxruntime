@@ -282,12 +282,14 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
 #ifdef USE_CUDA
       // Here we only need to reorder the past key for self-attention and cross-attention.
+      std::vector<Tensor*> reorder_candidate_tensors;
       for (size_t i = 0; i < 2 * static_cast<size_t>(decoder_subgraph_.num_layers); ++i) {
-        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
-                                                     *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
-                                                     beam_state.staging_for_past_state_reorder,
-                                                     this->ort_stream_));
+        reorder_candidate_tensors.push_back(decoder_feeds[offset + 2 * i].GetMutable<Tensor>());
       }
+      ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                   reorder_candidate_tensors,
+                                                   beam_state.staging_for_past_state_reorder,
+                                                   this->ort_stream_));
       size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
       ORT_RETURN_IF_ERROR(init_cache_indir_func_(*decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>(), this->ort_stream_));
 #endif

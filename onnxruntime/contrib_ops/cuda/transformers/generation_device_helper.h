@@ -24,7 +24,7 @@ namespace GenerationCudaDeviceHelper {
 
 Status ReorderPastState(
     const void* cuda_device_prop,
-    Tensor& past_state,
+    std::vector<Tensor*>& past_state_vector,
     Tensor& past_state_staging,
     Stream* stream);
 
