@@ -422,6 +422,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       if (graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])){
         std::cout << "LayerNormFusion Scale GraphIsInput" << std::endl;
       }
+      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr){
+        continue
+      }
       if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
         std::cout << "LayerNormFusion Scale determined" << std::endl;
         scale = mul_node.MutableInputDefs()[i];
@@ -435,6 +438,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
       if (graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])){
         std::cout << "LayerNormFusion Bias GraphIsInput" << std::endl;
+      }
+      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr){
+        continue
       }
       if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
         std::cout << "LayerNormFusion bias determined" << std::endl;
