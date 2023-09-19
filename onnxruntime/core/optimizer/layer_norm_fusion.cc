@@ -448,13 +448,17 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     std::cout << "LayerNormFusion Checking Bias Now" << std::endl;
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
 #ifdef ENABLE_TRAINING_CORE
+      std::cout << "LayerNormFusion Bias Enable Training Core ON" << std::endl;
+      std::cout << "LayerNorFusion Bias Axes Value dim size:" << static_cast<int>(axes_values.size()) << std::endl;
       if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr) {
         continue;
       }
+      std::cout << "LayerNorFusion Bias dim size:" << last_add_node.MutableInputDefs()[i]->Shape()->dim_size() << std::endl;
       if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
         bias = last_add_node.MutableInputDefs()[i];
       }
 #else
+      std::cout << "LayerNormFusion Bias Enable Training Core OFF" << std::endl;
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
         if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
