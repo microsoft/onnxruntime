@@ -120,7 +120,7 @@ def get_msft_sample_inputs(config: LlamaConfig, batch_size: int, past_seq_len: i
     else:
         ort_inputs = {
             "x": np.random.rand(batch_size, seq_len, config.hidden_size).astype(np_dtype),
-            "attn_mask": (-10000 * np.triu(np.ones((batch_size, max_seq_len, max_seq_len), dtype=np.int32), k=1)).astype(np.int32),
+            "attn_mask": (np.triu(np.ones((batch_size, max_seq_len, max_seq_len), dtype=np.int32), k=1) - 1).astype(np.int32),
             "pos": np.array(past_seq_len, dtype=np.int64),
         }
         for i in range(config.num_hidden_layers):

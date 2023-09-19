@@ -55,6 +55,13 @@ def get_args():
     )
 
     parser.add_argument(
+        "--split-kv",
+        default=False,
+        action="store_true",
+        help="Run LLaMA-2 Microsoft exported model that contains KV cache as separate inputs/outputs per layer",
+    )
+
+    parser.add_argument(
         "--model-name",
         type=str,
         required=True,
@@ -349,6 +356,8 @@ def main():
             "--log-folder",
             args.log_folder,
         ]
+        if args.split_kv:
+            benchmark_cmd.append("--split-kv")
         logger.info("Benchmark ONNX Runtime")
         results = benchmark(args, benchmark_cmd, "onnxruntime")
         all_results.extend(results)
