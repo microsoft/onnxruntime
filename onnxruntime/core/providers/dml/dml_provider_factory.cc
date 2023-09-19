@@ -266,15 +266,6 @@ ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(FreeGPUAllocation_2, _In_ void* ptr) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  Dml::FreeGPUAllocation(ptr);
-#endif  // USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
 API_IMPL_BEGIN
     OrtDmlPerformancePreference perf_pref = device_opts->perf_pref;
