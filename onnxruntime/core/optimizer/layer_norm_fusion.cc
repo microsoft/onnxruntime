@@ -681,7 +681,6 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         scale = mul_node.MutableInputDefs()[i];
       }
 #endif
-      // }
     }
 
     if (scale == nullptr) {
