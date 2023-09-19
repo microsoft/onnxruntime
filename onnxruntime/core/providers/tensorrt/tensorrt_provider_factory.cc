@@ -27,8 +27,8 @@ struct ProviderInfo_TensorRT_Impl final : ProviderInfo_TensorRT {
     return nullptr;
   }
 
-  OrtStatus* UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
-    TensorrtExecutionProviderInfo::UpdateProviderOptions(provider_options, options);
+  OrtStatus* UpdateProviderOptions(void* provider_options, const ProviderOptions& options, bool string_copy) override {
+    TensorrtExecutionProviderInfo::UpdateProviderOptions(provider_options, options, string_copy);
     return nullptr;
   }
 
@@ -41,7 +41,7 @@ struct ProviderInfo_TensorRT_Impl final : ProviderInfo_TensorRT {
   }
 
   OrtStatus* ReleaseCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list) override {
-    ReleaseTensorRTCustomOpDomainList(domain_list); 
+    ReleaseTensorRTCustomOpDomainList(domain_list);
     return nullptr;
   }
 
@@ -126,7 +126,7 @@ struct Tensorrt_Provider : Provider {
   }
 
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
-    TensorrtExecutionProviderInfo::UpdateProviderOptions(provider_options, options);
+    TensorrtExecutionProviderInfo::UpdateProviderOptions(provider_options, options, true);
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
