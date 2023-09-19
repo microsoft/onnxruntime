@@ -12,9 +12,9 @@ using namespace Ort::Custom;
 namespace Cpu {
 
 Ort::Status KernelOne(const Ort::Custom::Tensor<float>& X,
-               const Ort::Custom::Tensor<float>& Y,
-               Ort::Custom::Tensor<float>& Z) {
-  if (X.NumberOfElement()!=Y.NumberOfElement()) {
+                      const Ort::Custom::Tensor<float>& Y,
+                      Ort::Custom::Tensor<float>& Z) {
+  if (X.NumberOfElement() != Y.NumberOfElement()) {
     return Ort::Status("x and y has different number of elements", OrtErrorCode::ORT_INVALID_ARGUMENT);
   }
   auto x_shape = X.Shape();
@@ -167,7 +167,7 @@ void FilterFloat8(const Ort::Custom::Tensor<Ort::Float8E4M3FN_t>& floats_in,
 #endif
 
 // a sample custom op accepting variadic inputs, and generate variadic outputs by simply 1:1 copying.
-template<typename T>
+template <typename T>
 Ort::Status CopyVariadic(const Ort::Custom::Variadic& inputs, Ort::Custom::Variadic& outputs) {
   for (size_t ith_input = 0; ith_input < inputs.Size(); ++ith_input) {
     const auto& input = inputs[ith_input];

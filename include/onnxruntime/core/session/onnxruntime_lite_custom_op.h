@@ -373,11 +373,9 @@ struct Variadic : public TensorBase {
     return output;
   }
   const void* DataRaw() const override {
-    ORT_CXX_API_THROW("DataRaw() cannot be applied to Variadic", ORT_RUNTIME_EXCEPTION);
     return nullptr;
   }
   size_t SizeInBytes() const override {
-    ORT_CXX_API_THROW("SizeInBytes() cannot be applied to Variadic", ORT_RUNTIME_EXCEPTION);
     return 0;
   }
   size_t Size() const {
