@@ -11,8 +11,7 @@ jobs:
   - bash: |
       set -e -x
       conda create --name test_env --yes python=3.9
-      conda activate test_env
-      which python
+      ~/.conda/envs/test_env/bin/python --version
 
   - bash: |
       set -e -x
