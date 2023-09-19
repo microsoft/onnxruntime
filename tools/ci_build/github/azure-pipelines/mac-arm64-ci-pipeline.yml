@@ -18,6 +18,9 @@ jobs:
   - bash: |
       set -e -x
       conda create --name $(condaEnvName) --yes python=$(pythonVersion)
+
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
       # 'conda activate' doesn't work in this context, so we just prepend the env directory to path
       echo "##vso[task.prependpath]~/.conda/envs/$(condaEnvName)/bin"
     displayName: Create conda environment '$(condaEnvName)' and add to PATH
