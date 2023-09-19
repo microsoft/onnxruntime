@@ -413,33 +413,22 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
-    std::cout << "LNF Start Changes" << std::endl;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
-        std::cout << "LNF Mul node is Null" << std::endl;
         continue;
       }
-      // if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
-      //     graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
       if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        std::cout << "LNF Scale set" << std::endl;
         scale = mul_node.MutableInputDefs()[i];
       }
-      // }
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr) {
-        std::cout << "LNF Last add node is Null" << std::endl;
         continue;
       }
-      // if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
-      //     graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
       if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        std::cout << "LNF Bias set" << std::endl;
         bias = last_add_node.MutableInputDefs()[i];
       }
-      // }
     }
     if (scale == nullptr || bias == nullptr) {
       continue;
@@ -677,22 +666,16 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // scale and bias could be multi-dims; we only support it for training at the moment
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
-    std::cout << "SLNF Start Changes" << std::endl;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      // if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
-      //     graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
       if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
-        std::cout << "SLNF Mul Node Nullptr" << std::endl;
         continue;
       }
 #ifdef ENABLE_TRAINING_CORE
-      std::cout << "SLNF ENABLE_TRAINING_CORE ON" << std::endl;
       if (axes_values.empty() ||
           mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
         scale = mul_node.MutableInputDefs()[i];
       }
 #else
-      std::cout << "SLNF ENABLE_TRAINING_CORE OFF" << std::endl;
       // Scale must be 1d.
       if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
         scale = mul_node.MutableInputDefs()[i];
