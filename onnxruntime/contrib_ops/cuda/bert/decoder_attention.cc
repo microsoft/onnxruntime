@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/decoder_attention.h"
+#include "contrib_ops/cuda/bert/decoder_attention_impl.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -85,7 +85,8 @@ Status CheckInputs(const TensorShape& query_shape,
   }
 
   if (kv_weights_dims[0] != hidden_size || kv_weights_dims[1] != 2 * static_cast<int64_t>(hidden_size)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_weights shall have shape (hidden size, 2 * hidden size)");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "kv_weights shall have shape (hidden size, 2 * hidden size)");
   }
 
   const auto& bias_dims = bias_shape.GetDims();
@@ -137,7 +138,8 @@ Status CheckInputs(const TensorShape& query_shape,
 
     const auto& value_cache_dims = value_cache->Shape().GetDims();
     if (value_cache_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value_cache' is expected to have 4 dimension, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'value_cache' is expected to have 4 dimension, got ",
                              value_cache_dims.size());
     }
 
@@ -353,10 +355,12 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  size_t bytes = element_size * batch_size * (static_cast<size_t>(sequence_length) + static_cast<size_t>(2) * kv_sequence_length) * hidden_size;
+  size_t bytes = element_size * batch_size *
+                 (static_cast<size_t>(sequence_length) + static_cast<size_t>(2) * kv_sequence_length) * hidden_size;
   auto qkv_buffer_p = GetScratchBuffer<void>(bytes, context->GetComputeStream());
 
-  bytes = element_size * 2 * batch_size * sequence_length * num_heads_ * (static_cast<size_t>(2) * head_size + static_cast<size_t>(kv_sequence_length));
+  bytes = element_size * 2 * batch_size * sequence_length * num_heads_ *
+          (static_cast<size_t>(2) * head_size + static_cast<size_t>(kv_sequence_length));
   auto workspace_p = GetScratchBuffer<void>(bytes, context->GetComputeStream());
 
   Tensor* output(context->Output(0, query_shape));
