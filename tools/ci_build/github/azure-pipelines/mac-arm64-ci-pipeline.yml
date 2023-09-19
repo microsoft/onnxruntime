@@ -25,6 +25,8 @@ jobs:
       echo "##vso[task.prependpath]~/.conda/envs/$(condaEnvName)/bin"
     displayName: Create conda environment '$(condaEnvName)' and add to PATH
 
+  - bash: echo $PATH ; which python
+
   - bash: |
       python -m pip install cmake~=$(cmakeVersion).0
     displayName: Install CMake $(cmakeVersion)
