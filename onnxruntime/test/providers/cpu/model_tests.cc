@@ -690,11 +690,7 @@ TEST_P(ModelTest, Run) {
 #endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
-                                              1,  // enable fp16
-                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0, 0, 0, 0, 0,
-                                              3, -1, nullptr, nullptr, nullptr, nullptr, nullptr, 0};
-
+          OrtTensorRTProviderOptionsV2 params;
           ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
           OrtTensorRTProviderOptionsV2* ep_option = nullptr;
