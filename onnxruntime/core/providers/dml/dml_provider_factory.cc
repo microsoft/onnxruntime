@@ -254,7 +254,7 @@ ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
   API_IMPL_END
 }
 
-bool IsHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
+bool IsHardwareAdapter(IDXCoreAdapter* adapter) {
     bool is_hardware{ false };
     THROW_IF_FAILED(adapter->GetProperty(
         DXCoreAdapterProperty::IsHardware,
@@ -262,14 +262,14 @@ bool IsHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
     return is_hardware;
 }
 
-bool IsGPU(ComPtr<IDXCoreAdapter> compute_adapter) {
+bool IsGPU(IDXCoreAdapter* compute_adapter) {
     // Only considering hardware adapters
     if (!IsHardwareAdapter(compute_adapter))
         return false;
     return compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
 }
 
-bool IsNPU(ComPtr<IDXCoreAdapter> compute_adapter) {
+bool IsNPU(IDXCoreAdapter* compute_adapter) {
     // Only considering hardware adapters
     if (!IsHardwareAdapter(compute_adapter))
         return false;
@@ -312,19 +312,19 @@ API_IMPL_BEGIN
 
         if (dev_filter == OrtDmlDeviceFilter::Gpu) // consider GPUs only
         {
-            if (IsGPU(candidateAdapter)) {
+            if (IsGPU(candidateAdapter.Get())) {
                 ordered_adapters.push_back(candidateAdapter);
             }
         }
         else if(dev_filter == OrtDmlDeviceFilter::Npu) // consider NPUs only
         {
-            if (IsNPU(candidateAdapter)) {
+            if (IsNPU(candidateAdapter.Get())) {
                 ordered_adapters.push_back(candidateAdapter);
             }
         }
         else // consider both GPUs and NPUs
         {
-            if (IsGPU(candidateAdapter)) {
+            if (IsGPU(candidateAdapter.Get())) {
                 gpu_adapters.push_back(candidateAdapter);
             } else {
                 npu_adapters.push_back(candidateAdapter);
