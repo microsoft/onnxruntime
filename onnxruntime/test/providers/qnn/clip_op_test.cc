@@ -158,7 +158,7 @@ TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
     NodeArg* min_input = builder.MakeScalarInitializer(5.0f);
     NodeArg* max_input = builder.MakeScalarInitializer(100.0f);
 
-    // Unsqueeze ->
+    // Clip ->
     NodeArg* clip_output = builder.MakeIntermediate();
     builder.AddNode("Clip", {input_dq, min_input, max_input}, {clip_output});
 
