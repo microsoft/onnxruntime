@@ -4,9 +4,12 @@ jobs:
   
   steps:
   - checkout: none
+
+  - bash: echo "##vso[task.prependpath]/usr/local/miniconda3/bin"
+    displayName: "add Conda to PATH"
+
   - bash: |
       set -e -x
-      env
       conda create --name test_env --yes python=3.9
       conda activate test_env
       which python
