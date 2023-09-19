@@ -440,9 +440,6 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(
-                args.sources_path, "include\\onnxruntime\\core\\providers\\tensorrt\\tensorrt_provider_factory.h"
-            )
             + '" target="build\\native\\include" />'
         )
 
