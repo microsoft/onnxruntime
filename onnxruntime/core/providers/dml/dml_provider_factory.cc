@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <dxcore.h>
+
 #include <DirectML.h>
 #ifndef _GAMING_XBOX
 #include <dxgi1_4.h>
@@ -22,8 +24,6 @@ using Microsoft::WRL::ComPtr;
 #include "DmlExecutionProvider/src/GraphicsUnknownHelper.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
-
-#include <dxcore.h>
 
 namespace onnxruntime {
 
@@ -245,6 +245,35 @@ bool supportsGraphics(ComPtr<IDXCoreAdapter> adapter) {
     return adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
 }
 
+ORT_API_STATUS_IMPL(CreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource) {
+  API_IMPL_BEGIN
+#ifdef USE_DML
+  *dml_resource = Dml::CreateGPUAllocationFromD3DResource(d3d_resource);
+#else
+  *dml_resource = nullptr;
+#endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_DML
+  Dml::FreeGPUAllocation(ptr);
+#endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(FreeGPUAllocation_2, _In_ void* ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_DML
+  Dml::FreeGPUAllocation(ptr);
+#endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
 API_IMPL_BEGIN
   //options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::Create(device_id));
@@ -354,32 +383,8 @@ API_IMPL_BEGIN
     // return the create function for a dxcore device
     options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::CreateDXCore(
         highest_pri_adapter));
-
+  return nullptr;
 API_IMPL_END
-  return nullptr;
-}
-
-
-
-
-ORT_API_STATUS_IMPL(CreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  *dml_resource = Dml::CreateGPUAllocationFromD3DResource(d3d_resource);
-#else
-  *dml_resource = nullptr;
-#endif  // USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  Dml::FreeGPUAllocation(ptr);
-#endif  // USE_DML
-  return nullptr;
-  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_allocator, _In_ void* allocation, _Out_ ID3D12Resource** d3d_resource) {

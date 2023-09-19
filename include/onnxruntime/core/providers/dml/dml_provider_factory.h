@@ -112,15 +112,19 @@ struct OrtDmlApi {
    */
   ORT_API2_STATUS(FreeGPUAllocation, _In_ void* dml_resource);
 
+
   /**
    * GetD3D12ResourceFromAllocation
    * This API gets the D3D12 resource when an OrtValue has been allocated by the DML EP.
    */
   ORT_API2_STATUS(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* dml_resource, _Out_ ID3D12Resource** d3d_resource);
 
-  ORT_API2_STATUS(GetNPUDevice, _Out_ int* device_id);
 
-  ORT_API2_STATUS(GetMLDevice, _In_ bool npu_first, _Out_ int* device_ids);
+    //ORT_API2_STATUS(FreeGPUAllocation_2, _In_ void* dml_resource);
+
+  //ORT_API2_STATUS(GetNPUDevice, _Out_ int* device_id);
+
+  //ORT_API2_STATUS(GetMLDevice, _In_ bool npu_first, _Out_ int* device_ids);
 
   // enum class Ordering {
   //     SAME,       // DXGI/DXCore as is today...
