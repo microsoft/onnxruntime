@@ -234,7 +234,7 @@ API_IMPL_END
   return nullptr;
 }
 
-bool isHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
+bool IsHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
     bool isHardware{ false };
     THROW_IF_FAILED(adapter->GetProperty(
         DXCoreAdapterProperty::IsHardware,
@@ -242,7 +242,7 @@ bool isHardwareAdapter(ComPtr<IDXCoreAdapter> adapter) {
     return isHardware;
 }
 
-bool supportsGraphics(ComPtr<IDXCoreAdapter> adapter) {
+bool SupportsGraphics(ComPtr<IDXCoreAdapter> adapter) {
     return adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
 }
 
@@ -301,24 +301,24 @@ API_IMPL_BEGIN
             d3D12CoreComputeAdapters->GetAdapter(i, candidateAdapter.GetAddressOf()));
 
         // Only considering hardware adapters
-        if (!isHardwareAdapter(candidateAdapter))
+        if (!IsHardwareAdapter(candidateAdapter))
             continue;
 
         if (dev_filter == OrtDmlDeviceFilter::Gpu) // consider GPUs only
         {
-            if (supportsGraphics(candidateAdapter)) {
+            if (SupportsGraphics(candidateAdapter)) {
                 ordered_adapters.push_back(candidateAdapter);
             }
         }
         else if(dev_filter == OrtDmlDeviceFilter::Npu) // consider NPUs only
         {
-            if (!supportsGraphics(candidateAdapter)) {
+            if (!SupportsGraphics(candidateAdapter)) {
                 ordered_adapters.push_back(candidateAdapter);
             }
         }
         else // consider both GPUs and NPUs
         {
-            if (supportsGraphics(candidateAdapter)) {
+            if (SupportsGraphics(candidateAdapter)) {
                 gpu_adapters.push_back(candidateAdapter);
             } else {
                 npu_adapters.push_back(candidateAdapter);
