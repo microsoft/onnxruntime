@@ -2,13 +2,15 @@
 // Licensed under the MIT License.
 
 #include "onnxruntime_c_api.h"
+#include "core/framework/provider_options.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+namespace onnxruntime {
+struct ProviderInfo_TensorRT {
+  virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
+  virtual OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) = 0;
+  virtual OrtStatus* UpdateProviderOptions(void* provider_options, const ProviderOptions& options) = 0;
 
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id);
-
-#ifdef __cplusplus
-}
-#endif
+ protected:
+  ~ProviderInfo_TensorRT() = default;  // Can only be destroyed through a subclass instance
+};
+}  // namespace onnxruntime

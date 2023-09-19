@@ -108,6 +108,8 @@ namespace onnxruntime {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
+ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
+ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
 ProviderInfo_CANN* TryGetProviderInfo_CANN();
 ProviderInfo_CANN& GetProviderInfo_CANN();
 ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl();
@@ -1472,6 +1474,20 @@ std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(co
 
 ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
   return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
+}
+
+ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT() try {
+  return reinterpret_cast<ProviderInfo_TensorRT*>(s_library_tensorrt.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_TensorRT& GetProviderInfo_TensorRT() {
+  if (auto* info = TryGetProviderInfo_TensorRT())
+    return *info;
+
+  ORT_THROW("TensorRT Provider not available, can't get interface for it");
 }
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
