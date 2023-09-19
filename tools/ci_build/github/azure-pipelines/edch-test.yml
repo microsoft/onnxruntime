@@ -6,6 +6,7 @@ jobs:
   - checkout: none
   - bash: |
       set -e -x
+      env
       conda create --name test_env --yes python=3.9
       conda activate test_env
       which python
