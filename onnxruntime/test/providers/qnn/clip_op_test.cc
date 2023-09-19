@@ -120,16 +120,53 @@ static void RunQDQClipTestOnHTP(const std::vector<TestInputDef<float>>& input_de
                        BuildQDQClipTestCase<QType>(input_defs),  // QDQ model
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       1e-4f, logging::Severity::kVERBOSE);
+                       expected_ep_assignment);
 }
 
-// Runs a model with a non-QDQ Clip operator on the QNN HTP backend. Checks the graph node assignment
-// and that inference outputs for QNN EP and CPU EP match.
-template <typename DataType>
-static void RunClipTestOnHTP(const std::vector<TestInputDef<DataType>>& input_defs,
-                             ExpectedEPNodeAssignment expected_ep_assignment,
-                             int opset = 13) {
+// Test QDQ Clip with default min/max.
+// NOTE: The Clip operator is *optimized* away during L1 optimizations, so QNN EP does not get a graph with a Clip op.
+// Instead, QNN EP will get a graph with a Q -> DQ.
+// - Original sequence: Q1 -> DQ1 -> Clip -> Q2 -> DQ2
+// - ClipQuantFusion: Fuses Clip -> QuantizeLinear resulting in Q1 -> DQ1 -> Q2' -> DQ2
+// - DoubleQDQPairsRemover: Simplifies remaining Q1 -> DQ1 -> Q2' -> DQ2 sequence to Q1 -> DQ2.
+TEST_F(QnnHTPBackendTests, Clip_U8_DefaultMinMax_Rank4) {
+  RunQDQClipTestOnHTP<uint8_t>({TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48))},
+                               ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Clip with non-default min and max inputs. QNN EP will get a graph with a Clip operator.
+TEST_F(QnnHTPBackendTests, Clip_U8_Rank4) {
+  RunQDQClipTestOnHTP<uint8_t>({TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+                                TestInputDef<float>({}, true, {-5.0f}),
+                                TestInputDef<float>({}, true, {5.0f})},
+                               ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Clip of rank 5.
+TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
+  // We can't use the usual model-building functions because they add standalone Quantize and Dequantize nodes
+  // at the input and output. These Q/DQ ops get lowered to QNN's Quantize and Dequantize operators, which DO NOT
+  // support rank 5 tensors. Therefore, we have to create a test model that only instantiates the DQ -> Clip -> Q
+  // QDQ node group, which gets lowered to a single QNN Clip node.
+  GetTestModelFn model_fn = [](ModelTestBuilder& builder) {
+    // input (u8) -> DQ ->
+    NodeArg* quant_input = builder.MakeInput<uint8_t>({1, 1, 2, 2, 2}, {0, 1, 6, 10, 20, 100, 128, 255});
+    NodeArg* input_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(quant_input, 1.0f, 0, input_dq);  // scale = 1.0, zp = 0
+
+    // Min/Max initializers
+    NodeArg* min_input = builder.MakeScalarInitializer(5.0f);
+    NodeArg* max_input = builder.MakeScalarInitializer(100.0f);
+
+    // Unsqueeze ->
+    NodeArg* clip_output = builder.MakeIntermediate();
+    builder.AddNode("Clip", {input_dq, min_input, max_input}, {clip_output});
+
+    // Q -> output (u8)
+    NodeArg* output = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<uint8_t>(clip_output, 1.0f, 0, output);  // scale = 1.0, zp = 0
+  };
+
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -138,35 +175,11 @@ static void RunClipTestOnHTP(const std::vector<TestInputDef<DataType>>& input_de
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  RunQnnModelTest(BuildOpTestCase("Clip", input_defs, {}),
+  RunQnnModelTest(model_fn,
                   provider_options,
-                  opset,
-                  expected_ep_assignment);
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All);
 }
-
-// Test QDQ Clip with default min/max. (Fused with QuantizeLinear by optimizer).
-TEST_F(QnnHTPBackendTests, Clip_4D_DefaultMinMax) {
-  RunQDQClipTestOnHTP<uint8_t>({TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48))},
-                               ExpectedEPNodeAssignment::All);
-}
-
-// Test QDQ Clip with non-default min and max inputs.
-TEST_F(QnnHTPBackendTests, Clip_4D) {
-  RunQDQClipTestOnHTP<uint8_t>({TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
-                                TestInputDef<float>({}, true, {-5.0f}),
-                                TestInputDef<float>({}, true, {5.0f})},
-                               ExpectedEPNodeAssignment::All);
-}
-
-#if 0
-// Test non-QDQ Clip with 4D input on HTP
-TEST_F(QnnHTPBackendTests, Clip_NotQDQ_4D_f32) {
-  RunClipTestOnHTP<float>({TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
-                           TestInputDef<float>({}, true, {-5.0f}),
-                           TestInputDef<float>({}, true, {5.0f})},
-                          ExpectedEPNodeAssignment::All);
-}
-#endif
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test

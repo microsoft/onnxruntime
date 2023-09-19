@@ -78,7 +78,8 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Abs", {}},
           {"Neg", {}},
           {"DepthToSpace", {}},
-          {"SpaceToDepth", {}}};
+          {"SpaceToDepth", {}},
+          {"Clip", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},

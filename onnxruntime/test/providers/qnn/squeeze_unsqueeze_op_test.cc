@@ -232,7 +232,7 @@ TEST_F(QnnHTPBackendTests, Squeeze_Rank5_Rank2_f32) {
                   ExpectedEPNodeAssignment::All);
 }
 
-// Test Squeeze of rank 4 -> rank 3 with a negative axes value.
+// Test QDQ Squeeze of rank 4 -> rank 3 with a negative axes value.
 TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_f32) {
   RunQDQSqueezeTestOnHTP<uint8_t>("Squeeze",
                                   TestInputDef<float>({1, 3, 2, 1}, false, -10.0f, 10.0f),
@@ -240,7 +240,7 @@ TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_f32) {
                                   ExpectedEPNodeAssignment::All);
 }
 
-// Test Unsqueeze of rank 3 -> rank 5.
+// Test QDQ Unsqueeze of rank 3 -> rank 5.
 TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank5_f32) {
   // We can't use the usual model-building functions because they add standalone Quantize and Dequantize nodes
   // at the input and output. These Q/DQ ops get lowered to QNN's Quantize and Dequantize operators, which DO NOT
