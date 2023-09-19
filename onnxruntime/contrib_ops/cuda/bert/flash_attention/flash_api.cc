@@ -95,7 +95,7 @@ void set_params_fprop(Flash_fwd_params& params,
 
 // TODO(aciddelgado): sizeof(float) or float16?
 size_t get_softmax_lse_size(int seqlen, int batch_size, int num_heads) {
-  size_t bytes = sizeof(float) * batch_size * num_heads * seqlen;
+  size_t bytes = sizeof(MLFloat16) * batch_size * num_heads * seqlen;
   return bytes;
 }
 
@@ -130,9 +130,8 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream, bool force_split
 int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_heads, int head_size, int num_SMs,
                          int max_splits, bool new_kv, bool is_sm8x) {
   // This needs to match with run_mha_fwd_splitkv_dispatch
-  const int block_n = is_sm8x ?
-          (head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64))
-        : (head_size <= 64 ? 256 : (head_size <= 160 ? 128 : 64));
+  const int block_n = is_sm8x ? (head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64))
+                              : (head_size <= 64 ? 256 : (head_size <= 160 ? 128 : 64));
   const int num_n_blocks = (seqlen_k + (!new_kv ? 0 : seqlen_q) + block_n - 1) / block_n;
   // Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
   // In any case we don't expect seqlen_q to be larger than 64 for inference.

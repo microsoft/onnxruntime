@@ -66,12 +66,10 @@ Status QkvToContext(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
-  // const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int max_sequence_length = parameters.max_sequence_length;
-  // const int total_sequence_length = parameters.total_sequence_length;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
@@ -102,8 +100,6 @@ Status QkvToContext(
     } else {
       // Assume past and present kv share buffer.
       assert(parameters.past_sequence_length >= 0);
-      // assert(data.past_key == data.present_key); TODO(aciddelgado): add this and under back
-      // assert(data.past_value == data.present_value);
       assert(data.past_value != nullptr);
 
       void* past_key = reinterpret_cast<void*>(const_cast<T*>(data.past_key));
@@ -114,9 +110,6 @@ Status QkvToContext(
       int blk_in_grid = ceil( float(batch_size) / thr_per_blk );
       repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
 
-      // DUMP_TENSOR_INIT();
-      // DUMP_TENSOR_D("seqlens_k", reinterpret_cast<const int32_t*>(data.seqlens_k), 1, batch_size+1);
-
       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
           device_prop, stream, query, past_key, past_value, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
           reinterpret_cast<void*>(data.seqlens_k), batch_size, num_heads, kv_num_heads,
@@ -126,7 +119,7 @@ Status QkvToContext(
     }
 
 
-    // DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
+    DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
     return Status::OK();
   }
