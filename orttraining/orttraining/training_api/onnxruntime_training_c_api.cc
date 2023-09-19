@@ -599,7 +599,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::UpdateParameter, _Inout_ OrtCheckpointState
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::GetParameter, _In_ const OrtCheckpointState* checkpoint_state,
-                    _In_ const char* parameter_name, _Inout_ OrtValue* parameter) {
+                    _In_ const char* parameter_name, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ OrtValue** parameter) {
   API_IMPL_BEGIN
 
   if (parameter == nullptr) {
@@ -613,8 +614,16 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetParameter, _In_ const OrtCheckpointState
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
   }
 
+  if (!it->second->Data().IsTensor()) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Expected a tensor type for the parameter. Found a non-tensor type.");
+  }
+  const auto& parameter_tensor = it->second->Data().Get<onnxruntime::Tensor>();
+  ORT_API_RETURN_IF_ERROR(OrtApis::CreateTensorAsOrtValue(
+    allocator, parameter_tensor.Shape().GetDims().data(), parameter_tensor.Shape().NumDimensions(),
+    ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, parameter));
+
   ORT_API_RETURN_IF_STATUS_NOT_OK(it->second->CopyTo(
-      chkpt_state->module_checkpoint_state.train_session_data_transfer_mgr, *parameter));
+      chkpt_state->module_checkpoint_state.train_session_data_transfer_mgr, **parameter));
 
   return nullptr;
   API_IMPL_END

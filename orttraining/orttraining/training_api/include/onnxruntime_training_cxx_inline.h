@@ -284,18 +284,11 @@ inline void CheckpointState::UpdateParameter(const std::string& parameter_name, 
 }
 
 inline Value CheckpointState::GetParameter(const std::string& parameter_name) {
-  OrtTensorTypeAndShapeInfo* parameter_type_and_shape_info;
-  ThrowOnError(GetTrainingApi().GetParameterTypeAndShape(p_, parameter_name.c_str(), &parameter_type_and_shape_info));
-  auto parameter_type_and_shape = TensorTypeAndShapeInfo{parameter_type_and_shape_info};
-  auto shape = parameter_type_and_shape.GetShape();
-
   AllocatorWithDefaultOptions allocator;
-  Value parameter = Value::CreateTensor(allocator, shape.data(), shape.size(),
-                                        ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  OrtValue* parameter;
+  ThrowOnError(GetTrainingApi().GetParameter(p_, parameter_name.c_str(), allocator, &parameter));
 
-  ThrowOnError(GetTrainingApi().GetParameter(p_, parameter_name.c_str(), parameter));
-
-  return parameter;
+  return Value{parameter};
 }
 
 }  // namespace Ort

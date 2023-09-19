@@ -43,8 +43,7 @@ namespace Microsoft.ML.OnnxRuntime
         private void AddPropertyImpl<T>(string propertyName, PropertyType propertyType, T propertyValue) where T : unmanaged
         {
             var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);
-            T[] value = new T[1];
-            value[0] = propertyValue;
+            T[] value = { propertyValue };
             unsafe
             {
                 fixed (T* memPtr = value)
@@ -232,31 +231,9 @@ namespace Microsoft.ML.OnnxRuntime
         public OrtValue GetParameter(string parameterName)
         {
             var parameterNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(parameterName);
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParameter(handle, parameterNameUtf8, OrtAllocator.DefaultInstance.Pointer, out IntPtr parameterHandle));
 
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParameterTypeAndShape(handle, parameterNameUtf8, out IntPtr typeAndShapeInfoHandle));
-
-            try
-            {
-                var typeAndShapeInfo = new OrtTensorTypeAndShapeInfo(typeAndShapeInfoHandle);
-                var parameter = OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance, typeAndShapeInfo.ElementDataType, typeAndShapeInfo.Shape);
-
-                try
-                {
-                    NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParameter(handle, parameterNameUtf8, parameter.Handle));
-                }
-                catch (OnnxRuntimeException e)
-                {
-                    parameter.Dispose();
-                    throw e;
-                }
-
-                return parameter;
-            }
-            finally
-            {
-                NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShapeInfoHandle);
-            }
-
+            return new OrtValue(parameterHandle);
         }
 
 #region SafeHandle
