@@ -277,8 +277,8 @@ ORT_API_STATUS_IMPL(FreeGPUAllocation_2, _In_ void* ptr) {
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
 API_IMPL_BEGIN
-    OrtDmlPerformancePreference p = device_opts->p;
-    OrtDmlDeviceFilter f = device_opts->f;
+    OrtDmlPerformancePreference perf_pref = device_opts->perf_pref;
+    OrtDmlDeviceFilter dev_filter = device_opts->dev_filter;
 
     // Create DXCore Adapter Factory
     ComPtr<IDXCoreAdapterFactory> adapterFactory;
@@ -313,13 +313,13 @@ API_IMPL_BEGIN
         if (!isHardwareAdapter(candidateAdapter))
             continue;
 
-        if (f == OrtDmlDeviceFilter::Gpu) // consider GPUs only
+        if (dev_filter == OrtDmlDeviceFilter::Gpu) // consider GPUs only
         {
             if (supportsGraphics(candidateAdapter)) {
                 ordered_adapters.push_back(candidateAdapter);
             }
         }
-        else if(f == OrtDmlDeviceFilter::Npu) // consider NPUs only
+        else if(dev_filter == OrtDmlDeviceFilter::Npu) // consider NPUs only
         {
             if (!supportsGraphics(candidateAdapter)) {
                 ordered_adapters.push_back(candidateAdapter);
@@ -335,12 +335,12 @@ API_IMPL_BEGIN
         }
     }
 
-    if (f == OrtDmlDeviceFilter::None) // considering both NPUs and GPUs
+    if (dev_filter == OrtDmlDeviceFilter::None) // considering both NPUs and GPUs
     {
         // order the adapters based on the performance preference
         std::vector<ComPtr<IDXCoreAdapter>> high_pri_adapters;
         std::vector<ComPtr<IDXCoreAdapter>> low_pri_adapters;
-        if (p == OrtDmlPerformancePreference::LowPower) // NPUs first
+        if (perf_pref == OrtDmlPerformancePreference::LowPower) // NPUs first
         {
             high_pri_adapters = npu_adapters;
             low_pri_adapters = gpu_adapters;

@@ -43,8 +43,8 @@ enum class OrtDmlDeviceFilter {
 };
 
 struct OrtDmlDeviceOptions {
-  OrtDmlPerformancePreference p;
-  OrtDmlDeviceFilter f;
+  OrtDmlPerformancePreference perf_pref;
+  OrtDmlDeviceFilter dev_filter;
 };
 
 /**
