@@ -415,15 +415,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     NodeArg* bias = nullptr;
     std::cout << "LayerNormFusion Checking Scale and Bias" << std::endl;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      std::cout << "LayerNormFusion Checking Scale" << std::endl;
-      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i]))){
-        std::cout << "LayerNormFusion Scale NodeArgIsConstant" << std::endl;
-      }
-      if (graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])){
-        std::cout << "LayerNormFusion Scale GraphIsInput" << std::endl;
-      }
-      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr){
-        continue
+      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+        continue;
       }
       if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
         std::cout << "LayerNormFusion Scale determined" << std::endl;
@@ -432,15 +425,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
-      std::cout << "LayerNormFusion Checking Bias" << std::endl;
-      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i]))){
-        std::cout << "LayerNormFusion Bias NodeArgIsConstant" << std::endl;
-      }
-      if (graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])){
-        std::cout << "LayerNormFusion Bias GraphIsInput" << std::endl;
-      }
-      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr){
-        continue
+      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr) {
+        continue;
       }
       if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
         std::cout << "LayerNormFusion bias determined" << std::endl;
