@@ -9,6 +9,7 @@
 
 #include "base_op_builder.h"
 
+#include <cassert>
 #include <limits>
 
 namespace onnxruntime {
@@ -87,7 +88,7 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], min_input_info));
       ORT_RETURN_IF_NOT(min_input_info.qnn_data_type == qnn_data_type,
                         "QNN EP: The 'min' input of the Clip operator must be of type float32.");
-      ORT_RETURN_IF_NOT(min_input_info.is_initializer, "QNN EP: The Clip operator's 'min' input must be an initializer.");
+      assert(min_input_info.is_initializer);  // Checked by ExplicitOpCheck().
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*min_input_info.initializer_tensor, min_val_bytes));
     }
 
@@ -109,7 +110,7 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[2], max_input_info));
       ORT_RETURN_IF_NOT(max_input_info.qnn_data_type == qnn_data_type,
                         "QNN EP: The 'max' input of the Clip operator must of type float32.");
-      ORT_RETURN_IF_NOT(max_input_info.is_initializer, "QNN EP: The Clip operator's 'max' input must be an initializer.");
+      assert(max_input_info.is_initializer);  // Checked by ExplicitOpCheck().
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*max_input_info.initializer_tensor, max_val_bytes));
     }
 
