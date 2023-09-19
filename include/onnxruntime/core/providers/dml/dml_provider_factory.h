@@ -31,15 +31,15 @@ extern "C" {
 #endif
 
 enum class OrtDmlPerformancePreference {
-  Default,
-  HighPerformance,  // Default
-  LowPower
+  Default = 0,
+  HighPerformance = 1,
+  LowPower = 2
 };
 
 enum class OrtDmlDeviceFilter {
-  None,
-  Gpu,  // Default
-  Npu
+  None = 0,
+  Gpu = 1,
+  Npu = 2
 };
 
 struct OrtDmlDeviceOptions {
