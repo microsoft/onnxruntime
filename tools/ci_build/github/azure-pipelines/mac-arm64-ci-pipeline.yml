@@ -9,7 +9,7 @@ jobs:
     cmakeVersion: 3.27.4
     jobTimeoutInMinutes: 60
 
-  timeoutInMinutes: $(jobTimeoutInMinutes)
+  timeoutInMinutes: ${{ variables.jobTimeoutInMinutes }}
 
   workspace:
     clean: all
