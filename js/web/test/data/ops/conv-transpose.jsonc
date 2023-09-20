@@ -251,7 +251,6 @@
       }
     ]
   },
-
   {
     "name": "ConvTranspose- pointwise",
     "operator": "ConvTranspose",
