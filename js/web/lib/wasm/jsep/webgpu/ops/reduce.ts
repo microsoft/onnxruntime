@@ -208,10 +208,10 @@ export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes
     }
 
     return [
-      `var value = ${output.type.storage}(0);`,
+      'var sum = f32(0);',
       '',
-      `value += ${input.getByOffset('inputOffset')};`,
-      `value = value / ${size}.;`,
+      `sum += f32(${input.getByOffset('inputOffset')});`,
+      `let value = ${output.type.value}(sum / ${size});`,
     ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp), {inputs: [0]});
