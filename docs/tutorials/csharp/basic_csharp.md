@@ -4,19 +4,19 @@ description: Basic usage of C# API
 parent: Inference with C#
 grand_parent: Tutorials
 has_children: false
-nav_order: 0
+nav_order: 1
 ---
 
 
 # C# Tutorial: Basic
 
-Here is simple tutorial for getting started with running inference on an existing ONNX model for a given input data.
-The model is typically trained using any of the well-known training frameworks and exported into the ONNX format. 
+Here is a simple tutorial for getting started with running inference on an existing ONNX model for a given input data.
+The model is typically trained using any of the well-known training frameworks and then exported into the ONNX format. 
 
-Note, that the following classed `NamedOnnxValue`, `DisposableNamedOnnxValue`, `FixedBufferOnnxValue` that have been used
-for some time are going to be deprecated in the future. They are still supported, but are not recommended for new code.
+Note, that the following classed `NamedOnnxValue`, `DisposableNamedOnnxValue`, `FixedBufferOnnxValue` are going
+to be deprecated in the future. They are not recommended for new code.
 
-The new `OrtValue` based API is a recommended approach. The `OrtValue` API generates less garbage and is more performant.
+The new `OrtValue` based API is the recommended approach. The `OrtValue` API generates less garbage and is more performant.
 Some scenarios indicated 4x performance improvement over the previous API and significantly less garbage.
 It provides uniform access to data via `ReadOnlySpan<T>` and `Span<T>` structures, regardless of its location, managed or unmanaged.
 
@@ -34,9 +34,9 @@ As before, `OrtValues` can be created directly on top of the managed `unmanaged`
 Read MS documentation on `blittable` data types. onnxruntime C# API allows use of managed buffers for input or output.
 
 If output shapes are known, one can pre-allocate `OrtValue` on top of the managed or unmanaged allocations and supply
-those OrtValues to be used as outputs.
+those OrtValues to be used as outputs. Due to this fact, the need for `IOBinding` is greatly diminished.
 
-Character data is represented as UTF-16 string objects in C#. It will still need to be copied and converted to UTF-8 to the native
+String data is represented as UTF-16 string objects in C#. It will still need to be copied and converted to UTF-8 to the native
 memory. However, that conversion is now more optimized and is done in a single pass without intermediate byte arrays.
 The same applies to string `OrtValue` tensors returned as outputs. Character based API now operates on `Span<char>`,
 `ReadOnlySpan<char>`, and `ReadOnlyMemory<char>` objects. This adds flexibility to the API and allows to avoid unnecessary copies.
