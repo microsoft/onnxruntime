@@ -101,22 +101,22 @@
 			<tbody>
 				<tr>
 					<td>HuggingFace BART</td>
-					<td>See <a class="text-blue-500" href="">BART</a></td>
+					<td>See <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/BART.md">BART</a></td>
 					<td>No model change required</td>
 				</tr>
 				<tr>
 					<td>HuggingFace BERT</td>
-					<td>See <a class="text-blue-500" href="">BERT</a></td>
+					<td>See <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/BERT.md">BERT</a></td>
 					<td>No model change required</td>
 				</tr>
 				<tr>
 					<td>HuggingFace DistilBERT</td>
-					<td>See <a class="text-blue-500" href="">DistilBERT</a></td>
+					<td>See <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/DistilBERT.md">DistilBERT</a></td>
 					<td>No model change required</td>
 				</tr>
 				<tr>
 					<td>HuggingFace GPT2</td>
-					<td>See <a class="text-blue-500" href="">GPT2</a></td>
+					<td>See <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/GPT2.md">GPT2</a></td>
 					<td>No model change required</td>
 				</tr>
 			</tbody>
