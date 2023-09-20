@@ -341,9 +341,11 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   int ti_end = ((tlength + K_PER_WARP - 1) / K_PER_WARP) * K_PER_WARP;
 
   // Iterate over the keys/timesteps to compute the various (Q*K^T)_{ti} values.
-  //bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
-  constexpr bool has_beams = true;
+  bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
+
+  bool has_mask = (params.mask != nullptr);
+  const int* mask_values = has_mask ? params.mask[bi_total_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER * 2) {
     // Default mask value
@@ -351,12 +353,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     int32_t mask_value_1 = 1;
 
     // Trigger fetching mask value
-    if (params.mask != nullptr) {
+    if (has_mask) {
       if (ti < tlength) {
-        mask_value_0 = params.mask[bi_total_seq_length + ti];
+        mask_value_0 = mask_values[ti];
       }
       if ((ti + 1) < tlength) {
-        mask_value_1 = params.mask[bi_total_seq_length + ti + 1];      
+        mask_value_1 = mask_values[ti + 1];
       }
     }
 
@@ -427,7 +429,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
       if (params.relative_attention_bias != nullptr) {
         qk_0 = add_vec(qk_0,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
+                       reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
       }
       qk_max = fmaxf(qk_max, qk_0);
       qk_smem[ti] = qk_0;
@@ -436,7 +438,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     if ((ti + 1) < tlength && tidx % THREADS_PER_KEY == 0) {
       if (params.relative_attention_bias != nullptr) {
         qk_1 = add_vec(qk_1,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti + 1]);
+                       reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti + 1]);
       }
       qk_max = fmaxf(qk_max, qk_1);
       qk_smem[ti + 1] = qk_1;
