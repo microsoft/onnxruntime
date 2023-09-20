@@ -145,7 +145,7 @@ class Tensor : public TensorBase {
   }
 
   size_t SizeInBytes() const override {
-    return NumberOfElement() * sizeof(TT);
+    return sizeof(TT) * static_cast<size_t>(NumberOfElement());
   }
 
  private:
