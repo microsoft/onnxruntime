@@ -212,15 +212,6 @@ namespace Dml
             ORT_THROW_HR(E_INVALIDARG);
         }
         const auto* allocInfo = static_cast<const AllocationInfo*>(opaqueHandle);
-
-        auto owner = allocInfo->GetOwner();
-        //The owner can be null if the resource was wrapped via CreateGPUAllocationFromD3DResource
-        if (owner != nullptr && owner != this)
-        {
-            // This allocation doesn't belong to this allocator!
-            ORT_THROW_HR(E_INVALIDARG);
-        }
-
         return allocInfo;
     }
 
