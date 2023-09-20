@@ -137,7 +137,7 @@ Status Parameter::CopyTo(const DataTransferManager* data_transfer_manager, OrtVa
   return Status::OK();
 }
 
-Status Parameter::CopyFrom(const OrtValue& data, const DataTransferManager* data_transfer_manager) {
+Status Parameter::CopyFrom(const DataTransferManager* data_transfer_manager, const OrtValue& data) {
   ORT_ENFORCE(data_.IsAllocated(),
               "The checkpoint parameter is not allocated. Cannot copy the given parameter data to it.");
   ORT_ENFORCE(data.IsTensor(), "Parameter data should be of tensor type.");
@@ -369,6 +369,10 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
     eval_model_path_ = std::get<std::optional<std::string>>(model_identifiers.eval_model);
   }
+}
+
+Module::~Module() {
+  state_->module_checkpoint_state.train_session_data_transfer_mgr = nullptr;
 }
 
 size_t Module::GetTrainingModelOutputCount() const noexcept {

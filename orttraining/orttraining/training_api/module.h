@@ -22,7 +22,7 @@ struct Parameter {
   // Return the mutable data.
   OrtValue& Data() { return data_; }
   Status CopyTo(const DataTransferManager* data_transfer_manager, OrtValue& data) const;
-  Status CopyFrom(const OrtValue& data, const DataTransferManager* data_transfer_manager);
+  Status CopyFrom(const DataTransferManager* data_transfer_manager, const OrtValue& data);
   const std::string& Name() const { return name_; }
 
   // Returns whether this parameter is trainable or not.
@@ -83,6 +83,8 @@ struct Module {
          const Environment& env,
          const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
          gsl::span<OrtCustomOpDomain* const> op_domains = gsl::span<OrtCustomOpDomain* const>());
+
+  ~Module();
 
   // Return the trainable/nontrainable parameters
   std::vector<std::shared_ptr<Parameter>> Parameters() const;

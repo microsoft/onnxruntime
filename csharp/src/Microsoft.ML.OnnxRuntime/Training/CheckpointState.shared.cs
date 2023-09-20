@@ -162,33 +162,34 @@ namespace Microsoft.ML.OnnxRuntime
             var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr propertyValue = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetProperty(handle, propertyNameUtf8, allocator.Pointer, out PropertyType propertyType, out propertyValue));
-
-            if (propertyType == PropertyType.Int)
-            {
-                Int64 value;
-                unsafe
-                {
-                    value = *(Int64*)propertyValue;
-                }
-                return value;
-            }
-            else if (propertyType == PropertyType.Float)
-            {
-                float value;
-                unsafe
-                {
-                    value = *(float*)propertyValue;
-                }
-                return value;
-            }
-            else if (propertyType == PropertyType.String)
-            {
-                return NativeOnnxValueHelper.StringFromNativeUtf8(propertyValue, allocator);
-            }
 
             try
             {
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetProperty(handle, propertyNameUtf8, allocator.Pointer, out PropertyType propertyType, out propertyValue));
+
+                if (propertyType == PropertyType.Int)
+                {
+                    Int64 value;
+                    unsafe
+                    {
+                        value = *(Int64*)propertyValue;
+                    }
+                    return value;
+                }
+                else if (propertyType == PropertyType.Float)
+                {
+                    float value;
+                    unsafe
+                    {
+                        value = *(float*)propertyValue;
+                    }
+                    return value;
+                }
+                else if (propertyType == PropertyType.String)
+                {
+                    return NativeOnnxValueHelper.StringFromNativeUtf8(propertyValue);
+                }
+
                 throw new ArgumentException("Expected the property type to be one of long, float or string. Unknown type retrieved " + propertyValue.ToString());
             }
             finally
