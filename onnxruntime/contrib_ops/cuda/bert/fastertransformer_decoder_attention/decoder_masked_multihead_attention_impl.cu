@@ -142,7 +142,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
                             ? bi * params.hidden_size + hi * head_size
                             : bi * (3 * params.hidden_size) + hi * head_size;
 
-  const size_t bi_total_seq_length = bi * params.total_sequence_length;
+  //const size_t bi_total_seq_length = bi * params.total_sequence_length;
 
   const size_t bi_max_seq_length = bi * params.max_sequence_length;
 
