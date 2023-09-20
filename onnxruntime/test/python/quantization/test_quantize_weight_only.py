@@ -33,12 +33,12 @@ def construct_model(output_model_path):
     initializers = []
     
     # make mul node
-    mul_data = np.random.normal(0, 0.1, [1, 10]).astype(np.float32)
+    mul_data = np.random.normal(0, 0.1, [1, 32]).astype(np.float32)
     initializers.append(onnx.numpy_helper.from_array(mul_data, name="mul.data"))
     mul_node = onnx.helper.make_node("Mul", ["input", "mul.data"], ["mul.output"], "Mul_0")
 
     # make matmul node
-    matmul_weight = np.random.normal(0, 0.1, [10, 1]).astype(np.float32)
+    matmul_weight = np.random.normal(0, 0.1, [32, 1]).astype(np.float32)
     initializers.append(onnx.numpy_helper.from_array(matmul_weight, name="matmul.weight"))
     matmul_node = onnx.helper.make_node("MatMul", 
                                         ["mul.output", "matmul.weight"], 
@@ -46,7 +46,7 @@ def construct_model(output_model_path):
                                         "MatMul_1")
 
     # make graph
-    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 10])
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 32])
     output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 1])
     graph_name = "weight_only_quant_test"
     graph = helper.make_graph(
@@ -91,7 +91,7 @@ class TestWeightOnlyQuantization(unittest.TestCase):
             self,
             self._model_fp32_path,
             self._model_weight_only_path,
-            {"input": np.random.rand(1, 10).astype(np.float32)},
+            {"input": np.random.rand(1, 32).astype(np.float32)},
         )
 
         model_fp32 = ONNXModel(onnx.load(self._model_fp32_path))
@@ -108,14 +108,14 @@ class TestWeightOnlyQuantization(unittest.TestCase):
         if not find_spec("neural_compressor"):
             self.skipTest("skip test_quantize_weight_only_gptq since neural_compressor is not installed")
         
-        data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, 10]})
+        data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, 32]})
         weight_only_config = GPTQWeightOnlyQuantConfig(data_reader)
         quantize_weight_only(self._model_fp32_path, self._model_weight_only_path, weight_only_config)
         check_model_correctness(
             self,
             self._model_fp32_path,
             self._model_weight_only_path,
-            {"input": np.random.rand(1, 10).astype(np.float32)},
+            {"input": np.random.rand(1, 32).astype(np.float32)},
         )
 
         model_fp32 = ONNXModel(onnx.load(self._model_fp32_path))

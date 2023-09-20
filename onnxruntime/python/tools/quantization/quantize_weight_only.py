@@ -2,6 +2,7 @@ import copy
 import logging
 import importlib
 from pathlib import Path
+from packaging import version
 from .calibrate import CalibrationDataReader
 from .quant_utils import load_model_with_shape_infer
 
@@ -42,6 +43,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self,
         group_size=32,
         scheme="sym",
+        ratios={},
         use_external_data_format=False,
     ):
         """
@@ -63,6 +65,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
             scheme=scheme,
             use_external_data_format=use_external_data_format
         )
+        self.ratios = ratios
 
 class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def __init__(
@@ -131,9 +134,9 @@ def _generate_weight_only_node_config(model, group_size, scheme):
         dict: weight only quant configuration for nodes.
     """
     weight_only_node_config = {}
-    template_config = {'weight': {"bits": 4, "group_size": group_size, "scheme": scheme}}
+    template_config = {"bits": 4, "group_size": group_size, "scheme": scheme}
     for node in model.graph.node:
-        if node.op_type in ["MatMul"]: # TODO: enable Gemm op support
+        if node.op_type in ["MatMul"]:
             weight_only_node_config[node.name] = template_config
     return weight_only_node_config
 
@@ -156,10 +159,14 @@ def quantize_weight_only(
         RuntimeError: Raise RuntimeError if neural-compressor is not correctly installed.
     """
     try:
-        importlib.import_module("neural_compressor.adaptor.ox_utils.weight_only")
+        importlib.import_module("neural_compressor")
     except Exception as e:
         logging.error(f"{e}.")
         raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.") from e
+    
+    import neural_compressor
+    assert version.parse(neural_compressor.__version__) >= version.parse("2.3.0"), \
+    "Require neural-compressor >= 2.3.0 to support weight only quantization!"
     
     def inc_dataloader():
         data_reader = copy.deepcopy(weight_only_config.calibration_data_reader)
@@ -174,8 +181,11 @@ def quantize_weight_only(
     algorithm = weight_only_config.algorithm
     if algorithm == "RTN":
         from neural_compressor.adaptor.ox_utils.weight_only import rtn_quantize
+        ratios = weight_only_config.ratios
+
         model = rtn_quantize(model=model_input, 
-                             tune_cfg=weight_only_node_config)
+                             weight_config=weight_only_node_config,
+                             ratios=ratios)
     elif algorithm == "GPTQ":
         from neural_compressor.adaptor.ox_utils.weight_only import gptq_quantize
         percdamp = weight_only_config.percdamp
@@ -186,7 +196,7 @@ def quantize_weight_only(
         dataloader = inc_dataloader()
 
         model = gptq_quantize(model=model_input,
-                              tune_cfg=weight_only_node_config,
+                              weight_config=weight_only_node_config,
                               dataloader=dataloader,
                               n_samples=-1,
                               percdamp=percdamp,
