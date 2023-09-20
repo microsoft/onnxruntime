@@ -1,5 +1,6 @@
 jobs:
 - job: MacArm64Build
+
   pool: onnxruntime-mac-m1-cpu
 
   variables:
@@ -8,6 +9,9 @@ jobs:
     cmakeVersion: 3.27.4
 
   timeoutInMinutes: 60
+
+  workspace:
+    clean: all
 
   steps:
 
