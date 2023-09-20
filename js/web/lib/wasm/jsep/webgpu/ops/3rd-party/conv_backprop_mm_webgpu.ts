@@ -172,8 +172,19 @@ export const createConv2DTransposeMatMulProgramInfo =
         const outShapeStrides : vec3<i32> = vec3<i32>(${ShapeUtil.computeStrides(outputShape).slice(0, 3).join(',')});
         const filterDims : vec2<i32> = vec2<i32>(${attributes.kernelShape[isChannelsLast ? 1 : 2]}, ${
             attributes.kernelShape[isChannelsLast ? 2 : 3]});
-          const pads : vec2<i32> = vec2<i32>(i32(filterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]})/2,
-          i32(filterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]})/2);
+        const effectiveFilterDims : vec2<i32> = filterDims + vec2<i32>(
+              ${
+            attributes.dilations[0] <= 1 ?
+                0 :
+                (attributes.kernelShape[isChannelsLast ? 1 : 2] - 1) * (attributes.dilations[0] - 1)},
+              ${
+            attributes.dilations[1] <= 1 ?
+                0 :
+                (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)});
+        const pads : vec2<i32> = vec2<i32>(i32(effectiveFilterDims[0]) - 1 - (${
+            attributes.pads[0] + attributes.pads[2]})/2,
+                                         i32(effectiveFilterDims[1]) - 1 - (${
+            attributes.pads[1] + attributes.pads[3]})/2);
         const strides : vec2<i32> = vec2<i32>(${attributes.strides[0]}, ${attributes.strides[1]});
         const dilation : vec2<i32> = vec2<i32>(${attributes.dilations[0]}, ${attributes.dilations[1]});
         const dimAOuter : i32 = ${dimAOuter};
