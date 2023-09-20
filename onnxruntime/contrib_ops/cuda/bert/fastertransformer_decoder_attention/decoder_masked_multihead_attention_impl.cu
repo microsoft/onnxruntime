@@ -344,11 +344,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
-  bool has_mask = (params.mask != nullptr);
-  const int* mask_values = has_mask ? &params.mask[bi_total_seq_length] : nullptr;
+  //bool has_mask = (params.mask != nullptr);
+  //const int* mask_values = has_mask ? &params.mask[bi_total_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER * 2) {
-    // Default mask value
+    /*
+      // Default mask value
     int32_t mask_value_0 = 1;
     int32_t mask_value_1 = 1;
 
@@ -361,6 +362,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
         mask_value_1 = mask_values[ti + 1];
       }
     }
+    */
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[2][K_VECS_PER_THREAD];
@@ -417,6 +419,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to
     // mimic PyTorch when dealing with mask filter values
+    /*
     if (mask_value_0 == 0) {
       qk_0 += params.mask_filter_value;
     }
@@ -424,6 +427,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     if (mask_value_1 == 0) {
       qk_1 += params.mask_filter_value;
     }
+    */
 
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
