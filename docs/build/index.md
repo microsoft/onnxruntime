@@ -1,5 +1,5 @@
 ---
-title: Build from source
+title: Build ONNX Runtime
 has_children: true
 nav_order: 5
 redirect_from: /docs/how-to/build
