@@ -7,13 +7,17 @@ jobs:
     condaEnvName: onnxruntime_ci_env
     pythonVersion: 3.9
     cmakeVersion: 3.27.4
+    jobTimeoutInMinutes: 60
 
-  timeoutInMinutes: 60
+  timeoutInMinutes: $(jobTimeoutInMinutes)
 
   workspace:
     clean: all
 
   steps:
+  - bash: |
+      caffeinate -s -t $(( $(jobTimeoutInMinutes) * 60 )) &
+    displayName: Prevent machine from going to sleep
 
   # Note: We will use a dedicated conda environment to keep the Python dependencies contained.
   # On a hosted agent this would not be necessary.
@@ -40,6 +44,7 @@ jobs:
       python $(Build.SourcesDirectory)/tools/ci_build/build.py \
         --build_dir $(Build.BinariesDirectory) \
         --build_apple_framework \
+        --build_shared_lib \
         --use_coreml \
         --enable_training_apis \
         --update --build --parallel --test
