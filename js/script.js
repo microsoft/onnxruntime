@@ -583,7 +583,7 @@ function ot_buildMatcher() {
 var ot_validCombos = {
 
     "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_stable":
-    "pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "pip install --pre onnxruntime-training --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/<br/>pip install torch-ort<br/>python -m torch_ort.configure",
 
     "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_nightly":
     "pip install --pre onnxruntime-training --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/<br/>pip install torch-ort<br/>python -m torch_ort.configure",
