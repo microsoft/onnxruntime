@@ -63,9 +63,20 @@ Status TopKOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const N
   auto rank = input_shape.size();
   auto axis = node_helper.Get("axis", -1);
 
-  if (-1 == axis && axis != static_cast<int32_t>(rank - 1)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN TopK axis is always the last dimension");
+  ORT_RETURN_IF_NOT(axis == -1 || axis == static_cast<int32_t>(rank - 1),
+                    "QNN TopK's axis is always the last dimension");
+
+  // ONNX TopK outputs int64 indices, but the equivalent QNN op outputs uint32 indices.
+  // The QNN HTP backend does not generally support the int64 type, but QNN EP can just use the uint32 type
+  // for TopK ops within the graph. However, if the TopK op **generates** a graph output,
+  // then we cannot support it on the HTP backend.
+  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  if (is_npu_backend) {
+    const std::string& output_name = node_unit.Outputs()[0].node_arg.Name();
+    ORT_RETURN_IF(qnn_model_wrapper.IsGraphOutput(output_name),
+                  "QNN EP does not support TopK ops that generate a graph output.");
   }
+
   return Status::OK();
 }
 

@@ -16,25 +16,6 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Function that builds a float32 model with an InstanceNormalization operator.
-GetTestModelFn BuildInstanceNormTestCase(const TestInputDef<float>& input_def,
-                                         const TestInputDef<float>& scale_def,
-                                         const TestInputDef<float>& bias_def,
-                                         const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [input_def, scale_def, bias_def, attrs](ModelTestBuilder& builder) {
-    NodeArg* input = MakeTestInput(builder, input_def);
-    NodeArg* scale = MakeTestInput(builder, scale_def);
-    NodeArg* bias = MakeTestInput(builder, bias_def);
-
-    NodeArg* output = builder.MakeOutput();
-    Node& op_node = builder.AddNode("InstanceNormalization", {input, scale, bias}, {output});
-
-    for (const auto& attr : attrs) {
-      op_node.AddAttributeProto(attr);
-    }
-  };
-}
-
 // Function that builds a QDQ model with an InstanceNormalization operator.
 template <typename QuantType>
 static GetTestQDQModelFn<QuantType> BuildQDQInstanceNormTestCase(const TestInputDef<float>& input_def,
@@ -93,7 +74,7 @@ static void RunInstanceNormQDQTest(const TestInputDef<float>& input_def,
 #endif
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
-  TestQDQModelAccuracy(BuildInstanceNormTestCase(input_def, scale_def, bias_def, attrs),
+  TestQDQModelAccuracy(BuildOpTestCase<float>("InstanceNormalization", {input_def, scale_def, bias_def}, {}, attrs),
                        BuildQDQInstanceNormTestCase<QuantType>(input_def, scale_def, bias_def, attrs),
                        provider_options,
                        18,
