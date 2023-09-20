@@ -1,5 +1,10 @@
 ---
-nav_exclude: true 
+title: C# Tutorial: Basic
+description: Basic usage of C# API
+parent: Inference with C#
+grand_parent: Tutorials
+has_children: false
+nav_order: 1
 ---
 # C# Tutorial: Basic
 
