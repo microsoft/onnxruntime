@@ -53,15 +53,9 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
-  void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list);
-
  private:
   TensorrtExecutionProviderInfo info_;
 };
-
-void TensorrtProviderFactory::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) {
-  custom_op_domain_list = info_.custom_op_domain_list;
-}
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   return std::make_unique<TensorrtExecutionProvider>(info_);
@@ -80,6 +74,11 @@ struct Tensorrt_Provider : Provider {
     TensorrtExecutionProviderInfo info;
     info.device_id = device_id;
     info.has_trt_options = false;
+
+    common::Status status = CreateTensorRTCustomOpDomainList(info);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+    }
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }
@@ -122,6 +121,11 @@ struct Tensorrt_Provider : Provider {
     info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
     info.cuda_graph_enable = options.trt_cuda_graph_enable != 0;
 
+    common::Status status = CreateTensorRTCustomOpDomainList(info);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+    }
+
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -132,11 +136,6 @@ struct Tensorrt_Provider : Provider {
   ProviderOptions GetProviderOptions(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtTensorRTProviderOptionsV2*>(provider_options);
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
-  }
-
-  void GetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtCustomOpDomain*>& custom_op_domains_ptr) override {
-    TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
-    trt_factory->GetCustomOpDomainList(custom_op_domains_ptr);
   }
 
   void Initialize() override {

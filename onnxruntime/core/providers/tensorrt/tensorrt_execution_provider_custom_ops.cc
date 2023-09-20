@@ -34,7 +34,8 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   // When the TRT plugin library is loaded, the global static object is created and the plugin is registered to TRT registry.
   // This is done through macro, for example, REGISTER_TENSORRT_PLUGIN(VisionTransformerPluginCreator).
   // extra_plugin_lib_paths has the format of "path_1;path_2....;path_n"
-  if (!extra_plugin_lib_paths.empty()) {
+  static bool is_loaded = false; 
+  if (!extra_plugin_lib_paths.empty() && !is_loaded) {
     std::stringstream extra_plugin_libs(extra_plugin_lib_paths);
     std::string lib;
     while (std::getline(extra_plugin_libs, lib, ';')) {
@@ -45,6 +46,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
         LOGS_DEFAULT(WARNING) << "[TensorRT EP]" << status.ToString();
       }
     }
+    is_loaded = true;
   }
 
   try {
@@ -75,6 +77,26 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     domain_list.push_back(custom_op_domain.release());
   } catch (const std::exception&) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
+  }
+  return Status::OK();
+}
+
+common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info) {
+  std::vector<OrtCustomOpDomain*> domain_list;
+  std::string extra_plugin_lib_paths{""};
+  if (info.has_trt_options) {
+    if (!info.extra_plugin_lib_paths.empty()) {
+      extra_plugin_lib_paths = info.extra_plugin_lib_paths;
+    }
+  } else {
+    const std::string extra_plugin_lib_paths_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kExtraPluginLibPaths);
+    if (!extra_plugin_lib_paths_env.empty()) {
+      extra_plugin_lib_paths = extra_plugin_lib_paths_env;
+    }
+  }
+  auto status = CreateTensorRTCustomOpDomainList(domain_list, extra_plugin_lib_paths);
+  if (!domain_list.empty()) {
+    info.custom_op_domain_list = domain_list;
   }
   return Status::OK();
 }
