@@ -44,6 +44,10 @@ namespace Dml
         gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
         gsl::span<const uint32_t> GetStrides() const;
         void SetStrides(gsl::span<const uint32_t> strides);
+        void PermuteDimensions(const std::vector<uint32_t> dimensionMapping, const TensorAxis alignment);
+        void PermuteArray(const std::vector<uint32_t> dimensionMapping, const TensorAxis alignment);
+        void InitializeStrides(int count, const TensorAxis alignment);
+        void EnsureMinimumDimensionCount(const size_t count, const TensorAxis alignment);
 
         inline uint64_t GetBufferSizeInBytes() const
         {

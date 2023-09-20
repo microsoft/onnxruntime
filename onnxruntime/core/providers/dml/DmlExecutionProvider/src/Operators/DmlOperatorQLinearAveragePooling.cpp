@@ -36,68 +36,9 @@ public:
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
 
         uint32_t dmlDimSize = m_inputTensorDescs[OrtInputTensors::ortInput].GetDimensionCount();
-        // Reshape the Input Scale to be the same dimension as the input tensor.
-        // The 1D tensor needs to be moved to the H channel.
-        m_inputTensorDescs[OrtInputTensors::ortInputScale] = CreateTensorDescFromInput(
-            kernelInfo, 
-            OrtInputTensors::ortInputScale,
-            TensorAxis::DoNotCoerce, 
-            TensorAxis::H,
-            TensorAxis::LeftAligned,
-            std::nullopt,
-            dmlDimSize
-            );
-
-        // Resize the Input ZeroPoint to be the same dimension as the input tensor.
-        // The 1D tensor needs to be moved to the H channel.
-        if (kernelInfo.IsInputValid(OrtInputTensors::ortInputZeroPoint))
-        {
-
-            m_inputTensorDescs[OrtInputTensors::ortInputZeroPoint] = CreateTensorDescFromInput(
-                kernelInfo, 
-                OrtInputTensors::ortInputZeroPoint,
-                TensorAxis::DoNotCoerce, 
-                TensorAxis::H,
-                TensorAxis::LeftAligned,
-                std::nullopt,
-                dmlDimSize
-                );
-        }
-
-        // Resize the Output Scale to be the same dimension as the input tensor.
-        // The 1D tensor needs to be moved to the H channel.
-        m_inputTensorDescs[OrtInputTensors::ortOutputScale] = CreateTensorDescFromInput(
-            kernelInfo, 
-            OrtInputTensors::ortInputScale,
-            TensorAxis::DoNotCoerce, 
-            TensorAxis::H,
-            TensorAxis::LeftAligned,
-            std::nullopt,
-            dmlDimSize
-            );
-
-        // Resize the Input ZeroPoint to be the same dimension as the input tensor.
-        // The 1D tensor needs to be moved to the H channel.
-        if (kernelInfo.IsInputValid(OrtInputTensors::ortOutputZeroPoint))
-        {
-
-            m_inputTensorDescs[OrtInputTensors::ortOutputZeroPoint] = CreateTensorDescFromInput(
-                kernelInfo, 
-                OrtInputTensors::ortOutputZeroPoint,
-                TensorAxis::DoNotCoerce, 
-                TensorAxis::H,
-                TensorAxis::LeftAligned,
-                std::nullopt,
-                dmlDimSize
-                );
-        }
-
-        // Initialize the output description while overriding the shape
-        m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputShape);
-
-        assert(m_kernel.spatialDimensionCount <= ARRAYSIZE(m_kernel.windowSize));
-
-        // DML requires that DimensionCount be equal to Input.DimCount - 2 for Pooling
+        ML_CHECK_VALID_ARGUMENT(dmlDimSize >= 2);
+        
+        // DML requires that DimensionCount be equal to Input.dmlDimSize - 2 for Pooling
         uint32_t expectedSpatialDimCount = m_inputTensorDescs[0].GetDimensionCount() - 2;
         if (m_kernel.spatialDimensionCount < expectedSpatialDimCount)
         {
@@ -124,45 +65,51 @@ public:
             m_kernel.spatialDimensionCount = expectedSpatialDimCount;
         }
 
+        // Initialize dimensionMapping for NCHW or NHWC layout
+        std::vector<uint32_t> dimensionMapping = {0u, dmlDimSize - 1u};
+        dimensionMapping.resize(dmlDimSize);
         if (isNhwc)
         {
-            uint32_t dimCount = m_inputTensorDescs[0].GetDimensionCount();
-            const auto inputSizes = m_inputTensorDescs[OrtInputTensors::ortInput].GetSizes();
-            std::vector<uint32_t> nchwInputSizes;
-            std::vector<uint32_t> nchwInputStrides;
-            ConvertNHWCToNCHW(dimCount, inputSizes, nchwInputSizes, nchwInputStrides);
-            m_inputTensorDescs[OrtInputTensors::ortInput] = TensorDesc(m_inputTensorDescs[OrtInputTensors::ortInput].GetDmlDataType(), nchwInputSizes, nchwInputStrides);
-
-            gsl::span<const uint32_t> inputScaleSizes = m_inputTensorDescs[OrtInputTensors::ortInputScale].GetSizes();
-            std::vector<uint32_t> nchwInputScaleSizes;
-            std::vector<uint32_t> nchwInputScaleStrides;
-            ConvertNHWCToNCHW(dimCount, inputScaleSizes, nchwInputScaleSizes, nchwInputScaleStrides);
-            m_inputTensorDescs[OrtInputTensors::ortInputScale] = TensorDesc(m_inputTensorDescs[OrtInputTensors::ortInputScale].GetDmlDataType(),     nchwInputScaleSizes, nchwInputScaleStrides);
-
-            gsl::span<const uint32_t> inputZeroPointSizes = m_inputTensorDescs[OrtInputTensors::ortInputZeroPoint].GetSizes();
-            std::vector<uint32_t> nchwInputZeroPointSizes;
-            std::vector<uint32_t> nchwInputZeroPointStrides;
-            ConvertNHWCToNCHW(dimCount, inputZeroPointSizes, nchwInputZeroPointSizes, nchwInputZeroPointStrides);
-            m_inputTensorDescs[OrtInputTensors::ortInputZeroPoint] = TensorDesc(m_inputTensorDescs[OrtInputTensors::ortInputZeroPoint].GetDmlDataType(), nchwInputZeroPointSizes, nchwInputZeroPointStrides);
-
-            gsl::span<const uint32_t> outputScaleSizes = m_inputTensorDescs[OrtInputTensors::ortOutputScale].GetSizes();
-            std::vector<uint32_t> nchwOutputScaleSizes;
-            std::vector<uint32_t> nchwOutputScaleStrides;
-            ConvertNHWCToNCHW(dimCount, outputScaleSizes, nchwOutputScaleSizes, nchwOutputScaleStrides);
-            m_inputTensorDescs[OrtInputTensors::ortOutputScale] = TensorDesc(m_inputTensorDescs[OrtInputTensors::ortOutputScale].GetDmlDataType(), nchwOutputScaleSizes, nchwOutputScaleStrides);
-
-            gsl::span<const uint32_t> outputZeroPointSizes = m_inputTensorDescs[OrtInputTensors::ortOutputZeroPoint].GetSizes();
-            std::vector<uint32_t> nchwOutputZeroPointSizes;
-            std::vector<uint32_t> nchwOutputZeroPointStrides;
-            ConvertNHWCToNCHW(dimCount, outputZeroPointSizes, nchwOutputZeroPointSizes, nchwOutputZeroPointStrides);
-            m_inputTensorDescs[OrtInputTensors::ortOutputZeroPoint] = TensorDesc(m_inputTensorDescs[OrtInputTensors::ortOutputZeroPoint].GetDmlDataType(), nchwOutputZeroPointSizes, nchwOutputZeroPointStrides);
-
-            gsl::span<const uint32_t> outputSizes = m_outputTensorDescs[0].GetSizes();
-            std::vector<uint32_t> nchwOutputSizes;
-            std::vector<uint32_t> nchwOutputStrides;
-            ConvertNHWCToNCHW(dimCount, outputSizes, nchwOutputSizes, nchwOutputStrides);
-            m_outputTensorDescs[0] = TensorDesc(m_outputTensorDescs[0].GetDmlDataType(), nchwOutputSizes, nchwOutputStrides);
+            // Form a remapping for dimensions so C is moved before the spatial dimensions.
+            // e.g. NWC   -> {0,2,1}     -> NCW
+            //      NHWC  -> {0,3,1,2}   -> NCHW
+            //      NDHWC -> {0,4,1,2,3} -> NCDHW
+            std::iota(dimensionMapping.begin() + 2, dimensionMapping.end(), 1u);
         }
+        else
+        {
+            // Use NCHW {0,1,2,3} format with increasing order of indexs 
+            std::iota(dimensionMapping.begin() + 1, dimensionMapping.end(), 1u);
+        }
+        m_inputTensorDescs[OrtInputTensors::ortInput].PermuteDimensions(dimensionMapping, TensorAxis::LeftAligned);
+
+        // Reshape the Input Scale to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the H channel.
+        m_inputTensorDescs[OrtInputTensors::ortInputScale].PermuteDimensions(dimensionMapping, TensorAxis::LeftAligned);
+
+        // Reshape the Input ZeroPoint to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the H channel.
+        if (kernelInfo.IsInputValid(OrtInputTensors::ortInputZeroPoint))
+        {
+            m_inputTensorDescs[OrtInputTensors::ortInputZeroPoint].PermuteDimensions(dimensionMapping, TensorAxis::LeftAligned);
+        }
+
+        // Reshape the Output Scale to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the H channel.
+        m_inputTensorDescs[OrtInputTensors::ortOutputScale].PermuteDimensions(dimensionMapping, TensorAxis::LeftAligned);
+
+
+        // Reshape the Input ZeroPoint to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the H channel.
+        if (kernelInfo.IsInputValid(OrtInputTensors::ortOutputZeroPoint))
+        {
+            m_inputTensorDescs[OrtInputTensors::ortOutputZeroPoint].PermuteDimensions(dimensionMapping, TensorAxis::LeftAligned);
+        }
+
+        // Initialize the output description while overriding the shape
+        m_outputTensorDescs[0].PermuteDimensions(dimensionMapping, TensorAxis::LeftAligned);
+
+        assert(m_kernel.spatialDimensionCount <= ARRAYSIZE(m_kernel.windowSize));
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
