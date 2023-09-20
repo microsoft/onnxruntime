@@ -688,7 +688,7 @@ static void TransposeInputImpl(api::GraphRef& graph,
         // Remove the Transpose node if possible
         // if there's a DQ node the `consumers` list still includes it so allow for that.
         // in that case UpdateDQNodeInputAndShape already updated the input of the DQ node so it's safe to remove it.
-        if (consumers->comprehensive && consumers->nodes.size() == (dq_node ? 1 : 0)) {
+        if (consumers->comprehensive && consumers->nodes.size() == size_t(dq_node ? 1 : 0)) {
           graph.RemoveNode(*inp_node);
         }
 
