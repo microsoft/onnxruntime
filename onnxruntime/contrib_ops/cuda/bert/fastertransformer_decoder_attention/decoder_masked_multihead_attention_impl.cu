@@ -345,7 +345,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
   bool has_mask = (params.mask != nullptr);
-  const int* mask_values = has_mask ? params.mask[bi_total_seq_length] : nullptr;
+  const int* mask_values = has_mask ? &params.mask[bi_total_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER * 2) {
     // Default mask value
