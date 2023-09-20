@@ -296,13 +296,26 @@ API_IMPL_BEGIN
     const uint32_t count{ d3D12CoreComputeAdapters->GetAdapterCount() };
     int compute_only_device_id = -1;
 
-    // will hold all the adapters in the order specified by the device options
-    auto ordered_adapters = std::vector<ComPtr<IDXCoreAdapter>>();
+    // Struct for holding each adapter
+    enum class DeviceType { GPU, NPU, BadDevice};
+    struct AdapterInfo {
+        ComPtr<IDXCoreAdapter> Adapter;
+        DeviceType Type; // GPU or NPU
+    };
 
-    // Used in the case that both GPU and NPU adapters are considered
-    auto gpu_adapters = std::vector<ComPtr<IDXCoreAdapter>>();
-    auto npu_adapters = std::vector<ComPtr<IDXCoreAdapter>>();
+    // Returns an adapter type based on the user supplied device filter
+    std::function<DeviceType (IDXCoreAdapter*)> filterAdapterTypeQuery[4] = {
+        nullptr, // enum cannot take 0 value
+        // Only GPUs are considered so all other devices aren't needed
+        [](IDXCoreAdapter* adapter){ return IsGPU(adapter) ? DeviceType::GPU : DeviceType::BadDevice; },
+        // Only NPUs are considered so all other devices aren't needed
+        [](IDXCoreAdapter* adapter){ return IsNPU(adapter) ? DeviceType::NPU : DeviceType::BadDevice; },
+        // Both GPUs and NPUs are considered
+        [](IDXCoreAdapter* adapter){ return IsGPU(adapter) ? DeviceType::GPU :
+        IsNPU(adapter) ? DeviceType::NPU : DeviceType::BadDevice; }
+    };
 
+    auto selected_adapters = std::vector<AdapterInfo>();
     // Iterate through all compute capable adapters
     for (uint32_t i = 0; i < count; ++i)
     {
@@ -310,51 +323,31 @@ API_IMPL_BEGIN
         ORT_THROW_IF_FAILED(
             d3D12CoreComputeAdapters->GetAdapter(i, candidateAdapter.GetAddressOf()));
 
-        if (dev_filter == OrtDmlDeviceFilter::Gpu) // consider GPUs only
-        {
-            if (IsGPU(candidateAdapter.Get())) {
-                ordered_adapters.push_back(candidateAdapter);
-            }
-        }
-        else if(dev_filter == OrtDmlDeviceFilter::Npu) // consider NPUs only
-        {
-            if (IsNPU(candidateAdapter.Get())) {
-                ordered_adapters.push_back(candidateAdapter);
-            }
-        }
-        else // consider both GPUs and NPUs
-        {
-            if (IsGPU(candidateAdapter.Get())) {
-                gpu_adapters.push_back(candidateAdapter);
-            } else {
-                npu_adapters.push_back(candidateAdapter);
-            }
+        // Add the adapters that are valid based on the device filter (GPU, NPU, or Both)
+        auto adapterType = filterAdapterTypeQuery[static_cast<int>(dev_filter)](candidateAdapter.Get());
+        if (adapterType != DeviceType::BadDevice) {
+            selected_adapters.push_back(AdapterInfo{candidateAdapter, adapterType});
         }
     }
 
-    if (dev_filter == OrtDmlDeviceFilter::None) // considering both NPUs and GPUs
+    // When considering both GPUs and NPUs sort them by performance preference
+    // of Default (Gpus first), HighPerformance (GPUs first), or LowPower (NPUs first)
+    if (dev_filter == OrtDmlDeviceFilter::Both) // considering both NPUs and GPUs
     {
-        // order the adapters based on the performance preference
-        std::vector<ComPtr<IDXCoreAdapter>> high_pri_adapters;
-        std::vector<ComPtr<IDXCoreAdapter>> low_pri_adapters;
-        if (perf_pref == OrtDmlPerformancePreference::LowPower) // NPUs first
+        struct SortingPolicy
         {
-            high_pri_adapters = npu_adapters;
-            low_pri_adapters = gpu_adapters;
-        }
-        else // GPUs first
-        {
-            high_pri_adapters = gpu_adapters;
-            low_pri_adapters = npu_adapters;
-        }
-
-        ordered_adapters.reserve(high_pri_adapters.size() + low_pri_adapters.size());
-        ordered_adapters.insert(ordered_adapters.end(), high_pri_adapters.begin(), high_pri_adapters.end());
-        ordered_adapters.insert(ordered_adapters.end(), low_pri_adapters.begin(), low_pri_adapters.end());
+            bool gpusFirst_ = true;
+            SortingPolicy(bool gpusFirst = true) : gpusFirst_(gpusFirst){}
+            bool operator()(const AdapterInfo& a, const AdapterInfo& b) {
+                return gpusFirst_ ? a.Type > b.Type : a.Type < b.Type;
+            }
+        };
+        auto sortingPolicy = SortingPolicy(perf_pref != OrtDmlPerformancePreference::LowPower);
+        std::sort(selected_adapters.begin(), selected_adapters.end(), sortingPolicy);
     }
 
-    // check if ordered_adapter count is 0 (no adapters?)
-    ComPtr<IDXCoreAdapter> highest_pri_adapter = ordered_adapters[0];
+    // check if num adapters is 0 (no adapters?)
+    ComPtr<IDXCoreAdapter> highest_pri_adapter = selected_adapters[0].Adapter;
     // return the create function for a dxcore device
     options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::CreateDXCore(
         highest_pri_adapter));

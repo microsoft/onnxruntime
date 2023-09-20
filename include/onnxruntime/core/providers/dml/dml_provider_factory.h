@@ -37,9 +37,9 @@ enum class OrtDmlPerformancePreference {
 };
 
 enum class OrtDmlDeviceFilter {
-  None = 0,
   Gpu = 1,
-  Npu = 2
+  Npu = 2,
+  Both = 3
 };
 
 struct OrtDmlDeviceOptions {
