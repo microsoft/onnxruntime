@@ -1787,7 +1787,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   options->provider_factories.push_back(factory);
 
   std::vector<OrtCustomOpDomain*> custom_op_domains;
-  std::string extra_plugin_lib_paths = (tensorrt_options == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
+  std::string extra_plugin_lib_paths = (tensorrt_options == nullptr || tensorrt_options->trt_extra_plugin_lib_paths == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
   onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
   provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
   for (auto ptr : custom_op_domains) {
