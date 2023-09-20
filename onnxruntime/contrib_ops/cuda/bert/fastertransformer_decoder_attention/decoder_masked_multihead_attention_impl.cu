@@ -344,17 +344,23 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
-  for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
+  for (int ti = ko; ti < ti_end; ti += K_PER_ITER * 2) {
     // Default mask value
-    int32_t mask_value = 1;
+    int32_t mask_value_0 = 1;
+    int32_t mask_value_1 = 1;
 
     // Trigger fetching mask value
     if (params.mask != nullptr) {
-      mask_value = params.mask[bi_total_seq_length + ti];
+      if (ti < tlength) {
+        mask_value_0 = params.mask[bi_total_seq_length + ti];
+      }
+      if ((ti + 1) < tlength) {
+        mask_value_1 = params.mask[bi_total_seq_length + ti + 1];      
+      }
     }
 
     // The keys loaded from the key cache.
-    K_vec_k k_vec[K_VECS_PER_THREAD];
+    K_vec_k k_vec[2][K_VECS_PER_THREAD];
     if (ti < tlength) {
       if (has_beams) {
         const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
@@ -377,25 +383,62 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       }
     }
 
+    if ((ti + 1) < tlength) {
+      if (has_beams) {
+        const int beam_offset = beam_indices[ti + 1] * params.num_heads * params.max_sequence_length * head_size;
+
+#pragma unroll
+        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+          int jj = ii * params.max_sequence_length + ti + 1;
+
+          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
+        }
+      } else {
+#pragma unroll
+        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+          int jj = ii * params.max_sequence_length + ti + 1;
+
+          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
+        }
+      }
+    }
+
     // Perform the dot product and normalize qk.
     // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
-    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
+    float qk_0 = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec[0]) * inv_sqrt_dh;
+
+    float qk_1 = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec[1]) * inv_sqrt_dh;
 
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to
     // mimic PyTorch when dealing with mask filter values
-    if (mask_value == 0) {
-      qk += params.mask_filter_value;
+    if (mask_value_0 == 0) {
+      qk_0 += params.mask_filter_value;
+    }
+
+    if (mask_value_1 == 0) {
+      qk_1 += params.mask_filter_value;
     }
 
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
       if (params.relative_attention_bias != nullptr) {
-        qk = add_vec(qk,
+        qk_0 = add_vec(qk_0,
                      reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
       }
-      qk_max = fmaxf(qk_max, qk);
-      qk_smem[ti] = qk;
+      qk_max = fmaxf(qk_max, qk_0);
+      qk_smem[ti] = qk_0;
+    }
+
+    if ((ti + 1) < tlength && tidx % THREADS_PER_KEY == 0) {
+      if (params.relative_attention_bias != nullptr) {
+        qk_1 = add_vec(qk,
+                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti + 1]);
+      }
+      qk_max = fmaxf(qk_max, qk_1);
+      qk_smem[ti + 1] = qk_1;
     }
   }
 
