@@ -14,6 +14,64 @@
 namespace onnxruntime {
 namespace test {
 
+// Runs a model with a Reshape operator on the QNN CPU backend. Checks the graph node assignment
+// and that inference outputs for QNN EP and CPU EP match.
+template <typename DataType>
+static void RunReshapeTestOnCPU(const TestInputDef<DataType>& input_def,
+                                const TestInputDef<int64_t>& shape_def,
+                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                ExpectedEPNodeAssignment expected_ep_assignment,
+                                int opset = 19) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnCpu.dll";
+#else
+  provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>("Reshape", {input_def}, {shape_def}, attrs),
+                  provider_options,
+                  opset,
+                  expected_ep_assignment);
+}
+
+//
+// CPU tests:
+//
+
+// Test that Reshape with a dynamic shape input is not supported by QNN EP.
+TEST_F(QnnCPUBackendTests, Reshape_DynamicShape_Unsupported) {
+  RunReshapeTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                      TestInputDef<int64_t>({2}, false /* is_initializer */, {1, 48}),
+                      {},                              // Attributes
+                      ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
+                      19);                             // Opset
+}
+
+// Test that Reshape with an enabled 'allowzero' attribute is not supported by QNN EP.
+TEST_F(QnnCPUBackendTests, Reshape_AllowZeroAttr_Unsupported) {
+  RunReshapeTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                      TestInputDef<int64_t>({2}, true, {1, 48}),
+                      {utils::MakeAttribute("allowzero", static_cast<int64_t>(1))},
+                      ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
+                      19);                             // Opset
+}
+
+// Test Reshape of rank 4 -> rank 2.
+TEST_F(QnnCPUBackendTests, Reshape_4D_f32) {
+  RunReshapeTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+                      TestInputDef<int64_t>({2}, true, {1, 48}),
+                      {},  // Attributes
+                      ExpectedEPNodeAssignment::All,
+                      19);  // Opset
+}
+
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+//
+// HTP tests:
+//
+
 // Returns a function that creates a graph with a QDQ Reshape operator.
 template <typename QuantType>
 GetTestQDQModelFn<QuantType> BuildQDQReshapeTestCase(const TestInputDef<float>& input_def,
@@ -43,28 +101,6 @@ GetTestQDQModelFn<QuantType> BuildQDQReshapeTestCase(const TestInputDef<float>& 
     AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, reshape_output, input_qparams.scale,
                                                      input_qparams.zero_point);
   };
-}
-
-// Runs a model with a Reshape operator on the QNN CPU backend. Checks the graph node assignment
-// and that inference outputs for QNN EP and CPU EP match.
-template <typename DataType>
-static void RunReshapeTestOnCPU(const TestInputDef<DataType>& input_def,
-                                const TestInputDef<int64_t>& shape_def,
-                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                ExpectedEPNodeAssignment expected_ep_assignment,
-                                int opset = 19) {
-  ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>("Reshape", {input_def}, {shape_def}, attrs),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
 }
 
 // Runs a model with a non-QDQ Reshape operator on the QNN HTP backend. Checks the graph node assignment
@@ -113,42 +149,6 @@ static void RunQDQReshapeTestOnHTP(const TestInputDef<float>& input_def,
                        opset,
                        expected_ep_assignment);
 }
-
-//
-// CPU tests:
-//
-
-// Test that Reshape with a dynamic shape input is not supported by QNN EP.
-TEST_F(QnnCPUBackendTests, Reshape_DynamicShape_Unsupported) {
-  RunReshapeTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                      TestInputDef<int64_t>({2}, false /* is_initializer */, {1, 48}),
-                      {},                              // Attributes
-                      ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
-                      19);                             // Opset
-}
-
-// Test that Reshape with an enabled 'allowzero' attribute is not supported by QNN EP.
-TEST_F(QnnCPUBackendTests, Reshape_AllowZeroAttr_Unsupported) {
-  RunReshapeTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                      TestInputDef<int64_t>({2}, true, {1, 48}),
-                      {utils::MakeAttribute("allowzero", static_cast<int64_t>(1))},
-                      ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
-                      19);                             // Opset
-}
-
-// Test Reshape of rank 4 -> rank 2.
-TEST_F(QnnCPUBackendTests, Reshape_4D_f32) {
-  RunReshapeTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
-                      TestInputDef<int64_t>({2}, true, {1, 48}),
-                      {},  // Attributes
-                      ExpectedEPNodeAssignment::All,
-                      19);  // Opset
-}
-
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-//
-// HTP tests:
-//
 
 // Test that QDQ Reshape with a dynamic shape input is not supported by QNN EP.
 TEST_F(QnnHTPBackendTests, Reshape_DynamicShape_Unsupported) {

@@ -36,8 +36,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
           {"Resize", {}},
           {"Split", {}},
           {"Squeeze", {}},
-          {"Unsqueeze", {}}};
-}
+          {"Unsqueeze", {}},
+          {"Tile", {}}};
+  }
 
 static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
   return {{"ArgMax", {}},
