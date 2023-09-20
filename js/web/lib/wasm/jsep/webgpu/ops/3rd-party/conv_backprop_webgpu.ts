@@ -21,7 +21,7 @@ import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
-import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common'
+import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 
 const createConvTranspose2DOpProgramShaderSource =

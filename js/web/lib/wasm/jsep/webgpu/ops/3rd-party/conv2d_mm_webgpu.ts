@@ -23,7 +23,7 @@ import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
-import {tensorTypeToWsglStorageType} from '../common'
+import {tensorTypeToWsglStorageType} from '../common';
 import {ConvAttributes} from '../conv';
 
 import {Activation, activationFnSnippet, biasActivationSnippet, typeSnippet} from './activation_util';
