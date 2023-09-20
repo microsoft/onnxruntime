@@ -34,7 +34,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   // When the TRT plugin library is loaded, the global static object is created and the plugin is registered to TRT registry.
   // This is done through macro, for example, REGISTER_TENSORRT_PLUGIN(VisionTransformerPluginCreator).
   // extra_plugin_lib_paths has the format of "path_1;path_2....;path_n"
-  static bool is_loaded = false; 
+  static bool is_loaded = false;
   if (!extra_plugin_lib_paths.empty() && !is_loaded) {
     std::stringstream extra_plugin_libs(extra_plugin_lib_paths);
     std::string lib;

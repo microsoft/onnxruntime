@@ -193,12 +193,12 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
  * Please note that it will reset the OrtTensorRTProviderOptionsV2 instance first and then set up the provided provider options
  * See TensorrtExecutionProviderInfo::FromProviderOptions() for more details. This function will be called by the C API UpdateTensorRTProviderOptions() also.
  *
- * \param provider_options - a pointer to OrtTensorRTProviderOptionsV2 instance 
- * \param options - a reference to ProviderOptions instance 
- * \param string_copy - if it's true, it uses strncpy() to copy 'provider option' string from ProviderOptions instance to where the 'provider option' const char pointer in OrtTensorRTProviderOptionsV2 instance points to.   
+ * \param provider_options - a pointer to OrtTensorRTProviderOptionsV2 instance
+ * \param options - a reference to ProviderOptions instance
+ * \param string_copy - if it's true, it uses strncpy() to copy 'provider option' string from ProviderOptions instance to where the 'provider option' const char pointer in OrtTensorRTProviderOptionsV2 instance points to.
  *                      it it's false, it only saves the pointer and no strncpy().
- * 
- * Note: If there is strncpy involved, please remember to deallocate or simply call C API ReleaseTensorRTProviderOptions. 
+ *
+ * Note: If there is strncpy involved, please remember to deallocate or simply call C API ReleaseTensorRTProviderOptions.
  */
 void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options, const ProviderOptions& options, bool string_copy) {
   if (provider_options == nullptr) {
