@@ -2,7 +2,7 @@
 title: Cloud - Azure
 description: Instructions to infer an ONNX model remotely with an Azure endpoint
 parent: Execution Providers
-nav_order: 11
+nav_order: 13
 redirect_from: /docs/reference/execution-providers/Azure-ExecutionProvider
 ---
 
