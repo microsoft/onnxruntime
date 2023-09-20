@@ -7,6 +7,8 @@ jobs:
     pythonVersion: 3.9
     cmakeVersion: 3.27.4
 
+  timeoutInMinutes: 60
+
   steps:
 
   # Note: We will use a dedicated conda environment to keep the Python dependencies contained.
