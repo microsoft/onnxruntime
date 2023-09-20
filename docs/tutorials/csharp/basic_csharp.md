@@ -4,8 +4,10 @@ description: Basic usage of C# API
 parent: Inference with C#
 grand_parent: Tutorials
 has_children: false
-nav_order: 1
+nav_order: 0
 ---
+
+
 # C# Tutorial: Basic
 
 Here is simple tutorial for getting started with running inference on an existing ONNX model for a given input data.
