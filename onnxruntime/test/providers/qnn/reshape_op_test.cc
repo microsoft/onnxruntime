@@ -90,7 +90,7 @@ static void RunReshapeTestOnHTP(const TestInputDef<DataType>& input_def,
 }
 
 // Runs a QDQ Reshape model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and that inference
-// running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP (when compared to the baseline float32 model).
+// running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP (compared to the baseline float32 model).
 template <typename QType>
 static void RunQDQReshapeTestOnHTP(const TestInputDef<float>& input_def,
                                    const TestInputDef<int64_t>& shape_def,

@@ -178,7 +178,7 @@ inline GetTestQDQModelFn<InputAQType> BuildQDQGemmTestCase(const std::vector<Tes
 }
 
 // Runs a QDQ Gemm model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and that inference
-// running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP (when compared to the baseline float32 model).
+// running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP (compared to the baseline float32 model).
 template <typename InputAQType, typename InputBQType>
 static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_defs,
                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
