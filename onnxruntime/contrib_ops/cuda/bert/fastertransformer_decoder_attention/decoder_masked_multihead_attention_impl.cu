@@ -369,7 +369,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
         for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
           int jj = ii * params.max_sequence_length + ti;
 
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[0][ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
         }
       } else {
@@ -377,7 +377,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
         for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
           int jj = ii * params.max_sequence_length + ti;
 
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[0][ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
       }
@@ -391,7 +391,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
         for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
           int jj = ii * params.max_sequence_length + ti + 1;
 
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[1][ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
         }
       } else {
@@ -399,7 +399,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
         for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
           int jj = ii * params.max_sequence_length + ti + 1;
 
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[1][ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
       }
