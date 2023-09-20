@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
+import {fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
 
 export interface LayerNormAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -17,10 +16,6 @@ export interface LayerNormAttributes extends AttributeWithCacheKey {
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length < 2) {
     throw new Error('layerNorm requires at least 2 inputs.');
-  }
-
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('inputs should be float type');
   }
 };
 
@@ -32,7 +27,6 @@ const createLayerNormProgramInfo =
           const bias = inputs[2];
 
           const outputShape = xShape;
-          const outputSize = ShapeUtil.size(outputShape);
           const axis = ShapeUtil.normalizeAxis(attributes.axis, xShape.length);
           const normCount = ShapeUtil.sizeToDimension(xShape, axis);
           const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
@@ -55,40 +49,44 @@ const createLayerNormProgramInfo =
           }
 
           const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+          const components = getMaxComponents(normSize);
+          const variables = [
+            inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
+            inputVariable('scale', scale.dataType, scale.dims, components),
+          ];
+          if (bias) {
+            variables.push(inputVariable('bias', bias.dataType, bias.dims, components));
+          }
+          variables.push(outputVariable('output', inputs[0].dataType, outputShape, components));
 
           const hasMeanDataOutput = outputCount > 1;
           const hasInvStdOutput = outputCount > 2;
-          let bindingIndex = 0;
+
+          if (hasMeanDataOutput) {
+            variables.push(outputVariable('meanDataOutput', inputs[0].dataType, meanInvStdDevDim));
+          }
+          if (hasInvStdOutput) {
+            variables.push(outputVariable('invStdOutput', inputs[0].dataType, meanInvStdDevDim));
+          }
+
           const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const normSize: u32 = ${normSize};
+  const normSize: u32 = ${normSize / components};
   const normSizeTyped: ${dataType} = ${normSize};
-  const epsilon: f32 = ${attributes.epsilon};
+  const epsilon: ${dataType} = ${attributes.epsilon};
 
-  @group(0) @binding(${bindingIndex++}) var<storage, read> x : array<${dataType}>;
-  @group(0) @binding(${bindingIndex++}) var<storage, read> scale : array<${dataType}>;
-  ${bias ? `@group(0) @binding(${bindingIndex++}) var<storage, read> bias : array<${dataType}>;` : ''}
-  @group(0) @binding(${bindingIndex++}) var<storage, read_write> output : array<${dataType}>;
-  ${
-              hasMeanDataOutput ?
-                  `@group(0) @binding(${bindingIndex++}) var<storage, read_write> meanDataOutput : array<${dataType}>` :
-                  ''};
-  ${
-              hasInvStdOutput ?
-                  `@group(0) @binding(${bindingIndex++}) var<storage, read_write> invStdOutput : array<${dataType}>` :
-                  ''};
-
+  ${shaderHelper.declareVariables(...variables)}
   ${shaderHelper.mainStart()}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(normCount)}
     let offset = global_idx * normSize;
-    if (offset >= ${outputSize}) { return; }
-    var mean: ${dataType} = 0;
-    var meanSquare: ${dataType} = 0;
+    var meanVector = ${fillVector(dataType, components)};
+    var meanSquareVector = ${fillVector(dataType, components)};
 
     for (var h: u32 = 0u; h < normSize; h++) {
-      mean = mean + x[h + offset];
-      meanSquare = meanSquare + x[h + offset] * x[h + offset];
+      meanVector += x[h + offset];
+      meanSquareVector += x[h + offset] * x[h + offset];
     }
-    mean = mean / normSizeTyped;
-    meanSquare = sqrt(meanSquare / normSizeTyped - mean * mean + epsilon);
+    let mean = ${sumVector('meanVector', components)} / normSizeTyped;
+    let meanSquare = sqrt(${sumVector('meanSquareVector', components)} / normSizeTyped - mean * mean + epsilon);
 
     for (var j: u32 = 0; j < normSize; j++) {
       output[j + offset] = (x[j + offset] - mean) / meanSquare * scale[j] ${bias ? '+ bias[j]' : ''};
