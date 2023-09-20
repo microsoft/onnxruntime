@@ -76,7 +76,6 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                      [](int64_t item) { return SafeInt<uint32_t>(item); });
       split_index.pop_back();
     } else {
-      // TODO: Support Split opset 18, which may specify the 'num_outputs' attribute.
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic split");
     }
   } else {

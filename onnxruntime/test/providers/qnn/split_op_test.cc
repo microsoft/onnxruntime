@@ -22,7 +22,7 @@ GetTestModelFn BuildSplitTestCase(const TestInputDef<DataType>& input_def,
 
     op_inputs.push_back(MakeTestInput<DataType>(builder, input_def));
 
-    if (split_is_input) {
+    if (split_is_input && !split.empty()) {
       op_inputs.push_back(builder.Make1DInitializer(split));
     }
 
@@ -39,7 +39,7 @@ GetTestModelFn BuildSplitTestCase(const TestInputDef<DataType>& input_def,
 
     Node& split_node = builder.AddNode("Split", op_inputs, split_outputs);
 
-    if (!split_is_input) {
+    if (!split_is_input && !split.empty()) {
       split_node.AddAttribute("split", split);
     }
 
@@ -76,6 +76,38 @@ static void RunSplitOpTestOnCPU(const TestInputDef<DataType>& input_def,
 //
 // CPU tests:
 //
+
+// Test Split opset 18 on CPU backend: equal split of axis 0 via 'num_outputs' attribute
+// and 'split' input.
+TEST_F(QnnCPUBackendTests, Split_Equal_Axis0_Opset18) {
+  // Use 'split' input (initializer).
+  RunSplitOpTestOnCPU<float>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
+                             {2, 2},  // split
+                             0,       // axis
+                             -1,      // num_outputs
+                             18,      // opset
+                             ExpectedEPNodeAssignment::All);
+  RunSplitOpTestOnCPU<int32_t>(TestInputDef<int32_t>({4, 2}, false, {1, 2, 3, 4, 5, 6, 7, 8}),
+                               {2, 2},  // split
+                               0,       // axis
+                               -1,      // num_outputs
+                               18,      // opset
+                               ExpectedEPNodeAssignment::All);
+
+  // Use 'num_outputs' attribute.
+  RunSplitOpTestOnCPU<float>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
+                             {},  // split (use num_outputs instead)
+                             0,   // axis
+                             2,   // num_outputs
+                             18,  // opset
+                             ExpectedEPNodeAssignment::All);
+  RunSplitOpTestOnCPU<int32_t>(TestInputDef<int32_t>({4, 2}, false, {1, 2, 3, 4, 5, 6, 7, 8}),
+                               {},  // split (use num_outputs instead)
+                               0,   // axis
+                               2,   // num_outputs
+                               18,  // opset
+                               ExpectedEPNodeAssignment::All);
+}
 
 // Test Split opset 13 on CPU backend: equal split of axis 0
 TEST_F(QnnCPUBackendTests, Split_Equal_Axis0_Opset13) {
@@ -167,7 +199,7 @@ GetTestQDQModelFn<QuantType> BuildQDQSplitTestCase(const TestInputDef<float>& in
     op_inputs.push_back(input_after_qdq);
 
     // Add split input
-    if (split_is_input) {
+    if (split_is_input && !split.empty()) {
       op_inputs.push_back(builder.Make1DInitializer(split));
     }
 
@@ -184,7 +216,7 @@ GetTestQDQModelFn<QuantType> BuildQDQSplitTestCase(const TestInputDef<float>& in
 
     Node& split_node = builder.AddNode("Split", op_inputs, split_outputs);
 
-    if (!split_is_input) {
+    if (!split_is_input && !split.empty()) {
       split_node.AddAttribute("split", split);
     }
 
@@ -263,6 +295,26 @@ TEST_F(QnnHTPBackendTests, Split_Int32_Opset13) {
                                -1,      // num_outputs (not in opset 13)
                                13,      // opset
                                ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Split opset 18 on HTP backend: equal split of axis 0 via 'num_outputs' attribute
+// and 'split' input.
+TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset18) {
+  // Use 'split' input (initializer).
+  RunQDQSplitOpTestOnHTP<uint8_t>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
+                                  {2, 2},  // split
+                                  0,       // axis
+                                  -1,      // num_outputs
+                                  18,      // opset
+                                  ExpectedEPNodeAssignment::All);
+
+  // Use 'num_outputs' attribute.
+  RunQDQSplitOpTestOnHTP<uint8_t>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
+                                  {},  // split (use num_outputs instead)
+                                  0,   // axis
+                                  2,   // num_outputs
+                                  18,  // opset
+                                  ExpectedEPNodeAssignment::All);
 }
 
 // Test QDQ Split op on HTP backend: equal split on axis 0 with opset 13.
