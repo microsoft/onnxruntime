@@ -504,7 +504,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
       // Remove the Squeeze node if possible
       // if there's a DQ node the `consumers` list still includes it so allow for that.
       // in that case UpdateDQNodeInputAndShape already updated the input of the DQ node so it's safe to remove it.
-      if (consumers->comprehensive && consumers->nodes.size() == (dq_node ? 1 : 0)) {
+      if (consumers->comprehensive && consumers->nodes.size() == size_t(dq_node ? 1 : 0)) {
         ctx.graph.RemoveNode(*inp_node);
 
         if (ctx.opset >= 13 && !ctx.graph.HasValueConsumers(inp_node_inputs[1])) {
