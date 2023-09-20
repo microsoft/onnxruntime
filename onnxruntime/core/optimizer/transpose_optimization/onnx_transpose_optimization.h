@@ -48,6 +48,12 @@ struct OptimizerCtx {
   // Handlers for ops that are not in the ONNX opset, or for ONNX ops where special handling is required.
   // If a handler is not found in this map, the default handlers will be used.
   const HandlerMap& extended_handlers;
+
+  // DQs nodes which had a shared constant initializer as input where we updated the initializer in-place and
+  // inserted a Squeeze and/or Transpose on the other usages. Nodes in this set had the Squeeze/Transpose inserted.
+  // If we attempt to push a Transpose through them we need to look past the DQ node to try and cancel
+  // out the Squeeze/Transpose.
+  std::unordered_set<int64_t> special_cased_dq_nodes;
 };
 
 /// <summary>
