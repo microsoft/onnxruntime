@@ -22,156 +22,38 @@ Status CheckInputs(const T* query,
                    int kv_num_heads,
                    const T* past_seq_len,
                    float scale) {
-  //     past_key                   : (B, S*, N_k, H)
-  //     past_value                 : (B, S*, N_k, H)
+  //     past_key                   : (B, N_k, S*, H)
+  //     past_value                 : (B, N_k, S*, H)
   // no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D_kv) or (B, N_k, S*, H)
   //     value            (V)       : (B, L, D_kv) or (B, N_k, S*, H)
 
-  AttentionQkvFormat qkv_format;
+  // AttentionQkvFormat qkv_format;
+
+  ORT_UNUSED_PARAMETER(past_value);
+  ORT_UNUSED_PARAMETER(value);
+  ORT_UNUSED_PARAMETER(num_heads);
+  ORT_UNUSED_PARAMETER(kv_num_heads);
 
   const auto& query_dims = query->Shape().GetDims();
   const auto& key_dims = key->Shape().GetDims();
-  const auto& value_dims = value->Shape().GetDims();
+  const auto& past_key_dims = past_key->Shape().GetDims();
 
-  if (query_dims.size() != 3) {
+  if (query_dims.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
                            query_dims.size());
   }
 
-  int batch_size = static_cast<int>(query_dims[0]);
-  int sequence_length = static_cast<int>(query_dims[1]);
-  int q_hidden_size = static_cast<int>(query_dims[2]);
-  int head_size = static_cast<int>(q_hidden_size) / num_heads;
+  // int batch_size = static_cast<int>(query_dims[0]);
+  // int sequence_length = static_cast<int>(query_dims[1]);
+  // int q_hidden_size = static_cast<int>(query_dims[2]);
+  // int head_size = static_cast<int>(q_hidden_size) / num_heads;
 
-  int kv_sequence_length = sequence_length;
-  int kv_hidden_size = (key_dims.size() == 3)
-                           ? static_cast<int>(key_dims[2])
-                           : (kv_num_heads * static_cast<int>(key_dims[3]));
-
-  int max_sequence_length = 0;
-  if (past_key != nullptr && past_value != nullptr) {
-    const auto& past_key_dims = past_key->Shape().GetDims();
-    const auto& past_value_dims = past_value->Shape().GetDims();
-
-    if (past_key_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' is expected to have 4 dimensions, got ",
-                             past_key_dims.size());
-    }
-    if (past_value_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' is expected to have 4 dimensions, got ",
-                             past_value_dims.size());
-    }
-
-    if (past_key_dims[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' dimension 0 should be batch_size, got ",
-                             past_key_dims[0]);
-    }
-    if (past_value_dims[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' dimension 0 should be batch_size, got ",
-                             past_value_dims[0]);
-    }
-
-    // TODO(aciddelgado): change if support outside concatenation
-    if (past_key_dims[1] != past_value_dims[1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'past_value' should have same dimension 1 (kv sequence length), got ",
-                             past_key_dims[1]);
-    }
-    if (past_key_dims[2] != kv_num_heads) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' shall have kv_num_heads");
-    }
-    if (past_value_dims[2] != kv_num_heads) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' shall have kv_num_heads");
-    }
-    if (past_key_dims[3] != head_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' dimension 3 should be same as head_size, got ",
-                             past_key_dims[3]);
-    }
-    if (past_value_dims[3] != head_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' dimension 3 should be same as head_size, got ",
-                             past_value_dims[3]);
-    }
-    // We assume all sequence in past kv are left-padded to max sequence length
-    max_sequence_length = static_cast<int>(past_key_dims[1]);
-  } else if (past_key != nullptr || past_value != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' and 'past_value' shall be both present or both absent");
-  }
-
-  if (key != nullptr) {
-    if (query_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions when key is given, got ",
-                             query_dims.size());
-    }
-
-    const auto& key_dims = key->Shape().GetDims();
-    if (key_dims.size() != 3 && key_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 or 4 dimensions, got ",
-                             key_dims.size());
-    }
-    if (query_dims[0] != key_dims[0]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'key' shall have same dim 0 (batch size)");
-    }
-
-    if (key_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' is expected to have 3 dimensions, got ",
-                             query_dims.size());
-    }
-
-    if (num_heads % kv_num_heads != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
-                             num_heads % kv_num_heads);
-    }
-    if (key_dims[2] != value_dims[2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' shall have same dim 2 (kv_hidden_size)");
-    }
-
-    qkv_format = Q_K_V_BSNH;
-    kv_sequence_length = static_cast<int>(key_dims[1]);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Missing key tensor.");
-  }
-
-  if (value != nullptr) {
-    const auto& value_dims = value->Shape().GetDims();
-    if (value_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
-                             value_dims.size());
-    }
-
-    if (query_dims[0] != value_dims[0]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'value' shall have same dim 0 (batch_size)");
-    }
-
-    if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
-    }
-
-    int v_hidden_size = value_dims[2];
-    if (v_hidden_size != kv_hidden_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
-    }
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Missing value tensor.");
-  }
+  // int kv_sequence_length = sequence_length;
+  // int kv_hidden_size = (key_dims.size() == 3)
+  //                          ? static_cast<int>(key_dims[2])
+  //                          : (kv_num_heads * static_cast<int>(key_dims[3]));
 
   int32_t past_sequence_length = 0;
   if (past_seq_len != nullptr) {
@@ -182,27 +64,177 @@ Status CheckInputs(const T* query,
     past_sequence_length = *((*past_seq_len).template Data<int32_t>());
   }
 
-  int total_sequence_length = past_sequence_length + kv_sequence_length;
-  // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
-  if (parameters != nullptr) {
-    GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
-    output_parameters->batch_size = batch_size;
-    output_parameters->sequence_length = sequence_length;
-    output_parameters->past_sequence_length = past_sequence_length;
-    output_parameters->kv_sequence_length = kv_sequence_length;
-    output_parameters->total_sequence_length = total_sequence_length;
-    output_parameters->max_sequence_length = max_sequence_length;
-    output_parameters->hidden_size = q_hidden_size;
-    output_parameters->num_heads = num_heads;
-    output_parameters->head_size = q_hidden_size / num_heads;
-    output_parameters->kv_hidden_size = kv_hidden_size;
-    output_parameters->kv_num_heads = kv_num_heads;
-    output_parameters->is_unidirectional = true;
-    output_parameters->scale = scale;
-    output_parameters->qkv_format = qkv_format;
-  }
+  GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
+  output_parameters->batch_size = static_cast<int>(query_dims[0]);
+  output_parameters->sequence_length = static_cast<int>(query_dims[2]);
+  output_parameters->past_sequence_length = past_sequence_length;
+  output_parameters->kv_sequence_length = static_cast<int>(key_dims[2]);
+  output_parameters->total_sequence_length = past_sequence_length + static_cast<int>(key_dims[2]);
+  output_parameters->max_sequence_length = static_cast<int>(past_key_dims[2]);
+  output_parameters->hidden_size = static_cast<int>(query_dims[1]) * static_cast<int>(query_dims[3]);
+  output_parameters->num_heads = static_cast<int>(query_dims[1]);
+  output_parameters->head_size = static_cast<int>(query_dims[3]);
+  output_parameters->kv_hidden_size = static_cast<int>(key_dims[1]) * static_cast<int>(key_dims[3]);
+  output_parameters->kv_num_heads = static_cast<int>(key_dims[1]);
+  output_parameters->is_unidirectional = true;
+  output_parameters->scale = scale;
+  output_parameters->qkv_format = Q_K_V_BNSH;
 
   return Status::OK();
+
+  // int max_sequence_length = 0;
+  // if (past_key != nullptr && past_value != nullptr) {
+  //   const auto& past_key_dims = past_key->Shape().GetDims();
+  //   const auto& past_value_dims = past_value->Shape().GetDims();
+
+  //   if (past_key_dims.size() != 4) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'past_key' is expected to have 4 dimensions, got ",
+  //                            past_key_dims.size());
+  //   }
+  //   if (past_value_dims.size() != 4) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'past_value' is expected to have 4 dimensions, got ",
+  //                            past_value_dims.size());
+  //   }
+
+  //   if (past_key_dims[0] != batch_size) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'past_key' dimension 0 should be batch_size, got ",
+  //                            past_key_dims[0]);
+  //   }
+  //   if (past_value_dims[0] != batch_size) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'past_value' dimension 0 should be batch_size, got ",
+  //                            past_value_dims[0]);
+  //   }
+
+  //   // TODO(aciddelgado): change if support outside concatenation
+  //   if (past_key_dims[2] != past_value_dims[2]) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'past_key' and 'past_value' should have same dimension 2 (kv sequence length), got ",
+  //                            past_key_dims[2]);
+  //   }
+  //   if (past_key_dims[1] != kv_num_heads) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'past_key' shall have kv_num_heads");
+  //   }
+  //   if (past_value_dims[1] != kv_num_heads) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'past_value' shall have kv_num_heads");
+  //   }
+  //   if (past_key_dims[3] != head_size) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'past_key' dimension 3 should be same as head_size, got ",
+  //                            past_key_dims[3]);
+  //   }
+  //   if (past_value_dims[3] != head_size) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'past_value' dimension 3 should be same as head_size, got ",
+  //                            past_value_dims[3]);
+  //   }
+  //   // We assume all sequence in past kv are left-padded to max sequence length
+  //   max_sequence_length = static_cast<int>(past_key_dims[2]);
+  // } else if (past_key != nullptr || past_value != nullptr) {
+  //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                          "Input 'past_key' and 'past_value' shall be both present or both absent");
+  // }
+
+  // if (key != nullptr) {
+  //   if (query_dims.size() != 3) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions when key is given, got ",
+  //                            query_dims.size());
+  //   }
+
+  //   const auto& key_dims = key->Shape().GetDims();
+  //   if (key_dims.size() != 3 && key_dims.size() != 4) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 or 4 dimensions, got ",
+  //                            key_dims.size());
+  //   }
+  //   if (query_dims[0] != key_dims[0]) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'query' and 'key' shall have same dim 0 (batch size)");
+  //   }
+
+  //   if (key_dims.size() != 3) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'key' is expected to have 3 dimensions, got ",
+  //                            query_dims.size());
+  //   }
+
+  //   if (num_heads % kv_num_heads != 0) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
+  //                            num_heads % kv_num_heads);
+  //   }
+  //   if (key_dims[2] != value_dims[2]) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'key' and 'value' shall have same dim 2 (kv_hidden_size)");
+  //   }
+
+  //   qkv_format = Q_K_V_BSNH;
+  //   kv_sequence_length = static_cast<int>(key_dims[1]);
+  // } else {
+  //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                          "Missing key tensor.");
+  // }
+
+  // if (value != nullptr) {
+  //   const auto& value_dims = value->Shape().GetDims();
+  //   if (value_dims.size() != 3) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
+  //                            value_dims.size());
+  //   }
+
+  //   if (query_dims[0] != value_dims[0]) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'query' and 'value' shall have same dim 0 (batch_size)");
+  //   }
+
+  //   if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
+  //   }
+
+  //   int v_hidden_size = value_dims[2];
+  //   if (v_hidden_size != kv_hidden_size) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
+  //   }
+  // } else {
+  //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                          "Missing value tensor.");
+  // }
+
+  // int32_t past_sequence_length = 0;
+  // if (past_seq_len != nullptr) {
+  //   if (!onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "past_sequence_length tensor must be of one element when using past kv.");
+  //   }
+  //   past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+  // }
+
+  // int total_sequence_length = past_sequence_length + kv_sequence_length;
+  // // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
+  // if (parameters != nullptr) {
+  //   GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
+  //   output_parameters->batch_size = batch_size;
+  //   output_parameters->sequence_length = sequence_length;
+  //   output_parameters->past_sequence_length = past_sequence_length;
+  //   output_parameters->kv_sequence_length = kv_sequence_length;
+  //   output_parameters->total_sequence_length = total_sequence_length;
+  //   output_parameters->max_sequence_length = max_sequence_length;
+  //   output_parameters->hidden_size = q_hidden_size;
+  //   output_parameters->num_heads = num_heads;
+  //   output_parameters->head_size = q_hidden_size / num_heads;
+  //   output_parameters->kv_hidden_size = kv_hidden_size;
+  //   output_parameters->kv_num_heads = kv_num_heads;
+  //   output_parameters->is_unidirectional = true;
+  //   output_parameters->scale = scale;
+  //   output_parameters->qkv_format = qkv_format;
+  // }
+
+  // return Status::OK();
 }
 
 template <typename T>

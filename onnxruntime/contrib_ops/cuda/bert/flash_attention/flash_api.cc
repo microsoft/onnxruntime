@@ -42,21 +42,21 @@ void set_params_fprop(Flash_fwd_params& params,
   params.o_ptr = out;
 
   // All stride are in elements, not bytes.
-  params.q_row_stride = num_heads * head_size;
-  params.k_row_stride = num_heads_k * head_size;
-  params.v_row_stride = num_heads_k * head_size;
+  params.q_row_stride = seqlen_q * head_size;
+  params.k_row_stride = seqlen_k * head_size;
+  params.v_row_stride = seqlen_k * head_size;
   params.q_head_stride = head_size;
   params.k_head_stride = head_size;
   params.v_head_stride = head_size;
-  params.o_row_stride = num_heads * head_size;
+  params.o_row_stride = seqlen_q * head_size;
   params.o_head_stride = head_size;
   params.is_bf16 = false;
 
   if (cu_seqlens_q_d == nullptr) {
-    params.q_batch_stride = seqlen_q * num_heads * head_size;    // stride(0)
-    params.k_batch_stride = seqlen_k * num_heads_k * head_size;  // stride(0)
-    params.v_batch_stride = seqlen_k * num_heads_k * head_size;  // stride(0)
-    params.o_batch_stride = seqlen_q * num_heads * head_size;    // stride(0)
+    params.q_batch_stride = num_heads * seqlen_q * head_size;    // stride(0)
+    params.k_batch_stride = num_heads_k * seqlen_k * head_size;  // stride(0)
+    params.v_batch_stride = num_heads_k * seqlen_k * num_heads_k * head_size;  // stride(0)
+    params.o_batch_stride = num_heads * seqlen_q * head_size;    // stride(0)
   } else {
     params.q_batch_stride = 0;
     params.k_batch_stride = 0;
@@ -341,10 +341,10 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     params.knew_ptr = k;
     params.vnew_ptr = v;
     // All stride are in elements, not bytes.
-    params.knew_batch_stride = seqlen_k_new * num_heads_k * head_size;
-    params.vnew_batch_stride = seqlen_k_new * num_heads_k * head_size;
-    params.knew_row_stride = num_heads_k * head_size;
-    params.vnew_row_stride = num_heads_k * head_size;
+    params.knew_batch_stride = num_heads_k * seqlen_k_new * head_size;
+    params.vnew_batch_stride = num_heads_k * seqlen_k_new * head_size;
+    params.knew_row_stride = seqlen_k_new * head_size;
+    params.vnew_row_stride = seqlen_k_new * head_size;
     params.knew_head_stride = head_size;
     params.vnew_head_stride = head_size;
   } else {

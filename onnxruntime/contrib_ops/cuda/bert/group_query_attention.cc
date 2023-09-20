@@ -86,7 +86,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
-      parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
+      parameters.batch_size, parameters.max_sequence_length, parameters.kv_num_heads, parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(1, present_shape);
   Tensor* present_value = context->Output(2, present_shape);

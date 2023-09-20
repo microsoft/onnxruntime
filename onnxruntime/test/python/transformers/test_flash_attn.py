@@ -181,8 +181,9 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
             TensorProto.FLOAT16,
             [
                 config.batch_size,
+                config.num_heads,
                 config.sequence_length,
-                config.num_heads * config.head_size,
+                config.head_size,
             ],
         ),
         helper.make_tensor_value_info(
@@ -190,8 +191,9 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
             TensorProto.FLOAT16,
             [
                 config.batch_size,
+                config.kv_num_heads,
                 config.kv_sequence_length if not new_kv else config.sequence_length,
-                config.kv_num_heads * config.head_size,
+                config.head_size,
             ],
         ),
         helper.make_tensor_value_info(
@@ -199,8 +201,9 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
             TensorProto.FLOAT16,
             [
                 config.batch_size,
+                config.kv_num_heads,
                 config.kv_sequence_length if not new_kv else config.sequence_length,
-                config.kv_num_heads * config.head_size,
+                config.head_size,
             ],
         ),
     ]
@@ -209,7 +212,7 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
         helper.make_tensor_value_info(
             "output",
             TensorProto.FLOAT16,
-            [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
+            [config.batch_size, config.num_heads, config.sequence_length, config.head_size],
         ),
     ]
 
@@ -220,8 +223,8 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
                 TensorProto.FLOAT16,
                 [
                     config.batch_size,
-                    config.kv_sequence_length,
                     config.kv_num_heads,
+                    config.kv_sequence_length,
                     config.head_size,
                 ],
             ),
@@ -230,8 +233,8 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
                 TensorProto.FLOAT16,
                 [
                     config.batch_size,
-                    config.kv_sequence_length,
                     config.kv_num_heads,
+                    config.kv_sequence_length,
                     config.head_size,
                 ],
             ),
@@ -245,12 +248,12 @@ def create_group_query_attention_graph(config, causal=False, new_kv=False):
             helper.make_tensor_value_info(
                 "past_key",
                 TensorProto.FLOAT16,
-                [config.batch_size, config.kv_sequence_length, config.kv_num_heads, config.head_size],
+                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
             ),
             helper.make_tensor_value_info(
                 "past_value",
                 TensorProto.FLOAT16,
-                [config.batch_size, config.kv_sequence_length, config.kv_num_heads, config.head_size],
+                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
             ),
         ]
 
@@ -451,7 +454,7 @@ def flash_attn_func(q, k, v, config, gqa=False, causal=False, new_k=None, new_v=
         onnx_model_str = create_group_query_attention_graph(config, causal, new_kv=new_kv)
     else:
         onnx_model_str = create_multihead_attention_graph(config)
-    q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
+    # q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     if not new_kv:
         k = torch.reshape(k, (config.batch_size, config.kv_sequence_length, -1))
         v = torch.reshape(v, (config.batch_size, config.kv_sequence_length, -1))
@@ -463,8 +466,8 @@ def flash_attn_func(q, k, v, config, gqa=False, causal=False, new_k=None, new_v=
     elif new_k is not None and new_v is not None:
         past_k = k.clone()
         past_v = v.clone()
-        new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
-        new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
+        # new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
+        # new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
             "key": new_k.detach().cpu().numpy(),
@@ -677,8 +680,8 @@ def parity_check_gqa(
 ):
     q = torch.randn(
         config.batch_size,
-        config.sequence_length,
         config.num_heads,
+        config.sequence_length,
         config.head_size,
         device="cuda",
         dtype=torch.float16,
@@ -686,8 +689,8 @@ def parity_check_gqa(
     )
     k = torch.randn(
         config.batch_size,
-        config.kv_sequence_length,
         config.kv_num_heads,
+        config.kv_sequence_length,
         config.head_size,
         device="cuda",
         dtype=torch.float16,
@@ -695,8 +698,8 @@ def parity_check_gqa(
     )
     v = torch.randn(
         config.batch_size,
-        config.kv_sequence_length,
         config.kv_num_heads,
+        config.kv_sequence_length,
         config.head_size,
         device="cuda",
         dtype=torch.float16,
@@ -707,8 +710,8 @@ def parity_check_gqa(
     if new_kv:
         new_k = torch.randn(
             config.batch_size,
-            config.sequence_length,
             config.kv_num_heads,
+            config.sequence_length,
             config.head_size,
             device="cuda",
             dtype=torch.float16,
@@ -716,8 +719,8 @@ def parity_check_gqa(
         )
         new_v = torch.randn(
             config.batch_size,
-            config.sequence_length,
             config.kv_num_heads,
+            config.sequence_length,
             config.head_size,
             device="cuda",
             dtype=torch.float16,
@@ -731,8 +734,8 @@ def parity_check_gqa(
         out = flash_attn_func(q, k, v, config, gqa=True, causal=causal)
     else:
         # Pytorch to compare
-        k_cache_ref = k.clone()
-        v_cache_ref = v.clone()
+        k_cache_ref = rearrange(k.clone(), "b n s h -> b s n h")
+        v_cache_ref = rearrange(v.clone(), "b n s h -> b s n h")
         cache_seqlens = torch.tensor([config.past_sequence_length], device="cuda").repeat(config.batch_size)
         arange = rearrange(torch.arange(config.kv_sequence_length, device="cuda"), "s -> 1 s")
         cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
@@ -740,17 +743,25 @@ def parity_check_gqa(
             update_mask = torch.logical_and(
                 cache_seqlens_expanded <= arange, arange < cache_seqlens_expanded + config.sequence_length
             )
-            k_cache_ref[update_mask] = rearrange(new_k, "b s ... -> (b s) ...")
-            v_cache_ref[update_mask] = rearrange(new_v, "b s ... -> (b s) ...")
+            k_cache_ref[update_mask] = rearrange(new_k, "b n s h -> (b s) n h")
+            v_cache_ref[update_mask] = rearrange(new_v, "b n s h -> (b s) n h")
         k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
         v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
         key_padding_mask = arange < cache_seqlens_expanded + (config.sequence_length if new_kv else 0)
         out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=causal)
         out_ref = out_ref.detach().cpu().numpy()
         # Flash function
-        out, present_k, present_v = flash_attn_func(q, k, v, config, gqa=True, causal=causal, new_k=new_k, new_v=new_v)
-    out = torch.squeeze(out, 0)
-    out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
+        k_cache = k.clone()
+        v_cache = v.clone()
+        out, present_k, present_v = flash_attn_func(
+            q, k_cache, v_cache, config, gqa=True, causal=causal, new_k=new_k, new_v=new_v
+        )
+        present_k = rearrange(present_k, "b n s h -> b s n h")
+        present_v = rearrange(present_v, "b n s h -> b s n h")
+        print(present_k[0, config.past_sequence_length, 0, :20])
+        print(k_cache_ref[0, config.past_sequence_length, 0, :20])
+    # out = torch.squeeze(out, 0)
+    # out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
     if new_kv:
         # Make sure past-present buffer updating correctly
@@ -849,7 +860,7 @@ if __name__ == "__main__":
         ]:
             for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
                 for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
-                    for causal in [True]:
+                    for causal in [True, False]:
                         for new_kv in [True]:
                             random.seed(69)
                             sp = random.randint(1, s2 - s) if s2 - s > 0 else 0

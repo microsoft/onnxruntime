@@ -256,7 +256,7 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
     auto& query_shape = getInputShape(ctx, 0);
     auto& query_dims = query_shape.dim();
 
-    if (query_dims.size() != 3) {
+    if (query_dims.size() != 4) {
       fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
     }
 
@@ -282,6 +282,7 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
     }
   }
 
+  // TODO(aciddelgado): what this?
   if (ctx.getNumOutputs() > 1) {  // has present output
     if (hasInputShape(ctx, past_key_index)) {
       auto& past_shape = getInputShape(ctx, past_key_index);
