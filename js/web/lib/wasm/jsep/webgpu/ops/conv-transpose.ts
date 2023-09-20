@@ -65,7 +65,7 @@ const getAdjustedConvTransposeAttributes =
     <T extends ConvTransposeAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
       const kernelShape = attributes.kernelShape.slice();
       // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
-      if (attributes.kernelShape.length === 0 || attributes.kernelShape.reduce((a, b) => a * b, 0) === 0) {
+      if (attributes.kernelShape.length === 0 || attributes.kernelShape.reduce((a, b) => a * b, 1) === 0) {
         kernelShape.length = 0;
         for (let i = 2; i < inputs[1].dims.length; ++i) {
           kernelShape.push(inputs[1].dims[i]);
@@ -236,7 +236,7 @@ const convTranspose2d =
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
       const isChannelsLast = attributes.format === 'NHWC';
       const hasBias = inputs.length === 3;
-      if (adjustedAttributes.group !== 1 || hasBias) {
+      if (adjustedAttributes.group !== 1 || !isChannelsLast) {
         context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes));
         return;
       }
