@@ -213,13 +213,12 @@ inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& inp
  * \param execution_provider The EP on which to run the model. Set to nullptr for CPU EP.
  * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
  * \param feeds The input feeds.
- * \param output_names If empty, the function will write the output names.
  * \param output_vals Initialized to the inference results.
  */
 void InferenceModel(const std::string& model_data, const char* log_id,
                     std::unique_ptr<IExecutionProvider> execution_provider,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
-                    std::vector<std::string>& output_names, std::vector<OrtValue>& output_vals);
+                    std::vector<OrtValue>& output_vals);
 
 /**
  * Tests the accuracy of a QDQ model on QNN EP by runnning 3 inferences:
@@ -263,9 +262,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
   // Run f32 model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f32_outputs;
-  std::vector<std::string> output_names;
   InferenceModel(f32_model_data, "f32_model_logger", nullptr, ExpectedEPNodeAssignment::All,
-                 f32_helper.feeds_, output_names, cpu_f32_outputs);
+                 f32_helper.feeds_, cpu_f32_outputs);
   ASSERT_FALSE(cpu_f32_outputs.empty());
 
   const size_t num_outputs = cpu_f32_outputs.size();
@@ -304,13 +302,13 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   // Run QDQ model on QNN EP and collect outputs.
   std::vector<OrtValue> qnn_qdq_outputs;
   InferenceModel(qdq_model_data, "qdq_model_logger", QnnExecutionProviderWithOptions(qnn_options),
-                 expected_ep_assignment, qdq_helper.feeds_, output_names, qnn_qdq_outputs);
+                 expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs);
 
   if (expected_ep_assignment != ExpectedEPNodeAssignment::None) {
     // Run QDQ model on CPU EP and collect outputs.
     std::vector<OrtValue> cpu_qdq_outputs;
     InferenceModel(qdq_model_data, "qdq_model_logger", nullptr, ExpectedEPNodeAssignment::All,
-                   qdq_helper.feeds_, output_names, cpu_qdq_outputs);
+                   qdq_helper.feeds_, cpu_qdq_outputs);
     ASSERT_EQ(cpu_qdq_outputs.size(), num_outputs);
     ASSERT_EQ(qnn_qdq_outputs.size(), num_outputs);
 
@@ -320,7 +318,9 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
     // Compare accuracy of QDQ results with float model.
     // QNN EP must be at least as accurate as CPU EP when running the QDQ model.
+    const std::string base_output_name = "output_";
     for (size_t i = 0; i < num_outputs; i++) {
+      std::string debug_output_name = base_output_name + std::to_string(i);
       auto& cpu_qdq_tensor = cpu_qdq_outputs[i].Get<Tensor>();
       auto& qnn_qdq_tensor = qnn_qdq_outputs[i].Get<Tensor>();
 
@@ -353,8 +353,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
           }
 
           EXPECT_TRUE(is_as_accurate_as_cpu_qdq)
-              << "Inaccuracy detected for output '"
-              << output_names[i]
+              << "Inaccuracy detected for output '" << debug_output_name
               << "', element " << j
               << ".\nOutput quant params: scale=" << output_qparams[i].scale
               << ", zero_point=" << static_cast<int32_t>(output_qparams[i].zero_point)
@@ -363,7 +362,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
               << "CPU QDQ val: " << cpu_qdq_val << " (err " << cpu_err << ")";
         }
       } else {
-        VerifyOutput(output_names[i], cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
+        VerifyOutput(debug_output_name, cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
       }
     }
   }
