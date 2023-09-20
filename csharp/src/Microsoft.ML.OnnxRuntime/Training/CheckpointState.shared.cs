@@ -163,10 +163,10 @@ namespace Microsoft.ML.OnnxRuntime
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr propertyValue = IntPtr.Zero;
 
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetProperty(handle, propertyNameUtf8, allocator.Pointer, out PropertyType propertyType, out propertyValue));
+
             try
             {
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetProperty(handle, propertyNameUtf8, allocator.Pointer, out PropertyType propertyType, out propertyValue));
-
                 if (propertyType == PropertyType.Int)
                 {
                     Int64 value;
