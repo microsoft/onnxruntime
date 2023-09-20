@@ -41,7 +41,6 @@ class ConvTranspose : public OpKernel {
   Status DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const;
 
  private:
-
   ConvTransposeAttributes conv_transpose_attrs_;
 
   // for pre-packing usage
