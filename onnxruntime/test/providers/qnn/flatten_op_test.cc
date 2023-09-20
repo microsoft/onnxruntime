@@ -35,49 +35,6 @@ static void RunFlattenTestOnCPU(const TestInputDef<DataType>& input_def,
                   expected_ep_assignment);
 }
 
-// Runs a model with a non-QDQ Flatten operator on the QNN HTP backend. Checks the graph node assignment
-// and that inference outputs for QNN EP and CPU EP match.
-template <typename DataType>
-static void RunFlattenTestOnHTP(const TestInputDef<DataType>& input_def,
-                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                ExpectedEPNodeAssignment expected_ep_assignment,
-                                int opset = 13) {
-  ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  RunQnnModelTest(BuildOpTestCase<DataType>("Flatten", {input_def}, {}, attrs),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
-}
-
-// Runs a QDQ Flatten model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and that inference
-// running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP (compared to the baseline float32 model).
-template <typename QType>
-static void RunQDQFlattenTestOnHTP(const TestInputDef<float>& input_def,
-                                   const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                   ExpectedEPNodeAssignment expected_ep_assignment,
-                                   int opset = 13) {
-  ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  TestQDQModelAccuracy(BuildOpTestCase<float>("Flatten", {input_def}, {}, attrs),     // baseline float32 model
-                       BuildQDQOpTestCase<QType>("Flatten", {input_def}, {}, attrs),  // QDQ model
-                       provider_options,
-                       opset,
-                       expected_ep_assignment);
-}
-
 //
 // CPU tests:
 //
@@ -107,21 +64,86 @@ TEST_F(QnnCPUBackendTests, Flatten_Rank5_Axis2) {
 //
 // HTP tests:
 //
-// Test that Flatten input (rank4) with axis == 0.
+
+// Runs a model with a non-QDQ Flatten operator on the QNN HTP backend. Checks the graph node assignment
+// and that inference outputs for QNN EP and CPU EP match.
+template <typename DataType>
+static void RunFlattenTestOnHTP(const TestInputDef<DataType>& input_def,
+                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                ExpectedEPNodeAssignment expected_ep_assignment,
+                                int opset = 13) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  RunQnnModelTest(BuildOpTestCase<DataType>("Flatten", {input_def}, {}, attrs),
+                  provider_options,
+                  opset,
+                  expected_ep_assignment);
+}
+
+// Runs a QDQ Flatten model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and that inference
+// running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP (compared to the baseline float32 model).
+template <typename QType>
+static void RunQDQFlattenTestOnHTP(const TestInputDef<float>& input_def,
+                                   const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                   ExpectedEPNodeAssignment expected_ep_assignment,
+                                   int opset = 13,
+                                   bool use_contrib_qdq = false) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto f32_model_builder = BuildOpTestCase<float>("Flatten", {input_def}, {}, attrs);
+  auto qdq_model_builder = BuildQDQOpTestCase<QType>("Flatten", {input_def}, {}, attrs, kOnnxDomain, use_contrib_qdq);
+  TestQDQModelAccuracy(f32_model_builder,
+                       qdq_model_builder,
+                       provider_options,
+                       opset,
+                       expected_ep_assignment);
+}
+
+// Test 8-bit QDQ Flatten input (rank4) with axis == 0.
 TEST_F(QnnHTPBackendTests, Flatten_Rank4_Axis0) {
   RunQDQFlattenTestOnHTP<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                                   {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
                                   ExpectedEPNodeAssignment::All);
 }
 
-// Test that Flatten input (rank4) with axis == -1.
+// Test 16-bit QDQ Flatten input (rank4) with axis == 0.
+TEST_F(QnnHTPBackendTests, Flatten_Rank4_Axis0_U16) {
+  RunQDQFlattenTestOnHTP<uint16_t>(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                                   {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                                   ExpectedEPNodeAssignment::All,
+                                   13,     // opset
+                                   true);  // Use com.microsoft Q/DQ ops
+}
+
+// Test 8-bit QDQ Flatten input (rank4) with axis == -1.
 TEST_F(QnnHTPBackendTests, Flatten_Rank4_AxisNeg1) {
   RunQDQFlattenTestOnHTP<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                                   {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
                                   ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ Flatten with an input of rank5.
+// Test 16-bit QDQ Flatten input (rank4) with axis == -1.
+TEST_F(QnnHTPBackendTests, Flatten_Rank4_AxisNeg1_U16) {
+  RunQDQFlattenTestOnHTP<uint16_t>(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                                   {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
+                                   ExpectedEPNodeAssignment::All,
+                                   13,     // opset
+                                   true);  // Use com.microsoft Q/DQ ops
+}
+
+// Test 8-bit QDQ Flatten with an input of rank5.
 TEST_F(QnnHTPBackendTests, Flatten_QDQ8bit_Rank5) {
   // We can't use the usual model-building functions because they add standalone Quantize and Dequantize nodes
   // at the input and output. These Q/DQ ops get lowered to QNN's Quantize and Dequantize operators, which DO NOT
@@ -157,7 +179,7 @@ TEST_F(QnnHTPBackendTests, Flatten_QDQ8bit_Rank5) {
                   ExpectedEPNodeAssignment::All);
 }
 
-// Test that rank4 int32 Flatten runs on HTP backend.
+// Test that int32 non-QDQ Flatten runs on HTP backend.
 TEST_F(QnnHTPBackendTests, Flatten_Int32_Rank4_Axis2) {
   std::vector<int32_t> input_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   RunFlattenTestOnHTP<int32_t>(TestInputDef<int32_t>({1, 3, 2, 2}, false, input_data),

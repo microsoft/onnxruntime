@@ -267,7 +267,8 @@ static void RunQDQSplitOpTestOnHTP(const TestInputDef<float>& input_def,
                                    int64_t axis,
                                    int64_t num_outputs,
                                    int opset,
-                                   ExpectedEPNodeAssignment expected_ep_assignment) {
+                                   ExpectedEPNodeAssignment expected_ep_assignment,
+                                   bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -278,7 +279,8 @@ static void RunQDQSplitOpTestOnHTP(const TestInputDef<float>& input_def,
 
   const bool split_is_input = opset >= 13;
   auto f32_model_builder = BuildSplitTestCase<float>(input_def, split, split_is_input, axis, num_outputs);
-  auto qdq_model_builder = BuildQDQSplitTestCase<QuantType>(input_def, split, split_is_input, axis, num_outputs);
+  auto qdq_model_builder = BuildQDQSplitTestCase<QuantType>(input_def, split, split_is_input, axis, num_outputs,
+                                                            use_contrib_qdq);
   TestQDQModelAccuracy<QuantType>(f32_model_builder,
                                   qdq_model_builder,
                                   provider_options,
@@ -297,7 +299,7 @@ TEST_F(QnnHTPBackendTests, Split_Int32_Opset13) {
                                ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ Split opset 18 on HTP backend: equal split of axis 0 via 'num_outputs' attribute
+// Test 8-bit QDQ Split opset 18 on HTP backend: equal split of axis 0 via 'num_outputs' attribute
 // and 'split' input.
 TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset18) {
   // Use 'split' input (initializer).
@@ -315,6 +317,28 @@ TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset18) {
                                   2,   // num_outputs
                                   18,  // opset
                                   ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ Split opset 18 on HTP backend: equal split of axis 0 via 'num_outputs' attribute
+// and 'split' input.
+TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset18_U16) {
+  // Use 'split' input (initializer).
+  RunQDQSplitOpTestOnHTP<uint16_t>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
+                                   {2, 2},  // split
+                                   0,       // axis
+                                   -1,      // num_outputs
+                                   18,      // opset
+                                   ExpectedEPNodeAssignment::All,
+                                   true);  // Use com.microsoft Q/DQ ops
+
+  // Use 'num_outputs' attribute.
+  RunQDQSplitOpTestOnHTP<uint16_t>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
+                                   {},  // split (use num_outputs instead)
+                                   0,   // axis
+                                   2,   // num_outputs
+                                   18,  // opset
+                                   ExpectedEPNodeAssignment::All,
+                                   true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test QDQ Split op on HTP backend: equal split on axis 0 with opset 13.

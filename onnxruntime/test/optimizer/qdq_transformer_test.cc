@@ -2501,28 +2501,34 @@ TEST(QDQTransformerTests, Clip) {
   for (auto opset : opsets) {
     test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset);        // [0, 6]
     test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset, true);  // [0, 6] contrib qdq
-    test_case(.02f, static_cast<int8_t>(-128), 0, opset);                      // [0, 5.1]
-    test_case(.02f, static_cast<int8_t>(-128), 0, opset, true);                // [0, 5.1] contrib qdq
-    test_case(.03f, static_cast<int8_t>(-128), 1, opset);                      // [0, 7.65]
-    test_case(.03f, static_cast<int8_t>(-128), 1, opset, true);                // [0, 7.65] contrib qdq
-    test_case(.02f, static_cast<int8_t>(127), 1, opset);                       // [-5.1 , 0]
-    test_case(.02f, static_cast<int8_t>(127), 1, opset, true);                 // [-5.1 , 0] contrib qdq
-    test_case(.02f, static_cast<int8_t>(0), 1, opset);                         // [-2.56, 2.54]
-    test_case(.02f, static_cast<int8_t>(0), 1, opset, true);                   // [-2.56, 2.54] contrib qdq
-    test_case(.04f, static_cast<int8_t>(-97), 1, opset);                       // [-1.24, 8.96]
-    test_case(.04f, static_cast<int8_t>(-97), 1, opset, true);                 // [-1.24, 8.96] contrib qdq
-    test_case(.02352941176f, static_cast<uint8_t>(0), 0, opset);               // [0, 6]
-    test_case(.02352941176f, static_cast<uint8_t>(0), 0, opset, true);         // [0, 6] contrib qdq
-    test_case(.02f, static_cast<uint8_t>(0), 0, opset);                        // [0, 5.1]
-    test_case(.02f, static_cast<uint8_t>(0), 0, opset, true);                  // [0, 5.1] contrib qdq
-    test_case(.03f, static_cast<uint8_t>(0), 1, opset);                        // [0, 7.65]
-    test_case(.03f, static_cast<uint8_t>(0), 1, opset, true);                  // [0, 7.65] contrib qdq
-    test_case(.02f, static_cast<uint8_t>(255), 1, opset);                      // [-5.1, 0]
-    test_case(.02f, static_cast<uint8_t>(255), 1, opset, true);                // [-5.1, 0] contrib qdq
-    test_case(.02f, static_cast<uint8_t>(128), 1, opset);                      // [-2.56, 2.54]
-    test_case(.02f, static_cast<uint8_t>(128), 1, opset, true);                // [-2.56, 2.54] contrib qdq
-    test_case(.04f, static_cast<uint8_t>(31), 1, opset);                       // [-1.24, 8.96]
-    test_case(.04f, static_cast<uint8_t>(31), 1, opset, true);                 // [-1.24, 8.96] contrib qdq
+    test_case(9.15541313801785e-5f, static_cast<int16_t>(std::numeric_limits<int16_t>::min()), 0,
+              opset, true);  // [0, 6] contrib 16-bit qdq
+    test_case(0.0009f, static_cast<int16_t>(std::numeric_limits<int16_t>::min()), 1,
+              opset, true);                                             // [0, 58.98] contrib 16-bit qdq
+    test_case(.02f, static_cast<int8_t>(-128), 0, opset);               // [0, 5.1]
+    test_case(.02f, static_cast<int8_t>(-128), 0, opset, true);         // [0, 5.1] contrib qdq
+    test_case(.03f, static_cast<int8_t>(-128), 1, opset);               // [0, 7.65]
+    test_case(.03f, static_cast<int8_t>(-128), 1, opset, true);         // [0, 7.65] contrib qdq
+    test_case(.02f, static_cast<int8_t>(127), 1, opset);                // [-5.1 , 0]
+    test_case(.02f, static_cast<int8_t>(127), 1, opset, true);          // [-5.1 , 0] contrib qdq
+    test_case(.02f, static_cast<int8_t>(0), 1, opset);                  // [-2.56, 2.54]
+    test_case(.02f, static_cast<int8_t>(0), 1, opset, true);            // [-2.56, 2.54] contrib qdq
+    test_case(.04f, static_cast<int8_t>(-97), 1, opset);                // [-1.24, 8.96]
+    test_case(.04f, static_cast<int8_t>(-97), 1, opset, true);          // [-1.24, 8.96] contrib qdq
+    test_case(.02352941176f, static_cast<uint8_t>(0), 0, opset);        // [0, 6]
+    test_case(.02352941176f, static_cast<uint8_t>(0), 0, opset, true);  // [0, 6] contrib qdq
+    test_case(9.15541313801785e-5f, static_cast<uint16_t>(0), 0, opset, true);  // [0, 6] contrib 16-bit qdq
+    test_case(0.0009f, static_cast<uint16_t>(0), 1, opset, true);  // [0, 58.98] contrib 16-bit qdq
+    test_case(.02f, static_cast<uint8_t>(0), 0, opset);                 // [0, 5.1]
+    test_case(.02f, static_cast<uint8_t>(0), 0, opset, true);           // [0, 5.1] contrib qdq
+    test_case(.03f, static_cast<uint8_t>(0), 1, opset);                 // [0, 7.65]
+    test_case(.03f, static_cast<uint8_t>(0), 1, opset, true);           // [0, 7.65] contrib qdq
+    test_case(.02f, static_cast<uint8_t>(255), 1, opset);               // [-5.1, 0]
+    test_case(.02f, static_cast<uint8_t>(255), 1, opset, true);         // [-5.1, 0] contrib qdq
+    test_case(.02f, static_cast<uint8_t>(128), 1, opset);               // [-2.56, 2.54]
+    test_case(.02f, static_cast<uint8_t>(128), 1, opset, true);         // [-2.56, 2.54] contrib qdq
+    test_case(.04f, static_cast<uint8_t>(31), 1, opset);                // [-1.24, 8.96]
+    test_case(.04f, static_cast<uint8_t>(31), 1, opset, true);          // [-1.24, 8.96] contrib qdq
   }
 
   // opset_version = 10

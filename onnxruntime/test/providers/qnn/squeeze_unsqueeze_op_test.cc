@@ -13,33 +13,6 @@
 namespace onnxruntime {
 namespace test {
 
-// Returns a function that creates a graph with a QDQ (Un)Squeeze operator.
-template <typename QuantType>
-GetTestQDQModelFn<QuantType> BuildQDQSqueezeTestCase(const std::string& op_type,  // Squeeze or Unsqueeze
-                                                     const TestInputDef<float>& input_def,
-                                                     const TestInputDef<int64_t>& axes_def) {
-  return [op_type, input_def, axes_def](ModelTestBuilder& builder,
-                                        std::vector<QuantParams<QuantType>>& output_qparams) {
-    // input -> Q -> DQ ->
-    NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
-    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point);
-
-    // axes input
-    NodeArg* axes_input = MakeTestInput(builder, axes_def);
-
-    // (Un)Squeeze op
-    NodeArg* op_output = builder.MakeIntermediate();
-    builder.AddNode(op_type, {input_qdq, axes_input}, {op_output});
-
-    // op_output -> Q -> DQ -> output
-    // NOTE: Input and output quantization parameters must be equal for (Un)Squeeze.
-    output_qparams[0] = input_qparams;  // Overwrite!
-    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, op_output, input_qparams.scale,
-                                                     input_qparams.zero_point);
-  };
-}
-
 // Runs a model with a Squeeze (or Unsqueeze) operator on the QNN CPU backend. Checks the graph node assignment
 // and that inference outputs for QNN EP and CPU EP match.
 template <typename DataType>
@@ -60,52 +33,6 @@ static void RunSqueezeTestOnCPU(const std::string& op_type,  // Squeeze or Unsqu
                   provider_options,
                   opset,
                   expected_ep_assignment);
-}
-
-// Runs a model with a non-QDQ (Un)Squeeze operator on the QNN HTP backend. Checks the graph node assignment
-// and that inference outputs for QNN EP and CPU EP match.
-template <typename DataType>
-static void RunSqueezeTestOnHTP(const std::string& op_type,  // Squeeze or Unsqueeze
-                                const TestInputDef<DataType>& input_def,
-                                const TestInputDef<int64_t>& axes_def,
-                                ExpectedEPNodeAssignment expected_ep_assignment,
-                                int opset = 13) {
-  ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
-}
-
-// Runs a QDQ (Un)Squeeze model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and
-// that inference running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP
-// (when compared to the baseline float32 model).
-template <typename QType>
-static void RunQDQSqueezeTestOnHTP(const std::string& op_type,
-                                   const TestInputDef<float>& input_def,
-                                   const TestInputDef<int64_t>& axes_def,
-                                   ExpectedEPNodeAssignment expected_ep_assignment,
-                                   int opset = 13) {
-  ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  TestQDQModelAccuracy(BuildOpTestCase<float, int64_t>(op_type, {input_def}, {axes_def}, {}),  // baseline float32 model
-                       BuildQDQSqueezeTestCase<QType>(op_type, input_def, axes_def),           // QDQ model
-                       provider_options,
-                       opset,
-                       expected_ep_assignment);
 }
 
 //
@@ -165,6 +92,86 @@ TEST_F(QnnCPUBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_f32) {
 // HTP tests:
 //
 
+// Returns a function that creates a graph with a QDQ (Un)Squeeze operator.
+template <typename QuantType>
+GetTestQDQModelFn<QuantType> BuildQDQSqueezeTestCase(const std::string& op_type,  // Squeeze or Unsqueeze
+                                                     const TestInputDef<float>& input_def,
+                                                     const TestInputDef<int64_t>& axes_def,
+                                                     bool use_contrib_qdq = false) {
+  return [op_type, input_def, axes_def,
+          use_contrib_qdq](ModelTestBuilder& builder,
+                           std::vector<QuantParams<QuantType>>& output_qparams) {
+    // input -> Q -> DQ ->
+    NodeArg* input = MakeTestInput(builder, input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point,
+                                                   use_contrib_qdq);
+
+    // axes input
+    NodeArg* axes_input = MakeTestInput(builder, axes_def);
+
+    // (Un)Squeeze op
+    NodeArg* op_output = builder.MakeIntermediate();
+    builder.AddNode(op_type, {input_qdq, axes_input}, {op_output});
+
+    // op_output -> Q -> DQ -> output
+    // NOTE: Input and output quantization parameters must be equal for (Un)Squeeze.
+    output_qparams[0] = input_qparams;  // Overwrite!
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, op_output, input_qparams.scale,
+                                                     input_qparams.zero_point, use_contrib_qdq);
+  };
+}
+
+// Runs a model with a non-QDQ (Un)Squeeze operator on the QNN HTP backend. Checks the graph node assignment
+// and that inference outputs for QNN EP and CPU EP match.
+template <typename DataType>
+static void RunSqueezeTestOnHTP(const std::string& op_type,  // Squeeze or Unsqueeze
+                                const TestInputDef<DataType>& input_def,
+                                const TestInputDef<int64_t>& axes_def,
+                                ExpectedEPNodeAssignment expected_ep_assignment,
+                                int opset = 13) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
+                  provider_options,
+                  opset,
+                  expected_ep_assignment);
+}
+
+// Runs a QDQ (Un)Squeeze model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and
+// that inference running the QDQ model on QNN EP is at least as accurate as on ORT CPU EP
+// (when compared to the baseline float32 model).
+template <typename QType>
+static void RunQDQSqueezeTestOnHTP(const std::string& op_type,
+                                   const TestInputDef<float>& input_def,
+                                   const TestInputDef<int64_t>& axes_def,
+                                   ExpectedEPNodeAssignment expected_ep_assignment,
+                                   int opset = 13,
+                                   bool use_contrib_qdq = false) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto f32_model_builder = BuildOpTestCase<float, int64_t>(op_type, {input_def}, {axes_def}, {});
+  auto qdq_model_builder = BuildQDQSqueezeTestCase<QType>(op_type, input_def, axes_def, use_contrib_qdq);
+
+  TestQDQModelAccuracy(f32_model_builder,
+                       qdq_model_builder,
+                       provider_options,
+                       opset,
+                       expected_ep_assignment);
+}
+
 // Test that QDQ Squeeze with a dynamic axes input is not supported by QNN EP.
 TEST_F(QnnHTPBackendTests, Squeeze_DynamicAxes_Unsupported) {
   RunQDQSqueezeTestOnHTP<uint8_t>("Squeeze",
@@ -219,12 +226,22 @@ TEST_F(QnnHTPBackendTests, Squeeze_Rank5_Rank2_f32) {
                   ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ Squeeze of rank 4 -> rank 3 with a negative axes value.
-TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_f32) {
+// Test 8-bit QDQ Squeeze of rank 4 -> rank 3 with a negative axes value.
+TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_u8) {
   RunQDQSqueezeTestOnHTP<uint8_t>("Squeeze",
                                   TestInputDef<float>({1, 3, 2, 1}, false, -10.0f, 10.0f),
                                   TestInputDef<int64_t>({1}, true, {-1}),  // Squeeze last axis => (1, 3, 2)
                                   ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ Squeeze of rank 4 -> rank 3 with a negative axes value.
+TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_u16) {
+  RunQDQSqueezeTestOnHTP<uint16_t>("Squeeze",
+                                   TestInputDef<float>({1, 3, 2, 1}, false, -10.0f, 10.0f),
+                                   TestInputDef<int64_t>({1}, true, {-1}),  // Squeeze last axis => (1, 3, 2)
+                                   ExpectedEPNodeAssignment::All,
+                                   13,     // opset
+                                   true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test QDQ Unsqueeze of rank 3 -> rank 5.
@@ -265,12 +282,22 @@ TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank5_f32) {
                   ExpectedEPNodeAssignment::All);
 }
 
-// Test Unsqueeze of rank 3 -> rank 4 with a negative axes value.
-TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_f32) {
+// Test 8-bit QDQ Unsqueeze of rank 3 -> rank 4 with a negative axes value.
+TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_u8) {
   RunQDQSqueezeTestOnHTP<uint8_t>("Unsqueeze",
                                   TestInputDef<float>({1, 3, 2}, false, -10.0f, 10.0f),
                                   TestInputDef<int64_t>({1}, true, {-1}),  // Add 1 as last axis => (1, 3, 2, 1)
                                   ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ Unsqueeze of rank 3 -> rank 4 with a negative axes value.
+TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_u16) {
+  RunQDQSqueezeTestOnHTP<uint16_t>("Unsqueeze",
+                                   TestInputDef<float>({1, 3, 2}, false, -10.0f, 10.0f),
+                                   TestInputDef<int64_t>({1}, true, {-1}),  // Add 1 as last axis => (1, 3, 2, 1)
+                                   ExpectedEPNodeAssignment::All,
+                                   13,     // opset
+                                   true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test that int32 Squeeze runs on HTP backend.

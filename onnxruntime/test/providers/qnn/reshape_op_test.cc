@@ -76,13 +76,16 @@ TEST_F(QnnCPUBackendTests, Reshape_4D_f32) {
 template <typename QuantType>
 GetTestQDQModelFn<QuantType> BuildQDQReshapeTestCase(const TestInputDef<float>& input_def,
                                                      const TestInputDef<int64_t>& shape_def,
-                                                     const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [input_def, shape_def, attrs](ModelTestBuilder& builder,
-                                       std::vector<QuantParams<QuantType>>& output_qparams) {
+                                                     const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                                     bool use_contrib_qdq = false) {
+  return [input_def, shape_def, attrs,
+          use_contrib_qdq](ModelTestBuilder& builder,
+                           std::vector<QuantParams<QuantType>>& output_qparams) {
     // input -> Q -> DQ ->
     NodeArg* input = MakeTestInput(builder, input_def);
     QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
-    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point);
+    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point,
+                                                   use_contrib_qdq);
 
     // shape input
     NodeArg* shape_input = MakeTestInput(builder, shape_def);
@@ -99,7 +102,7 @@ GetTestQDQModelFn<QuantType> BuildQDQReshapeTestCase(const TestInputDef<float>& 
     // NOTE: Input and output quantization parameters must be equal for Reshape.
     output_qparams[0] = input_qparams;  // Overwrite!
     AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, reshape_output, input_qparams.scale,
-                                                     input_qparams.zero_point);
+                                                     input_qparams.zero_point, use_contrib_qdq);
   };
 }
 
@@ -132,7 +135,8 @@ static void RunQDQReshapeTestOnHTP(const TestInputDef<float>& input_def,
                                    const TestInputDef<int64_t>& shape_def,
                                    const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                    ExpectedEPNodeAssignment expected_ep_assignment,
-                                   int opset = 19) {
+                                   int opset = 19,
+                                   bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -142,7 +146,7 @@ static void RunQDQReshapeTestOnHTP(const TestInputDef<float>& input_def,
 #endif
 
   auto f32_model_builder = BuildOpTestCase<float, int64_t>("Reshape", {input_def}, {shape_def}, attrs);
-  auto qdq_model_builder = BuildQDQReshapeTestCase<QType>(input_def, shape_def, attrs);
+  auto qdq_model_builder = BuildQDQReshapeTestCase<QType>(input_def, shape_def, attrs, use_contrib_qdq);
   TestQDQModelAccuracy(f32_model_builder,
                        qdq_model_builder,
                        provider_options,
@@ -168,13 +172,23 @@ TEST_F(QnnHTPBackendTests, Reshape_AllowZeroAttr_Unsupported) {
                                   19);                             // Opset
 }
 
-// Test QDQ Reshape of rank 4 -> rank 2.
-TEST_F(QnnHTPBackendTests, Reshape_4D_f32) {
+// Test 8-bit QDQ Reshape of rank 4 -> rank 2.
+TEST_F(QnnHTPBackendTests, Reshape_4D_u8) {
   RunQDQReshapeTestOnHTP<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
                                   TestInputDef<int64_t>({2}, true, {1, 48}),
                                   {},  // Attributes
                                   ExpectedEPNodeAssignment::All,
                                   19);  // Opset
+}
+
+// Test 16-bit QDQ Reshape of rank 4 -> rank 2.
+TEST_F(QnnHTPBackendTests, Reshape_4D_u16) {
+  RunQDQReshapeTestOnHTP<uint16_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+                                   TestInputDef<int64_t>({2}, true, {1, 48}),
+                                   {},  // Attributes
+                                   ExpectedEPNodeAssignment::All,
+                                   19,     // Opset
+                                   true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test that int32 Reshape runs on HTP backend.
