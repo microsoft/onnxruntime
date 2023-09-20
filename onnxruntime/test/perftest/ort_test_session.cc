@@ -99,69 +99,62 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #ifdef USE_CUDA
     const auto& api = Ort::GetApi();
     OrtCUDAProviderOptionsV2* cuda_options;
-    try
-    {
-      Ort::ThrowOnError(api.CreateCUDAProviderOptions(&cuda_options));
+    Ort::ThrowOnError(api.CreateCUDAProviderOptions(&cuda_options));
 
-      const char* cudnn_conv_algo_search = "cudnn_conv_algo_search";
-      const char* default_conv = "DEFAULT";
-      const char* benchmarking = "EXHAUSTIVE";
-      const char* heuristic = "HEURISTIC";
-      switch (performance_test_config.run_config.cudnn_conv_algo) {
-        case 0:
-          Ort::ThrowOnError(
-              api.UpdateCUDAProviderOptions(cuda_options, &cudnn_conv_algo_search, &benchmarking, 1));
-          break;
-        case 1:
-          Ort::ThrowOnError(
-              api.UpdateCUDAProviderOptions(cuda_options, &cudnn_conv_algo_search, &heuristic, 1));
-          break;
-        default:
-          Ort::ThrowOnError(
-              api.UpdateCUDAProviderOptions(cuda_options, &cudnn_conv_algo_search, &default_conv, 1));
-          break;
-      }
-
-      const char* do_copy_in_default_stream = "do_copy_in_default_stream";
-      if (performance_test_config.run_config.do_cuda_copy_in_separate_stream) {
-        const char* v = "1";
+    const char* cudnn_conv_algo_search = "cudnn_conv_algo_search";
+    const char* default_conv = "DEFAULT";
+    const char* benchmarking = "EXHAUSTIVE";
+    const char* heuristic = "HEURISTIC";
+    switch (performance_test_config.run_config.cudnn_conv_algo) {
+      case 0:
         Ort::ThrowOnError(
-            api.UpdateCUDAProviderOptions(cuda_options, &do_copy_in_default_stream, &v, 1));
-      } else {
-        const char* v = "0";
+            api.UpdateCUDAProviderOptions(cuda_options, &cudnn_conv_algo_search, &benchmarking, 1));
+        break;
+      case 1:
         Ort::ThrowOnError(
-            api.UpdateCUDAProviderOptions(cuda_options, &do_copy_in_default_stream, &v, 1));
-      }
-
-  #ifdef _MSC_VER
-      std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-  #else
-      std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-  #endif
-      std::istringstream ss(ov_string);
-      std::string token;
-      while (ss >> token) {
-        if (token == "") {
-          continue;
-        }
-        auto pos = token.find("|");
-        if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-          ORT_THROW("[ERROR] [CUDA] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
-        }
-
-        auto key = token.substr(0, pos);
-        auto value = token.substr(pos + 1);
-        auto key_p = key.c_str();
-        auto value_p = value.c_str();
+            api.UpdateCUDAProviderOptions(cuda_options, &cudnn_conv_algo_search, &heuristic, 1));
+        break;
+      default:
         Ort::ThrowOnError(
-            api.UpdateCUDAProviderOptions(cuda_options, &key_p, &value_p, 1));
-      }
-    }
-    catch(const Ort::Exception& e)
-    {
-      std::cerr << e.what() << std::endl;
+            api.UpdateCUDAProviderOptions(cuda_options, &cudnn_conv_algo_search, &default_conv, 1));
+        break;
     }
 
+    const char* do_copy_in_default_stream = "do_copy_in_default_stream";
+    if (performance_test_config.run_config.do_cuda_copy_in_separate_stream) {
+      const char* v = "1";
+      Ort::ThrowOnError(
+          api.UpdateCUDAProviderOptions(cuda_options, &do_copy_in_default_stream, &v, 1));
+    } else {
+      const char* v = "0";
+      Ort::ThrowOnError(
+          api.UpdateCUDAProviderOptions(cuda_options, &do_copy_in_default_stream, &v, 1));
+    }
+
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [CUDA] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+      auto key_p = key.c_str();
+      auto value_p = value.c_str();
+      Ort::ThrowOnError(
+          api.UpdateCUDAProviderOptions(cuda_options, &key_p, &value_p, 1));
+    }
+    
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");

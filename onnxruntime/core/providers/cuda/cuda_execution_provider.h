@@ -52,6 +52,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().CudnnHandle();
   }
 
+  cudaStream_t ComputeStream() {
+    return stream_;
+  }
+
   template <typename T>
   const T* GetConstOnes(size_t count, cudaStream_t stream) {
     return GetPerThreadContext().template GetConstOnes<T>(count, stream);

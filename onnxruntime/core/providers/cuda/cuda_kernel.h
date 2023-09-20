@@ -170,6 +170,10 @@ class CudaKernel : public OpKernel {
     return provider_->PerThreadDefaultCudnnHandle();
   }
 
+  inline cudaStream_t DefaultCudaStream() const {
+    return provider_->ComputeStream();
+  }
+
  protected:
   template <typename T>
   inline const T* GetConstOnes(size_t count, cudaStream_t stream) const {

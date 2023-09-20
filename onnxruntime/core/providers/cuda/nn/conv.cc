@@ -14,18 +14,18 @@ namespace cuda {
 
 // Op Set 11 for Conv only update document to clearify default dilations and strides value.
 // which are already convered by op set 11 cpu versoin, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                                           \
+#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                             \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Conv,                                                                                \
-      DOMAIN,                                                                         \
+      DOMAIN,                                                                              \
       1, 10,                                                                               \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T, NHWC>);                                                                     \
+      Conv<T, NHWC>);                                                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       Conv,                                                                                \
-      DOMAIN,                                                                         \
+      DOMAIN,                                                                              \
       11,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
@@ -93,7 +93,7 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
+                              bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
   if (NHWC) {  // InputTensors::IN_W
@@ -104,17 +104,15 @@ Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
       InlinedVector<size_t> perm{0, 2, 3, 1};
       gsl::span<size_t> permutation(perm.data(), 4);
       TensorShapeVector new_dims{orig_shape[0],
-                                orig_shape[2],
-                                orig_shape[3],
-                                orig_shape[1]};
+                                 orig_shape[2],
+                                 orig_shape[3],
+                                 orig_shape[1]};
       W_ = Tensor::Create(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
 
-      cudaStream_t stream = 0;
       auto status = cuda::Transpose::DoTranspose(GetDeviceProp(),
-                                  stream,
-                                  //  provider_->PerThreadDefaultCublasHandle(),
-                                  DefaultCublasHandle(),
-                                  permutation, tensor, *W_);
+                                                 DefaultCudaStream(),
+                                                 DefaultCublasHandle(),
+                                                 permutation, tensor, *W_);
       if (!status.IsOK()) {
         return status;
       }
