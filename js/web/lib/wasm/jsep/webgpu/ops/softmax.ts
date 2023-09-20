@@ -5,7 +5,7 @@
 // performance limitations when the reduced axis is long. Need to add
 // a optimized codepath for this.
 
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
