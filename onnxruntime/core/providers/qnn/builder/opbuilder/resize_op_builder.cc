@@ -56,62 +56,6 @@ class ResizeOpBuilder : public BaseOpBuilder {
   Status GetQnnModeFromString(const std::array<std::string_view, N>& onnx_modes, std::string_view onnx_mode,
                               const char* onnx_mode_label, QnnValType& qnn_mode) const ORT_MUST_USE_RESULT;
 
-  /**
-   * Called by IsOpSupported to validate the op for non-quantized models.
-   *
-   * /param qnn_model_wrapper The QNN model wrapper instance.
-   * /param node_unit The node unit containing metadata for the ONNX Resize operator.
-   *
-   * /returns A status indicating failure or success.
-   */
-  Status ValidateOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const ORT_MUST_USE_RESULT;
-
-  /**
-   * Called by IsOpSupported to validate the op for quantized models.
-   *
-   * /param qnn_model_wrapper The QNN model wrapper instance.
-   * /param node_unit The node unit containing metadata for the ONNX Resize operator and its Q/DQ nodes.
-   *
-   * /returns A status indicating failure or success.
-   */
-  Status ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const ORT_MUST_USE_RESULT;
-
-  /**
-   * Called by ProcessAttributesAndOutputs to process the op's attributes and outputs
-   * for non-quantized models.
-   *
-   * /param qnn_model_wrapper The QNN model wrapper instance.
-   * /param node_unit The node unit containing metadata for the ONNX Resize operator.
-   * /param input_names The operator's input names.
-   * /param logger A logger.
-   * /param do_op_validation Set to true if the op should be validated using QNN's validation API.
-   *
-   * /returns A status indicating failure or success.
-   */
-  Status ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                  const NodeUnit& node_unit,
-                                  std::vector<std::string>&& input_names,
-                                  const logging::Logger& logger,
-                                  bool do_op_validation) const ORT_MUST_USE_RESULT;
-
-  /**
-   * Called by ProcessAttributesAndOutputs to process the op's attributes and outputs
-   * for quantized models.
-   *
-   * /param qnn_model_wrapper The QNN model wrapper instance.
-   * /param node_unit The node unit containing metadata for the ONNX Resize operator and its Q/DQ nodes.
-   * /param input_names The operator's input names.
-   * /param logger A logger.
-   * /param do_op_validation Set to true if the op should be validated using QNN's validation API.
-   *
-   * /returns A status indicating failure or success.
-   */
-  Status ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                     const NodeUnit& node_unit,
-                                     std::vector<std::string>&& input_names,
-                                     const logging::Logger& logger,
-                                     bool do_op_validation) const ORT_MUST_USE_RESULT;
-
   // Info for each ONNX attribute of interest (attribute name + default value)
   static const OnnxAttrInfo<std::string> onnx_mode_attr;
   static const OnnxAttrInfo<std::string> onnx_coord_transf_mode_attr;
@@ -122,6 +66,8 @@ class ResizeOpBuilder : public BaseOpBuilder {
   // Arrays of supported QNN modes for QNN's Resize op. The index of each mode is used as the corresponding
   // QNN parameter value. Ex: The "nearest" mode is represented as the value 0 in QNN. Note, that
   // not all modes are supported by every QNN backend.
+  //
+  // TODO: Use enum values from the Qualcomm headers!
 
   // QNN values: NEAREST = 0, LINEAR = 1
   static constexpr std::array<std::string_view, 2> supported_modes = {"nearest", "linear"};
@@ -169,104 +115,47 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
 
+  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  NodeAttrHelper node_helper(node_unit);
+
   // QNN doesn't support anti-aliasing (added in opset 18)
   if (node_unit.SinceVersion() >= 18) {
-    NodeAttrHelper node_helper(node_unit);
     const bool antialias = GetOnnxAttr(node_helper, onnx_antialias_attr) != 0;
     ORT_RETURN_IF(antialias, "QNN EP: Resize doesn't support anti-aliasing.");
   }
 
-  // The QNN Resize op does not currently work with the QNN cpu backend, but works with the HTP backend. Therefore, we
-  // currently use QNN's Resize op for quantized models and either ResizeBilinear or ResizeNearestNeighbor for
-  // non-quantized models. This requires separate validation for quantized models.
-  // TODO: Use only Resize once QNN's Resize op works in the QNN cpu backend.
-  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
-  return is_npu_backend ? ValidateQDQOp(qnn_model_wrapper, node_unit) : ValidateOp(qnn_model_wrapper, node_unit);
-}
-
-Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
-  NodeAttrHelper node_helper(node_unit);
-  const std::string resize_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
-  ORT_RETURN_IF((resize_mode != "nearest") && (resize_mode != "linear"),
-                "QNN EP: Resize doesn't support mode '", resize_mode.c_str(), "'.",
-                "Only 'nearest' and 'linear' are supported.");
-
-  const std::string coordinate_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
-  ORT_RETURN_IF((coordinate_mode != "half_pixel") && (coordinate_mode != "align_corners"),
-                "QNN EP: coordinate transformation mode '", coordinate_mode.c_str(), "' not supported for Resize op.",
-                "Only 'align_corners' and 'half_pixel' are supported.");
-
-  // Check for a valid "nearest_mode" if the mode is "nearest".
-  if (resize_mode == "nearest") {
-    // NOTE: QNN's ResizeNearestNeighbor operator does not have a way to specify rounding (i.e., "nearest_mode").
-    // The output of the QNN ResizeNearestNeighbor operator is not always equivalent to ONNX's Resize
-    // operator with any single specific "nearest_mode".
-    //
-    // For some input/output shapes, QNN's ResizeNearestNeighbor is equivalent to ONNX's Resize with "round_prefer_floor".
-    // For other shapes, QNN's ResizeNearestNeighbor is equivalent to ONNX Resize with "round_prefer_ceil".
-    //
-    // From unit tests, I've found a relationship between input/output shapes and the equivalent ONNX "nearest_mode".
-    // If the new and old spatial dimensions are evenly divisible, the "nearest_mode" is "round_prefer_floor".
-    // Otherwise, the "nearest_mode" is "round_prefer_ceil".
-    //
-    // This relationship is probably incomplete/wrong.
-    //
-    // TODO: Ask Qualcomm what the correct "nearest_mode" should be,
-    // OR use QNN's own Resize operator once it works on QnnCpu.
-    const std::string& nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
-    ORT_RETURN_IF_NOT("floor" == nearest_mode, "QNN Resize only supports nearest_mode: floor!");  // This is wrong!
-  }
-
-  auto& input_0 = node_unit.Inputs()[0];
-  std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
-                    "QNN EP: Cannot get input shape for Resize op");
-
-  const auto& output_0 = node_unit.Outputs()[0];
-  std::vector<uint32_t> output_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.node_arg, output_shape),
-                    "QNN EP: Cannot get output shape for Resize op");
-
-  ORT_RETURN_IF(input_shape.size() != 4 || output_shape.size() != 4, "QNN Resize only supports 4D!");
-
-  ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
-  ORT_RETURN_IF(input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
-                "QNN EP: Data type ", input_data_type->c_str(),
-                " is not supported for Resize operator in CPU backend.");
-
-  return Status::OK();
-}
-
-Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
-  NodeAttrHelper node_helper(node_unit);
-
-  using namespace onnxruntime::qnn::utils;
   // Check mode
   const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
-  ORT_RETURN_IF_NOT(ArrayHasString(supported_modes, interp_mode), "QNN EP: Resize does not support mode ",
+  ORT_RETURN_IF_NOT(qnn::utils::ArrayHasString(supported_modes, interp_mode), "QNN EP: Resize does not support mode ",
                     interp_mode.c_str());
 
   // Check coordinate transformation mode
   const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
-  ORT_RETURN_IF_NOT(ArrayHasString(supported_coord_transf_modes, transformation_mode),
+  ORT_RETURN_IF_NOT(qnn::utils::ArrayHasString(supported_coord_transf_modes, transformation_mode),
                     "QNN EP: Resize does not support coordinate_transformation_mode ", transformation_mode.c_str());
 
   // Check nearest mode
   if (interp_mode == "nearest") {
     const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
-    ORT_RETURN_IF_NOT(ArrayHasString(supported_nearest_modes, nearest_mode),
+    ORT_RETURN_IF_NOT(qnn::utils::ArrayHasString(supported_nearest_modes, nearest_mode),
                       "QNN EP: Resize does not support nearest_mode ", nearest_mode.c_str());
 
-    // TODO: Support 'asymmetric' transformation mode with nearest_mode != 'floor'.
-    //
-    // QNN's ONNX converter tool translates 'nearest' + 'asymmetric' (regardless of rounding mode)
-    // to QNN's ResizeNearestNeighbor with {align_corners: 0, half_pixel: 0}.
-    // This is only accurate if the rounding mode is "floor". Need to investigate how to handle
-    // other rounding modes with Qualcomm. Ideally, we would use QNN's Resize operator, but it doesn't support
-    // the "asymmetric" coordinate transformation mode on HTP.
-    ORT_RETURN_IF(transformation_mode == "asymmetric" && nearest_mode != "floor",
-                  "QNN EP: Resize with coordinate_transformation_mode 'asymmetric' and nearest_mode '", nearest_mode,
-                  "' is not currently supported on the HTP backend.");
+    if (is_npu_backend) {
+      // QNN only supports the following nearest_mode values on HTP:
+      // - "round_prefer_floor" via QNN's Resize operator
+      // - "floor" via QNN's ResizeNearestNeighbor operator
+      //
+      // QNN validation does not throw an error if unsupported nearest_mode values are used, so we have to
+      // catch them here. Otherwise, accuracy is significantly degraded.
+      ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_floor" || nearest_mode == "floor",
+                        "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
+
+      // If HTP uses ResizeNearestNeighbor ("floor"), then the "pytorch_half_pixel" coordinate_transformation_mode
+      // is not supported.
+      ORT_RETURN_IF(nearest_mode == "floor" && transformation_mode == "pytorch_half_pixel",
+                    "QNN EP: Resize on the NPU does not support the combination of nearest_mode == 'floor' ",
+                    " and coordinate_transformation_mode == 'pytorch_half_pixel'.");
+    }
   }
 
   // Check that input shape has at least a rank of 3.
@@ -281,6 +170,13 @@ Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.node_arg, output_shape),
                     "QNN EP: Cannot get shape for Resize output");
   ORT_RETURN_IF(output_shape.size() < 3, "QNN EP: Resize output must have a rank >= 3.");
+
+  if (!is_npu_backend) {
+    ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
+    ORT_RETURN_IF(input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
+                  "QNN EP: Data type ", input_data_type->c_str(),
+                  " is not supported for Resize operator in CPU backend.");
+  }
 
   return Status::OK();
 }
@@ -305,92 +201,34 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger,
                                                     bool do_op_validation) const {
-  // The QNN Resize op does not currently work with the QNN cpu backend, but works with the HTP backend. Therefore, we
-  // currently use QNN's Resize op for quantized models and either ResizeBilinear or ResizeNearestNeighbor for
-  // non-quantized models. This requires separate handling for quantized models.
-  // TODO: Use only Resize once QNN's Resize op works in the QNN cpu backend.
-  bool is_quantized_node = NodeUnit::Type::QDQGroup == node_unit.UnitType();
-  return is_quantized_node ? ProcessQDQOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation) : ProcessOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation);
-}
-
-Status ResizeOpBuilder::ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                 const NodeUnit& node_unit,
-                                                 std::vector<std::string>&& input_names,
-                                                 const logging::Logger& logger,
-                                                 bool do_op_validation) const {
-  ORT_UNUSED_PARAMETER(logger);
-  NodeAttrHelper node_helper(node_unit);
-  const std::string resize_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
-  std::string qnn_node_type = "ResizeNearestNeighbor";
-  if ("linear" == resize_mode) {
-    qnn_node_type = "ResizeBilinear";
-  }
-
-  const std::string coordinate_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
-
-  Qnn_Scalar_t qnn_align_corners = QNN_SCALAR_INIT;
-  qnn_align_corners.dataType = QNN_DATATYPE_BOOL_8;
-  qnn_align_corners.bool8Value = static_cast<uint8_t>(0);
-
-  Qnn_Scalar_t qnn_half_pixel = QNN_SCALAR_INIT;
-  qnn_half_pixel.dataType = QNN_DATATYPE_BOOL_8;
-  qnn_half_pixel.bool8Value = static_cast<uint8_t>(0);
-
-  if ("align_corners" == coordinate_mode) {
-    qnn_align_corners.bool8Value = static_cast<uint8_t>(1);
-  } else if ("half_pixel" == coordinate_mode) {
-    qnn_half_pixel.bool8Value = static_cast<uint8_t>(1);
-  }
-  QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
-                                          QNN_OP_RESIZE_BILINEAR_PARAM_ALIGN_CORNERS, qnn_align_corners);
-  QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
-                                       QNN_OP_RESIZE_BILINEAR_PARAM_HALF_PIXEL_CENTERS, qnn_half_pixel);
-
-  std::vector<std::string> param_tensor_names;
-  param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(qnn_align_corners_param));
-  param_tensor_names.push_back(qnn_half_pixel_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(qnn_half_pixel_param));
-
-  return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                        logger, do_op_validation, qnn_node_type);
-}
-
-Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                    const NodeUnit& node_unit,
-                                                    std::vector<std::string>&& input_names,
-                                                    const logging::Logger& logger,
-                                                    bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
   NodeAttrHelper node_helper(node_unit);
 
   const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
   const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
+  const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
+  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   std::string qnn_op_type = "Resize";
 
-  // Handle Resize with {mode: "nearest", coordinate_transformation_mode: "asymmetric"} uniquely.
-  // QNN's ONNX converter tool translates this configuration (regardless of rounding mode)
-  // to QNN's ResizeNearestNeighbor with {align_corners: 0, half_pixel: 0}.
-  //
-  // NOTE: This is only accurate if the rounding mode is "floor". Need to investigate how to handle
-  // other rounding modes with Qualcomm. Ideally, we would use QNN's Resize operator, but it doesn't support
-  // the "asymmetric" coordinate transformation mode on HTP.
-  if (interp_mode == "nearest" && transformation_mode == "asymmetric") {
+  // Translate Resize with {mode: "nearest", nearest_mode: "floor", coordinate_transformation_mode: XXX} to
+  // QNN's ResizeNearestNeighbor operator on the HTP backend. This combination of parameters is not supported on HTP
+  // via QNN's Resize operator. Note that QNN's ResizeNearestNeighbor operator always uses "floor" rounding.
+  if (is_npu_backend && interp_mode == "nearest" && nearest_mode == "floor") {
     qnn_op_type = "ResizeNearestNeighbor";
 
-    // Set parameter 'align_corners' to 0
+    // Parameter 'align_corners'
     Qnn_Scalar_t qnn_align_corners = QNN_SCALAR_INIT;
     qnn_align_corners.dataType = QNN_DATATYPE_BOOL_8;
-    qnn_align_corners.bool8Value = static_cast<uint8_t>(0);
+    qnn_align_corners.bool8Value = static_cast<uint8_t>(transformation_mode == "align_corners");
     QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
                                             QNN_OP_RESIZE_BILINEAR_PARAM_ALIGN_CORNERS, qnn_align_corners);
     param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_align_corners_param));
 
-    // Set parameter 'half_pixel_centers' to 0
+    // Parameter 'half_pixel_centers'
     Qnn_Scalar_t qnn_half_pixel = QNN_SCALAR_INIT;
     qnn_half_pixel.dataType = QNN_DATATYPE_BOOL_8;
-    qnn_half_pixel.bool8Value = static_cast<uint8_t>(0);
+    qnn_half_pixel.bool8Value = static_cast<uint8_t>(transformation_mode == "half_pixel");
     QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
                                          QNN_OP_RESIZE_BILINEAR_PARAM_HALF_PIXEL_CENTERS, qnn_half_pixel);
     param_tensor_names.push_back(qnn_half_pixel_param.GetParamTensorName());
@@ -429,7 +267,6 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
 
     // Parameter 'nearest_mode'. Processed only when 'interpolation_mode' is NEAREST(0).
     if (qnn_interp_mode.uint32Value == 0) {
-      const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
       Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
       qnn_nearest_mode.dataType = QNN_DATATYPE_UINT_32;
       ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_nearest_modes, nearest_mode, "nearest_mode",
