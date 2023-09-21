@@ -4548,14 +4548,6 @@ TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
 #endif
 }
 
-using namespace onnx_transpose_optimization;
-static CostCheckResult AlwaysPushTranspose(const api::GraphRef& /*graph*/,
-                                           const api::NodeRef& /*node*/,
-                                           const std::vector<int64_t>& /*perm*/,
-                                           const std::unordered_set<std::string>& /*outputs_leading_to_transpose*/) {
-  return onnx_transpose_optimization::CostCheckResult::kPushTranspose;
-}
-
 static void CheckSharedInitializerHandling(bool broadcast) {
   auto model_uri = broadcast ? ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast.onnx")
                              : ORT_TSTR("testdata/transpose_optimizer_shared_initializers.onnx");
@@ -4590,17 +4582,19 @@ static void CheckSharedInitializerHandling(bool broadcast) {
     InferenceSessionWrapper session{so, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(model_uri));
 
-    // we call the ONNX transpose optimizer directly as we want to plug in the AlwaysPushTranspose cost check.
-    // this is to simplify the model required to exercise the shared initializer handling.
-    // it also means we don't need to disable optimizers that might alter the graph before the transpose optimizer
-    // runs (ConstantFolding, CommonSubexpressionElimination, ConstantSharing)
+    // we call the ONNX transpose optimizer directly to simplify the model required to exercise the
+    // shared initializer handling. this means we don't need to disable optimizers that might alter
+    // the graph before the transpose optimizer runs (at a minimum ConstantFolding,
+    // CommonSubexpressionElimination and ConstantSharing).
     Graph& graph = session.GetMutableGraph();
     CPUAllocator allocator;
 
+    using namespace onnx_transpose_optimization;
     auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                                   /*new_node_ep*/ nullptr);
 
-    OptimizeResult result = Optimize(*api_graph, "", AlwaysPushTranspose);
+    // default optimization cost check
+    OptimizeResult result = Optimize(*api_graph);
 
     ASSERT_EQ(result.error_msg, std::nullopt);
     ASSERT_TRUE(result.graph_modified);
