@@ -321,14 +321,10 @@ void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, c
 {
     EnsureStridesExist(static_cast<uint32_t>(dimensionMapping.size()));
     SetDimensionCount(static_cast<uint32_t>(dimensionMapping.size()), alignment);
-    PermuteArray(dimensionMapping);
-}
 
-// Shuffle m_sizes and m_strides according to the indexes pointed by dimensionMapping
-void TensorDesc::PermuteArray(gsl::span<const uint32_t> dimensionMapping)
-{
-    std::vector<uint32_t> tempSizes(dimensionMapping.size());
-    std::vector<uint32_t> tempStrides(dimensionMapping.size());
+    // Shuffle m_sizes and m_strides according to the indexes pointed by dimensionMapping
+    std::vector<uint32_t> tempSizes{m_sizes, m_sizes + MaximumDimensionCount};
+    std::vector<uint32_t> tempStrides{m_strides, m_strides + MaximumDimensionCount};
 
     for (size_t i = 0; i < dimensionMapping.size(); i++)
     {
