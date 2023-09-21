@@ -57,13 +57,153 @@ class Parameter:
         return f"Parameter(name={self.name}, requires_grad={self.requires_grad})"
 
 
+class Parameters:
+    """Class that holds all the model parameters
+
+    This class holds all the model parameters and provides access to them.
+    This class is not expected to be instantiated directly. Instead, it is returned by the
+    `CheckpointState`'s parameters attribute.
+    This class behaves like a dictionary and provides access to the parameters by name.
+
+    Args:
+        state: The C.CheckpointState object that holds the underlying session state.
+    """
+
+    def __init__(self, state: C.CheckpointState):
+        self._state = state
+
+    def __getitem__(self, name: str) -> Parameter:
+        """Gets the parameter associated with the given name
+
+        Searches for the name in the parameters of the checkpoint state.
+
+        Args:
+            name: The name of the parameter
+
+        Returns:
+            The value of the parameter
+
+        Raises:
+            KeyError: If the parameter is not found
+        """
+
+        if name not in self:
+            raise KeyError(f"Parameter {name} not found.")
+
+        return Parameter(self._state.get_parameter(name), self._state)
+
+    def __setitem__(self, name: str, value: np.ndarray) -> None:
+        """Sets the parameter value for the given name
+
+        Searches for the name in the parameters of the checkpoint state.
+        If the name is found in parameters, the value is updated.
+
+        Args:
+            name: The name of the parameter
+            value: The value of the parameter as a numpy array
+
+        Raises:
+            KeyError: If the parameter is not found
+        """
+        if name not in self:
+            raise KeyError(f"Parameter {name} not found.")
+
+        self._state.copy_parameter_from(name, OrtValue.ortvalue_from_numpy(value)._ortvalue)
+
+    def __contains__(self, name: str) -> bool:
+        """Checks if the parameter exists in the state
+
+        Args:
+            name: The name of the parameter
+
+        Returns:
+            True if the name is a parameter False otherwise
+        """
+
+        return self._state.has_parameter(name)
+
+    def __iter__(self):
+        """Returns an iterator over the properties"""
+        for parameter_name in self._state.parameter_names():
+            yield parameter_name, Parameter(self._state.get_parameter(parameter_name), self._state)
+
+    def __repr__(self) -> str:
+        """Returns a string representation of the parameters"""
+        return self._state.parameter_names()
+
+    def __len__(self) -> int:
+        """Returns the number of parameters"""
+        return len(self._state.parameter_names())
+
+
+class Properties:
+    def __init__(self, state: C.CheckpointState):
+        self._state = state
+
+    def __getitem__(self, name: str) -> int | float | str:
+        """Gets the property associated with the given name
+
+        Searches for the name in the properties of the checkpoint state.
+
+        Args:
+            name: The name of the property
+
+        Returns:
+            The value of the property
+
+        Raises:
+            KeyError: If the property is not found
+        """
+
+        if name not in self:
+            raise KeyError(f"Property {name} not found.")
+
+        return self._state.get_property(name)
+
+    def __setitem__(self, name: str, value: int | float | str) -> None:
+        """Sets the property value for the given name
+
+        Searches for the name in the properties of the checkpoint state.
+        The value is added or updated in the properties.
+
+        Args:
+            name: The name of the property
+            value: The value of the property
+                   Properties only support int, float and str values.
+        """
+        self._state.add_property(name, value)
+
+    def __contains__(self, name: str) -> bool:
+        """Checks if the property exists in the state
+
+        Args:
+            name: The name of the property
+
+        Returns:
+            True if the name is a property, False otherwise
+        """
+
+        return self._state.has_property(name)
+
+    def __iter__(self):
+        """Returns an iterator over the properties"""
+        for property_name in self._state.property_names():
+            yield property_name, self._state.get_property(property_name)
+
+    def __repr__(self) -> str:
+        """Returns a string representation of the properties"""
+        return self._state.property_names()
+
+    def __len__(self) -> int:
+        """Returns the number of properties"""
+        return len(self._state.property_names())
+
+
 class CheckpointState:
     """Class that holds the state of the training session
 
     This class holds all the state information of the training session such as the model parameters,
     its gradients, the optimizer state and user defined properties.
-
-    User defined properties can be indexed by name from the `CheckpointState` object.
 
     To create the `CheckpointState`, use the `CheckpointState.load_checkpoint` method.
 
@@ -75,6 +215,8 @@ class CheckpointState:
         if not isinstance(state, C.CheckpointState):
             raise TypeError(f"Invalid argument for CheckpointState received {type(state)}")
         self._state = state
+        self._parameters = Parameters(self._state)
+        self._properties = Properties(self._state)
 
     @classmethod
     def load_checkpoint(cls, checkpoint_uri: str | os.PathLike) -> CheckpointState:
@@ -101,52 +243,12 @@ class CheckpointState:
         """
         C.save_checkpoint(state._state, os.fspath(checkpoint_uri), include_optimizer_state)
 
-    def __getitem__(self, name: str) -> int | float | str | Parameter:
-        """Gets the parameter or property associated with the given name
+    @property
+    def parameters(self) -> Parameters:
+        """Returns the model parameters from the checkpoint state"""
+        return self._parameters
 
-        Searches for the name in the parameters and properties of the checkpoint state.
-
-        Args:
-            name: The name of the parameter or property
-
-        Returns:
-            The value of the parameter or property
-        """
-
-        if self._state.has_parameter(name):
-            return Parameter(self._state.get_parameter(name), self._state)
-        elif self._state.has_property(name):
-            return self._state.get_property(name)
-        else:
-            raise KeyError(f"Could not find {name} in the checkpoint state.")
-
-    def __setitem__(self, name: str, value: int | float | str | np.ndarray) -> None:
-        """Sets the parameter or property value for the given name
-
-        Searches for the name in the parameters and properties of the checkpoint state.
-        If the name is found in parameters, the value is updated.
-        Else, the value is added or updated in the properties.
-
-        Args:
-            name: The name of the parameter or property
-            value: The value of the parameter or property
-                   Properties only support int, float and str values.
-        """
-        if self._state.has_parameter(name):
-            self._state.copy_parameter_from(name, OrtValue.ortvalue_from_numpy(value)._ortvalue)
-        else:
-            self._state.add_property(name, value)
-
-    def __contains__(self, name: str) -> bool:
-        """Checks if the parameter or property exists in the state
-
-        Tthe name is searched in both parameters and properties.
-
-        Args:
-            name: The name of the parameter or property
-
-        Returns:
-            True if the name is either a parameter or a property, False otherwise
-        """
-
-        return self._state.has_parameter(name) or self._state.has_property(name)
+    @property
+    def properties(self) -> Properties:
+        """Returns the properties from the checkpoint state"""
+        return self._properties

@@ -1087,7 +1087,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                ORT_THROW("Parameter with name ", parameter_name, " does not exist.");
              }
              ORT_THROW_IF_ERROR(it->second->CopyFrom(
-                 value, state->module_checkpoint_state.train_session_data_transfer_mgr));
+                 state->module_checkpoint_state.train_session_data_transfer_mgr, value));
            })
       .def("get_parameter",
            [](onnxruntime::training::api::CheckpointState* state, const std::string& parameter_name) {
@@ -1100,6 +1100,24 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("has_parameter",
            [](onnxruntime::training::api::CheckpointState* state, const std::string& parameter_name) {
              return state->module_checkpoint_state.named_parameters.count(parameter_name);
+           })
+      .def("parameter_names",
+           [](onnxruntime::training::api::CheckpointState* state) {
+             std::vector<std::string> names;
+             for ([[maybe_unused]] auto& [name, value] : state->module_checkpoint_state.named_parameters) {
+               names.push_back(name);
+             }
+             std::sort(names.begin(), names.end());
+             return names;
+           })
+      .def("property_names",
+           [](onnxruntime::training::api::CheckpointState* state) {
+             std::vector<std::string> names;
+             for ([[maybe_unused]] auto& [name, value] : state->property_bag) {
+               names.push_back(name);
+             }
+             std::sort(names.begin(), names.end());
+             return names;
            });
 
   py::class_<PyOptimizer>
@@ -1148,7 +1166,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
            [](onnxruntime::training::api::Parameter* parameter,
               onnxruntime::training::api::CheckpointState* state,
               OrtValue& value) -> void {
-             ORT_THROW_IF_ERROR(parameter->CopyFrom(value, state->module_checkpoint_state.train_session_data_transfer_mgr));
+             ORT_THROW_IF_ERROR(parameter->CopyFrom(state->module_checkpoint_state.train_session_data_transfer_mgr, value));
            });
 
   m.def(
