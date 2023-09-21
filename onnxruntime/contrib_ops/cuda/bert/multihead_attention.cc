@@ -153,8 +153,31 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
     use_flash_attention = false;
   }
+  // split kv buffers
+  size_t softmax_lse_accum_bytes = 0;
+  size_t out_accum_bytes = 0;
+  if (use_flash_attention) {
+    parameters.num_splits = onnxruntime::flash::num_splits_heuristic(
+        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.head_size, device_prop.multiProcessorCount, 128, past_key != nullptr,
+        device_prop.major == 8 && device_prop.minor > 0);
+    if (parameters.num_splits > 1) {
+      // softmax_lse_accum buffer
+      softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(
+          parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length);
+      // out_accum buffer
+      auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
+      const int head_size_rounded = round_multiple(parameters.head_size, 32);
+      out_accum_bytes = onnxruntime::flash::get_out_accum_size(
+          parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, head_size_rounded);
+    }
+  }
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
+  void* softmax_lse_accum_buffer = nullptr;
+  void* out_accum_buffer = nullptr;
 #endif
 
   bool use_fused_cross_attention = !use_flash_attention &&
@@ -289,6 +312,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.cumulated_sequence_length_q_cache = &(this->cumulated_sequence_length_q_cache_);
   data.cumulated_sequence_length_kv_cache = &(this->cumulated_sequence_length_kv_cache_);
+  data.softmax_lse_accum = softmax_lse_accum_buffer == nullptr ? nullptr : reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
+  data.out_accum = out_accum_buffer == nullptr ? nullptr : reinterpret_cast<CudaT*>(out_accum_buffer.get());
 
   cublasHandle_t cublas = GetCublasHandle(context);
 

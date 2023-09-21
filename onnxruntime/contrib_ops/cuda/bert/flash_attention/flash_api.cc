@@ -231,6 +231,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
     params.softmax_lseaccum_ptr = softmax_lse_accum;
     params.oaccum_ptr = out_accum;
   } else {
+    params.num_splits = 0;
     params.softmax_lseaccum_ptr = nullptr;
     params.oaccum_ptr = nullptr;
   }
@@ -368,6 +369,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     params.softmax_lseaccum_ptr = softmax_lse_accum;
     params.oaccum_ptr = out_accum;
   } else {
+    params.num_splits = 0;
     params.softmax_lseaccum_ptr = nullptr;
     params.oaccum_ptr = nullptr;
   }
