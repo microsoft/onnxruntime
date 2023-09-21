@@ -233,8 +233,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
-void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
-                                              int past_key_index) {
+void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Output 0 has shape (batch_size, sequence_length, hidden_size)
 
   // Q, K and V without packing:
@@ -251,7 +250,6 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
   // Shape inference
-  int64_t sequence_length = 0;
   if (hasInputShape(ctx, 0)) {
     auto& query_shape = getInputShape(ctx, 0);
     auto& query_dims = query_shape.dim();
@@ -267,10 +265,6 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
         fail_shape_inference("Inputs 2 (value) shall be 3 or 4 dimensions");
       }
 
-      if (value_dims.size() == 3) {
-        sequence_length = value_dims[1].dim_value();
-      }
-
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
@@ -279,29 +273,6 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       return;
     } else {
       fail_shape_inference("Missing input 2 (value)");
-    }
-  }
-
-  if (ctx.getNumOutputs() > 1) {  // has present output
-    if (hasInputShape(ctx, past_key_index)) {
-      auto& past_shape = getInputShape(ctx, past_key_index);
-      auto& past_dims = past_shape.dim();
-      if (past_dims.size() != 4) {
-        fail_shape_inference("The past_key input shall be 4 dimensions");
-      }
-
-      if (sequence_length > 0 && past_dims[2].has_dim_value()) {
-        int64_t total_sequence_length = sequence_length + past_shape.dim(3).dim_value();
-
-        ONNX_NAMESPACE::TensorShapeProto present_shape;
-        for (auto& dim : past_dims) {
-          *present_shape.add_dim() = dim;
-        }
-        present_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
-
-        updateOutputShape(ctx, 1, present_shape);
-        updateOutputShape(ctx, 2, present_shape);
-      }
     }
   }
 }
@@ -1069,7 +1040,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain past sequence length to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          GroupQueryAttentionTypeAndShapeInference(ctx, 3);
+          GroupQueryAttentionTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(

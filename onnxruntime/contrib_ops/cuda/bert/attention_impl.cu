@@ -120,7 +120,6 @@ size_t GetAttentionWorkspaceSize(
                            ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
 
 #if USE_FLASH_ATTENTION
-// TODO(aciddelgado): here we need appropriate bytes for num_splits for splitkv
   if (use_flash_attention) {
     return qkv_bytes + onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, num_heads);
   }

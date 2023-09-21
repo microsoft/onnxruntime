@@ -348,6 +348,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     params.knew_head_stride = head_size;
     params.vnew_head_stride = head_size;
   } else {
+    params.seqlen_knew = 0;
     params.knew_ptr = nullptr;
     params.vnew_ptr = nullptr;
     params.knew_batch_stride = 0;

@@ -86,18 +86,18 @@ struct PackedAttentionParameters {
 struct GroupQueryAttentionParameters {
   int batch_size;
   int sequence_length;
-  int past_sequence_length;   // sequence length in past state of K or V
-  int kv_sequence_length;     // input sequence length of K or V
+  int past_sequence_length;   // actual sequence length of past_key and past_value
+  int kv_sequence_length;     // sequence length of key and value (or new_k and new_v when past is present)
   int total_sequence_length;  // past_sequence_length + kv_sequence_length
-  int max_sequence_length;
-  int hidden_size;  // hidden size of Q
+  int max_sequence_length;    // allocated length of past_key and past_value
+  int hidden_size;
   int num_heads;
   int head_size;
-  int kv_hidden_size;      // hidden size of K or V
-  int kv_num_heads;        // number of heads for K or V
-  bool is_unidirectional;  // causal
+  int kv_hidden_size;
+  int kv_num_heads;
+  bool is_unidirectional;     // causal
   float scale;
-  int num_splits;
+  int num_splits;             // number of splits for splitkv
   AttentionQkvFormat qkv_format;
 };
 

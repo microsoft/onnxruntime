@@ -77,7 +77,6 @@ Status CheckInputs(const T* query,
                              past_value_dims[0]);
     }
 
-    // TODO(aciddelgado): change if support outside concatenation
     if (past_key_dims[1] != past_value_dims[1]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'past_key' and 'past_value' should have same dimension 1 (kv sequence length), got ",

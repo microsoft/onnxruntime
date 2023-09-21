@@ -31,7 +31,7 @@ namespace cuda {
           .InputMemoryType(OrtMemTypeCPUInput, 5),                     \
       GroupQueryAttention<T>);
 
-// REGISTER_KERNEL_TYPED(float) // TODO(aciddelgado): support regular float later w/o flash?
+// REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>

@@ -91,7 +91,6 @@ Status QkvToContext(
     bool is_causal = parameters.is_unidirectional;
 
     if (data.past_key == nullptr) {
-      // TODO(aciddelgado): add support for concatenating past and kv to present kv when seqlens_k is not given
       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
           device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
           parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, head_size,
@@ -125,87 +124,6 @@ Status QkvToContext(
   }
 #endif
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Group Query Attention not implemented yet.");
-
-  // // The following are unfused attention.
-  // assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
-
-  // // Raw attention mask could be 2D (BxT) or 3D (BxSxT) or 4D(Bx1xMxM), where M is the max sequence length.
-  // bool use_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() >= 2);
-
-  // // Compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxT
-  // // Q: BxNxSxH, K (present_k): BxNxTxH, Q*K': BxNxSxT
-  // float one = 1.0f;
-  // float zero = 0.f;
-
-  // float alpha = use_raw_attention_mask ? one : scale;
-
-  // cublasSetStream(cublas, stream);
-
-  // DUMP_TENSOR_D("q[BNSH]", q, batch_size, num_heads, sequence_length, qk_head_size);
-  // DUMP_TENSOR_D("k[BNSH]", k, batch_size, num_heads, total_sequence_length, qk_head_size);
-  // CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
-  //     cublas, CUBLAS_OP_T, CUBLAS_OP_N,
-  //     total_sequence_length, sequence_length, qk_head_size,
-  //     &alpha, k, qk_head_size, present_size_per_batch_k,
-  //     q, qk_head_size, sequence_length * qk_head_size,
-  //     &zero, scratch1, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
-
-  // DUMP_TENSOR_D("Q", q, batch_size, num_heads, sequence_length, qk_head_size);
-  // DUMP_TENSOR_D("K", k, batch_size, num_heads, qk_head_size, sequence_length);
-  // DUMP_TENSOR_D("QK", scratch1, batch_size, num_heads, sequence_length, total_sequence_length);
-
-  // const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
-  //                                              sequence_length, total_sequence_length);
-  // T* scratch2 = scratch1 + (bytes / element_size);
-
-  // // Apply softmax and store result R to scratch2: BxNxSxT
-  // if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
-  //   const int mask_dimension = static_cast<int>(mask_index_dims.size());
-
-  //   // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax used in Torch.
-  //   const TransformerOptions* options = TransformerOptions::GetInstance();
-  //   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
-
-  //   T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place with masked score for persistent softmax.
-  //   ORT_RETURN_IF_ERROR(
-  //       ComputeSoftmaxWithRawMask<T>(
-  //           ort_stream, total_sequence_length, sequence_length, batch_size, num_heads,
-  //           mask_index, nullptr, data.relative_position_bias, parameters.broadcast_res_pos_bias,
-  //           scratch1, scratch2, parameters.is_unidirectional, scale, mask_dimension,
-  //           parameters.max_sequence_length, use_persistent_softmax, persistent_softmax_workspace,
-  //           mask_filter_value));
-  // } else if (nullptr != mask_index) {  // 1d mask index
-  //   assert(mask_index_dims.size() == 1);
-  //   // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
-  //   const int* mask_start = (mask_index_dims[0] > batch_size) ? mask_index + batch_size : nullptr;
-  //   ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
-  //       stream, total_sequence_length, sequence_length, batch_size, num_heads,
-  //       mask_index, mask_start, data.relative_position_bias, parameters.broadcast_res_pos_bias,
-  //       scratch1, scratch2, parameters.is_unidirectional));
-  // } else {  // no mask
-  //   ORT_RETURN_IF_ERROR(
-  //       ComputeSoftmax<T>(
-  //           stream, total_sequence_length, sequence_length, batch_size, num_heads, data.relative_position_bias,
-  //           parameters.broadcast_res_pos_bias, scratch1, scratch2, parameters.is_unidirectional));
-  // }
-
-  // DUMP_TENSOR_D("Softmax", scratch2, batch_size, num_heads, sequence_length, total_sequence_length);
-  // DUMP_TENSOR_D("V", v, batch_size, num_heads, sequence_length, v_head_size);
-
-  // // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
-  // T* temp_output = qkv;
-  // CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
-  //     cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-  //     v_head_size, sequence_length, total_sequence_length,
-  //     &one, v, v_head_size, present_size_per_batch_v,
-  //     scratch2, total_sequence_length, sequence_length * total_sequence_length,
-  //     &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
-
-  // // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
-  // Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
-  //                                max_threads_per_block, false, temp_output, data.output);
-  // DUMP_TENSOR("unfused output", data.output, batch_size, sequence_length, num_heads, v_head_size);
-  // return result;
 }
 
 // Template Instantiation
