@@ -98,7 +98,6 @@ public:
         // The 1D tensor needs to be moved to the H channel.
         m_inputTensorDescs[OrtInputTensors::ortOutputScale].PermuteDimensions(dimensionMapping, TensorAxis::LeftAligned);
 
-
         // Reshape the Input ZeroPoint to be the same dimension as the input tensor.
         // The 1D tensor needs to be moved to the H channel.
         if (kernelInfo.IsInputValid(OrtInputTensors::ortOutputZeroPoint))

@@ -118,13 +118,6 @@ namespace Dml
         //
         ComPtr<IDMLCompiledOperator> InitializeZeroInt64Tensor(uint64_t tensorSizeInBytes);
         void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
-
-        void ConvertNHWCToNCHW(
-            const uint32_t dimCount, 
-            const gsl::span<const uint32_t> nhwcSizes,
-            std::vector<uint32_t>& nchwSizes,
-            std::vector<uint32_t>& nchwInputStrides
-            );
         
         TensorDesc CreateTensorDescFromInput(
             const MLOperatorKernelCreationContext& kernelInfo,

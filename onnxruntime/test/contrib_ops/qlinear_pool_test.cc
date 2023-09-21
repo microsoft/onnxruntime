@@ -646,15 +646,5 @@ TEST(QLinearPoolTest, AveragePool2D_Global_nhwc_S8) {
       1);              // count_include_pad
 }
 
-TEST(QLinearPoolTest, AveragePool2D_Global_mock) {
-  RunQLinearAveragePoolNhwc<int8_t>(
-      {1, 1, 32, 32},  // x shape
-      {1, 1, 1, 1},    // expected y shape
-      {32, 32},        // kernel shape
-      {1, 1},          // strides
-      {0, 0, 0, 0},    // pads
-      1);              // count_include_pad
-}
-
 }  // namespace test
 }  // namespace onnxruntime

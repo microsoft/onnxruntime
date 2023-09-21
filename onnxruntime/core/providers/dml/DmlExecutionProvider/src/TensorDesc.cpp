@@ -317,38 +317,45 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
 }
 
 // Uses dimensionMapping to reorder m_sizes and m_strides to match specific Tensor layout
-void TensorDesc::PermuteDimensions(const std::vector<uint32_t> dimensionMapping, const TensorAxis alignment)
+void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, const TensorAxis alignment)
 {
-    EnsureMinimumDimensionCount(dimensionMapping.size(), alignment);
-    InitializeStrides(static_cast<int>(dimensionMapping.size()), alignment);
+    EnsureMinimumDimensionCount(static_cast<uint32_t>(dimensionMapping.size()), alignment);
+    EnsureStridesExist(static_cast<uint32_t>(dimensionMapping.size()), alignment);
     PermuteArray(dimensionMapping, alignment);
 }
 
-// Shuffle m_sizes and m_strides acording to the indexes pointed by dimensionMapping
-void TensorDesc::PermuteArray(const std::vector<uint32_t> dimensionMapping, const TensorAxis alignment)
+// Shuffle m_sizes and m_strides according to the indexes pointed by dimensionMapping
+void TensorDesc::PermuteArray(gsl::span<const uint32_t> dimensionMapping, TensorAxis alignment)
 {
-    std::vector<uint32_t> temp_sizes(dimensionMapping.size());
-    std::vector<uint32_t> temp_strides(dimensionMapping.size());
+    std::vector<uint32_t> tempSizes(dimensionMapping.size());
+    std::vector<uint32_t> tempStrides(dimensionMapping.size());
     // Right alignment values are shifted to the end
     int alignmentOffset = (alignment == TensorAxis::RightAligned) ? MaximumDimensionCount - static_cast<int>(dimensionMapping.size()) : 0;
 
-    for (size_t i = 0; i < dimensionMapping.size(); i++) {
-        temp_sizes[i] = m_sizes[dimensionMapping[i] + alignmentOffset];
-        temp_strides[i] = m_strides[dimensionMapping[i] + alignmentOffset];
+    for (size_t i = 0; i < dimensionMapping.size(); i++)
+    {
+        tempSizes[i] = m_sizes[dimensionMapping[i] + alignmentOffset];
+        tempStrides[i] = m_strides[dimensionMapping[i] + alignmentOffset];
     }
 
-    std::copy(temp_sizes.begin(), temp_sizes.end(), m_sizes + alignmentOffset);
-    std::copy(temp_strides.begin(), temp_strides.end(), m_strides + alignmentOffset);
+    std::copy(tempSizes.begin(), tempSizes.end(), m_sizes + alignmentOffset);
+    std::copy(tempStrides.begin(), tempStrides.end(), m_strides + alignmentOffset);
     m_bufferTensorDesc.Sizes = m_sizes;
     m_bufferTensorDesc.Strides = m_strides;
 }
 
-void TensorDesc::InitializeStrides(int dimensionCount, const TensorAxis alignment)
+void TensorDesc::EnsureStridesExist(uint32_t dimensionCount, TensorAxis alignment)
 {
+    if (m_bufferTensorDesc.Strides != nullptr)
+    {
+        // Strides are populated
+        return;
+    }
+
     ML_CHECK_VALID_ARGUMENT(alignment == TensorAxis::RightAligned || alignment == TensorAxis::LeftAligned);
     // Right alignment values are shifted to the end
-    int alignmentOffset = (alignment == TensorAxis::RightAligned) ? MaximumDimensionCount - dimensionCount : 0;
-    int index = dimensionCount + alignmentOffset;
+    int alignmentOffset = (alignment == TensorAxis::RightAligned) ? MaximumDimensionCount - static_cast<int>(dimensionCount) : 0;
+    int index = static_cast<int>(dimensionCount) + alignmentOffset;
     uint32_t stride = 1;
     m_strides[index - 1] = 1;
     for (int i = index - 2; i >= 0; i--)
@@ -358,9 +365,10 @@ void TensorDesc::InitializeStrides(int dimensionCount, const TensorAxis alignmen
     }
 }
 
-void TensorDesc::EnsureMinimumDimensionCount(const size_t dimensionCount, const TensorAxis alignment)
+void TensorDesc::EnsureMinimumDimensionCount(uint32_t dimensionCount, TensorAxis alignment)
 {
-    // m_sizes and m_strides are arrays of size MaximumDimensionCount
-    assert(MaximumDimensionCount >= dimensionCount);
-    SetDimensionCount(static_cast<uint32_t>(dimensionCount), alignment);
+    if(dimensionCount != m_bufferTensorDesc.DimensionCount)
+    {
+        SetDimensionCount(dimensionCount, alignment);
+    }
 }
