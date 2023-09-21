@@ -218,7 +218,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     } else {
       dims.reserve(shape.size());
       for (const auto& dim : shape) {
-        // Node with dynamic shape has been excluded in IsInputSupported().
+        assert(dim.has_dim_value()); // dim_param free dimensions should have already been excluded by IsInputSupported().
         dims.push_back(SafeInt<int32_t>(dim.dim_value()));
       }
     }

@@ -53,7 +53,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
   }
 
   for (const auto& dim : shape_proto->dim()) {
-    // WebNN doesn't support dynamic shape, use sessionOptions.freeDimensionOverrides to fix the shape.
+    // WebNN doesn't support dynamic shape - use sessionOptions.freeDimensionOverrides to fix the shape.
     if (!dim.has_dim_value()) {
       LOGS(logger, VERBOSE) << "Dynamic shape is not supported, "
                             << "use sessionOptions.FreeDimensionOverrides to set a fixed shape for input: "
