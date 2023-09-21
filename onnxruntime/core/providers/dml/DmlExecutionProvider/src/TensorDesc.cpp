@@ -328,12 +328,10 @@ void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, c
 
     for (size_t i = 0; i < dimensionMapping.size(); i++)
     {
-        tempSizes[i] = m_sizes[dimensionMapping[i]];
-        tempStrides[i] = m_strides[dimensionMapping[i]];
+        m_sizes[i] = tempSizes[dimensionMapping[i]];
+        m_strides[i] = tempStrides[dimensionMapping[i]];
     }
 
-    std::copy(tempSizes.begin(), tempSizes.end(), m_sizes);
-    std::copy(tempStrides.begin(), tempStrides.end(), m_strides);
     m_bufferTensorDesc.Sizes = m_sizes;
     m_bufferTensorDesc.Strides = m_strides;
 }

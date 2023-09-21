@@ -91,6 +91,7 @@ namespace Dml
         uint32_t m_sizes[MaximumDimensionCount] = {};
         uint32_t m_strides[MaximumDimensionCount] = {};
         DML_BUFFER_TENSOR_DESC m_bufferTensorDesc = {};
+
         void EnsureStridesExist(uint32_t count);
     };
 
