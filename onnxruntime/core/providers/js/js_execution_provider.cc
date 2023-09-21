@@ -13,9 +13,11 @@
 #endif
 
 #include "core/graph/function_utils.h"
+#include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/fallback_cpu_capability.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "allocator.h"
 #include "data_transfer.h"
@@ -631,6 +633,35 @@ std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup) const {
+  InlinedVector<NodeIndex> candidates;
+  for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
+    const auto* p_node = graph.GetNode(node_index);
+    if (p_node == nullptr)
+      continue;
+
+    const auto& node = *p_node;
+    if (!node.GetExecutionProviderType().empty()) {
+      continue;
+    }
+
+    const KernelCreateInfo* webgpu_kernel_def = kernel_lookup.LookUpKernel(node);
+    // none of the provided registries has a webgpu kernel for this node
+    if (webgpu_kernel_def == nullptr) {
+      LOGS(*GetLogger(), INFO) << "webgpu kernel not found in registries for Op type: " << node.OpType() << " node name: " << node.Name();
+      continue;
+    }
+    candidates.push_back(node.Index());
+  }
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates);
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  for (auto& node_index : candidates) {
+    if (cpu_nodes.count(node_index) > 0)
+      continue;
+
+    auto sub_graph = std::make_unique<IndexedSubGraph>();
+    sub_graph->nodes.push_back(node_index);
+    result.emplace_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  }
   return IExecutionProvider::GetCapability(graph, kernel_lookup);
 }
 
