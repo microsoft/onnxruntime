@@ -340,10 +340,12 @@ API_IMPL_BEGIN
     {
         struct SortingPolicy
         {
-            bool gpusFirst_ = true;
-            SortingPolicy(bool gpusFirst = true) : gpusFirst_(gpusFirst){}
+            // default is false because GPUs are considered higher priority in
+            // a mixed adapter environment
+            bool npus_first_ = false;
+            SortingPolicy(bool npus_first = false) : npus_first_(npus_first){}
             bool operator()(const AdapterInfo& a, const AdapterInfo& b) {
-                return gpusFirst_ ? a.Type > b.Type : a.Type < b.Type;
+                return npus_first_ ? a.Type > b.Type : a.Type < b.Type;
             }
         };
         auto sortingPolicy = SortingPolicy(perf_pref != OrtDmlPerformancePreference::LowPower);
