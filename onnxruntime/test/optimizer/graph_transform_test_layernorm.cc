@@ -429,6 +429,40 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
+// It tests the scenario when scale or bias are not Graph Inputs and not initialized in Graph
+// To test this added a Identity node after Scale and Bias terms to ensure LayerNormFusion works properly
+TEST_F(GraphTransformationTests, LayerNormScaleBiasTest) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_fusion_scale_bias.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["ReduceMean"], 0);
+  ASSERT_EQ(op_to_count["Sub"], 0);
+  ASSERT_EQ(op_to_count["Cast"], 0);
+  ASSERT_EQ(op_to_count["Pow"], 0);
+  ASSERT_EQ(op_to_count["Add"], 0);
+  ASSERT_EQ(op_to_count["Sqrt"], 0);
+  ASSERT_EQ(op_to_count["Div"], 0);
+  ASSERT_EQ(op_to_count["Mul"], 0);
+  ASSERT_EQ(op_to_count["LayerNormalization"], 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "LayerNormalization") {
+      // LayerNormalization should have three inputs.
+      EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+      // LayerNormalization input "scale" and "bias" should have the same dimension.
+      const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
+      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+    }
+  }
+}
+
 // If EP is non-GPU EP or unknown, the sub-graph will be not fused because CPU impl for SimplifiedLayerNormalization
 // doesn't support input and scale having different data types.
 TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest) {
