@@ -1,0 +1,98 @@
+parameters:
+- name: arch
+  type: string
+
+- name: device
+  type: string
+  values:
+   - CPU
+   - GPU
+
+- name: machine_pool
+  type: string
+
+- name: extra_job_id
+  type: string
+  default: ''
+
+- name: python_wheel_suffix
+  type: string
+  default: ''
+
+
+# TODO: Ideally it should fetch information from the build that triggers it
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: timeout
+  type: number
+  default: 120
+
+jobs:
+- job: Linux_Test_GPU${{ parameters.extra_job_id }}_${{ parameters.arch }}
+  timeoutInMinutes: ${{ parameters.timeout }}
+  variables:
+    skipComponentGovernanceDetection: true
+  workspace:
+    clean: all
+  pool: ${{ parameters.machine_pool }}
+  steps:
+  - checkout: self
+    clean: true
+    submodules: none
+  # The public ADO project
+  # - ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+
+  # The private ADO project
+  - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+    - download: build   # pipeline resource identifier.
+      artifact: 'drop-linux-gpu-${{ parameters.arch }}'
+
+    - download: build   # pipeline resource identifier.
+      artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
+
+    - bash: |
+        set -e -x
+        ls $(Pipeline.Workspace)/build
+        mv "$(Pipeline.Workspace)/build/drop-linux-gpu-${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+        mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
+        cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
+        find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
+
+  # The BinSkim task uses a dotnet program which doesn't support ARM CPUs yet
+  - ${{ if eq(parameters.arch, 'x86_64') }}:
+    - task: BinSkim@4
+      displayName: 'Run BinSkim'
+      inputs:
+        AnalyzeTargetGlob: '$(Build.BinariesDirectory)/tmp/**/*.so'
+        continueOnError: true
+
+    #- task: PostAnalysis@2
+    #  inputs:
+    #    GdnBreakAllTools: true
+    #    GdnBreakPolicy: M365
+    #    GdnBreakPolicyMinSev: Error
+
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11_8_tensorrt8_6
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/usr/local/cuda/bin --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/usr --build-arg BUILD_UID=$( id -u ) --build-arg PLATFORM=${{ parameters.arch }}"
+      Repository: onnxruntimecuda118xtrt86build${{ parameters.arch }}
+
+  - task: Bash@3
+    displayName: 'Bash Script'
+    inputs:
+      targetType: filePath
+      filePath: tools/ci_build/github/linux/run_python_dockertest.sh
+      arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda118xtrt86build${{ parameters.arch }}
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

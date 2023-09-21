@@ -94,7 +94,7 @@ index 9ef1e99..ec52833 100755
 +fi
 \ No newline at end of file
 diff --git a/install-runtime-packages.sh b/install-runtime-packages.sh
-index 137d2e2..4269afb 100755
+index 137d2e2..203b4bc 100755
 --- a/install-runtime-packages.sh
 +++ b/install-runtime-packages.sh
 @@ -33,7 +33,7 @@ source $MY_DIR/build_utils.sh
@@ -130,7 +130,7 @@ index 137d2e2..4269afb 100755
  	elif [ "${AUDITWHEEL_ARCH}" == "aarch64" ] || [ "${AUDITWHEEL_ARCH}" == "ppc64le" ] || [ "${AUDITWHEEL_ARCH}" == "s390x" ]; then
  		# Software collection (for devtoolset-10)
  		yum -y install centos-release-scl-rh
-@@ -86,19 +88,18 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+@@ -86,19 +88,21 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
  	fi
  elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
  	PACKAGE_MANAGER=dnf
@@ -148,6 +148,9 @@ index 137d2e2..4269afb 100755
 -	TOOLCHAIN_DEPS="gcc-toolset-12-binutils gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-gcc-gfortran"
 -	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
 -		TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
++	if test -f "/etc/yum.repos.d/ubi.repo"; then
++            sed -i 's/enabled\s*=\s*1/enabled = 1\nexclude=dotnet* aspnet* netstandard*/g' /etc/yum.repos.d/ubi.repo
++	fi
 +        if [[ -d /usr/local/cuda ]]; then
 +	    TOOLCHAIN_DEPS="gcc gcc-c++"
 +	else
@@ -155,7 +158,7 @@ index 137d2e2..4269afb 100755
  	fi
  elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
  	TOOLCHAIN_DEPS="binutils gcc g++ gfortran"
-@@ -121,12 +122,6 @@ else
+@@ -121,12 +125,6 @@ else
  	exit 1
  fi
  

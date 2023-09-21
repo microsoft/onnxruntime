@@ -11,7 +11,7 @@ else
     PYTHON_EXES=("/opt/conda/bin/python")
 fi
 
-os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
+os_major_version=$(tr -dc '0-9.' < /etc/redhat-release |cut -d \. -f1)
 
 SYS_LONG_BIT=$(getconf LONG_BIT)
 mkdir -p /tmp/src
