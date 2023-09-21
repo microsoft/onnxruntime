@@ -45,7 +45,6 @@ namespace Dml
         gsl::span<const uint32_t> GetStrides() const;
         void SetStrides(gsl::span<const uint32_t> strides);
         void PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, const TensorAxis alignment);
-        void EnsureMinimumDimensionCount(uint32_t count, TensorAxis alignment);
 
         inline uint64_t GetBufferSizeInBytes() const
         {
@@ -92,8 +91,8 @@ namespace Dml
         uint32_t m_sizes[MaximumDimensionCount] = {};
         uint32_t m_strides[MaximumDimensionCount] = {};
         DML_BUFFER_TENSOR_DESC m_bufferTensorDesc = {};
-        void PermuteArray(gsl::span<const uint32_t> dimensionMapping, TensorAxis alignment);
-        void EnsureStridesExist(uint32_t count, TensorAxis alignment);
+        void PermuteArray(gsl::span<const uint32_t> dimensionMapping);
+        void EnsureStridesExist(uint32_t count);
     };
 
     class TensorDescBuilder
