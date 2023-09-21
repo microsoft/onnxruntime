@@ -447,10 +447,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     if (consumers->nodes.size() > 0) {
       // record the consumer node input as being special cased for use in Case 2 if a DQ node, and IsConstant
       for (auto& consumer : consumers->nodes) {
-        auto entry = ctx.nodes_using_updated_shared_initializer.find(consumer->Id());
-        if (entry == ctx.nodes_using_updated_shared_initializer.end()) {
-          entry = ctx.nodes_using_updated_shared_initializer.insert({consumer->Id(), {}}).first;
-        }
+        auto& node_inputs_using_updated_shared_initializer = ctx.nodes_using_updated_shared_initializer[consumer->Id()];
 
         // find input id/s for consumer
         auto consumer_inputs = consumer->Inputs();
@@ -783,7 +780,7 @@ void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
                     const std::vector<int64_t>& perm_inv) {
   // this TransposeInput is used by the layout transformer to wrap a node in Transpose ops. there's no OptimizerCtx
   // in that scenario and we're not tracking special-cased DQ nodes as we only do that when pushing Transpose nodes.
-  TransposeInputImpl(graph, /* special_cased_dq_nodes */ nullptr, node, i, perm, perm_inv);
+  TransposeInputImpl(graph, /* nodes_using_updated_shared_initializer */ nullptr, node, i, perm, perm_inv);
 }
 
 void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm,
