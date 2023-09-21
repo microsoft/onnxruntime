@@ -464,14 +464,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        std::unique_ptr<OrtTensorRTProviderOptionsV2> trt_options;
+        OrtTensorRTProviderOptionsV2 trt_options;
         if (auto* tensorrt_provider_info = TryGetProviderInfo_TensorRT()) {
           // Please note the last argument of UpdateProviderOptions() which is 'string_copy' is set to false, it means
           // the const char* member of the OrtTensorRTProviderOptionsV2 is actually pointing to the string array that is maintained by ProviderOptionsMap instance.
           // Make sure the ProviderOptionsMap instance stays alive for the lifetime of TRT EP. Also, in this case, we don't need to worry about deallocate those string array
           // since it's not maintained by OrtTensorRTPRoviderOptionsV2 instance.
-          tensorrt_provider_info->UpdateProviderOptions(trt_options.get(), it->second, false);
-          if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_factory = onnxruntime::TensorrtProviderFactoryCreator::Create(trt_options.get())) {
+          tensorrt_provider_info->UpdateProviderOptions(&trt_options, it->second, false);
+          if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&trt_options)) {
             return tensorrt_provider_factory->CreateProvider();
           }
         } else {
