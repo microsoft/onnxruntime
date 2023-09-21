@@ -499,8 +499,8 @@ if (onnxruntime_USE_CUDA)
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
     else()
       #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:/wd4834>")
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:/wd4127>")
     endif()
 
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
