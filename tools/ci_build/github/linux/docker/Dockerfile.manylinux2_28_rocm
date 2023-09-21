@@ -185,6 +185,13 @@ RUN cd /tmp/scripts && \
      rm -rf /tmp/scripts
 
 
+# Install ccache to reuse this dockerfile for CI
+RUN mkdir -p /tmp/ccache && \
+    cd /tmp/ccache && \
+    wget -q -O - https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz | tar --strip 1 -J -xf - && \
+    cp /tmp/ccache/ccache /usr/bin && \
+    rm -rf /tmp/ccache
+
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
