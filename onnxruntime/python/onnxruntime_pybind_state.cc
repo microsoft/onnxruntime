@@ -869,12 +869,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         ->CreateProvider();
 #endif
   } else if (type == "InTreeExecutionProvider") {
-//#ifdef USE_INTREE
-//    const auto cit = provider_options_map.find(type);
-//    InTreeExecutionProvider* intree_ep = onnxruntime::InTreeExecutionProviderFactory::CreateInTreeExecutionProvider(cit->second);
-//    std::unique_ptr<ExternalExecutionProvider> ret = std::make_unique<ExternalExecutionProvider>(intree_ep);
-//    return ret;
-//#endif
+#ifdef USE_INTREE
+    const auto cit = provider_options_map.find(type);
+    InTreeExecutionProvider* intree_ep = onnxruntime::InTreeExecutionProviderFactory::CreateInTreeExecutionProvider(cit->second);
+    std::unique_ptr<ExternalExecutionProvider> ret = std::make_unique<ExternalExecutionProvider>(intree_ep);
+    return ret;
+#endif
   } else {
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);

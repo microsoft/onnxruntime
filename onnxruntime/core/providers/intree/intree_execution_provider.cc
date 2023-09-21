@@ -11,7 +11,7 @@ void IntreeRelu(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>&
   for (int64_t i = 0; i < total; i++) {
     Y_raw[i] = X_raw[i] > 0 ? X_raw[i] : 0;
   }
-  std::cout<<"In MyRelu()\n";
+  std::cout<<"In IntreeRelu()\n";
 }
 
 struct InTreeCPUAllocator : public OrtAllocator {
