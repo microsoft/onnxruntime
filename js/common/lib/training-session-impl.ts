@@ -18,8 +18,13 @@ export class TrainingSession implements TrainingSessionInterface {
     return this.handler.dispose();
   }
 
-  static create(checkpointStateUri: string, trainModelURI: string, options?: InferenceSession.SessionOptions):
-      Promise<TrainingSession>;
+  static create(
+      checkpointStateUri: string|ArrayBufferLike|Uint8Array, trainModelURI: string|ArrayBufferLike|Uint8Array,
+      options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
+  static create(
+      checkpointState: string|ArrayBufferLike|Uint8Array, trainModelData: string|ArrayBufferLike|Uint8Array,
+      optimizerModelData?: string|ArrayBufferLike|Uint8Array,
+      options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
   static create(
       checkpointState: string|ArrayBufferLike|Uint8Array, trainModelData: string|ArrayBufferLike|Uint8Array,
       optimizerModelData?: string|ArrayBufferLike|Uint8Array, evalModelData?: string|ArrayBufferLike|Uint8Array,
@@ -27,23 +32,22 @@ export class TrainingSession implements TrainingSessionInterface {
   static async create(
       arg0: string|ArrayBufferLike|Uint8Array, arg1: string|ArrayBufferLike|Uint8Array,
       arg2?: string|ArrayBufferLike|Uint8Array|InferenceSession.SessionOptions,
-      arg3?: string|ArrayBufferLike|Uint8Array, arg4?: InferenceSession.SessionOptions): Promise<TrainingSession> {
-    // optional fields:
-    let options: SessionOptions = {};
+      arg3?: string|ArrayBufferLike|Uint8Array|InferenceSession.SessionOptions,
+      arg4?: InferenceSession.SessionOptions): Promise<TrainingSession> {
     const checkpointState: string|Uint8Array = processModel(arg0);
     const trainModel: string|Uint8Array = processModel(arg1);
+    // optional fields:
+    let options: SessionOptions = {};
     let optimizerModel: string|Uint8Array = '';
     let evalModel: string|Uint8Array = '';
 
-    if (typeof arg2 !== 'undefined') {
-      const [return1, return2] = processModelOrOptions(arg2, options, evalModel);
-      options = return1;
-      optimizerModel = return2;
+    if (arg2 !== null && typeof arg2 !== 'undefined') {
+      [options, optimizerModel] = processModelOrOptions(arg2, options, evalModel);
     }
-    if (typeof arg3 !== 'undefined') {
-      evalModel = processModel(arg3);
+    if (arg3 !== null && typeof arg3 !== 'undefined') {
+      [options, evalModel] = processModelOrOptions(arg3, options, evalModel);
     }
-    if (typeof arg4 !== 'undefined') {
+    if (arg4 !== null && typeof arg4 !== 'undefined') {
       options = arg4;
     }
 
