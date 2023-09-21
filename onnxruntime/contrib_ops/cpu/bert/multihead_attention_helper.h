@@ -21,6 +21,7 @@ Status CheckInputs(const T* query,
                    const T* past_key,
                    const T* past_value,
                    const T* past_seq_len,
+                   const T* positional_embedding,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
@@ -203,6 +204,12 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "'bias' is not allowed for packed kv. ");
       }
     }
+    if (positional_embedding != nullptr) {
+      const auto& positional_embedding_dims = positional_embedding->Shape().GetDims();
+      if (positional_embedding_dims.size() != 3) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'positional_embedding' is expected to have 3 dimensions, got", positional_embedding_dims.size());
+      }
+    }
   }
 
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
@@ -216,6 +223,8 @@ Status CheckInputs(const T* query,
         mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
       }
     } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
+      mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>((max_sequence_length + kv_sequence_length)) && positional_embedding != nullptr) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
     }
 
@@ -329,6 +338,7 @@ Status CheckInputs(const T* query,
                    const T* past_key,
                    const T* past_value,
                    const T* past_seq_len,
+                   const T* positional_embedding,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
@@ -341,7 +351,7 @@ Status CheckInputs(const T* query,
   }
 
   return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
-                     past_seq_len, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer,
+                     past_seq_len, positional_embedding, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer,
                      dmmha_packing);
 }
 

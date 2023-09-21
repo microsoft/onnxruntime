@@ -587,6 +587,7 @@ class FusionAttention(Fusion):
         add_qk: str = "",
         past_k: str = "",
         past_v: str = "",
+        positional_embedding: str = "",
         present_k: str = "",
         present_v: str = "",
         packed_qkv: bool = False,
@@ -661,7 +662,7 @@ class FusionAttention(Fusion):
 
         # Add optional inputs for MHA
         if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
-            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v, positional_embedding])
 
         # Add outputs for MHA
         mha_outputs = [output]

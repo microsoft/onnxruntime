@@ -20,6 +20,7 @@ from fusion_options import AttentionMaskFormat, FusionOptions
 from fusion_qordered_attention import FusionQOrderedAttention
 from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
+from fusion_nuance_attention import FusionNuanceAttention
 from fusion_qordered_matmul import FusionQOrderedMatMul
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
@@ -51,12 +52,15 @@ class BertOnnxModel(OnnxModel):
         self.qordered_attention_fusion = FusionQOrderedAttention(
             self, self.hidden_size, self.num_heads, self.attention_mask
         )
+        self.rnnt_attention_fusion = FusionNuanceAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.utils = FusionUtils(self)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
         # Only relevant in models with Q-DQ nodes
         self.qordered_attention_fusion.apply()
+        # Only relevant for RNNT models
+        self.rnnt_attention_fusion.apply()
 
     def fuse_gelu(self):
         fusion = FusionGelu(self)

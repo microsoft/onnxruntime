@@ -89,6 +89,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
   const Tensor* past_key = context->Input<Tensor>(6);
   const Tensor* past_value = context->Input<Tensor>(7);
+  const Tensor* positional_embedding = context->Input<Tensor>(8);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -101,6 +102,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       past_key,
                                                                       past_value,
                                                                       nullptr,  // past_seq_len
+                                                                      positional_embedding,
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,
@@ -289,6 +291,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.cumulated_sequence_length_q_cache = &(this->cumulated_sequence_length_q_cache_);
   data.cumulated_sequence_length_kv_cache = &(this->cumulated_sequence_length_kv_cache_);
+  data.positional_embedding = (nullptr == positional_embedding) ? nullptr : reinterpret_cast<const CudaT*>(positional_embedding->Data<T>());
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
