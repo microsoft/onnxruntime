@@ -551,19 +551,19 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     // Do compute
     if (ti < tlength) {
-      out = fma(logit, v_vec[0], out);
+      out = fma(logits[0], v_vec[0], out);
     }
 
     if ((ti + 1 * V_PER_ITER) < tlength) {
-      out = fma(logit, v_vec[1], out);
+      out = fma(logits[1], v_vec[1], out);
     }
 
     if ((ti + 2 * V_PER_ITER) < tlength) {
-      out = fma(logit, v_vec[2], out);
+      out = fma(logits[2], v_vec[2], out);
     }
 
     if ((ti + 3 * V_PER_ITER) < tlength) {
-      out = fma(logit, v_vec[3], out);
+      out = fma(logits[3], v_vec[3], out);
     }
   }
 
