@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 
 // implementation details of the transpose optimizer API defined in optimizer_api.h.

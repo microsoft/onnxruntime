@@ -4582,10 +4582,9 @@ static void CheckSharedInitializerHandling(bool broadcast) {
     InferenceSessionWrapper session{so, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(model_uri));
 
-    // we call the ONNX transpose optimizer directly to simplify the model required to exercise the
-    // shared initializer handling. this means we don't need to disable optimizers that might alter
-    // the graph before the transpose optimizer runs (at a minimum ConstantFolding,
-    // CommonSubexpressionElimination and ConstantSharing).
+    // we call the ONNX transpose optimizer directly to simplify the model required to exercise the shared initializer
+    // handling. this means we don't need to disable optimizers that might alter the graph before the
+    // transpose optimizer runs (at a minimum ConstantFolding, CommonSubexpressionElimination and ConstantSharing).
     Graph& graph = session.GetMutableGraph();
     CPUAllocator allocator;
 
@@ -4625,7 +4624,7 @@ TEST(TransposeOptimizerTests, SharedInitializerHandling) {
 // the in-place modification of the initializer for the first usage results in
 //   <initializer> -> Transpose -> Squeeze -> {DQ | Add}
 // the later usages of the initializer should attempt to cancel out the Squeeze in UnsqueezeInput,
-// followed by cancelling out the Transpose in TransposeInput.
+// followed by canceling out the Transpose in TransposeInput.
 TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast) {
   CheckSharedInitializerHandling(/*broadcast*/ true);
 }

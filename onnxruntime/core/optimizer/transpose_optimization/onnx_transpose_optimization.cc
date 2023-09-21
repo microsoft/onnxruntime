@@ -8,6 +8,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "core/common/gsl.h"
@@ -132,7 +133,7 @@ static std::unique_ptr<api::NodeRef> GetDQWithConstInitializerInput(const api::G
 
       // DQ output is only used by the node we're modifying.
       auto dq_consumers = graph.GetValueConsumers(dq_output_name);
-      if (!dq_consumers->comprehensive || dq_consumers->nodes.size() == 1) {
+      if (!dq_consumers->comprehensive || dq_consumers->nodes.size() != 1) {
         break;
       }
 
@@ -691,7 +692,7 @@ static void TransposeInputImpl(api::GraphRef& graph,
                      return id == inp_node->Id() &&
                             std::find(input_idxs.begin(), input_idxs.end(), 0) != input_idxs.end();
                    }) != nodes_using_updated_shared_initializer->end()) {
-    // set things up so we can look past the DQ node to the Squeeze that was inserted in front of the reshaped
+    // set things up so we can look past the DQ node to the Transpose that was inserted in front of the reshaped
     // constant initializer that was shared with this node.
     dq_node = std::move(inp_node);
     auto dq_input = dq_node->Inputs()[0];
