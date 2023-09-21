@@ -493,12 +493,10 @@ async function main() {
         karmaArgs.push('--force-localhost');
       }
       if (webgpu) {
-        if (browser.includes('Canary')) {
-          chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
-        } else {
+        if (!browser.includes('Canary')) {
           chromiumFlags.push('--enable-dawn-features=use_dxc');
-          chromiumFlags.push('--disable-dawn-features=disallow_unsafe_apis');
         }
+        chromiumFlags.push('--disable-dawn-features=disallow_unsafe_apis');
       }
       if (webnn) {
         chromiumFlags.push('--enable-experimental-web-platform-features');
