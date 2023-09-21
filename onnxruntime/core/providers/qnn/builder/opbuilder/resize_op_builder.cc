@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <cassert>
 #include <string_view>
 
 #include "core/providers/common.h"
@@ -134,6 +135,12 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_NOT(qnn::utils::ArrayHasString(supported_coord_transf_modes, transformation_mode),
                     "QNN EP: Resize does not support coordinate_transformation_mode ", transformation_mode.c_str());
 
+  const auto& input_0 = node_unit.Inputs()[0];
+  std::vector<uint32_t> input_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
+                    "QNN EP: Cannot get shape for Resize input");
+  const size_t input_rank = input_shape.size();
+
   // Check nearest mode
   if (interp_mode == "nearest") {
     const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
@@ -150,26 +157,35 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
       ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_floor" || nearest_mode == "floor",
                         "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
 
+      const bool use_resize_nn_op = nearest_mode == "floor";
+
       // If HTP uses ResizeNearestNeighbor ("floor"), then the "pytorch_half_pixel" coordinate_transformation_mode
       // is not supported.
-      ORT_RETURN_IF(nearest_mode == "floor" && transformation_mode == "pytorch_half_pixel",
+      ORT_RETURN_IF(use_resize_nn_op && transformation_mode == "pytorch_half_pixel",
                     "QNN EP: Resize on the NPU does not support the combination of nearest_mode == 'floor' ",
                     " and coordinate_transformation_mode == 'pytorch_half_pixel'.");
+
+      // QNN's ResizeNearestNeighbor requires rank 4 inputs.
+      ORT_RETURN_IF(use_resize_nn_op && input_rank != 4,
+                    "QNN EP: Resize on the NPU with nearest_mode == 'floor' requires an input with rank 4.");
     }
   }
 
-  // Check that input shape has at least a rank of 3.
-  const auto& input_0 = node_unit.Inputs()[0];
-  std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
-                    "QNN EP: Cannot get shape for Resize input");
-  ORT_RETURN_IF(input_shape.size() < 3, "QNN EP: Resize input must have a rank >= 3.");
+  // Check that the input shape has at least a rank of 3 (and a max of 5 on HTP).
+  ORT_RETURN_IF(input_rank < 3 || (is_npu_backend && input_rank > 5),
+                "QNN EP: Resize input must have a rank >= 3. The maximum rank is 5 on the NPU.");
 
   const auto& output_0 = node_unit.Outputs()[0];
   std::vector<uint32_t> output_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.node_arg, output_shape),
                     "QNN EP: Cannot get shape for Resize output");
-  ORT_RETURN_IF(output_shape.size() < 3, "QNN EP: Resize output must have a rank >= 3.");
+
+  // Check that only the spatial dimensions (width, height) are resized. The batch_size (N) and channels (C) should
+  // be untouched. This code runs before layout transformation, so we know that the current layout is "channel first"
+  // (e.g., N, C, S1, S2, ..., SN), and that the minimum rank is 3.
+  assert(node_unit.Domain() != kMSInternalNHWCDomain);
+  ORT_RETURN_IF_NOT(input_shape[0] == output_shape[0] && input_shape[1] == output_shape[1],
+                    "QNN EP: Resize may only change the spatial dimensions.");
 
   if (!is_npu_backend) {
     ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
