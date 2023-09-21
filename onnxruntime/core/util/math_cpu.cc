@@ -20,6 +20,7 @@
 #include "core/framework/float16.h"
 
 #include <algorithm>
+#include <type_traits>
 #include "core/common/narrow.h"
 #include "core/mlas/inc/mlas.h"
 #if defined(__GNUC__)
@@ -250,10 +251,10 @@ template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int
 SPECIALIZED_AXPY(float)
 #undef SPECIALIZED_AXPY
 
-#define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
-  template <>                                                              \
-  void Funcname<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil*) {   \
-    EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(x, N).array().expr(); \
+#define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                      \
+  template <>                                                                  \
+  void Funcname<T, CPUMathUtil>(ptrdiff_t N, const T* x, T* y, CPUMathUtil*) { \
+    EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(x, N).array().expr();     \
   }
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Exp, exp)
 DELEGATE_SIMPLE_UNARY_FUNCTION(double, Exp, exp)
@@ -263,7 +264,7 @@ DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqr, square)
 
 #define EIGEN_SIMPLE_BINARY_FUNCTION(T, Funcname, expr)                                                       \
   template <>                                                                                                 \
-  void Funcname<T, CPUMathUtil>(int N, const T* a, const T* b, T* y, CPUMathUtil*) {                          \
+  void Funcname<T, CPUMathUtil>(ptrdiff_t N, const T* a, const T* b, T* y, CPUMathUtil*) {                    \
     EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(a, N).array() expr ConstEigenVectorMap<T>(b, N).array(); \
   }
 
@@ -855,12 +856,28 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
 SPECIALIZED_COPYVECTOR(float)
 #undef SPECIALIZED_COPYVECTOR
 
+// like C++20's std::bit_cast
+// adapted from the example implementation here: https://en.cppreference.com/w/cpp/numeric/bit_cast
+// TODO replace this with std::bit_cast when we move to C++20
+template <typename Dst, typename Src>
+static std::enable_if_t<
+    sizeof(Src) == sizeof(Dst) &&
+        std::is_trivially_copyable_v<Src> &&
+        std::is_trivially_copyable_v<Dst> &&
+        std::is_trivially_constructible_v<Dst>,
+    Dst>
+BitCast(const Src& src) {
+  Dst dst;
+  std::memcpy(&dst, &src, sizeof(dst));
+  return dst;
+}
+
 uint16_t floatToHalf(float f) {
-  return Eigen::half_impl::float_to_half_rtne(f).x;
+  return BitCast<uint16_t>(Eigen::half_impl::float_to_half_rtne(f).x);
 }
 
 uint16_t doubleToHalf(double f) {
-  return Eigen::half_impl::float_to_half_rtne(static_cast<float>(f)).x;
+  return BitCast<uint16_t>(Eigen::half_impl::float_to_half_rtne(static_cast<float>(f)).x);
 }
 
 float halfToFloat(uint16_t h) {
@@ -906,10 +923,10 @@ SPECIALIZED_ROWWISESUM(int64_t)
 SPECIALIZED_ROWWISESUM(double)
 #undef SPECIALIZED_ROWWISESUM
 
-#define SPECIALIZED_SUM(T)                                                       \
-  template <>                                                                    \
-  void Sum<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil* /* unused */) { \
-    *y = ConstEigenVectorMap<T>(x, N).sum();                                     \
+#define SPECIALIZED_SUM(T)                                                             \
+  template <>                                                                          \
+  void Sum<T, CPUMathUtil>(ptrdiff_t N, const T* x, T* y, CPUMathUtil* /* unused */) { \
+    *y = ConstEigenVectorMap<T>(x, N).sum();                                           \
   }
 
 SPECIALIZED_SUM(float);
@@ -918,14 +935,14 @@ SPECIALIZED_SUM(int64_t);
 
 #undef SPECIALIZED_SUM
 
-#define SPECIALIZED_SCALE(T)                                                                           \
-  template <>                                                                                          \
-  void Scale<T, CPUMathUtil>(int n, float alpha, const T* x, T* y, CPUMathUtil* /*provider*/) {        \
-    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * alpha;                                    \
-  }                                                                                                    \
-  template <>                                                                                          \
-  void Scale<T, CPUMathUtil>(int n, const float* alpha, const T* x, T* y, CPUMathUtil* /*provider*/) { \
-    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * (*alpha);                                 \
+#define SPECIALIZED_SCALE(T)                                                                                 \
+  template <>                                                                                                \
+  void Scale<T, CPUMathUtil>(ptrdiff_t n, float alpha, const T* x, T* y, CPUMathUtil* /*provider*/) {        \
+    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * alpha;                                          \
+  }                                                                                                          \
+  template <>                                                                                                \
+  void Scale<T, CPUMathUtil>(ptrdiff_t n, const float* alpha, const T* x, T* y, CPUMathUtil* /*provider*/) { \
+    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * (*alpha);                                       \
   }
 SPECIALIZED_SCALE(float)
 #undef SPECIALIZED_SCALE

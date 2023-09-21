@@ -4,6 +4,7 @@
  */
 package ai.onnxruntime;
 
+import ai.onnxruntime.platform.Fp16Conversions;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -18,6 +19,7 @@ import java.nio.ShortBuffer;
  * returned as outputs.
  */
 public class OnnxTensor extends OnnxTensorLike {
+
   /**
    * This reference is held for OnnxTensors backed by a Java nio buffer to ensure the buffer does
    * not go out of scope while the OnnxTensor exists.
@@ -70,6 +72,12 @@ public class OnnxTensor extends OnnxTensorLike {
           return getBool(OnnxRuntime.ortApiHandle, nativeHandle);
         case STRING:
           return getString(OnnxRuntime.ortApiHandle, nativeHandle);
+        case FLOAT16:
+          return Fp16Conversions.fp16ToFloat(
+              getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
+        case BFLOAT16:
+          return Fp16Conversions.bf16ToFloat(
+              getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
         case UNKNOWN:
         default:
           throw new OrtException("Extracting the value of an invalid Tensor.");
@@ -126,30 +134,28 @@ public class OnnxTensor extends OnnxTensorLike {
 
   /**
    * Returns a copy of the underlying OnnxTensor as a FloatBuffer if it can be losslessly converted
-   * into a float (i.e. it's a float or fp16), otherwise it returns null.
+   * into a float (i.e. it's a float, fp16 or bf16), otherwise it returns null.
    *
    * @return A FloatBuffer copy of the OnnxTensor.
    */
   public FloatBuffer getFloatBuffer() {
     if (info.type == OnnxJavaType.FLOAT) {
-      if (info.onnxType == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-        // if it's fp16 we need to copy it out by hand.
-        ShortBuffer buffer = getBuffer().asShortBuffer();
-        int bufferCap = buffer.capacity();
-        FloatBuffer output = FloatBuffer.allocate(bufferCap);
-        for (int i = 0; i < bufferCap; i++) {
-          output.put(fp16ToFloat(buffer.get(i)));
-        }
-        output.rewind();
-        return output;
-      } else {
-        // if it's fp32 use the efficient copy.
-        FloatBuffer buffer = getBuffer().asFloatBuffer();
-        FloatBuffer output = FloatBuffer.allocate(buffer.capacity());
-        output.put(buffer);
-        output.rewind();
-        return output;
-      }
+      // if it's fp32 use the efficient copy.
+      FloatBuffer buffer = getBuffer().asFloatBuffer();
+      FloatBuffer output = FloatBuffer.allocate(buffer.capacity());
+      output.put(buffer);
+      output.rewind();
+      return output;
+    } else if (info.type == OnnxJavaType.FLOAT16) {
+      // if it's fp16 we need to copy it out by hand.
+      ByteBuffer buf = getBuffer();
+      ShortBuffer buffer = buf.asShortBuffer();
+      return Fp16Conversions.convertFp16BufferToFloatBuffer(buffer);
+    } else if (info.type == OnnxJavaType.BFLOAT16) {
+      // if it's bf16 we need to copy it out by hand.
+      ByteBuffer buf = getBuffer();
+      ShortBuffer buffer = buf.asShortBuffer();
+      return Fp16Conversions.convertBf16BufferToFloatBuffer(buffer);
     } else {
       return null;
     }
@@ -174,13 +180,15 @@ public class OnnxTensor extends OnnxTensorLike {
   }
 
   /**
-   * Returns a copy of the underlying OnnxTensor as a ShortBuffer if the underlying type is int16 or
-   * uint16, otherwise it returns null.
+   * Returns a copy of the underlying OnnxTensor as a ShortBuffer if the underlying type is int16,
+   * uint16, fp16 or bf16, otherwise it returns null.
    *
    * @return A ShortBuffer copy of the OnnxTensor.
    */
   public ShortBuffer getShortBuffer() {
-    if (info.type == OnnxJavaType.INT16) {
+    if ((info.type == OnnxJavaType.INT16)
+        || (info.type == OnnxJavaType.FLOAT16)
+        || (info.type == OnnxJavaType.BFLOAT16)) {
       ShortBuffer buffer = getBuffer().asShortBuffer();
       ShortBuffer output = ShortBuffer.allocate(buffer.capacity());
       output.put(buffer);
@@ -269,19 +277,6 @@ public class OnnxTensor extends OnnxTensorLike {
       throws OrtException;
 
   private native void close(long apiHandle, long nativeHandle);
-
-  /**
-   * Mirrors the conversion in the C code. It's not precise if there are subnormal values, nor does
-   * it preserve all the different kinds of NaNs (which aren't representable in Java anyway).
-   *
-   * @param input A uint16_t representing an IEEE half precision float.
-   * @return A float.
-   */
-  static float fp16ToFloat(short input) {
-    int output =
-        ((input & 0x8000) << 16) | (((input & 0x7c00) + 0x1C000) << 13) | ((input & 0x03FF) << 13);
-    return Float.intBitsToFloat(output);
-  }
 
   /**
    * Create a Tensor from a Java primitive, primitive multidimensional array or String

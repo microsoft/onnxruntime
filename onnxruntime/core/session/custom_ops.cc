@@ -27,6 +27,12 @@ static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
 static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
 #endif
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv9()
+#else
+#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()
+#endif
+
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   API_IMPL_BEGIN
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
@@ -120,6 +126,22 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelCon
   }
   std::unique_ptr<onnxruntime::OrtAllocatorImplWrappingIAllocator> p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
   *out = p.release();
+  return nullptr;
+  API_IMPL_END
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version, _In_ int resource_id, _Outptr_ void** resource) {
+  API_IMPL_BEGIN
+  *resource = {};
+  const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+  auto* stream = reinterpret_cast<onnxruntime::Stream*>(ctx->GetComputeStream());
+  if (!stream) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
+  }
+  *resource = stream->GetResource(resource_version, resource_id);
+  if (!(*resource)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Requested resource does not exist");
+  }
   return nullptr;
   API_IMPL_END
 };
@@ -446,7 +468,7 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     const auto input_type = op->GetInputType(op, i);
     const auto input_name = "Input" + std::to_string(i);
     if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      def_builder.TypeConstraint(input_name, DataTypeImpl::AllTensorTypes());
+      def_builder.TypeConstraint(input_name, SUPPORTED_TENSOR_TYPES);
     } else {
       def_builder.TypeConstraint(input_name, DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(input_type))->AsTensorType());
     }
@@ -456,7 +478,7 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     const auto output_type = op->GetOutputType(op, i);
     const auto output_name = "Output" + std::to_string(i);
     if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      def_builder.TypeConstraint(output_name, DataTypeImpl::AllTensorTypes());
+      def_builder.TypeConstraint(output_name, SUPPORTED_TENSOR_TYPES);
     } else {
       def_builder.TypeConstraint(output_name, DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->AsTensorType());
     }
@@ -512,7 +534,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     std::string input_name = "Input" + std::to_string(i);
     schema.Input(gsl::narrow_cast<int>(i), input_name, "", input_name, option, is_homogeneous, min_arity);
     // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+    schema.TypeConstraint(input_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
   }
 
   for (size_t i = 0; i < output_count; i++) {
@@ -550,7 +572,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     std::string output_name = "Output" + std::to_string(i);
     schema.Output(gsl::narrow_cast<int>(i), output_name, "", output_name, option, is_homogeneous, min_arity);
     // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+    schema.TypeConstraint(output_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
   }
   schema.SetDomain(domain);
   schema.SinceVersion(1);
@@ -761,7 +783,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
 
       for (size_t i = 0; i < undefined; i++) {
-        def_builder.TypeConstraint("T" + std::to_string(i), DataTypeImpl::AllTensorTypes());
+        def_builder.TypeConstraint("T" + std::to_string(i), SUPPORTED_TENSOR_TYPES);
       }
 
       if (const char* provider_type = op->GetExecutionProviderType(op)) {

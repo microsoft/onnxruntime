@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_training_c_api.h"
@@ -16,6 +17,7 @@
 namespace onnxruntime::training::test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/training_api/")
+#define ORT_FORMAT_MODEL_FOLDER ORT_TSTR("testdata/training_api/ort_format/")
 
 TEST(TrainingCApiTest, SaveCheckpoint) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
@@ -30,7 +32,7 @@ TEST(TrainingCApiTest, SaveCheckpoint) {
   }
   onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
   PathString checkpoint_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
 
   Ort::CheckpointState::SaveCheckpoint(checkpoint_state, checkpoint_path);
 
@@ -59,7 +61,7 @@ TEST(TrainingCApiTest, LoadCheckpointFromBuffer) {
   }
   onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
   PathString new_checkpoint_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
 
   Ort::CheckpointState::SaveCheckpoint(checkpoint_state, new_checkpoint_path);
 
@@ -166,4 +168,154 @@ TEST(TrainingCApiTest, FromBuffer) {
   training_session.FromBuffer(buffer);
 }
 
+TEST(TrainingCApiTest, RegisterCustomOps) {
+  auto model_uri = MODEL_FOLDER "custom_ops/training_model.onnx";
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "custom_ops/checkpoint");
+  Ort::SessionOptions session_options;
+
+#if defined(_WIN32)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
+#elif defined(__APPLE__)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
+#else
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.so"));
+#endif
+
+#ifdef USE_CUDA
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#endif
+
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, session_options, checkpoint_state, model_uri);
+
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<int64_t> input_shape{3, 5};
+
+  std::vector<float> x{1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
+                       6.6f, 7.7f, 8.8f, 9.9f, 10.0f,
+                       11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor(memory_info, x.data(),
+                                                   x.size() * sizeof(float),
+                                                   input_shape.data(), input_shape.size(),
+                                                   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+
+  std::vector<float> y{15.5f, 14.4f, 13.3f, 12.2f, 11.1f,
+                       10.0f, 9.9f, 8.8f, 7.7f, 6.6f,
+                       5.5f, 4.4f, 3.3f, 2.2f, 1.1f};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor(memory_info, y.data(),
+                                                   y.size() * sizeof(float),
+                                                   input_shape.data(), input_shape.size(),
+                                                   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+
+  std::vector<int64_t> labels{0, 8, 4};
+  std::vector<int64_t> labels_shape{3};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor(memory_info, labels.data(),
+                                                   labels.size() * sizeof(int64_t),
+                                                   labels_shape.data(), labels_shape.size(),
+                                                   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64));
+
+  auto loss = training_session.TrainStep(ort_inputs);
+  ASSERT_EQ(loss.size(), 1U);
+  ASSERT_TRUE(loss.front().IsTensor());
+}
+
+TEST(TrainingCApiTest, LoadModelsAndCreateSession) {
+  auto model_path = MODEL_FOLDER "training_model.onnx";
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                               Ort::SessionOptions(),
+                                                               checkpoint_state,
+                                                               model_path);
+}
+
+TEST(TrainingCApiTest, LoadModelsAndCreateSession_ORTFormat) {
+  auto train_model_path = ORT_FORMAT_MODEL_FOLDER "training_model.ort";
+  auto eval_train_model_path = ORT_FORMAT_MODEL_FOLDER "eval_model.ort";
+  auto optimizer_model_path = ORT_FORMAT_MODEL_FOLDER "optimizer_model.ort";
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(ORT_FORMAT_MODEL_FOLDER "checkpoint");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                               Ort::SessionOptions(),
+                                                               checkpoint_state,
+                                                               train_model_path,
+                                                               eval_train_model_path,
+                                                               optimizer_model_path);
+}
+
+TEST(TrainingCApiTest, LoadONNXModelsFromBuffer) {
+  auto model_path = MODEL_FOLDER "training_model.onnx";
+  size_t model_data_len = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(model_path, model_data_len));
+  std::vector<uint8_t> train_model_data(model_data_len);
+  std::ifstream bytes_stream(model_path, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(train_model_data.data()), model_data_len);
+  ASSERT_TRUE(train_model_data.size() == model_data_len);
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                               Ort::SessionOptions(),
+                                                               checkpoint_state,
+                                                               train_model_data);
+}
+
+TEST(TrainingCApiTest, LoadORTFormatModelsFromBuffer) {
+  auto train_model_path = ORT_FORMAT_MODEL_FOLDER "training_model.ort";
+  auto eval_model_path = ORT_FORMAT_MODEL_FOLDER "eval_model.ort";
+  auto optimizer_model_path = ORT_FORMAT_MODEL_FOLDER "optimizer_model.ort";
+  size_t model_data_len = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(train_model_path, model_data_len));
+  std::vector<uint8_t> train_model_data(model_data_len);
+  {
+    std::ifstream bytes_stream(train_model_path, std::ifstream::in | std::ifstream::binary);
+    bytes_stream.read(reinterpret_cast<char*>(train_model_data.data()), model_data_len);
+    ASSERT_TRUE(train_model_data.size() == model_data_len);
+  }
+
+  model_data_len = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(eval_model_path, model_data_len));
+  std::vector<uint8_t> eval_model_data(model_data_len);
+  {
+    std::ifstream bytes_stream(eval_model_path, std::ifstream::in | std::ifstream::binary);
+    bytes_stream.read(reinterpret_cast<char*>(eval_model_data.data()), model_data_len);
+    ASSERT_TRUE(eval_model_data.size() == model_data_len);
+  }
+
+  model_data_len = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(optimizer_model_path, model_data_len));
+  std::vector<uint8_t> optimizer_model_data(model_data_len);
+  {
+    std::ifstream bytes_stream(optimizer_model_path, std::ifstream::in | std::ifstream::binary);
+    bytes_stream.read(reinterpret_cast<char*>(optimizer_model_data.data()), model_data_len);
+    ASSERT_TRUE(optimizer_model_data.size() == model_data_len);
+  }
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(ORT_FORMAT_MODEL_FOLDER "checkpoint");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(),
+                                                               checkpoint_state, train_model_data,
+                                                               eval_model_data, optimizer_model_data);
+}
+
+TEST(TrainingCApiTest, LoadModelsFromBufferThrows) {
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+
+  try {
+    std::vector<uint8_t> train_model_data;
+    Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                                 Ort::SessionOptions(),
+                                                                 checkpoint_state,
+                                                                 train_model_data);
+  } catch (const std::exception& ex) {
+    ASSERT_THAT(ex.what(),
+                testing::HasSubstr("Training Session Creation failed. Train model data cannot be NULL."));
+  }
+}
 }  // namespace onnxruntime::training::test

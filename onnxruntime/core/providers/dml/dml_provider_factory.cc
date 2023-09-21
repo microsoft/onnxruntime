@@ -32,25 +32,18 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   ~DMLProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  void SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode);
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
 
  private:
   ComPtr<IDMLDevice> dml_device_{};
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
-  AllocatorRoundingMode rounding_mode_ = AllocatorRoundingMode::Enabled;
   bool metacommands_enabled_ = true;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
   auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
-  Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;
-}
-
-void DMLProviderFactory::SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode) {
-  rounding_mode_ = rounding_mode;
 }
 
 void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
@@ -80,11 +73,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   return std::make_shared<onnxruntime::DMLProviderFactory>(dml_device, cmd_queue);
 }
 
-void DmlConfigureProviderFactoryDefaultRoundingMode(IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode) {
-  auto dml_provider_factory = static_cast<DMLProviderFactory*>(factory);
-  dml_provider_factory->SetDefaultRoundingMode(rounding_mode);
-}
-
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled) {
   auto dml_provider_factory = static_cast<DMLProviderFactory*>(factory);
   dml_provider_factory->SetMetacommandsEnabled(metacommandsEnabled);
@@ -108,7 +96,8 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   return Create(device_id, /*skip_software_device_check*/ false);
 }
 
-std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id, bool skip_software_device_check) {
+Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Device(int device_id, bool skip_software_device_check)
+{
 #ifdef _GAMING_XBOX
     ComPtr<ID3D12Device> d3d12_device;
     D3D12XBOX_CREATE_DEVICE_PARAMETERS params = {};
@@ -118,36 +107,34 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
     params.ComputeScratchMemorySizeBytes = static_cast<UINT>(D3D12XBOX_DEFAULT_SIZE_BYTES);
     ORT_THROW_IF_FAILED(D3D12XboxCreateDevice(nullptr, &params, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
 #else
-  ComPtr<IDXGIFactory4> dxgi_factory;
-  ORT_THROW_IF_FAILED(CreateDXGIFactory2(0, IID_GRAPHICS_PPV_ARGS(dxgi_factory.ReleaseAndGetAddressOf())));
+    ComPtr<IDXGIFactory4> dxgi_factory;
+    ORT_THROW_IF_FAILED(CreateDXGIFactory2(0, IID_GRAPHICS_PPV_ARGS(dxgi_factory.ReleaseAndGetAddressOf())));
 
-  ComPtr<IDXGIAdapter1> adapter;
-  ORT_THROW_IF_FAILED(dxgi_factory->EnumAdapters1(device_id, &adapter));
+    ComPtr<IDXGIAdapter1> adapter;
+    ORT_THROW_IF_FAILED(dxgi_factory->EnumAdapters1(device_id, &adapter));
 
-  // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much
-  // faster. Some scenarios though call for EP initialization without this check (as execution will not actually occur
-  // anyway) such as operation kernel registry enumeration for documentation purposes.
-  if (!skip_software_device_check)
-  {
-    ORT_THROW_HR_IF(ERROR_GRAPHICS_INVALID_DISPLAY_ADAPTER, IsSoftwareAdapter(adapter.Get()));
-  }
+    // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much
+    // faster. Some scenarios though call for EP initialization without this check (as execution will not actually occur
+    // anyway) such as operation kernel registry enumeration for documentation purposes.
+    if (!skip_software_device_check)
+    {
+      ORT_THROW_HR_IF(ERROR_GRAPHICS_INVALID_DISPLAY_ADAPTER, IsSoftwareAdapter(adapter.Get()));
+    }
 
-  ComPtr<ID3D12Device> d3d12_device;
-  ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+    ComPtr<ID3D12Device> d3d12_device;
+    ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
 #endif
 
-  D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
-  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-  cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
+  return d3d12_device;
+}
 
-  ComPtr<ID3D12CommandQueue> cmd_queue;
-  ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
-
+Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID3D12Device* d3d12_device)
+{
   DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
 
   // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
 #if _DEBUG && !_GAMING_XBOX
-  ComPtr<ID3D12DebugDevice> debug_device;
+  Microsoft::WRL::ComPtr<ID3D12DebugDevice> debug_device;
   (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device));  // ignore failure
   const bool is_d3d12_debug_layer_enabled = (debug_device != nullptr);
 
@@ -156,12 +143,27 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   }
 #endif
 
-  ComPtr<IDMLDevice> dml_device;
-  ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
-                                   flags,
-                                   DML_FEATURE_LEVEL_5_0,
-                                   IID_PPV_ARGS(&dml_device)));
+  Microsoft::WRL::ComPtr<IDMLDevice> dml_device;
+  ORT_THROW_IF_FAILED(DMLCreateDevice1(
+      d3d12_device,
+      flags,
+      DML_FEATURE_LEVEL_5_0,
+      IID_PPV_ARGS(&dml_device)));
 
+  return dml_device;
+}
+
+std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id, bool skip_software_device_check) {
+  ComPtr<ID3D12Device> d3d12_device = CreateD3D12Device(device_id, skip_software_device_check);
+
+  D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
+  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+  cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
+
+  ComPtr<ID3D12CommandQueue> cmd_queue;
+  ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+
+  auto dml_device = CreateDMLDevice(d3d12_device.Get());
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
 }
 

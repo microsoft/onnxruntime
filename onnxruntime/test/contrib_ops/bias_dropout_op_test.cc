@@ -109,8 +109,8 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     ratio = 0.5f;
   } else {
     if (use_float16_ratio) {
-      t.AddInput("ratio", {}, {MLFloat16(math::floatToHalf(ratio))});
-      t_bitmask.AddInput("ratio", {}, {MLFloat16(math::floatToHalf(ratio))});
+      t.AddInput("ratio", {}, {MLFloat16(ratio)});
+      t_bitmask.AddInput("ratio", {}, {MLFloat16(ratio)});
     } else {
       t.AddInput("ratio", {}, {ratio});
       t_bitmask.AddInput("ratio", {}, {ratio});

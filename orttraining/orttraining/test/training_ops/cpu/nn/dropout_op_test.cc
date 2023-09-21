@@ -54,7 +54,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
     ratio = 0.5f;
   } else {
     if (use_float16_ratio) {
-      t.AddInput("ratio", {}, {MLFloat16(math::floatToHalf(ratio))});
+      t.AddInput("ratio", {}, {MLFloat16(ratio)});
     } else {
       t.AddInput("ratio", {}, {ratio});
     }

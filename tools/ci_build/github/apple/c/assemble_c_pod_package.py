@@ -30,6 +30,8 @@ def get_pod_config_file(package_variant: PackageVariant):
         return _script_dir / "onnxruntime-mobile-c.config.json"
     elif package_variant == PackageVariant.Test:
         return _script_dir / "onnxruntime-test-c.config.json"
+    elif package_variant == PackageVariant.Training:
+        return _script_dir / "onnxruntime-training-c.config.json"
     else:
         raise ValueError(f"Unhandled package variant: {package_variant}")
 

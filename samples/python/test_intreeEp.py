@@ -4,6 +4,10 @@ import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import RunOptions
 
+# usage:
+# 1. build onnxruntime: ./build.sh --parallel --skip_tests --build_shared_lib --build_wheel --use_intree
+# 2. run this script: python3 test_intreeEp.py
+
 model_path = '/bert_ort/leca/models/Relu.onnx'
 
 session = onnxruntime.InferenceSession(model_path,

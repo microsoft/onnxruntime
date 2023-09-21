@@ -20,6 +20,8 @@ class CudaTuningResultsValidator : public TuningResultsValidator {
   CudaTuningResultsValidator(CUDAExecutionProvider* ep);
 
  protected:
+  std::string GetOrtBuildConfig() const override;
+
   std::string GetDeviceModel() const;
   Status ValidateDeviceModel(const std::string& value) const;
 
@@ -46,6 +48,9 @@ class CudaTuningContext : public ITuningContext {
   const TuningResultsManager& GetTuningResultsManager() const override;
 
   const TuningResultsValidator& GetTuningResultsValidator() const override;
+
+  IAllocatorUniquePtr<void> GetScratchBuffer(
+      size_t bytes, Stream* stream, OrtMemType mem_type = OrtMemTypeDefault) const;
 
  private:
   TunableOpInfo* info_;  // non-owning handle

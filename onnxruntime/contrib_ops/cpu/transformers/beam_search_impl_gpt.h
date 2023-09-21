@@ -55,11 +55,11 @@ class BeamSearchGpt : public BeamSearchBase<T> {
     cuda_device_prop_ = cuda_device_prop;
     cuda_device_arch_ = cuda_device_arch;
     if (gpt_subgraph_.has_decoder_masked_attention_) {
-      ORT_RETURN_IF(cuda_device_arch_ >= 530,
-                    "Decoder masked self attention can only be used on "
-                    "GPU cards of compute capability 5.3 or higher. "
-                    "This card has compute capability ",
-                    cuda_device_arch_);
+      ORT_RETURN_IF_NOT(cuda_device_arch_ >= 530,
+                        "Decoder masked self attention can only be used on "
+                        "GPU cards of compute capability 5.3 or higher. "
+                        "This card has compute capability ",
+                        cuda_device_arch_);
     }
     return Status::OK();
   }
@@ -224,7 +224,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                          gpt_subgraph_.has_decoder_masked_attention_));
 
   if (gpt_subgraph_.past_present_share_buffer_) {  // Reuse past and present
-    fetches.reserve(static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
+    fetches.reserve(static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
     fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
     for (int layer = 0; layer < gpt_subgraph_.num_layers; layer++) {
       int feed_idx = gpt_subgraph_.GetFirstPastInputIndex() + layer;

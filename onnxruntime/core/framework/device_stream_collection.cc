@@ -90,7 +90,6 @@ class DeviceStreamCollectionImpl {
   size_t num_streams_;
   std::vector<Stream*> device_streams_;
   InlinedVector<std::unique_ptr<Stream>> owned_streams_;
-  // TODO(leca): review
   const AllocatorMap& allocators_;
   bool is_main_graph_ = false;
   // This is used in ExecutionFrame when memory pattern is enabled, to allocate the peak size memory

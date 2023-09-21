@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <string>
 #include "core/session/inference_session.h"
+#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -73,12 +75,13 @@ struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
-  Module(const std::string& train_model_path_or_bytes,
+  // The model and checkpoint state can be provided as a file path or a byte array
+  Module(const ModelIdentifiers& model_identifiers,
          CheckpointState* state,
          const onnxruntime::SessionOptions& session_options,
          const Environment& env,
          const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-         const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
+         gsl::span<OrtCustomOpDomain* const> op_domains = gsl::span<OrtCustomOpDomain* const>());
 
   // Return the trainable/nontrainable parameters
   std::vector<std::shared_ptr<Parameter>> Parameters() const;
@@ -136,6 +139,12 @@ struct Module {
   // Returns the user input name for eval graph at given index
   std::string GetEvalModelInputName(size_t index) const;
 
+  // Returns the input definitions of the Training model
+  std::pair<common::Status, const InputDefList*> GetTrainingModelInputs() const noexcept;
+
+  // Returns the input definitions of the Eval model
+  std::pair<common::Status, const InputDefList*> GetEvalModelInputs() const noexcept;
+
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
@@ -152,7 +161,7 @@ struct Module {
   CheckpointState* state_;  // Non owning pointer to the state.
 
   bool accumulate_gradient_ = false;
-  std::string eval_model_path_;
+  std::optional<std::string> eval_model_path_;
   size_t train_user_input_count_{0U};
   size_t eval_user_input_count_{0U};
 };

@@ -64,11 +64,11 @@ class BeamSearchT5 : public BeamSearchBase<T> {
     cuda_device_prop_ = cuda_device_prop;
     cuda_device_arch_ = cuda_device_arch;
     if (decoder_subgraph_.has_decoder_masked_attention_) {
-      ORT_RETURN_IF(cuda_device_arch_ >= 530,
-                    "Decoder masked multihead attention can only be used on "
-                    "GPU cards of compute capability 5.3 or higher. "
-                    "This card has compute capability ",
-                    cuda_device_arch_);
+      ORT_RETURN_IF_NOT(cuda_device_arch_ >= 530,
+                        "Decoder masked multihead attention can only be used on "
+                        "GPU cards of compute capability 5.3 or higher. "
+                        "This card has compute capability ",
+                        cuda_device_arch_);
     }
     return Status::OK();
   }
@@ -259,7 +259,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              decoder_subgraph_.has_decoder_masked_attention_));
 
     if (decoder_subgraph_.past_present_share_buffer_) {
-      decoder_fetches.reserve(static_cast<int64_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) + 2 * static_cast<int64_t>(decoder_subgraph_.num_layers));
+      decoder_fetches.reserve(static_cast<size_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) +
+                              2 * static_cast<size_t>(decoder_subgraph_.num_layers));
       decoder_fetches.resize(decoder_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
       for (int layer = 0; layer < 2 * decoder_subgraph_.num_layers; layer++) {
         int feed_idx = decoder_subgraph_.GetFirstPastInputIndex() + layer;

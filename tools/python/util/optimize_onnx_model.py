@@ -14,7 +14,7 @@ def optimize_model_helper():
         f"{os.path.basename(__file__)}:{optimize_model_helper.__name__}",
         description="""
                                      Optimize an ONNX model using ONNX Runtime to the specified level.
-                                     See https://onnxruntime.ai/docs/performance/graph-optimizations.html for more
+                                     See https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html for more
                                      details of the optimization levels.""",
     )
 

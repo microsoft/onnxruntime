@@ -104,10 +104,23 @@ struct Tensorrt_Provider : Provider {
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
+  /**
+   * This function will be called by the C API UpdateTensorRTProviderOptions().
+   *
+   * Please note that it will reset the OrtProviderOptionsV2 instance first and then set up the provided provider options
+   * See TensorrtExecutionProviderInfo::FromProviderOptions() for more details
+   */
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
     auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
     auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptionsV2*>(provider_options);
     trt_options.device_id = internal_options.device_id;
+
+    // The 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance can be set by C API UpdateTensorRTProviderOptionsWithValue() as well
+    // We only set the 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance if it is provided in options
+    if (options.find("has_user_compute_stream") != options.end()) {
+      trt_options.has_user_compute_stream = internal_options.has_user_compute_stream;
+    }
+
     trt_options.trt_max_partition_iterations = internal_options.max_partition_iterations;
     trt_options.trt_min_subgraph_size = internal_options.min_subgraph_size;
     trt_options.trt_max_workspace_size = internal_options.max_workspace_size;
@@ -187,6 +200,20 @@ struct Tensorrt_Provider : Provider {
 #endif
       dest[str_size] = '\0';
       trt_options.trt_tactic_sources = (const char*)dest;
+    }
+
+    str_size = internal_options.extra_plugin_lib_paths.size();
+    if (str_size == 0) {
+      trt_options.trt_extra_plugin_lib_paths = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.extra_plugin_lib_paths.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.extra_plugin_lib_paths.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_options.trt_extra_plugin_lib_paths = (const char*)dest;
     }
 
     str_size = internal_options.profile_min_shapes.size();

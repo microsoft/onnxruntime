@@ -40,7 +40,11 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info)
-    : RocmKernel(info), AttentionBase(info, true), attn_type_(kAttention) {}
+    : RocmKernel(info), AttentionBase(info, true), attn_type_(kAttention) {
+  using HipT = typename ToHipType<T>::MappedType;
+  using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
+  tunable_op_ = std::make_shared<AttentionTunableOp>();
+}
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -108,7 +112,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   {
     auto& params = gemm_permute_params;
     params.tuning_ctx = GetTuningContext();
-    params.stream = stream;
+    params.stream = context->GetComputeStream();
     params.handle = rocblas;
     params.attention = &attn;
     params.device_prop = &device_prop;
@@ -174,7 +178,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   {
     auto& params = gemm_softmax_gemm_permute_params;
     params.tuning_ctx = GetTuningContext();
-    params.stream = Stream(context);
+    params.stream = context->GetComputeStream();
     params.handle = rocblas;
     params.attention = &attn;
     params.device_prop = &device_prop;
@@ -200,7 +204,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (this->GetTuningContext()->IsTunableOpEnabled() &&
       !use_persistent_softmax) {
-    return AttentionTunableOp{}(&gemm_softmax_gemm_permute_params);
+    return (*std::static_pointer_cast<AttentionTunableOp>(tunable_op_))(&gemm_softmax_gemm_permute_params);
   } else {
     return AttentionGeneric::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
   }

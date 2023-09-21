@@ -30,9 +30,6 @@ class ReshapeOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-
-  // Reshape opset 4- uses attributes for new shape which we do not support for now.
-  int GetMinSupportedOpSet(const Node& /* node */) const override { return 5; }
 };
 
 // Add operator related.

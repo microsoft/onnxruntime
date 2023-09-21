@@ -1,17 +1,11 @@
 import logging
 import os
-import sys
 
 import onnx
+from benchmark_helper import Precision
+from convert_generation import get_shared_initializers, update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha
 from onnx import TensorProto, helper
 from transformers import WhisperConfig
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import Precision  # noqa: E402
-from convert_generation import (  # noqa: E402
-    get_shared_initializers,
-    update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
-)
 
 logger = logging.getLogger(__name__)
 

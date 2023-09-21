@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_APIS
 #import <Foundation/Foundation.h>
 #include <stdint.h>
 
@@ -24,7 +23,9 @@ NS_ASSUME_NONNULL_BEGIN
  * [onnxruntime-training python utility](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/onnxblock/README.md)
  * can be used to generate above training artifacts.
  *
- * Available since v1.16.0.
+ * Available since 1.16.
+ *
+ * @note This class is only available when the training APIs are enabled.
  */
 @interface ORTTrainingSession : NSObject
 
@@ -46,6 +47,9 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  *
+ * @note Note that the training session created with a checkpoint state uses this state to store the entire training
+ * state (including model parameters, its gradients, the optimizer states and the properties). The training session
+ * keeps a strong (owning) pointer to the checkpoint state.
  */
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
                       sessionOptions:(ORTSessionOptions*)sessionOptions
@@ -257,5 +261,3 @@ void ORTSetSeed(int64_t seed);
 #endif
 
 NS_ASSUME_NONNULL_END
-
-#endif  // ENABLE_TRAINING_APIS

@@ -107,7 +107,7 @@ def dtype_torch_to_numpy(torch_dtype):
     elif torch_dtype == torch.bool:
         return np.bool_
     else:
-        raise ValueError(f"torch_dtype ({str(torch_dtype)}) type is not supported by Numpy")
+        raise ValueError(f"torch_dtype ({torch_dtype!s}) type is not supported by Numpy")
 
 
 def dtype_onnx_to_torch(onnx_type):

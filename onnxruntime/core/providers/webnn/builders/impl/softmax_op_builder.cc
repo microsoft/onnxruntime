@@ -2,6 +2,7 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -36,7 +37,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto input_size = input_shape.size();
   // WebNN Softmax only support 2d input shape, reshape input to 2d.
   if (input_size != 2) {
-    int32_t new_shape_0 = input_shape.data()[0];
+    int32_t new_shape_0 = SafeInt<int32_t>(input_shape.data()[0]);
     for (size_t i = 1; i < input_size - 1; i++) {
       new_shape_0 *= input_shape.data()[i];
     }

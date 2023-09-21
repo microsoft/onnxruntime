@@ -21,6 +21,11 @@ class Attention final : public RocmKernel, public AttentionBase {
 
  public:
   AttentionType attn_type_;
+
+  // type-erased GemmSoftmaxGemmPermuteTunableOp<HipT>, the reason for this is:
+  //   1. We don't want to include the cuh file where GemmSoftmaxGemmPermuteTunableOp<HipT> is defined.
+  //   2. We don't want to construct the object repeatly (which is expansive) during Compute.
+  std::shared_ptr<void> tunable_op_;
 };
 
 }  // namespace rocm

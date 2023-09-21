@@ -6,23 +6,20 @@
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy
 import onnx
 import torch
+from io_binding_helper import TypeHelper
+from models.t5.past_helper import PastKeyValuesHelper
+from onnx_model import OnnxModel
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import WhisperConfig, file_utils
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from io_binding_helper import TypeHelper  # noqa: E402
-from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +33,7 @@ class WhisperDecoderInit(torch.nn.Module):
         self,
         decoder: torch.nn.Module,
         config: WhisperConfig,
-        decoder_start_token_id: int = None,
+        decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.decoder = decoder

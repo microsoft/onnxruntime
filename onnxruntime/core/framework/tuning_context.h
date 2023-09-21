@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/platform/ort_mutex.h"
+#include "core/framework/allocator.h"
 #include "core/framework/tuning_results.h"
 
 namespace onnxruntime {
@@ -49,8 +50,11 @@ class ITuningContext {
   virtual TuningResults GetTuningResults() const;
   virtual Status LoadTuningResults(const TuningResults& tr);
 
+  void RegisterAllocatorsView(const AllocatorMap* allocators) { allocators_ = allocators; }
+
  protected:
   IExecutionProvider* ep_;
+  const AllocatorMap* allocators_;
 };
 
 class TuningResultsManager {

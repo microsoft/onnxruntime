@@ -5,6 +5,7 @@
 #include <string>
 
 #include "core/common/logging/logging.h"
+#include "core/common/span_utils.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
@@ -109,10 +110,10 @@ TEST(XnnpackEP, TestAllocatorSharing) {
   // and use the same EP instances in both
   std::vector<std::shared_ptr<IExecutionProvider>> eps{
       std::make_shared<XnnpackExecutionProvider>(XnnpackExecutionProviderInfo{}),
-      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator creation to allow sharing */)};
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
   std::vector<std::shared_ptr<IExecutionProvider>> eps1{
       std::make_shared<XnnpackExecutionProvider>(XnnpackExecutionProviderInfo{}),
-      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator creation to allow sharing */)};
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
 
   // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
   init_session(eps, session1);
@@ -180,7 +181,8 @@ static void RunModelTest(
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
-  RunAndVerifyOutputsWithEP(model_data, "XnnpackEP.TestQDQModel",
+  const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
+  RunAndVerifyOutputsWithEP(model_data_span, "XnnpackEP.TestQDQModel",
                             DefaultXnnpackExecutionProvider(),
                             helper.feeds_, params);
 }

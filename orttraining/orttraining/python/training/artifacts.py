@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import contextlib
 import logging
 import os
 import pathlib
@@ -32,6 +33,7 @@ class OptimType(Enum):
     """
 
     AdamW = 1
+    SGD = 2
 
 
 def generate_artifacts(
@@ -61,6 +63,9 @@ def generate_artifacts(
             If None, the current working directory is used.
         prefix (str): The prefix to be used for the generated artifacts. If not specified, no prefix is used.
         ort_format (bool): Whether to save the generated artifacts in ORT format or not. Default is False.
+        custom_op_library (str | os.PathLike): The path to the custom op library.
+                                               If not specified, no custom op library is used.
+        additional_output_names (List[str]): List of additional output names to be added to the training/eval model.
 
     Raises:
         RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
@@ -100,6 +105,20 @@ def generate_artifacts(
             self._loss = _loss
 
         def build(self, *inputs_to_loss):
+            if "additional_output_names" in extra_options:
+                # If additional output names is not a list, raise an error
+                if not isinstance(extra_options["additional_output_names"], list):
+                    raise RuntimeError(
+                        f"Unknown type provided for additional output names {type(extra_options['additional_output_names'])}. "
+                        "Expected additional output names to be a list of strings."
+                    )
+
+                loss_output = self._loss(*inputs_to_loss)
+                if isinstance(loss_output, tuple):
+                    return (*loss_output, *tuple(extra_options["additional_output_names"]))
+                else:
+                    return (loss_output, *tuple(extra_options["additional_output_names"]))
+
             return self._loss(*inputs_to_loss)
 
     training_block = _TrainingBlock(loss_block)
@@ -121,14 +140,30 @@ def generate_artifacts(
     training_model = None
     eval_model = None
     model_params = None
-    with onnxblock.base(model):
+
+    custom_op_library = extra_options.get("custom_op_library", None)
+    if custom_op_library is not None:
+        logging.info("Custom op library provided: %s", custom_op_library)
+        custom_op_library = pathlib.Path(custom_op_library)
+
+    with onnxblock.base(model), onnxblock.custom_op_library(
+        custom_op_library
+    ) if custom_op_library is not None else contextlib.nullcontext():
         _ = training_block(*[output.name for output in model.graph.output])
         training_model, eval_model = training_block.to_model_proto()
         model_params = training_block.parameters()
 
     def _export_to_ort_format(model_path, output_dir, extra_options):
         if extra_options.get("ort_format", False):
-            convert_onnx_models_to_ort(model_path, output_dir=output_dir, optimization_styles=[OptimizationStyle.Fixed])
+            custom_op_library = extra_options.get("custom_op_library", None)
+            if custom_op_library is not None:
+                custom_op_library = pathlib.Path(custom_op_library)
+            convert_onnx_models_to_ort(
+                model_path,
+                output_dir=output_dir,
+                custom_op_library_path=custom_op_library,
+                optimization_styles=[OptimizationStyle.Fixed],
+            )
 
     if artifact_directory is None:
         artifact_directory = pathlib.Path.cwd()
@@ -173,7 +208,8 @@ def generate_artifacts(
     logging.info("Optimizer enum provided: %s", optimizer.name)
 
     optim_model = None
-    optim_blocks = {OptimType.AdamW: onnxblock.optim.AdamW}
+    optim_blocks = {OptimType.AdamW: onnxblock.optim.AdamW, OptimType.SGD: onnxblock.optim.SGD}
+
     optim_block = optim_blocks[optimizer]()
     with onnxblock.empty_base():
         _ = optim_block(model_params)

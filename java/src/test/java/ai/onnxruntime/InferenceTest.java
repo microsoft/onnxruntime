@@ -656,11 +656,96 @@ public class InferenceTest {
         OnnxValue resultTensor = result.get(0);
         float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
         assertEquals(expectedOutput.length, resultArray.length);
-        assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        if (provider == OrtProvider.CORE_ML) {
+          // CoreML gives slightly different answers on a 2020 13" M1 MBP
+          assertArrayEquals(expectedOutput, resultArray, 1e-2f);
+        } else {
+          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        }
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to execute a scoring operation", e);
       }
       OnnxValue.close(container.values());
+    }
+  }
+
+  @Test
+  public void testExternalInitializers() throws IOException, OrtException {
+    String modelPath = TestHelpers.getResourcePath("/java-external-matmul.onnx").toString();
+
+    // Run by loading the external initializer from disk
+    // initializer is 1...16 in a 4x4 matrix.
+    try (SessionOptions options = new SessionOptions()) {
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {90, 100, 110, 120}, outputArr[0]);
+        }
+      }
+    }
+    // Run by overriding the initializer with the identity matrix
+    try (SessionOptions options = new SessionOptions()) {
+      OnnxTensor tensor = TestHelpers.makeIdentityMatrixBuf(env, 4);
+      options.addExternalInitializers(Collections.singletonMap("tensor", tensor));
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {1, 2, 3, 4}, outputArr[0]);
+        }
+      }
+      tensor.close();
+    }
+    // Run by overriding the initializer with the identity matrix loaded from a byte array
+    byte[] modelBytes =
+        Files.readAllBytes(TestHelpers.getResourcePath("/java-external-matmul.onnx"));
+    try (SessionOptions options = new SessionOptions()) {
+      OnnxTensor tensor = TestHelpers.makeIdentityMatrixBuf(env, 4);
+      options.addExternalInitializers(Collections.singletonMap("tensor", tensor));
+      try (OrtSession session = env.createSession(modelBytes, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {1, 2, 3, 4}, outputArr[0]);
+        }
+      }
+      tensor.close();
+    }
+  }
+
+  @Test
+  public void testOverridingInitializer() throws OrtException {
+    String modelPath = TestHelpers.getResourcePath("/java-matmul.onnx").toString();
+
+    // Run with the normal initializer
+    // initializer is 1...16 in a 4x4 matrix.
+    try (SessionOptions options = new SessionOptions()) {
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {90, 100, 110, 120}, outputArr[0]);
+        }
+      }
+    }
+    // Run by overriding the initializer with the identity matrix
+    try (SessionOptions options = new SessionOptions()) {
+      OnnxTensor tensor = TestHelpers.makeIdentityMatrixBuf(env, 4);
+      options.addInitializer("tensor", tensor);
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+            OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {1, 2, 3, 4}, outputArr[0]);
+        }
+      }
+      tensor.close();
     }
   }
 

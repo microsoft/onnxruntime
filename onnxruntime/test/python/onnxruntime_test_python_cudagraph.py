@@ -124,7 +124,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             atol=1e-05,
         )
 
-    def testArenaWithCudaGraph(self):  # noqa: N802
+    def test_arena_with_cuda_graph(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             # To test cuda graph catpure, we set Arena extend strategy to be SameAsRequested so as to detect any
             # potential memory allocation after the first run.

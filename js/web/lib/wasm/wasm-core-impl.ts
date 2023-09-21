@@ -3,7 +3,6 @@
 
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {init as initJsep} from './jsep/init';
 import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
@@ -51,8 +50,13 @@ export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
   initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
 
-  // init JSEP if available
-  await initJsep(getInstance(), env);
+  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+    // init JSEP if available
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const initJsep = require('./jsep/init').init;
+    await initJsep(getInstance(), env);
+  }
 };
 
 /**
@@ -254,15 +258,34 @@ export const run = async(
         wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
       }
 
+      // jsepOnRunStart is only available when JSEP is enabled.
+      wasm.jsepOnRunStart?.(sessionId);
+
       // support RunOptions
       let errorCode = wasm._OrtRun(
           sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset, outputCount,
           outputValuesOffset, runOptionsHandle);
 
-      // eslint-disable-next-line @typescript-eslint/naming-convention
       const runPromise = wasm.jsepRunPromise;
-      if (runPromise && typeof runPromise.then !== 'undefined') {
+      if (runPromise) {
+        // jsepRunPromise is a Promise object. It is only available when JSEP is enabled.
+        //
+        // OrtRun() is a synchrnous call, but it internally calls async functions. Emscripten's ASYNCIFY allows it to
+        // work in this way. However, OrtRun() does not return a promise, so when code reaches here, it is earlier than
+        // the async functions are finished.
+        //
+        // To make it work, we created a Promise and resolve the promise when the C++ code actually reaches the end of
+        // OrtRun(). If the promise exists, we need to await for the promise to be resolved.
         errorCode = await runPromise;
+      }
+
+      const jsepOnRunEnd = wasm.jsepOnRunEnd;
+      if (jsepOnRunEnd) {
+        // jsepOnRunEnd is only available when JSEP is enabled.
+        //
+        // it returns a promise, which is resolved or rejected when the following async functions are finished:
+        // - collecting GPU validation errors.
+        await jsepOnRunEnd(sessionId);
       }
 
       const output: SerializableTensor[] = [];

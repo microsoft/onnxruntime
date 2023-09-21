@@ -93,6 +93,11 @@ file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cuh"
 )
 
+file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.cc"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
@@ -207,6 +212,8 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -236,6 +243,8 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_training_framework_excude_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
       "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
   )
 
   list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs ${onnxruntime_training_framework_excude_srcs})
@@ -306,7 +315,7 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
     onnxruntime_add_include_to_target(onnxruntime_providers Python::Module)
   endif()
 
@@ -430,12 +439,12 @@ if (onnxruntime_USE_CUDA)
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.h"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.h"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.h"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cu"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.h"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/triton/triton_op.cc"
       )
 
       list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_full_training_only_srcs})
@@ -499,7 +508,7 @@ if (onnxruntime_USE_CUDA)
       if (onnxruntime_ENABLE_TRAINING)
         target_link_libraries(${target} PRIVATE onnxruntime_training)
       endif()
-      if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
         onnxruntime_add_include_to_target(${target} Python::Module)
       endif()
     endif()
@@ -523,7 +532,7 @@ if (onnxruntime_USE_CUDA)
       target_link_libraries(${target} PRIVATE cuda)
     endif()
 
-    if (onnxruntime_USE_FLASH_ATTENTION)
+    if (onnxruntime_USE_FLASH_ATTENTION OR onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       include(cutlass)
       target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
     endif()
@@ -539,7 +548,7 @@ if (onnxruntime_USE_CUDA)
       target_link_libraries(${target} PRIVATE cupti)
     endif()
 
-    if (onnxruntime_ENABLE_NVTX_PROFILE)
+    if (onnxruntime_ENABLE_NVTX_PROFILE AND NOT WIN32)
       target_link_libraries(${target} PRIVATE nvToolsExt)
     endif()
 
@@ -688,6 +697,13 @@ if (onnxruntime_USE_TENSORRT)
   endif()
   set(CXX_VERSION_DEFINED TRUE)
 
+  # There is an issue when running "Debug build" TRT EP with "Release build" TRT builtin parser on Windows.
+  # We enforce following workaround for now until the real fix.
+  if (WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(onnxruntime_USE_TENSORRT_BUILTIN_PARSER OFF)
+    MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
+  endif()
+
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     # Add TensorRT library
     find_path(TENSORRT_INCLUDE_DIR NvInfer.h
@@ -716,6 +732,7 @@ if (onnxruntime_USE_TENSORRT)
     onnxruntime_fetchcontent_makeavailable(onnx_tensorrt)
     include_directories(${onnx_tensorrt_SOURCE_DIR})
     set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+    set(CUDA_INCLUDE_DIR ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}) # onnx-tensorrt repo needs this variable to build
     if ( CMAKE_COMPILER_IS_GNUCC )
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
     endif()
@@ -1059,7 +1076,7 @@ if (onnxruntime_USE_WEBNN)
 
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_webnn_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_webnn ${onnxruntime_providers_webnn_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_webnn onnxruntime_common onnx onnx_proto Boost::mp11)
+  onnxruntime_add_include_to_target(onnxruntime_providers_webnn onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
   add_dependencies(onnxruntime_providers_webnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_webnn PROPERTIES FOLDER "ONNXRuntime")
@@ -1157,8 +1174,12 @@ if (onnxruntime_USE_JSEP)
     "${ONNXRUNTIME_ROOT}/core/providers/js/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/js/*.cc"
   )
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_js_contrib_ops_cc_srcs})
+    list(APPEND onnxruntime_providers_js_cc_srcs ${onnxruntime_js_contrib_ops_cc_srcs})
+  endif()
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_js_cc_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_js_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_js ${onnxruntime_providers_js_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_js
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11
@@ -1266,7 +1287,7 @@ if (onnxruntime_USE_DML)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_dml
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface WIL::WIL
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${WIL_TARGET}
   )
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE
@@ -1486,7 +1507,7 @@ if (onnxruntime_USE_ROCM)
   add_definitions(-DUSE_ROCM=1)
   include(onnxruntime_rocm_hipify.cmake)
 
-  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME}/rccl ${onnxruntime_ROCM_HOME}/roctracer)
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME})
 
   find_package(HIP)
   find_package(hiprand REQUIRED)
@@ -1495,12 +1516,21 @@ if (onnxruntime_USE_ROCM)
 
   # MIOpen version
   if(NOT DEFINED ENV{MIOPEN_PATH})
-    set(MIOPEN_PATH ${onnxruntime_ROCM_HOME}/miopen)
+    set(MIOPEN_PATH ${onnxruntime_ROCM_HOME})
   else()
     set(MIOPEN_PATH $ENV{MIOPEN_PATH})
   endif()
+  find_path(MIOPEN_VERSION_H_PATH
+    NAMES version.h
+    HINTS
+    ${MIOPEN_PATH}/include/miopen
+    ${MIOPEN_PATH}/miopen/include)
+  if (MIOPEN_VERSION_H_PATH-NOTFOUND)
+    MESSAGE(FATAL_ERROR "miopen version.h not found")
+  endif()
+  MESSAGE(STATUS "Found miopen version.h at ${MIOPEN_VERSION_H_PATH}")
 
-  file(READ ${MIOPEN_PATH}/include/miopen/version.h MIOPEN_HEADER_CONTENTS)
+  file(READ ${MIOPEN_VERSION_H_PATH}/version.h MIOPEN_HEADER_CONTENTS)
         string(REGEX MATCH "define MIOPEN_VERSION_MAJOR * +([0-9]+)"
                                  MIOPEN_VERSION_MAJOR "${MIOPEN_HEADER_CONTENTS}")
         string(REGEX REPLACE "define MIOPEN_VERSION_MAJOR * +([0-9]+)" "\\1"
@@ -1670,6 +1700,8 @@ if (onnxruntime_USE_ROCM)
       device_gemm_instance
       device_gemm_add_fastgelu_instance
       device_gemm_fastgelu_instance
+      device_gemm_splitk_instance
+      device_gemm_streamk_instance
       device_batched_gemm_instance
       device_softmax_instance
     )
@@ -1773,7 +1805,7 @@ if (onnxruntime_USE_XNNPACK)
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool Boost::mp11 safeint_interface
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool flatbuffers::flatbuffers Boost::mp11 safeint_interface
   )
 
   add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -1787,6 +1819,12 @@ if (onnxruntime_USE_XNNPACK)
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+
+  # TODO fix shorten-64-to-32 warnings
+  # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
+  if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    target_compile_options(onnxruntime_providers_xnnpack PRIVATE -Wno-error=shorten-64-to-32)
   endif()
 endif()
 

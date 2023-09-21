@@ -4,6 +4,13 @@ import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import RunOptions
 
+# usage:
+# 1. build onnxruntime: ./build.sh --parallel --skip_tests --build_shared_lib --build_wheel
+# 2. build external EP:
+# cd samples/customEP2/build
+# cmake --build .
+# 3. run this script: python3 test_customEp2.py
+
 #model_path = '/bert_ort/leca/models/CustomOpTwo.onnx'
 #model_path = '/bert_ort/leca/models/Detection/model.onnx'
 model_path = '/bert_ort/leca/models/Relu.onnx'

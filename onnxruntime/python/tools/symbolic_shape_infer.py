@@ -163,7 +163,6 @@ class SymbolicShapeInference:
             "Reciprocal": self._pass_on_shape_and_type,
             "ReduceSum": self._infer_ReduceSum,
             "ReduceProd": self._infer_ReduceProd,
-            "RelativePositionBias": self._infer_RelativePositionBias,
             "Reshape": self._infer_Reshape,
             "Resize": self._infer_Resize,
             "Round": self._pass_on_shape_and_type,
@@ -190,26 +189,29 @@ class SymbolicShapeInference:
             "Neg": self._infer_symbolic_compute_ops,
             # contrib ops:
             "Attention": self._infer_Attention,
-            "PackedAttention": self._infer_PackedAttention,
-            "RemovePadding": self._infer_RemovePadding,
-            "RestorePadding": self._infer_RestorePadding,
+            "BiasAdd": self._infer_BiasAdd,
             "BiasGelu": self._infer_BiasGelu,
-            "MultiHeadAttention": self._infer_MultiHeadAttention,
+            "BiasSplitGelu": self._infer_BiasSplitGelu,
             "DecoderMaskedMultiHeadAttention": self._infer_DecoderMaskedMultiHeadAttention,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
+            "GatedRelativePositionBias": self._infer_GatedRelativePositionBias,
             "Gelu": self._infer_Gelu,
             "GemmFastGelu": self._infer_GemmFastGelu,
+            "GroupNorm": self._infer_GroupNorm,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
+            "MultiHeadAttention": self._infer_MultiHeadAttention,
+            "NhwcConv": self._infer_NhwcConv,
+            "PackedAttention": self._infer_PackedAttention,
+            "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
             "PythonOp": self._infer_PythonOp,
+            "RelativePositionBias": self._infer_RelativePositionBias,
+            "RemovePadding": self._infer_RemovePadding,
+            "RestorePadding": self._infer_RestorePadding,
             "SimplifiedLayerNormalization": self._infer_LayerNormalization,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
-            "GroupNorm": self._infer_GroupNorm,
-            "BiasSplitGelu": self._infer_BiasSplitGelu,
-            "BiasAdd": self._infer_BiasAdd,
-            "NhwcConv": self._infer_NhwcConv,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -747,7 +749,7 @@ class SymbolicShapeInference:
         else:
             lhs_reduce_dim = -1
             rhs_reduce_dim = -2
-            new_shape = [*self._broadcast_shapes(lhs_shape[:-2], rhs_shape[:-2]), lhs_shape[-2]] + [rhs_shape[-1]]
+            new_shape = [*self._broadcast_shapes(lhs_shape[:-2], rhs_shape[:-2]), lhs_shape[-2], rhs_shape[-1]]
         # merge reduce dim
         self._check_merged_dims(
             [lhs_shape[lhs_reduce_dim], rhs_shape[rhs_reduce_dim]],
@@ -1857,8 +1859,11 @@ class SymbolicShapeInference:
         if (
             node.input[0] in self.sympy_data_
             and [0] == axes
+            and starts is not None
             and len(starts) == 1
+            and ends is not None
             and len(ends) == 1
+            and steps is not None
             and len(steps) == 1
         ):
             input_sympy_data = self.sympy_data_[node.input[0]]
@@ -2113,6 +2118,28 @@ class SymbolicShapeInference:
                     vi = self.known_vi_[node.output[1]]
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
 
+    def _infer_GatedRelativePositionBias(self, node):  # noqa: N802
+        # When padding is removed:
+        #   query_layer: (token_count, num_heads x head_size)
+        #   token_offset: (batch_size, seq_len)
+        # Otherwise:
+        #   query_layer: (batch_size, seq_len, num_heads x head_size)
+        #   token_offset: None
+        # Output shape: (batch_size, num_heads, seq_len, seq_len)
+        num_heads = get_attribute(node, "num_heads")
+
+        token_offset_shape = self._try_get_shape(node, 6)
+        if token_offset_shape is not None:
+            output_shape = [token_offset_shape[0], num_heads, token_offset_shape[1], token_offset_shape[1]]
+        else:
+            query_layer_shape = self._get_shape(node, 0)
+            assert query_layer_shape is not None and len(query_layer_shape) == 3
+            output_shape = [query_layer_shape[0], num_heads, query_layer_shape[1], query_layer_shape[1]]
+
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
     def _infer_PackedAttention(self, node):  # noqa: N802
         shape = self._get_shape(node, 0)
         shape_weights = self._get_shape(node, 1)
@@ -2130,6 +2157,19 @@ class SymbolicShapeInference:
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
+
+    def _infer_PackedMultiHeadAttention(self, node):  # noqa: N802
+        shape_value = self._try_get_shape(node, 2)
+        if shape_value is not None and len(shape_value) == 2:
+            output_shape = shape_value
+        else:
+            shape_query = self._get_shape(node, 0)
+            assert shape_query is not None and len(shape_query) == 4
+            output_shape = [shape_query[0], shape_query[1] * shape_query[3]]
+
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_RemovePadding(self, node):  # noqa: N802
         shape = self._get_shape(node, 0)
@@ -2273,6 +2313,23 @@ class SymbolicShapeInference:
 
     def _infer_LayerNormalization(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
+        if len(node.output) > 1:
+            axis = get_attribute(node, "axis")
+            if axis is None:
+                axis = -1
+            x_shape = self._get_shape(node, 0)
+            if x_shape is not None:
+                rank = len(x_shape)
+                axis = handle_negative_axis(axis, rank)
+                mean_shape = x_shape[:axis] + [1 for _ in range(rank - axis)]
+                mean_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+                if mean_dtype == onnx.TensorProto.FLOAT16 or mean_dtype == onnx.TensorProto.BFLOAT16:
+                    mean_dtype = onnx.TensorProto.FLOAT
+                vi = self.known_vi_[node.output[1]]
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[1], mean_dtype, mean_shape))
+                if len(node.output) > 2:
+                    vi = self.known_vi_[node.output[2]]
+                    vi.CopyFrom(helper.make_tensor_value_info(node.output[2], mean_dtype, mean_shape))
 
     def _infer_LongformerAttention(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
@@ -2328,27 +2385,35 @@ class SymbolicShapeInference:
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
         assert output_tensor_ranks
 
-        # set the context output separately.
-        # The first output is autograd's context.
+        from onnxruntime.training.ortmodule._custom_autograd_function_exporter import PythonOpShapeInferStore
+
+        func_name = get_attribute(node, "func_name").decode()
+        shape_inferer = PythonOpShapeInferStore.get_shape_infer(func_name)
+
+        # Set the context output separately.
+        # The first output is torch.autograd.Function''s context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-        if get_attribute(node, "name").decode() in ["_InspectActivation", "_IncrementStep"]:
-            # PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
-            # PythonOp when execution. The only difference is that
-            # 1). those ops having same number of tensor inputs and tensor outputs;
-            # 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
-            # Be noted, the count of custom autograd function might be bigger than output count, because there might
-            # be other non-tensor constant inputs (string, object, int, tuple, etc). But we did not make those constant
-            # inputs as ONNX op's input, instead they are stored in the attributes.
-            assert len(node.output) == len(node.input) + 1  # The output contains one extra context info.
-            for input_index in range(len(node.output) - 1):
-                # Process the i-th tensor outputs.
-                vi = self.known_vi_[node.output[input_index + 1]]
+
+        if shape_inferer is not None:
+            input_shapes = []
+            input_dtypes = []
+            for input_index in range(len(node.input)):
                 shape = self._get_shape(node, input_index)
-                output_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
-                vi.CopyFrom(helper.make_tensor_value_info(node.output[input_index + 1], output_dtype, shape))
+                input_shapes.append(shape)
+                input_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
+                input_dtypes.append(input_dtype)
+            output_shapes, output_dtypes = shape_inferer(node, input_shapes, input_dtypes)
+            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1)
+            for i in range(len(node.output) - 1):
+                output_index = i + 1
+                vi = self.known_vi_[node.output[output_index]]
+                vi.CopyFrom(
+                    helper.make_tensor_value_info(node.output[output_index], output_dtypes[i], output_shapes[i])
+                )
         else:
-            # Outputs after autograd's context are tensors.
+            # General shape inference for PythonOp.
+            # Outputs after torch.autograd.Function's context are tensors.
             # We assume their ranks are fixed for different model inputs.
             for i in range(len(node.output) - 1):
                 # Process the i-th tensor outputs.

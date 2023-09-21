@@ -94,7 +94,6 @@ class RegistrationProcessor:
         start_version: int,
         end_version: typing.Optional[int] = None,
         type: typing.Optional[str] = None,
-        type2: typing.Optional[str] = None,
     ):
         """
         Process lines that contain a kernel registration.
@@ -103,8 +102,7 @@ class RegistrationProcessor:
         :param operator: Operator type
         :param start_version: Start version
         :param end_version: End version or None if unversioned registration
-        :param type: Type used in registration, if this is a typed registration
-        :param type2: Second type used in registration, if this is a typed registration
+        :param type: Type or types used in registration, if this is a typed registration
         """
         pass
 
@@ -218,7 +216,7 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
             arg.strip() for arg in code_line[trim_at : -len(end_mark)].split(",")
         )
         registration_processor.process_registration(
-            lines_to_process, domain, op_type, int(start_version), None, type1, type2
+            lines_to_process, domain, op_type, int(start_version), None, type1 + ", " + type2
         )
 
     elif onnx_versioned_two_typed_op in code_line:
@@ -229,7 +227,7 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
             arg.strip() for arg in code_line[trim_at : -len(end_mark)].split(",")
         )
         registration_processor.process_registration(
-            lines_to_process, domain, op_type, int(start_version), int(end_version), type1, type2
+            lines_to_process, domain, op_type, int(start_version), int(end_version), type1 + ", " + type2
         )
 
     else:

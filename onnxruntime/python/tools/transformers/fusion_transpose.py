@@ -55,6 +55,10 @@ class FusionTranspose(Fusion):
             cast_children = self.model.get_children(cast_node, input_name_to_nodes)
             if cast_children and len(cast_children) > 1:
                 return
+
+            if cast_node.input[0] not in output_name_to_node:
+                return
+
             transpose_a = output_name_to_node[cast_node.input[0]]
 
         if transpose_a.op_type != "Transpose":
@@ -135,23 +139,23 @@ class FusionInsertTranspose(Fusion):
         # Here we use hard-coded name so that it could be shared for the whole model.
         axes_1 = "ort_const_unsqueeze_axes_1"
         if self.model.get_initializer(axes_1) is None:
-            axes_1_tensor = helper.make_tensor(
+            self.add_initializer(
                 name=axes_1,
                 data_type=TensorProto.INT64,
                 dims=[1],
                 vals=[1],
+                raw=False,
             )
-            self.model.add_initializer(axes_1_tensor, self.this_graph_name)
 
         axes_2 = "ort_const_unsqueeze_axes_2"
         if self.model.get_initializer(axes_2) is None:
-            axes_2_tensor = helper.make_tensor(
+            self.add_initializer(
                 name=axes_2,
                 data_type=TensorProto.INT64,
                 dims=[1],
                 vals=[2],
+                raw=False,
             )
-            self.model.add_initializer(axes_2_tensor, self.this_graph_name)
 
         unsqueeze_3.input[1] = "ort_const_unsqueeze_axes_2"
         unsqueeze_2.input[1] = "ort_const_unsqueeze_axes_1"
