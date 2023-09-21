@@ -48,7 +48,7 @@ parameters:
   default: false
 
 stages:
-- stage: "Cuda_Python_Packaging_debug_${{ parameters.debug_build }}"
+- stage: "Cuda_Python_Packaging__cuda_${{ parameters.cuda_version }}_debug_${{ parameters.debug_build }}"
 
   variables:
     - name: isMain
