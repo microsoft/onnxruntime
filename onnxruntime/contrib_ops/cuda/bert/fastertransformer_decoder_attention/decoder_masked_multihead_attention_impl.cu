@@ -344,38 +344,29 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
-  //bool has_mask = (params.mask != nullptr);
-  //const int* mask_values = has_mask ? &params.mask[bi_total_seq_length] : nullptr;
-
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER * 2) {
-    /*
-      // Default mask value
-    int32_t mask_value_0 = 1;
-    int32_t mask_value_1 = 1;
-
-    // Trigger fetching mask value
-    if (has_mask) {
-      if (ti < tlength) {
-        mask_value_0 = mask_values[ti];
-      }
-      if ((ti + 1) < tlength) {
-        mask_value_1 = mask_values[ti + 1];
-      }
-    }
-    */
-
     // The keys loaded from the key cache.
     K_vec_k k_vec[2][K_VECS_PER_THREAD];
+
+    int beam_offset_0 = -1;
+    int beam_offset_1 = -1;
+
+    if ((ti < tlength) && has_beams) {
+      beam_offset_0 = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
+    }
+
+    if (((ti + 1) < tlength) && has_beams) {
+      beam_offset_1 = beam_indices[ti + 1] * params.num_heads * params.max_sequence_length * head_size;
+    }
+
     if (ti < tlength) {
       if (has_beams) {
-        const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
-
 #pragma unroll
         for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
           int jj = ii * params.max_sequence_length + ti;
 
           k_vec[0][ii] = vec_conversion<K_vec_k, K_vec_m>(
-              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
+              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset_0 + jj * QK_ELTS_IN_16B])));
         }
       } else {
 #pragma unroll
@@ -390,14 +381,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     if ((ti + 1) < tlength) {
       if (has_beams) {
-        const int beam_offset = beam_indices[ti + 1] * params.num_heads * params.max_sequence_length * head_size;
-
 #pragma unroll
         for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
           int jj = ii * params.max_sequence_length + ti + 1;
 
           k_vec[1][ii] = vec_conversion<K_vec_k, K_vec_m>(
-              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
+              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset_1 + jj * QK_ELTS_IN_16B])));
         }
       } else {
 #pragma unroll
@@ -415,19 +404,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     float qk_0 = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec[0]) * inv_sqrt_dh;
 
     float qk_1 = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec[1]) * inv_sqrt_dh;
-
-    // This is a deviation from FasterTransformer kernel implementation
-    // but this aligns with ORT's other Attention kernels which strives to
-    // mimic PyTorch when dealing with mask filter values
-    /*
-    if (mask_value_0 == 0) {
-      qk_0 += params.mask_filter_value;
-    }
-
-    if (mask_value_1 == 0) {
-      qk_1 += params.mask_filter_value;
-    }
-    */
 
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
@@ -552,10 +528,21 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   zero(out);
 
   // Loop over the timesteps to compute the partial outputs.
+
+  int v_beam_src[2];
+  if (vo < tlength) {
+    v_beam_src[1] = has_beams ? beam_indices[vo] : 0;
+  }
+
   for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
+    v_beam_src[0] = v_beam_src[1];
+
+    if ((ti + V_PER_ITER) < tlength) {
+      v_beam_src[1] = has_beams ? beam_indices[ti + V_PER_ITER] : 0;
+    }
+
     // Fetch offset based on cache_indir when beam sampling
-    const int beam_src = has_beams ? params.cache_indir[bi_max_seq_length + ti] : 0;
-    const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
+    const int beam_offset = has_beams ? v_beam_src[0] * params.num_heads * params.max_sequence_length * head_size : 0;
 
     // Load the values from the cache.
     V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
