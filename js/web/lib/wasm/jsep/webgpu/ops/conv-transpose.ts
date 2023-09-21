@@ -292,6 +292,7 @@ const convTranspose2d =
               sequentialAccessByThreads),
           {inputs: convTransposeInputs});
     };
+
 const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
   // extend the input to 2D by adding H dimension
   const isChannelLast = attributes.format === 'NHWC';
