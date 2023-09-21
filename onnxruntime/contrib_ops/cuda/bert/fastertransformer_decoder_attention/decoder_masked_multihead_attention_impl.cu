@@ -530,26 +530,29 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   // Loop over the timesteps to compute the partial outputs.
 
   int v_beam_src[2];
+  V_vec_k v_vec[2];
+
   if (vo < tlength) {
     v_beam_src[1] = has_beams ? beam_indices[vo] : 0;
+    const int beam_offset = has_beams ? v_beam_src[1] * params.num_heads * params.max_sequence_length * head_size : 0;
+    v_vec[1] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
   }
 
   for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
+    // Current data fetch
     v_beam_src[0] = v_beam_src[1];
+    v_vec[0] = v_vec[1];
 
+    // Next data load
     if ((ti + V_PER_ITER) < tlength) {
       v_beam_src[1] = has_beams ? beam_indices[ti + V_PER_ITER] : 0;
+      const int beam_offset = has_beams ? v_beam_src[1] * params.num_heads * params.max_sequence_length * head_size : 0;
+      v_vec[1] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
     }
-
-    // Fetch offset based on cache_indir when beam sampling
-    const int beam_offset = has_beams ? v_beam_src[0] * params.num_heads * params.max_sequence_length * head_size : 0;
-
-    // Load the values from the cache.
-    V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
 
     // Load the logits from shared memory.
     T logit = logits_smem[ti];
-    out = fma(logit, v, out);
+    out = fma(logit, v_vec[0], out);
   }
 
   // One group of threads computes the product(s) for the current timestep.
