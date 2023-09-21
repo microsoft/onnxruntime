@@ -151,12 +151,13 @@ export const createSessionFinalize =
             checkLastError('Can\'t get an output name.');
           }
           outputNamesUTF8Encoded.push(name);
-          outputNames.push(wasm.UTF8ToString(name));
+          const nameString = wasm.UTF8ToString(name);
+          outputNames.push(nameString);
 
           if (!BUILD_DEFS.DISABLE_WEBGPU) {
             const location = typeof options?.preferredOutputLocation === 'string' ?
                 options.preferredOutputLocation :
-                options?.preferredOutputLocation?.[name] ?? 'cpu';
+                options?.preferredOutputLocation?.[nameString] ?? 'cpu';
             if (location !== 'cpu' && location !== 'cpu-pinned' && location !== 'gpu-buffer') {
               throw new Error(`Not supported preferred output location: ${location}.`);
             }
