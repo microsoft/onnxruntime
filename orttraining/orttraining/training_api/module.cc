@@ -120,7 +120,7 @@ Status TransformModelInputsForInference(Graph& inference_graph,
 }  // namespace
 
 Status Parameter::CopyTo(const DataTransferManager* data_transfer_manager, OrtValue& data) const {
-  ORT_ENFORCE(data.IsAllocated(), "Given parameter data is not allocated. Cannot cope the checkpoint parameter to it.");
+  ORT_ENFORCE(data.IsAllocated(), "Given parameter data is not allocated. Cannot copy the checkpoint parameter to it.");
   ORT_ENFORCE(data.IsTensor(), "Parameter data should be of tensor type.");
   ORT_ENFORCE(data.Get<Tensor>().Shape() == data_.Get<Tensor>().Shape(),
               "Parameter data shape mismatch. Expected: ", data_.Get<Tensor>().Shape().ToString(),
