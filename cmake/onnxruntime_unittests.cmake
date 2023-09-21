@@ -62,8 +62,7 @@ function(AddTest)
   else()
     if(onnxruntime_USE_CUDA)
       #XXX: we should not need to do this. onnxruntime_test_all.exe should not have direct dependency on CUDA DLLs,
-      # otherwise it will impact when CUDA DLLs can be unloaded and it will mask use-after-free problems that related to
-      # global CUDA objects.
+      # otherwise it will impact when CUDA DLLs can be unloaded.
       target_link_libraries(${_UT_TARGET} PRIVATE cudart)
       target_include_directories(${_UT_TARGET} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
     endif()
