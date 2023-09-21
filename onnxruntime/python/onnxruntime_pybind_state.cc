@@ -689,15 +689,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             }
           } else if (option.first == "trt_tactic_sources") {
             if (!option.second.empty()) {
-              trt_tactic_sources = option.second.c_str();
-              params.trt_tactic_sources = trt_tactic_sources;
+              trt_tactic_sources = option.second;
+              params.trt_tactic_sources = trt_tactic_sources.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a string. e.g. \"-CUDNN,+CUBLAS\" available keys: \"CUBLAS\"|\"CUBLAS_LT\"|\"CUDNN\"|\"EDGE_MASK_CONVOLUTIONS\".\n");
             }
           } else if (option.first == "trt_extra_plugin_lib_paths") {
             if (!option.second.empty()) {
-              trt_extra_plugin_lib_paths = option.second.c_str();
-              params.trt_extra_plugin_lib_paths = trt_extra_plugin_lib_paths;
+              trt_extra_plugin_lib_paths = option.second;
+              params.trt_extra_plugin_lib_paths = trt_extra_plugin_lib_paths.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a path string.\n");
             }
