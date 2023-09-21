@@ -20,6 +20,11 @@ parameters:
     cuda_version.
   type: string
 
+- name: cuda_version_nodot
+  displayName: >
+    cuda_version_nodot.
+  type: string
+
 - name: cmake_cuda_architectures
   displayName: >
     cmake_cuda_architectures
@@ -48,7 +53,7 @@ parameters:
   default: false
 
 stages:
-- stage: "Cuda_Python_Packaging_cuda_$(echo ${{parameters.cuda_version}} | awk -F. '{print$1$2}')_debug_${{ parameters.debug_build }}"
+- stage: "Cuda_Python_Packaging_cuda_${{ parameters.cuda_version_nodot }}_debug_${{ parameters.debug_build }}"
 
   variables:
     - name: isMain
