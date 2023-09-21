@@ -535,7 +535,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   if (vo < tlength) {
     v_beam_src[1] = has_beams ? beam_indices[vo] : 0;
     const int beam_offset = has_beams ? v_beam_src[1] * params.num_heads * params.max_sequence_length * head_size : 0;
-    v_vec[1] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
+    v_vec[1] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + vo * head_size]));
   }
 
   for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
