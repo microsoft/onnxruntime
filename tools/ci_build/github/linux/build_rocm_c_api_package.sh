@@ -40,7 +40,7 @@ docker run --rm \
     --use_rocm --rocm_version=$ROCM_VERSION --rocm_home $ROCM_HOME --nccl_home $ROCM_HOME \
     --build_shared_lib \
     --skip_submodule_sync \
-    --skip_tests \
+    --skip_tests --cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER
 
 
 EXIT_CODE=$?
