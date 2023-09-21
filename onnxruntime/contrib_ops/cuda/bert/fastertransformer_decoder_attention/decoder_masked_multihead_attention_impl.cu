@@ -439,7 +439,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     if ((ti + 3) < tlength) {
       if (has_beams) {
-        int beam_offset_3 = beam_index_2 * params.num_heads * params.max_sequence_length * head_size;
+        int beam_offset_3 = beam_index_3 * params.num_heads * params.max_sequence_length * head_size;
 
 #pragma unroll
         for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
