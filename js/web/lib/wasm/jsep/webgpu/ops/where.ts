@@ -96,7 +96,7 @@ const createWhereOpProgramInfo = (metadata: ProgramMetadata, inputs: readonly Te
     getShaderSource: (shaderHelper) =>
         createWhereOpProgramShader(shaderHelper, inputs, outputShape, isBroadcast, outputDataType),
     outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
-    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */ / (isBroadcast ? 1 : 4) /* vec size */)})
+    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* vec size */)})
   };
 };
 
