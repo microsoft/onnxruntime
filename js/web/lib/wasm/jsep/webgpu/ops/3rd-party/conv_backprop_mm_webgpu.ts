@@ -122,9 +122,9 @@ export const createConv2DTransposeMatMulProgramInfo =
       const outWidth = isChannelsLast ? outputShape[2] : outputShape[3];
       const outHeight = isChannelsLast ? outputShape[1] : outputShape[2];
       const outChannels = isChannelsLast ? outputShape[3] : outputShape[1];
-      const isVec4 = ((inChannels % 4 === 0 && isChannelsLast) ||
-                      (outWidth % 4 === 0 && !isChannelsLast)) &&
-          outChannels % 4 === 0;
+      const isVec4 =
+          ((inChannels % 4 === 0 && outChannels % 4 === 0 && isChannelsLast) ||
+           (outWidth % 4 === 0 && !isChannelsLast));
 
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
