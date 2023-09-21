@@ -176,7 +176,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
 }
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateDXCore(
-    std::vector<ComPtr<IDXCoreAdapter>> dxcore_devices) {
+    std::vector<ComPtr<IDXCoreAdapter>>&& dxcore_devices) {
   // Choose the first device from the list since it's the highest priority
   auto dxcore_device = dxcore_devices[0];
 
@@ -259,7 +259,7 @@ ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
 }
 
 static bool IsHardwareAdapter(IDXCoreAdapter* adapter) {
-    bool is_hardware{ false };
+    bool is_hardware = false;
     THROW_IF_FAILED(adapter->GetProperty(
         DXCoreAdapterProperty::IsHardware,
         &is_hardware));
@@ -280,87 +280,110 @@ static bool IsNPU(IDXCoreAdapter* compute_adapter) {
     return !(compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS));
 }
 
-ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
+enum class DeviceType { GPU, NPU, BadDevice };
+
+static DeviceType FilterAdapterTypeQuery(IDXCoreAdapter* adapter, OrtDmlDeviceFilter filter)
+{
+    if ((filter & OrtDmlDeviceFilter::Gpu) == OrtDmlDeviceFilter::Gpu) {
+        return DeviceType::GPU;
+    }
+    if ((filter & OrtDmlDeviceFilter::Npu) == OrtDmlDeviceFilter::Npu) {
+       return DeviceType::NPU;
+    }
+    return DeviceType::BadDevice;
+}
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_options) {
 API_IMPL_BEGIN
-    OrtDmlPerformancePreference perf_pref = device_opts->perf_pref;
-    OrtDmlDeviceFilter dev_filter = device_opts->dev_filter;
+    OrtDmlPerformancePreference preference = device_options->Preference;
+    OrtDmlDeviceFilter filter = device_options->Filter;
 
     // Create DXCore Adapter Factory
-    ComPtr<IDXCoreAdapterFactory> adapterFactory;
-    ORT_THROW_IF_FAILED(::DXCoreCreateAdapterFactory(adapterFactory.GetAddressOf()));
+    ComPtr<IDXCoreAdapterFactory> adapter_factory;
+    ORT_THROW_IF_FAILED(::DXCoreCreateAdapterFactory(adapter_factory.GetAddressOf()));
 
     // Get a list of all the adapters that support compute
-    ComPtr<IDXCoreAdapterList> d3D12CoreComputeAdapters;
+    ComPtr<IDXCoreAdapterList> adapter_list;
     GUID attributes[]{ DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE };
     ORT_THROW_IF_FAILED(
-        adapterFactory->CreateAdapterList(_countof(attributes),
+        adapter_factory->CreateAdapterList(_countof(attributes),
             attributes,
-            d3D12CoreComputeAdapters.GetAddressOf()));
+            adapter_list.GetAddressOf()));
 
-    const uint32_t count{ d3D12CoreComputeAdapters->GetAdapterCount() };
-    int compute_only_device_id = -1;
+    // Move this to another static helper... add coments about the use case...
+    // DML prefers the HighPerformance adapter by default
+    std::array<DXCoreAdapterPreference, 1> adapter_list_preferences = {
+        DXCoreAdapterPreference::HighPerformance 
+    };
+
+    // If callers specify minimum power change the DXCore sort policy
+    // NOTE...
+    if (preference == OrtDmlPerformancePreference::MinimumPower)
+    {
+        adapter_list_preferences[0] = DXCoreAdapterPreference::MinimumPower;
+    }
+    
+    ORT_THROW_IF_FAILED(adapter_list->Sort(adapter_list_preferences.size(), adapter_list_preferences.data()));
 
     // Struct for holding each adapter
-    enum class DeviceType { GPU, NPU, BadDevice};
     struct AdapterInfo {
         ComPtr<IDXCoreAdapter> Adapter;
         DeviceType Type; // GPU or NPU
     };
 
-    // Returns an adapter type based on the user supplied device filter
-    std::function<DeviceType (IDXCoreAdapter*)> filterAdapterTypeQuery[4] = {
-        nullptr, // enum cannot take 0 value
-        // Only GPUs are considered so all other devices aren't needed
-        [](IDXCoreAdapter* adapter){ return IsGPU(adapter) ? DeviceType::GPU : DeviceType::BadDevice; },
-        // Only NPUs are considered so all other devices aren't needed
-        [](IDXCoreAdapter* adapter){ return IsNPU(adapter) ? DeviceType::NPU : DeviceType::BadDevice; },
-        // Both GPUs and NPUs are considered
-        [](IDXCoreAdapter* adapter){ return IsGPU(adapter) ? DeviceType::GPU :
-        IsNPU(adapter) ? DeviceType::NPU : DeviceType::BadDevice; }
-    };
-
-    auto selected_adapters = std::vector<AdapterInfo>();
-    // Iterate through all compute capable adapters
+    auto adapter_infos = std::vector<AdapterInfo>();
+    const uint32_t count = adapter_list->GetAdapterCount();
     for (uint32_t i = 0; i < count; ++i)
     {
-        ComPtr<IDXCoreAdapter> candidateAdapter;
-        ORT_THROW_IF_FAILED(
-            d3D12CoreComputeAdapters->GetAdapter(i, candidateAdapter.GetAddressOf()));
+        ComPtr<IDXCoreAdapter> candidate_adapter;
+        ORT_THROW_IF_FAILED(adapter_list->GetAdapter(i, candidate_adapter.GetAddressOf()));
 
         // Add the adapters that are valid based on the device filter (GPU, NPU, or Both)
-        auto adapterType = filterAdapterTypeQuery[static_cast<int>(dev_filter)](candidateAdapter.Get());
-        if (adapterType != DeviceType::BadDevice) {
-            selected_adapters.push_back(AdapterInfo{candidateAdapter, adapterType});
+        auto adapter_type = FilterAdapterTypeQuery(candidate_adapter.Get(), filter);
+        if (adapter_type != DeviceType::BadDevice)
+        {
+            adapter_infos.push_back(AdapterInfo{candidate_adapter, adapter_type});
         }
     }
 
     // When considering both GPUs and NPUs sort them by performance preference
     // of Default (Gpus first), HighPerformance (GPUs first), or LowPower (NPUs first)
-    if (dev_filter == OrtDmlDeviceFilter::Both) // considering both NPUs and GPUs
+    auto keep_npus = (filter & OrtDmlDeviceFilter::Npu) == OrtDmlDeviceFilter::Npu;
+    auto only_npus =  filter == OrtDmlDeviceFilter::Npu;
+    if (keep_npus && !only_npus)
     {
         struct SortingPolicy
         {
             // default is false because GPUs are considered higher priority in
             // a mixed adapter environment
             bool npus_first_ = false;
-            SortingPolicy(bool npus_first = false) : npus_first_(npus_first){}
-            bool operator()(const AdapterInfo& a, const AdapterInfo& b) {
-                return npus_first_ ? a.Type > b.Type : a.Type < b.Type;
+            
+            SortingPolicy(bool npus_first = false) : npus_first_(npus_first)
+            {
+            }
+
+            bool operator()(const AdapterInfo& a, const AdapterInfo& b)
+            {
+                return npus_first_ ? a.Type < b.Type : a.Type > b.Type;
             }
         };
-        auto sortingPolicy = SortingPolicy(perf_pref != OrtDmlPerformancePreference::LowPower);
-        std::sort(selected_adapters.begin(), selected_adapters.end(), sortingPolicy);
+
+        auto npus_first = (preference == OrtDmlPerformancePreference::MinimumPower);
+        auto policy = SortingPolicy(npus_first);
+        std::sort(adapter_infos.begin(), adapter_infos.end(), policy);
     }
 
     // Extract just the adapters
-    std::vector<ComPtr<IDXCoreAdapter>> sorted_dxcore_adapters;
-    std::for_each(selected_adapters.begin(), selected_adapters.end(), [&](AdapterInfo a){
-        sorted_dxcore_adapters.push_back(a.Adapter); });
+    std::vector<ComPtr<IDXCoreAdapter>> adapters(adapter_infos.size());
+    std::transform(
+        adapter_infos.begin(), adapter_infos.end(),
+        adapters.begin(),
+        [](auto& a){ return a.Adapter; });
 
     // check if num adapters is 0 (no adapters?)
     // return the create function for a dxcore device
     options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::CreateDXCore(
-        sorted_dxcore_adapters));
+        std::move(adapters)));
   return nullptr;
 API_IMPL_END
 }

@@ -33,18 +33,27 @@ extern "C" {
 enum OrtDmlPerformancePreference {
   Default = 0,
   HighPerformance = 1,
-  LowPower = 2
+  MinimumPower = 2
 };
 
-enum OrtDmlDeviceFilter {
-  Gpu = 1,
-  Npu = 2,
-  Both = 3
+enum OrtDmlDeviceFilter : uint32_t {
+  Any = (1 << 32) - 1,
+  Gpu = 1 << 0,
+  Npu = 1 << 1,
 };
+
+inline OrtDmlDeviceFilter operator~(OrtDmlDeviceFilter a) { return (OrtDmlDeviceFilter) ~(int)a; }
+inline OrtDmlDeviceFilter operator|(OrtDmlDeviceFilter a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter)((int)a | (int)b); }
+inline OrtDmlDeviceFilter operator&(OrtDmlDeviceFilter a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter)((int)a & (int)b); }
+inline OrtDmlDeviceFilter operator^(OrtDmlDeviceFilter a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter)((int)a ^ (int)b); }
+inline OrtDmlDeviceFilter& operator|=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter&)((int&)a |= (int)b); }
+inline OrtDmlDeviceFilter& operator&=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter&)((int&)a &= (int)b); }
+inline OrtDmlDeviceFilter& operator^=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter&)((int&)a ^= (int)b); }
+
 
 struct OrtDmlDeviceOptions {
-  OrtDmlPerformancePreference perf_pref;
-  OrtDmlDeviceFilter dev_filter;
+  OrtDmlPerformancePreference Preference;
+  OrtDmlDeviceFilter Filter;
 };
 
 /**
