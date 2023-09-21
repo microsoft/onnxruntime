@@ -283,7 +283,9 @@ class QDQQuantizer(ONNXQuantizer):
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
                 weight_name,
-                self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
+                # restoring the previous value in onnxruntime==1.15.1 --> it is always TensorProto.INT8
+                # self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
+                onnx_proto.TensorProto.INT8,
                 axis,
                 keep_float_weight=self.add_qdq_pair_to_weight,
             )

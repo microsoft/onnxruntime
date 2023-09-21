@@ -12,7 +12,10 @@ import unittest
 import numpy as np
 from numpy.testing import assert_allclose
 
-from onnxruntime import InferenceSession
+import onnx
+from onnx.numpy_helper import to_array
+
+from onnxruntime import InferenceSession, __version__ as ort_version
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import CalibrationDataReader, CalibrationMethod
 from resnet_code import create_model
@@ -37,6 +40,7 @@ class TestStaticQuantizationResNet(unittest.TestCase):
     def test_quantize_static_resnet(self):
         kwargs = {
             "activation_type": QuantType.QUInt8,
+            "weight_type": QuantType.QInt8,
             "calibrate_method": CalibrationMethod.Percentile,
             "extra_options": {
                 "ActivationSymmetric": False,
@@ -49,48 +53,84 @@ class TestStaticQuantizationResNet(unittest.TestCase):
             "nodes_to_exclude": None,
             "nodes_to_quantize": None,
             "op_types_to_quantize": None,
-            # if per_channel is True, it raises an exception.
-            # QLinearConv : zero point of per-channel filter must be same
-            "per_channel": False,
+            "per_channel": True,
             "quant_format": QuantFormat.QDQ,
             "reduce_range": False,
             "weight_type": QuantType.QUInt8,
         }
 
-        dataloader = FakeResnetCalibrationDataReader(16)
         proto = create_model()
 
         with tempfile.TemporaryDirectory() as temp:
             model = os.path.join(temp, "resnet_first_nodes.onnx")
             with open(model, "wb") as f:
                 f.write(proto.SerializeToString())
-            qdq_file = os.path.join(temp, "preprocessed-small-qdq.onnx")
-            quantize_static(
-                model_input=model,
-                model_output=qdq_file,
-                calibration_data_reader=dataloader,
-                use_external_data_format=False,
-                **kwargs,
-            )
 
-            sess = InferenceSession(qdq_file, providers=["CPUExecutionProvider"])
-            shape = (1, 3, 32, 32)
-            size = np.prod(shape)
-            dummy = (np.arange(size) / float(size)).astype(np.float32).reshape(shape)
-            got = sess.run(None, {"input": dummy})
-            self.assertEqual(got[0].shape, (1, 64, 8, 8))
-            self.assertEqual(got[0].dtype, np.float32)
-            expected = np.array(
-                [
-                    [[1.4244736433029175, 1.256888508796692], [1.3406810760498047, 1.2149922847747803]],
-                    [[0.8798219561576843, 1.131199598312378], [1.131199598312378, 1.173095941543579]],
-                    [[0.0, 0.0], [0.0, 0.0]],
-                    [[0.0, 0.0], [1.2149922847747803, 1.0474071502685547]],
-                ],
-                dtype=np.float32,
-            )
-            print(got[0][0, :4, :2, :2].tolist())
-            assert_allclose(expected, got[0][0, :4, :2, :2], atol=1e-2)
+            for per_channel in [True, False]:
+                kwargs["per_channel"] = per_channel
+                dataloader = FakeResnetCalibrationDataReader(16)
+                with self.subTest(per_channel=per_channel):
+                    qdq_file = os.path.join(
+                        temp, "preprocessed-small-qdq-{1 if per_channel else 0}-ort-{ort_version}.onnx"
+                    )
+                    quantize_static(
+                        model_input=model,
+                        model_output=qdq_file,
+                        calibration_data_reader=dataloader,
+                        use_external_data_format=False,
+                        **kwargs,
+                    )
+
+                    # With onnxruntime==1.15.1, the initializer 'onnx::Conv_504_zero_point' is:
+                    # * uint8(128) if per_channel is False
+                    # * int8([0, 0, ....]) if per_channel is True
+                    # With onnxruntime>1.16.0
+                    # * uint8(128) if per_channel is False
+                    # * uint8([128, 128, ..., 127, ...]) if per_channel is True
+                    # Then, onnxruntime raises an exception because all the zero point
+                    # per channel are expected to be the same
+                    # (QLinearConv : zero point of per-channel filter must be same).
+                    # The new behaviour seems the expected one from the quantization tools
+                    # because the quantization is expected into uint8. However, some rounding
+                    # issues leads to a model onnxruntime does not support anymore.
+
+                    with open(qdq_file, "rb") as f:
+                        onx = onnx.load(f)
+                    for init in onx.graph.initializer:
+                        arr = to_array(init)
+                        if arr.dtype == np.int8 and "zero_point" not in init.name:
+                            raise AssertionError(
+                                f"Initiliazer {init.name!r} has type {arr.dtype} but should be {np.uint8}."
+                            )
+
+                    sess = InferenceSession(qdq_file, providers=["CPUExecutionProvider"])
+                    shape = (1, 3, 32, 32)
+                    size = np.prod(shape)
+                    dummy = (np.arange(size) / float(size)).astype(np.float32).reshape(shape)
+                    got = sess.run(None, {"input": dummy})
+                    self.assertEqual(got[0].shape, (1, 64, 8, 8))
+                    self.assertEqual(got[0].dtype, np.float32)
+                    if per_channel:
+                        expected = np.array(
+                            [
+                                [[1.0862497091293335, 0.9609132409095764], [1.0862497091293335, 0.9191343784332275]],
+                                [[0.7520190477371216, 1.0026921033859253], [1.0444709062576294, 1.0862497091293335]],
+                                [[0.0, 0.0], [0.0, 0.0]],
+                                [[0.0, 0.0], [0.9609132409095764, 0.7937979102134705]],
+                            ],
+                            dtype=np.float32,
+                        )
+                    else:
+                        expected = np.array(
+                            [
+                                [[1.428238868713379, 1.2602107524871826], [1.3442248106002808, 1.2182037830352783]],
+                                [[0.8821475505828857, 1.0921826362609863], [1.1341897249221802, 1.1761966943740845]],
+                                [[0.0, 0.0], [0.0, 0.0]],
+                                [[0.0, 0.0], [1.2182037830352783, 1.050175666809082]],
+                            ],
+                            dtype=np.float32,
+                        )
+                    assert_allclose(expected, got[0][0, :4, :2, :2], atol=0.1)
 
 
 if __name__ == "__main__":
