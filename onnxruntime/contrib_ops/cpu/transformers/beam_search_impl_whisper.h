@@ -38,9 +38,7 @@ class BeamSearchWhisper : public BeamSearchBase<T> {
                     const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
                     const GenerationDeviceHelper::CreateBeamScorer& create_beam_scorer_func,
                     const GenerationDeviceHelper::UpdateDecoderCrossQKFunc& update_decoder_cross_qk_func,
-                    const GenerationDeviceHelper::FinalizeDecoderCrossQKFunc& finalize_decoder_cross_qk_func,
-                    const void* cuda_device_prop,
-                    int cuda_device_arch)
+                    const GenerationDeviceHelper::FinalizeDecoderCrossQKFunc& finalize_decoder_cross_qk_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           ort_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
@@ -56,8 +54,8 @@ class BeamSearchWhisper : public BeamSearchBase<T> {
         create_beam_scorer_func_(create_beam_scorer_func),
         update_decoder_cross_qk_func_(update_decoder_cross_qk_func),
         finalize_decoder_cross_qk_func_(finalize_decoder_cross_qk_func),
-        cuda_device_prop_(cuda_device_prop),
-        cuda_device_arch_(cuda_device_arch) {}
+        cuda_device_prop_(nullptr),
+        cuda_device_arch_(0) {}
 
 #ifdef USE_CUDA
   Status InitializeCuda(
