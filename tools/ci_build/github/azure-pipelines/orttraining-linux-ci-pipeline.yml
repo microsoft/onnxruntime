@@ -106,7 +106,7 @@ jobs:
               --build_wheel \
               --enable_onnx_tests \
               --enable_training \
-              --use_cache \
+              --use_cache; \
                 ccache -sv; \
                 ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
