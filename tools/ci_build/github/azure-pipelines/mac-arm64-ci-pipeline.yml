@@ -15,9 +15,6 @@ jobs:
     clean: all
 
   steps:
-  - bash: |
-      caffeinate -s -t $(( $(jobTimeoutInMinutes) * 60 )) &
-    displayName: Prevent machine from going to sleep
 
   # Note: We will use a dedicated conda environment to keep the Python dependencies contained.
   # On a hosted agent this would not be necessary.
