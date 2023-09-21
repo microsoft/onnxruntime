@@ -30,13 +30,13 @@ typedef struct IDMLDevice IDMLDevice;
 extern "C" {
 #endif
 
-enum class OrtDmlPerformancePreference {
+enum OrtDmlPerformancePreference {
   Default = 0,
   HighPerformance = 1,
   LowPower = 2
 };
 
-enum class OrtDmlDeviceFilter {
+enum OrtDmlDeviceFilter {
   Gpu = 1,
   Npu = 2,
   Both = 3
