@@ -412,6 +412,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* t_input_metadata = context->Input<Tensor>(5);
   const Tensor* positions = context->Input<Tensor>(6);
   const Tensor* cos_sin_cache = context->Input<Tensor>(7);
+  const Tensor* kv_quant_param = (context->InputCount() > 8) ? context->Input<Tensor>(8) : nullptr;
+  ORT_UNUSED_PARAMETER(kv_quant_param);
 
   InputMetadata* input_metadata = reinterpret_cast<InputMetadata*>(t_input_metadata->Data<int64_t>()[0]);
 

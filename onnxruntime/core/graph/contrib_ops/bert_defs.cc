@@ -680,20 +680,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("head_size", "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size", AttributeProto::INT)
         .Attr("scale", "Custom scale will be used if specified. Default value is 1/sqrt(head_size)", AttributeProto::FLOAT)
         .Attr("mask_type", "position_mask_type, support [normal, alibi, RoPE]", AttributeProto::STRING)
-        .AllowUncheckedAttributes()
+        //.AllowUncheckedAttributes()
         .Input(0, "query", "The input Q-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
         .Input(1, "key", "The input K-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
         .Input(2, "value", "The input V-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
-        .Input(3, "key_cache", "Blocked key cache in this layer.", "T")
-        .Input(4, "value_cache", "Blocked value cache in this layer.", "T")
+        .Input(3, "key_cache", "Blocked key cache in this layer.", "T2")
+        .Input(4, "value_cache", "Blocked value cache in this layer.", "T2")
         .Input(5, "input_metadata", "Block mapping for each token, and some other eseential infos in InputMetadata, This input Tensor has shape [1], the value is a pointer of struct InputMetadata. It should be converted into a class and used then", "T1")
         .Input(6, "positions", "positions used for RoPE embedding", "T1", OpSchema::Optional)
         .Input(7, "cos_sin_cache", "cos_sin_cache used for RoPE embedding", "T", OpSchema::Optional)
+        .Input(8, "kv_quant_param", "quantization param for kvcache, like scale and zeropoint", "T", OpSchema::Optional)
         .Output(0, "output", "Attention output", "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                        "Constrain input and output types to float tensors.")
-        .TypeConstraint("T1", {"tensor(int64)"},
-                        "Constrain input META types to pointer tensors.")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float/ tensors.")
+        .TypeConstraint("T1", {"tensor(int64)"}, "Constrain input META types to pointer tensors.")
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "kvcache and quant scale")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateShapeAndTypeFromFirstInput(ctx);
         }));
