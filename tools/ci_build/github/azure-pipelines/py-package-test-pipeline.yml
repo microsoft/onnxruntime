@@ -3,7 +3,7 @@ resources:
   - pipeline: build
     source: 'Python packaging pipeline'
     trigger: true
-    branch: main # branch to pick the artifact, Used only for manual triggered pipeline runs for testing the pipeline itself
+    branch: rel-1.16.0 # branch to pick the artifact, Used only for manual triggered pipeline runs for testing the pipeline itself
   #TODO: Remove the following dependency. Running python tests should not need to use manylinux.
   repositories:
   - repository: manylinux # The name used to reference this repository in the checkout step
