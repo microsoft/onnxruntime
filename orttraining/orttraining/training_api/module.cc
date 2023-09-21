@@ -125,6 +125,15 @@ Status Parameter::CopyTo(const DataTransferManager* data_transfer_manager, OrtVa
   ORT_ENFORCE(data.Get<Tensor>().Shape() == data_.Get<Tensor>().Shape(),
               "Parameter data shape mismatch. Expected: ", data_.Get<Tensor>().Shape().ToString(),
               ", Got: ", data.Get<Tensor>().Shape().ToString());
+#ifdef ENABLE_STRIDED_TENSORS
+  auto data_strides = data.Get<Tensor>().Strides();
+  auto param_strides = data_.Get<Tensor>().Strides();
+  ORT_ENFORCE(data_strides.size() == param_strides.size(),
+              "Parameter data stride mismatch. Expected strides of size: ", param_strides.size(),
+              ", Got: ", data_strides.size());
+  ORT_ENFORCE(std::equal(data_strides.begin(), data_strides.end(), param_strides.begin()),
+              "Parameter data stride value mismatch.");
+#endif
   ORT_ENFORCE(data.Get<Tensor>().DataType() == data_.Get<Tensor>().DataType(),
               "Parameter data type mismatch. Expected: ", data_.Get<Tensor>().DataType(),
               ", Got: ", data.Get<Tensor>().DataType());
@@ -144,6 +153,15 @@ Status Parameter::CopyFrom(const DataTransferManager* data_transfer_manager, con
   ORT_ENFORCE(data.Get<Tensor>().Shape() == data_.Get<Tensor>().Shape(),
               "Parameter data shape mismatch. Expected: ", data_.Get<Tensor>().Shape().ToString(),
               ", Got: ", data.Get<Tensor>().Shape().ToString());
+#ifdef ENABLE_STRIDED_TENSORS
+  auto data_strides = data.Get<Tensor>().Strides();
+  auto param_strides = data_.Get<Tensor>().Strides();
+  ORT_ENFORCE(data_strides.size() == param_strides.size(),
+              "Parameter data stride mismatch. Expected strides of size: ", param_strides.size(),
+              ", Got: ", data_strides.size());
+  ORT_ENFORCE(std::equal(data_strides.begin(), data_strides.end(), param_strides.begin()),
+              "Parameter data stride value mismatch.");
+#endif
   ORT_ENFORCE(data.Get<Tensor>().DataType() == data_.Get<Tensor>().DataType(),
               "Parameter data type mismatch. Expected: ", data_.Get<Tensor>().DataType(),
               ", Got: ", data.Get<Tensor>().DataType());

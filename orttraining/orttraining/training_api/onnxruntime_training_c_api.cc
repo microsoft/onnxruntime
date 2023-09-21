@@ -622,8 +622,12 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetParameter, _In_ const OrtCheckpointState
       allocator, parameter_tensor.Shape().GetDims().data(), parameter_tensor.Shape().NumDimensions(),
       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, parameter));
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(it->second->CopyTo(
-      chkpt_state->module_checkpoint_state.train_session_data_transfer_mgr, **parameter));
+  auto status = it->second->CopyTo(
+      chkpt_state->module_checkpoint_state.train_session_data_transfer_mgr, **parameter);
+  if (!status.IsOK()) {
+    OrtApis::ReleaseValue(*parameter);
+    return onnxruntime::ToOrtStatus(status);
+  }
 
   return nullptr;
   API_IMPL_END
