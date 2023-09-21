@@ -175,7 +175,11 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
 }
 
-std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateDXCore(ComPtr<IDXCoreAdapter> dxcore_device) {
+std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateDXCore(
+    std::vector<ComPtr<IDXCoreAdapter>> dxcore_devices) {
+  // Choose the first device from the list since it's the highest priority
+  auto dxcore_device = dxcore_devices[0];
+
   // Create D3D12 Device from DXCore Adapter
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(D3D12CreateDevice(dxcore_device.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
@@ -254,7 +258,7 @@ ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
   API_IMPL_END
 }
 
-bool IsHardwareAdapter(IDXCoreAdapter* adapter) {
+static bool IsHardwareAdapter(IDXCoreAdapter* adapter) {
     bool is_hardware{ false };
     THROW_IF_FAILED(adapter->GetProperty(
         DXCoreAdapterProperty::IsHardware,
@@ -262,14 +266,14 @@ bool IsHardwareAdapter(IDXCoreAdapter* adapter) {
     return is_hardware;
 }
 
-bool IsGPU(IDXCoreAdapter* compute_adapter) {
+static bool IsGPU(IDXCoreAdapter* compute_adapter) {
     // Only considering hardware adapters
     if (!IsHardwareAdapter(compute_adapter))
         return false;
     return compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
 }
 
-bool IsNPU(IDXCoreAdapter* compute_adapter) {
+static bool IsNPU(IDXCoreAdapter* compute_adapter) {
     // Only considering hardware adapters
     if (!IsHardwareAdapter(compute_adapter))
         return false;
@@ -346,11 +350,15 @@ API_IMPL_BEGIN
         std::sort(selected_adapters.begin(), selected_adapters.end(), sortingPolicy);
     }
 
+    // Extract just the adapters
+    std::vector<ComPtr<IDXCoreAdapter>> sorted_dxcore_adapters;
+    std::for_each(selected_adapters.begin(), selected_adapters.end(), [&](AdapterInfo a){
+        sorted_dxcore_adapters.push_back(a.Adapter); });
+
     // check if num adapters is 0 (no adapters?)
-    ComPtr<IDXCoreAdapter> highest_pri_adapter = selected_adapters[0].Adapter;
     // return the create function for a dxcore device
     options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::CreateDXCore(
-        highest_pri_adapter));
+        sorted_dxcore_adapters));
   return nullptr;
 API_IMPL_END
 }
