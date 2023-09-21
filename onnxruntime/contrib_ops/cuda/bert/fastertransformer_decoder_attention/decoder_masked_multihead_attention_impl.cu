@@ -495,32 +495,76 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   V_vec_acum out;
   zero(out);
 
- // Loop over the timesteps to compute the partial outputs.
+  // Loop over the timesteps to compute the partial outputs.
 
-  int v_beam_src[2];
-  V_vec_k v_vec[2];
+  for (int ti = vo; ti < tlength; ti += V_PER_ITER * 4) {
+    int v_beam_src[4];
+    int v_beam_offset[4];
+    V_vec_k v_vec[4];
 
-  if (vo < tlength) {
-    v_beam_src[1] = has_beams ? beam_indices[vo] : 0;
-    const int beam_offset = has_beams ? v_beam_src[1] * params.num_heads * params.max_sequence_length * head_size : 0;
-    v_vec[1] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + vo * head_size]));
-  }
+    T logits[4];
 
-  for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
-    // Current data fetch
-    v_beam_src[0] = v_beam_src[1];
-    v_vec[0] = v_vec[1];
-
-    // Next data load
-    if ((ti + V_PER_ITER) < tlength) {
-      v_beam_src[1] = has_beams ? beam_indices[ti + V_PER_ITER] : 0;
-      const int beam_offset = has_beams ? v_beam_src[1] * params.num_heads * params.max_sequence_length * head_size : 0;
-      v_vec[1] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
+    // Trigger global memory fetches of beam sources
+    if (ti < tlength) {
+      v_beam_src[0] = has_beams ? beam_indices[ti] : 0;
     }
 
+    if ((ti + 1 * V_PER_ITER) < tlength) {
+      v_beam_src[1] = has_beams ? beam_indices[ti + 1 * V_PER_ITER] : 0;
+    }
+
+    if ((ti + 2 * V_PER_ITER) < tlength) {
+      v_beam_src[2] = has_beams ? beam_indices[ti + 2 * V_PER_ITER] : 0;
+    }
+
+    if ((ti + 3 * V_PER_ITER) < tlength) {
+      v_beam_src[3] = has_beams ? beam_indices[ti + 3 * V_PER_ITER] : 0;
+    }
+
+    // Trigger global memory fetches of v data
+    // &&
     // Load the logits from shared memory.
-    T logit = logits_smem[ti];
-    out = fma(logit, v_vec[0], out);
+
+    if (ti < tlength) {
+      logits[0] = logits_smem[ti];
+      v_beam_offset[0] = v_beam_src[0] * params.num_heads * params.max_sequence_length * head_size;
+      v_vec[0] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[v_beam_offset[0] + ti * head_size]));
+    }
+
+    if ((ti + 1 * V_PER_ITER) < tlength) {
+      logits[0] = logits_smem[ti + 1 * V_PER_ITER];
+      v_beam_offset[1] = v_beam_src[1] * params.num_heads * params.max_sequence_length * head_size;
+      v_vec[1] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[v_beam_offset[1] + (ti + 1 * V_PER_ITER) * head_size]));
+    }
+
+    if ((ti + 2 * V_PER_ITER) < tlength) {
+      logits[2] = logits_smem[ti + 2 * V_PER_ITER];
+      v_beam_offset[2] = v_beam_src[2] * params.num_heads * params.max_sequence_length * head_size;
+      v_vec[2] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[v_beam_offset[2] + (ti + 2 * V_PER_ITER) * head_size]));
+    }
+
+    if ((ti + 3 * V_PER_ITER) < tlength) {
+      logits[3] = logits_smem[ti + 3 * V_PER_ITER];
+      v_beam_offset[3] = v_beam_src[3] * params.num_heads * params.max_sequence_length * head_size;
+      v_vec[3] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[v_beam_offset[3] + (ti + 3 * V_PER_ITER) * head_size]));
+    }
+
+    // Do compute
+    if (ti < tlength) {
+      out = fma(logit, v_vec[0], out);
+    }
+
+    if ((ti + 1 * V_PER_ITER) < tlength) {
+      out = fma(logit, v_vec[1], out);
+    }
+
+    if ((ti + 2 * V_PER_ITER) < tlength) {
+      out = fma(logit, v_vec[2], out);
+    }
+
+    if ((ti + 3 * V_PER_ITER) < tlength) {
+      out = fma(logit, v_vec[3], out);
+    }
   }
 
   // One group of threads computes the product(s) for the current timestep.
