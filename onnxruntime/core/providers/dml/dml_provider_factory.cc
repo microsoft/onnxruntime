@@ -276,7 +276,7 @@ bool IsNPU(IDXCoreAdapter* compute_adapter) {
     return !(compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS));
 }
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts) {
 API_IMPL_BEGIN
     OrtDmlPerformancePreference perf_pref = device_opts->perf_pref;
     OrtDmlDeviceFilter dev_filter = device_opts->dev_filter;
@@ -377,8 +377,7 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
   &CreateGPUAllocationFromD3DResource,
   &FreeGPUAllocation,
-  &GetD3D12ResourceFromAllocation,
-  &OrtSessionOptionsAppendExecutionProvider_DML2
+  &GetD3D12ResourceFromAllocation
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {

@@ -118,11 +118,11 @@ struct OrtDmlApi {
   ORT_API2_STATUS(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* dml_resource, _Out_ ID3D12Resource** d3d_resource);
 
   /**
-   * OrtSessionOptionsAppendExecutionProvider_DML2
+   * SessionOptionsAppendExecutionProvider_DML2
    * Creates a DirectML Execution Provider given the supplied device options that contain a performance preference
    * (high power, low power, or defult) and a device filter (None, GPU, or NPU).
    */
-  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
 };
 
 #ifdef __cplusplus
