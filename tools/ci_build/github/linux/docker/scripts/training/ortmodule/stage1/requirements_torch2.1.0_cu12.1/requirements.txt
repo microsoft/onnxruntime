@@ -1,7 +1,10 @@
+# TODO (abjindal): update path to torch stable location once Torch 2.1.0 is released
 --pre
--f https://download.pytorch.org/whl/test/
+-f https://download.pytorch.org/whl/test/torch/
 torch==2.1.0+cu121
+-f https://download.pytorch.org/whl/test/torchvision/
 torchvision==0.16.0+cu118
+-f https://download.pytorch.org/whl/test/torchtext/
 torchtext==0.15.2
 # TODO(bmeswani): packaging 22.0 removes support for LegacyVersion leading to errors because transformers 4.4.2 uses LegacyVersion
 packaging==21.3
