@@ -501,13 +501,10 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     int v_beam_src[4];
     int v_beam_offset[4];
     V_vec_k v_vec[4];
-
     T logits[4];
 
     // Trigger global memory fetches of beam sources
-    if (ti < tlength) {
-      v_beam_src[0] = has_beams ? beam_indices[ti] : 0;
-    }
+    v_beam_src[0] = has_beams ? beam_indices[ti] : 0;
 
     if ((ti + 1 * V_PER_ITER) < tlength) {
       v_beam_src[1] = has_beams ? beam_indices[ti + 1 * V_PER_ITER] : 0;
@@ -521,18 +518,14 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       v_beam_src[3] = has_beams ? beam_indices[ti + 3 * V_PER_ITER] : 0;
     }
 
-    // Trigger global memory fetches of v data
-    // &&
+    // Trigger global memory fetches of v data &&
     // Load the logits from shared memory.
-
-    if (ti < tlength) {
-      logits[0] = logits_smem[ti];
-      v_beam_offset[0] = v_beam_src[0] * params.num_heads * params.max_sequence_length * head_size;
-      v_vec[0] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[v_beam_offset[0] + ti * head_size]));
-    }
+    logits[0] = logits_smem[ti];
+    v_beam_offset[0] = v_beam_src[0] * params.num_heads * params.max_sequence_length * head_size;
+    v_vec[0] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[v_beam_offset[0] + ti * head_size]));
 
     if ((ti + 1 * V_PER_ITER) < tlength) {
-      logits[0] = logits_smem[ti + 1 * V_PER_ITER];
+      logits[1] = logits_smem[ti + 1 * V_PER_ITER];
       v_beam_offset[1] = v_beam_src[1] * params.num_heads * params.max_sequence_length * head_size;
       v_vec[1] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[v_beam_offset[1] + (ti + 1 * V_PER_ITER) * head_size]));
     }
@@ -550,9 +543,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     }
 
     // Do compute
-    if (ti < tlength) {
-      out = fma(logits[0], v_vec[0], out);
-    }
+    out = fma(logits[0], v_vec[0], out);
 
     if ((ti + 1 * V_PER_ITER) < tlength) {
       out = fma(logits[1], v_vec[1], out);
