@@ -222,7 +222,7 @@ jobs:
     clean: all
   pool: AMD-GPU
   dependsOn:
-  - Linux_Build
+  - Linux_Build_ubuntu
   timeoutInMinutes: 120
 
   steps:
