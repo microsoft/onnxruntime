@@ -1,0 +1,8 @@
+--pre
+-f https://download.pytorch.org/whl/test/
+torch==2.1.0+cu121
+torchvision==0.16.0+cu118
+torchtext==0.15.2
+# TODO(bmeswani): packaging 22.0 removes support for LegacyVersion leading to errors because transformers 4.4.2 uses LegacyVersion
+packaging==21.3
+setuptools>=41.4.0
