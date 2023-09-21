@@ -90,13 +90,6 @@ function(AddTest)
     # include dbghelp in case tests throw an ORT exception, as that exception includes a stacktrace, which requires dbghelp.
     target_link_libraries(${_UT_TARGET} PRIVATE debug dbghelp)
 
-    if (onnxruntime_USE_CUDA)
-      # disable a warning from the CUDA headers about unreferenced local functions
-      if (MSVC)
-        target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4505>"
-                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4505>")
-      endif()
-    endif()
     if (MSVC)
       # warning C6326: Potential comparison of a constant with another constant.
       # Lot of such things came from gtest
