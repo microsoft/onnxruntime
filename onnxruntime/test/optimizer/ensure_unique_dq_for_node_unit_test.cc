@@ -20,15 +20,17 @@ struct GraphConfig {
   bool has_subgraph_consumer{false};
 };
 
-auto GetGraphBuilder(const GraphConfig& config, bool use_ms_domain_qdq_ops) {
+template <typename QuantType>
+std::function<void(ModelTestBuilder&)> GetGraphBuilder(const GraphConfig& config, bool use_ms_domain_qdq_ops) {
   return [config, use_ms_domain_qdq_ops](ModelTestBuilder& builder) {
     const auto input_shape = std::vector<int64_t>{1, 2, 4};
     constexpr float scale = 0.5f;
-    constexpr uint8_t zero_point = 0;
+    constexpr QuantType zero_point = 0;
 
-    auto* dq_input = builder.MakeInput<uint8_t>(input_shape, uint8_t{0}, uint8_t{255});
+    auto* dq_input = builder.MakeInput<QuantType>(input_shape, std::numeric_limits<QuantType>::min(),
+                                                  std::numeric_limits<QuantType>::max());
     auto* dq_output = config.has_graph_output ? builder.MakeOutput() : builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode(dq_input, scale, zero_point, dq_output, use_ms_domain_qdq_ops);
+    builder.AddDequantizeLinearNode<QuantType>(dq_input, scale, zero_point, dq_output, use_ms_domain_qdq_ops);
 
     for (size_t i = 0; i < config.num_explicit_consumer_nodes; ++i) {
       // use Concat for the explicit consumer node as it supports a variadic number of inputs
@@ -71,10 +73,12 @@ auto GetGraphBuilder(const GraphConfig& config, bool use_ms_domain_qdq_ops) {
 }
 
 void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq_count) {
-  auto run_tests = [config, expected_dq_count](bool use_ms_domain_qdq_ops) {
+  auto run_tests = [config, expected_dq_count](bool use_ms_domain_qdq_ops, bool use_16bit_qdq_ops) {
     constexpr int opset_version = 12;
     const char* dequantize_linear_key = use_ms_domain_qdq_ops ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
-    std::function<void(ModelTestBuilder&)> graph_builder_fn = GetGraphBuilder(config, use_ms_domain_qdq_ops);
+    std::function<void(ModelTestBuilder&)> graph_builder_fn = use_16bit_qdq_ops
+                                                                  ? GetGraphBuilder<uint16_t>(config, use_ms_domain_qdq_ops)
+                                                                  : GetGraphBuilder<uint8_t>(config, use_ms_domain_qdq_ops);
 
     {
       SCOPED_TRACE("test with standalone transformer");
@@ -117,9 +121,10 @@ void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq
     }
   };
 
-  run_tests(false);
+  run_tests(false, false);
 #if !defined(DISABLE_CONTRIB_OPS)
-  run_tests(true);  // Use contrib QDQ ops.
+  run_tests(true, false);  // Use contrib QDQ ops.
+  run_tests(true, true);   // Use 16-bit contrib QDQ ops.
 #endif
 }
 
