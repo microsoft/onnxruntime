@@ -57,8 +57,8 @@ int CreateSocket(bool is_server) {
   int sockfd = -1;
 
   struct addrinfo hints;
-  struct addrinfo *result = nullptr;
-  AddrInfoPtr result_ptr(result, [](struct addrinfo *p) { if(p){freeaddrinfo(p);} });
+  struct addrinfo* result = nullptr;
+  AddrInfoPtr result_ptr(result, [](struct addrinfo* p) { if(p){freeaddrinfo(p);} });
 
   memset(&hints, 0, sizeof(struct addrinfo));
   hints.ai_family = AF_UNSPEC;     /* Allow IPv4 or IPv6 */
@@ -89,7 +89,7 @@ int CreateSocket(bool is_server) {
       continue;
     }
 
-    if (is_server){
+    if (is_server) {
       if (bind(sockfd, rp->ai_addr, rp->ai_addrlen) == 0) {
         FLLOG << "Listening on port " << port_number << " for the other GPU processores...\n";
       } else {
@@ -149,7 +149,6 @@ int WriteOnRank0(ncclUniqueId* nccl_id, int word_size) {
   return 0;
 }
 
-
 int ReadFromRank0(ncclUniqueId* nccl_id) {
   int sockfd = CreateSocket(false);
   if (sockfd < 0) {
@@ -178,7 +177,6 @@ int IPC_Bcast(ncclUniqueId* nccl_id, int rank, int world_size) {
   return 0;
 }
 }  // namespace IPC
-
 
 static Status CreateNcclCommunicator(int world_size, int rank, ncclComm_t* comm, bool is_launched_by_mpi) {
   // Create new NCCL communicator

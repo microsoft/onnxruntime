@@ -1469,29 +1469,32 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-if (UNIX AND (onnxruntime_USE_MPI OR onnxruntime_USE_NCCL))
-  if (EXISTS "${onnxruntime_MPI_HOME}")
-    set(MPI_HOME "${onnxruntime_MPI_HOME}")
-  elseif (EXISTS "/bert_ort/openmpi")
-    set(MPI_HOME "/bert_ort/openmpi")
+if (UNIX AND onnxruntime_USE_NCCL)
+  # MPI is INDEPENDENT of NCCL for now. You can build NCLL without MPI and launch multi-GPU with your own launcher.
+  if (onnxruntime_USE_MPI)
+    if (EXISTS "${onnxruntime_MPI_HOME}")
+      set(MPI_HOME "${onnxruntime_MPI_HOME}")
+    elseif (EXISTS "/bert_ort/openmpi")
+      set(MPI_HOME "/bert_ort/openmpi")
+    endif()
+    find_package(MPI)
+
+    if (MPI_CXX_FOUND)
+      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
+      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
+      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+    else ()
+      message(
+            FATAL_ERROR
+            "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
+            "or you can remove --use_mpi from build args to disable MPI."
+          )
+    endif()
   endif()
 
-  find_package(MPI)
-
-  if (MPI_CXX_FOUND)
-    message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
-    message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
-    mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-  else ()
-    message(
-          FATAL_ERROR
-          "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
-        )
-  endif()
-
-  # Find NCCL and MPI
-  if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
+  # Find NCCL
+  if (onnxruntime_USE_NCCL)
     if (onnxruntime_USE_CUDA)
       set(NCCL_LIBNAME "nccl")
     elseif (onnxruntime_USE_ROCM)
