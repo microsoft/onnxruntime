@@ -496,6 +496,42 @@ bool LogicalComparisonNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return dt_input_1 == dt_input_2;
 }
 
+bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                  const Node& node,
+                                  const std::vector<const Node*>& dq_nodes,
+                                  const std::vector<const Node*>& q_nodes) const {
+  constexpr int num_dq_inputs = 1;
+  constexpr int num_q_outputs = 1;
+  if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
+    return false;
+  }
+
+  if (const auto dq_validation_status = QDQ::ValidateNodeGroupDQNodes(graph_viewer, node, dq_nodes);
+      !dq_validation_status.IsOK()) {
+    return false;
+  }
+
+  if (num_q_outputs != gsl::narrow_cast<int>(q_nodes.size())) {
+    return false;
+  }
+
+  const Node& dq_node = *dq_nodes.front();
+  const Node& q_node = *q_nodes.front();
+
+  int32_t dt_input = dq_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
+    return graph_viewer.GetConstantInitializer(initializer_name, true);
+  };
+
+  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
+}
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 
