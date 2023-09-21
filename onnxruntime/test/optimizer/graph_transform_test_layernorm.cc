@@ -429,6 +429,8 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
+// It tests the scenario when scale or bias are not Graph Inputs and not initialized in Graph
+// To test this added a Identity node after Scale and Bias terms to ensure LayerNormFusion works properly
 TEST_F(GraphTransformationTests, LayerNormScaleBiasTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_fusion_scale_bias.onnx";
   std::shared_ptr<Model> p_model;
