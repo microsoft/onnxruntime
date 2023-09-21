@@ -491,7 +491,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
                      const auto& input_idxs = entry.second;
                      // check Id matches and the entry was for input 0 of the DQ node
                      return id == inp_node->Id() &&
-                            std::find(input_idxs.begin(), input_idxs.end(), 0) != input_idxs.end();
+                            std::find(input_idxs.begin(), input_idxs.end(), size_t(0)) != input_idxs.end();
                    }) != ctx.nodes_using_updated_shared_initializer.end()) {
     // set things up so we can look past the DQ node to the Squeeze that was inserted in front of the reshaped
     // constant initializer that was shared with this node.
@@ -690,7 +690,7 @@ static void TransposeInputImpl(api::GraphRef& graph,
                      const auto& input_idxs = entry.second;
                      // id matches and the entry is for input 0 of the DQ node
                      return id == inp_node->Id() &&
-                            std::find(input_idxs.begin(), input_idxs.end(), 0) != input_idxs.end();
+                            std::find(input_idxs.begin(), input_idxs.end(), size_t(0) 0) != input_idxs.end();
                    }) != nodes_using_updated_shared_initializer->end()) {
     // set things up so we can look past the DQ node to the Transpose that was inserted in front of the reshaped
     // constant initializer that was shared with this node.
