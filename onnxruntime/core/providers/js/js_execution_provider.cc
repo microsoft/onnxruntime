@@ -662,7 +662,7 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
     sub_graph->nodes.push_back(node_index);
     result.emplace_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
-  return IExecutionProvider::GetCapability(graph, kernel_lookup);
+  return result;
 }
 
 std::shared_ptr<KernelRegistry> JsExecutionProvider::GetKernelRegistry() const {
