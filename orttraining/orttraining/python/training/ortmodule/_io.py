@@ -168,6 +168,7 @@ def _combine_input_buffers_initializers(
     kwargs: Mapping[str, ORTModelInputOutputType],
     device: torch.device,
     rt_inspector: RuntimeInspector,
+    zero_stage3_offload_param_map: Optional[Dict[str, torch.nn.parameter.Parameter]],
 ):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
@@ -254,7 +255,12 @@ def _combine_input_buffers_initializers(
             )
 
     # params is a list of all initializers known to the onnx graph
-    result.extend(params)
+    if zero_stage3_offload_param_map:
+        for p in params:
+            if p not in zero_stage3_offload_param_map.values():
+                result.append(p)
+    else:
+        result.extend(params)
 
     return result, embed_sparsity_results, label_sparsity_results
 
