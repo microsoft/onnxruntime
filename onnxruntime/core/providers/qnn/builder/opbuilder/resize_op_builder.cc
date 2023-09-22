@@ -98,7 +98,7 @@ static Status GetQnnModeValFromOnnxString(const std::unordered_map<std::string, 
 }
 
 // Returns true if the given ONNX attribute mode value is generally supported on QNN. Note that
-// differnce QNN backends may support a smaller subset of modes.
+// different QNN backends may support a smaller subset of modes.
 static bool IsOnnxAttrModeSupported(const std::unordered_map<std::string, uint32_t>& supported_qnn_modes,
                                     const std::string& onnx_attr_value) {
   return supported_qnn_modes.find(onnx_attr_value) != supported_qnn_modes.end();
