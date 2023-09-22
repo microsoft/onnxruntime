@@ -77,9 +77,9 @@ const isSimdSupported = (): boolean => {
   }
 };
 
-const getWasmFileName = (useSimd: boolean, useThreads: boolean, useTraining: boolean) => {
+const getWasmFileName = (useSimd: boolean, useThreads: boolean) => {
   if (useSimd) {
-    if (useTraining) {
+    if (BUILD_DEFS.ENABLE_TRAINING) {
       return 'ort-training-wasm-simd.wasm';
     }
     return useThreads ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-simd.wasm';
@@ -111,7 +111,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   const wasmPaths = flags.wasmPaths;
   const wasmPrefixOverride = typeof wasmPaths === 'string' ? wasmPaths : undefined;
-  const wasmFileName = getWasmFileName(useSimd, useThreads, BUILD_DEFS.ENABLE_TRAINING);
+  const wasmFileName = getWasmFileName(useSimd, useThreads);
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[wasmFileName] : undefined;
 
   let isTimeout = false;

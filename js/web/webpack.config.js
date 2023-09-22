@@ -298,6 +298,8 @@ module.exports = () => {
             build_defs: {
               ...DEFAULT_BUILD_DEFS,
               ENABLE_TRAINING: true,
+              DISABLE_WEBGL: true,
+              DISABLE_WEBGPU: true,
             }
           }),
       );
