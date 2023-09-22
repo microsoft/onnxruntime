@@ -5,7 +5,6 @@
 	import oneLight from 'svelte-highlight/styles/one-light';
 	import { fade } from 'svelte/transition';
 	import Analytics from './components/analytics.svelte';
-	export let data;
 </script>
 
 <svelte:head>

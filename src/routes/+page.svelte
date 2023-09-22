@@ -33,13 +33,9 @@
 <Hero />
 <Customers />
 <CodeBlocks />
-<!-- <Stats/> -->
-<!-- <Table/> -->
 <GenerativeAi />
 <CrossPlatform />
 <Performance />
-<!-- <TrainingInference/>
-<WebMobile/> -->
 <TrainingAndInference />
 
 <div class="toast z-10 opacity-0 hidden">
