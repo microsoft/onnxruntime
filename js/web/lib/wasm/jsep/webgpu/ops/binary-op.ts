@@ -62,14 +62,24 @@ const createBinaryOpProgramShader =
       let assignment: string;
       if (vectorize) {
         if (doBroadcast) {
-          assignment = `
+          const isAOneElement = ShapeUtil.size(dimsA) === 1;
+          const isBOneElement = ShapeUtil.size(dimsB) === 1;
+          if (isAOneElement || isBOneElement) {
+            assignment = output.setByOffset(
+                'global_idx',
+                expressionVector(
+                    isAOneElement ? `${a.type.value}(${a.getByOffset('0')}.x)` : a.getByOffset('global_idx'),
+                    isBOneElement ? `${b.type.value}(${b.getByOffset('0')}.x)` : b.getByOffset('global_idx')));
+          } else {
+            assignment = `
             let outputIndices = ${output.offsetToIndices('global_idx * 4u')};
             let offsetA = calcOffsetA(outputIndices);
             let offsetB = calcOffsetB(outputIndices);
             ${
-              output.setByOffset(
-                  'global_idx', expressionVector(a.getByOffset('offsetA / 4u'), b.getByOffset('offsetB / 4u')))}
+                output.setByOffset(
+                    'global_idx', expressionVector(a.getByOffset('offsetA / 4u'), b.getByOffset('offsetB / 4u')))}
           `;
+          }
         } else {
           assignment = output.setByOffset(
               'global_idx', expressionVector(a.getByOffset('global_idx'), b.getByOffset('global_idx')));
@@ -141,6 +151,8 @@ const createBinaryOpProgramInfo =
         }
         outputShape = calculatedShape;
         outputSize = ShapeUtil.size(outputShape);
+        const isAOneElement = ShapeUtil.size(a.dims) === 1;
+        const isBOneElement = ShapeUtil.size(b.dims) === 1;
 
         // check whether vectorize can be enabled
         let sharedDimension = 1;
@@ -153,7 +165,7 @@ const createBinaryOpProgramInfo =
             break;
           }
         }
-        if (sharedDimension % 4 === 0) {
+        if (sharedDimension % 4 === 0 || isAOneElement || isBOneElement) {
           vectorize = true;
         }
       } else {
@@ -167,8 +179,7 @@ const createBinaryOpProgramInfo =
             shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,
             outputDataType, additionalImplementation),
         outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () =>
-            ({x: Math.ceil(outputSize / 64 /* workgroup size */ / (vectorize ? 4 : 1) /* vec size */)})
+        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)})
       };
     };
 
