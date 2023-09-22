@@ -39,8 +39,20 @@ namespace test {
 template <typename T>
 struct IsTypeQuantLinearCompatible : utils::IsByteType<T> {};
 
+template <>
+struct IsTypeQuantLinearCompatible<int16_t> : std::true_type {};
+
+template <>
+struct IsTypeQuantLinearCompatible<uint16_t> : std::true_type {};
+
 template <typename T>
 struct IsTypeDequantLinearCompatible : utils::IsByteType<T> {};
+
+template <>
+struct IsTypeDequantLinearCompatible<int16_t> : std::true_type {};
+
+template <>
+struct IsTypeDequantLinearCompatible<uint16_t> : std::true_type {};
 
 template <>
 struct IsTypeDequantLinearCompatible<int32_t> : std::true_type {};
