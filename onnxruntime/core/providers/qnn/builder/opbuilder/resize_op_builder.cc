@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <string_view>
+#include <utility>
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -19,6 +20,12 @@
 
 namespace onnxruntime {
 namespace qnn {
+
+// Maps an ONNX attribute string value to the corresponding QNN parameter integer value.
+struct QnnParamInfo {
+  std::string_view onnx_attr_value;
+  uint32_t qnn_param_value;
+};
 
 class ResizeOpBuilder : public BaseOpBuilder {
  public:
@@ -43,20 +50,6 @@ class ResizeOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  /**
-   * Returns the QNN integer value that corresponds to the given ONNX mode (string).
-   *
-   * /param onnx_modes Array of ONNX modes supported by QNN. The index of each mode corresponds to the QNN value.
-   * /param onnx_mode The ONNX mode for which to get the corresponding QNN value.
-   * /param onnx_model_label Mode label to print out in case of error (e.g., "nearest_mode").
-   * /param qnn_mode Output parameter that is set to the appropriate QNN value from the given ONNX mode.
-   *
-   * /returns A status indicating failure or success.
-   */
-  template <typename QnnValType, std::size_t N>
-  Status GetQnnModeFromString(const std::array<std::string_view, N>& onnx_modes, std::string_view onnx_mode,
-                              const char* onnx_mode_label, QnnValType& qnn_mode) const ORT_MUST_USE_RESULT;
-
   // Info for each ONNX attribute of interest (attribute name + default value)
   static const OnnxAttrInfo<std::string> onnx_mode_attr;
   static const OnnxAttrInfo<std::string> onnx_coord_transf_mode_attr;
@@ -64,22 +57,26 @@ class ResizeOpBuilder : public BaseOpBuilder {
   static const OnnxAttrInfo<int64_t> onnx_antialias_attr;
   static const OnnxAttrInfo<int64_t> onnx_exclude_outside_attr;
 
-  // Arrays of supported QNN modes for QNN's Resize op. The index of each mode is used as the corresponding
-  // QNN parameter value. Ex: The "nearest" mode is represented as the value 0 in QNN. Note, that
-  // not all modes are supported by every QNN backend.
-  //
-  // TODO: Use enum values from the Qualcomm headers!
+  // Arrays of "generally" supported QNN modes for QNN's Resize op. Each element maps the ONNX attribute string
+  // value to the corresponding QNN parameter integer value.
+  // Ex: The "nearest" mode is represented as the value 0 in QNN. Note, that not all modes are supported by
+  // every QNN backend.
 
-  // QNN values: NEAREST = 0, LINEAR = 1
-  static constexpr std::array<std::string_view, 2> supported_modes = {"nearest", "linear"};
+  static constexpr std::array<QnnParamInfo, 2> supported_modes = {
+      QnnParamInfo{"nearest", QNN_OP_RESIZE_INTERPOLATION_MODE_NEAREST},
+      QnnParamInfo{"linear", QNN_OP_RESIZE_INTERPOLATION_MODE_LINEAR}};
 
-  // QNN values: HALF_PIXEL = 0, PYTORCH_HALF_PIXEL = 1, ALIGN_CORNERS = 2, ASYMMETRIC = 3
-  static constexpr std::array<std::string_view, 4> supported_coord_transf_modes = {"half_pixel", "pytorch_half_pixel",
-                                                                                   "align_corners", "asymmetric"};
+  static constexpr std::array<QnnParamInfo, 4> supported_coord_transf_modes = {
+      QnnParamInfo{"half_pixel", QNN_OP_RESIZE_TRANSFORMATION_MODE_HALF_PIXEL},
+      QnnParamInfo{"pytorch_half_pixel", QNN_OP_RESIZE_TRANSFORMATION_MODE_PYTORCH_HALF_PIXEL},
+      QnnParamInfo{"align_corners", QNN_OP_RESIZE_TRANSFORMATION_MODE_ALIGN_CORNERS},
+      QnnParamInfo{"asymmetric", QNN_OP_RESIZE_TRANSFORMATION_MODE_ASYMMETRIC}};
 
-  // QNN values: ROUND_PREFER_FLOOR = 0, ROUND_PREFER_CEIL = 1, FLOOR = 2, CEIL = 3
-  static constexpr std::array<std::string_view, 4> supported_nearest_modes = {"round_prefer_floor", "round_prefer_ceil",
-                                                                              "floor", "ceil"};
+  static constexpr std::array<QnnParamInfo, 4> supported_nearest_modes = {
+      QnnParamInfo{"round_prefer_floor", QNN_OP_RESIZE_NEAREST_MODE_ROUND_PREFER_FLOOR},
+      QnnParamInfo{"round_prefer_ceil", QNN_OP_RESIZE_NEAREST_MODE_ROUND_PREFER_CEIL},
+      QnnParamInfo{"floor", QNN_OP_RESIZE_NEAREST_MODE_FLOOR},
+      QnnParamInfo{"ceil", QNN_OP_RESIZE_NEAREST_MODE_CEIL}};
 };
 
 const OnnxAttrInfo<std::string> ResizeOpBuilder::onnx_mode_attr = {"mode", "nearest"};
@@ -90,19 +87,35 @@ const OnnxAttrInfo<std::string> ResizeOpBuilder::onnx_nearest_mode_attr = {"near
 const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_antialias_attr = {"antialias", 0};
 const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_exclude_outside_attr = {"exclude_outside", 0};
 
-template <typename QnnValType, std::size_t N>
-Status ResizeOpBuilder::GetQnnModeFromString(const std::array<std::string_view, N>& onnx_modes,
-                                             std::string_view onnx_mode, const char* onnx_mode_label,
-                                             QnnValType& qnn_mode) const {
-  for (size_t i = 0; i < onnx_modes.size(); ++i) {
-    if (onnx_modes[i] == onnx_mode) {
-      qnn_mode = SafeInt<QnnValType>(i);
+// Returns the QNN parameter integer value that corresponds to the given ONNX attribute mode string value.
+template <std::size_t N>
+static Status GetQnnModeValFromOnnxString(const std::array<QnnParamInfo, N>& supported_qnn_modes,
+                                          std::string_view onnx_attr_value,
+                                          const char* onnx_attr_name,
+                                          uint32_t& qnn_mode) {
+  for (const auto& qnn_param_info : supported_qnn_modes) {
+    if (qnn_param_info.onnx_attr_value == onnx_attr_value) {
+      qnn_mode = qnn_param_info.qnn_param_value;
       return Status::OK();
     }
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Resize operator does not support ", onnx_mode_label,
-                         " ", std::string(onnx_mode));
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Resize operator does not support ", onnx_attr_name,
+                         " ", std::string(onnx_attr_value));
+}
+
+// Returns true if the given ONNX attribute mode value is generally supported on QNN. Note that
+// differnce QNN backends may support a smaller subset of modes.
+template <size_t N>
+static bool IsOnnxAttrModeSupported(const std::array<QnnParamInfo, N>& supported_qnn_modes,
+                                    std::string_view onnx_mode) {
+  for (const auto& qnn_param_info : supported_qnn_modes) {
+    if (qnn_param_info.onnx_attr_value == onnx_mode) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // Resize ops are sensitive with data layout, no special validation so far
@@ -127,12 +140,12 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   // Check mode
   const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
-  ORT_RETURN_IF_NOT(qnn::utils::ArrayHasString(supported_modes, interp_mode), "QNN EP: Resize does not support mode ",
+  ORT_RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_modes, interp_mode), "QNN EP: Resize does not support mode ",
                     interp_mode.c_str());
 
   // Check coordinate transformation mode
   const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
-  ORT_RETURN_IF_NOT(qnn::utils::ArrayHasString(supported_coord_transf_modes, transformation_mode),
+  ORT_RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_coord_transf_modes, transformation_mode),
                     "QNN EP: Resize does not support coordinate_transformation_mode ", transformation_mode.c_str());
 
   const auto& input_0 = node_unit.Inputs()[0];
@@ -144,7 +157,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   // Check nearest mode
   if (interp_mode == "nearest") {
     const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
-    ORT_RETURN_IF_NOT(qnn::utils::ArrayHasString(supported_nearest_modes, nearest_mode),
+    ORT_RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_nearest_modes, nearest_mode),
                       "QNN EP: Resize does not support nearest_mode ", nearest_mode.c_str());
 
     // Translation matrix of ONNX Resize w/ "nearest" mode on HTP backend.
@@ -265,11 +278,12 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     // Parameter 'transformation_mode'
     Qnn_Scalar_t qnn_transformation_mode = QNN_SCALAR_INIT;
     qnn_transformation_mode.dataType = QNN_DATATYPE_UINT_32;
-    ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_coord_transf_modes, transformation_mode,
-                                             "coordinate_transformation_mode", qnn_transformation_mode.uint32Value));
+    ORT_RETURN_IF_ERROR(GetQnnModeValFromOnnxString(supported_coord_transf_modes, transformation_mode,
+                                                    "coordinate_transformation_mode",
+                                                    qnn_transformation_mode.uint32Value));
 
-    QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_TRANSFORMATION_MODE,
-                                                  qnn_transformation_mode);
+    QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(),
+                                                  QNN_OP_RESIZE_PARAM_TRANSFORMATION_MODE, qnn_transformation_mode);
     param_tensor_names.push_back(qnn_transformation_mode_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_transformation_mode_param));
 
@@ -286,7 +300,7 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     // Parameter 'interpolation_mode'
     Qnn_Scalar_t qnn_interp_mode = QNN_SCALAR_INIT;
     qnn_interp_mode.dataType = QNN_DATATYPE_UINT_32;
-    ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_modes, interp_mode, "mode", qnn_interp_mode.uint32Value));
+    ORT_RETURN_IF_ERROR(GetQnnModeValFromOnnxString(supported_modes, interp_mode, "mode", qnn_interp_mode.uint32Value));
 
     QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_INTERPOLATION_MODE,
                                           qnn_interp_mode);
@@ -297,8 +311,8 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     if (qnn_interp_mode.uint32Value == 0) {
       Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
       qnn_nearest_mode.dataType = QNN_DATATYPE_UINT_32;
-      ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_nearest_modes, nearest_mode, "nearest_mode",
-                                               qnn_nearest_mode.uint32Value));
+      ORT_RETURN_IF_ERROR(GetQnnModeValFromOnnxString(supported_nearest_modes, nearest_mode, "nearest_mode",
+                                                      qnn_nearest_mode.uint32Value));
 
       QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_NEAREST_MODE,
                                              qnn_nearest_mode);
