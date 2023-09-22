@@ -13,40 +13,11 @@ using namespace onnx_transpose_optimization;
 
 namespace onnxruntime {
 namespace layout_transformation {
-
-// Layout sensitive NCHW ops. TransformLayoutForEP will wrap these with Transpose nodes to convert the input
-// data to NHWC and output data back to NCHW, and move the op to the internal NHWC domain (kMSInternalNHWCDomain).
-// The EP requesting these ops MUST be able to handle the node with the operator in the kMSInternalNHWCDomain.
-// Once all the layout sensitive ops requested by the EP are wrapped the transpose optimizer will attempt to remove
-// as many of the layout transposes as possible.
-const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
-  static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
-    const auto& layout_sensitive_ops = onnx_transpose_optimization::GetLayoutSensitiveOps();
-    std::unordered_set<std::string_view> ort_specific_ops =
-    { "FusedConv",
-      "QLinearAveragePool",
-      "QLinearGlobalAveragePool"
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN) || defined(USE_WEBNN)
-      // The CUDA/ROCM Resize kernel is layout sensitive as it only handles NCHW input.
-      // The CPU kernel and ONNX spec are not limited to handling NCHW input so are not layout sensitive, and
-      // onnx_layout_transformation::HandleResize is used.
-      ,
-      "Resize"
-#endif
-    };
-
-    ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
-    return ort_specific_ops;
-  }();
-
-  return ort_layout_sensitive_ops;
-}
-
+namespace {
 // Cost check for aggressively pushing the Transpose nodes involved in the layout transformation further out.
-static CostCheckResult
-PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
-                             const std::vector<int64_t>& perm,
-                             const std::unordered_set<std::string>& outputs_leading_to_transpose) {
+CostCheckResult PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
+                                             const std::vector<int64_t>& perm,
+                                             const std::unordered_set<std::string>& outputs_leading_to_transpose) {
   // we aggressively push the layout transpose nodes.
   // Exception: pushing through a Concat can result in Transpose nodes being added to multiple other inputs which
   // can potentially be worse for performance. Use the cost check in that case.
@@ -59,30 +30,75 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
   return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
+/// <summary>
+/// Default function for checking if a node should have its layout changed. Allows EP specific adjustments to the
+/// default set of layout sensitive operators if required.
+///
+/// Longer term, if required, the EP API could allow the EP to provide a delegate to plugin EP specific logic so we
+/// don't hardcode it here.
+/// </summary>
+/// <param name="node">Node to check</param>
+/// <returns>true if the node should have its layout converted to NHWC.</returns>
+bool ConvertNodeLayout(const api::NodeRef& node) {
+  const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
+
+  // handle CUDA special cases
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
+    // TODO: Update as per https://github.com/microsoft/onnxruntime/pull/17200
+  }
+
+  // skip if domain is unknown
+  auto domain = node.Domain();
+  if (domain != kOnnxDomain && domain != kMSDomain) {
+    return false;
+  }
+
+  return layout_sensitive_ops.count(node.OpType()) != 0;
+}
+}  // namespace
+
+// Layout sensitive NCHW ops. TransformLayoutForEP will wrap these with Transpose nodes to convert the input
+// data to NHWC and output data back to NCHW, and move the op to the internal NHWC domain (kMSInternalNHWCDomain).
+// The EP requesting these ops MUST be able to handle the node with the operator in the kMSInternalNHWCDomain.
+// Once all the layout sensitive ops requested by the EP are wrapped the transpose optimizer will attempt to remove
+// as many of the layout transposes as possible.
+const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
+  static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
+    const auto& layout_sensitive_ops = onnx_transpose_optimization::GetLayoutSensitiveOps();
+    std::unordered_set<std::string_view> ort_specific_ops =
+        {
+            "FusedConv",
+            "QLinearAveragePool",
+            "QLinearGlobalAveragePool",
+            // Whilst the ONNX spec doesn't specify a layout for Resize, we treat it as layout sensitive by default
+            // as EPs tend to only support one layout.
+            "Resize",
+        };
+
+    ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
+    return ort_specific_ops;
+  }();
+
+  return ort_layout_sensitive_ops;
+}
+
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
                             AllocatorPtr cpu_allocator,
                             const DebugGraphFn& debug_graph_fn) {
   // We pass in nullptr for the new_node_ep param as new nodes will be assigned by the graph partitioner after
   // TransformLayoutForEP returns.
-  // sub graph recurse will be added later.
+  // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, cpu_allocator, /*new_node_ep*/ nullptr);
-  const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
-  // to convert to NHWC we need to wrap layout sensitive nodes to Transpose from NCHW to NHWC and back.
+  // if converting to NHWC we need to wrap layout sensitive nodes to Transpose from NCHW to NHWC and back.
   for (auto& node : api_graph->Nodes()) {
-    if (layout_sensitive_ops.count(node->OpType())) {
-      if (node->GetExecutionProviderType() != execution_provider.Type()) {
-        continue;
-      }
+    if (node->GetExecutionProviderType() != execution_provider.Type()) {
+      continue;
+    }
 
-      auto domain = node->Domain();
-      // Skip if domain is incorrect
-      if (domain != kOnnxDomain && domain != kMSDomain) {
-        continue;
-      }
-
-      // if already transformed then change the domain to kMSInternalNHWCDomain this way the EP
-      // knows this op is in the expected format.
+    if (ConvertNodeLayout(*node)) {
+      // if this is an internal operator with a channels_last attribute, change the domain to kMSInternalNHWCDomain
+      // so the EP knows this op is in the expected format.
       if (node->GetAttributeIntDefault("channels_last", 0) == 1) {
         SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
         // Changing the domain for the node requires creating a new node and replacing the old one
@@ -137,7 +153,8 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
       }
 
-      // TODO: Technically Resize doesn't need to change domain as the ONNX Resize spec is not layout sensitive.
+      // Technically Resize doesn't need to change domain as the ONNX Resize spec is not layout sensitive, however
+      // we change the domain to kMSInternalNHWCDomain to make it clear the input is now NHWC and to be consistent.
       SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
       modified = true;
     }
