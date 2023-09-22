@@ -465,7 +465,6 @@ class InferenceSession(Session):
         )
         if not providers and len(available_providers) > 1:
             self.disable_fallback()
-            warnings.warn(f"This ORT build has {available_providers} enabled, use CPUExecutionProvider as default")
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
