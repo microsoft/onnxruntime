@@ -143,9 +143,7 @@ Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Devic
   return d3d12_device;
 }
 
-std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id, bool skip_software_device_check) {
-  ComPtr<ID3D12Device> d3d12_device = CreateD3D12Device(device_id, skip_software_device_check);
-
+std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(ID3D12Device* d3d12_device) {
   D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
   cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
@@ -167,12 +165,17 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
 #endif
 
   ComPtr<IDMLDevice> dml_device;
-  ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
+  ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device,
                                    flags,
                                    DML_FEATURE_LEVEL_5_0,
                                    IID_PPV_ARGS(&dml_device)));
 
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
+}
+
+std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id, bool skip_software_device_check) {
+  ComPtr<ID3D12Device> d3d12_device = CreateD3D12Device(device_id, skip_software_device_check);
+  return CreateDMLDeviceAndProviderFactory(d3d12_device.Get());
 }
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateDXCore(
@@ -184,34 +187,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateDXCo
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(D3D12CreateDevice(dxcore_device.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
 
-  // Create DML Device from D3D12 device
-  D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
-  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-  cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
-
-  ComPtr<ID3D12CommandQueue> cmd_queue;
-  ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
-
-  DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
-
-  // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
-#if _DEBUG && !_GAMING_XBOX
-  ComPtr<ID3D12DebugDevice> debug_device;
-  (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device));  // ignore failure
-  const bool is_d3d12_debug_layer_enabled = (debug_device != nullptr);
-
-  if (is_d3d12_debug_layer_enabled) {
-    flags |= DML_CREATE_DEVICE_FLAG_DEBUG;
-  }
-#endif
-
-  ComPtr<IDMLDevice> dml_device;
-  ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
-                                   flags,
-                                   DML_FEATURE_LEVEL_5_0,
-                                   IID_PPV_ARGS(&dml_device)));
-
-  return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
+  return CreateDMLDeviceAndProviderFactory(d3d12_device.Get());
 }
 
 }  // namespace onnxruntime
@@ -317,7 +293,7 @@ API_IMPL_BEGIN
     };
 
     // If callers specify minimum power change the DXCore sort policy
-    // NOTE...
+    // NOTE DXCoreAdapterPrefernce does not apply to mixed adapter lists - only to GPU lists
     if (preference == OrtDmlPerformancePreference::MinimumPower)
     {
         adapter_list_preferences[0] = DXCoreAdapterPreference::MinimumPower;
