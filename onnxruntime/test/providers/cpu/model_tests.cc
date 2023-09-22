@@ -873,8 +873,7 @@ static ORT_STRING_VIEW opset17 = ORT_TSTR("opset17");
 static ORT_STRING_VIEW opset18 = ORT_TSTR("opset18");
 // TODO: enable opset19 tests
 // static ORT_STRING_VIEW opset19 = ORT_TSTR("opset19");
-static const std::vector<ORT_STRING_VIEW> default_opset_versions = {opset7, opset8, opset9, opset10, opset11, opset12, opset13,
-                                                    opset14, opset15, opset16, opset17, opset18};
+static const std::vector<ORT_STRING_VIEW> default_opset_versions = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 
 static ORT_STRING_VIEW provider_name_cpu = ORT_TSTR("cpu");
 static ORT_STRING_VIEW provider_name_tensorrt = ORT_TSTR("tensorrt");
