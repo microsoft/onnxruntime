@@ -1,5 +1,4 @@
 import numpy
-
 from onnx import numpy_helper
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info, set_model_props
 
