@@ -319,7 +319,7 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
 // Uses dimensionMapping to reorder m_sizes and m_strides to match specific Tensor layout
 void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, const TensorAxis alignment)
 {
-    EnsureStridesExist(m_bufferTensorDesc.DimensionCount);
+    EnsureStridesExist();
     SetDimensionCount(static_cast<uint32_t>(dimensionMapping.size()), alignment);
 
     // Shuffle m_sizes and m_strides according to the indexes pointed by dimensionMapping
@@ -336,7 +336,7 @@ void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, c
     m_bufferTensorDesc.Strides = m_strides;
 }
 
-void TensorDesc::EnsureStridesExist(uint32_t dimensionCount)
+void TensorDesc::EnsureStridesExist()
 {
     if (m_bufferTensorDesc.Strides != nullptr)
     {
@@ -344,9 +344,8 @@ void TensorDesc::EnsureStridesExist(uint32_t dimensionCount)
         return;
     }
 
-    int index = static_cast<int>(dimensionCount);
     uint32_t stride = 1;
-    for (int i = index; i-- > 0;)
+    for (uint32_t i = m_bufferTensorDesc.DimensionCount; i-- > 0;)
     {
         m_strides[i] = stride;
         stride *= m_sizes[i];
