@@ -3,8 +3,7 @@
 
 #include <array>
 #include <cassert>
-#include <string_view>
-#include <utility>
+#include <unordered_map>
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -20,12 +19,6 @@
 
 namespace onnxruntime {
 namespace qnn {
-
-// Maps an ONNX attribute string value to the corresponding QNN parameter integer value.
-struct QnnParamInfo {
-  std::string_view onnx_attr_value;
-  uint32_t qnn_param_value;
-};
 
 class ResizeOpBuilder : public BaseOpBuilder {
  public:
@@ -57,27 +50,29 @@ class ResizeOpBuilder : public BaseOpBuilder {
   static const OnnxAttrInfo<int64_t> onnx_antialias_attr;
   static const OnnxAttrInfo<int64_t> onnx_exclude_outside_attr;
 
-  // Arrays of "generally" supported QNN modes for QNN's Resize op. Each element maps the ONNX attribute string
-  // value to the corresponding QNN parameter integer value.
-  // Ex: The "nearest" mode is represented as the value 0 in QNN. Note, that not all modes are supported by
-  // every QNN backend.
-
-  static constexpr std::array<QnnParamInfo, 2> supported_modes = {
-      QnnParamInfo{"nearest", QNN_OP_RESIZE_INTERPOLATION_MODE_NEAREST},
-      QnnParamInfo{"linear", QNN_OP_RESIZE_INTERPOLATION_MODE_LINEAR}};
-
-  static constexpr std::array<QnnParamInfo, 4> supported_coord_transf_modes = {
-      QnnParamInfo{"half_pixel", QNN_OP_RESIZE_TRANSFORMATION_MODE_HALF_PIXEL},
-      QnnParamInfo{"pytorch_half_pixel", QNN_OP_RESIZE_TRANSFORMATION_MODE_PYTORCH_HALF_PIXEL},
-      QnnParamInfo{"align_corners", QNN_OP_RESIZE_TRANSFORMATION_MODE_ALIGN_CORNERS},
-      QnnParamInfo{"asymmetric", QNN_OP_RESIZE_TRANSFORMATION_MODE_ASYMMETRIC}};
-
-  static constexpr std::array<QnnParamInfo, 4> supported_nearest_modes = {
-      QnnParamInfo{"round_prefer_floor", QNN_OP_RESIZE_NEAREST_MODE_ROUND_PREFER_FLOOR},
-      QnnParamInfo{"round_prefer_ceil", QNN_OP_RESIZE_NEAREST_MODE_ROUND_PREFER_CEIL},
-      QnnParamInfo{"floor", QNN_OP_RESIZE_NEAREST_MODE_FLOOR},
-      QnnParamInfo{"ceil", QNN_OP_RESIZE_NEAREST_MODE_CEIL}};
+  // Tables that map an ONNX attribute value (string) to the corresponding integer (enum) QNN parameter value.
+  // Ex: The "half_pixel" coordinate_transformation_mode is represented as the value 0 in QNN.
+  // Only the modes supported by QNN Resize are mapped by these tables.
+  static const std::unordered_map<std::string, uint32_t> supported_modes;
+  static const std::unordered_map<std::string, uint32_t> supported_coord_transf_modes;
+  static const std::unordered_map<std::string, uint32_t> supported_nearest_modes;
 };
+
+const std::unordered_map<std::string, uint32_t> ResizeOpBuilder::supported_modes = {
+    {"nearest", QNN_OP_RESIZE_INTERPOLATION_MODE_NEAREST},
+    {"linear", QNN_OP_RESIZE_INTERPOLATION_MODE_LINEAR}};
+
+const std::unordered_map<std::string, uint32_t> ResizeOpBuilder::supported_coord_transf_modes = {
+    {"half_pixel", QNN_OP_RESIZE_TRANSFORMATION_MODE_HALF_PIXEL},
+    {"pytorch_half_pixel", QNN_OP_RESIZE_TRANSFORMATION_MODE_PYTORCH_HALF_PIXEL},
+    {"align_corners", QNN_OP_RESIZE_TRANSFORMATION_MODE_ALIGN_CORNERS},
+    {"asymmetric", QNN_OP_RESIZE_TRANSFORMATION_MODE_ASYMMETRIC}};
+
+const std::unordered_map<std::string, uint32_t> ResizeOpBuilder::supported_nearest_modes = {
+    {"round_prefer_floor", QNN_OP_RESIZE_NEAREST_MODE_ROUND_PREFER_FLOOR},
+    {"round_prefer_ceil", QNN_OP_RESIZE_NEAREST_MODE_ROUND_PREFER_CEIL},
+    {"floor", QNN_OP_RESIZE_NEAREST_MODE_FLOOR},
+    {"ceil", QNN_OP_RESIZE_NEAREST_MODE_CEIL}};
 
 const OnnxAttrInfo<std::string> ResizeOpBuilder::onnx_mode_attr = {"mode", "nearest"};
 const OnnxAttrInfo<std::string> ResizeOpBuilder::onnx_coord_transf_mode_attr = {"coordinate_transformation_mode",
@@ -88,16 +83,14 @@ const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_antialias_attr = {"antialias",
 const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_exclude_outside_attr = {"exclude_outside", 0};
 
 // Returns the QNN parameter integer value that corresponds to the given ONNX attribute mode string value.
-template <std::size_t N>
-static Status GetQnnModeValFromOnnxString(const std::array<QnnParamInfo, N>& supported_qnn_modes,
-                                          std::string_view onnx_attr_value,
+static Status GetQnnModeValFromOnnxString(const std::unordered_map<std::string, uint32_t>& supported_qnn_modes,
+                                          const std::string& onnx_attr_value,
                                           const char* onnx_attr_name,
-                                          uint32_t& qnn_mode) {
-  for (const auto& qnn_param_info : supported_qnn_modes) {
-    if (qnn_param_info.onnx_attr_value == onnx_attr_value) {
-      qnn_mode = qnn_param_info.qnn_param_value;
-      return Status::OK();
-    }
+                                          uint32_t& qnn_mode_value) {
+  auto it = supported_qnn_modes.find(onnx_attr_value);
+  if (it != supported_qnn_modes.end()) {
+    qnn_mode_value = it->second;
+    return Status::OK();
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Resize operator does not support ", onnx_attr_name,
@@ -106,16 +99,9 @@ static Status GetQnnModeValFromOnnxString(const std::array<QnnParamInfo, N>& sup
 
 // Returns true if the given ONNX attribute mode value is generally supported on QNN. Note that
 // differnce QNN backends may support a smaller subset of modes.
-template <size_t N>
-static bool IsOnnxAttrModeSupported(const std::array<QnnParamInfo, N>& supported_qnn_modes,
-                                    std::string_view onnx_mode) {
-  for (const auto& qnn_param_info : supported_qnn_modes) {
-    if (qnn_param_info.onnx_attr_value == onnx_mode) {
-      return true;
-    }
-  }
-
-  return false;
+static bool IsOnnxAttrModeSupported(const std::unordered_map<std::string, uint32_t>& supported_qnn_modes,
+                                    const std::string& onnx_attr_value) {
+  return supported_qnn_modes.find(onnx_attr_value) != supported_qnn_modes.end();
 }
 
 // Resize ops are sensitive with data layout, no special validation so far
@@ -154,23 +140,23 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                     "QNN EP: Cannot get shape for Resize input");
   const size_t input_rank = input_shape.size();
 
-  // Check nearest mode
+  // Validate Resize w/ "nearest" mode.
+  // Translation matrix of ONNX Resize w/ "nearest" mode on HTP backend.
+  // Table entries correspond to the QNN operator used for the given configuration
+  // (Resize = QNN Resize op, RNN = QNN ResizeNearestNeighbor op, X = Unsupported).
+  //
+  //                                                   nearest_mode:
+  // coordinate_transformation_mode: | round_prefer_floor  round_prefer_ceil  floor  ceil
+  // -----------------------------------------------------------------------------------------
+  //                      half_pixel |     Resize               X              RNN     X
+  //              pytorch_half_pixel |     Resize               X               X      X
+  //                   align_corners |     Resize               X              RNN     X
+  //                      asymmetric |     Resize               X              RNN     X
+
   if (interp_mode == "nearest") {
     const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
     ORT_RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_nearest_modes, nearest_mode),
                       "QNN EP: Resize does not support nearest_mode ", nearest_mode.c_str());
-
-    // Translation matrix of ONNX Resize w/ "nearest" mode on HTP backend.
-    // Items in the table correspond to the QNN operator used for the given configuration
-    // (RNN = ResizeNearestNeighbor, X = Unsupported).
-    //
-    //                                                   nearest_mode:
-    // coordinate_transformation_mode: | round_prefer_floor  round_prefer_ceil  floor  ceil
-    // -----------------------------------------------------------------------------------------
-    //                      half_pixel |     Resize               X              RNN     X
-    //              pytorch_half_pixel |     Resize               X               X      X
-    //                   align_corners |     Resize               X              RNN     X
-    //                      asymmetric |     Resize               X              RNN     X
 
     if (is_npu_backend) {
       // QNN only supports the following nearest_mode values on HTP:
