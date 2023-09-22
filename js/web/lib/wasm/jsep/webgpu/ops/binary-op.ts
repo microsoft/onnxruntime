@@ -62,14 +62,14 @@ const createBinaryOpProgramShader =
       let assignment: string;
       if (vectorize) {
         if (doBroadcast) {
-          const isAScalar = dimsA.length === 0;
-          const isBScalar = dimsB.length === 0;
-          if (isAScalar || isBScalar) {
+          const isAOneElement = ShapeUtil.size(dimsA) === 1;
+          const isBOneElement = ShapeUtil.size(dimsB) === 1;
+          if (isAOneElement || isBOneElement) {
             assignment = output.setByOffset(
                 'global_idx',
                 expressionVector(
-                    isAScalar ? `${a.type.value}(${a.getByOffset('0')}.x)` : a.getByOffset('global_idx'),
-                    isBScalar ? `${b.type.value}(${b.getByOffset('0')}.x)` : b.getByOffset('global_idx')));
+                    isAOneElement ? `${a.type.value}(${a.getByOffset('0')}.x)` : a.getByOffset('global_idx'),
+                    isBOneElement ? `${b.type.value}(${b.getByOffset('0')}.x)` : b.getByOffset('global_idx')));
           } else {
             assignment = `
             let outputIndices = ${output.offsetToIndices('global_idx * 4u')};
@@ -151,8 +151,8 @@ const createBinaryOpProgramInfo =
         }
         outputShape = calculatedShape;
         outputSize = ShapeUtil.size(outputShape);
-        const isAScalar = a.dims.length === 0;
-        const isBScalar = b.dims.length === 0;
+        const isAOneElement = ShapeUtil.size(a.dims) === 1;
+        const isBOneElement = ShapeUtil.size(b.dims) === 1;
 
         // check whether vectorize can be enabled
         let sharedDimension = 1;
@@ -165,7 +165,7 @@ const createBinaryOpProgramInfo =
             break;
           }
         }
-        if (sharedDimension % 4 === 0 || isAScalar || isBScalar) {
+        if (sharedDimension % 4 === 0 || isAOneElement || isBOneElement) {
           vectorize = true;
         }
       } else {
