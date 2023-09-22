@@ -107,7 +107,7 @@ def dtype_torch_to_numpy(torch_dtype):
     elif torch_dtype == torch.bool:
         return np.bool_
     else:
-        raise ValueError(f"torch_dtype ({str(torch_dtype)}) type is not supported by Numpy")
+        raise ValueError(f"torch_dtype ({torch_dtype!s}) type is not supported by Numpy")
 
 
 def dtype_onnx_to_torch(onnx_type):
@@ -134,6 +134,10 @@ def dtype_onnx_to_torch(onnx_type):
         "COMPLEX64",
         "COMPLEX128",
         "BFLOAT16",
+        "FLOAT8E4M3FN",
+        "FLOAT8E4M3FNUZ",
+        "FLOAT8E5M2",
+        "FLOAT8E5M2FNUZ",
     ]
 
     if isinstance(onnx_type, int):

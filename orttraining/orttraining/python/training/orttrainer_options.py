@@ -482,7 +482,7 @@ class ORTTrainerOptions:
     def __repr__(self):
         return "{%s}" % str(
             ", ".join(
-                f"'{k}': {repr(v)}"
+                f"'{k}': {v!r}"
                 for (k, v) in self.__dict__.items()
                 if k not in ["_original_opts", "_validated_opts", "_main_class_name"]
             )

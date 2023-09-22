@@ -90,7 +90,7 @@ struct FunctionTestCase {
     input_args.emplace_back(input_name, &arg_type);
 
     OrtValue ort_value;
-    CreateMLValue<T>(provider->GetAllocator(OrtMemTypeDefault), shape, data, &ort_value);
+    CreateMLValue<T>(provider->CreatePreferredAllocators()[0], shape, data, &ort_value);
     input_values.push_back(std::make_pair(input_name, ort_value));
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }
@@ -107,7 +107,7 @@ struct FunctionTestCase {
     if (GenData) {
       std::vector<T> data = random<T>(shape);
       OrtValue ort_value;
-      CreateMLValue<T>(provider->GetAllocator(OrtMemTypeDefault), shape, data, &ort_value);
+      CreateMLValue<T>(provider->CreatePreferredAllocators()[0], shape, data, &ort_value);
       input_values.push_back(std::make_pair(input_name, ort_value));
       input_value_map.insert(std::make_pair(input_name, ort_value));
     }
@@ -121,7 +121,7 @@ struct FunctionTestCase {
     for (size_t i = 0; i < data.size(); i++)
       data[i] = data[i] % bound;
     OrtValue ort_value;
-    CreateMLValue<T>(provider->GetAllocator(OrtMemTypeDefault), shape, data, &ort_value);
+    CreateMLValue<T>(provider->CreatePreferredAllocators()[0], shape, data, &ort_value);
     input_values.push_back(std::make_pair(input_name, ort_value));
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }

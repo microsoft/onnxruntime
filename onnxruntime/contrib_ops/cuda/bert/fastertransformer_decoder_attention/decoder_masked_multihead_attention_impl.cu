@@ -25,6 +25,7 @@
 // (2) When dealing with masked tokens, this kernel implementation deviates from FasterTransformer by applying
 // mask filter values. Appropriate commentary exists in the code below.
 
+#include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 #include "decoder_masked_multihead_attention_impl.h"
 #include "decoder_masked_multihead_attention_impl_utils.h"
 #include <cfloat>
@@ -161,38 +162,16 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     q = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q)[qk_offset]));
   }
 
-  Qk_vec_k k;
-
-  if (!params.is_cross_attention) {
-    zero(k);
-
-    if (!is_masked) {
-      k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
-    }
-  }
+  // The offset in the bias buffer.
+  int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
 
   // Trigger the loads from the Q and K bias buffers.
-  Qk_vec_k q_bias;
-  Qk_vec_k k_bias;
-  if (!params.is_mha) {
-    // The offset in the bias buffer.
-    int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
+  if (params.q_bias && !is_masked) {
+    Qk_vec_k q_bias;
 
-    zero(q_bias);
+    q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
 
-    if (!is_masked) {
-      q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
-    }
-
-    zero(k_bias);
-
-    if (!is_masked) {
-      k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
-    }
-
-    // Computes the Q/K values with bias.
     q = add_vec(q, q_bias);
-    k = add_vec(k, k_bias);
   }
 
   T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
@@ -205,6 +184,66 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   }
 
   if (!params.is_cross_attention) {
+    Qk_vec_k k;
+
+    zero(k);
+
+    if (!is_masked) {
+      k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
+
+      if (params.k_bias) {
+        Qk_vec_k k_bias;
+
+        k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
+
+        k = add_vec(k, k_bias);
+      }
+    }
+
+    if (params.rotary_embedding_dim > 0) {
+      const bool do_rotary = !is_masked && QK_VEC_SIZE * tidx < params.rotary_embedding_dim;
+
+      T* q_smem = reinterpret_cast<T*>(smem_);
+      T* k_smem = q_smem + params.rotary_embedding_dim;
+
+      const int half_rotary_dim = params.rotary_embedding_dim / 2;
+      const int half_idx = (tidx * QK_VEC_SIZE) / half_rotary_dim;
+      const int intra_half_idx = (tidx * QK_VEC_SIZE) % half_rotary_dim;
+      const int smem_pitch = half_rotary_dim;
+
+      assert(half_rotary_dim % QK_VEC_SIZE == 0);
+
+      if (do_rotary) {
+        *reinterpret_cast<Qk_vec_k*>(q_smem + half_idx * smem_pitch + intra_half_idx) = q;
+        *reinterpret_cast<Qk_vec_k*>(k_smem + half_idx * smem_pitch + intra_half_idx) = k;
+      }
+
+      __syncthreads();
+
+      const int transpose_idx = half_idx * (half_rotary_dim / 2) + intra_half_idx / 2;
+      constexpr int tidx_factor = (QK_VEC_SIZE > 1) ? QK_VEC_SIZE / 2 : 1;
+
+      if (do_rotary) {
+        vec_from_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
+        vec_from_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
+
+        apply_rotary_embedding(
+            q, k, transpose_idx / tidx_factor, params.rotary_embedding_dim, params.t_step);
+
+        write_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
+        write_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
+      }
+
+      __syncthreads();
+
+      if (do_rotary) {
+        q = *reinterpret_cast<Qk_vec_k*>(q_smem + half_idx * smem_pitch + intra_half_idx);
+        k = *reinterpret_cast<Qk_vec_k*>(k_smem + half_idx * smem_pitch + intra_half_idx);
+      }
+
+      __syncthreads();
+    }
+
     if (!is_masked) {
       // Write the K values to the global memory cache.
       // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
@@ -310,24 +349,22 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
+    if (ti < tlength) {
+      if (has_beams) {
+        const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
 
-    if (has_beams) {
 #pragma unroll
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        int jj = ii * params.max_sequence_length + ti;
+        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+          int jj = ii * params.max_sequence_length + ti;
 
-        if (ti < tlength) {
-          const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
           k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
         }
-      }
-    } else {
+      } else {
 #pragma unroll
-      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-        int jj = ii * params.max_sequence_length + ti;
+        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+          int jj = ii * params.max_sequence_length + ti;
 
-        if (ti < tlength) {
           k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
@@ -438,7 +475,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // One group of threads computes the product(s) for the current timestep.
   V_vec_k v_bias;
-  if (!params.is_mha) {
+  if (params.v_bias && !params.is_cross_attention) {
     zero(v_bias);
 
     T* params_v_bias = reinterpret_cast<T*>(params.v_bias);
@@ -478,7 +515,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     V_vec_k v;
     v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&reinterpret_cast<T*>(params.v)[v_offset]));
-    if (!params.is_mha) {
+    if (params.v_bias) {
       v = add_vec(v, v_bias);
     }
 

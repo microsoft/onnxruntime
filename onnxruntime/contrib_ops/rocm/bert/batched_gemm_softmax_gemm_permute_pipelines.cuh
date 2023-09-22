@@ -11,7 +11,7 @@ T: total sequence length
 N: num of heads
 H: head dimension
 
-The following use qkv_format == Q_K_V_BNSH as a example:
+The following use qkv_format == Q_K_V_BNSH (mode == BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE) as a example:
 
 BN: B*N, which is the batch size of GEMMs. NOTE: To be disambiguated with batch size of Attention Op
 
@@ -57,6 +57,50 @@ non-biased,     masked, convert the mask to [B,1,1_or_S,T] and perform broadcast
 Broadcast add is not actually perform the broadcasting, just broadcast the load operation from memory. The impl details
 are in composable kernels. The scale and add logic is performed via Acc0ElementOp
 
+# Classified modes:
+
+| Q    | K    | V    | past(K)| pastV | present(K)| presentV | Op, desc
+| ---- | ---- | ---- | ------ | ----- | --------- | -------- | ---------
+| QFMT | KFMT | VFMT | -      | -     | -         | -        | A, basic, qkv is impl dependent by qkv_format
+| QFMT | KFMT | VFMT | 2BNPH  | -     | 2BNTH *^  | -        | A, past_present_share_buffer = false, qkv is impl dependent by qkv_format
+| QFMT | KFMT | VFMT | 2BNMH  | -     | 2BNMH *^  | -        | A, past_present_share_buffer = true,  qkv is impl dependent by qkv_format
+| BSNH | BLNH*| BLNH^| -      | -     | -         | -        | MHA basic
+| BSNH | BNLH*| BNLH^| -      | -     | -         | -        | MHA cross, pass_past_in_kv = true
+| BSNH | -    | -    | -      | -     | BNLH *    | BNLH ^   | MHA cross, pass_past_in_kv = false
+| BSNH | BLNH | BLNH | -      | -     | BNTH *    | BNTH ^   | MHA cross, past_present_share_buffer = false
+| BSNH | BNLH | BNLH | -      | -     | BNTH *    | BNTH ^   | MHA cross, past_present_share_buffer = false
+| BSNH | BLNH | BLNH | -      | -     | BNMH *    | BNMH ^   | MHA cross, past_present_share_buffer = true
+| BSNH | BNLH | BNLH | -      | -     | BNMH *    | BNMH ^   | MHA cross, past_present_share_buffer = true
+| BSNH | BLNH | BLNH | BNPH   | BNPH  | BNTH *    | BNTH ^   | MHA self, past_present_share_buffer = false
+| BSNH | BNLH | BNLH | BNPH   | BNPH  | BNTH *    | BNTH ^   | MHA self, past_present_share_buffer = false
+| BSNH | BLNH | BLNH | BNMH   | BNMH  | BNMH *    | BNMH ^   | MHA self, past_present_share_buffer = true
+| BSNH | BNLH | BNLH | BNMH   | BNMH  | BNMH *    | BNMH ^   | MHA self, past_present_share_buffer = true
+| BLN3H*^| -  | -    | -      | -     | -         | -        | MHA basic, qkv_packed
+| BSNH | BLN2H*^| -  | -      | -     | -         | -        | MHA basic, kv_packed
+
+Q, K, V, past(K), pastV, present(K), presentV is the Input of the contrib OpKernel
+
+About k_buffer and v_buffer, we always explicitly concat past to present and use present_k for k_buffer and present_v for v_buffer
+
+- Marked with `*` indicate the Tensor is used for k_buffer passing.
+- Marked with `^` indicate the Tensor is used for v_buffer passing.
+
+# Supported Op
+
+- A: Attention
+- MHA: MultiHeadAttention
+
+# Dim Value
+
+- B: batch_size
+- N: num_heads
+- H: head_size
+
+- S: sequence_length
+- L: kv_sequence_length
+- P: past_sequence_length
+- T: total_sequence_length = P + L
+- M: max_sequence_length
 */
 
 #include "core/framework/tensor_shape.h"
@@ -88,66 +132,208 @@ inline int3 Get2DMaskStrides(int total_sequence_length) {
   return {total_sequence_length, 0, 1};
 }
 
+// A stride maps from natural coordinate to physical offset of underlying memory storage buffer offset. We need to
+// specify both of the natural coordinate order, say (b,n,s,h), (b,s,n,h) or (b,n,h,s), and memory order, say BNSH or
+// BSNH, to determain the strides. To obtain the offset, we just do the inner product of coordinate with the strides.
+// This wrapper create the stride vector from the physical dimension (or physical shape).
+struct Strides {
+  // Create the strides for BNSH physically indexed memory buffer
+  static Strides BNSHMemory(int batch_dim,
+                            int num_head_dim,
+                            int seqlen_dim,
+                            int head_size_dim) {
+    ORT_UNUSED_PARAMETER(batch_dim);
+    return Strides{longlong4{
+        static_cast<int64_t>(num_head_dim) * seqlen_dim * head_size_dim,
+        static_cast<int64_t>(seqlen_dim) * head_size_dim,
+        static_cast<int64_t>(head_size_dim),
+        static_cast<int64_t>(1),
+    }};
+  }
+
+  // Create the strides for BSNH physically indexed memory buffer
+  static Strides BSNHMemory(int batch_dim,
+                            int seqlen_dim,
+                            int num_head_dim,
+                            int head_size_dim) {
+    ORT_UNUSED_PARAMETER(batch_dim);
+    return Strides{longlong4{
+        static_cast<int64_t>(seqlen_dim) * num_head_dim * head_size_dim,
+        static_cast<int64_t>(head_size_dim),
+        static_cast<int64_t>(num_head_dim) * head_size_dim,
+        static_cast<int64_t>(1),
+    }};
+  }
+
+  template <typename T = longlong4>
+  T ForBNSHCoord() const {
+    using E = typename T::value_type;
+    return T{static_cast<E>(strides_for_bnsh_coord.x),
+             static_cast<E>(strides_for_bnsh_coord.y),
+             static_cast<E>(strides_for_bnsh_coord.z),
+             static_cast<E>(strides_for_bnsh_coord.w)};
+  }
+
+  template <typename T = longlong4>
+  T ForBSNHCoord() const {
+    using E = typename T::value_type;
+    return T{static_cast<E>(strides_for_bnsh_coord.x),
+             static_cast<E>(strides_for_bnsh_coord.z),
+             static_cast<E>(strides_for_bnsh_coord.y),
+             static_cast<E>(strides_for_bnsh_coord.w)};
+  }
+
+  template <typename T = longlong4>
+  T ForBNHSCoord() const {
+    using E = typename T::value_type;
+    return T{static_cast<E>(strides_for_bnsh_coord.x),
+             static_cast<E>(strides_for_bnsh_coord.y),
+             static_cast<E>(strides_for_bnsh_coord.w),
+             static_cast<E>(strides_for_bnsh_coord.z)};
+  }
+
+  int64_t OffsetAt(int b, int n, int s, int h) const {
+    return strides_for_bnsh_coord.x * b + strides_for_bnsh_coord.y * n +
+           strides_for_bnsh_coord.z * s + strides_for_bnsh_coord.w * h;
+  }
+
+  // store intermediate strides in the canonical (b,n,s,h) coordinate order
+  longlong4 strides_for_bnsh_coord;
+};
+
 template <typename HipT, typename T>
-std::tuple<const HipT*, const HipT*, const HipT*> GetQkvBuffers(
-    const AttentionParameters* attn,
-    const T* query,
-    const T* key,
-    const T* value) {
-  switch (attn->qkv_format) {
-    case Q_K_V_BNSH:
-    case Q_K_V_BSNH:
+std::tuple<const HipT*, const HipT*, const HipT*> ConvertToOffsetedBufferViews(
+    const RocmAttentionParameters* attn,
+    const T* query = nullptr,    // q or packed_qkv
+    const T* key = nullptr,      // k or packed kv
+    const T* value = nullptr,    //
+    const T* present = nullptr,  // present or present_k
+    const T* present_v = nullptr) {
+  switch (attn->mode) {
+    case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE:
+    case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+    case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE: {
       return {reinterpret_cast<const HipT*>(query),
               reinterpret_cast<const HipT*>(key),
               reinterpret_cast<const HipT*>(value)};
-    case Q_KV_BSNH_BSN2H: {
+    }
+    case QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE:
+    case QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE: {
+      auto offset = static_cast<int64_t>(attn->batch_size) * attn->num_heads * attn->total_sequence_length *
+                    attn->head_size;
+      return {reinterpret_cast<const HipT*>(query),
+              reinterpret_cast<const HipT*>(present),
+              reinterpret_cast<const HipT*>(present) + offset};
+    }
+    case QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE:
+    case QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE: {
+      auto offset = static_cast<int64_t>(attn->batch_size) * attn->num_heads * attn->max_sequence_length *
+                    attn->head_size;
+      return {reinterpret_cast<const HipT*>(query),
+              reinterpret_cast<const HipT*>(present),
+              reinterpret_cast<const HipT*>(present) + offset};
+    }
+    case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
+    case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      return {reinterpret_cast<const HipT*>(query),
+              reinterpret_cast<const HipT*>(present),
+              reinterpret_cast<const HipT*>(present_v)};
+    case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE: {
       auto packed_kv = reinterpret_cast<const HipT*>(key);
       return {reinterpret_cast<const HipT*>(query), packed_kv, packed_kv + attn->head_size};
     }
-    case QKV_BSN3H: {
+    case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE: {
       auto packed_qkv = reinterpret_cast<const HipT*>(query);
       return {packed_qkv, packed_qkv + 1 * attn->head_size, packed_qkv + 2 * attn->head_size};
     }
     default:
-      return {nullptr, nullptr, nullptr};
+      ORT_ENFORCE("unreachable");
+      return {};
   }
 }
 
-inline std::tuple<int4, int4, int4> GetQkvStrides(const AttentionParameters* attn) {
+inline std::tuple<Strides, Strides, Strides> GetQkvStrides(const RocmAttentionParameters* attn) {
   // G0 not used, because it is the slowest dimension
-  const int& G1 = attn->num_heads;
-  const int& M = attn->sequence_length;
-  const int& N = attn->total_sequence_length;
-  const int& K = attn->head_size;
-  const int& O = attn->v_head_size;
+  const int& B = attn->batch_size;
+  const int& N = attn->num_heads;
+  const int& S = attn->sequence_length;
+  const int& L = attn->kv_sequence_length;
+  const int& T = attn->total_sequence_length;
+  const int& M = attn->max_sequence_length;
+  const int& H = attn->head_size;
+  const int& Hv = attn->v_head_size;
 
-  int4 q_strides, k_strides, v_strides;
-  switch (attn->qkv_format) {
-    case Q_K_V_BNSH:
-      q_strides = {G1 * M * K, M * K, K, 1};
-      k_strides = {G1 * N * K, N * K, K, 1};  // matrices are transposed
-      v_strides = {G1 * N * O, N * O, 1, O};
-      break;
-    case Q_KV_BSNH_BSN2H:
-      ORT_ENFORCE(K == O);
-      q_strides = {M * G1 * K, K, G1 * K, 1};              // [G0, M, G1, K] layout
-      k_strides = {N * G1 * 2 * K, 2 * K, G1 * 2 * K, 1};  // [G0, N, G1, K] layout
-      v_strides = {N * G1 * 2 * O, 2 * O, 1, G1 * 2 * O};  // [G0, N, G1, O] layout
-      break;
-    case QKV_BSN3H:
-      ORT_ENFORCE(K == O);
-      q_strides = {M * G1 * 3 * K, 3 * K, G1 * 3 * K, 1};  // [G0, M, G1, K] layout
-      k_strides = {N * G1 * 3 * K, 3 * K, G1 * 3 * K, 1};  // [G0, N, G1, K] layout
-      v_strides = {N * G1 * 3 * O, 3 * O, 1, G1 * 3 * O};  // [G0, N, G1, O] layout
-      break;
+  switch (attn->mode) {
+    case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE:
+      if (attn->qkv_format == Q_K_V_BNSH) {
+        return {
+            Strides::BNSHMemory(B, N, S, H),
+            Strides::BNSHMemory(B, N, L, H),
+            Strides::BNSHMemory(B, N, L, Hv),
+        };
+      } else if (attn->qkv_format == Q_K_V_BSNH) {
+        return {
+            Strides::BSNHMemory(B, S, N, H),
+            Strides::BSNHMemory(B, L, N, H),
+            Strides::BSNHMemory(B, L, N, Hv),
+        };
+      }
+    case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BNSHMemory(B, N, T, H),
+          Strides::BNSHMemory(B, N, T, Hv),
+      };
+    case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BNSHMemory(B, N, M, H),
+          Strides::BNSHMemory(B, N, M, Hv),
+      };
+    case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BSNHMemory(B, L, N, H),
+          Strides::BSNHMemory(B, L, N, Hv),
+      };
+    case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BNSHMemory(B, N, L, H),
+          Strides::BNSHMemory(B, N, L, Hv),
+      };
+    case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BSNHMemory(B, L, N, 2 * H),
+          Strides::BSNHMemory(B, L, N, 2 * Hv),
+      };
+    case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:
+      return {
+          Strides::BSNHMemory(B, L, N, 3 * H),
+          Strides::BSNHMemory(B, L, N, 3 * H),
+          Strides::BSNHMemory(B, L, N, 3 * Hv),
+      };
     default:
-      break;
+      ORT_ENFORCE("unreachable");
+      return {};
   }
-  return {q_strides, k_strides, v_strides};
 }
 
 inline std::tuple<const int*, int3, int3> GetRawMaskBufferAddrSizesAndStrides(
-    const int* buffer, const AttentionParameters* attn) {
+    const int* buffer, const RocmAttentionParameters* attn) {
   const int* offseted_buffer{buffer};  // how to view the mask buffer
   int3 sizes{0, 0, 0};                 // the logical shape of the view
   int3 strides{-1, -1, -1};            // the physical memory layout
@@ -185,9 +371,11 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
         "_T", attention->total_sequence_length,
         "_N", attention->num_heads,
         "_H", attention->head_size,
+        "_Hv", attention->v_head_size,
         bias_buffer != nullptr ? "_B" : "_NB",
         "_M", mask_index_dims.size(),
-        "_QKV", attention->qkv_format);
+        "_QKV", attention->qkv_format,
+        "_MODE", attention->mode);
   }
 
   std::tuple<int, int, int, int, int> GetGemmsMNKOBatch() const {
@@ -195,13 +383,13 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
     auto m = attention->sequence_length;
     auto n = attention->total_sequence_length;
     auto k = attention->head_size;
-    auto o = attention->head_size;
+    auto o = attention->v_head_size;
     auto batch = attention->batch_size * attention->num_heads;
     return {m, n, k, o, batch};
   }
 
   rocblas_handle handle;
-  const AttentionParameters* attention;
+  const RocmAttentionParameters* attention;
   const hipDeviceProp_t* device_prop;
 
   float scale;
@@ -220,6 +408,20 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   // optional, internal
   void* workspace_buffer{nullptr};
 };
+
+inline bool IsKVBNMH(AttentionMode mode) {
+  switch (mode) {
+    case QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE:
+    case QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE:
+    case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      return true;
+    default:
+      return false;
+  }
+}
 
 template <typename T>
 struct GemmSoftmaxGemmPermuteGenericPipeline {
@@ -240,7 +442,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     return {gemm1_out, softmax_out, gemm2_out};
   }
 
-  inline static size_t GetWorkspaceNumBytes(const AttentionParameters* attn) {
+  inline static size_t GetWorkspaceNumBytes(const RocmAttentionParameters* attn) {
     return GetAttentionWorkspaceSize(
         sizeof(T),
         attn->batch_size,
@@ -253,6 +455,12 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
   inline static Status Gemm1(const GemmSoftmaxGemmPermuteParams<T>* params) {
     auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
+
+    int k_buffer_stride = n * k;
+    if (IsKVBNMH(params->attention->mode)) {
+      k_buffer_stride = params->attention->max_sequence_length * params->attention->head_size;
+    }
+
     // GEMM1 [m,k] * [n,k]' -> [m,n]
     return blas::row_major::StridedBatchedGemm(
         params->TuningContext(), params->Stream(), params->handle,
@@ -261,7 +469,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         // For raw attention mask, the scalar is moved to softmax computation.
         /*alpha=*/UseRawAttentionMask(params) ? 1.0f : params->scale,
         params->q_buffer, k, m * k,
-        params->k_buffer, k, n * k,
+        params->k_buffer, k, k_buffer_stride,
         /*beta=*/0.0f,
         gemm1_out, n, m * n,
         batch);
@@ -290,7 +498,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     const int* mask_start = (mask_1d_size > attn->batch_size) ? mask_1d + attn->batch_size : nullptr;
     return ComputeSoftmaxWithMask1D<T>(
-        params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
+        params->StreamHandle(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
         mask_1d, mask_start, params->bias_buffer, gemm1_out, softmax_out, attn->is_unidirectional);
   }
 
@@ -299,13 +507,19 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     auto attn = params->attention;
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     return ComputeSoftmax<T>(
-        params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
+        params->StreamHandle(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
         params->bias_buffer, gemm1_out, softmax_out, attn->is_unidirectional);
   }
 
   inline static Status Gemm2(const GemmSoftmaxGemmPermuteParams<T>* params) {
     auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
+
+    int v_buffer_stride = n * o;
+    if (IsKVBNMH(params->attention->mode)) {
+      v_buffer_stride = params->attention->max_sequence_length * params->attention->v_head_size;
+    }
+
     // GEMM2 [m,n] * [n,o] -> [m,o]
     // semantically, the output buffer contains B*N matrices of shape [S,H], compactly, thus B,N,S,H.
     return blas::row_major::StridedBatchedGemm(
@@ -314,7 +528,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         m, o, n,
         /*alpha=*/1.0f,
         softmax_out, n, m * n,
-        params->v_buffer, o, n * o,
+        params->v_buffer, o, v_buffer_stride,
         /*beta=*/0.0f,
         gemm2_out, o, m * o,
         batch);
@@ -326,14 +540,58 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     auto attn = params->attention;
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     return LaunchTransCtx(
-        params->Stream(),
+        params->StreamHandle(),
         attn->sequence_length, attn->batch_size, attn->head_size, attn->num_heads,
         params->device_prop->maxThreadsPerBlock, false, gemm2_out, params->out_buffer);
   }
 
+  static Status GetSupportedStatus(const GemmSoftmaxGemmPermuteParams<T>* params) {
+    const auto& attn = params->attention;
+    // TODO: address the BNMH k,v strides
+    switch (attn->mode) {
+      case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE:
+      case QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE:
+      case QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE:
+      case QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE:
+      case QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE:
+        if (attn->qkv_format == Q_K_V_BNSH) {
+          return Status::OK();
+        } else {
+          return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH, got ",
+                                        attn->qkv_format);
+        }
+      case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
+        return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH but k, v are BLNH");
+      case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
+      case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+        // If sequence_length is 1, query of B1NH can be simply viewed as BN1H.
+        if (attn->sequence_length == 1) {
+          return Status::OK();
+        } else {
+          return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH, ",
+                                        "only if sequence_length is 1, query of BSNH can be viewed as BNSH");
+        }
+      case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:
+      case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
+        return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH");
+      default:
+        return TUNABLE_OP_UNSUPPORTED("unknonw");
+    }
+    return TUNABLE_OP_UNSUPPORTED("unknonw case");
+  }
+
   static Status Run(const GemmSoftmaxGemmPermuteParams<T>* params, bool use_persistent_softmax) {
-    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-        params->attention->qkv_format != Q_K_V_BNSH, "GenericPipeline only supports qkv_format as Q_K_V_BNSH");
+    auto supported_status = GetSupportedStatus(params);
+    if (!supported_status.IsOK()) {
+      return supported_status;
+    }
     ORT_RETURN_IF_ERROR(Gemm1(params));
 
     if (UseRawAttentionMask(params)) {
@@ -355,19 +613,35 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
  public:
   GemmSoftmaxGemmPermuteTunableOp();
 
-  inline static bool IsSupportedQkvFormat(const AttentionParameters* attn) {
-    switch (attn->qkv_format) {
-      case Q_K_V_BNSH:
-      case Q_K_V_BSNH:
-      case Q_KV_BSNH_BSN2H:
-      case QKV_BSN3H:
+  inline static bool IsSupportedMode(const RocmAttentionParameters* attn) {
+    switch (attn->mode) {
+      case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE:
+      case QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE:
+        // depends on qkv format
+        if (attn->qkv_format == Q_K_V_BNSH || attn->qkv_format == Q_K_V_BSNH) {
+          return true;
+        } else {
+          return false;
+        }
+      case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
+      case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
+      case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
+      case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:
         return true;
       default:
         return false;
     }
   }
 
-  inline static bool IsSupportedMaskType(const AttentionParameters* attn) {
+  inline static bool IsSupportedMaskType(const RocmAttentionParameters* attn) {
     switch (attn->mask_type) {
       case MASK_NONE:
       case MASK_2D_DUMMY:
@@ -380,12 +654,17 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
     }
   }
 
-  inline static size_t GetWorkspaceNumBytes(const AttentionParameters* attn) {
-    if (!IsSupportedMaskType(attn)) {
-      return 0;
+  inline static size_t GetWorkspaceNumBytes(const RocmAttentionParameters* attn) {
+    size_t num_bytes = GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(attn);
+
+#ifdef USE_COMPOSABLE_KERNEL
+    if (IsSupportedMaskType(attn)) {
+      auto [buffer, sizes, strides] = GetRawMaskBufferAddrSizesAndStrides(nullptr, attn);
+      num_bytes = std::max(num_bytes, sizeof(T) * sizes.x * sizes.y * sizes.z);
     }
-    auto [buffer, sizes, strides] = GetRawMaskBufferAddrSizesAndStrides(nullptr, attn);
-    return sizeof(T) * sizes.x * sizes.y * sizes.z;
+#endif
+
+    return num_bytes;
   }
 
   template <int VecSize, typename Converter>
@@ -422,7 +701,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
       *reinterpret_cast<StoreT*>(out + out_offset) = store;
     } else {
 #pragma unroll
-      for (int i = tidx; i < mask_lengths.z; i++) {
+      for (int i = 0; i < mask_lengths.z - tidx; i++) {
         out[out_offset + i] = cvt(mask_buffer[in_offset + i]);
       }
     }
@@ -442,7 +721,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
       return v == 1 ? 0 : mask_filter_value;
     };
 
-    ConvertToFilledMaskValue<kVecSize><<<num_blocks, kThreadPerBlock, 0, params->Stream()>>>(
+    ConvertToFilledMaskValue<kVecSize><<<num_blocks, kThreadPerBlock, 0, params->StreamHandle()>>>(
         reinterpret_cast<T*>(params->workspace_buffer), {lengths.y * lengths.z, lengths.z, 1},  // out desc
         buffer, lengths, strides,                                                               // mask desc
         cvt);
@@ -477,8 +756,8 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
     auto op = [impl = std::move(impl), invoker = std::move(invoker)](
                   const GemmSoftmaxGemmPermuteParams<T>* params) -> Status {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedQkvFormat(params->attention),
-          "qkv format is not supported, got ", params->attention->qkv_format);
+          !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMode(params->attention),
+          "attention mode is not supported, got ", params->attention->mode);
       if constexpr (USE_BIAS) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
             params->bias_buffer == nullptr, "biased version only support input with bias");
@@ -507,16 +786,15 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
       {
         auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
         ORT_ENFORCE(M == m && N == n && K == k && O == o && G0 * G1 == batch, "semantic mismatch");
-        ORT_ENFORCE(K == O, "inner product dimension mismatch");
       }
 
       auto [qs, ks, vs] = GetQkvStrides(attn);
       std::vector<ck::index_t> q_buffer_lengths = {G0, G1, M, K};
-      std::vector<ck::index_t> q_buffer_strides = {qs.x, qs.y, qs.z, qs.w};
+      std::vector<ck::index_t> q_buffer_strides = qs.template ForBNSHCoord<std::vector<ck::index_t>>();
       std::vector<ck::index_t> k_buffer_lengths = {G0, G1, N, K};
-      std::vector<ck::index_t> k_buffer_strides = {ks.x, ks.y, ks.z, ks.w};
+      std::vector<ck::index_t> k_buffer_strides = ks.template ForBNSHCoord<std::vector<ck::index_t>>();
       std::vector<ck::index_t> v_buffer_lengths = {G0, G1, O, N};
-      std::vector<ck::index_t> v_buffer_strides = {vs.x, vs.y, vs.z, vs.w};
+      std::vector<ck::index_t> v_buffer_strides = vs.template ForBNHSCoord<std::vector<ck::index_t>>();
       std::vector<ck::index_t> out_buffer_lengths = {G0, G1, M, O};
       std::vector<ck::index_t> out_buffer_strides = {M * G1 * O, O, G1 * O, 1};  // permute 0213
 
@@ -565,7 +843,7 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
       if constexpr (USE_MASK) {
         ORT_RETURN_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>::LaunchConvertToFilledMaskValue(params));
       }
-      invoker->Run(arg.get(), StreamConfig{params->Stream()});
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(op)));

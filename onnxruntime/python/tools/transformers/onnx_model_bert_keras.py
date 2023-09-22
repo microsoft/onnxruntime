@@ -3,14 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import argparse  # noqa: F401
 import logging
-import sys  # noqa: F401
-from collections import deque  # noqa: F401
 
-import numpy as np  # noqa: F401
 import onnx
-from onnx import ModelProto, TensorProto, numpy_helper  # noqa: F401
+from onnx import numpy_helper
 from onnx_model_bert_tf import BertOnnxModelTF
 
 logger = logging.getLogger(__name__)
@@ -439,7 +435,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                     "SkipLayerNormalization",
                 ],
                 [None, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            )  # yapf: disable
+            )
             if path is None:
                 continue
 

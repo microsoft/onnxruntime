@@ -14,32 +14,32 @@ namespace blas {
 
 #define GEMM(T, ScalarT)                                                         \
   common::Status Gemm(                                                           \
-      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle,  \
+      RocmTuningContext* tuning_ctx, Stream* stream, rocblas_handle handle,      \
       BlasOp opa, BlasOp opb,                                                    \
       std::int64_t m, std::int64_t n, std::int64_t k,                            \
       ScalarT alpha, const T* a, std::int64_t lda, const T* b, std::int64_t ldb, \
       ScalarT beta, T* c, std::int64_t ldc)
 
-#define BATCHED_GEMM(T, ScalarT)                                                \
-  common::Status BatchedGemm(                                                   \
-      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle, \
-      BlasOp opa, BlasOp opb,                                                   \
-      std::int64_t m, std::int64_t n, std::int64_t k,                           \
-      ScalarT alpha,                                                            \
-      const T** as, std::int64_t lda,                                           \
-      const T** bs, std::int64_t ldb,                                           \
-      ScalarT beta,                                                             \
+#define BATCHED_GEMM(T, ScalarT)                                            \
+  common::Status BatchedGemm(                                               \
+      RocmTuningContext* tuning_ctx, Stream* stream, rocblas_handle handle, \
+      BlasOp opa, BlasOp opb,                                               \
+      std::int64_t m, std::int64_t n, std::int64_t k,                       \
+      ScalarT alpha,                                                        \
+      const T** as, std::int64_t lda,                                       \
+      const T** bs, std::int64_t ldb,                                       \
+      ScalarT beta,                                                         \
       T** cs, std::int64_t ldc, std::int64_t batch)
 
-#define STRIDED_BATCHED_GEMM(T, ScalarT)                                        \
-  common::Status StridedBatchedGemm(                                            \
-      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle, \
-      BlasOp opa, BlasOp opb,                                                   \
-      std::int64_t m, std::int64_t n, std::int64_t k,                           \
-      ScalarT alpha,                                                            \
-      const T* a, std::int64_t lda, std::int64_t stride_a,                      \
-      const T* b, std::int64_t ldb, std::int64_t stride_b,                      \
-      ScalarT beta,                                                             \
+#define STRIDED_BATCHED_GEMM(T, ScalarT)                                    \
+  common::Status StridedBatchedGemm(                                        \
+      RocmTuningContext* tuning_ctx, Stream* stream, rocblas_handle handle, \
+      BlasOp opa, BlasOp opb,                                               \
+      std::int64_t m, std::int64_t n, std::int64_t k,                       \
+      ScalarT alpha,                                                        \
+      const T* a, std::int64_t lda, std::int64_t stride_a,                  \
+      const T* b, std::int64_t ldb, std::int64_t stride_b,                  \
+      ScalarT beta,                                                         \
       T* c, std::int64_t ldc, std::int64_t stride_c, std::int64_t batch)
 
 namespace row_major {

@@ -163,7 +163,7 @@ void ComputeGemm(const int M,
 }
 
 struct PackedWeights {
-  BufferUniquePtr buffer_;
+  IAllocatorUniquePtr<void> buffer_;
   size_t buffer_size_;
   size_t weights_size_;
   TensorShape shape_;

@@ -29,6 +29,8 @@ parameters:
 steps:
   - script: |
       which ccache || brew install ccache
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
       mkdir -p "${{ parameters.CacheDir }}"
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc

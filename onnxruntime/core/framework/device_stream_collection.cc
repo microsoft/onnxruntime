@@ -21,15 +21,9 @@ struct DummyStream : Stream {
 
 class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams), root_stream_device_(OrtDevice()) {
+  DeviceStreamCollectionImpl(size_t num_streams, const AllocatorMap& allocators, bool is_main_graph) : num_streams_(num_streams), allocators_(allocators), is_main_graph_(is_main_graph) {
     device_streams_.resize(num_streams, nullptr);
     owned_streams_.reserve(num_streams);
-    auto& providers = sess_state.GetExecutionProviders();
-    eps_.reserve(providers.NumProviders());
-    for (auto& ep : providers) {
-      eps_.push_back(ep);
-    }
-    is_main_graph_ = sess_state.GetGraphViewer().ParentNode() == nullptr;
     root_stream_ = std::make_unique<DummyStream>(nullptr, root_stream_device_);
   }
 
@@ -38,16 +32,13 @@ class DeviceStreamCollectionImpl {
 
   void ReleaseSingleStreamBuffers(Stream* stream) {
     if (!stream) return;
-    for (auto& ep : eps_) {
-      auto& allocators = ep->GetAllocators();
-      for (auto& alloc : allocators) {
-        if (alloc->Info().device == stream->GetDevice() &&
-            alloc->Info().alloc_type == OrtArenaAllocator) {
-          auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-          auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
-          if (stream_aware_alloc) {
-            stream_aware_alloc->ReleaseStreamBuffers(stream);
-          }
+    for (auto it : allocators_) {
+      if (it.second->Info().device == stream->GetDevice() &&
+          it.second->Info().alloc_type == OrtArenaAllocator) {
+        auto* arena_alloc = static_cast<BFCArena*>(it.second.get());
+        auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
+        if (stream_aware_alloc) {
+          stream_aware_alloc->ReleaseStreamBuffers(stream);
         }
       }
     }
@@ -99,9 +90,7 @@ class DeviceStreamCollectionImpl {
   size_t num_streams_;
   std::vector<Stream*> device_streams_;
   InlinedVector<std::unique_ptr<Stream>> owned_streams_;
-  // due to training's partial execution, the device streams collection may need to be hold
-  // with a different lifetime of session state, we need to hold the reference of EPs.
-  InlinedVector<std::shared_ptr<IExecutionProvider>> eps_;
+  const AllocatorMap& allocators_;
   bool is_main_graph_ = false;
   // This is used in ExecutionFrame when memory pattern is enabled, to allocate the peak size memory
   // labelled this stream in the current thread, instead of the default stream which will be used in all the threads (thus caused thread safe issue)
@@ -110,8 +99,8 @@ class DeviceStreamCollectionImpl {
   void ReleaseSingleStreamBuffers();
 };
 
-DeviceStreamCollection::DeviceStreamCollection(size_t num_streams,
-                                               const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
+DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const AllocatorMap& allocators, bool is_main_graph)
+    : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, allocators, is_main_graph)) {}
 
 DeviceStreamCollection::~DeviceStreamCollection() {}
 
@@ -137,6 +126,17 @@ Stream* DeviceStreamCollection::GetStream(size_t stream_idx) const {
 
 Stream* DeviceStreamCollection::GetRootStream() const {
   return impl_->GetRootStream();
+}
+
+DeviceStreamCollectionHolder::DeviceStreamCollectionHolder(const SessionState* session_state)
+    : session_state_(session_state),
+      p_(session_state->AcquireDeviceStreamCollection()) {
+}
+
+DeviceStreamCollectionHolder::~DeviceStreamCollectionHolder() {
+  if (p_) {
+    session_state_->RecycleDeviceStreamCollection(std::move(p_));
+  }
 }
 
 }  // namespace onnxruntime

@@ -109,13 +109,7 @@ class TestDataReader(CalibrationDataReader):
 def augment_model_collect_activations(
     model_path: str, augmented_model_path: str, data_reader: TestDataReader
 ) -> Dict[str, List[np.ndarray]]:
-    aug_model = modify_model_output_intermediate_tensors(model_path)
-
-    onnx.save(
-        aug_model,
-        augmented_model_path,
-        save_as_external_data=False,
-    )
+    modify_model_output_intermediate_tensors(model_path, augmented_model_path)
 
     tensor_dict = collect_activations(augmented_model_path, data_reader)
     return tensor_dict
@@ -180,7 +174,6 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
-            optimize_model=False,
         )
 
         data_reader.rewind()
@@ -238,7 +231,6 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
-            optimize_model=False,
         )
 
         # Call function under test and verify all weights are present
@@ -307,7 +299,6 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
-            optimize_model=False,
         )
 
         # Call function under test and verify all weights are present

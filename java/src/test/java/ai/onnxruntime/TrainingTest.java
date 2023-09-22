@@ -168,16 +168,17 @@ public class TrainingTest {
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
 
     Path tmpPath = Files.createTempDirectory("ort-java-training-test");
+    Path tmpCheckpointPath = tmpPath.resolve("checkpoint.ckpt");
     try {
       try (OrtTrainingSession trainingSession =
           env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
 
         // Save checkpoint
-        trainingSession.saveCheckpoint(tmpPath, false);
+        trainingSession.saveCheckpoint(tmpCheckpointPath, false);
       }
 
       try (OrtTrainingSession trainingSession =
-          env.createTrainingSession(tmpPath.toString(), trainingPath, null, null)) {
+          env.createTrainingSession(tmpCheckpointPath.toString(), trainingPath, null, null)) {
         // Load saved checkpoint into new session and run train step
         runTrainStep(trainingSession);
       }

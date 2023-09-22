@@ -236,6 +236,7 @@ e.g. `test_method_x_raises_error_when_dims_is_not_a_sequence`
 
 ## Objective-C/C++ Code Style
 
-Please follow the [Google Objective-C/C++ Style Guide](https://google.github.io/styleguide/objcguide.html).
+Please follow the [Google Objective-C/C++ Style Guide](https://google.github.io/styleguide/objcguide.html) with the following alteration(s):
+- The maximum line length is 120 for consistency with the C++ code.
 
 Clang-format can be used to format Objective-C/C++ code. The `.clang-format` file is in the repository root directory.

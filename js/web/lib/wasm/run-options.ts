@@ -3,9 +3,8 @@
 
 import {InferenceSession} from 'onnxruntime-common';
 
-import {iterateExtraOptions} from './options-utils';
-import {allocWasmString} from './string-utils';
 import {getInstance} from './wasm-factory';
+import {allocWasmString, checkLastError, iterateExtraOptions} from './wasm-utils';
 
 export const setRunOptions = (options: InferenceSession.RunOptions): [number, number[]] => {
   const wasm = getInstance();
@@ -41,7 +40,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
     runOptionsHandle = wasm._OrtCreateRunOptions(
         runOptions.logSeverityLevel!, runOptions.logVerbosityLevel!, !!runOptions.terminate!, tagDataOffset);
     if (runOptionsHandle === 0) {
-      throw new Error('Can\'t create run options');
+      checkLastError('Can\'t create run options.');
     }
 
     if (options?.extra !== undefined) {
@@ -50,7 +49,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
         const valueDataOffset = allocWasmString(value, allocs);
 
         if (wasm._OrtAddRunConfigEntry(runOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
-          throw new Error(`Can't set a run config entry: ${key} - ${value}`);
+          checkLastError(`Can't set a run config entry: ${key} - ${value}.`);
         }
       });
     }
@@ -60,7 +59,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
     if (runOptionsHandle !== 0) {
       wasm._OrtReleaseRunOptions(runOptionsHandle);
     }
-    allocs.forEach(wasm._free);
+    allocs.forEach(alloc => wasm._free(alloc));
     throw e;
   }
 };

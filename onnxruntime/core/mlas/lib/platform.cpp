@@ -55,7 +55,7 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
-    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0); 
+    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
 
     // raw hack! Need CPUIDInfo implementation for more precise detection
     has_fp16_ = has_arm_neon_dot_;
@@ -112,6 +112,14 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const int16_t MlasOpmask16BitTableAvx512[
 #define _XCR_XFEATURE_ENABLED_MASK 0
 #endif
 
+#if !defined(XFEATURE_MASK_XTILE)
+#define XFEATURE_XTILECFG 17
+#define XFEATURE_XTILEDATA 18
+#define XFEATURE_MASK_XTILECFG (1 << XFEATURE_XTILECFG)
+#define XFEATURE_MASK_XTILEDATA (1 << XFEATURE_XTILEDATA)
+#define XFEATURE_MASK_XTILE (XFEATURE_MASK_XTILECFG | XFEATURE_MASK_XTILEDATA)
+#endif
+
 inline
 uint64_t
 MlasReadExtendedControlRegister(
@@ -142,11 +150,6 @@ bool
 MlasInitAMX()
 {
 #if defined(__linux__)
-#define XFEATURE_XTILECFG 17
-#define XFEATURE_XTILEDATA 18
-#define XFEATURE_MASK_XTILECFG (1 << XFEATURE_XTILECFG)
-#define XFEATURE_MASK_XTILEDATA (1 << XFEATURE_XTILEDATA)
-#define XFEATURE_MASK_XTILE (XFEATURE_MASK_XTILECFG | XFEATURE_MASK_XTILEDATA)
 
 #define ARCH_GET_XCOMP_PERM 0x1022
 #define ARCH_REQ_XCOMP_PERM 0x1023
@@ -230,6 +233,8 @@ Return Value:
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+    this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
+    this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -393,6 +398,7 @@ Return Value:
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
                         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
+                        this->FpQ4GemmDispatch = &MlasFpQ4GemmDispatchAvx512;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -404,22 +410,25 @@ Return Value:
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
+                            this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
                         }
                     }
                 }
 
-#ifdef MLAS_AMX_SUPPORTED
+#ifndef __APPLE__
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
                 //
-                if ((Cpuid7[3] & 0b1 << 24) != 0 && (Cpuid7[3] & 0b1 << 25) != 0) {
+                if ((Cpuid7[3] & 0b1 << 24) != 0 &&
+                    (Cpuid7[3] & 0b1 << 25) != 0 &&
+                    (xcr0 & XFEATURE_MASK_XTILE) == XFEATURE_MASK_XTILE) {
                     if (MlasInitAMX()) {
                         this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAmx;
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
-#endif // MLAS_AMX_SUPPORTED
+#endif // __APPLE__
 
 #endif // ORT_MINIMAL_BUILD
 
@@ -434,7 +443,9 @@ Return Value:
 
 #if defined(MLAS_TARGET_ARM64)
 
-    this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->GemmU8S8Dispatch = &MlasGemmX8S8DispatchNeon;
+    this->GemmS8S8Dispatch = &MlasGemmX8S8DispatchNeon;
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
@@ -447,14 +458,19 @@ Return Value:
 
 #if defined(_WIN32)
     HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#elif defined(__linux__)
-    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
+#elif !defined(__APPLE__)  // The next few lines result in an EXC_BAD_INSTRUCTION runtime error on a M1 Mac so we
+                           // disable it there.
+    uint64_t isar0_el1;
+    asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
+    HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
 #else
-    HasDotProductInstructions = false;
+    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #endif
 
     if (HasDotProductInstructions) {
-        this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSdot;
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
@@ -466,6 +482,8 @@ Return Value:
     this->GemmDoubleKernel = MlasDgemmKernel;
     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+    this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
+    this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
 
 #if defined(__linux__)
     unsigned long hwcap2 = getauxval(AT_HWCAP2);

@@ -22,7 +22,7 @@
 #include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/float8.h"
 #include "core/framework/float16.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
@@ -64,7 +64,11 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_UINT64 = 13,
   TensorProto_DataType_COMPLEX64 = 14,
   TensorProto_DataType_COMPLEX128 = 15,
-  TensorProto_DataType_BFLOAT16 = 16
+  TensorProto_DataType_BFLOAT16 = 16,
+  TensorProto_DataType_FLOAT8E4M3FN = 17,
+  TensorProto_DataType_FLOAT8E4M3FNUZ = 18,
+  TensorProto_DataType_FLOAT8E5M2 = 19,
+  TensorProto_DataType_FLOAT8E5M2FNUZ = 20
 };
 
 enum TensorProto_DataLocation : int {
@@ -80,7 +84,9 @@ enum Version : int {
   IR_VERSION_2019_1_22 = 4,
   IR_VERSION_2019_3_18 = 5,
   IR_VERSION_2019_9_19 = 6,
-  IR_VERSION = 7
+  IR_VERSION_2020_5_8 = 7,
+  IR_VERSION_2021_7_31 = 8,
+  IR_VERSION = 9
 };
 
 enum OperatorStatus : int {
@@ -173,6 +179,7 @@ class ATen;
 class Group;
 class PassThrough;
 class YieldOp;
+class TritonOp;
 class AdamWOptimizerBase;
 class SGDOptimizerV2Base;
 class ShrunkenGatherCommon;
@@ -253,10 +260,10 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
@@ -317,6 +324,16 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() { re
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FN>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
+#endif
 }  // namespace utils
 
 // This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.

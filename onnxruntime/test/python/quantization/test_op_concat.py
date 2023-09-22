@@ -9,10 +9,10 @@ import unittest
 import numpy as np
 from onnx import TensorProto, helper, numpy_helper, save
 from op_test_utils import (
-    InputFeedsNegOneZeroOne,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
+    input_feeds_neg_one_zero_one,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
@@ -91,7 +91,7 @@ class TestConcatModel(unittest.TestCase):
         np.random.seed(1)
         model_fp32_path = "concat_fp32.onnx"
         self.construct_model(model_fp32_path)
-        data_reader = InputFeedsNegOneZeroOne(1, {"input": [1, 3, 15, 15]})
+        data_reader = input_feeds_neg_one_zero_one(1, {"input": [1, 3, 15, 15]})
 
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"

@@ -119,11 +119,11 @@ export class ShapeUtil {
     let size = 1;
     for (let i = start; i < end; i++) {
       // safety check as this method is called by multiple other methods requiring size.
-      // size cannot be 0 or negative.
-      if (dims[i] <= 0) {
+      // size cannot be negative.
+      if (dims[i] < 0) {
         throw new Error(
             // eslint-disable-next-line max-len
-            'cannot get valid size from specified dimension range. Most likely the range contains 0 or negative values in them.');
+            'cannot get valid size from specified dimension range. Most likely the range contains negative values in them.');
       }
       size *= dims[i];
     }

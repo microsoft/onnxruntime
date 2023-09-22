@@ -71,27 +71,40 @@ class CheckpointState : public detail::Base<OrtCheckpointState> {
   /// \name Accessing The Training Session State
   /// @{
 
-  /** \brief Load a checkpoint state from directory on disk into checkpoint_state.
+  /** \brief Load a checkpoint state from a file on disk into checkpoint_state.
    *
-   * This function will parse a checkpoint directory, pull relevant files and load the training
+   * This function will parse a checkpoint file, pull relevant data and load the training
    * state and return an instance of Ort::CheckpointState. This checkpoint state can then be used to create the
    * training session by instantiating Ort::TrainingSession. By doing so, the training session will resume
    * training from the given checkpoint state.
    *
-   * \param[in] path_to_checkpoint Path to the checkpoint directory
+   * \param[in] path_to_checkpoint Path to the checkpoint file
    * \return Ort::CheckpointState object which holds the state of the training session parameters.
    *
    */
   static CheckpointState LoadCheckpoint(const std::basic_string<ORTCHAR_T>& path_to_checkpoint);
 
-  /** \brief Save the given state to a checkpoint directory on disk.
+  /** \brief Load a checkpoint state from a buffer.
    *
-   * This function serializes the provided checkpoint state to a directory on disk.
+   * This function will parse a checkpoint buffer, pull relevant data and load the training
+   * state and return an instance of Ort::CheckpointState. This checkpoint state can then be used to create the
+   * training session by instantiating Ort::TrainingSession. By doing so, the training session will resume
+   * training from the given checkpoint state.
+   *
+   * \param[in] buffer Buffer containing the checkpoint data.
+   * \return Ort::CheckpointState object which holds the state of the training session parameters.
+   *
+   */
+  static CheckpointState LoadCheckpointFromBuffer(const std::vector<uint8_t>& buffer);
+
+  /** \brief Save the given state to a checkpoint file on disk.
+   *
+   * This function serializes the provided checkpoint state to a file on disk.
    * This checkpoint can later be loaded by invoking Ort::CheckpointState::LoadCheckpoint to resume
    * training from this snapshot of the state.
    *
    * \param[in] checkpoint_state The checkpoint state to save.
-   * \param[in] path_to_checkpoint Path to the checkpoint directory.
+   * \param[in] path_to_checkpoint Path to the checkpoint file.
    * \param[in] include_optimizer_state Flag to indicate whether to save the optimizer state or not.
    *
    */
@@ -131,7 +144,7 @@ class CheckpointState : public detail::Base<OrtCheckpointState> {
  * - The training onnx model
  * - The evaluation onnx model (optional)
  * - The optimizer onnx model
- * - The checkpoint directory
+ * - The checkpoint file
  *
  * These artifacts can be generated using the `onnxruntime-training` python [utility](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/onnxblock/README.md).
  *
@@ -163,6 +176,20 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
                   const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path = std::nullopt,
                   const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path = std::nullopt);
 
+  /** \brief Create a training session that can be used to begin or resume training.
+   * This constructor allows the users to load the models from buffers instead of files.
+   *
+   * \param[in] env Env to be used for the training session.
+   * \param[in] session_options SessionOptions that the user can customize for this training session.
+   * \param[in] checkpoint_state Training states that the training session uses as a starting point for training.
+   * \param[in] train_model_data Buffer containing training model data.
+   * \param[in] eval_model_data Buffer containing evaluation model data.
+   * \param[in] optim_model_data Buffer containing optimizer model (used for performing weight/parameter update).
+   *
+   */
+  TrainingSession(const Env& env, const SessionOptions& session_options, CheckpointState& checkpoint_state,
+                  const std::vector<uint8_t>& train_model_data, const std::vector<uint8_t>& eval_model_data = {},
+                  const std::vector<uint8_t>& optim_model_data = {});
   /// @}
 
   /// \name Implementing The Training Loop
@@ -181,7 +208,6 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
    * \param[in] input_values The user inputs to the training model.
    * \return A std::vector of Ort::Value objects that represents the output of the forward pass of the training model.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
   std::vector<Value> TrainStep(const std::vector<Value>& input_values);

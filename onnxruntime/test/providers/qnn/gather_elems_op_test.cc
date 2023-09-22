@@ -77,8 +77,8 @@ static void RunCPUGatherElemsOpTest(const std::vector<int64_t>& data_shape,
                                     const std::vector<IndexType>& indices,
                                     bool indices_are_static,
                                     int64_t axis,
-                                    ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                                    int expected_nodes_in_graph = 1, int opset = 13) {
+                                    ExpectedEPNodeAssignment expected_ep_assignment,
+                                    int opset = 13) {
   ProviderOptions provider_options;
   float fp32_abs_err = 1e-5f;  // default tolerance
 
@@ -93,8 +93,6 @@ static void RunCPUGatherElemsOpTest(const std::vector<int64_t>& data_shape,
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_graph,
-                  test_description,
                   fp32_abs_err);
 }
 
@@ -107,8 +105,8 @@ static void RunHTPGatherElemsOpTest(const std::vector<int64_t>& data_shape,
                                     const std::vector<IndexType>& indices,
                                     bool indices_are_static,
                                     int64_t axis,
-                                    ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                                    int expected_nodes_in_graph = 1, int opset = 13) {
+                                    ExpectedEPNodeAssignment expected_ep_assignment,
+                                    int opset = 13) {
   ProviderOptions provider_options;
   float fp32_abs_err = 1e-5f;  // default tolerance
 
@@ -123,8 +121,6 @@ static void RunHTPGatherElemsOpTest(const std::vector<int64_t>& data_shape,
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_graph,
-                  test_description,
                   fp32_abs_err);
 }
 
@@ -138,7 +134,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_f32_IndicesInt64) {
   RunCPUGatherElemsOpTest<float, int64_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, false, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_f32_IndicesInt64");
+      ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherElements op on CPU backend:
@@ -147,7 +143,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_f32_IndicesInt32) {
   RunCPUGatherElemsOpTest<float, int32_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, false, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_f32_IndicesInt32");
+      ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherElements op on CPU backend:
@@ -159,7 +155,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_GatherElems_f32_IndicesInt32_3D) {
   RunCPUGatherElemsOpTest<float, int32_t>(
       {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f},
       {1, 2, 1}, {1, 1}, false, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_f32_IndicesInt32_3D");
+      ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherElements op on CPU backend:
@@ -168,7 +164,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_f32_StaticIndicesInt64) {
   RunCPUGatherElemsOpTest<float, int64_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, true, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_f32_StaticIndicesInt64");
+      ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherElements op on CPU backend:
@@ -177,7 +173,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_f32_StaticIndicesInt32) {
   RunCPUGatherElemsOpTest<float, int32_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, true, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_f32_StaticIndicesInt32");
+      ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Enable when QNN CPU backend supports negative indices.
@@ -186,7 +182,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_f32_StaticIndicesInt32) {
 TEST_F(QnnCPUBackendTests, DISABLED_GatherElems_f32_NegIndicesInt32) {
   RunCPUGatherElemsOpTest<float, int64_t>(
       {2, 2}, {1.f, 2.f, 3.f, 4.f}, {2, 2}, {-1, 0, -1, 0}, true, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_f32_StaticNegIndicesInt64");
+      ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Enable when QNN CPU backend supports negative indices.
@@ -195,7 +191,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_GatherElems_f32_NegIndicesInt32) {
 TEST_F(QnnCPUBackendTests, DISABLED_GatherElems_f32_StaticNegIndicesInt32) {
   RunCPUGatherElemsOpTest<float, int32_t>(
       {2, 2}, {1.f, 2.f, 3.f, 4.f}, {2, 2}, {-1, 0, -1, 0}, true, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_f32_StaticNegIndicesInt32");
+      ExpectedEPNodeAssignment::All);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -211,8 +207,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_u8_IndicesInt64) {
   RunHTPGatherElemsOpTest<float, uint8_t, int64_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, false, 1,
-      ExpectedEPNodeAssignment::Some, "GatherElems_u8_IndicesInt64",
-      5);  // Expect 5 nodes in the graph (2 assigned to QNN in separate partitions, 3 assigned to CPU EP).
+      ExpectedEPNodeAssignment::Some);
 }
 
 // Test GatherElements op on HTP backend:
@@ -221,7 +216,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_u8_IndicesInt32) {
   RunHTPGatherElemsOpTest<float, uint8_t, int32_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, false, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_u8_IndicesInt32");
+      ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherElements op on HTP backend:
@@ -230,7 +225,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_u8_StaticIndicesInt32) {
   RunHTPGatherElemsOpTest<float, uint8_t, int32_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, true, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_u8_StaticIndicesInt32");
+      ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherElements op on HTP backend:
@@ -240,7 +235,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_u8_StaticIndicesInt64) {
   RunHTPGatherElemsOpTest<float, uint8_t, int64_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, true, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_u8_StaticIndicesInt64");
+      ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Enable when QNN HTP backend supports negative indices.
@@ -250,7 +245,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherElems_u8_NegIndicesInt32) {
   RunHTPGatherElemsOpTest<float, uint8_t, int32_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, false, 1,
-      ExpectedEPNodeAssignment::All, "DISABLED_GatherElems_u8_NegIndicesInt32");
+      ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Enable when QNN HTP backend supports negative indices.
@@ -260,7 +255,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherElems_u8_StaticNegIndicesInt32) {
   RunHTPGatherElemsOpTest<float, uint8_t, int32_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
       {2, 3}, {1, 2, 0, 2, 0, 0}, true, 1,
-      ExpectedEPNodeAssignment::All, "GatherElems_u8_StaticNegIndicesInt32");
+      ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

@@ -77,8 +77,8 @@ static void RunCPUGatherNDOpTest(const std::vector<int64_t>& data_shape,
                                  const std::vector<int64_t>& indices,
                                  bool indices_are_static,
                                  int64_t batch_dims,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                                 int expected_nodes_in_graph = 1, int opset = 13) {
+                                 ExpectedEPNodeAssignment expected_ep_assignment,
+                                 int opset = 13) {
   ProviderOptions provider_options;
   float fp32_abs_err = 1e-5f;  // default tolerance
 
@@ -93,8 +93,6 @@ static void RunCPUGatherNDOpTest(const std::vector<int64_t>& data_shape,
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_graph,
-                  test_description,
                   fp32_abs_err);
 }
 
@@ -107,8 +105,8 @@ static void RunHTPGatherNDOpTest(const std::vector<int64_t>& data_shape,
                                  const std::vector<int64_t>& indices,
                                  bool indices_are_static,
                                  int64_t batch_dims,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                                 int expected_nodes_in_graph = 1, int opset = 13) {
+                                 ExpectedEPNodeAssignment expected_ep_assignment,
+                                 int opset = 13) {
   ProviderOptions provider_options;
   float fp32_abs_err = 1e-5f;  // default tolerance
 
@@ -123,8 +121,6 @@ static void RunHTPGatherNDOpTest(const std::vector<int64_t>& data_shape,
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_graph,
-                  test_description,
                   fp32_abs_err);
 }
 
@@ -142,7 +138,7 @@ TEST_F(QnnCPUBackendTests, GatherND_f32_DynamicIndices_BatchDim0) {
                               {0, 1, 1, 0},                                     // indices
                               false,                                            // indices_are_static
                               0,                                                // batch_dims
-                              ExpectedEPNodeAssignment::All, "GatherND_f32_DynamicIndices_BatchDim0");
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherND op on CPU backend:
@@ -155,7 +151,7 @@ TEST_F(QnnCPUBackendTests, GatherND_f32_StaticIndices_BatchDim0) {
                               {0, 1, 1, 0},                                     // indices
                               true,                                             // indices_are_static
                               0,                                                // batch_dims
-                              ExpectedEPNodeAssignment::All, "GatherND_f32_StaticIndices_BatchDim0");
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherND op on CPU backend:
@@ -172,7 +168,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_GatherND_f32_DynamicIndices_BatchDim1) {
                               {1, 0},                                           // indices
                               false,                                            // indices_are_static
                               1,                                                // batch_dims
-                              ExpectedEPNodeAssignment::All, "GatherND_f32_DynamicIndices_BatchDim1");
+                              ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherND op on CPU backend:
@@ -189,7 +185,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_GatherND_f32_StaticIndices_BatchDim1) {
                               {1, 0},                                           // indices
                               true,                                             // indices_are_static
                               1,                                                // batch_dims
-                              ExpectedEPNodeAssignment::All, "GatherND_f32_StaticIndices_BatchDim1");
+                              ExpectedEPNodeAssignment::All);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -208,9 +204,7 @@ TEST_F(QnnHTPBackendTests, GatherND_f32_DynamicIndices_BatchDim0) {
                               {0, 1, 1, 0},                                     // indices
                               false,                                            // indices_are_static
                               0,                                                // batch_dims
-                              ExpectedEPNodeAssignment::Some,                   // QDQ GatherND not assigned to QNN EP.
-                              "GatherND_f32_DynamicIndices_BatchDim0",
-                              5);  // 2 QNN nodes (Quantize and Dequantize), 3 CPU EP nodes (QDQ GatherND).
+                              ExpectedEPNodeAssignment::Some);                  // QDQ GatherND not assigned to QNN EP.
 }
 
 // Test GatherND op on HTP backend:
@@ -223,7 +217,7 @@ TEST_F(QnnHTPBackendTests, GatherND_u8_StaticIndices_BatchDim0) {
                                        {0, 1, 1, 0},                                     // indices
                                        true,                                             // indices_are_static
                                        0,                                                // batch_dims
-                                       ExpectedEPNodeAssignment::All, "GatherND_u8_StaticIndices_BatchDim0");
+                                       ExpectedEPNodeAssignment::All);
 }
 
 // Test GatherND op on HTP backend:
@@ -240,7 +234,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherND_f32_StaticIndices_BatchDim1) {
                               {1, 0},                                           // indices
                               true,                                             // indices_are_static
                               1,                                                // batch_dims
-                              ExpectedEPNodeAssignment::All, "GatherND_f32_StaticIndices_BatchDim1");
+                              ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

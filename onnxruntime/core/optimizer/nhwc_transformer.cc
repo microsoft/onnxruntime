@@ -7,13 +7,18 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
+#include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
+#include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
-using namespace onnx_layout_transformation;
+using namespace onnx_transpose_optimization;
 using namespace nhwc_map_internal;
 
 namespace onnxruntime {
+
+using namespace layout_transformation;
 
 static inline const OpTransformInfo*
 NhwcConvLookup(
@@ -175,7 +180,6 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   }
 
   auto api_graph = MakeApiGraph(graph, cpu_allocator_, kCpuExecutionProvider);
-
   modified = false;
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {
     // If the node is not supported in the CPU EP, skip it
@@ -224,8 +228,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   }
 
   if (modified) {
-    Optimize(*api_graph, /*allow_extended_ops*/ true, kCpuExecutionProvider, OptimizerMode::OPTIMIZE_TRANSPOSE,
-             OrtEPCostCheck);
+    Optimize(*api_graph, kCpuExecutionProvider, OrtEPCostCheck, OrtExtendedHandlers());
   }
 
   return Status::OK();

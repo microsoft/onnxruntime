@@ -825,10 +825,8 @@ class PlannerImpl {
 
     const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map, node.Index());
 
-    if (utils::IsInputOnCpu(node, &kernel_create_info, input_index))
-      // weights are not output from any node, so it's OK to put its location on CPU provider
-      return execution_providers_.GetDefaultCpuMemoryInfo().device;
-    return p_provider->GetOrtDeviceByMemType(OrtMemTypeDefault);
+    // weights are not output from any node, so it's OK to put its location on CPU provider
+    return p_provider->GetOrtDeviceByMemType(utils::IsInputOnCpu(node, &kernel_create_info, input_index) ? OrtMemTypeCPUInput : OrtMemTypeDefault);
   }
 
   void GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
@@ -1717,31 +1715,39 @@ class PlannerImpl {
   void PartitionIntoStreams(const logging::Logger& /*logger*/,
                             const ExecutionProviders& /*execution_providers*/,
                             const PathString& /*partition_config_file*/) {
-    stream_nodes_.push_back({});
-    node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
-    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
-      stream_nodes_[0].push_back(node_index);
-      node_stream_map_[node_index] = 0;
+    if (graph_viewer_.NumberOfNodes() > 0) {
+      stream_nodes_.push_back({});
+      node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
+      for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+        stream_nodes_[0].push_back(node_index);
+        node_stream_map_[node_index] = 0;
+      }
+      num_logic_streams_ = 1;
     }
-    num_logic_streams_ = 1;
   }
 
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers) {
     // 1. create logic stream instance
     auto& execution_plan = plan_.execution_plan;
-    ORT_ENFORCE(num_logic_streams_ == 1 && !stream_nodes_[0].empty());
-    execution_plan.reserve(1);
-    auto first_node_index = stream_nodes_[0][0];
-    auto* node = graph_viewer_.GetNode(first_node_index);
-    onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
-    const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
-    ORT_ENFORCE(ep);
-    auto node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
-    execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location));
-    // 2. add steps to the execution plan
-    for (auto node_index : stream_nodes_[0]) {
-      execution_plan[0]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
+
+    if (graph_viewer_.NumberOfNodes() > 0) {
+      ORT_ENFORCE(num_logic_streams_ == 1 && !stream_nodes_[0].empty());
+      execution_plan.reserve(1);
+      auto first_node_index = stream_nodes_[0][0];
+      auto* node = graph_viewer_.GetNode(first_node_index);
+      onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+      const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
+      ORT_ENFORCE(ep);
+      auto node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
+      execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location));
+      // 2. add steps to the execution plan
+      for (auto node_index : stream_nodes_[0]) {
+        execution_plan[0]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
+      }
+    } else {
+      // graph with no nodes. e.g. subgraph of If might return the input as-is or a constant value from an initializer
     }
+
     return Status::OK();
   }
 

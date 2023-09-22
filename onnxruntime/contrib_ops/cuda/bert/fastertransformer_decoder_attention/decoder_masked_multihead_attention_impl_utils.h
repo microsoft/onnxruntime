@@ -163,8 +163,13 @@ inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiHeadAttentionParams
   // The amount of storage needed to finalize the outputs.
   size_t red_sz = rows_per_red * params.head_size * sizeof(T) / 2;
 
+  size_t transpose_rotary_size = 0;
+  if (params.rotary_embedding_dim > 0) {
+    transpose_rotary_size = 2 * params.rotary_embedding_dim * sizeof(T);
+  }
+
   // The max.
-  return std::max(softmax_sz, red_sz);
+  return std::max(std::max(softmax_sz, red_sz), transpose_rotary_size);
 }
 
 }  // namespace decoder_masked_self_attention_details

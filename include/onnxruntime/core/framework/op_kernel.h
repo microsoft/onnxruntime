@@ -11,25 +11,20 @@
 
 #ifndef SHARED_PROVIDER
 #include <functional>
+
 #include "core/common/exceptions.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
-#include "core/framework/ort_value.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_node_proto_helper.h"
-#include "core/framework/tensor.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/gsl.h"
 namespace onnxruntime {
 class OpKernelContext;
@@ -121,7 +116,9 @@ class OpKernel {
   // @param prepacked_buffers: The pre-packed buffers to be used by this kernel for the provided input index
   //                           (Sometimes a single constant initializer may have multiple pre-packed buffers associated
   //                            with it and it upto the kernel developer to store it in any order of their choice in PrePack()
-  //                            and must use the same order for retrieval in UseSharedPrePackedBuffers().
+  //                            and must use the same order for retrieval in UseSharedPrePackedBuffers(). Though each element
+  //                           of this vector is a BufferUniquePtr, the deleter of the BufferUniquePtr is NULL. So actually they
+  //                           are raw pointers.
   // @param input_idx: The input index of the tensor in this kernel
   // @param used_shared_buffers: Boolean flag set by the kernel implementation indicating
   // that the provided weight has been used by the kernel.
@@ -183,6 +180,13 @@ namespace cuda {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace cuda
+}  // namespace contrib
+
+namespace contrib {
+namespace js {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace js
 }  // namespace contrib
 
 namespace contrib {

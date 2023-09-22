@@ -64,7 +64,7 @@ Status ZeroGradient<T>::Compute(OpKernelContext* context) const {
   const Tensor& old_gradient = *context->Input<Tensor>(0);
   Tensor& zero_gradient = *context->Output(0, old_gradient.Shape());
 
-  std::memset(zero_gradient.template MutableData<T>(), 0, zero_gradient.Shape().Size() * sizeof(T));
+  std::memset(zero_gradient.template MutableData<T>(), 0, zero_gradient.SizeInBytes());
   return Status::OK();
 }
 

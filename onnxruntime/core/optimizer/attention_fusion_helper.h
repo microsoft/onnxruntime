@@ -345,7 +345,7 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
       return false;
     }
   } else if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    std::vector<float_t> float_data = ONNX_NAMESPACE::ParseData<float_t>(tensor_proto);
+    std::vector<float> float_data = ONNX_NAMESPACE::ParseData<float>(tensor_proto);
     if (!ValidateUnidirMask(float_data, shape->dim(2).dim_value(), is_unidirectional)) {
       DEBUG_LOG("Mask is neither unidirectional nor all ones");
       return false;

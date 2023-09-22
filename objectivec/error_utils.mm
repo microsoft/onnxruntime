@@ -18,6 +18,14 @@ void ORTSaveCodeAndDescriptionToError(int code, const char* descriptionCstr, NSE
                            userInfo:@{NSLocalizedDescriptionKey : description}];
 }
 
+void ORTSaveCodeAndDescriptionToError(int code, NSString* description, NSError** error) {
+  if (!error) return;
+
+  *error = [NSError errorWithDomain:kOrtErrorDomain
+                               code:code
+                           userInfo:@{NSLocalizedDescriptionKey : description}];
+}
+
 void ORTSaveOrtExceptionToError(const Ort::Exception& e, NSError** error) {
   ORTSaveCodeAndDescriptionToError(e.GetOrtErrorCode(), e.what(), error);
 }

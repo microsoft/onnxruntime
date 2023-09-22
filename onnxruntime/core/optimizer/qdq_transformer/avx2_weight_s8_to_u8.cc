@@ -99,7 +99,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
   Initializer w_temp(*weight_tensor_proto, graph.ModelPath());
   {
     int8_t* p = w_temp.data<int8_t>();
-    for (int i = 0; i < w_temp.size(); i++) {
+    for (size_t i = 0; i < w_temp.size(); i++) {
       if (*p < -64 || *p > 64) {
         should_convert = true;
       }
@@ -111,7 +111,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
   Initializer r_temp(*r_tensor_proto, graph.ModelPath());
   {
     int8_t* p = r_temp.data<int8_t>();
-    for (int i = 0; i < r_temp.size(); i++) {
+    for (size_t i = 0; i < r_temp.size(); i++) {
       if (*p < -64 || *p > 64) {
         should_convert = true;
       }

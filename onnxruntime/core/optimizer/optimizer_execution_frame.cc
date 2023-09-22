@@ -35,7 +35,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const std::function<bool(const std::string&)>& is_sparse_initializer_func)
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = execution_provider_.GetAllocator(mem_type_);
+  allocator_ptr_ = std::make_shared<CPUAllocator>();
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -89,7 +89,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const std::function<bool(const std::string&)>& is_sparse_initializer_func)
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = execution_provider_.GetAllocator(mem_type_);
+  allocator_ptr_ = std::make_shared<CPUAllocator>();
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));

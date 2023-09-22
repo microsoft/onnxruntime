@@ -1,5 +1,6 @@
-//// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #pragma once
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
@@ -32,6 +33,8 @@ struct CudaStream : Stream {
   cudnnHandle_t cudnn_handle_{};
 
   cublasHandle_t cublas_handle_{};
+
+  void* GetResource(int version, int id) const override;
 
  private:
   std::vector<void*> deferred_cpu_buffers_;

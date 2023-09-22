@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -20,6 +21,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="nativeStatus"></param>
         /// <throws></throws>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void VerifySuccess(IntPtr nativeStatus)
         {
             if (nativeStatus != IntPtr.Zero)

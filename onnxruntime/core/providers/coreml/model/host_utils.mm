@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#import <Foundation/Foundation.h>
+#include "core/providers/coreml/model/host_utils.h"
 
-#include <string>
-#include "host_utils.h"
+#import <Foundation/Foundation.h>
 
 namespace onnxruntime {
 namespace coreml {

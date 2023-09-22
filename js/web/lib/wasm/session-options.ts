@@ -3,9 +3,8 @@
 
 import {InferenceSession} from 'onnxruntime-common';
 
-import {iterateExtraOptions} from './options-utils';
-import {allocWasmString} from './string-utils';
 import {getInstance} from './wasm-factory';
+import {allocWasmString, checkLastError, iterateExtraOptions} from './wasm-utils';
 
 const getGraphOptimzationLevel = (graphOptimizationLevel: string|unknown): number => {
   switch (graphOptimizationLevel) {
@@ -73,7 +72,7 @@ const setExecutionProviders =
                 const valueDataOffset = allocWasmString(webnnOptions.deviceType, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
                     0) {
-                  throw new Error(`Can't set a session config entry: 'deviceType' - ${webnnOptions.deviceType}`);
+                  checkLastError(`Can't set a session config entry: 'deviceType' - ${webnnOptions.deviceType}.`);
                 }
               }
               if (webnnOptions?.powerPreference) {
@@ -81,8 +80,8 @@ const setExecutionProviders =
                 const valueDataOffset = allocWasmString(webnnOptions.powerPreference, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
                     0) {
-                  throw new Error(
-                      `Can't set a session config entry: 'powerPreference' - ${webnnOptions.powerPreference}`);
+                  checkLastError(
+                      `Can't set a session config entry: 'powerPreference' - ${webnnOptions.powerPreference}.`);
                 }
               }
             }
@@ -94,12 +93,12 @@ const setExecutionProviders =
           case 'cpu':
             continue;
           default:
-            throw new Error(`not supported EP: ${epName}`);
+            throw new Error(`not supported execution provider: ${epName}`);
         }
 
         const epNameDataOffset = allocWasmString(epName, allocs);
         if (getInstance()._OrtAppendExecutionProvider(sessionOptionsHandle, epNameDataOffset) !== 0) {
-          throw new Error(`Can't append execution provider: ${epName}`);
+          checkLastError(`Can't append execution provider: ${epName}.`);
         }
       }
     };
@@ -137,11 +136,26 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
         !!sessionOptions.enableProfiling, 0, logIdDataOffset, logSeverityLevel, logVerbosityLevel,
         optimizedModelFilePathOffset);
     if (sessionOptionsHandle === 0) {
-      throw new Error('Can\'t create session options');
+      checkLastError('Can\'t create session options.');
     }
 
     if (sessionOptions.executionProviders) {
       setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
+    }
+
+    if (sessionOptions.freeDimensionOverrides) {
+      for (const [name, value] of Object.entries(sessionOptions.freeDimensionOverrides)) {
+        if (typeof name !== 'string') {
+          throw new Error(`free dimension override name must be a string: ${name}`);
+        }
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+          throw new Error(`free dimension override value must be a non-negative integer: ${value}`);
+        }
+        const nameOffset = allocWasmString(name, allocs);
+        if (wasm._OrtAddFreeDimensionOverride(sessionOptionsHandle, nameOffset, value) !== 0) {
+          checkLastError(`Can't set a free dimension override: ${name} - ${value}.`);
+        }
+      }
     }
 
     if (sessionOptions.extra !== undefined) {
@@ -150,7 +164,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
         const valueDataOffset = allocWasmString(value, allocs);
 
         if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
-          throw new Error(`Can't set a session config entry: ${key} - ${value}`);
+          checkLastError(`Can't set a session config entry: ${key} - ${value}.`);
         }
       });
     }
@@ -160,7 +174,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
     if (sessionOptionsHandle !== 0) {
       wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
     }
-    allocs.forEach(wasm._free);
+    allocs.forEach(alloc => wasm._free(alloc));
     throw e;
   }
 };

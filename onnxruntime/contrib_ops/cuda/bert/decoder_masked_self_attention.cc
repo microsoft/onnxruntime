@@ -185,6 +185,14 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
     parameters.cache_indir = cache_indir->Data<int32_t>();
   }
 
+  // NeoX rotary embedding
+  if (do_rotary_) {
+    ORT_ENFORCE(parameters.head_size == 64 || parameters.head_size == 128,
+                "Current implementation of rotary embedding only supports head size of 64 or 128");
+    parameters.rotary_embedding_dim = parameters.head_size;
+    parameters.t_step = parameters.past_sequence_length;
+  }
+
   switch (parameters.head_size) {
     case 32:
       mmha_launch_kernel<T2, 32>(parameters, cuda_stream);

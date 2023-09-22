@@ -24,7 +24,7 @@ class ClipOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const logging::Logger& logger) const override;
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -66,7 +66,9 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool ClipOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ClipOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+                                      const Node& node,
+                                      const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
   float min, max;
   return GetClipMinMax(initializers, node, min, max, logger);

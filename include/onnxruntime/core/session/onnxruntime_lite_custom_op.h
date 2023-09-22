@@ -272,6 +272,38 @@ struct OrtLiteCustomOp : public OrtCustomOp {
     return std::tuple_cat(current, next);
   }
 
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, OrtKernelContext&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors, size_t num_input, size_t num_output, const std::string& ep) {
+    std::tuple<T> current = std::tuple<OrtKernelContext&>{*context};
+    auto next = CreateTuple<ith_input, ith_output, Ts...>(context, tensors, num_input, num_output, ep);
+    return std::tuple_cat(current, next);
+  }
+
+#ifdef ORT_CUDA_CTX
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, const CudaContext&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors, size_t num_input, size_t num_output, const std::string& ep) {
+    thread_local CudaContext cuda_context;
+    cuda_context.Init(*context);
+    std::tuple<T> current = std::tuple<const CudaContext&>{cuda_context};
+    auto next = CreateTuple<ith_input, ith_output, Ts...>(context, tensors, num_input, num_output, ep);
+    return std::tuple_cat(current, next);
+  }
+#endif
+
+#ifdef ORT_ROCM_CTX
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, const RocmContext&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors, size_t num_input, size_t num_output, const std::string& ep) {
+    thread_local RocmContext rocm_context;
+    rocm_context.Init(*context);
+    std::tuple<T> current = std::tuple<const RocmContext&>{rocm_context};
+    auto next = CreateTuple<ith_input, ith_output, Ts...>(context, tensors, num_input, num_output, ep);
+    return std::tuple_cat(current, next);
+  }
+#endif
+
 #define CREATE_TUPLE_INPUT(data_type)                                                                                                   \
   template <size_t ith_input, size_t ith_output, typename T, typename... Ts>                                                            \
   static typename std::enable_if<std::is_same<T, const Custom::Tensor<data_type>*>::value, std::tuple<T, Ts...>>::type                  \
@@ -420,6 +452,10 @@ struct OrtLiteCustomOp : public OrtCustomOp {
   CREATE_TUPLE(uint64_t)
   CREATE_TUPLE(std::string)
   CREATE_TUPLE_INPUT(std::string_view)
+  CREATE_TUPLE(Ort::Float8E4M3FN_t)
+  CREATE_TUPLE(Ort::Float8E4M3FNUZ_t)
+  CREATE_TUPLE(Ort::Float8E5M2_t)
+  CREATE_TUPLE(Ort::Float8E5M2FNUZ_t)
 
   // ParseArgs ...
   template <typename... Ts>
@@ -432,6 +468,28 @@ struct OrtLiteCustomOp : public OrtCustomOp {
   ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
     ParseArgs<Ts...>(input_types, output_types);
   }
+
+  template <typename T, typename... Ts>
+  static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, OrtKernelContext&>::value>::type
+  ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
+    ParseArgs<Ts...>(input_types, output_types);
+  }
+
+#ifdef ORT_CUDA_CTX
+  template <typename T, typename... Ts>
+  static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const CudaContext&>::value>::type
+  ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
+    ParseArgs<Ts...>(input_types, output_types);
+  }
+#endif
+
+#ifdef ORT_ROCM_CTX
+  template <typename T, typename... Ts>
+  static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const RocmContext&>::value>::type
+  ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
+    ParseArgs<Ts...>(input_types, output_types);
+  }
+#endif
 
 #define PARSE_INPUT_BASE(pack_type, onnx_type)                                                                           \
   template <typename T, typename... Ts>                                                                                  \
@@ -493,6 +551,10 @@ struct OrtLiteCustomOp : public OrtCustomOp {
   PARSE_ARGS(uint64_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64)
   PARSE_ARGS(std::string, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
   PARSE_ARGS(std::string_view, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)  // todo - remove string_view output
+  PARSE_ARGS(Ort::Float8E4M3FN_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN)
+  PARSE_ARGS(Ort::Float8E4M3FNUZ_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ)
+  PARSE_ARGS(Ort::Float8E5M2_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2)
+  PARSE_ARGS(Ort::Float8E5M2FNUZ_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ)
 
   OrtLiteCustomOp(const char* op_name,
                   const char* execution_provider) : op_name_(op_name),

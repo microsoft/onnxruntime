@@ -44,12 +44,8 @@ class CannKernel : public OpKernel {
 
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
-    return provider_->GetScratchBuffer<T>(count_or_bytes, stream, WaitCannNotificationOnDevice);
-  }
-
-  template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBufferOnCANNPinned(size_t count_or_bytes) const {
-    return provider_->GetScratchBufferOnCANNPinned<T>(count_or_bytes);
+    if (count_or_bytes == 0) return nullptr;
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, WaitCannNotificationOnDevice);
   }
 
   template <typename T>

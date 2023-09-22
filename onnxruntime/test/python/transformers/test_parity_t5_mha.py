@@ -16,6 +16,7 @@ import unittest
 
 import numpy as np
 import torch
+from onnx import TensorProto, helper
 from torch import nn
 
 torch.manual_seed(0)
@@ -30,8 +31,6 @@ def create_t5_mha_graph(
     use_past,
     is_static_kv,
 ):
-    from onnx import TensorProto, helper
-
     use_present = not use_past
     if not is_static_kv and use_past:
         use_present = True
@@ -163,8 +162,6 @@ def create_t5_decoder_masked_mha_graph(
     num_heads,
     is_cross_attention,
 ):
-    from onnx import TensorProto, helper
-
     nodes = [
         helper.make_node(
             "DecoderMaskedMultiHeadAttention",
@@ -491,7 +488,7 @@ class T5Attention(nn.Module):
         # attn_output = self.o(attn_output) # ORT places this matmul outside of MHA op
 
         present_key_value_state = (key_states, value_states) if (self.is_decoder and use_cache) else None
-        outputs = (attn_output,) + (present_key_value_state,)
+        outputs = (attn_output, present_key_value_state)
 
         return outputs
 
@@ -628,7 +625,7 @@ class T5Attention(nn.Module):
         if past_key_value is not None and self.is_static_kv:
             output = torch.tensor(ort_output)
         else:
-            output = (torch.tensor(ort_output[0]),) + ((torch.tensor(ort_output[1]), torch.tensor(ort_output[2])),)
+            output = (torch.tensor(ort_output[0]), (torch.tensor(ort_output[1]), torch.tensor(ort_output[2])))
 
         return output
 

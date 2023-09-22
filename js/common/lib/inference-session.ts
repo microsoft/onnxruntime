@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession as InferenceSessionImpl} from './inference-session-impl';
-import {OnnxValue} from './onnx-value';
+import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
+import {OnnxValue, OnnxValueDataLocation} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -65,6 +65,13 @@ export declare namespace InferenceSession {
      * This setting is available only in ONNXRuntime (Node.js binding and react-native).
      */
     interOpNumThreads?: number;
+
+    /**
+     * The free dimension override.
+     *
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
+     */
+    freeDimensionOverrides?: {readonly [dimensionName: string]: number};
 
     /**
      * The optimization level.
@@ -139,6 +146,14 @@ export declare namespace InferenceSession {
     logVerbosityLevel?: number;
 
     /**
+     * Specify string as a preferred data location for all outputs, or an object that use output names as keys and a
+     * preferred data location as corresponding values.
+     *
+     * This setting is available only in ONNXRuntime Web for WebGL and WebGPU EP.
+     */
+    preferredOutputLocation?: OnnxValueDataLocation|{readonly [outputName: string]: OnnxValueDataLocation};
+
+    /**
      * Store configurations for a session. See
      * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/
      * onnxruntime_session_options_config_keys.h
@@ -167,13 +182,18 @@ export declare namespace InferenceSession {
   // Backend Node.js binding: supports 'cpu' and 'cuda'.
   // Backend WebAssembly: supports 'cpu', 'wasm', 'xnnpack' and 'webnn'.
   // Backend ONNX.js: supports 'webgl'.
+  // Backend React Native: supports 'cpu', 'xnnpack', 'coreml' (iOS), 'nnapi' (Android).
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
+    coreml: CoreMlExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
+    dml: DmlExecutionProviderOption;
+    tensorrt: TensorRtExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
     webnn: WebNNExecutionProviderOption;
+    nnapi: NnapiExecutionProviderOption;
   }
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;
@@ -191,6 +211,18 @@ export declare namespace InferenceSession {
     readonly name: 'cuda';
     deviceId?: number;
   }
+  export interface CoreMlExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'coreml';
+    coreMlFlags?: number;
+  }
+  export interface DmlExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'dml';
+    deviceId?: number;
+  }
+  export interface TensorRtExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'tensorrt';
+    deviceId?: number;
+  }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'wasm';
   }
@@ -205,6 +237,19 @@ export declare namespace InferenceSession {
     readonly name: 'webnn';
     deviceType?: 'cpu'|'gpu';
     powerPreference?: 'default'|'low-power'|'high-performance';
+  }
+  export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'coreml';
+    useCPUOnly?: boolean;
+    enableOnSubgraph?: boolean;
+    onlyEnableDeviceWithANE?: boolean;
+  }
+  export interface NnapiExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'nnapi';
+    useFP16?: boolean;
+    useNCHW?: boolean;
+    cpuDisabled?: boolean;
+    cpuOnly?: boolean;
   }
   // #endregion
 
@@ -303,6 +348,15 @@ export interface InferenceSession {
    */
   run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+
+  // #endregion
+
+  // #region release()
+
+  /**
+   * Release the inference session and the underlying resources.
+   */
+  release(): Promise<void>;
 
   // #endregion
 

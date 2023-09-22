@@ -214,6 +214,10 @@ bool MatchesOpSinceVersion(const Node& node, std::initializer_list<ONNX_NAMESPAC
   return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
+bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions) {
+  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
+}
+
 bool MatchesOpSetDomain(const Node& node, std::string_view domain) {
   const auto& node_domain = node.Domain();
   return node_domain == domain;
@@ -222,6 +226,13 @@ bool MatchesOpSetDomain(const Node& node, std::string_view domain) {
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
+                                       std::string_view domain) {
+  std::vector<ONNX_NAMESPACE::OperatorSetVersion> versions_vec(versions);
+  return IsSupportedOptypeVersionAndDomain(node, op_type, versions_vec, domain);
+}
+
+bool IsSupportedOptypeVersionAndDomain(const Node& node, std::string_view op_type,
+                                       gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain) {
   return (node.OpType() == op_type &&
   // we don't have op schemas in the minimal build so there's no way to check the deprecated flag
@@ -411,10 +422,6 @@ void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edg
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
-
-bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions) {
-  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
-}
 
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
   return GetIndexFromName(node, input_name, true);

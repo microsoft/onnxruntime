@@ -84,13 +84,19 @@ void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
-                            bool sync_execution_provider,
+#ifdef ORT_ENABLE_STREAM
+                            DeviceStreamCollectionHolder& device_stream_collection_holder,
+#endif
                             bool only_execute_path_to_fetches = false,
                             Stream* parent_stream = nullptr);
 
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const RunOptions& run_options, const logging::Logger& logger);
+                            ExecutionMode execution_mode, const RunOptions& run_options,
+#ifdef ORT_ENABLE_STREAM
+                            DeviceStreamCollectionHolder& device_stream_collection_holder,
+#endif
+                            const logging::Logger& logger);
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
@@ -191,9 +197,33 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FN>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FNUZ>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
+}
+
+#endif
+
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
 #endif
 

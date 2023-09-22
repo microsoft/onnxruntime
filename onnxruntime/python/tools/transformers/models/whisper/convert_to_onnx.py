@@ -8,21 +8,24 @@ import argparse
 import copy
 import logging
 import os
-import sys
 
 import torch
+from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from whisper_chain import chain_model
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 
 from onnxruntime import quantization
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
-
 logger = logging.getLogger("")
 
+PROVIDERS = {
+    "cpu": "CPUExecutionProvider",
+    "cuda": "CUDAExecutionProvider",
+    "rocm": "ROCMExecutionProvider",
+}
 
-def parse_arguments():
+
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
 
     pretrained_models = PRETRAINED_WHISPER_MODELS
@@ -99,6 +102,33 @@ def parse_arguments():
     parser.set_defaults(use_forced_decoder_ids=False)
 
     parser.add_argument(
+        "-l",
+        "--use_logits_processor",
+        required=False,
+        action="store_true",
+        help="Use logits_processor as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_specific_logits_processor=False)
+
+    parser.add_argument(
+        "-v",
+        "--use_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_vocab_mask=False)
+
+    parser.add_argument(
+        "-u",
+        "--use_prefix_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use prefix_vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_prefix_vocab_mask=False)
+
+    parser.add_argument(
         "-w",
         "--overwrite",
         required=False,
@@ -150,24 +180,27 @@ def parse_arguments():
         "--quantize_embedding_layer",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize MatMul, GEMM, and Gather.",
     )
+    parser.set_defaults(quantize_embedding_layer=False)
 
     parser.add_argument(
         "--quantize_per_channel",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize weights per each channel.",
     )
+    parser.set_defaults(quantize_per_channel=False)
 
     parser.add_argument(
         "--quantize_reduce_range",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Quantize weights with 7 bits.",
     )
+    parser.set_defaults(quantize_reduce_range=False)
 
-    parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
+    parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
 
     parser.add_argument(
         "--state_dict_path",
@@ -176,7 +209,17 @@ def parse_arguments():
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "-r",
+        "--provider",
+        required=False,
+        type=str,
+        default="cpu",
+        choices=list(PROVIDERS.keys()),
+        help="Provider to benchmark. Default is CPUExecutionProvider.",
+    )
+
+    args = parser.parse_args(argv)
 
     return args
 
@@ -199,6 +242,7 @@ def export_onnx_models(
     quantize_per_channel: bool = False,
     quantize_reduce_range: bool = False,
     state_dict_path: str = "",
+    provider: str = "cpu",
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -207,11 +251,12 @@ def export_onnx_models(
     )
     config = models["decoder"].config
 
-    if (not use_external_data_format) and (config.num_layers > 24):
+    if (not use_external_data_format) and (config.num_hidden_layers > 24):
         logger.info("Try use_external_data_format when model size > 2GB")
 
     output_paths = []
     for name, model in models.items():
+        print(f"========> Handling {name} model......")
         model.to(device)
         filename_suffix = "_" + name
 
@@ -260,6 +305,7 @@ def export_onnx_models(
                         use_external_data_format,
                         auto_mixed_precision=not disable_auto_mixed_precision,
                         use_gpu=use_gpu,
+                        provider=provider,
                     )
                     onnx_path = output_path
 
@@ -273,7 +319,6 @@ def export_onnx_models(
                         use_external_data_format=use_external_data_format,
                         per_channel=quantize_per_channel,
                         reduce_range=quantize_reduce_range,
-                        optimize_model=False,
                         extra_options={"MatMulConstBOnly": True},
                     )
             else:
@@ -284,22 +329,17 @@ def export_onnx_models(
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
+            provider=provider,
         )
-
-        with torch.no_grad():
-            max_diff = WhisperHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-        logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
-        if max_diff > 1e-4:
-            logger.warning("PyTorch and OnnxRuntime results are NOT close")
+        assert ort_session is not None
 
         output_paths.append(output_path)
 
     return output_paths
 
 
-def main():
-    args = parse_arguments()
+def main(argv=None):
+    args = parse_arguments(argv)
 
     setup_logger(args.verbose)
 
@@ -332,8 +372,11 @@ def main():
         args.quantize_embedding_layer,
         args.quantize_per_channel,
         args.quantize_reduce_range,
+        args.state_dict_path,
+        args.provider,
     )
 
+    max_diff = 0
     if args.chain_model:
         logger.info("Chaining model ... :")
         args.beam_model_output_dir = WhisperHelper.get_onnx_path(
@@ -350,7 +393,35 @@ def main():
         chain_model(args)
         output_paths.append(args.beam_model_output_dir)
 
+        # Check chained model
+        ort_session = create_onnxruntime_session(
+            args.beam_model_output_dir,
+            use_gpu=args.use_gpu,
+            provider=args.provider,
+        )
+        device = torch.device("cuda:0" if args.use_gpu else "cpu")
+
+        # Wrap parity check in try-except to allow export to continue in case this produces an error
+        try:
+            with torch.no_grad():
+                max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, ort_session, device)
+            if max_diff > 1e-4:
+                logger.warning("PyTorch and ONNX Runtime results are NOT close")
+            else:
+                logger.info("PyTorch and ONNX Runtime results are close")
+        except Exception as e:
+            logger.warning(
+                f"An error occurred while trying to verify parity between PyTorch and ONNX Runtime: {e}", exc_info=True
+            )
+
+        # Remove extra ONNX models saved in output directory
+        for fle in os.listdir(output_dir):
+            if "_beamsearch" not in fle:
+                os.remove(os.path.join(output_dir, fle))
+        output_paths = [args.beam_model_output_dir]
+
     logger.info(f"Done! Outputs: {output_paths}")
+    return max_diff
 
 
 if __name__ == "__main__":

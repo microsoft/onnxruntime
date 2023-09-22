@@ -5,7 +5,6 @@
 #include <vector>
 #include <memory>
 #include <utility>
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -66,12 +65,6 @@ std::shared_ptr<KernelRegistry> SNPEExecutionProvider::GetKernelRegistry() const
 
 SNPEExecutionProvider::SNPEExecutionProvider(const ProviderOptions& provider_options_map)
     : IExecutionProvider{onnxruntime::kSnpeExecutionProvider}, runtime_options_(provider_options_map) {
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(SNPE, OrtAllocatorType::OrtDeviceAllocator));
-      });
-
-  InsertAllocator(CreateAllocator(device_info));
 }
 
 SNPEExecutionProvider::~SNPEExecutionProvider() {}
