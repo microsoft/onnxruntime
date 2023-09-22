@@ -147,6 +147,18 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT(qnn::utils::ArrayHasString(supported_nearest_modes, nearest_mode),
                       "QNN EP: Resize does not support nearest_mode ", nearest_mode.c_str());
 
+    // Translation matrix of ONNX Resize w/ "nearest" mode on HTP backend.
+    // Items in the table correspond to the QNN operator used for the given configuration
+    // (RNN = ResizeNearestNeighbor, X = Unsupported).
+    //
+    //                                                   nearest_mode:
+    // coordinate_transformation_mode: | round_prefer_floor  round_prefer_ceil  floor  ceil
+    // -----------------------------------------------------------------------------------------
+    //                      half_pixel |     Resize               X              RNN     X
+    //              pytorch_half_pixel |     Resize               X               X      X
+    //                   align_corners |     Resize               X              RNN     X
+    //                      asymmetric |     Resize               X              RNN     X
+
     if (is_npu_backend) {
       // QNN only supports the following nearest_mode values on HTP:
       // - "round_prefer_floor" via QNN's Resize operator
