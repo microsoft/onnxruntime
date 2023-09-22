@@ -337,7 +337,7 @@ TEST_F(QnnHTPBackendTests, Resize_DownSample_Linear_AlignCorners) {
 TEST_F(QnnHTPBackendTests, Resize_DownSample_Linear_HalfPixel) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
-                              {1, 1, 1, 1}, "linear", "half_pixel", "",
+                              {1, 1, 1, 2}, "linear", "half_pixel", "",
                               ExpectedEPNodeAssignment::All);
 }
 
