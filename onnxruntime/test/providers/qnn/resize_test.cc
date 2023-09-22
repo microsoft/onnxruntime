@@ -157,7 +157,8 @@ static void RunQDQResizeOpTest(const TestInputDef<float>& input_def,
                                const std::vector<int64_t>& sizes_data,
                                const std::string& mode, const std::string& coordinate_transformation_mode,
                                const std::string& nearest_mode,
-                               ExpectedEPNodeAssignment expected_ep_assignment) {
+                               ExpectedEPNodeAssignment expected_ep_assignment,
+                               int opset = 19) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -169,7 +170,7 @@ static void RunQDQResizeOpTest(const TestInputDef<float>& input_def,
                        GetQDQResizeModelBuilder<QuantType>(input_def, sizes_data, mode, coordinate_transformation_mode,
                                                            nearest_mode),
                        provider_options,
-                       19,  // opset
+                       opset,
                        expected_ep_assignment);
 }
 
@@ -306,6 +307,19 @@ TEST_F(QnnCPUBackendTests, DISABLED_Resize_DownSample_Linear_AlignCorners_scales
                                ExpectedEPNodeAssignment::All);
 }
 
+// Test Resize downsample with mode: "linear", coordinate_transformation_mode: "half_pixel"
+// TODO: Enable ResizeOpTest.ResizeOpLinearDownSampleTest_4DBilinear cpu resize_op tests when fixed.
+//
+// Input f32[1,1,2,4]: 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0
+// Expected output f32[1, 1, 1, 2]: 2.6666 4.3333
+// Actual output f32[1, 1, 1, 2]: NaN, NaN
+TEST_F(QnnCPUBackendTests, DISABLED_Resize_DownSample_Linear_HalfPixel_scales) {
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  RunCPUResizeOpTestWithScales(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
+                               {1.0f, 1.0f, 0.6f, 0.6f}, "linear", "half_pixel", "",
+                               ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
@@ -316,6 +330,14 @@ TEST_F(QnnHTPBackendTests, Resize_DownSample_Linear_AlignCorners) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
                               {1, 1, 1, 2}, "linear", "align_corners", "",
+                              ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Resize downsample with mode: "linear", coordinate_transformation_mode: "half_pixel"
+TEST_F(QnnHTPBackendTests, Resize_DownSample_Linear_HalfPixel) {
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
+                              {1, 1, 1, 1}, "linear", "half_pixel", "",
                               ExpectedEPNodeAssignment::All);
 }
 
