@@ -53,7 +53,7 @@ parameters:
   default: false
 
 stages:
-- stage: "Cuda_Python_Packaging_cuda_${{ parameters.cuda_version | regex_replace("[^A-Za-z0-9]", "") }}_debug_${{ parameters.debug_build }}"
+- stage: "Cuda_Python_Packaging_cuda_${{ parameters.cuda_version | regex_replace('[^A-Za-z0-9]', '') }}_debug_${{ parameters.debug_build }}"
 
   variables:
     - name: isMain
