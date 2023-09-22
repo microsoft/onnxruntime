@@ -1133,11 +1133,15 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
     ORT_STRING_VIEW model_test_root_path = ORT_TSTR("..\\models");
+    // thus, only the root path should be mounted.
+    ORT_STRING_VIEW model_zoo_path = ORT_TSTR("..\\models\\zoo");
 #else
     ORT_STRING_VIEW model_test_root_path = ORT_TSTR("../models");
+    ORT_STRING_VIEW model_zoo_path = ORT_TSTR("../models/zoo");
 #endif
     for (auto p : kvp.second) {
       paths.push_back(ConcatPathComponent(model_test_root_path, p));
+      paths.push_back(ConcatPathComponent(model_zoo_path, p));
     }
 #endif
 
