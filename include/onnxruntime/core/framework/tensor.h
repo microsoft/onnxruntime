@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include <stddef.h>
+#include <cstddef>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
