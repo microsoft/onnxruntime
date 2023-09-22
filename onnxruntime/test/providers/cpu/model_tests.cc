@@ -873,6 +873,8 @@ static ORT_STRING_VIEW opset17 = ORT_TSTR("opset17");
 static ORT_STRING_VIEW opset18 = ORT_TSTR("opset18");
 // TODO: enable opset19 tests
 // static ORT_STRING_VIEW opset19 = ORT_TSTR("opset19");
+static const std::vector<ORT_STRING_VIEW> default_opset_versions = {opset7, opset8, opset9, opset10, opset11, opset12, opset13,
+                                                    opset14, opset15, opset16, opset17, opset18};
 
 static ORT_STRING_VIEW provider_name_cpu = ORT_TSTR("cpu");
 static ORT_STRING_VIEW provider_name_tensorrt = ORT_TSTR("tensorrt");
@@ -904,7 +906,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // Map key is provider name(CPU, CUDA, etc). Value is the ONNX node tests' opsets to run.
   std::map<ORT_STRING_VIEW, std::vector<ORT_STRING_VIEW>> provider_names;
   // The default CPU provider always supports all opsets, and must maintain backwards compatibility.
-  provider_names[provider_name_cpu] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+  provider_names[provider_name_cpu] = default_opset_versions;
   // The other EPs can choose which opsets to test.
   // If an EP doesn't have any CI build pipeline, then there is no need to specify any opset.
 #ifdef USE_TENSORRT
@@ -912,23 +914,23 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   provider_names[provider_name_tensorrt] = {opset14, opset15, opset16, opset17};
 #endif
 #ifdef USE_MIGRAPHX
-  provider_names[provider_name_migraphx] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+  provider_names[provider_name_migraphx] = default_opset_versions;
 #endif
 #ifdef USE_OPENVINO
   provider_names[provider_name_openvino] = {};
 #endif
 #ifdef USE_CUDA
-  provider_names[provider_name_cuda] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+  provider_names[provider_name_cuda] = default_opset_versions;
 #endif
 #ifdef USE_ROCM
-  provider_names[provider_name_rocm] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+  provider_names[provider_name_rocm] = default_opset_versions;
 #endif
 #ifdef USE_DNNL
   provider_names[provider_name_dnnl] = {opset10};
 #endif
 // For any non-Android system, NNAPI will only be used for ort model converter
 #if defined(USE_NNAPI) && defined(__ANDROID__)
-  provider_names[provider_name_nnapi] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+  provider_names[provider_name_nnapi] = default_opset_versions;
 #endif
 #ifdef USE_RKNPU
   provider_names[provider_name_rknpu] = {};
@@ -940,7 +942,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   provider_names[provider_name_armnn] = {};
 #endif
 #ifdef USE_DML
-  provider_names[provider_name_dml] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+  provider_names[provider_name_dml] = default_opset_versions;
 #endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
@@ -1133,11 +1135,15 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
     ORT_STRING_VIEW model_test_root_path = ORT_TSTR("..\\models");
+    // thus, only the root path should be mounted.
+    ORT_STRING_VIEW model_zoo_path = ORT_TSTR("..\\models\\zoo");
 #else
     ORT_STRING_VIEW model_test_root_path = ORT_TSTR("../models");
+    ORT_STRING_VIEW model_zoo_path = ORT_TSTR("../models/zoo");
 #endif
     for (auto p : kvp.second) {
       paths.push_back(ConcatPathComponent(model_test_root_path, p));
+      paths.push_back(ConcatPathComponent(model_zoo_path, p));
     }
 #endif
 
