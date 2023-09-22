@@ -13,9 +13,13 @@ export class TrainingSession implements TrainingSessionInterface {
   private constructor(handler: TrainingSessionHandler) {
     this.handler = handler;
   }
+  private handler: TrainingSessionHandler;
 
-  async release(): Promise<void> {
-    return this.handler.dispose();
+  get inputNames(): readonly string[] {
+    return this.handler.inputNames;
+  }
+  get outputNames(): readonly string[] {
+    return this.handler.outputNames;
   }
 
   static create(
@@ -66,11 +70,24 @@ export class TrainingSession implements TrainingSessionInterface {
     }
   }
 
-  get inputNames(): readonly string[] {
-    return this.handler.inputNames;
+  copyParametersFromBuffer(_buffer: ArrayBufferLike, _trainableOnly: boolean): void {
+    throw new Error('Method not implemented.');
   }
-  get outputNames(): readonly string[] {
-    return this.handler.outputNames;
+  copyParametersToBuffer(_buffer: ArrayBufferLike, _trainableOnly: boolean): void {
+    throw new Error('Method not implemented.');
   }
-  private handler: TrainingSessionHandler;
+
+  runTrainStep(feeds: InferenceSession.OnnxValueMapType, options?: InferenceSession.RunOptions|undefined):
+      Promise<InferenceSession.OnnxValueMapType>;
+  runTrainStep(
+      feeds: InferenceSession.OnnxValueMapType, fetches: InferenceSession.FetchesType,
+      options?: InferenceSession.RunOptions|undefined): Promise<InferenceSession.OnnxValueMapType>;
+  async runTrainStep(_feeds: unknown, _fetches?: unknown, _options?: unknown):
+      Promise<InferenceSession.OnnxValueMapType> {
+    throw new Error('Method not implemented.');
+  }
+
+  async release(): Promise<void> {
+    return this.handler.dispose();
+  }
 }

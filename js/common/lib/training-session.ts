@@ -14,46 +14,49 @@ import {TrainingSession as TrainingSessionImpl} from './training-session-impl.js
 export interface TrainingSession {
   // #region run()
 
-  // /**
-  //  * Run TrainStep asynchronously with the given feeds and options.
-  //  *
-  //  * @param feeds - Representation of the model input. See type description of `InferenceSession.InputType` for
-  //  detail.
-  //  * @param options - Optional. A set of options that controls the behavior of model training.
-  //  * @returns A promise that resolves to an error code
-  //  */
-  // runTrainStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
-  // Promise<InferenceSession.ReturnType>;
+  /**
+   * Run TrainStep asynchronously with the given feeds and options.
+   *
+   * @param feeds - Representation of the model input. See type description of `InferenceSession.InputType` for
+   detail.
+   * @param options - Optional. A set of options that controls the behavior of model training.
+   * @returns A promise that resolves to an error code
+   */
+  runTrainStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
+      Promise<InferenceSession.ReturnType>;
 
-  // /**
-  //  * Run a single train step with the given inputs and options.
-  //  *
-  //  * @param feeds - Representation of the model input.
-  //  * @param fetches - Representation of the model output.
-  //  * detail.
-  //  * @param options - Optional. A set of options that controls the behavior of model inference.
-  //  * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
-  //  values.
-  //  */
-  // runTrainStep(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
-  //   options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+  /**
+   * Run a single train step with the given inputs and options.
+   *
+   * @param feeds - Representation of the model input.
+   * @param fetches - Representation of the model output.
+   * detail.
+   * @param options - Optional. A set of options that controls the behavior of model inference.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
+   values.
+   */
+  runTrainStep(
+      feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
+      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
   // #endregion
 
   // #region copy parameters
-  // /**
-  //  * Copies from a buffer containing parameters to the TrainingSession parameters.
-  //  * @param buffer - buffer containing parameters
-  //  * @param trainableOnly - Optional. True if trainable parameters only to be modified, false otherwise.
-  //  */
-  // copyParametersFromBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): void;
+  /**
+   * Copies from a buffer containing parameters to the TrainingSession parameters.
+   *
+   * @param buffer - buffer containing parameters
+   * @param trainableOnly - Optional. True if trainable parameters only to be modified, false otherwise.
+   */
+  copyParametersFromBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): void;
 
-  // /**
-  //  * Copies from the TrainingSession parameters to the given buffer.
-  //  * @param buffer - buffer that will be modified. Must be the same size as results of GetParametersSize API call.
-  //  * @param trainableOnly - Optional. True if trainable parameters only to be copied, false othrwise.
-  //  */
-  // copyParametersToBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): void;
+  /**
+   * Copies from the TrainingSession parameters to the given buffer.
+   *
+   * @param buffer - buffer that will be modified. Must be the same size as results of GetParametersSize API call.
+   * @param trainableOnly - Optional. True if trainable parameters only to be copied, false othrwise.
+   */
+  copyParametersToBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): void;
   // #endregion
 
   // #region release()

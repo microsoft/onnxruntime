@@ -13,6 +13,12 @@ export declare namespace SessionHandler {
   type ReturnType = {[name: string]: OnnxValue};
 }
 
+export declare namespace TrainingSessionHandler {
+  type FeedsType = {[name: string]: OnnxValue};
+  type FetchesType = {[name: string]: OnnxValue | null};
+  type ReturnType = {[name: string]: OnnxValue}|number;
+}
+
 /**
  * Represent a handler instance of an inference session.
  *
@@ -41,6 +47,10 @@ export interface TrainingSessionHandler {
 
   readonly inputNames: readonly string[];
   readonly outputNames: readonly string[];
+
+  runTrainStep(
+      feeds: TrainingSessionHandler.FeedsType, fetches: TrainingSessionHandler.FetchesType,
+      options: InferenceSession.RunOptions): Promise<TrainingSessionHandler.ReturnType>;
 }
 
 /**
