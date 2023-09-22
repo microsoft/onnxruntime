@@ -2235,7 +2235,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           engine_file.seekg(0, std::ios::beg);
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
           engine_file.read((char*)engine_buf.get(), engine_size);
-          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -2254,7 +2254,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                                    "TensorRT EP could not call engine decryption function decrypt");
           }
           // Deserialize engine
-          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + encrypted_engine_cache_path;
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -2290,7 +2290,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (detailed_build_log_) {
             engine_build_start = std::chrono::steady_clock::now();
           }
-          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+          std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_builder->buildSerializedNetwork(*trt_network, *trt_config));
+          size_t engine_size = serializedModel->size();
+          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serializedModel->data(), engine_size));
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not build engine for fused node: " + fused_node.Name());
@@ -2306,8 +2308,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
             }
 
-            std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
-            size_t engine_size = serializedModel->size();
             if (engine_decryption_enable_) {
               // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
               if (engine_encryption_ != nullptr) {
@@ -2496,46 +2496,46 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
           engine_file.read((char*)engine_buf.get(), engine_size);
 
-          // Deserialize engine
-          // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
-          // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-          trt_state->engine->reset();
-          *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-              trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (*(trt_state->engine) == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+            // Deserialize engine
+            // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
+            // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+            trt_state->engine->reset();
+            *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
+                trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size));
+            if (*(trt_state->engine) == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+            }
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+            trt_engine = trt_state->engine->get();
+            context_update = true;
+          } else if (trt_state->engine_decryption_enable && std::filesystem::exists(encrypted_engine_cache_path) && profile_file) {
+            shape_ranges = DeserializeProfileV2(profile_file);
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+            // Decrypt engine
+            size_t engine_size = 0;
+            if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), nullptr, &engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not get engine buffer size");
+            }
+            std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+            if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not call engine decryption function decrypt");
+            }
+            // Deserialize engine
+            // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
+            // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+            trt_state->engine->reset();
+            *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size));
+            if (*(trt_state->engine) == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
+            }
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + encrypted_engine_cache_path;
+            trt_engine = trt_state->engine->get();
+            context_update = true;
           }
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-          trt_engine = trt_state->engine->get();
-          context_update = true;
-        } else if (trt_state->engine_decryption_enable && std::filesystem::exists(encrypted_engine_cache_path) && profile_file) {
-          shape_ranges = DeserializeProfileV2(profile_file);
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-          // Decrypt engine
-          size_t engine_size = 0;
-          if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), nullptr, &engine_size)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not get engine buffer size");
-          }
-          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not call engine decryption function decrypt");
-          }
-          // Deserialize engine
-          // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
-          // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-          trt_state->engine->reset();
-          *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (*(trt_state->engine) == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
-          }
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + encrypted_engine_cache_path;
-          trt_engine = trt_state->engine->get();
-          context_update = true;
         }
-      }
 
       // Check and update shape ranges for dynamic shape inputs.
       for (int i = 0, end = num_inputs; i < end; ++i) {
@@ -2646,49 +2646,51 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
         }
 
-        // Build engine
-        {
-          auto lock = GetApiLock();
-          std::chrono::steady_clock::time_point engine_build_start;
-          if (detailed_build_log_) {
-            engine_build_start = std::chrono::steady_clock::now();
-          }
-          *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-              trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
-          if (detailed_build_log_) {
-            auto engine_build_stop = std::chrono::steady_clock::now();
-            LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
-          }
-        }
-        if (*(trt_state->engine) == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
-        }
-        trt_engine = trt_state->engine->get();
-        if (trt_state->engine_cache_enable) {
-          // Serialize engine profile
-          SerializeProfileV2(profile_cache_path, shape_ranges);
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
-
-          // Serialize engine
-          std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
-          size_t engine_size = serializedModel->size();
-          if (trt_state->engine_decryption_enable) {
-            // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
-            if (trt_state->engine_encryption != nullptr) {
-              if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                       "TensorRT EP could not call engine encryption function encrypt");
-              }
-              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
-            } else {
-              LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. No cache is written to disk";
+          // Build engine
+          std::unique_ptr<nvinfer1::IHostMemory> serializedModel;
+          {
+            auto lock = GetApiLock();
+            std::chrono::steady_clock::time_point engine_build_start;
+            if (detailed_build_log_) {
+              engine_build_start = std::chrono::steady_clock::now();
             }
-          } else {
-            std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
-            file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
+            serializedModel = std::unique_ptr<nvinfer1::IHostMemory>(trt_builder->buildSerializedNetwork(*trt_state->network->get(), *trt_config));
+            *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
+                trt_state->runtime->deserializeCudaEngine(serializedModel->data(), serializedModel->size()));
+
+            if (detailed_build_log_) {
+              auto engine_build_stop = std::chrono::steady_clock::now();
+              LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+            }
           }
-        }
+          if (*(trt_state->engine) == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+          }
+          trt_engine = trt_state->engine->get();
+          if (trt_state->engine_cache_enable) {
+            // Serialize engine profile
+            SerializeProfileV2(profile_cache_path, shape_ranges);
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+
+            // Serialize engine
+            size_t engine_size = serializedModel->size();
+            if (trt_state->engine_decryption_enable) {
+              // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
+              if (trt_state->engine_encryption != nullptr) {
+                if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
+                  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                         "TensorRT EP could not call engine encryption function encrypt");
+                }
+                LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
+              } else {
+                LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. No cache is written to disk";
+              }
+            } else {
+              std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
+              file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
+              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
+            }
+          }
 
         // serialize and save timing cache
         if (trt_state->timing_cache_enable) {
