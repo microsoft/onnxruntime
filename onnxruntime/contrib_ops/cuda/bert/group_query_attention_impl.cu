@@ -65,6 +65,10 @@ Status QkvToContext(
     Stream* ort_stream,
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data) {
+
+  assert(data.use_flash_attention);
+
+#if USE_FLASH_ATTENTION
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -78,8 +82,6 @@ Status QkvToContext(
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(head_size)) : parameters.scale;
-  assert(data.use_flash_attention);
-#if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
     assert(parameters.num_heads % parameters.kv_num_heads == 0);

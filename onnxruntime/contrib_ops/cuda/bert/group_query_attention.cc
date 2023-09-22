@@ -65,6 +65,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   GroupQueryAttentionParameters parameters;
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  GroupQueryAttentionData<CudaT> data;
+
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs<Tensor>(query,
                                                                         key,
                                                                         value,
@@ -97,54 +100,51 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.head_size,
                                                               parameters.num_heads,
                                                               parameters.kv_num_heads);
-  // Flash Attention kv-caching operates in place on a buffer, therefore past and present kv must be the same
+  // Allocate buffers
+  size_t softmax_lse_bytes = 0;
+  size_t softmax_lse_accum_bytes = 0;
+  size_t out_accum_bytes = 0;
+  size_t seqlens_k_bytes = 0;
   if (use_flash_attention) {
+    // Flash Attention kv-caching operates in place on a buffer, therefore past and present kv must be the same
     assert(present_key == nullptr || present_key == past_key);
     assert(present_value == nullptr || present_value == past_value);
+
+    softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
+    // split kv buffers
+    parameters.num_splits = onnxruntime::flash::num_splits_heuristic(
+        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.head_size, device_prop.multiProcessorCount, 128, false,
+        device_prop.major == 8 && device_prop.minor > 0);
+    if (parameters.num_splits > 1) {
+      // softmax_lse_accum buffer
+      softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(
+          parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length);
+      // out_accum buffer
+      auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
+      const int head_size_rounded = round_multiple(parameters.head_size, 32);
+      out_accum_bytes = onnxruntime::flash::get_out_accum_size(
+          parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, head_size_rounded);
+    }
+    // seqlens_k buffer
+    if (past_key != nullptr) {
+      seqlens_k_bytes = sizeof(int) * parameters.batch_size;
+    }
   }
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
+  auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
+  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream()); // nullptr
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream()); // nullptr
+  auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream()); // nullptr
+  auto seqlens_k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream()); // nullptr
 #endif
 
   // only kernel implemented for gqa right now
   assert(use_flash_attention);
-
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  GroupQueryAttentionData<CudaT> data;
-
-  size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
-  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
-
-  // split kv buffers
-  parameters.num_splits = onnxruntime::flash::num_splits_heuristic(
-      parameters.batch_size, parameters.sequence_length, parameters.max_sequence_length, parameters.num_heads,
-      parameters.head_size, device_prop.multiProcessorCount, 128, past_key != nullptr,
-      device_prop.major == 8 && device_prop.minor > 0);
-  if (parameters.num_splits > 1) {
-    // softmax_lse_accum buffer
-    size_t softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(
-        parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length);
-    auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
-    data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
-    // out_accum buffer
-    auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
-    const int head_size_rounded = round_multiple(parameters.head_size, 32);
-    size_t out_accum_bytes = onnxruntime::flash::get_out_accum_size(
-        parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, head_size_rounded);
-    auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
-    data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
-  } else {
-    data.softmax_lse_accum = nullptr;
-    data.out_accum = nullptr;
-  }
-
-  // seqlens_k buffer
-  if (past_key != nullptr) {
-    size_t seqlens_k_bytes = sizeof(int) * parameters.batch_size;
-    auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
-    data.seqlens_k = reinterpret_cast<int*>(seqlens_k_buffer.get());
-  }
 
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
@@ -156,6 +156,18 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   data.use_flash_attention = use_flash_attention;
+  if (softmax_lse_buffer != nullptr) {
+    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
+  }
+  if (softmax_lse_accum_buffer != nullptr) {
+    data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
+  }
+  if (out_accum_buffer != nullptr) {
+    data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
+  }
+  if (seqlens_k_buffer != nullptr) {
+    data.seqlens_k = reinterpret_cast<int*>(seqlens_k_buffer.get());
+  }
 
   cublasHandle_t cublas = GetCublasHandle(context);
 

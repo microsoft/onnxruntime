@@ -867,7 +867,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "past state for key with shape (batch_size, num_heads, total_sequence_length, head_size). "
+                "present state for key with shape (batch_size, num_heads, total_sequence_length, head_size). "
                 "If past_present_share_buffer is set, "
                 "its shape is (batch_size, num_heads, max_sequence_length, head_size), "
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
@@ -875,7 +875,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "past state for value with shape (batch_size, num_heads, total_sequence_length, head_size). "
+                "present state for value with shape (batch_size, num_heads, total_sequence_length, head_size). "
                 "If past_present_share_buffer is set, "
                 "its shape is (batch_size, num_heads, max_sequence_length, head_size), "
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",

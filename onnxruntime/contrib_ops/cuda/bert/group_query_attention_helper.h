@@ -163,8 +163,7 @@ Status CheckInputs(const T* query,
                              "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
     }
 
-    int v_hidden_size = value_dims[2];
-    if (v_hidden_size != kv_hidden_size) {
+    if (value_dims[2] != kv_hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
     }
   } else {
