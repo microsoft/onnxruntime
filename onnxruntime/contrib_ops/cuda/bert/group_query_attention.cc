@@ -137,10 +137,10 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
-  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream()); // nullptr
-  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream()); // nullptr
-  auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream()); // nullptr
-  auto seqlens_k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream()); // nullptr
+  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());        // nullptr
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
+  auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
+  auto seqlens_k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
   // only kernel implemented for gqa right now
