@@ -2,7 +2,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
-# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------i
+import onnxruntime
 import os
 import random
 import tempfile
@@ -70,7 +71,7 @@ class TestStaticQuantizationResNet(unittest.TestCase):
                 dataloader = FakeResnetCalibrationDataReader(16)
                 with self.subTest(per_channel=per_channel):
                     qdq_file = os.path.join(
-                        temp, "preprocessed-small-qdq-{1 if per_channel else 0}-ort-{ort_version}.onnx"
+                        temp, f"preprocessed-small-qdq-{1 if per_channel else 0}-ort-{ort_version}.onnx"
                     )
                     quantize_static(
                         model_input=model,
@@ -93,13 +94,21 @@ class TestStaticQuantizationResNet(unittest.TestCase):
                     # because the quantization is expected into uint8. However, some rounding
                     # issues leads to a model onnxruntime does not support anymore.
 
+                    import shutil
+
+                    shutil.copy(qdq_file, "/home/xadupre/examples")
                     with open(qdq_file, "rb") as f:
                         onx = onnx.load(f)
                     for init in onx.graph.initializer:
                         arr = to_array(init)
-                        if arr.dtype == np.int8 and "zero_point" not in init.name:
+                        if (
+                            arr.dtype == np.int8
+                            and "zero_point" not in init.name
+                            and not init.name.endswith("quantized")
+                        ):
                             raise AssertionError(
-                                f"Initiliazer {init.name!r} has type {arr.dtype} but should be {np.uint8}."
+                                f"Initializer {init.name!r} has type {arr.dtype} and "
+                                f"shape {arr.shape} but should be {np.uint8}."
                             )
 
                     sess = InferenceSession(qdq_file, providers=["CPUExecutionProvider"])

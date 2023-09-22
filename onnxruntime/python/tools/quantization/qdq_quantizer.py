@@ -285,6 +285,9 @@ class QDQQuantizer(ONNXQuantizer):
                 weight_name,
                 # restoring the previous value in onnxruntime==1.15.1 --> it is always TensorProto.INT8
                 # self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
+                # QLinearConv expects to have a unique value for all channels.
+                # This code does not enforce that but it is necessarily the case when the
+                # quantization is symmetric (as for INT8).
                 onnx_proto.TensorProto.INT8,
                 axis,
                 keep_float_weight=self.add_qdq_pair_to_weight,
