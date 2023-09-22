@@ -118,6 +118,7 @@ class MlasQ4dqTest : public MlasTestBase {
   }
 
   void ExecuteShort(void) override {
+    Test(4096, 4096, BlkQ4SymPerN);
     Test(1, 20, BlkQ4Sym);
     Test(1, 20, BlkQ4Zp8);
     Test(1, 52, BlkQ4Sym);

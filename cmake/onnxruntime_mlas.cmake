@@ -139,6 +139,10 @@ function(setup_mlas_source_for_windows)
       add_compile_options("-d2SSAOptimizer-")
     endif()
   elseif(onnxruntime_target_platform STREQUAL "x64")
+    if (NOT APPLE)
+      add_subdirectory(${MLAS_SRC_DIR}/X86_64/jblas jblas) 
+      target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
+    endif()
 
     file(GLOB_RECURSE mlas_platform_srcs_avx CONFIGURE_DEPENDS
       "${MLAS_SRC_DIR}/intrinsics/avx/*.cpp"

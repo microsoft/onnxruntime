@@ -112,6 +112,7 @@ static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
   ArgsProduct(b, {{1, 1024, 2048}, {4096}, {4096}, {8}});
 }
 
+BENCHMARK_CAPTURE(Q4GEMM, Q4SymPerN, BlkQ4SymPerN)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM, Q4Sym, BlkQ4Sym)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM, Q4Zp8, BlkQ4Zp8)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM, Q4Sym128, BlkQ4Sym)->Apply(GemmSizeProducts)->UseRealTime();

@@ -17,10 +17,11 @@ Abstract:
 --*/
 
 #include "q4gemm.h"
+#if !defined(__APPLE__)
+#include "jblas/jit_blas_weight_compression.h"
+#endif
 
-
-size_t
-MLASCALL
+size_t MLASCALL
 MlasQ80BlkQuantSize(MLAS_BLK_QUANT_TYPE QType, size_t M, size_t K)
 {
     if (GetMlasPlatform().Q8Q4GemmDispatch == nullptr) {
@@ -33,52 +34,43 @@ MlasQ80BlkQuantSize(MLAS_BLK_QUANT_TYPE QType, size_t M, size_t K)
             return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK2>(M, K);
         case BlkQ4Sym128:
             return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK4>(M, K);
+        case BlkQ4SymPerN:
         default:
             return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK0>(M, K);
     }
 }
 
-
-void
-MLASCALL
-MlasQ80BlkQuant(
-    MLAS_BLK_QUANT_TYPE QType,
-    void* Qblob,
-    const float* A,
-    size_t M,
-    size_t K,
-    size_t lda,
-    MLAS_THREADPOOL* ThreadPool
-    )
+void MLASCALL
+MlasQ80BlkQuant(MLAS_BLK_QUANT_TYPE QType,
+                void* Qblob,
+                const float* A,
+                size_t M,
+                size_t K,
+                size_t lda,
+                MLAS_THREADPOOL* ThreadPool)
 {
     auto* dispatch = GetMlasPlatform().Q8Q4GemmDispatch;
     dispatch->Quants[QType](Qblob, A, M, K, lda, ThreadPool);
 }
 
-
-template<typename ParamBlockType>
-MLAS_FORCEINLINE
-void
-MlasQ4GemmBatchDriver(
-    MLAS_BLK_QUANT_TYPE QType,
-    const size_t M,
-    const size_t N,
-    const size_t K,
-    const size_t BatchN,
-    const ParamBlockType* DataParams,
-    MLAS_THREADPOOL* ThreadPool
-    )
+template <typename ParamBlockType>
+MLAS_FORCEINLINE void
+MlasQ4GemmBatchDriver(MLAS_BLK_QUANT_TYPE QType,
+                      const size_t M,
+                      const size_t N,
+                      const size_t K,
+                      const size_t BatchN,
+                      const ParamBlockType* DataParams,
+                      MLAS_THREADPOOL* ThreadPool)
 {
-    //const MLAS_Q4GEMM_DISPATCH* dispatch = MlasQ4GemmGetDispatch();
-    //MLAS_Q4GEMM_OPERATION* operation = dispatch->Operation;
+    // const MLAS_Q4GEMM_DISPATCH* dispatch = MlasQ4GemmGetDispatch();
+    // MLAS_Q4GEMM_OPERATION* operation = dispatch->Operation;
     void (*operation)(const size_t, const ParamBlockType*, const size_t, const size_t, const size_t,
                       const size_t) = nullptr;
 
-    if constexpr (std::is_same_v<ParamBlockType, MLAS_Q4_GEMM_DATA_PARAMS>)
-    {
+    if constexpr (std::is_same_v<ParamBlockType, MLAS_Q4_GEMM_DATA_PARAMS>) {
         operation = GetMlasPlatform().FpQ4GemmDispatch->Operations[QType];
-    }
-    else {
+    } else {
         operation = GetMlasPlatform().Q8Q4GemmDispatch->Operations[QType];
     }
 
@@ -147,33 +139,81 @@ MlasQ4GemmBatchDriver(
     });
 }
 
+#if !defined(__APPLE__)
+template <class T, JBLAS_ISA ISA>
+using WeiS4ClipFp32PerN =
+    jblas::prologue::weight_comp::gemm_kblcok::WeightS4ClipScaleFp32PerN<T, ISA>;
+
+template <template <class GC, JBLAS_ISA ISA> class ProB>
+using AVX512VNNIPerNFp32Fp32 = jblas::wrapper::gemm_pack_weight::GemmInterfaceParallelAB<
+    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<
+        JblasAVX512_VNNI,
+        jblas::gemm::GemmCore_Row_NN_8x48_AVX512_VNNI,
+        jblas::prologue::gemm::ActivationFp32AsymU8Quantize,
+        ProB,
+        jblas::epilogue::gemm::ZpDequantInt32ToFp32>,
+    jblas::utils::parallel::Parallel2DGemm>;
+
+static AVX512VNNIPerNFp32Fp32<WeiS4ClipFp32PerN> avx512vnni_s4pernkernl;
 
 void
-MLASCALL
-MlasQ4GemmBatch(
-    MLAS_BLK_QUANT_TYPE QType,
-    const size_t M,
-    const size_t N,
-    const size_t K,
-    const size_t BatchN,
-    const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool
-    )
+JblasQ4GemmBatchDriver(const size_t M,
+                       const size_t N,
+                       const size_t K,
+                       const size_t BatchN,
+                       const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                       MLAS_THREADPOOL* ThreadPool)
 {
+    auto ptr = jblas::prologue::weight_comp::gemm_kblcok::PackedWeightParser::deserialBuffer(
+        const_cast<void*>(DataParams->B));
+    GetCPUDevice();
+    if (ptr) {
+        if (ptr->mType == int(jblas::prologue::weight_comp::gemm_kblcok::WeightCompType::
+                                  WeightS4ClipScaleFp32PerChannelN)) {
+            auto weiptr = reinterpret_cast<
+                jblas::prologue::weight_comp::gemm_kblcok::StorageWeightS4ScaleFp32PerChannelN*>(
+                ptr);
+            if (ptr->mCoreType == jblas::gemm::GemmCoreType::AVX512_VNNI_8x48) {
+                if (_cd->AVX512_VNNI()) {
+                    auto quanA =
+                        avx512vnni_s4pernkernl.getActivationPtr()->createStorage(M, K, NULL);
+                    avx512vnni_s4pernkernl.template compute<true, false>(
+                        {int(M * BatchN), int(N), int(K), DataParams->A, int(DataParams->lda),
+                         quanA, weiptr, DataParams->C, int(DataParams->ldc), quanA->mZPtr,
+                         quanA->mSPtr, quanA->lds, weiptr->mRPtr, weiptr->mSPtr});
+                    delete quanA;
+                }
+            }
+        }
+    }
+}
+#endif
+
+void MLASCALL
+MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
+                const size_t M,
+                const size_t N,
+                const size_t K,
+                const size_t BatchN,
+                const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                MLAS_THREADPOOL* ThreadPool)
+{
+#if !defined(__APPLE__)
+    if (QType == MLAS_BLK_QUANT_TYPE::BlkQ4SymPerN) {
+        return JblasQ4GemmBatchDriver(M, N, K, BatchN, DataParams, ThreadPool);
+    }
+#endif
     MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
 }
 
-void
-MLASCALL
-MlasQ8Q4GemmBatch(
-    MLAS_BLK_QUANT_TYPE QType,
-    const size_t M,
-    const size_t N,
-    const size_t K,
-    const size_t BatchN,
-    const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool
-    )
+void MLASCALL
+MlasQ8Q4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
+                  const size_t M,
+                  const size_t N,
+                  const size_t K,
+                  const size_t BatchN,
+                  const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
+                  MLAS_THREADPOOL* ThreadPool)
 {
     MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
 }

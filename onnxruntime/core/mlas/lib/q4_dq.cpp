@@ -17,20 +17,50 @@ Abstract:
     language models.
 
 --*/
-
+#if !defined(__APPLE__)
+#include "jblas/jit_blas_weight_compression.h"
+#endif
 #include "q4common.h"
 
-template<typename T>
-constexpr
-size_t
+template <typename T>
+constexpr size_t
 BlkQ4BufSize(size_t N, size_t K)
 {
     const size_t KBlocks = MlasDivRoundup(K, T::BlkLen);
     return N * KBlocks * T::BlobSize;
 }
 
-size_t
-MLASCALL
+#if !defined(__APPLE__)
+template <class T, JBLAS_ISA ISA>
+using WeiS4ClipFp32PerN =
+    jblas::prologue::weight_comp::gemm_kblcok::WeightS4ClipScaleFp32PerN<T, ISA>;
+
+template <template <class GC, JBLAS_ISA ISA> class ProB>
+using AVX512VNNIPerNFp32Fp32 = jblas::wrapper::gemm_pack_weight::GemmInterfaceParallelAB<
+    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<
+        JblasAVX512_VNNI,
+        jblas::gemm::GemmCore_Row_NN_8x48_AVX512_VNNI,
+        jblas::prologue::gemm::ActivationFp32AsymU8Quantize,
+        ProB,
+        jblas::epilogue::gemm::ZpDequantInt32ToFp32>,
+    jblas::utils::parallel::Parallel2DGemm>;
+
+static AVX512VNNIPerNFp32Fp32<WeiS4ClipFp32PerN> avx512vnni_s4pernkernl;
+
+static size_t
+JblasQ4BuSize(int block_size, size_t N, size_t K)
+{
+    if (block_size == -1) {
+        auto ptr = avx512vnni_s4pernkernl.getWeightPtr()->createStorage(N, K);
+        auto size = ptr->getSerializedSize();
+        delete ptr;
+        return size;
+    }
+    return 0;
+}
+#endif
+
+size_t MLASCALL
 MlasQ4GemmPackBSize(MLAS_BLK_QUANT_TYPE QType, size_t N, size_t K)
 {
     if (GetMlasPlatform().FpQ4GemmDispatch == nullptr) {
@@ -44,25 +74,27 @@ MlasQ4GemmPackBSize(MLAS_BLK_QUANT_TYPE QType, size_t N, size_t K)
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK2>(N, K);
         case BlkQ4Sym128:
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK4>(N, K);
+        case BlkQ4SymPerN:
+#if !defined(__APPLE__)
+            return JblasQ4BuSize(-1, N, K);
+#endif
         default:
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK1>(N, K);
     }
 }
 
-
-template<typename T>
-MLAS_FORCEINLINE
-void
+template <typename T>
+MLAS_FORCEINLINE void
 MlasQ4GemmPackBImpl(void* PackedBuf, const float* FpData, size_t N, size_t K, size_t ldb)
 {
     auto* dst_ptr = reinterpret_cast<uint8_t*>(PackedBuf);
 
-    for (size_t n = 0; n < N; n ++) {
-        const float* src = FpData; // starting from top of the column
+    for (size_t n = 0; n < N; n++) {
+        const float* src = FpData;  // starting from top of the column
 
         for (size_t k = 0; k < K; k += T::BlkLen) {
             size_t klen = std::min(size_t(T::BlkLen), K - k);
-            float amax = 0.0f; // abs(max)
+            float amax = 0.0f;  // abs(max)
             float max = 0.0f;
 
             for (size_t l = 0; l < klen; l++) {
@@ -98,20 +130,19 @@ MlasQ4GemmPackBImpl(void* PackedBuf, const float* FpData, size_t N, size_t K, si
             src += ldb * klen;
         }
 
-        FpData++; // move to next column
+        FpData++;  // move to next column
     }
 }
 
-template<>
-MLAS_FORCEINLINE
-void
+template <>
+MLAS_FORCEINLINE void
 MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK1>(
     void* PackedBuf, const float* FpData, size_t N, size_t K, size_t ldb)
 {
     auto* dst_ptr = reinterpret_cast<uint8_t*>(PackedBuf);
 
     for (size_t n = 0; n < N; n++) {
-        const float* src = FpData; // starting from top of the column
+        const float* src = FpData;  // starting from top of the column
 
         for (size_t k = 0; k < K; k += MLAS_Q4TYPE_BLK1::BlkLen) {
             size_t klen = std::min(MLAS_Q4TYPE_BLK1::BlkLen, K - k);
@@ -165,20 +196,27 @@ MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK1>(
             dst_ptr += MLAS_Q4TYPE_BLK1::BlobSize;
             src += ldb * klen;
         }
-        FpData++; // move to next column
+        FpData++;  // move to next column
     }
 }
 
+#if !defined(__APPLE__)
 void
-MLASCALL
+JblasQ4GemmPackB(
+    int block_size, void* PackedBuf, const float* FpData, size_t N, size_t K, size_t ldb)
+{
+    if (block_size == -1) {
+        auto ptr = avx512vnni_s4pernkernl.getWeightPtr()->createStorage(N, K);
+        avx512vnni_s4pernkernl.getWeightPtr()->packWeight(N, K, FpData, ldb, ptr);
+        ptr->serializeToBuffer(PackedBuf);
+        delete ptr;
+    }
+}
+#endif
+
+void MLASCALL
 MlasQ4GemmPackB(
-    MLAS_BLK_QUANT_TYPE QType,
-    void* PackedBuf,
-    const float* FpData,
-    size_t N,
-    size_t K,
-    size_t ldb
-    )
+    MLAS_BLK_QUANT_TYPE QType, void* PackedBuf, const float* FpData, size_t N, size_t K, size_t ldb)
 {
     switch (QType) {
         case BlkQ4Sym:
@@ -187,14 +225,17 @@ MlasQ4GemmPackB(
             return MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK2>(PackedBuf, FpData, N, K, ldb);
         case BlkQ4Sym128:
             return MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK4>(PackedBuf, FpData, N, K, ldb);
+        case BlkQ4SymPerN:
+#if !defined(__APPLE__)
+            return JblasQ4GemmPackB(-1, PackedBuf, FpData, N, K, ldb);
+#endif
         default:
             return MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK1>(PackedBuf, FpData, N, K, ldb);
     }
 }
 
-template<typename T>
-MLAS_FORCEINLINE
-void
+template <typename T>
+MLAS_FORCEINLINE void
 MlasQ4GemmUnPackBImpl(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb)
 {
     const auto* src = reinterpret_cast<const uint8_t*>(PackedBuf);
@@ -231,9 +272,8 @@ MlasQ4GemmUnPackBImpl(float* FpData, const void* PackedBuf, size_t N, size_t K, 
     }
 }
 
-template<>
-MLAS_FORCEINLINE
-void
+template <>
+MLAS_FORCEINLINE void
 MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK1>(
     float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb)
 {
@@ -272,16 +312,26 @@ MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK1>(
     }
 }
 
+#if !defined(__APPLE__)
 void
-MLASCALL
+JblasQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb)
+{
+    auto ptr = jblas::prologue::weight_comp::gemm_kblcok::PackedWeightParser::deserialBuffer(
+        const_cast<void*>(PackedBuf));
+    if (ptr) {
+        if (ptr->mType == int(jblas::prologue::weight_comp::gemm_kblcok::WeightCompType::
+                                  WeightS4ClipScaleFp32PerChannelN)) {
+            if (ptr->mCoreType == jblas::gemm::GemmCoreType::AVX512_VNNI_8x48) {
+                avx512vnni_s4pernkernl.getWeightPtr()->unpackWeight(N, K, ptr, FpData, ldb);
+            }
+        }
+    }
+}
+#endif
+
+void MLASCALL
 MlasQ4GemmUnPackB(
-    MLAS_BLK_QUANT_TYPE QType,
-    float* FpData,
-    const void* PackedBuf,
-    size_t N,
-    size_t K,
-    size_t ldb
-    )
+    MLAS_BLK_QUANT_TYPE QType, float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb)
 {
     switch (QType) {
         case BlkQ4Sym:
@@ -290,6 +340,10 @@ MlasQ4GemmUnPackB(
             return MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK2>(FpData, PackedBuf, N, K, ldb);
         case BlkQ4Sym128:
             return MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK4>(FpData, PackedBuf, N, K, ldb);
+        case BlkQ4SymPerN:
+#if !defined(__APPLE__)
+            return JblasQ4GemmUnPackB(FpData, PackedBuf, N, K, ldb);
+#endif
         default:
             return MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK1>(FpData, PackedBuf, N, K, ldb);
     }
