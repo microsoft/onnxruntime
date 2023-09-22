@@ -955,7 +955,8 @@ bool HandleResize([[maybe_unused]] HandlerArgs& args) {
   return true;
 }
 
-constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+// Not currently registered by default.
+// constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
