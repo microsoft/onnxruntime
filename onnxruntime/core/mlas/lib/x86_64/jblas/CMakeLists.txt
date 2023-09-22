@@ -22,7 +22,10 @@ if(WIN32)
 	#6262 ignore stack too large
 
 	target_link_options(${PROJECT_NAME} INTERFACE /STACK:3145728) #Stack require up to L2 cache size
+else()
+	target_compile_options(${PROJECT_NAME} INTERFACE -frtti) 
 endif(WIN32)
+
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

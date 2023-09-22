@@ -139,11 +139,6 @@ function(setup_mlas_source_for_windows)
       add_compile_options("-d2SSAOptimizer-")
     endif()
   elseif(onnxruntime_target_platform STREQUAL "x64")
-    if (NOT APPLE)
-      add_subdirectory(${MLAS_SRC_DIR}/X86_64/jblas jblas) 
-      target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
-    endif()
-
     file(GLOB_RECURSE mlas_platform_srcs_avx CONFIGURE_DEPENDS
       "${MLAS_SRC_DIR}/intrinsics/avx/*.cpp"
     )
@@ -204,7 +199,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
       )
     endif()
-
+    add_subdirectory(${MLAS_SRC_DIR}/X86_64/jblas jblas) 
+    target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
   else()
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
@@ -568,7 +564,9 @@ else()
             )
           set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
           set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-	    endif()
+	      add_subdirectory(${MLAS_SRC_DIR}/X86_64/jblas jblas) 
+          target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
+        endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
           onnxruntime_add_static_library(onnxruntime_mlas_x86_64 ${mlas_platform_srcs})
