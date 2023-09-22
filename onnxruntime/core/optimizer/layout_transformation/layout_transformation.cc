@@ -40,18 +40,26 @@ CostCheckResult PostLayoutTransformCostCheck(const api::GraphRef& graph, const a
 /// <param name="node">Node to check</param>
 /// <returns>true if the node should have its layout converted to NHWC.</returns>
 bool ConvertNodeLayout(const api::NodeRef& node) {
-  const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
-
-  // handle CUDA special cases
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
-    // TODO: Update as per https://github.com/microsoft/onnxruntime/pull/17200
-  }
-
-  // skip if domain is unknown
+  // skip if op is not an ONNX or contrib op
   auto domain = node.Domain();
   if (domain != kOnnxDomain && domain != kMSDomain) {
     return false;
   }
+
+  const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
+
+  // handle special cases
+#if defined(USE_CUDA) || defined(USE_XNNPACK)
+  std::string_view ep_type = node.GetExecutionProviderType();
+  if (ep_type == kCudaExecutionProvider) {
+    // TODO: Update as per https://github.com/microsoft/onnxruntime/pull/17200 with CUDA ops that support NHWC
+  } else if (ep_type == kXnnpackExecutionProvider) {
+    if (node.OpType() == "Resize") {
+      // XNNPACK supports NCHW and NHWC for Resize
+      return false;
+    }
+  }
+#endif
 
   return layout_sensitive_ops.count(node.OpType()) != 0;
 }
