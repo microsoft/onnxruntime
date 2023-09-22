@@ -461,7 +461,9 @@ export const run = async(
           }
           output.push([type, dims, stringData, 'cpu']);
         } else {
-          if (preferredLocation === 'gpu-buffer') {
+          // If a certain output's preferred location is GPU but the tensor is empty, we still need to create a CPU
+          // tensor for it. There is no mapping GPU buffer for an empty tensor.
+          if (preferredLocation === 'gpu-buffer' && size > 0) {
             const gpuBuffer = wasm.jsepGetBuffer(dataOffset);
             const elementSize = getTensorElementSize(dataType);
             if (elementSize === undefined || !isGpuBufferSupportedType(type)) {
