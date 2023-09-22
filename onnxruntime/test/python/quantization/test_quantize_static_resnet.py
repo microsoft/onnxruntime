@@ -85,12 +85,9 @@ class TestStaticQuantizationResNet(unittest.TestCase):
                     # With onnxruntime>1.16.0
                     # * uint8(128) if per_channel is False
                     # * uint8([128, 128, ..., 127, ...]) if per_channel is True
-                    # Then, onnxruntime raises an exception because all the zero point
-                    # per channel are expected to be the same
-                    # (QLinearConv : zero point of per-channel filter must be same).
-                    # The new behaviour seems the expected one from the quantization tools
-                    # because the quantization is expected into uint8. However, some rounding
-                    # issues leads to a model onnxruntime does not support anymore.
+                    # QLinearConv : zero point of per-channel filter must be same.
+                    # That's why the quantization forces a symmetric quantization into INT8.
+                    # zero_point is guaranted to be zero whatever the channel is.
 
                     with open(qdq_file, "rb") as f:
                         onx = onnx.load(f)

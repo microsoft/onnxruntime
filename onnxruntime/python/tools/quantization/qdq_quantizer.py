@@ -283,8 +283,9 @@ class QDQQuantizer(ONNXQuantizer):
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
                 weight_name,
-                # restoring the previous value in onnxruntime==1.15.1 --> it is always TensorProto.INT8
-                # self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
+                # Quantization type is forced to be TensorProto.INT8.
+                # when the expected value would be (see below)
+                # self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType.
                 # QLinearConv expects to have a unique value for all channels.
                 # This code does not enforce that but it is necessarily the case when the
                 # quantization is symmetric (as for INT8).
