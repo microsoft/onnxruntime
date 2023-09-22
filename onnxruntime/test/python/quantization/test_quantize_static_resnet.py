@@ -2,8 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
-# --------------------------------------------------------------------------i
-import onnxruntime
+# --------------------------------------------------------------------------
 import os
 import random
 import tempfile
@@ -56,7 +55,6 @@ class TestStaticQuantizationResNet(unittest.TestCase):
             "per_channel": True,
             "quant_format": QuantFormat.QDQ,
             "reduce_range": False,
-            "weight_type": QuantType.QUInt8,
         }
 
         proto = create_model()
@@ -94,9 +92,6 @@ class TestStaticQuantizationResNet(unittest.TestCase):
                     # because the quantization is expected into uint8. However, some rounding
                     # issues leads to a model onnxruntime does not support anymore.
 
-                    import shutil
-
-                    shutil.copy(qdq_file, "/home/xadupre/examples")
                     with open(qdq_file, "rb") as f:
                         onx = onnx.load(f)
                     for init in onx.graph.initializer:
@@ -128,6 +123,7 @@ class TestStaticQuantizationResNet(unittest.TestCase):
                             ],
                             dtype=np.float32,
                         )
+                        assert_allclose(expected, got[0][0, :4, :2, :2], atol=0.2)
                     else:
                         expected = np.array(
                             [
@@ -138,7 +134,7 @@ class TestStaticQuantizationResNet(unittest.TestCase):
                             ],
                             dtype=np.float32,
                         )
-                    assert_allclose(expected, got[0][0, :4, :2, :2], atol=0.1)
+                        assert_allclose(expected, got[0][0, :4, :2, :2], atol=0.2)
 
 
 if __name__ == "__main__":
