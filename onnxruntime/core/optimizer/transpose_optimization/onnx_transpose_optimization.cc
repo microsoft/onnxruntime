@@ -447,13 +447,13 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     if (consumers->nodes.size() > 0) {
       // record the consumer node input as being special cased for use in Case 2 if a DQ node, and IsConstant
       for (auto& consumer : consumers->nodes) {
-        auto& node_inputs_using_updated_shared_initializer = ctx.nodes_using_updated_shared_initializer[consumer->Id()];
+        auto& consumer_node_inputs = ctx.nodes_using_updated_shared_initializer[consumer->Id()];
 
         // find input id/s for consumer
         auto consumer_inputs = consumer->Inputs();
         for (size_t input_idx = 0; input_idx < consumer_inputs.size(); ++input_idx) {
           if (consumer_inputs[input_idx] == value_to_modify) {
-            entry->second.push_back(input_idx);
+            consumer_node_inputs.push_back(input_idx);
           }
         }
       }
@@ -643,16 +643,13 @@ static void TransposeInputImpl(api::GraphRef& graph,
       // record the consumer node's input as being special cased for use in Case 2 if a DQ node, and IsConstant
       if (nodes_using_updated_shared_initializer) {
         for (auto& consumer : consumers->nodes) {
-          auto entry = nodes_using_updated_shared_initializer->find(consumer->Id());
-          if (entry == nodes_using_updated_shared_initializer->end()) {
-            entry = nodes_using_updated_shared_initializer->insert({consumer->Id(), {}}).first;
-          }
+          auto& consumer_node_inputs = (*nodes_using_updated_shared_initializer)[consumer->Id()];
 
           // find input id/s for consumer
           auto consumer_inputs = consumer->Inputs();
           for (size_t input_idx = 0; input_idx < consumer_inputs.size(); ++input_idx) {
             if (consumer_inputs[input_idx] == value_to_modify) {
-              entry->second.push_back(input_idx);
+              consumer_node_inputs.push_back(input_idx);
             }
           }
         }
