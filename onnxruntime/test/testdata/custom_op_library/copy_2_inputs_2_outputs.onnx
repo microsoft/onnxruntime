@@ -1,7 +1,7 @@
-	:Ý
-R
+	:ï
+d
 input_0
-input_1output_0output_1copy_variadic"CopyVariadic:test.customopgraphZ
+input_1output_0output_1copy_tensor_array"CopyTensorArrayAllVariadic:test.customopgraphZ
 input_0
 
 ÿÿÿÿÿÿÿÿÿZ

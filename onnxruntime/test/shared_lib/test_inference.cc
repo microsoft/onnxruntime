@@ -184,8 +184,8 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequen
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
-static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_COPY_VARIADIC_2 = TSTR("testdata/custom_op_library/copy_variadic_2_inputs_2_outputs.onnx");
-static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_COPY_VARIADIC_3 = TSTR("testdata/custom_op_library/copy_variadic_3_inputs_3_outputs.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_2 = TSTR("testdata/custom_op_library/copy_2_inputs_2_outputs.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_3 = TSTR("testdata/custom_op_library/copy_3_inputs_3_outputs.onnx");
 #if !defined(DISABLE_FLOAT8_TYPES)
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI = TSTR("testdata/custom_op_library/custom_op_test_float8.onnx");
 #endif
@@ -1444,7 +1444,7 @@ TEST(CApiTest, test_custom_op_library_copy_variadic) {
   lib_name = ORT_TSTR("./libcustom_op_library.so");
 #endif
 
-  TestInference<float>(*ort_env, CUSTOM_OP_LIBRARY_COPY_VARIADIC_2,
+  TestInference<float>(*ort_env, CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_2,
                        inputs, "output_1", expected_dims_y,
                        expected_values_y, 0, nullptr, lib_name.c_str());
 
@@ -1456,7 +1456,7 @@ TEST(CApiTest, test_custom_op_library_copy_variadic) {
                       11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
 
   expected_values_y = inputs[2].values;
-  TestInference<float>(*ort_env, CUSTOM_OP_LIBRARY_COPY_VARIADIC_3,
+  TestInference<float>(*ort_env, CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_3,
                        inputs, "output_2", expected_dims_y,
                        expected_values_y, 0, nullptr, lib_name.c_str());
 }
