@@ -7,6 +7,7 @@ import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-w
 import {ComputeContext} from '../types';
 
 import {createGroupedConvProgramInfoLoader} from './conv-grouped';
+import {createConvNHWCProgramInfoLoader} from './conv-grouped-nhwc';
 import {createConv2DMatMulProgramInfoLoader} from './conv2d-mm';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
 import {createMatmulProgramInfoLoader} from './matmul';
@@ -226,6 +227,11 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   const convInputs = [inputs[0], transposedWeight];
   if (hasBias) {
     convInputs.push(inputs[2]);
+  }
+
+  if (isChannelsLast) {
+    context.compute(createConvNHWCProgramInfoLoader(convInputs, adjustedAttributes, outputShape), {inputs: convInputs});
+    return;
   }
 
   // STEP.3: compute matmul
