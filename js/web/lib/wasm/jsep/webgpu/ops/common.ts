@@ -366,7 +366,7 @@ const createIndicesHelper =
 
       const getByIndicesImplementation = rank < 2 ? '' : `
   fn get_${name}ByIndices(indices: ${type.indices}) -> ${valueType} {
-    return ${name}[i2o_${name}(indices)];
+    return ${getByOffset(`i2o_${name}(indices)`)};
   }`;
 
       const getImplementation = rank < 2 ? '' : (() => {
