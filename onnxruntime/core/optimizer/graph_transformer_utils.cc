@@ -246,8 +246,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     } break;
 
     case TransformerLevel::Level2: {
-      // we run TransposeOptimizer again in Level2 as it has some additional CPU EP specific optimizations that can be
-      // applied once nodes are assigned to an EP (which happens between level 1 and level 2).
+      // we run TransposeOptimizer again in Level2 for some CPU EP specific optimizations that can only be
+      // applied once nodes are assigned to the CPU EP (which happens between level 1 and level 2).
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator), kCpuExecutionProvider));
 
       const bool enable_quant_qdq_cleanup =

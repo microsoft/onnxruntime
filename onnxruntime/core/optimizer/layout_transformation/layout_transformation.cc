@@ -59,7 +59,7 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
 
 // Layout sensitive NCHW ops. TransformLayoutForEP will wrap these with Transpose nodes to convert the input
 // data to NHWC and output data back to NCHW, and move the op to the internal NHWC domain (kMSInternalNHWCDomain).
-// The EP requesting these ops MUST be able to handle the node with the operator in the kMSInternalNHWCDomain.
+// The EP requesting these ops MUST be able to handle the node with the operator in the kMSInternalNHWCDomain domain.
 // Once all the layout sensitive ops requested by the EP are wrapped the transpose optimizer will attempt to remove
 // as many of the layout transposes as possible.
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
@@ -90,15 +90,15 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, cpu_allocator, /*new_node_ep*/ nullptr);
 
-  // if converting to NHWC we need to wrap layout sensitive nodes to Transpose from NCHW to NHWC and back.
+  // to convert to NHWC we need to wrap layout sensitive nodes to Transpose from NCHW to NHWC and back.
   for (auto& node : api_graph->Nodes()) {
     if (node->GetExecutionProviderType() != execution_provider.Type()) {
       continue;
     }
 
     if (ConvertNodeLayout(*node)) {
-      // if this is an internal operator with a channels_last attribute, change the domain to kMSInternalNHWCDomain
-      // so the EP knows this op is in the expected format.
+      // if already transformed then change the domain to kMSInternalNHWCDomain this way the EP
+      // knows this op is in the expected format.
       if (node->GetAttributeIntDefault("channels_last", 0) == 1) {
         SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
         // Changing the domain for the node requires creating a new node and replacing the old one
@@ -153,8 +153,6 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
       }
 
-      // Technically Resize doesn't need to change domain as the ONNX Resize spec is not layout sensitive, however
-      // we change the domain to kMSInternalNHWCDomain to make it clear the input is now NHWC and to be consistent.
       SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
       modified = true;
     }
