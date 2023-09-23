@@ -4501,6 +4501,13 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
   for (const auto& node : graph.Nodes()) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
+
+    if (node.Name() == "Mul_212" || node.Name() == "Add_213") {
+      // check that the special case in TransposeInputs for a single element input reconnects things back up correctly
+      const auto& inputs = node.InputDefs();
+      EXPECT_EQ(inputs.size(), 2);
+      EXPECT_TRUE(inputs[1]->Exists());
+    }
   }
 #endif
 }

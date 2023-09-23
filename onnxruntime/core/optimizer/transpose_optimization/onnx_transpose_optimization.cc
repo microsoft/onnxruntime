@@ -401,6 +401,7 @@ static void UpdateDQNodeInputAndShape(api::GraphRef& graph, api::NodeRef& dq, st
   auto new_shape = *graph.GetValueInfo(new_input)->Shape();
   graph.GetValueInfo(dq.Outputs()[0])->SetShape(&new_shape);
 }
+
 /////// </Helper Utils> ///////
 
 /////// <Core Helpers> ///////
@@ -434,7 +435,8 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     }
   }
 
-  // Clear the input, which also removes this node as a consumer of the input
+  // Clear the input, which also removes this node's input as a consumer of the value.
+  // NOTE: the node may have multiple inputs consuming the value.
   node.SetInput(i, "");
   auto value_to_modify = dq_node ? constant_dq_input : input;
   auto consumers = ctx.graph.GetValueConsumers(value_to_modify);
@@ -610,14 +612,28 @@ static void TransposeInputImpl(api::GraphRef& graph,
     }
   }
 
-  // Clear the input which removes this node as a consumer
+  // Clear the input, which also removes this node's input as a consumer of the value.
+  // NOTE: the node may have multiple inputs consuming the value.
   node.SetInput(i, "");
 
-  auto value_to_modify = dq_node ? constant_dq_input : input;
-  auto consumers = graph.GetValueConsumers(value_to_modify);
+  auto constant_to_modify = dq_node ? constant_dq_input : input;
+  auto consumers = graph.GetValueConsumers(constant_to_modify);
 
   // Case 1: input is a constant with a known list of consumer nodes
   if (constant != nullptr && consumers->comprehensive) {
+    // we modify the initializer in-place and need to reconnect things up when we're done. this helper will
+    // do that when it goes out of scope. if we have manually reconnected, input or constant_dq_input is
+    // set to an empty string.
+    auto reconnect_nodes = gsl::finally([i, &node, &dq_node, &input, &constant_dq_input] {
+      if (!input.empty()) {
+        node.SetInput(i, input);
+      }
+
+      if (!constant_dq_input.empty()) {
+        dq_node->SetInput(0, constant_dq_input);
+      }
+    });
+
     // If there is only one element return early as the transpose won't change the data
     if (constant->NumElements() == 1) {
       return;
@@ -625,14 +641,19 @@ static void TransposeInputImpl(api::GraphRef& graph,
 
     // This is a special case where the constant is 1D with length == perm.
     //   e.g. it provides a set of values that are relative to the input axes like the `sizes` input for Resize
-    // TODO: TransposeInitializer could be updated to handle this case.
     // Permute1DConstant permutes the constant and adds a new initializer. The old initializer is removed only if
     // there are no other consumers.
-    // NOTE: As this returns after calling Permute1DConstant we're implicitly assuming there are no
-    //       other consumers that need updating. This would typically be the case for this sort of input though.
     if (constant->Shape().size() == 1 && constant->Shape()[0] == gsl::narrow_cast<int64_t>(perm.size())) {
-      assert(consumers->nodes.size() == 0);
-      Permute1DConstant(graph, node, *constant, i, value_to_modify, perm);
+      auto& node_to_update = dq_node ? *dq_node : node;
+      Permute1DConstant(graph, node_to_update, *constant, i, constant_to_modify, perm);
+
+      // unset updated input so reconnect_nodes doesn't change it back
+      if (dq_node) {
+        constant_dq_input = "";
+      } else {
+        input = "";
+      }
+
       return;
     }
 
@@ -648,27 +669,27 @@ static void TransposeInputImpl(api::GraphRef& graph,
           // find input id/s for consumer
           auto consumer_inputs = consumer->Inputs();
           for (size_t input_idx = 0; input_idx < consumer_inputs.size(); ++input_idx) {
-            if (consumer_inputs[input_idx] == value_to_modify) {
+            if (consumer_inputs[input_idx] == constant_to_modify) {
               consumer_node_inputs.push_back(input_idx);
             }
           }
         }
       }
 
-      auto transpose_inv_ptr = MakeTranspose(graph, value_to_modify, perm_inv);
+      auto transpose_inv_ptr = MakeTranspose(graph, constant_to_modify, perm_inv);
       api::NodeRef& transpose_inv = *transpose_inv_ptr;
       std::string_view transpose_out = transpose_inv.Outputs()[0];
-      graph.CopyValueInfo(value_to_modify, transpose_out);
-      ReplaceValueReferences(consumers->nodes, value_to_modify, transpose_out);
+      graph.CopyValueInfo(constant_to_modify, transpose_out);
+      ReplaceValueReferences(consumers->nodes, constant_to_modify, transpose_out);
     }
 
-    graph.TransposeInitializer(value_to_modify, perm);
+    graph.TransposeInitializer(constant_to_modify, perm);
 
     if (dq_node) {
-      UpdateDQNodeInputAndShape(graph, *dq_node, value_to_modify);
+      UpdateDQNodeInputAndShape(graph, *dq_node, constant_to_modify);
+      constant_dq_input = "";  // DQ input was already updated so we don't need reconnect_nodes to handle it
     }
 
-    node.SetInput(i, input);  // restore the original connection
     return;
   }
 
@@ -716,49 +737,45 @@ static void TransposeInputImpl(api::GraphRef& graph,
         }
 
         return;
-      } else if (*perm2 == perm) {
-        // we are trying to add a duplicate transpose.
-        // do nothing and return
-        return;
       }
 
       // NOTE: We expect the Transpose to cancel out when handling a special-cased DQ node that was originally
       // connected to a shared constant initializer, so we don't expect to get here if dq_node is not nullptr.
-      // Assert in a debug build so we can investigate if it ever happens, and bail in a release build.
-      assert(!dq_node);
-      if (dq_node) {
+      // If there was a dq_node where the Transpose didn't cancel out we fall through to the next case
+      // so we retain the potential to cancel out for any other usages of the shared initializer.
+      assert(!dq_node);  // assert in debug build to investigate. fall through to next case in release build to be safe.
+
+      if (!dq_node) {
+        // Otherwise, compose the perm and Transpose pre_transpose_value. Cost is the same and we may be able to remove
+        // the other Transpose.
+        const std::vector<int64_t>& perm_combined = ComposePerm(*perm2, perm);
+        auto transpose_ptr = MakeTranspose(graph, inp_node->Inputs()[0], perm_combined);
+        api::NodeRef& transpose = *transpose_ptr;
+        std::string_view transpose_out = transpose.Outputs()[0];
+        graph.CopyValueInfo(input, transpose_out);
+        graph.GetValueInfo(transpose_out)->PermuteDims(perm);
+
+        if (consumers->comprehensive && consumers->nodes.size() == 0) {
+          graph.RemoveNode(*inp_node);
+        }
+
+        node.SetInput(i, transpose_out);
+
         return;
       }
-
-      // Otherwise, compose the perm and Transpose pre_transpose_value. Cost is the same and we may be able to remove
-      // the other Transpose.
-      const std::vector<int64_t>& perm_combined = ComposePerm(*perm2, perm);
-      auto transpose_ptr = MakeTranspose(graph, inp_node->Inputs()[0], perm_combined);
-      api::NodeRef& transpose = *transpose_ptr;
-      std::string_view transpose_out = transpose.Outputs()[0];
-      graph.CopyValueInfo(input, transpose_out);
-      graph.GetValueInfo(transpose_out)->PermuteDims(perm);
-
-      if (consumers->comprehensive && consumers->nodes.size() == 0) {
-        graph.RemoveNode(*inp_node);
-      }
-
-      node.SetInput(i, transpose_out);
-
-      return;
     }
   }
 
   // any DQ node special casing doesn't apply anymore, so go back to the original inp_node
   if (dq_node) {
     inp_node = std::move(dq_node);
+    consumers = graph.GetValueConsumers(input);
   }
 
-  // Case 3: A Transpose op might already exist
-  for (size_t j = 0; j < consumers->nodes.size(); ++j) {
-    api::NodeRef& consumer = *consumers->nodes[j];
-    if (consumer.IsOp("Transpose") && GetPermAttrIfValid(consumer) == perm) {
-      node.SetInput(i, consumer.Outputs()[0]);
+  // Case 3: A Transpose op with the same perms might already exist
+  for (auto& consumer : consumers->nodes) {
+    if (consumer->IsOp("Transpose") && GetPermAttrIfValid(*consumer) == perm) {
+      node.SetInput(i, consumer->Outputs()[0]);
       return;
     }
   }
@@ -769,6 +786,7 @@ static void TransposeInputImpl(api::GraphRef& graph,
   std::string_view transpose_out = transpose.Outputs()[0];
   graph.CopyValueInfo(input, transpose_out);
   graph.GetValueInfo(transpose_out)->PermuteDims(perm);
+
   node.SetInput(i, transpose_out);
 }
 
