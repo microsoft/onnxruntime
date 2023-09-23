@@ -218,12 +218,9 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     } else {
       dims.reserve(shape.size());
       for (const auto& dim : shape) {
-        if (!dim.has_dim_value()) {
-          // FIXME: support dyanmic shape.
-          dims.push_back(1);
-        } else {
-          dims.push_back(SafeInt<int32_t>(dim.dim_value()));
-        }
+        // dim_param free dimensions should have already been excluded by IsInputSupported().
+        assert(dim.has_dim_value());
+        dims.push_back(SafeInt<int32_t>(dim.dim_value()));
       }
     }
   }
