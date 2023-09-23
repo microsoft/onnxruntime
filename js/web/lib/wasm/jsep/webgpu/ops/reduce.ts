@@ -17,10 +17,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   if (inputs.length === 2 && inputs[1].dims.length !== 1) {
     throw new Error('Invalid axes input dims.');
   }
-
-  if (inputs[0].dataType !== DataType.float) {
-    throw new Error('Invalid input type.');
-  }
 };
 
 export interface ReduceAttributes extends AttributeWithCacheKey {
@@ -161,7 +157,7 @@ export const reduceL1 = (context: ComputeContext, attributes: ReduceAttributes):
 export const reduceL2 = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
-      [`var t = f32(0); var value = ${output.type.storage}(0);`,
+      [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
        '',
        `t = ${input.getByOffset('inputOffset')}; value += (t * t);`,
        'value = sqrt(value);',
@@ -212,10 +208,10 @@ export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes
     }
 
     return [
-      `var value = ${output.type.storage}(0);`,
+      'var sum = f32(0);',
       '',
-      `value += ${input.getByOffset('inputOffset')};`,
-      `value = value / ${size}.;`,
+      `sum += f32(${input.getByOffset('inputOffset')});`,
+      `let value = ${output.type.value}(sum / ${size});`,
     ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp), {inputs: [0]});
@@ -266,7 +262,7 @@ export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes)
 export const reduceSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
-      [`var t = f32(0); var value = ${output.type.storage}(0);`,
+      [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
        '',
        `t = ${input.getByOffset('inputOffset')}; value += t * t;`,
        '',
