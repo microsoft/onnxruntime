@@ -80,10 +80,7 @@ class TestInferenceSession(unittest.TestCase):
             so.log_severity_level = 1
             so.logid = "TestModelSerialization"
             so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
-            onnxrt.InferenceSession(
-                get_name("mul_1.onnx"),
-                sess_options=so
-            )
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             os.remove(so.optimized_model_filepath)
         except Fail as onnxruntime_error:
@@ -106,10 +103,7 @@ class TestInferenceSession(unittest.TestCase):
                 "session.optimized_model_external_initializers_file_name", external_initializers_file
             )
             so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
-            onnxrt.InferenceSession(
-                get_name("mnist.onnx"),
-                sess_options=so
-            )
+            onnxrt.InferenceSession(get_name("mnist.onnx"), sess_options=so)
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(external_initializers_file))
             os.remove(so.optimized_model_filepath)
@@ -161,9 +155,7 @@ class TestInferenceSession(unittest.TestCase):
                 "session.optimized_model_external_initializers_file_name", external_initializers_file
             )
             so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
-            onnxrt.InferenceSession(
-                get_name("model_with_orig_ext_data.onnx"), sess_options=so
-            )
+            onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
             os.remove(so.optimized_model_filepath)
@@ -196,9 +188,7 @@ class TestInferenceSession(unittest.TestCase):
         # still refers to the original external data file. We shall fix this issue so that the
         # optimized model only refers to one external data file.
         so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "10")
-        session1 = onnxrt.InferenceSession(
-            get_name("model_with_orig_ext_data.onnx"), sess_options=so
-        )
+        session1 = onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
         del session1
         self.assertTrue(os.path.isfile(optimized_model_filepath))
         self.assertTrue(os.path.isfile(external_initializers_file))
@@ -214,9 +204,7 @@ class TestInferenceSession(unittest.TestCase):
 
         # verify that we can load the optimized model with external data in current directory and save
         # optimized model with external data to current directory.
-        session2 = onnxrt.InferenceSession(
-            optimized_model_filepath, sess_options=so2
-        )
+        session2 = onnxrt.InferenceSession(optimized_model_filepath, sess_options=so2)
         del session2
         self.assertTrue(os.path.isfile(optimized_model_filepath_2))
         self.assertTrue(os.path.isfile(external_initializers_file_2))
