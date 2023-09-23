@@ -236,7 +236,7 @@ const convTranspose2d =
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
       const isChannelsLast = attributes.format === 'NHWC';
       const hasBias = inputs.length === 3;
-      if (adjustedAttributes.group !== 1 || !isChannelsLast) {
+      if (adjustedAttributes.group !== 1) {
         context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes));
         return;
       }
@@ -246,14 +246,7 @@ const convTranspose2d =
       const outChannels = outputShape[isChannelsLast ? 3 : 1];
       const weightHeight = inputs[1].dims[2];
       const weightWidth = inputs[1].dims[3];
-      // const inputHeight = inputs[0].dims[isChannelsLast ? 1 : 2];
-      // const inputWidth = inputs[0].dims[isChannelsLast ? 2 : 3];
       const inputChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
-
-
-      //      const dimAOuter = inputHeight * inputWidth;
-      //      const dimBOuter = inputChannels;
-      //      const dimInner = weightHeight * weightWidth * outChannels;
 
       const dimAOuter = isChannelsLast ? outHeight * outWidth : outChannels;
       const dimBOuter = isChannelsLast ? outChannels : outHeight * outWidth;

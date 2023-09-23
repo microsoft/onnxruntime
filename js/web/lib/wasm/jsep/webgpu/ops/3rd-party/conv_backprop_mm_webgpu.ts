@@ -30,7 +30,8 @@ import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
 const conv2dTransposeCommonSnippet =
-    (addBias = false, activation?: Activation, hasPreluActivationWeights = false, innerElementSize = 4): string => {
+    (isChannelsLast: boolean, addBias = false, activation?: Activation, hasPreluActivationWeights = false,
+     innerElementSize = 4): string => {
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
@@ -50,63 +51,100 @@ const conv2dTransposeCommonSnippet =
             throw new Error(`innerElementSize ${innerElementSize} is not supported.`);
         }
       };
+      const coordASnippet = isChannelsLast ? `
+      let coord = vec4<i32>(batch, iXR, iXC, xCh);
+      ` :
+                                             `
+      let coord = vec4<i32>(batch, xCh, iXR, iXC);
+      `;
 
+      const coordResSnippet = isChannelsLast ? `
+    let coords = vec4<i32>(
+      batch,
+      row / outWidth,
+      row % outWidth,
+      col);
+    ` :
+                                               `
+    let coords = vec4<i32>(
+      batch,
+      row,
+      col / outWidth,
+      col % outWidth);
+    `;
+
+      const xHeight = isChannelsLast ? 'outBackprop[1]' : 'outBackprop[2]';
+      const xWidth = isChannelsLast ? 'outBackprop[2]' : 'outBackprop[3]';
+      const row = isChannelsLast ? 'row' : 'col';
+      const col = isChannelsLast ? 'col' : 'row';
       const readASnippet = `
-      let outRow = row / outShape[2];
-      let outCol = row % outShape[2];
+      let inChannels = wShape[2];
+      let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
+      let outRow = ${row} / outWidth;
+      let outCol = ${row} % outWidth;
 
-      let WRow = col / (filterDims[1] * outBackprop[3]);
-      let WCol = col / outBackprop[3] % filterDims[1];
-      let xR = f32(outRow - pads[0] + dilation[0] * WRow) / f32(strides[0]);
-      let xC = f32(outCol - pads[1] + dilation[1] * WCol) / f32(strides[1]);
-      if (xR < 0.0 || xR >= f32(outBackprop[1]) || fract(xR) > 0.0) {
+      let WRow = ${col} / (filterDims[1] * inChannels);
+      let WCol = ${col} / inChannels % filterDims[1];
+      let xR = f32(outRow / strides[0] - pads[0] + dilation[0] * WRow);
+      let xC = f32(outCol / strides[1] - pads[1] + dilation[1] * WCol);
+      if (xR < 0.0 || xR >= f32(${xHeight}) || fract(xR) > 0.0) {
         return ${typeSnippet(innerElementSize)}(0.0);
       }
-      if (xC < 0.0 || xC >= f32(outBackprop[2]) || fract(xC) > 0.0) {
+      if (xC < 0.0 || xC >= f32(${xWidth}) || fract(xC) > 0.0) {
         return ${typeSnippet(innerElementSize)}(0.0);
       }
-      let coord = vec4<i32>(
-          batch,
-          i32(xR),
-          i32(xC),
-          col % outBackprop[3]);
+      let iXR = i32(xR);
+      let iXC = i32(xC);
+      let xCh = ${col} % inChannels;
+      ${coordASnippet}
       return x[getIndexFromCoords4D(coord, xShape)/${innerElementSize}];`;
 
-      const sampleA = `if (row < dimAOuter && col < dimInner) {
+      const sampleA = isChannelsLast ? `let col = colIn * ${innerElementSize};
+      if (row < dimAOuter && col < dimInner) {
+        ${readASnippet}
+      }
+      return ${typeSnippet(innerElementSize)}(0.0);` :
+                                       `let col = colIn * ${innerElementSize};
+                                       if (row < dimInner && col < dimBOuter) {
+        let col = colIn * ${innerElementSize};
         ${readASnippet}
       }
       return ${typeSnippet(innerElementSize)}(0.0);`;
 
+      const sampleW = `
+      let col = colIn;
+      let inChannels = wShape[2];
+      let coordX = filterDims.x - 1 - row / (filterDims[1] * inChannels);
+      let coordY = filterDims.y - 1 - (row / inChannels) % filterDims[1];
+      if (${
+          isChannelsLast ? 'row < dimInner && col < dimBOuter' :
+                           'row < dimInner && col < dimAOuter'}  && coordX >= 0 && coordY >= 0) {
+        let rowInner = row % inChannels;
+        let coord = vec4<i32>(coordX, coordY, col, rowInner);
+        ${getWSnippet(innerElementSize)}
+      }
+      return ${typeSnippet(innerElementSize)}(0.0);
+      `;
+
+
       const userCode = `
   ${activationFnSnippet(activation, hasPreluActivationWeights, innerElementSize === 4, 4)}
-  fn mm_readA(batch: i32, row : i32, col : i32) -> ${typeSnippet(innerElementSize)} {
-    ${sampleA}
+  fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${typeSnippet(innerElementSize)} {
+    ${isChannelsLast ? sampleA : sampleW}
   }
 
-  fn mm_readB(batch: i32, row : i32, col : i32) -> ${typeSnippet(innerElementSize)} {
-    let coordX = filterDims.x - 1 -
-        row / (filterDims[1] * outBackprop[3]);
-    let coordY = filterDims.y - 1 -
-        (row / outBackprop[3]) % filterDims[1];
-    if (row < dimInner && col < dimBOuter &&
-        coordX >= 0 && coordY >= 0) {
-      let rowInner = row % outBackprop[3];
-      let coord = vec4<i32>(coordX, coordY, col, rowInner);
-      ${getWSnippet(innerElementSize)}
-    }
-    return ${typeSnippet(innerElementSize)}(0.0);
+  fn mm_readB(batch: i32, row : i32, colIn : i32) -> ${typeSnippet(innerElementSize)} {
+    ${isChannelsLast ? sampleW : sampleA}
   }
 
-  fn mm_write(batch: i32, row : i32, col : i32, valueInput : ${typeSnippet(innerElementSize)}) {
+  fn mm_write(batch: i32, row : i32, colIn : i32, valueInput : ${typeSnippet(innerElementSize)}) {
+    let col = colIn * ${innerElementSize};
     if (row < dimAOuter && col < dimBOuter) {
       var value = valueInput;
-      let coords = vec4<i32>(
-          batch,
-          row / outShape[2],
-          row % outShape[2],
-          col);
-          ${biasActivationSnippet(addBias, activation)}
-          result[getIndexFromCoords4D(coords, outShape)/${innerElementSize}] = value;
+      let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
+      ${coordResSnippet}
+      ${biasActivationSnippet(addBias, activation)}
+      result[getIndexFromCoords4D(coords, outShape)/${innerElementSize}] = value;
     }
   }`;
       return userCode;
@@ -123,15 +161,16 @@ export const createConv2DTransposeMatMulProgramInfo =
       const outHeight = isChannelsLast ? outputShape[1] : outputShape[2];
       const outChannels = isChannelsLast ? outputShape[3] : outputShape[1];
       const isVec4 =
-          ((inChannels % 4 === 0 && outChannels % 4 === 0 && isChannelsLast) ||
-           (outWidth % 4 === 0 && !isChannelsLast));
+          isChannelsLast ? inChannels % 4 === 0 && outChannels % 4 === 0 : outWidth % 4 === 0 && outChannels % 4 === 0;
 
+      // TODO: fine tune size
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
-      const workGroupSize: [number, number, number] =
-          isVec4 ? [8, 8, 1] : [dispatchX <= 4 ? 4 : 16, dispatchX > 4 && dispatchY <= 4 ? 4 : 16, 1];
+      const workGroupSize: [number, number, number] = isVec4 ?
+          [8, 8, 1] :
+          [(dispatchX <= 4 || dispatchY <= 4) ? 4 : 16, dispatchX > 4 && dispatchY <= 4 ? 4 : 16, 1];
       const elementsPerThread =
-          isVec4 ? [4, 4, 1] : [dispatchX <= 4 ? 1 : 2, dispatchX > 4 && dispatchY <= 4 ? 1 : 2, 1];
+          isVec4 ? [4, 4, 1] : [dispatchX <= 4 ? 1 : 4, dispatchX > 4 && dispatchY <= 4 ? 1 : 4, 1];
       const dispatch = [
         Math.ceil(dispatchX / workGroupSize[0] / elementsPerThread[0]),
         Math.ceil(dispatchY / workGroupSize[1] / elementsPerThread[1]),
@@ -140,7 +179,7 @@ export const createConv2DTransposeMatMulProgramInfo =
 
       LOG_DEBUG('verbose', () => `[conv_backprop_mm_webgpu] dispatch = ${dispatch}`);
 
-      const innerElementSize = isVec4 ? (inChannels % 4 !== 0 ? 3 : 4) : 1;
+      const innerElementSize = isVec4 ? 4 : 1;
       const tileInner = Math.max(workGroupSize[0] * innerElementSize, workGroupSize[1]);
 
 
@@ -191,7 +230,7 @@ export const createConv2DTransposeMatMulProgramInfo =
         const dimBOuter : i32 = ${dimBOuter};
         const dimInner : i32 = ${dimInner};
         ${declareFunctions}
-        ${conv2dTransposeCommonSnippet(hasBias, undefined, false, innerElementSize)}
+        ${conv2dTransposeCommonSnippet(isChannelsLast, hasBias, undefined, false, innerElementSize)}
         ${
             isVec4 ?
                 makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, undefined, !isChannelsLast, tileInner) :
