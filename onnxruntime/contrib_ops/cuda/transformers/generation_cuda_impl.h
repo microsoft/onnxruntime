@@ -213,6 +213,16 @@ void BufferExpansionKernelLauncher(const T* input,
                                    int chunk_size,
                                    cudaStream_t stream);
 
+void ReorderPastStatesKernelLauncher(const std::uintptr_t* in_out_address_buffer,
+                                     void* past_states_staging_buffer,
+                                     int batch_size,
+                                     int num_heads,
+                                     int max_length,
+                                     int head_size,
+                                     int chunk_size,
+                                     int total_past_num,
+                                     cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

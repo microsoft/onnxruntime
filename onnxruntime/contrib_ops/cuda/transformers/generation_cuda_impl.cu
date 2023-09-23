@@ -1316,94 +1316,98 @@ template void BufferExpansionKernelLauncher(const int32_t* input,
                                             cudaStream_t stream);
 
 template <typename T>
-__global__ void ReorderPastStatesKernel(const T* input,
-                                        T* output,
-                                        int beam_width,
-                                        int max_seq_length,
-                                        int head_size) {
-  const int num_heads = gridDim.y;
-  const int sequence_length = gridDim.z;
-
-  const int bbid = blockIdx.x;
-  const int batch_id = bbid / beam_width;
-  const int head_id = blockIdx.y;
+__global__ void CopyCacheToStagingKernel(const std::uintptr_t* in_out_address_buffer,
+                                         T* past_states_staging_buffer,
+                                         int batch_size,
+                                         int num_heads,
+                                         int max_length,
+                                         int head_size) {
+  const int p = blockIdx.x;
+  const int b = blockIdx.y / num_heads;
+  const int n = blockIdx.y % num_heads;
   const int s = blockIdx.z;
-  const int tidx = threadIdx.x;
+  const int h = threadIdx.x;
 
-  const int input_offset = ((batch_id * num_heads + head_id) * sequence_length + s) * head_size + tidx;
-  const int output_offset = ((bbid * num_heads + head_id) * max_seq_length + s) * head_size + tidx;
-
-  if (tidx < head_size) {
-    output[output_offset] = input[input_offset];
-  }
+  const int in_offset = ((b * num_heads + n) * max_length + s) * head_size + h;
+  const int out_offset = in_offset + p * batch_size * num_heads * max_length * head_size;
+  T* past = (T*)(in_out_address_buffer[p]);
+  past_states_staging_buffer[out_offset] = past[in_offset];
 }
 
 template <typename T>
-void ReorderPastStatesKernelLauncher(const T* key_cache,
-                                     T* key_cache_expanded,
-                                     int batch_size,
-                                     int beam_width,
-                                     int num_heads,
-                                     int sequence_length,
-                                     int max_seq_length,
-                                     int head_size,
-                                     cudaStream_t stream) {
-  const dim3 grid(batch_size * beam_width, num_heads, sequence_length);
+__global__ void ReorderPastStatesKernel(const std::uintptr_t* in_out_address_buffer,
+                                        const T* past_states_staging_buffer,
+                                        int batch_size,
+                                        int num_heads,
+                                        int max_length,
+                                        int head_size,
+                                        int chunk_size) {
+  //[B, N, max_length, head_size] -> [B, N, head_size / x, max_length, x]
+  const int p = blockIdx.x;
+  const int b = blockIdx.y / num_heads;
+  const int n = blockIdx.y % num_heads;
+  const int s = blockIdx.z;
+  const int h = threadIdx.x;
+  const int c = threadIdx.y;
 
-  int equiv_head_size = (head_size & 1) == 0 ? (head_size >> 1) : head_size;
-  equiv_head_size = (equiv_head_size & 1) == 0 ? (equiv_head_size >> 1) : equiv_head_size;
+  const int in_offset = ((b * num_heads + n) * max_length + s) * head_size + h +
+                        p * batch_size * num_heads * max_length * head_size;
+  const int out_offset = b * num_heads * head_size * max_length + n * head_size * max_length +
+                         (h / chunk_size) * max_length * chunk_size + s * chunk_size + c;
 
-  // Here we know head_size is smaller than max_thread_num_per_block
-  int tpb = std::max(GPU_WARP_SIZE_HOST, equiv_head_size);
-
-  // round up tpb to power of 2
-  --tpb;
-  tpb |= (tpb >> 1);
-  tpb |= (tpb >> 2);
-  tpb |= (tpb >> 4);
-  tpb |= (tpb >> 8);
-  tpb |= (tpb >> 16);
-  tpb++;
-
-#ifndef USE_ROCM
-  if ((head_size % 4) == 0) {
-    using vec_type = typename TypeMapper<T, 4>::Type;
-    const dim3 block(tpb);
-    KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
-                                                        reinterpret_cast<vec_type*>(key_cache_expanded),
-                                                        beam_width,
-                                                        max_seq_length,
-                                                        equiv_head_size);
-  } else if ((head_size & 1) == 0) {
-    using vec_type = typename TypeMapper<T, 2>::Type;
-    const dim3 block(tpb);
-    KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
-                                                        reinterpret_cast<vec_type*>(key_cache_expanded),
-                                                        beam_width,
-                                                        max_seq_length,
-                                                        equiv_head_size);
-  } else {
-#endif
-    const dim3 block(tpb);
-    KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(key_cache,
-                                                        key_cache_expanded,
-                                                        beam_width,
-                                                        max_seq_length,
-                                                        head_size);
-#ifndef USE_ROCM
-  }
-#endif
+  T* past = (T*)(in_out_address_buffer[p]);
+  past[out_offset] = past_states_staging_buffer[in_offset];
 }
 
-template void ReorderPastStatesKernelLauncher(const void* in_out_address_buffer,
-                                              float* past_states_staging_buffer,
-                                              int batch_size,
-                                              int beam_width,
-                                              int num_heads,
-                                              int sequence_length,
-                                              int max_seq_length,
-                                              int head_size,
-                                              cudaStream_t stream);
+void ReorderPastStatesKernelLauncher(const std::uintptr_t* in_out_address_buffer,
+                                     void* past_states_staging_buffer,
+                                     int batch_size,
+                                     int num_heads,
+                                     int max_length,
+                                     int head_size,
+                                     int chunk_size,
+                                     int total_past_num,
+                                     cudaStream_t stream) {
+  const dim3 grid(total_past_num, batch_size * num_heads, max_length);
+  const dim3 block(head_size);
+  const dim3 block2(head_size, chunk_size);
+  if (chunk_size == 4) {
+    // float
+    CopyCacheToStagingKernel<<<grid, block, 0, stream>>>(in_out_address_buffer,
+                                                         reinterpret_cast<float*>(past_states_staging_buffer),
+                                                         batch_size,
+                                                         num_heads,
+                                                         max_length,
+                                                         head_size);
+    // block synchronization
+    ReorderPastStatesKernel<<<grid, block2, 0, stream>>>(in_out_address_buffer,
+                                                         reinterpret_cast<float*>(past_states_staging_buffer),
+                                                         batch_size,
+                                                         num_heads,
+                                                         max_length,
+                                                         head_size,
+                                                         chunk_size);
+  } else if (chunk_size == 2) {
+    // half
+    CopyCacheToStagingKernel<<<grid, block, 0, stream>>>(in_out_address_buffer,
+                                                         reinterpret_cast<half*>(past_states_staging_buffer),
+                                                         batch_size,
+                                                         num_heads,
+                                                         max_length,
+                                                         head_size);
+    // block synchronization
+    ReorderPastStatesKernel<<<grid, block2, 0, stream>>>(in_out_address_buffer,
+                                                         reinterpret_cast<half*>(past_states_staging_buffer),
+                                                         batch_size,
+                                                         num_heads,
+                                                         max_length,
+                                                         head_size,
+                                                         chunk_size);
+  } else {
+    // throw not support error
+    ORT_THROW("ReorderPastStatesKernelLauncher only support float or half");
+  }
+}
 
 
 
