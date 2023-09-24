@@ -4505,7 +4505,7 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
     if (node.Name() == "Mul_212" || node.Name() == "Add_213") {
       // check that the special case in TransposeInputs for a single element input reconnects things back up correctly
       const auto& inputs = node.InputDefs();
-      EXPECT_EQ(inputs.size(), 2);
+      EXPECT_EQ(inputs.size(), size_t(2));
       EXPECT_TRUE(inputs[1]->Exists());
     }
   }
