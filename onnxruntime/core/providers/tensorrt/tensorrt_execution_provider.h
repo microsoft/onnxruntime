@@ -110,6 +110,7 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
+  std::unordered_map<nvinfer1::ICudaEngine*, std::vector<nvinfer1::IExecutionContext*>> engine_context_map;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
   bool int8_enable = false;
@@ -255,6 +256,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
+  mutable std::unordered_map<nvinfer1::ICudaEngine*, std::vector<nvinfer1::IExecutionContext*>> engine_context_map_;
 
   // TRT or CUDA objects that must be maintained on a per thread basis will be put under this PerThreadContext data structure.
   // For example, TensorRT execution context and CUDA graph are the ones to be put here.
@@ -272,8 +274,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     }
 
     bool IsTensorRTContextInMap(std::string fused_node);
-    nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
-    bool UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context);
+    nvinfer1::IExecutionContext* GetTensorRTContext(std::string fused_node);
+    bool UpdateTensorRTContext(std::string fused_node, nvinfer1::IExecutionContext* context);
     void ResetTensorRTContext(std::string fused_node);
     bool CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
     void UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
@@ -299,7 +301,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     // See more details here:
     // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
     // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_execution_context.html#a63cd95430852038ce864e17c670e0b36
-    std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
+    std::unordered_map<std::string, nvinfer1::IExecutionContext*> trt_context_map_;
 
     // The profile shape ranges for the engine that the execution context maintained by the PerThreadContext is built with.
     // TRT EP needs this info to determine whether to rebuild the execution context.
@@ -432,5 +434,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   void CaptureBegin();
   void CaptureEnd();
   void IncrementRegularRunCountBeforeGraphCapture();
+  bool UpdateEngineContextMap(std::unordered_map<nvinfer1::ICudaEngine*, std::vector<nvinfer1::IExecutionContext*>>& map,
+                                                                         nvinfer1::ICudaEngine* engine,
+                                                                         nvinfer1::IExecutionContext* context); 
+  void ResetTensorRTContexts(std::unordered_map<nvinfer1::ICudaEngine*, std::vector<nvinfer1::IExecutionContext*>>& map, nvinfer1::ICudaEngine* engine); 
+  void ReleaseTensorRTContexts(std::unordered_map<nvinfer1::ICudaEngine*, std::vector<nvinfer1::IExecutionContext*>>& map); 
 };
 }  // namespace onnxruntime

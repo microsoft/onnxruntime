@@ -694,23 +694,58 @@ void TensorrtExecutionProvider::PerThreadContext::UpdateProfileShapes(std::strin
   input_shape_ranges_[fused_node] = shape_ranges;
 }
 
-void TensorrtExecutionProvider::PerThreadContext::ResetTensorRTContext(std::string fused_node) {
-  auto it = trt_context_map_.find(fused_node);
-  if (it != trt_context_map_.end()) {
-    trt_context_map_[fused_node].reset();
+bool TensorrtExecutionProvider::PerThreadContext::UpdateTensorRTContext(std::string fused_node, nvinfer1::IExecutionContext* context) {
+  if (context == nullptr) {
+    return false;
+  }
+  trt_context_map_[fused_node] = context;
+  return true;
+}
+
+bool TensorrtExecutionProvider::UpdateEngineContextMap(std::unordered_map<nvinfer1::ICudaEngine*, std::vector<nvinfer1::IExecutionContext*>>& map,
+                                                                         nvinfer1::ICudaEngine* engine,
+                                                                         nvinfer1::IExecutionContext* context) {
+  if (context == nullptr) {
+    return false;
+  }
+
+  map[engine].push_back(context);
+  return true;
+}
+
+void TensorrtExecutionProvider::ResetTensorRTContexts(std::unordered_map<nvinfer1::ICudaEngine*, std::vector<nvinfer1::IExecutionContext*>>& map, nvinfer1::ICudaEngine* engine) {
+  if (engine == nullptr) {
+    return;
+  }
+
+  auto outer_iter = map.find(engine);
+  if (outer_iter != map.end()) {
+    auto context_list = outer_iter->second; 
+    std::cout << "context list is " << context_list.size() << std::endl;
+    for (auto inner_iter = context_list.begin() ; inner_iter != context_list.end(); inner_iter++) {
+      auto context = *inner_iter;
+      if (context != nullptr) {
+        std::cout << "delete context !!!!!!!!!!!!" << std::endl;
+        delete context;
+      }
+    }
+
+    map.erase(engine);
   }
 }
 
-bool TensorrtExecutionProvider::PerThreadContext::UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context) {
-  if (!context) {
-    context = std::make_unique<nvinfer1::IExecutionContext>();
-  }
-  trt_context_map_[fused_node] = std::move(context);
-
-  if (trt_context_map_[fused_node]) {
-    return true;
-  }
-  return false;
+void TensorrtExecutionProvider::ReleaseTensorRTContexts(std::unordered_map<nvinfer1::ICudaEngine*, std::vector<nvinfer1::IExecutionContext*>>& map) {
+    for (auto outer_iter = map.begin() ; outer_iter != map.end(); outer_iter++) {
+      auto context_list  = outer_iter->second;
+      std::cout << "(release) context list is " << context_list.size() << std::endl;
+      for (auto inner_iter = context_list.begin() ; inner_iter != context_list.end(); inner_iter++) {
+          auto context = *inner_iter;
+          if (context != nullptr) {
+            std::cout << "(release) delete context !!!!!!!!!!!!" << std::endl;
+            delete context;
+          }
+      }
+    }
 }
 
 bool TensorrtExecutionProvider::PerThreadContext::IsTensorRTContextInMap(std::string fused_node) {
@@ -721,14 +756,12 @@ bool TensorrtExecutionProvider::PerThreadContext::IsTensorRTContextInMap(std::st
   return false;
 }
 
-nvinfer1::IExecutionContext& TensorrtExecutionProvider::PerThreadContext::GetTensorRTContext(std::string fused_node) {
+nvinfer1::IExecutionContext* TensorrtExecutionProvider::PerThreadContext::GetTensorRTContext(std::string fused_node) {
   auto it = trt_context_map_.find(fused_node);
   if (it != trt_context_map_.end()) {
-    return *(it->second);  // dereference shared pointer
+    return it->second;
   }
-  auto context = std::make_unique<nvinfer1::IExecutionContext>();
-  trt_context_map_[fused_node] = std::move(context);
-  return *(trt_context_map_[fused_node]);  // dereference shared pointer
+  return nullptr;
 }
 
 void TensorrtExecutionProvider::ReleasePerThreadContext() const {
@@ -1137,6 +1170,8 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     // We can't get api inside destructor so that's why we duplicate the code here.
     delete static_cast<OrtAllocatorImpl*>(alloc_);
   }
+
+  ReleaseTensorRTContexts(engine_context_map_);
 }
 
 bool TensorrtExecutionProvider::IsGraphCaptureEnabled() const {
@@ -2195,7 +2230,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     //
     // Otherwise engine will be handled at inference time.
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
-    std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
+    nvinfer1::IExecutionContext* trt_context = nullptr;
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
@@ -2349,11 +2384,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (mem_size > max_ctx_mem_size_) {
           max_ctx_mem_size_ = mem_size;
         }
-        trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+        trt_context = trt_engine->createExecutionContextWithoutDeviceMemory();
       } else {
-        trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        trt_context = trt_engine->createExecutionContext();
       }
-      if (!trt_context) {
+      if (trt_context == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
       }
@@ -2393,8 +2428,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     profiles_.emplace(fused_node.Name(), std::move(trt_profiles));
 
     // Save TRT context to PerThreadContext map since maintaining execution context in a per thread basis is suggested by TRT doc to avoid synchronization issue
-    if (trt_context) {
-      auto context_status = GetPerThreadContext().UpdateTensorRTContext(fused_node.Name(), std::move(trt_context));
+    if (trt_context != nullptr) {
+      auto context_status = GetPerThreadContext().UpdateTensorRTContext(fused_node.Name(), trt_context);
       if (!context_status) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
       }
@@ -2413,7 +2448,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name,
             &parsers_[context->node_name], &engines_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+            input_shape_ranges_[context->node_name], engine_context_map_, &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
@@ -2443,6 +2478,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
+      auto& engine_context_map = trt_state->engine_context_map; 
       auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
       auto trt_profiles = trt_state->profiles;
@@ -2556,9 +2592,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Regenerate engine
       if (engine_update) {
         // Destroy the IExecutionContext objects before destroying an engine object, otherwise it will lead to undefined behavior.
-        if (GetPerThreadContext().IsTensorRTContextInMap(fused_node_name)) {
-          GetPerThreadContext().ResetTensorRTContext(fused_node_name);
-        }
+        ResetTensorRTContexts(engine_context_map, trt_state->engine->get());
 
         trt_state->engine->reset();
         auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
@@ -2716,13 +2750,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (context_update ||
           !GetPerThreadContext().IsTensorRTContextInMap(fused_node_name) ||
           GetPerThreadContext().CompareProfileShapes(fused_node_name, shape_ranges)) {
-        std::unique_ptr<nvinfer1::IExecutionContext> new_context;
+        nvinfer1::IExecutionContext* new_context;
         if (trt_state->context_memory_sharing_enable) {
-          new_context.reset(trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+          new_context = trt_state->engine->get()->createExecutionContextWithoutDeviceMemory();
         } else {
-          new_context.reset(trt_state->engine->get()->createExecutionContext());
+          new_context = trt_state->engine->get()->createExecutionContext();
         }
-        auto context_status = GetPerThreadContext().UpdateTensorRTContext(fused_node_name, std::move(new_context));
+        UpdateEngineContextMap(engine_context_map, trt_state->engine->get(), new_context);
+        auto context_status = GetPerThreadContext().UpdateTensorRTContext(fused_node_name, new_context);
         if (!context_status) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
@@ -2730,7 +2765,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
       // Get the reference to the IExecutionContext object that is maintained on a per thread basis.
-      nvinfer1::IExecutionContext& trt_context = GetPerThreadContext().GetTensorRTContext(fused_node_name);
+      nvinfer1::IExecutionContext* trt_context = GetPerThreadContext().GetTensorRTContext(fused_node_name);
+      if (trt_context == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP can't get TensorRT execution context.");
+      }
 
       // Get input and output binding names
       int total_bindings = trt_engine->getNbBindings();
@@ -2767,12 +2805,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         int nb_dims = dimensions.nbDims;
         if (input_names.count(input_name) == 1) {
           if (trt_engine->isShapeBinding(binding_index)) {
-            trt_context.setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
+            trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
           } else {
             for (int j = 0, end = nb_dims; j < end; ++j) {
               dimensions.d[j] = static_cast<int32_t>(tensor_shapes[j]);
             }
-            const bool status = trt_context.setBindingDimensions(binding_index, dimensions);
+            const bool status = trt_context->setBindingDimensions(binding_index, dimensions);
             if (!status) {
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                                  "TensorRT EP cannot set the dynamic dimensions of a binding"));
@@ -2911,7 +2949,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        nvinfer1::Dims dimensions = trt_context.getBindingDimensions(static_cast<int>(binding_index));
+        nvinfer1::Dims dimensions = trt_context->getBindingDimensions(static_cast<int>(binding_index));
         int nb_dims = dimensions.nbDims;
         std::vector<int64_t> output_shapes(nb_dims);
         for (int j = 0, end = nb_dims; j < end; ++j) {
@@ -3045,7 +3083,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (mem_size > *max_context_mem_size_ptr) {
           *max_context_mem_size_ptr = mem_size;
         }
-        trt_context.setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+        trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
       }
 
       // Start CUDA graph capture.
@@ -3058,7 +3096,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
       // Run TRT inference
-      if (!trt_context.enqueueV2(&buffers[0], stream, nullptr)) {
+      if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
 
