@@ -1213,18 +1213,6 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
   if (sync_stream && external_stream_) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
-
-  // The reason of !IsGraphCaptureEnabled():
-  //  If cuda graph is enabled, the per thread context will not be released
-  //  because the per thread cuda graph needs to be maintained and replayed for
-  //  the next run.
-  // The reason of PerThreadContextCache()->find(this) != PerThreadContextCache()->end():
-  //  In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
-  //  PerThreadContext won't be created and there is nothing to release.
-  if (!IsGraphCaptureEnabled() &&
-      PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
-    ReleasePerThreadContext();
-  }
   return Status::OK();
 }
 
@@ -3098,6 +3086,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         } else {
           GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
         }
+      }
+
+      // If cuda graph is enabled, the per thread context will not be released because the per thread cuda graph needs to be maintained and
+      // replayed for the next run.
+      if (!cuda_graph_enable_) {
+        ReleasePerThreadContext();
       }
 
       return Status::OK();
