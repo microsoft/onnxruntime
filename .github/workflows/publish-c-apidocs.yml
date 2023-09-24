@@ -24,19 +24,19 @@ jobs:
     name: Generate C/C++ API docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install doxygen and dependencies
         run: |
           sudo apt update
           sudo apt-get install libclang-dev
           sudo apt-get install libclang-cpp14
-          wget https://www.doxygen.nl/files/doxygen-1.9.6.linux.bin.tar.gz
-          tar xvzf doxygen-1.9.6.linux.bin.tar.gz
+          wget https://www.doxygen.nl/files/doxygen-1.9.8.linux.bin.tar.gz
+          tar xvzf doxygen-1.9.8.linux.bin.tar.gz
       - name: Run doxygen
         run: |
           mkdir -p build/doxygen
           cd docs/c_cxx
-          ../../doxygen-1.9.6/bin/doxygen
+          ../../doxygen-1.9.8/bin/doxygen
       - name: Log source commit
         run: git rev-parse --short HEAD > build/doxygen/html/source-version.txt
       - name: Move C/C++ docs into site

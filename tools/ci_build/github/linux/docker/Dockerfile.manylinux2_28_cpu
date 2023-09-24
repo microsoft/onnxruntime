@@ -1,9 +1,9 @@
-ARG BASEIMAGE=amd64/almalinux:8
+ARG BASEIMAGE=registry.access.redhat.com/ubi8/ubi
 ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
 ARG LD_LIBRARY_PATH_ARG=${DEVTOOLSET_ROOTPATH}/usr/lib64:${DEVTOOLSET_ROOTPATH}/usr/lib:${DEVTOOLSET_ROOTPATH}/usr/lib64/dyninst:${DEVTOOLSET_ROOTPATH}/usr/lib/dyninst:/usr/local/lib64
-ARG PREPEND_PATH=${DEVTOOLSET_ROOTPATH}/usr/bin:
+ARG PREPEND_PATH=/usr/lib/jvm/msopenjdk-11/bin:${DEVTOOLSET_ROOTPATH}/usr/bin:
 
 #Build manylinux2014 docker image begin
 FROM $BASEIMAGE AS runtime_base
@@ -26,7 +26,6 @@ COPY build_scripts/fixup-mirrors.sh /usr/local/sbin/fixup-mirrors
 
 # setup entrypoint, this will wrap commands with `linux32` with i686 images
 COPY build_scripts/install-entrypoint.sh \
-     build_scripts/update-system-packages.sh \
      build_scripts/build_utils.sh \
      /build_scripts/
 
@@ -35,7 +34,6 @@ COPY manylinux-entrypoint /usr/local/bin/manylinux-entrypoint
 ENTRYPOINT ["manylinux-entrypoint"]
 
 COPY build_scripts/install-runtime-packages.sh \
-     build_scripts/update-system-packages.sh \
      build_scripts/build_utils.sh \
      /build_scripts/
 RUN manylinux-entrypoint /build_scripts/install-runtime-packages.sh && rm -rf /build_scripts/
@@ -137,9 +135,7 @@ COPY --from=build_git /manylinux-rootfs /
 COPY --from=build_cpython /manylinux-rootfs /
 COPY --from=all_python /opt/_internal /opt/_internal/
 COPY build_scripts/finalize.sh \
-     build_scripts/update-system-packages.sh \
      build_scripts/python-tag-abi-tag.py \
-
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
      build_scripts/requirements3.10.txt \
@@ -156,6 +152,7 @@ CMD ["/bin/bash"]
 #Build manylinux2014 docker image end
 
 ENV PATH ${DEVTOOLSET_ROOTPATH}/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
