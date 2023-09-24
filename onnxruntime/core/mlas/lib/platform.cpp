@@ -112,6 +112,14 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const int16_t MlasOpmask16BitTableAvx512[
 #define _XCR_XFEATURE_ENABLED_MASK 0
 #endif
 
+#if !defined(XFEATURE_MASK_XTILE)
+#define XFEATURE_XTILECFG 17
+#define XFEATURE_XTILEDATA 18
+#define XFEATURE_MASK_XTILECFG (1 << XFEATURE_XTILECFG)
+#define XFEATURE_MASK_XTILEDATA (1 << XFEATURE_XTILEDATA)
+#define XFEATURE_MASK_XTILE (XFEATURE_MASK_XTILECFG | XFEATURE_MASK_XTILEDATA)
+#endif
+
 inline
 uint64_t
 MlasReadExtendedControlRegister(
@@ -142,11 +150,6 @@ bool
 MlasInitAMX()
 {
 #if defined(__linux__)
-#define XFEATURE_XTILECFG 17
-#define XFEATURE_XTILEDATA 18
-#define XFEATURE_MASK_XTILECFG (1 << XFEATURE_XTILECFG)
-#define XFEATURE_MASK_XTILEDATA (1 << XFEATURE_XTILEDATA)
-#define XFEATURE_MASK_XTILE (XFEATURE_MASK_XTILECFG | XFEATURE_MASK_XTILEDATA)
 
 #define ARCH_GET_XCOMP_PERM 0x1022
 #define ARCH_REQ_XCOMP_PERM 0x1023
@@ -417,7 +420,9 @@ Return Value:
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
                 //
-                if ((Cpuid7[3] & 0b1 << 24) != 0 && (Cpuid7[3] & 0b1 << 25) != 0) {
+                if ((Cpuid7[3] & 0b1 << 24) != 0 &&
+                    (Cpuid7[3] & 0b1 << 25) != 0 &&
+                    (xcr0 & XFEATURE_MASK_XTILE) == XFEATURE_MASK_XTILE) {
                     if (MlasInitAMX()) {
                         this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAmx;
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
