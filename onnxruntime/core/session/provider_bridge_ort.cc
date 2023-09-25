@@ -1930,9 +1930,14 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
 #ifdef USE_TENSORRT
   if (ptr != nullptr) {
-    delete ptr->trt_int8_calibration_table_name;
-    delete ptr->trt_engine_cache_path;
-    delete ptr->trt_engine_decryption_lib_path;
+    delete[] ptr->trt_int8_calibration_table_name;
+    delete[] ptr->trt_engine_cache_path;
+    delete[] ptr->trt_engine_decryption_lib_path;
+    delete[] ptr->trt_tactic_sources;
+    delete[] ptr->trt_extra_plugin_lib_paths;
+    delete[] ptr->trt_profile_min_shapes;
+    delete[] ptr->trt_profile_max_shapes;
+    delete[] ptr->trt_profile_opt_shapes;
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);
