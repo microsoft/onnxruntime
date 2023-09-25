@@ -6,16 +6,17 @@
 import sys
 from typing import Callable, ClassVar, Dict, Optional
 
-import onnx
 import torch
 import torch.utils.checkpoint
+from onnx import ModelProto
 from packaging import version
 from torch.onnx import symbolic_helper
 
 from onnxruntime.capi._pybind_state import register_miscellaneous_const_input, register_torch_autograd_function
 from onnxruntime.training import ortmodule
+from onnxruntime.training.utils import pytorch_dtype_to_onnx
 
-from ._custom_op_symbolic_registry import pytorch_type_to_onnx, wrap_custom_export_function
+from ._custom_op_symbolic_registry import wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
 from ._utils import get_fully_qualified_class_name, get_runtime_pytorch_version
 
@@ -27,7 +28,8 @@ class PythonOpShapeInferStore:
 
     @classmethod
     def register(cls, kclass: torch.autograd.Function) -> None:
-        """Register a shape inference function for a torch.autograd.Function if there is staticmethod "infer_shape" defined.
+        """Register a shape inference function for a torch.autograd.Function if there is staticmethod
+        "infer_shape" defined.
 
         The signature of the shape inference function should be:
             @staticmethod
@@ -49,6 +51,11 @@ class PythonOpShapeInferStore:
         kclass_name = get_fully_qualified_class_name(kclass)
         if hasattr(kclass, "infer_shape") and kclass_name not in cls._CLASS_MAP:
             cls._CLASS_MAP[kclass_name] = kclass.infer_shape
+
+    @classmethod
+    def register_func(cls, name: str, func: Callable) -> None:
+        """Register a shape inference function for a torch.autograd.Function by name."""
+        cls._CLASS_MAP[name] = func
 
     @classmethod
     def get_shape_infer(cls, name: str) -> Optional[Callable]:
@@ -168,7 +175,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
+                scalar_type = pytorch_dtype_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
                 continue
@@ -227,9 +234,9 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 input_float_tuples.extend(list(arg))
                 continue
 
-            is_inspect_activation = (
-                func_full_qual_name == "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation"
-            )
+            from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectActivation
+
+            is_inspect_activation = func_full_qual_name == get_fully_qualified_class_name(_InspectActivation)
             if is_inspect_activation and isinstance(arg, str):
                 # _InspectActivation is a special case where the first argument is a string
                 # that is used to determine the activation name to be inspected.
@@ -247,7 +254,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
+            scalar_type = pytorch_dtype_to_onnx(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 
@@ -306,16 +313,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 _export = wrap_custom_export_function(_export_pt_1_10)
 
 
-def _post_process_after_export(
-    exported_model: onnx.ModelProto, enable_custom_autograd_function: bool
-) -> onnx.ModelProto:
-    """Post process the exported model."""
-    if enable_custom_autograd_function:
-        exported_model = _post_process_enabling_autograd_function(exported_model)
-    return exported_model
-
-
-def _post_process_enabling_autograd_function(exported_model: onnx.ModelProto) -> onnx.ModelProto:
+def post_process_enabling_autograd_function(exported_model: ModelProto) -> ModelProto:
     # Loop all PythonOp, append "_ctx" as the first output.
     index = 0
     for node in exported_model.graph.node:
@@ -331,8 +329,7 @@ def _post_process_enabling_autograd_function(exported_model: onnx.ModelProto) ->
                     op_name_prefix = kclass_name
                     break
 
-        if not node.name:
-            node.name = f"{op_name_prefix}_id_{index}"
-            index += 1
+        node.name = f"{op_name_prefix}_id_{index}"
+        index += 1
 
     return exported_model

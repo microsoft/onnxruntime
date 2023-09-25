@@ -20,6 +20,8 @@
 #pragma warning(pop)
 #endif
 
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
@@ -42,12 +44,6 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 class Graph;
@@ -890,12 +886,11 @@ class Graph {
   @returns NodeArg reference.
   */
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
-    auto iter = node_args_.find(name);
-    if (iter != node_args_.end()) {
-      return *(iter->second);
+    auto insert_result = node_args_.emplace(name, nullptr);
+    if (insert_result.second) {
+      insert_result.first->second = std::make_unique<NodeArg>(name, p_arg_type);
     }
-    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
-    return *(result.first->second);
+    return *(insert_result.first->second);
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1140,6 +1135,7 @@ class Graph {
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.
+  The Graph needs to be Resolve()d after this call.
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */

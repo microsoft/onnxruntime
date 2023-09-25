@@ -48,6 +48,16 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpBalanced,
 };
 
+enum class QnnBackendType : uint8_t {
+  CPU = 0,
+  GPU,
+  DSP,
+  HTP,
+  HTP_FP16
+};
+
+bool IsNpuBackend(QnnBackendType backend_type);
+
 // constexpr config values
 constexpr const int kSleepMinLatency = 40;
 constexpr const int kSleepLowLatency = 100;

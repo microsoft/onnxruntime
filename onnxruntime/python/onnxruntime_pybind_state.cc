@@ -53,6 +53,7 @@ namespace onnxruntime {
 #endif  // _MSC_VER
 
 #include <iterator>
+#include <algorithm>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4267 4996 4503 4003)
@@ -85,7 +86,7 @@ struct AsyncResource {
   std::vector<std::string> feed_names;
   std::vector<const char*> feed_names_raw;
 
-  std::vector<OrtValue*> fetches_raw;
+  std::vector<OrtValue*> fetches_raw;  // will be released during destruction
 
   std::vector<std::string> fetch_names;
   std::vector<const char*> fetch_names_raw;
@@ -105,6 +106,15 @@ struct AsyncResource {
     fetches_raw.reserve(sz);
     fetch_names.reserve(sz);
     fetch_names_raw.reserve(sz);
+  }
+
+  ~AsyncResource() {
+    std::for_each(fetches_raw.begin(), fetches_raw.end(), [](const OrtValue* fetch) {
+      if (fetch) {
+        std::unique_ptr<const OrtValue> fetch_recycler(fetch);
+      }
+    });
+    fetches_raw.clear();
   }
 };
 
@@ -227,7 +237,11 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::CPU:
       return CPU;
     case OrtDevice::GPU:
+#ifdef USE_DML
+      return DML;
+#else
       return CUDA;
+#endif
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:

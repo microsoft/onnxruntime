@@ -123,17 +123,6 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     } else {
       InitializedTensorSet constant_inputs;
 
-      // we currently constant fold using the CPU EP only.
-      // if the node is assigned to a different EP we can run it if it's an ONNX op as we have CPU based
-      // implementations for all ONNX ops. If the node/op is from a different op domain or if the CPU implementation
-      // does not support the specific input type(s) required by the node (currently we only support a subset of
-      // types in some CPU kernels) then we can't proceed with constant folding for the node.
-      auto ep_type = node->GetExecutionProviderType();
-      bool cpu_ep = ep_type == kCpuExecutionProvider;
-      if (!cpu_ep && node->Domain() != kOnnxDomain) {
-        continue;
-      }
-
       // Check if constant folding can be applied on this node.
       const auto can_constant_fold_node = [&](const Node& n, bool skip_inputs_constant_check = false) {
         return graph_utils::IsSupportedProvider(n, GetCompatibleExecutionProviders()) &&
@@ -196,18 +185,31 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
       }
 
-      // override the EP assigned to the node so that it will use the CPU kernel for Compute.
-      if (!cpu_ep) {
+      const bool node_on_cpu_ep = node->GetExecutionProviderType() == kCpuExecutionProvider;
+
+      std::unique_ptr<const OpKernel> kernel;
+
+      if (!node_on_cpu_ep) {
+        // We need to copy the string here instead of taking a reference to it since node->SetExecutionProviderType
+        // will change the value of the reference
+        auto ep_type = node->GetExecutionProviderType();
+
+        // override the EP assigned to the node so that it will use the CPU kernel for Compute.
         node->SetExecutionProviderType(kCpuExecutionProvider);
-      }
 
-      auto kernel = info.CreateKernel(node);
+        kernel = info.CreateKernel(node);
 
-      // undo the EP change to the value that was assigned at graph partitioning time
-      if (!cpu_ep) {
+        // undo the EP change to the value that was assigned at graph partitioning time
         node->SetExecutionProviderType(ep_type);
+      } else {
+        kernel = info.CreateKernel(node);
       }
 
+      // We currently constant fold using the CPU EP only.
+      // If we can't find a CPU kernel for this node, then we can't proceed with constant folding.
+      //
+      // TODO(adrianlizarraga): Support constant folding with other execution providers. For example, we may be able
+      // to use a CUDA kernel to constant fold operators with data types not supported by the CPU EP kernel.
       if (kernel == nullptr) {
         LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
                               << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";

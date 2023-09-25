@@ -1,3 +1,4 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -10,7 +11,6 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -24,8 +24,9 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 resources:
   repositories:
   - repository: manylinux
@@ -40,53 +41,66 @@ jobs:
   variables:
     skipComponentGovernanceDetection: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+    ORT_CACHE_DIR: '$(Agent.TempDirectory)/ort/ccache'
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   workspace:
     clean: all
-  pool: onnxruntime-tensorrt-linuxbuild-T4 
+  pool: onnxruntime-tensorrt-linuxbuild-T4
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: none
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_8_tensorrt8_6
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11_8_tensorrt8_6
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64  --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+      DockerBuildArgs: "--network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/usr/local/cuda/bin --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/usr --build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimetensorrt86gpubuild
 
-  - task: CmdLine@2
-    inputs:
-      script: |
-        docker run --gpus all -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --volume /data/models:/build/models:ro \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            onnxruntimetensorrt86gpubuild \
-            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
-              --config Release \
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
-              --build_wheel \
-              --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
-              --enable_pybind --build_java \
-              --use_tensorrt --tensorrt_home /usr \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc CMAKE_CUDA_ARCHITECTURES=75
-      workingDirectory: $(Build.SourcesDirectory)
+  - template: templates/linux-build-step-with-cache.yml
+    parameters:
+      WithCache: true
+      Today: $(TODAY)
+      AdditionalKey: gpu_tensorrt
+      CacheDir: '$(ORT_CACHE_DIR)'
+      BuildStep:
+        - task: CmdLine@2
+          inputs:
+            script: |
+              docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+                  --volume /data/onnx:/data/onnx:ro \
+                  --volume $(Build.SourcesDirectory):/onnxruntime_src \
+                  --volume $(Build.BinariesDirectory):/build \
+                  --volume /data/models:/build/models:ro \
+                  --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+                  --volume $(ORT_CACHE_DIR):/cache \
+                  -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+                  -e NIGHTLY_BUILD \
+                  -e BUILD_BUILDNUMBER \
+                  -e CCACHE_DIR=/cache \
+                  onnxruntimetensorrt86gpubuild \
+                  /bin/bash -c "
+                    set -ex; \
+                    ccache -s; \
+                      /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                      --build_dir /build --cmake_generator Ninja \
+                      --config Release \
+                      --skip_submodule_sync \
+                      --build_shared_lib \
+                      --parallel \
+                      --build_wheel \
+                      --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
+                      --enable_pybind --build_java \
+                      --use_tensorrt --tensorrt_home /usr \
+                      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75 \
+                      --use_cache; \
+                     ccache -sv; \
+                     ccache -z"
+            workingDirectory: $(Build.SourcesDirectory)
 
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
-
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/explicitly-defined-final-tasks.yml

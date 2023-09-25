@@ -98,7 +98,7 @@ if (MSVC)
 endif()
 
 if(NOT MSVC)
-  target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses")
+  target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses" "-Wno-deprecated-declarations")
 endif()
 if (onnxruntime_ENABLE_TRAINING)
   #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas

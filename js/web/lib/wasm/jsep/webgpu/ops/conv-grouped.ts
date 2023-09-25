@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
@@ -47,9 +47,6 @@ const createGroupedConvProgramInfo =
   ${shaderHelper.declareVariables(...inputVars, output)}
 
   ${activationFunction}
-  ${output.impl('offsetToIndices')}
-  ${x.impl('indicesToOffset', 'get')}
-  ${w.impl('indicesToOffset', 'get')}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}

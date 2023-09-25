@@ -9,6 +9,7 @@ import {SerializableModeldata} from './proxy-messages';
 import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
 
 let runtimeInitialized: boolean;
+let runtimeInitializationPromise: Promise<void>|undefined;
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   private sessionId: number;
@@ -20,13 +21,20 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     // fetch model from url and move to wasm heap. The arraybufffer that held the http
     // response is freed once we return
     const response = await fetch(path);
+    if (response.status !== 200) {
+      throw new Error(`failed to load model: ${path}`);
+    }
     const arrayBuffer = await response.arrayBuffer();
     return createSessionAllocate(new Uint8Array(arrayBuffer));
   }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
     if (!runtimeInitialized) {
-      await initializeRuntime(env);
+      if (!runtimeInitializationPromise) {
+        runtimeInitializationPromise = initializeRuntime(env);
+      }
+      await runtimeInitializationPromise;
+      runtimeInitializationPromise = undefined;
       runtimeInitialized = true;
     }
 

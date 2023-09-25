@@ -1,3 +1,4 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -10,7 +11,6 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -24,14 +24,15 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 parameters:
 
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.13.1.230730
+  default: qnn-v2.14.1.230828
 
 jobs:
   - job: Build_QNN_EP

@@ -54,13 +54,12 @@ class FusionNhwcConv(Fusion):
             weight = weight.transpose(0, 2, 3, 1)
 
             weight_name = node_name + "_weight_NHWC"
-            nhwc_weight = helper.make_tensor(
+            self.add_initializer(
                 name=weight_name,
                 data_type=TensorProto.FLOAT,
                 dims=list(weight.shape),
-                vals=weight.flatten().tolist(),
+                vals=weight,
             )
-            self.model.add_initializer(nhwc_weight, self.this_graph_name)
             weight_transpose_node = None
         else:
             weight_transpose_node = self.create_transpose_node(conv.input[1], [0, 2, 3, 1])

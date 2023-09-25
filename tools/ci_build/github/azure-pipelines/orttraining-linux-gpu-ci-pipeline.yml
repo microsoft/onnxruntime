@@ -1,4 +1,17 @@
-trigger: none
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 pr:
   branches:
     include:
@@ -11,8 +24,9 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 jobs:
 - template: templates/linux-ci.yml
   parameters:
@@ -34,7 +48,7 @@ jobs:
       "
     DoNugetPack: 'false'
     RunInjectedPipeline: 'true'
-    InjectedPipeline: 'orttraining-linux-gpu-ortmodule-test-ci-pipeline.yml'
+    InjectedPipeline: 'orttraining-linux-gpu-test-ci-pipeline.yml'
     DockerImageTag: 'onnxruntime_orttraining_ortmodule_tests_image'
     BuildConfig: $(buildConfig)
     ArtifactName: 'drop-linux'
