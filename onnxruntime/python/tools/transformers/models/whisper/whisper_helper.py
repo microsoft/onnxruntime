@@ -6,6 +6,7 @@
 
 import logging
 import os
+import io
 import sys
 from pathlib import Path
 from typing import Dict, Tuple, Union
@@ -18,6 +19,10 @@ from transformers import __version__ as transformers_version
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
+
+from whisper.model import Whisper, ModelDimensions
+from whisper import _MODELS, _ALIGNMENT_HEADS
+from whisper import _download
 
 from onnxruntime import InferenceSession
 
