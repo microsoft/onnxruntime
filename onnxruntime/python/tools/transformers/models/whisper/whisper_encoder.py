@@ -31,7 +31,7 @@ class WhisperEncoder(torch.nn.Module):
         self.config = config
 
     def forward(self, input_features):
-        return self.encoder.model.encoder(input_features)[0]
+        return self.encoder(input_features)#[0]
 
 
 class WhisperEncoderInputs:
@@ -40,7 +40,7 @@ class WhisperEncoderInputs:
 
     @staticmethod
     def create_dummy(
-        batch_size: int, sequence_length: int, feature_size: int, device: torch.device, use_int32_inputs: bool
+        batch_size: int, sequence_length: int, feature_size: int, device: torch.device,
     ):
         """Create dummy inputs for Whisper encoder.
 
@@ -61,9 +61,9 @@ class WhisperEncoderInputs:
         return WhisperEncoderInputs(input_features)
 
     def to_list(self) -> List:
-        if self.input_features is None:
+        if self.input_ids is None:
             return []
-        return [self.input_features]
+        return [self.input_ids]
 
 
 class WhisperEncoderHelper:

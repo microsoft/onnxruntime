@@ -6,6 +6,7 @@
 
 import logging
 import os
+import io
 import sys
 from pathlib import Path
 from typing import Dict, Tuple, Union
@@ -18,6 +19,10 @@ from transformers import __version__ as transformers_version
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
+
+from whisper.model import Whisper, ModelDimensions
+from whisper import _MODELS, _ALIGNMENT_HEADS
+from whisper import _download
 
 from onnxruntime import InferenceSession
 
@@ -73,8 +78,49 @@ class WhisperHelper:
         return os.path.join(directory, model_name + ".onnx")
 
     @staticmethod
+    def load_model_openai(
+        model_name_or_path: str,
+        cache_dir: str,
+        device: torch.device,
+    ) -> torch.nn.Module:
+        """Load model given a pretrained name or path, then build models for ONNX conversion.
+
+        Args:
+            model_name_or_path (str): pretrained model name or path
+            cache_dir (str): cache directory
+            device (torch.device): device to run the model
+            merge_encoder_and_decoder_init (bool, optional): Whether merge encoder and decoder initialization into one ONNX model. Defaults to True.
+        Returns:
+            Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
+        """
+
+        in_memory = False
+
+        model_name = model_name_or_path.split('/')[-1].split('-')[-1]
+        checkpoint_file = None
+        if model_name in _MODELS:
+            checkpoint_file = _download(_MODELS[model_name], cache_dir, in_memory)
+            alignment_heads = _ALIGNMENT_HEADS[model_name]
+
+
+        with (
+            io.BytesIO(checkpoint_file) if in_memory else open(checkpoint_file, "rb")
+        ) as fp:
+            checkpoint = torch.load(fp, map_location=device)
+        del checkpoint_file
+
+        dims = ModelDimensions(**checkpoint["dims"])
+        model = Whisper(dims)
+        model.load_state_dict(checkpoint["model_state_dict"])
+
+        if alignment_heads is not None:
+            model.set_alignment_heads(alignment_heads)
+        return model.to(device)
+
+    @staticmethod
     def load_model(
         model_name_or_path: str,
+        model_impl: str,
         cache_dir: str,
         device: torch.device,
         merge_encoder_and_decoder_init: bool = True,
@@ -94,6 +140,24 @@ class WhisperHelper:
         if version.parse(transformers_version) >= version.parse("4.36.0"):
             extra_kwargs["attn_implementation"] = "eager"
         model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir, **extra_kwargs)
+        if model_impl == "openai":
+            model = WhisperHelper.load_model_openai(model_name_or_path, cache_dir, device)
+            model_for_config = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+            if merge_encoder_and_decoder_init:
+                #encoder = WhisperEncoder(model.encoder, model_for_config.config)
+                #encoder.eval().to(device)
+                #return {'encoder': encoder}
+                encoder_decoder_init = WhisperEncoderDecoderInit(
+                    model.encoder,
+                    model.decoder,
+                    model_for_config.config,
+                    decoder_start_token_id=None,
+                    model_impl=model_impl,
+                    model=model,
+                )
+                return {"encoder_decoder_init": encoder_decoder_init}
+
+        model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
         if state_dict_path:
             model.load_state_dict(torch.load(state_dict_path), strict=False)
 

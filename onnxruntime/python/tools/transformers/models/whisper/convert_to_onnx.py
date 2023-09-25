@@ -39,6 +39,15 @@ def parse_arguments(argv=None):
     )
 
     parser.add_argument(
+        "--model_impl",
+        required=False,
+        default="hf",
+        choices=["hf", "openai"],
+        type=str,
+        help="Select implementation for export of encoder and decoder subgraphs",
+    )
+
+    parser.add_argument(
         "--cache_dir",
         required=False,
         type=str,
@@ -167,7 +176,7 @@ def parse_arguments(argv=None):
         action="store_true",
         help="Produce beam search model with chained encdecinit and decoder.",
     )
-    parser.set_defaults(chain_model=True)
+    parser.set_defaults(chain_model=False)
 
     parser.add_argument(
         "--use_whisper_beamsearch",
@@ -300,6 +309,7 @@ def parse_arguments(argv=None):
 
 def export_onnx_models(
     model_name_or_path,
+    model_impl,
     cache_dir,
     output_dir,
     use_gpu,
@@ -321,9 +331,14 @@ def export_onnx_models(
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
     models = WhisperHelper.load_model(
-        model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, state_dict_path
+        model_name_or_path,
+        model_impl,
+        cache_dir,
+        device,
+        merge_encoder_and_decoder_init,
+        state_dict_path
     )
-    config = models["decoder"].config
+    config = models["encoder_decoder_init"].config
 
     if (not use_external_data_format) and (config.num_hidden_layers > 24):
         logger.info("Try use_external_data_format when model size > 2GB")
@@ -431,6 +446,7 @@ def main(argv=None):
 
     output_paths = export_onnx_models(
         args.model_name_or_path,
+        args.model_impl,
         cache_dir,
         output_dir,
         args.use_gpu,

@@ -1061,47 +1061,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GridSample, 1,
                                   updateOutputShape(ctx, 0, {N, C, H_out, W_out});
                                 }));
 
-ONNX_MS_OPERATOR_SET_SCHEMA(WhisperDecode, 1,
-                            OpSchema()
-                                .SetDoc("Whisper decode for speech processing. Supports whisper beam search and greedy search.")
-                                .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
-                                .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
-                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
-                                .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("search_type", "search type: 0 for GreedySearch; 1 for BeamSearch", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
-                                .Attr("vocab_size",
-                                      "Size of the vocabulary. "
-                                      "If not provided, it will be inferred from the decoder subgraph's output shape",
-                                      AttributeProto::INT, static_cast<int64_t>(-1))
-                                .Attr("no_speech_token",
-                                      "The token in whisper model that mark all sequence empty. With this model, whisper could output no_speech_prob after Default -1.",
-                                      AttributeProto::INT, OPTIONAL_VALUE)
-                                .Input(0, "logits", "Per-token logits of the probability distribution at the current step. Shape is (batch_size, vocab_size)", "F")
-                                .Input(1, "tokens", "All tokens in the context so far, including the prefix and sot_sequence tokens. Shape is (batch_size, sequence_length)", "F")
-                                .Input(2, "temperature", "", "F")
-                                .Input(3, "best_of", "The number of independent sample trajectories, if t > 0. Shape is (1)", OpSchema::Optional)
-                                .Input(4, "beam_size", "The number of beams in beam search, if t == 0. Shape is (1)", OpSchema::Optional)
-                                .Input(5, "patience", "The patience in beam search. Shape is (1)", OpSchema::Optional)
-                                .Input(6, "length_penalty", "alpha in Google NMT, or None for length norm, when ranking generations"
-                                        "to select which to return among the beams or best-of-N samples. Shape is (1)", "T", OpSchema::Optional)
-                                .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
-                                .Input(8, "logits_filters", "Logits filters to be applied based on types of search used. Default value 0 means no specific logit processor. Accepts value >= 0. Shape is (1)", "I", OpSchema::Optional)
-                                .Output(0, "sequences", "The tokens, appended with the selected next token. Shape is (batch_size, current_sequence_length + 1)", "F")
-                                .Output(1, "sequences_scores", "Sequence of Tensors containing candidate token sequences, for each audio input. Shape is ()", "T", OpSchema::Optional)
-                                .Output(2, "non_speech_probs",
-                                        "For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token."
-                                        "Currently we treat the last token's logits is what we need, in future extra graph logic may be add to the encoder/context-decoder subgraph."
-                                        "The prob is save before logits may be updated by extra-decoding-ids. The shape of non_speech_probs is [B]", "T", OpSchema::Optional)
-                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
-                                .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")
-                                .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
-                                .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
-                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                  #BeamSearchShapeInference(ctx);
-                                }));
-
 ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                             OpSchema()
                                 .SetDoc("Beam Search for text generation. Supports GPT-2 decoder.")
