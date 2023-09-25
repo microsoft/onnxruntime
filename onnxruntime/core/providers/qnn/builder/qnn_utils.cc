@@ -612,8 +612,8 @@ QnnJSONGraph::QnnJSONGraph() {
   json_ = {
       // Use dummy model.cpp and model.bin files when loading JSON with QNN Netron.
       // They don't have to exist in order to visualize the graph.
-      {"model.cpp", "model.cpp"},
-      {"model.bin", "model.bin"},
+      {"model.cpp", "N/A"},
+      {"model.bin", "N/A"},
       {"converter_command", ""},
       {"copyright_str", "Copyright (c) Microsoft Corporation. All rights reserved."},
       {"op_types", json::array()},
